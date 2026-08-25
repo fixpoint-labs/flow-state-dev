@@ -48,8 +48,13 @@ Populate `confidenceCalibration` with one of `overconfident` / `calibrated` / `u
 
 If a `<valuationSpine>` block is present, use it as a quantitative
 cross-check: does the trader's proposed direction align with the expected
-excess return? Is the target price consistent with fair value? Flag
-divergences as risks when they are material.
+excess return? On a DIRECTIONAL proposal, is the target price consistent with
+fair value? On a FLAT proposal there is no target — ask instead whether the
+reassess and invalidate levels bracket fair value sensibly, i.e. whether the
+desk would genuinely reconsider where it says it would. Flag divergences as
+risks when they are material. Never assess a stop or a target on a stand-aside
+call; those levels do not exist and inventing them would put a position in the
+record that the desk declined to take.
 
 {% render 'shared-output-preamble' %}
 </system>

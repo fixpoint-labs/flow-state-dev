@@ -540,7 +540,8 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
     expect(error).toContain('task "a" is completed, which is terminal');
     expect(error).toContain("Add a new task instead");
     // No dangling "From here you can call ." and no claim that nothing at all
-    // can be called — `cancelTask` on a terminal task is still a silent ok.
+    // can be called. (`cancelTask` on a terminal task is now also refused, and
+    // says so in the same shape — see the declined-write suite below.)
     expect(error).not.toContain("From here you can call");
     expect(error).not.toMatch(/nothing/i);
     // Terminal messages quote no target status; that is what keeps `failTask`'s
@@ -635,6 +636,153 @@ describe("taskTools — failTask's retry budget", () => {
       ctxWithTask("pending"),
     );
     expect(error).not.toContain("failTask");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Declined writes on a terminal task (FIX-976)
+// ---------------------------------------------------------------------------
+
+/** Read the seeded task's mutable fields off a mock ctx. */
+function taskA(ctx: unknown) {
+  return (
+    (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
+      DELEGATION_BOARD_FIELD
+    ] as Record<
+      string,
+      { assignee?: string; priority?: number; labels?: string[]; metadata?: unknown }
+    >
+  ).a;
+}
+
+/**
+ * The defect this issue is about. Against a task that already finished, three of
+ * these tools used to give three different answers and only one was true:
+ * `blockTask` refused honestly, `cancelTask` said it worked and did nothing, and
+ * `assignTask` said it worked and wrote the new assignee onto a dead task.
+ */
+describe("taskTools — writes to a terminal task are refused, not silently accepted", () => {
+  it.each(["completed", "errored", "cancelled"] as const)(
+    "assignTask on a %s task refuses and does not rewrite the assignee",
+    async (status) => {
+      const ctx = ctxWithTask(status, { assignee: "researcher" });
+
+      const result = await runForTest(
+        findTool("assignTask"),
+        { taskId: "a", assignee: "backup-researcher" },
+        ctx,
+      );
+
+      expect(result).toMatchObject({ ok: false, taskId: "a" });
+      const error = (result as { error: string }).error;
+      expect(error).toContain("terminal_task_write_declined");
+      expect(error).toContain(`task "a" is ${status}, which is terminal`);
+      // Names what the caller actually attempted. `blockTask`'s copy says "its
+      // status will not change again", which would be the wrong thing here —
+      // `assignTask` attempts no status transition.
+      expect(error).toContain("Its assignee will not change.");
+      expect(error).not.toContain("Its status will not change");
+      expect(error).toContain("Add a new task instead");
+      // The heart of it: the write did not land.
+      expect(taskA(ctx)?.assignee).toBe("researcher");
+    },
+  );
+
+  it("cancelTask on a terminal task refuses instead of reporting a phantom success", async () => {
+    const ctx = ctxWithTask("errored");
+
+    const result = await runForTest(findTool("cancelTask"), { taskId: "a", reason: "obsolete" }, ctx);
+
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    const error = (result as { error: string }).error;
+    expect(error).toContain("terminal_task_write_declined");
+    expect(error).toContain('task "a" is errored, which is terminal');
+    // A cancel WOULD have changed the status, so this one names the status.
+    expect(error).toContain("Its status will not change again.");
+    expect(statusOfA(ctx)).toBe("errored");
+  });
+
+  it("reads the same as blockTask's refusal on the same task, bar the code and the clause", async () => {
+    // Decision 6: one parameterized renderer, not four bespoke messages. The
+    // sentence shape and the closing suggestion have to match, or the four tools
+    // drift into four ways of saying the same thing.
+    const blocked = await errorFrom("blockTask", { taskId: "a", reason: "r" }, ctxWithTask("completed"));
+    const cancelled = await errorFrom("cancelTask", { taskId: "a" }, ctxWithTask("completed"));
+
+    const shape = (error: string) => error.replace(/^[a-z_]+:/, "CODE:");
+    expect(shape(cancelled)).toBe(shape(blocked));
+  });
+
+  it("cancelTask still succeeds on a live task", async () => {
+    // The control. The refusal must not touch the case it is not for.
+    const ctx = ctxWithTask("pending");
+    const result = await runForTest(findTool("cancelTask"), { taskId: "a" }, ctx);
+    expect(result).toEqual({ ok: true });
+    expect(statusOfA(ctx)).toBe("cancelled");
+  });
+
+  it("assignTask still succeeds on a live task", async () => {
+    const ctx = ctxWithTask("pending", { assignee: "researcher" });
+    const result = await runForTest(
+      findTool("assignTask"),
+      { taskId: "a", assignee: "writer" },
+      ctx,
+    );
+    expect(result).toEqual({ ok: true });
+    expect(taskA(ctx)?.assignee).toBe("writer");
+  });
+});
+
+/**
+ * `updateTask` runs the one guardable write first and short-circuits (Decision
+ * 4). Under the assignment-only guard exactly one of its five writes can
+ * decline, which is what makes a single verdict honest in both directions.
+ */
+describe("taskTools — updateTask with an assignee on a terminal task", () => {
+  it("refuses and mutates nothing else — priority, metadata and labels all untouched", async () => {
+    const ctx = ctxWithTask("completed", { assignee: "researcher", priority: 1 });
+
+    const result = await runForTest(
+      findTool("updateTask"),
+      {
+        taskId: "a",
+        patch: {
+          assignee: "writer",
+          priority: 9,
+          metadata: { audited: true },
+          addLabel: "late",
+        },
+      },
+      ctx,
+    );
+
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect((result as { error: string }).error).toContain("terminal_task_write_declined");
+    // The short-circuit. Ordering the guarded write first is what makes the
+    // single boolean true in both directions: nothing else ever ran.
+    const task = taskA(ctx);
+    expect(task?.assignee).toBe("researcher");
+    expect(task?.priority).toBe(1);
+    expect(task?.metadata).toBeUndefined();
+    expect(task?.labels).toBeUndefined();
+  });
+
+  it("still succeeds WITHOUT an assignee on a terminal task, writing every field", async () => {
+    // Required by the guard's scoping: tagging a failed task after the fact is a
+    // real and used thing. A helper-wide guard would refuse this.
+    const ctx = ctxWithTask("errored", { priority: 1 });
+
+    const result = await runForTest(
+      findTool("updateTask"),
+      { taskId: "a", patch: { priority: 9, metadata: { audited: true }, addLabel: "worker-error" } },
+      ctx,
+    );
+
+    expect(result).toEqual({ ok: true });
+    const task = taskA(ctx);
+    expect(task?.priority).toBe(9);
+    expect(task?.metadata).toEqual({ audited: true });
+    expect(task?.labels).toEqual(["worker-error"]);
   });
 });
 

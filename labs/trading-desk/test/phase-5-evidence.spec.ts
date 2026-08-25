@@ -219,6 +219,57 @@ describe("Phase 5 evidence-sufficiency gate", () => {
     expect(d.evidenceDecision?.verdict).toBe("insufficient-evidence");
   });
 
+  /**
+   * FIX-1063 — the sparse-but-successful path, reaching the gate through the PM
+   * commit's OWN read of `financialsData`. This is the second read boundary,
+   * and it is not covered by the valuation-spine ingest: the PM commit reads
+   * the resource directly, so a resumed pre-fix session lands here without ever
+   * passing `compute-spine.ts`.
+   */
+  it("a LIVE-tagged fundamentals payload with no market cap gates new exposure", async () => {
+    // Nothing here looks broken: source is `finnhub`, the fetch succeeded, the
+    // three statements are available. The only signal is the missing market
+    // cap — and without it the whole valuation set is unmeasurable, so the desk
+    // must not add. Before decision 3 this run added 4%.
+    const fin = availableFinancials();
+    fin.fundamentals = { ...fin.fundamentals!, source: "finnhub", marketCap: null };
+
+    const d = await commit({
+      action: "add",
+      targetWeightPct: 4,
+      scopedTickerWeightPct: 2,
+      financials: fin,
+    });
+
+    expect(d.evidenceDecision?.criticalDataThin).toBe(true);
+    expect(d.evidenceDecision?.verdict).toBe("insufficient-evidence");
+    expect(d.portfolioFit.action).toBe("hold");
+    expect(d.portfolioFit.targetWeightPct).toBe(2); // no-add: min(4, 2)
+  });
+
+  it("a LEGACY unavailable-tagged payload is normalized at this read boundary", async () => {
+    // A session persisted before the contract: `source: "unavailable"` with
+    // zero-filled numerics. The normalizer runs on the PM commit's own read, so
+    // the fabricated `marketCap: 0` never reaches the gate as a measured cap.
+    const fin = availableFinancials();
+    fin.fundamentals = {
+      ...fin.fundamentals!,
+      source: "unavailable",
+      marketCap: 0,
+      operatingMargin: 0,
+    };
+
+    const d = await commit({
+      action: "add",
+      targetWeightPct: 4,
+      scopedTickerWeightPct: 2,
+      financials: fin,
+    });
+
+    expect(d.evidenceDecision?.criticalDataThin).toBe(true);
+    expect(d.portfolioFit.action).toBe("hold");
+  });
+
   it("portfolio-blind initiate 1.5% → hold at 0% (scoped weight 0)", async () => {
     const d = await commit({ action: "initiate", targetWeightPct: 1.5, scopedTickerWeightPct: 0, spine: thinSpine });
     expect(d.portfolioFit.action).toBe("hold");

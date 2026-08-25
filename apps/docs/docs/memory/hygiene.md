@@ -109,7 +109,7 @@ When the janitor runs.
 | Value | Behavior |
 |-------|----------|
 | `'onConsolidation'` (default) | Appended to the consolidation chain; runs whenever consolidation runs |
-| `'onCapture'` | Runs every turn as a `.work()` step. Rarely worth the cost. |
+| `'onCapture'` | Runs every turn as a `.sideChain()` step. Rarely worth the cost. |
 | `'manual'` | Never auto-wired. Invoke `mem.janitor` directly. |
 
 ## Calling the janitor directly

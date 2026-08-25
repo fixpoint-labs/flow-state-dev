@@ -64,11 +64,13 @@ fsdev block ./src/flows/hello-chat/blocks/counter.ts -i '{}'
 Swap models without changing code:
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "Hi"}' -m gpt-4o
-fsdev block ./src/blocks/summarizer.ts -i '{"text": "..."}' -m claude-sonnet-4
+fsdev run hello-chat chat -i '{"message": "Hi"}' -m openai/gpt-5.4-mini
+fsdev block ./src/blocks/summarizer.ts -i '{"text": "..."}' -m anthropic/claude-haiku-4-5
 ```
 
-Useful for comparing model behavior or testing with a cheaper model during development.
+Handy for forcing a cheaper model during development, and for comparing how two models behave on the same input.
+
+The override reaches every generator that runs in the command's own process, and stops at a queue: background work dispatched to one runs elsewhere, under that process's model configuration. So a comparison covers the part of the flow that ran here, not the part that ran on a worker. The command names each dispatch that loses the override on stderr. See [Model overrides](/docs/cli/overview#model-overrides).
 
 ### Seeding state
 
@@ -79,7 +81,7 @@ fsdev run support-triage triageTicket -i '{"ticketId": "T1"}' \
   --seed-session '{"openTicketCount": 3}'
 ```
 
-Options: `--seed-session`, `--seed-user`, `--seed-project`. Accept inline JSON or a file path. Simulates scenarios like "user has already sent 5 messages" or "project has existing config."
+`--seed-session` accepts inline JSON or a file path. Use it when you want a known session state before the action runs — simulating a scenario like "the session already has 5 messages."
 
 ### Intent overrides in CI and testing
 
@@ -133,7 +135,7 @@ A first-party inspector app for real-time flow visualization. See blocks executi
 
 **Use the testing harness for CI.** Deterministic. No LLM calls. Same contracts as production. Seed state for edge cases. Run `pnpm test` before pushing.
 
-**Seed state for specific scenarios.** Testing "what happens when the user has already used 5 messages" or "what happens when project config is missing" is easier with `--seed-session` or `seed` in `testFlow`. No need to replay a long conversation.
+**Seed state for specific scenarios.** Testing "what happens when the session already has 5 messages" is easier with `--seed-session` or `seed` in `testFlow`. No need to replay a long conversation.
 
 ---
 
@@ -165,4 +167,4 @@ Check the `outputSchema`. Generators with a custom `outputSchema` use structured
 
 ### Tool block throws but error is unclear?
 
-Run the tool block in isolation with `fsdev block`. Pass the exact arguments the generator would send. The block runs in the same harness; you'll see the real error. Tool blocks receive `BlockContext` with the same scope chain as the enclosing generator, so you can seed session or user state to match the failing scenario.
+Run the tool block in isolation with `fsdev block`. Pass the exact arguments the generator would send. You'll see the real error. `fsdev block` does not take seed flags. If the failure depends on session, user, or org state, reproduce it with `testBlock` (`session`, `user`, `org`) or `testFlow` (`seed.session`, `seed.user`, `seed.org`).

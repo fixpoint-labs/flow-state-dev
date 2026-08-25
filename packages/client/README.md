@@ -106,6 +106,41 @@ const requests = await sessions.listSessionRequests("sess_1", {
 });
 ```
 
+### Background work
+
+`listWorkstreams` lists the background work running under a session. Work that
+outlives the turn that started it runs in its own session hanging off the parent, so
+it never appears in the parent's requests.
+
+```ts
+// Paging only: `limit` is 1–100 (25 by default), `offset` is 0–10000.
+const workstreams = await sessions.listWorkstreams("sess_1", { limit: 25 });
+
+for (const workstream of workstreams) {
+  // A row's `id` is a session id, so the reads you already use work on it.
+  const requests = await sessions.listSessionRequests(workstream.id);
+}
+```
+
+Each row is a `WorkstreamSummary`: `id`, `parentSessionId`, `createdAt`,
+`updatedAt`, and the optional `topic`, `coordinate`, and `status`. `topic` names the
+body of work and `coordinate` names the worker handling it; both are display labels,
+and a row can arrive without either. Guard all three with `== null`.
+
+`status` is the last state the server recorded for the work, not a check on what is
+happening right now. `"active"` asserts only that the work hasn't finished: queued,
+mid-run, and paused waiting for a person all read `"active"`, and so does a job whose
+worker died, until the server records otherwise. The terminal values are
+`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A workstream that has
+never run anything carries no `status` at all. Don't fold that absence into one of
+the five values. Your own label for it, like `"Not started"`, is fine; mapping it to
+`"active"` claims work is under way before it started.
+
+A session with no background work resolves to `[]`; an unknown session, or one the
+caller isn't allowed to read, rejects with `ClientHttpError`. No client call starts
+background work: whether a piece of work detaches is declared on the server when the
+flow is wired up.
+
 ## `createClient` vs `createTypedClient`
 
 | | `createClient` | `createTypedClient` |

@@ -8,6 +8,8 @@ Everything in flow-state.dev is a block. Every LLM call, every data transform, e
 
 This constraint is the point. Four primitives that compose freely means you can build any AI workflow without inventing new abstractions.
 
+Field-by-field options for each kind live in [Block options](/docs/configuration/blocks).
+
 ## The four kinds
 
 ### Handler — pure logic
@@ -42,7 +44,7 @@ import { z } from "zod";
 
 const agent = generator({
   name: "agent",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -95,7 +97,7 @@ const memoryObserver = generator({ itemVisibility: { client: false, history: fal
 // Pure structured-output transformer. Feeds its typed output to the next
 // block via graph edges. No session items at all.
 const classifier = generator({
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "Classify input as A, B, or C.",
   outputSchema: z.enum(["A", "B", "C"]),
   // itemVisibility omitted — no auto-emission.
@@ -128,7 +130,7 @@ const readDoc = handler({
   inputSchema: z.object({ docId: z.string() }),
   outputSchema: z.string(),
   execute: async (input, ctx) => {
-    const doc = ctx.session.resources.get("docs")?.state.byId[input.docId];
+    const doc = ctx.resources.get("docs")?.state.byId[input.docId];
     return doc?.content ?? "Document not found.";
   },
 });
@@ -153,9 +155,9 @@ A tool can also pause for a human before it runs: call `ctx.suspend()` inside it
 
 #### Showing a deterministic call as a tool: `.asTool()`
 
-Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis. The fetches no longer go through a generator's tool loop, so they no longer produce the tool pills the LLM-driven path produces. The transcript shows nothing for the work that just happened.
+Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis.
 
-`block.asTool(opts?)` closes that gap. It wraps a block so that, when executed inside a sequencer step, it emits the same `tool_output` item the AI SDK tool-loop wrapper produces inside a generator. The wrapped block runs normally and returns its typed output unchanged. ("Tool pill" here means the UI element clients render for `tool_output` items.)
+`block.asTool(opts?)` wraps a block so a sequencer step emits the same `tool_output` item the generator tool-loop produces. The wrapped block runs normally and returns its typed output unchanged. ("Tool pill" here means the UI element clients render for `tool_output` items.)
 
 ```ts
 const dataBundle = sequencer({ name: "prefetch" })
@@ -182,7 +184,7 @@ Generators have built-in support for *generator-native web search*: web search t
 ```ts
 const agent = generator({
   name: "research-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "You are a research assistant. Search the web when needed.",
   search: true,
   tools: [readDoc, updateDoc],
@@ -197,7 +199,7 @@ For fine-grained control, pass a config object instead of `true`:
 ```ts
 const agent = generator({
   name: "docs-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   search: {
     maxUses: 3,
     allowedDomains: ["docs.anthropic.com", "developer.mozilla.org"],
@@ -251,7 +253,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 
 const agent = generator({
   name: "code-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   providerTools: [
     providerTool("code_execution", anthropic.tools.codeExecution()),
   ],
@@ -267,7 +269,7 @@ You can combine `search`, `providerTools`, and block `tools` freely. They all me
 ```ts
 const agent = generator({
   name: "full-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   search: true,                                    // provider-native search
   providerTools: [                                  // raw provider tools
     providerTool("code_exec", anthropic.tools.codeExecution()),
@@ -369,10 +371,10 @@ Queue non-blocking tasks that run alongside the main pipeline. The main chain co
 ```ts
 pipeline
   .step(coreLogic)
-  .work(logAnalytics)                          // fire and forget
-  .work((output) => output.metrics, reportMetrics)  // with connector
+  .sideChain(logAnalytics)                          // fire and forget
+  .sideChain((output) => output.metrics, reportMetrics)  // with connector
   .step(moreWork)
-  .waitForWork({ timeoutMs: 5000 });           // optionally converge later
+  .waitForSideChain({ timeoutMs: 5000 });           // optionally converge later
 ```
 
 #### Branching
@@ -438,7 +440,7 @@ const researchAgent = sequencer({ name: "research-agent" })
   })
   .step(mergeAndRank)
   .doUntil((r) => r.confidence > 0.9, refineResults)
-  .work(logAnalytics)
+  .sideChain(logAnalytics)
   .step(synthesize)
   .tapIf((r) => r.citations.length > 5, notifyReviewer)
   .rescue([{ when: [SearchError], block: fallbackSearch }]);
@@ -470,7 +472,7 @@ const modeRouter = router({
 
 If the chosen branch suspends for a human, resume keeps that same branch — the selector re-runs and is validated against the recorded decision. See [Generator and router suspend/resume](/docs/advanced/generator-and-router-suspend-resume).
 
-#### `utility.keyedRouter` — dispatch by string key
+#### `utility.keyedRouter` — dispatch by string key {#keyedrouter}
 
 When the choice is just "pick a block from a `Record` by string key", reach for `utility.keyedRouter`. It wraps the full router with the common case so you don't hand-roll the lookup and the not-found error.
 
@@ -506,15 +508,15 @@ execute: async (input, ctx) => {
   await ctx.session.patchState({ mode: "agent" });
 
   // Access resources
-  const plan = ctx.session.resources.get("plan");
-  await ctx.session.resources.plan.patchState({ status: "active" });
+  const plan = ctx.resources.get("plan");
+  await ctx.resources.plan.patchState({ status: "active" });
 
   // Emit items to the client
   await ctx.emit.message("Processing your request...");
   await ctx.emit.component("progress-bar", { percent: 50 });
 
   // Resolve AI models
-  const model = ctx.resolveModel("preset/fast");
+  const model = ctx.resolveModel("openai/gpt-5.4-mini");
 
   // Access typed targets — named ancestor blocks declared in config
   const research = ctx.targets.research;  // StateRef<{ progress: number }> | undefined
@@ -555,7 +557,7 @@ const saveResult = handler({
   parentInputSchema: z.object({ id: z.string(), title: z.string() }),
   execute: async (input, ctx) => {
     const { id } = ctx.parent!.input; // typed as { id: string, title: string }
-    const result = await ctx.session.resources.results.get(id);
+    const result = await ctx.resources.results.get(id);
     await result.patchState({ summary: input.summary });
   },
 });
@@ -639,12 +641,13 @@ pipeline.step(
 
 ## Blocks declare their resources
 
-Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** using `sessionResources`, `userResources`, and `orgResources`. These accept `defineResource()` values:
+Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** with a flat `resources` map. These accept `defineResource()` values. The resource's own `scope` decides where it is stored:
 
 ```ts
 import { defineResource, handler } from "@flow-state-dev/core";
 
 const planResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     steps: z.array(z.string()).default([]),
     status: z.enum(["draft", "active", "complete"]).default("draft"),
@@ -654,16 +657,16 @@ const planResource = defineResource({
 
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
+  resources: { plan: planResource },
   execute: async (_input, ctx) => {
-    await ctx.session.resources.plan.patchState({ status: "active" });
+    await ctx.resources.plan.patchState({ status: "active" });
   },
 });
 ```
 
 The framework collects these declarations automatically:
 - **Sequencers** merge declared resources from all child blocks in the chain
-- **`defineFlow`** collects resources from all action blocks and merges them into the flow's scope configs
+- **`defineFlow`** collects resources from all action blocks and merges them into the flow's `resources` map
 - **Flow-level** resource declarations take priority over block-declared ones
 
 This means blocks bring their own resource requirements — you don't have to repeat them in the flow definition. It follows the same philosophy as partial state schemas: blocks are self-documenting about their dependencies.
@@ -686,9 +689,9 @@ const classify = utility.intentClassifier({ name: "triage", categories: { ... } 
 const decompose = utility.decomposer({ name: "plan" });
 ```
 
-Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine utilities produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
+Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Most are generators that call a model; `combiner`, `upsertResource`, and `keyedRouter` are deterministic and make no LLM call.
 
-See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full catalog with examples and output schemas, or [Extension Utilities](/docs/patterns/utility-blocks/extensions) for adapter-driven utilities.
+See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full catalog with examples and output schemas.
 
 ## Key rules
 

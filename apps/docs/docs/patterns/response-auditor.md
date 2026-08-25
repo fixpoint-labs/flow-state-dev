@@ -33,7 +33,7 @@ const auditor = responseAuditor({
 
 ```
 input { userInput, response }
-  → captureContext             (store input in sequencer state)
+  → captureContext             (tap: store input in sequencer state, produces no output)
   → map to array               (one copy per analyzer)
   → forEach(safeAnalyzer)      (run analyzers concurrently, with .rescue() per analyzer)
   → filter nulls               (drop failed analyzers)
@@ -55,7 +55,7 @@ Each analyzer is wrapped in a mini-sequencer with `.rescue()`, so individual fai
 
 ## Basic usage
 
-Wire the auditor as a `.work()` sidechain so the primary response streams unblocked:
+Wire the auditor as a `.sideChain()` sidechain so the primary response streams unblocked:
 
 ```ts
 import { defineFlow, sequencer, generator } from "@flow-state-dev/core";
@@ -64,7 +64,7 @@ import { z } from "zod";
 
 const chat = generator({
   name: "chat",
-  model: "preset/default",
+  model: "openai/gpt-5.5",
   prompt: "You are a helpful assistant.",
   user: (input) => input.message,
 });
@@ -79,7 +79,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .step(chat)
-  .work(
+  .sideChain(
     (chatOutput, ctx) => ({
       userInput: String(ctx.parent?.input?.message ?? ""),
       response: typeof chatOutput === "string" ? chatOutput : JSON.stringify(chatOutput),
@@ -144,7 +144,7 @@ const biasAdapter = sequencer({
     userInput: input.userInput,
     aiResponse: input.response,   // biasAnalyzer expects "aiResponse", not "response"
   }))
-  .step(biasAnalyzer({ model: "preset/fast" }))
+  .step(biasAnalyzer({ model: "openai/gpt-5.4-mini" }))
   .map((output: Record<string, unknown>) => {
     const annotations = (output.annotations as Array<Record<string, unknown>>) ?? [];
     const severity = output.severity as string;
@@ -190,7 +190,7 @@ import { z } from "zod";
 
 const detect = generator({
   name: "tone/detect",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   inputSchema: auditorInputSchema,
   outputSchema: z.object({
     tone: z.string(),
@@ -243,11 +243,25 @@ const auditor = responseAuditor({
 | `AuditAnnotationSchema` | schema | Zod schema for individual annotations |
 | `auditorInputSchema` | schema | `{ userInput: string, response: string }` |
 | `responseAuditorStateSchema` | schema | Internal sequencer state |
-| `captureContext` | handler | Stores input in sequencer state |
+| `captureContext` | handler | Stores input in sequencer state (tap — no output) |
 | `aggregateResults` | handler | Computes average score across results |
 | `applyThreshold(n)` | factory | Creates threshold filter handler |
 
 The internal blocks (`captureContext`, `aggregateResults`, `applyThreshold`) are exported for flow authors who want to remix the pipeline with custom steps.
+
+:::caution `captureContext` must be composed with `.tap()`
+
+`captureContext` only writes to sequencer state; it returns nothing. Compose it with `.tap()`, which runs a block for its side effect and passes the untouched pipeline value through to the next step:
+
+```ts
+sequencer({ name: "my-auditor", inputSchema: auditorInputSchema, stateSchema: responseAuditorStateSchema })
+  .tap(captureContext)   // state is written, { userInput, response } flows on
+  .step(myCustomAnalyzer)
+```
+
+Composing it as `.step(captureContext)` hands `undefined` to the next step, because `.step()` forwards the block's output and there is no output. Earlier releases echoed the input back, so `.step()` appeared to work; that echo was removed because it duplicated the payload in the items log for no benefit.
+
+:::
 
 ## Composability
 
@@ -259,12 +273,12 @@ import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 const auditor = responseAuditor({ analyzers: [biasAdapter, toneAnalyzer] });
 
 // Background sidechain — audit while user sees the response
-pipeline.work(auditor);
+pipeline.sideChain(auditor);
 
 // Chain audit into a conditional revision
 const selfCorrectingChat = sequencer({ name: "self-correct", inputSchema: chatInput })
   .step(chat)
-  .work(
+  .sideChain(
     (output, ctx) => ({ userInput: ctx.parent?.input?.message, response: output }),
     auditor,
   )

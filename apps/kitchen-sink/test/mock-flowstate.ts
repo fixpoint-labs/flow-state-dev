@@ -17,6 +17,7 @@ import {
   thinkingStyleClassifierMock,
   skillClassifierMock,
   autoTitleMock,
+  sideChainBriefMock,
 } from "@/lib/e2e-mock-script";
 
 /** Build the mocked model resolver used in `KITCHEN_SINK_TEST_MODE`. */
@@ -27,6 +28,7 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
       "thinking-style-classifier": thinkingStyleClassifierMock,
       "skill-classifier": skillClassifierMock,
       "auto-title": autoTitleMock,
+      "background-brief": sideChainBriefMock,
     },
     policy: "allow",
   });

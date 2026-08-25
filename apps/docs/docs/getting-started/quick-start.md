@@ -15,7 +15,15 @@ Build a streaming chat in five minutes. By the end you have a typed flow, a Next
 ## 1. Install
 
 ```bash
-pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/react zod
+pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/next @flow-state-dev/react zod
+pnpm add -D @flow-state-dev/fsdev
+```
+
+Add the SDK package for whichever provider you have a key for. The framework loads it from your app, so at least one has to be installed:
+
+```bash
+pnpm add @ai-sdk/openai
+# or: @ai-sdk/anthropic, or @ai-sdk/google
 ```
 
 ## 2. Configure your model provider
@@ -26,9 +34,15 @@ Set one API key in your shell:
 export OPENAI_API_KEY=sk-...
 # or
 export ANTHROPIC_API_KEY=sk-ant-...
+# or
+export GOOGLE_GENERATIVE_AI_API_KEY=...
 ```
 
-The framework auto-detects whichever providers it finds keys for. The example below uses `model: "preset/small"`, which resolves to the first available small-tier model across providers. For multi-provider fallback, gateways, and custom presets, see [Setting Up Models](/docs/getting-started/setting-up-models).
+The framework auto-detects whichever providers it finds keys for.
+
+Generators in this guide ask for `intent/chat` instead of naming a model. An **intent** is a name you point at an ordered list of models; the framework picks the first candidate it has both a key and an installed SDK package for. You declare that list once, in step 4. That's why the same block code runs whichever of the three keys you set, and why swapping models later is a config edit rather than a search across your blocks.
+
+For gateways and the full set of options, see [Setting Up Models](/docs/getting-started/setting-up-models).
 
 ## 3. Define a flow
 
@@ -44,11 +58,12 @@ const inputSchema = z.object({ message: z.string() });
 
 const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 
 export default defineFlow({
@@ -66,7 +81,7 @@ export default defineFlow({
 })();
 ```
 
-The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). Both `user: (input) => input.message` on the generator and `userMessage: (input) => input.message` on the action wire to the same source; they are complementary contracts and the framework deduplicates equivalent content. See [Generator context > User slot](/docs/advanced/generator-context#user-slot) for the interaction.
+The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). `user` is this turn's model input. `userMessage` is the stored user-visible text. Point both at `input.message`. The [user slot](/docs/advanced/generator-context#user-slot) page covers how those two fields interact. [Block options](/docs/configuration/blocks) lists every generator field.
 
 To chain multiple blocks together, you'd compose them with a **sequencer**:
 
@@ -90,18 +105,28 @@ import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: {
+    default: "openai/gpt-5.4-mini",
+    intents: {
+      chat: [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-5.4-mini",
+        "google/gemini-3.1-pro",
+      ],
+    },
+  },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
 
+This is where `intent/chat` gets its meaning. The framework takes the first candidate you have a key and an SDK package for, so whichever key you set in step 2 is the one that runs. `default` covers the case where none of an intent's candidates are reachable; declaring any intent makes it required, and it's a plain model string, so point it at a provider you have a key for.
+
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
-import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+import { createNextHandler } from "@flow-state-dev/next";
 
-export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";
-export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
@@ -169,7 +194,9 @@ Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/
 
 ## Next steps
 
-- **[Your First Flow](/docs/getting-started/your-first-flow)** — A narrative walkthrough that explains each concept as you build.
-- **[Setting Up Models](/docs/getting-started/setting-up-models)** — Provider keys, presets, gateways, custom resolvers.
+- **[Your First Flow](/docs/getting-started/your-first-flow)** — The same app, with the why for each piece.
+- **[CLI](/docs/cli/overview)** — run the same flow from the terminal. **[DevTool](/docs/devtool/overview)** inspects it while it runs.
+- **[Anatomy of a Flow](/guides/anatomy-of-a-flow)** — Mental model without a project to build.
+- **[Block options](/docs/configuration/blocks)** and **[Flow options](/docs/configuration/flow)** — field catalogs next to those concepts.
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools.
 - **[Blocks](/docs/fundamentals/blocks)** — The four block kinds in depth.

@@ -15,13 +15,14 @@ import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchExternalR
 import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
+import { toBareState, toBareStates } from "../stores/resource-state-views";
 import {
   extractBareTopic,
   jsonResponse,
   loadTenantSession,
-  normalizeResourceState,
   parseJsonBody,
 } from "./route-utils";
+import { normalizeResourceState } from "../resources/normalize-resource-state";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
@@ -34,6 +35,11 @@ import {
   renderContent,
   type ResourceFlowLike,
 } from "../resources/internal";
+import {
+  readSessionScopeWithLineage,
+  sessionKeyScopeId,
+  sessionStorageScope,
+} from "../resources/lineage-scope";
 
 type ResourceRouteContext = {
   registry: FlowRegistry;
@@ -236,11 +242,6 @@ export async function handleCreateCollectionItem(
     return jsonResponse(501, { error: "Collection mutations only supported for session scope" });
   }
 
-  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
-  if (existing !== undefined) {
-    return jsonResponse(409, { error: `Item "${topic}" already exists` });
-  }
-
   // Seed default state from schema
   const defaultState = config.stateSchema.safeParse({});
   const initialState: JsonObject =
@@ -248,16 +249,52 @@ export async function handleCreateCollectionItem(
 
   const content = typeof body.content === "string" ? body.content : undefined;
 
-  // Write content before the state key. A failed state write then leaves
-  // orphaned content under a key whose state doesn't yet exist, so a client
-  // retry can re-create the item (the same content key is harmlessly
-  // overwritten). Writing the state entry first would commit the resource and
-  // let a content failure trip the 409 guard on retry, with no recovery.
-  if (content !== undefined) {
-    await ctx.stores.content.set("session", session.id, storageKey, content);
+  // FIX-1068: state and content must land at the SAME address, and that address
+  // belongs to whichever declaration owns this KEY — not to the collection the
+  // route names, which may be a broader pattern that merely accepts it.
+  const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
+
+  // Win the key first, then write content. `expectedVersion: 0` is
+  // create-if-absent, so a loser returns below without ever reaching
+  // `ContentStore`, and its 409 is terminal — never retried into an overwrite.
+  const inserted = await ctx.stores.resourceState.set(
+    sessionStorageScope(session, scopeId),
+    scopeId,
+    storageKey,
+    initialState,
+    0
+  );
+  if (!inserted.ok) {
+    return jsonResponse(409, { error: `Item "${topic}" already exists` });
   }
 
-  await ctx.stores.resourceState.set("session", session.id, storageKey, initialState);
+  // The item is live from here, but its content is not final until the write
+  // below lands. Three accepted residuals follow, all of them cross-record
+  // atomicity (FIX-854), a declared non-goal — stated rather than approximated,
+  // because a version cannot tell this generation from its successor:
+  //
+  //   1. this write fails -> the await is bare, so the request fails, but the
+  //      item exists anyway with no content row: live and listable, reading back
+  //      as `content: null` (not ""), a retry gets an honest 409, and repair is
+  //      the content PATCH route (which needs exactly the state row now
+  //      committed, and the `content.update` grant). A template-backed
+  //      collection loses only the repair half — `renderContent` checks the
+  //      template branches before `rawContent`, so it reads fine either way —
+  //      but this write is deliberately not guarded on the template config, so
+  //      the half-commit is identical there;
+  //   2. a DELETE lands in the window -> this body is orphaned behind the
+  //      tombstone, and a later create with no content surfaces it as current;
+  //   3. a PATCH lands in the window -> it is acknowledged 200 and then
+  //      overwritten here.
+  //
+  // Only (1) surfaces as an error, and it understates what happened; (2) and
+  // (3) are silent.
+  //
+  // All three are pinned by tests in `resource-collection-routes.test.ts`.
+  // Client-facing guidance: `apps/docs` -> resources / client access.
+  if (content !== undefined) {
+    await ctx.stores.content.set(sessionStorageScope(session, scopeId), scopeId, storageKey, content);
+  }
 
   return jsonResponse(201, { topic: topic.trim() });
 }
@@ -314,13 +351,16 @@ export async function handleUpdateResourceContent(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
+  // FIX-1068: addressed by the key's owner, so read and write land where a
+  // block would rather than where the named route would.
+  const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
+  const existing = await ctx.stores.resourceState.get(sessionStorageScope(session, scopeId), scopeId, storageKey);
   if (existing === undefined) {
     return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
   }
 
   // Write to ContentStore (the canonical content location during execution).
-  await ctx.stores.content.set("session", session.id, storageKey, content);
+  await ctx.stores.content.set(sessionStorageScope(session, scopeId), scopeId, storageKey, content);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
@@ -425,9 +465,16 @@ export async function handleListCollectionState(
     // whole scope. An empty prefix (e.g. `[topic]/observations`) falls back to
     // getAll.
     const keyPrefix = getPatternPrefix(config.pattern);
-    persisted = keyPrefix
-      ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
-      : await ctx.stores.resourceState.getAll("session", session.id);
+    // FIX-1068: a prefix spans both buckets when a narrower private collection
+    // sits under a shared one, so this is the same lineage-merged read the
+    // execution path performs — per-key ownership, not one address for the lot.
+    persisted = toBareStates(
+      await readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
+        keyPrefix
+          ? ctx.stores.resourceState.getByPrefix(scopeType, scopeId, `${keyPrefix}/`)
+          : ctx.stores.resourceState.getAll(scopeType, scopeId)
+      )
+    );
   } else {
     // User/org scope: resolve the persisted record via the shared scope
     // resolver (honors flowIsolation). A missing user/org record is a valid
@@ -519,7 +566,13 @@ export async function handleGetCollectionItemState(
       extCtx
     );
   } else if (scope === "session") {
-    value = await ctx.stores.resourceState.get("session", session.id, storageKey);
+    value = toBareState(
+      await ctx.stores.resourceState.get(
+        sessionStorageScope(session, sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId)),
+        sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId),
+        storageKey
+      )
+    );
   } else {
     // User/org scope: resolve via the shared scope resolver (honors
     // flowIsolation). A missing user/org record means the topic isn't present
@@ -687,10 +740,34 @@ export async function handleDeleteCollectionItem(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  await Promise.all([
-    ctx.stores.resourceState.delete("session", session.id, storageKey),
-    ctx.stores.content.delete("session", session.id, storageKey),
-  ]);
+  // Conflict before anything is deleted — the create route's rule, mirrored.
+  // `undefined` means no live row, i.e. `expectedVersion: 0`, so an absent key
+  // stays an idempotent 200 while a create landing in the window makes this
+  // request a loser rather than letting it remove what it never saw.
+  //
+  // The version is the one this read observed, not one the caller supplied, so
+  // the window closed is this route's own: a DELETE issued from an already
+  // stale client view still reads the live row here and removes it. A
+  // caller-supplied precondition is separate surface (FIX-1006).
+  const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
+  const existing = await ctx.stores.resourceState.get(sessionStorageScope(session, scopeId), scopeId, storageKey);
+  const removed = await ctx.stores.resourceState.delete(
+    sessionStorageScope(session, scopeId),
+    scopeId,
+    storageKey,
+    existing?.version ?? 0
+  );
+  if (!removed.ok) {
+    return jsonResponse(409, {
+      error: `Item "${route.topic}" was modified concurrently; re-read it and retry`,
+    });
+  }
+
+  // The residual sequencing does not close, stated rather than engineered
+  // around: a recreation landing between these two statements loses its content
+  // to this delete. `ContentStore` is last-write-wins by decision, so no state
+  // predicate fences it, and closing it is cross-record atomicity (FIX-854).
+  await ctx.stores.content.delete(sessionStorageScope(session, scopeId), scopeId, storageKey);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }

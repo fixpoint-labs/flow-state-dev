@@ -39,7 +39,7 @@ Key patterns in the Postgres adapter worth noting:
 - **QueryExecutor abstraction**: A minimal `{ query(text, values?) }` interface that both `pg.Pool` and `@electric-sql/pglite` satisfy. This lets tests run against an embedded PGlite instance with zero external infrastructure.
 
 Also read the store interfaces:
-- `packages/engine/src/stores/types.ts` — `StoreRegistry`, `SessionStore`, `RequestStore`, `UserStore`, `ProjectStore`, `ActiveRequestRegistry`, `ContentStore`
+- `packages/engine/src/stores/types.ts` — `StoreRegistry`, `SessionStore`, `RequestStore`, `UserStore`, `OrgStore`, `ActiveRequestRegistry`, `ContentStore`
 
 ### Step 2: Create the Package
 
@@ -55,7 +55,7 @@ packages/store-<name>/
     session-store.ts            # SessionStore implementation
     request-store.ts            # RequestStore + item/event persistence
     user-store.ts               # UserStore implementation
-    project-store.ts            # ProjectStore implementation
+    org-store.ts                # OrgStore implementation
     active-request-registry.ts  # ActiveRequestRegistry implementation
     content-store.ts            # ContentStore implementation
   test/
@@ -127,13 +127,13 @@ export function create<Name>Stores(
 ): <Name>StoreRegistry {  // or Promise<<Name>StoreRegistry> for async init
   // 1. Create/connect to database
   // 2. Initialize schema (tables, indexes)
-  // 3. Return registry with all 6 stores
+  // 3. Return a StoreRegistry (see createSQLiteStores for the full key set)
 
   return {
     session: create<Name>SessionStore(/* ... */),
     request: create<Name>RequestStore(/* ... */),
     user: create<Name>UserStore(/* ... */),
-    project: create<Name>ProjectStore(/* ... */),
+    org: create<Name>OrgStore(/* ... */),
     activeRequests: create<Name>ActiveRequestRegistry(/* ... */),
     content: create<Name>ContentStore(/* ... */),
     close() { /* cleanup */ }
@@ -144,7 +144,7 @@ export function create<Name>Stores(
 export { create<Name>SessionStore } from "./session-store";
 export { create<Name>RequestStore } from "./request-store";
 export { create<Name>UserStore } from "./user-store";
-export { create<Name>ProjectStore } from "./project-store";
+export { create<Name>OrgStore } from "./org-store";
 export { create<Name>ActiveRequestRegistry } from "./active-request-registry";
 export { create<Name>ContentStore } from "./content-store";
 export { initializeSchema } from "./schema";
@@ -176,17 +176,27 @@ Each store must implement its interface from `@flow-state-dev/engine`:
 - Same CRUD pattern (`get`, `set`, `delete`, `list`)
 - `list(filters?)` — no indexed filters beyond basic listing
 
-#### ProjectStore
+#### OrgStore
 - Same CRUD pattern (`get`, `set`, `delete`, `list`)
 - `list(filters?)` — `userId` filter
 
 #### ActiveRequestRegistry
+- `sharedAcrossProcesses` — **declare this.** Whether entries written by one process are visible to every other process in the deployment
 - `register(entry)` — register an in-flight request (accepts an `ActiveRequestEntry` object)
 - `heartbeat(requestId)` — update heartbeat timestamp
 - `deregister(requestId)` — remove request from registry on terminal status
 - `listStale(thresholdMs)` — find entries whose `lastHeartbeatAt` is older than `Date.now() - thresholdMs`
 - `listAll()` — return all currently registered entries
 - `get(requestId)` — return a single entry by requestId, or undefined
+
+**Answering `sharedAcrossProcesses` is part of writing the adapter, not an optional extra.** Liveness-dependent runtime behaviour is enabled only on a registry that declares itself shared. Omitting the field is safe — absent is read as *not shared* — but it silently disables that behaviour, so an adapter that could have supported it quietly does not. A fail-closed default is right; a silent one is a bad teacher.
+
+Answer from **how the store was constructed**, not from what the adapter is called:
+
+- Entries in this process's memory → `false`, definitively.
+- A real database server every worker connects to → `true`.
+- A file or embedded database that might sit on a shared volume or in a per-process temp dir → `false`. Where the adapter cannot tell, it says not shared.
+- A constructor accepting several shapes → answer per shape. The Postgres adapter declares `true` for its pooled and connection-string shapes and `false` when handed an injected `{ executor }`, which is process-local (PGlite). Declaring that one shared would enable a liveness signal on a registry no other worker can see.
 
 #### ContentStore
 - `get(scopeType, scopeId, resourceKey)` — read a single resource's content (`Promise<string | undefined>`)
@@ -195,7 +205,7 @@ Each store must implement its interface from `@flow-state-dev/engine`:
 - `getAll(scopeType, scopeId)` — read all content for a scope instance (`Promise<Record<string, string>>`)
 - `deleteAll(scopeType, scopeId)` — delete all content for a scope instance
 
-`ContentScopeType = "session" | "user" | "project"` (not request-scoped). Content is addressed by the triple `(scopeType, scopeId, resourceKey)`, allowing adapters to store content independently of scope record metadata.
+`ContentScopeType = "session" | "user" | "org"` (not request-scoped). Content is addressed by the triple `(scopeType, scopeId, resourceKey)`, allowing adapters to store content independently of scope record metadata.
 
 ### Step 6: Schema Design Principles
 
@@ -210,13 +220,13 @@ Create a comprehensive test suite. If the database has an embeddable/in-memory m
 
 Test categories:
 1. Schema initialization (idempotent)
-2. CRUD for all 4 record stores (session, request, user, project)
+2. CRUD for all 4 record stores (session, request, user, org)
 3. List filtering (flowKind, userId, sessionId, status)
 4. Pagination (limit, offset, edge cases)
 5. Item persistence with microtask batching (`persistItems` + `flushItems`)
 6. Event persistence with sequence ordering and overwrite (`persistEvents` + `flushEvents` + `getEvents`)
 7. Active request registry (register, heartbeat, stale detection via `listStale`, `listAll`, `get`, deregister)
-8. ContentStore CRUD (`get`, `set`, `delete`, `getAll`, `deleteAll` across session/user/project scopes)
+8. ContentStore CRUD (`get`, `set`, `delete`, `getAll`, `deleteAll` across session/user/org scopes)
 9. Complex nested JSON round-trip
 10. Drop-in replacement compatibility (same behavior as in-memory stores)
 
@@ -247,6 +257,6 @@ pnpm --filter @flow-state-dev/store-<name> test
 - **Match the reference adapters exactly.** Same method signatures, same return types, same error semantics. The stores are interchangeable.
 - **Async factory is OK.** Unlike SQLite (synchronous), most databases need async initialization. Return `Promise<StoreRegistry>`.
 - **Microtask batching for items/events.** Follow the SQLite adapter's pattern of buffering writes and flushing on microtask. This prevents excessive database round-trips during streaming.
-- **Don't reinvent the record model.** The record shape (SessionRecord, RequestRecord, etc.) is defined by the server package. Your adapter serializes/deserializes it — nothing more.
+- **Don't reinvent the record model.** The record shape (SessionRecord, RequestRecord, etc.) is defined by the engine package. Your adapter serializes/deserializes it — nothing more.
 - **Test with real queries, not mocks.** Use an embeddable database for tests. Don't mock the database driver — that tests nothing.
 - **Schema initialization must be idempotent.** `CREATE TABLE IF NOT EXISTS` or equivalent. Multiple calls to `initializeSchema` must not fail.

@@ -16,7 +16,7 @@
  * `ALPHAVANTAGE_DAILY_LIMIT` knob (`0` = unlimited, for a paid plan). The guard
  * is process-scoped and best-effort — a process restart or serverless
  * cold-start resets it; AV's server-side throttle (→ Note body → throw) is the
- * real-exhaustion backstop. See `docs/specs/FIX-798.md`.
+ * real-exhaustion backstop.
  *
  * `alphaVantageRequest` ALSO runs per-minute admission pacing (FIX-801 Decision
  * 5, §8 step 0), governed by `ALPHAVANTAGE_MINUTE_LIMIT` (`0` = unlimited, same
@@ -282,7 +282,10 @@ const TRANSCRIPT_CONTENT_CAP = 12_000;
  *
  * The AV fallback is deliberately COARSER than Finnhub: `transactionCode` is
  * left `""` (AV gives only an A/D direction flag, not the SEC code), with
- * direction carried by the sign of `shares`. Throws on any failure.
+ * direction carried by the sign of `shares`. That makes the direction flag
+ * load-bearing, so a row whose `acquisition_or_disposal` is absent or
+ * unrecognized is DROPPED rather than signed by default. Throws on any
+ * failure.
  */
 export async function fetchAlphaVantageInsiderTransactions(
   input: TickerDatedProviderInput,
@@ -308,11 +311,21 @@ export async function fetchAlphaVantageInsiderTransactions(
       const d = r.transaction_date;
       return typeof d === "string" && d >= from && d <= input.date;
     })
-    .slice(0, INSIDER_ROW_CAP)
     .map((r) => {
       const magnitude = num(r.shares);
       if (magnitude === null) return null; // a fully unparseable row is dropped
-      const dir = r.acquisition_or_disposal === "A" ? 1 : -1;
+      // The DIRECTION is measured, never assumed (FIX-1063). This adapter
+      // leaves `transactionCode` empty by design (AV ships no SEC code), so
+      // the SIGN of `shares` is the only thing in the row that says whether an
+      // insider bought or sold. Mapping "anything that isn't `A`" to `-1`
+      // therefore published an absent or unrecognized direction flag as a
+      // reported SALE — a fabricated observation of the single most
+      // consequential field here, under a live `alphavantage` tag.
+      // A row with no readable direction offers no honest partial reading, so
+      // it is dropped, exactly as a row with no share count already is.
+      const flag = r.acquisition_or_disposal?.trim().toUpperCase();
+      if (flag !== "A" && flag !== "D") return null;
+      const dir = flag === "A" ? 1 : -1;
       const secType = (r.security_type ?? "").toLowerCase();
       const isDerivative = secType.includes("deriv") && !secType.includes("non-deriv");
       return {
@@ -322,11 +335,19 @@ export async function fetchAlphaVantageInsiderTransactions(
         insiderTitle: r.executive_title ?? "",
         transactionCode: "", // unknown — AV lacks the SEC code; never fabricate P/S
         shares: dir * magnitude,
-        pricePerShare: num(r.share_price) ?? 0,
+        // Absence-aware, not falsy-aware (FIX-1063). `num` already returns null
+        // for AV's absent markers ("None" / "-" / ""); the old `?? 0` threw that
+        // away, so a filing with no price read as a non-cash transfer at $0.
+        pricePerShare: num(r.share_price),
         isDerivative,
       };
     })
-    .filter((t): t is NonNullable<typeof t> => t !== null);
+    .filter((t): t is NonNullable<typeof t> => t !== null)
+    // Cap LAST. It is a prompt-budget control, so its 50 slots must be spent on
+    // rows that will actually be published — capping first let dropped rows
+    // (no share count, no readable direction) consume slots and hide usable
+    // filings behind them, up to an empty set on an all-invalid first 50.
+    .slice(0, INSIDER_ROW_CAP);
   return {
     source: "alphavantage" as const,
     ticker: input.ticker,

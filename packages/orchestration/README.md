@@ -28,35 +28,143 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 ```
 
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
-`attempts`, optional typed `input`/`output`. Status enum:
+`attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
 `pending | in_progress | blocked | awaiting_review | completed | errored | cancelled`.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
-         │                 ├─→ errored
-         │                 ├─→ awaiting_review ─┬─→ pending  (resumeFromReview)
-         │                                       └─→ cancelled
-         │                 └─→ pending          (reclaim — stale lease)
-         ├─→ blocked ─→ pending  (unblock)
+         │                ├─→ errored
+         │                ├─→ in_progress       (claim, after a lease runs out)
+         │                ├─→ pending           (reclaim)
+         │                ├─→ cancelled
+         │                └─→ awaiting_review ─┬─→ completed
+         │                                     ├─→ errored
+         │                                     ├─→ pending    (resumeFromReview)
+         │                                     └─→ cancelled
+         ├─→ blocked ─┬─→ pending               (unblock)
+         │            └─→ cancelled
          └─→ cancelled
 ```
 
+`completed`, `errored`, and `cancelled` are terminal. A move to the status a task
+already holds is on the table, so a repeat write doesn't throw. Anything else
+throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and
+writes nothing.
+
+**`retryLedger`** records the task's standing against the collection's
+`maxTotalRetries` budget:
+
+```ts
+task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
+```
+
+`granted` counts the failure retries this task was **authorized**, so it excludes
+the re-entries that do not spend the budget (`unblock`, `resumeFromReview`,
+`reclaim`) and includes a retry that was granted but never picked up.
+`deniedByBudget` turns `true` once a retry was refused because the collection's
+budget was spent; the board's `terminationReason` reads that flag, so branch on it
+rather than parsing the error string.
+
+The field is **absent** on a task that has never failed, so read it with a single
+guard — `task.retryLedger?.granted ?? 0` — and treat absent as zero granted, not
+denied.
+
 ### TaskCollection
 
-`getOrCreateTaskCollection` resolves a CAS-safe `TaskCollectionRef` over one of
+`getOrCreateTaskCollection` resolves a `TaskCollectionRef` over one of
 three backings — request-state (the `taskBoard` default; survives block boundaries
 within a request), block-scoped state (per board invocation — `backing: "sequencer"`
 is the common case), or resource-collection (outlives the request: a user's queue, an
-org work pool — declare one with `defineTaskCollection`). Every mutation emits a
-`task-change` component item.
+org work pool — declare one with `defineTaskCollection`). Every mutation that
+changes a field emits a `task-change` component item.
 
-`complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
-a write-back advisory — `ifAllowed` skips the write when the state machine rejects
-it or the task is already settled, `expectAttempt` skips it when the caller no
-longer holds the claim. Both are evaluated inside the atomic write, and a declined
-write is a silent no-op. Omit the argument — as every caller in this repo outside
-the substrate's own containment write-backs does — and both methods throw on an
-illegal transition exactly as before.
+**Server-only task fields.** A `task-change` item carries the whole post-mutation
+row, and that stream is client-visible. A few fields on `Task` are substrate
+bookkeeping that must not reach a browser — `claimedBy`, the execution coordinate a
+claim records — so the factory omits them from the emitted payload via
+`toEmittedTask`, which honours the exported `SERVER_ONLY_TASK_FIELDS` set. If you
+wire a backing's `onChange` to a client transport yourself, apply `toEmittedTask` to
+`event.task` before you publish it — a field that is server-only on one boundary is
+server-only on every one.
+
+**How far claim safety reaches.** Both backings are compare-and-swap with retry. The
+state backings mutate through `atomicState`; the resource backing mutates through
+`ResourceRef.updateState`, which chains writes per key within one execution context
+and then persists at the version that context read. A claim written against a
+stale read is refused and re-applied against the state that won, rather than
+overwriting it. Two workers contending for one task cannot both land a write.
+
+The filesystem store is safe inside one process. A durable collection shared
+across replicas needs SQLite or Postgres. A stale write is refused, not
+overwritten.
+
+**Freshness is scoped to one request.** Every ref resolved over the same collection
+inside a request sees the same tasks, so a task added through any of them is
+immediately visible through all of them — including a ref a task-board worker
+resolved before it went idle. On the resource backing, don't rely on a running
+request seeing a write made by another request. A *later* request reads it.
+
+Removals reconcile when you resolve. A task the running request removed (an explicit
+`delete` on the resource collection, or a capacity eviction) stops being reported
+from the next resolution onward. A ref you are already holding keeps reporting such
+a task until it resolves again.
+
+Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
+`resumeFromReview`, `cancel` — takes an optional trailing `TaskTransitionOptions`
+argument that makes the write advisory. `ifAllowed` skips the write when the task is
+already settled, or when the transition is one the state machine or the calling verb
+refuses. A legal status transition is necessary but not sufficient: a verb that owns
+one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
+and no other. `in_progress → pending` and `awaiting_review → pending` sit in the
+status table too, but they belong to `reclaim()` and `resumeFromReview`. `claim` takes a
+`TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
+skips the write unless the task in front of it is the one that ticket was issued
+for, still on that attempt, holding a lease that has not run out. A guard cannot be
+raced: the task cannot change between
+the check and the write. A declined write is skipped and never throws; the call
+reports it on the returned `TaskWriteOutcome`. Omit the argument and the methods
+throw on an illegal transition.
+
+Every mutation method except `claim` and `reclaim` resolves to a
+`TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
+emitted), `unchanged` (the task already held the state asked for, nothing written),
+or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task` /
+`disallowed` / `parked` / `lost-claim`, resolved in that precedence order) and the
+`status` the task was in when the write was refused. `immutable-assignee` means the
+board runs detached work, where the assignee is fixed at admission; `not-my-task`
+means the ticket names a different task, a different collection, or an id since
+reused; `parked` means the caller passed `refuseWhenParked` and the task is in
+`awaiting_review` — nobody took it, so unlike `lost-claim` the answer is not to
+re-claim and redo; `lost-claim` means it names the right task but a claim that has
+moved on. A
+decline never throws, and discarding the return value is supported. `cancel` is
+advisory whether or not options are passed: cancelling a settled task declines
+with reason `terminal`.
+
+`setAssignee` is the one field mutator that refuses anything — it declines on a
+terminal task, and on a durable collection any detached board draws from it
+declines every reassignment whatever the task's status (see "Declaring detached
+work" below).
+`setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
+a terminal task, so a post-drain failure audit can label what went wrong; those four
+answer only `recorded` or `unchanged` (`patchMetadata` merges rather than compares,
+so it answers `recorded` even for a no-op patch). `unchanged` is a statement about
+the task record — on a resource backing the write reaches the resource either way,
+so a `resource_change` can fire for an `unchanged` write. A missing task throws on
+all eight.
+
+A verdict only reaches a call that *returned*. For the path where a write commits
+and the call then **throws**, pass `write: beginTaskWrite(collection.get(id))` on
+the same options argument and ask `didWriteLand(collection.get(id), write)`
+afterwards. It answers `true` (committed), `false` (changed nothing), or
+`undefined` (cannot tell — no provenance on the record, the token names a
+different incarnation of the task (delete/recreate under the same id), or the
+receipt aged out of the task's four-entry log). Mint the token before the write; report `undefined`
+rather than guessing. Correlation is available on the seven methods that take
+`TaskTransitionOptions`. `setAssignee` — the eighth method able to decline, above
+— takes no options object at all, so it and the other four field mutators advance
+`task.revision` but carry no token. A hand-written `TaskCollectionRef` that
+maintains no provenance leaves its callers with `undefined`, never a false `false`.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
@@ -66,12 +174,82 @@ await collection.addTask({ id: "research", goal: "research the topic" });
 await collection.addTask({ goal: "draft the post", deps: ["research"] });
 ```
 
+### Leases and recovery
+
+A claim carries a lease: how long the claimant may be gone before the task is
+handed to somebody else. A worker the substrate drives pushes that deadline out
+while it runs (`renewLease`), so a lease that runs out means no worker is
+renewing it, and the next `claim` on any host takes it back as a fresh attempt.
+Nothing to schedule.
+
+`ClaimOptions.leaseDurationMs` is the knob, defaulting to two minutes. Shorter
+means a stranded job comes back sooner and a merely-slow worker is likelier to
+lose its task; longer means the opposite. Values under a second, over about 74
+days, or non-finite throw rather than being rounded into range.
+
+Recovery is bounded at three re-dispatches, after which the task settles
+`errored`. Three is fixed, and exported as `DEFAULT_MAX_ABANDONMENTS`. That
+allowance is separate from `maxAttempts`.
+
+**A task you claim by hand gets no renewal.** You hold it, so you call
+`renewLease(id, deadline, { claim })` yourself, or size the lease to cover the
+work. Two helpers do it for you: `withLeaseRenewal` wraps work that is a single
+call, and `startLeaseRenewal` returns a `{ signal, stop }` driver for work that
+spans several steps. Both renew in the background while the work runs, keep one
+renewal in flight at a time, and stop when the signal you hand them aborts.
+Both also give you a second signal that aborts when a renewal comes back
+declined. `withLeaseRenewal` composes it with the signal you passed and hands
+`run` the result; `startLeaseRenewal` exposes it bare as `driver.signal`, so
+compose that one yourself. Loss is detected at a renewal rather than the instant
+it happens, and one goes out every third of the lease, so the signal can lag a
+lost claim by about 40 seconds on the two-minute default. It is there to stop you
+paying for work you can no longer record; the fence on the settling write is what
+keeps the result correct.
+
+Settle the task inside `withLeaseRenewal`'s `run`: it stops renewing the moment
+`run` returns, so a `complete()` or `fail()` issued after it is a fenced write
+on a lease nobody is keeping alive.
+
+A worker composed as several steps reaches its driver through
+`currentLeaseRenewal()`. Wrap the block that claims the task in
+`withLeaseRenewalScope(async () => { … })` — **as its first statement, before
+any `await`** — and call `stampLeaseRenewal(driver)` inside it once the driver
+exists. The scope rides `AsyncLocalStorage`, which only propagates to later
+steps when it is entered before the claiming block awaits anything; stamping
+with no scope open throws rather than publishing to nobody.
+(`openLeaseRenewalScope()` is the same thing without the guarantee below, if you
+want to manage the failure path yourself.)
+
+The wrapper stops the driver if that block throws after the claim commits. That
+window has no other cover: the step that runs the work never starts, so no
+recorder and no `onSettled` fires, and a failed request does not abort its own
+signal — the lease would be renewed for a task nobody is working until the host
+died, and a live lease is exactly what stops `claim()` recovering it.
+
+**Stop the driver after your fenced write, not before it.** `complete()` and
+`fail()` are fenced on the claim, and the fence refuses a write on a lapsed
+lease, so stopping first can get a healthy worker's finished result refused and
+its work redone. A renewal in flight across the settlement is harmless: it
+writes only `leaseUntil`, and on a settled row it is declined and the driver
+stops itself.
+
+`isClaimable(task, lookup, now)` is the substrate's admission rule, exported so
+a custom `TaskCollectionRef` can read it rather than restating it. It answers
+admission only — whether an admitted row is handed out or settled because its
+allowance is spent is `claimDisposition(task, now, max)`, exported alongside it.
+Anything that reports *which* task runs next needs both; anything asking only
+*whether* there is work to do needs the first. Compare leases against
+`collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
+
 ### Dispatchers
 
-`fifoDispatcher`, `topologicalDispatcher` (default — respects `deps`),
-`priorityDispatcher`, `classifierDispatcher({ classify })`, and
-`eventDispatcher({ topicFor })`. All delegate to `collection.claim`, so CAS retry
-and lease stamping run uniformly.
+`fifoDispatcher`, `topologicalDispatcher` (the default), `priorityDispatcher`,
+`classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor, topic })`. None of
+them claims a task whose `deps` aren't all `completed`. That eligibility rule lives
+on `collection.claim`, and a dispatcher's own `eligibility` narrows it, so they
+differ only in ordering. `fifoDispatcher` and
+`topologicalDispatcher` are ordered identically; `priorityDispatcher` takes the
+highest `priority` first, ties on `createdAt`.
 
 ## Task board
 
@@ -80,24 +258,138 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, hasIdlessInitialTasks }`.
-Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
+`{ drain, collectionId, capability, backing, boardId, detachedWorkers, hasIdlessInitialTasks, caps }`.
+Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
+`initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
+why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
+single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
-`onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
-`onError`, `maxIterations` (per-worker claim-loop cap, default 10000), and the two creation caps
+`onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`),
+`onReview` (`"hold"` default | `"exit"` — whether a task parked with `awaitReview`
+keeps the drain open, or is excused from the in-flight counts so the drain returns
+and leaves it parked for a later one to claim once it is resumed; `"exit"` needs a
+`defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`,
+and is refused at construction otherwise), `initialTasks`,
+`onError`, `maxIterations` (per-worker claim-loop cap, default 10000), the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
 refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.
-terminal, never refunded). Both take a positive integer or `null` (explicitly
-unbounded); omission reapplies the default. They apply only when the board
+terminal, never refunded), and the retry budget `maxTotalRetries` (default 50 —
+failure retries the board may authorize across every task). The creation caps take a
+positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
+**nonnegative** integer or `null`, so `0` means "run every task once, never retry".
+Omission reapplies the default on all three. They apply only when the board
 constructs its own collection — a supplied `collection` is left alone and passing
-both is a construction error, so configure caps on `getOrCreateTaskCollection`'s
-sequencer/request backing instead. Existing declarative boards inherit the
-defaults. Per-task retries are set via `maxAttempts` on each task (`TaskInit`),
-not on the board. See the
-[Task Board guide](https://flow-state.dev/docs/orchestration/task-board).
+any of them is a construction error, so configure caps on
+`getOrCreateTaskCollection`'s sequencer/request backing instead. Per-task retries
+are set via `maxAttempts` on each task (`TaskInit`), not on the board. At the retry
+budget the failing task settles terminal `errored` and the board's completion item
+reports `terminationReason: "retry-budget-exhausted"` alongside `counts.retries` and
+the limit in force. See the
+[Task board guide](https://flow-state.dev/docs/orchestration/task-board).
+
+#### Declaring detached work
+
+A registry value may be a `{ worker, dispatch }` entry instead of a bare block.
+`dispatch: { mode: "detached" }` marks that worker's tasks as work that runs
+outside the request which claimed them; a bare block still means inline, so no
+existing board changes.
+
+```ts
+const board = taskBoard({
+  name: "issue-work",
+  boardId: "issue-work",             // required once anything is detached
+  collection: workBoardCollection,   // must be a defineTaskCollection()
+  workers: {
+    summarize: summarizeBlock,       // bare value = inline
+    implement: { worker: implementBlock, dispatch: { mode: "detached" } },
+  },
+});
+```
+
+A board whose `workers` is a single uniform block declares the same thing with a
+board-level `dispatch` field, and `defaultWorker` accepts an entry too.
+
+`boardId` is explicit and required as soon as any worker is detached: it is
+hashed into the child session's id, so renaming it re-keys work already in
+flight. Detachment also requires a durable collection — a `defineTaskCollection()`
+resource backing. The request, sequencer, and caller-supplied factory backings
+are refused at construction, by name, because a detached worker outlives the
+request and those backings do not. A detached worker declaring `sessionStateSchema`
+is refused for the same reason: detached workers share one execution flow, where
+two of them choosing the same state key would overwrite each other silently.
+
+Once a board declares anything detached, a task's assignee is fixed at admission:
+`setAssignee` declines with reason `immutable-assignee`. The assignee is what the
+worker's routing coordinate derives from, and that coordinate addresses the child
+session the work runs in. Changing it afterwards redirects nothing — work already
+dispatched keeps running under the old coordinate, and the new one addresses a
+session nothing will wake — so the write is refused rather than silently
+stranding the task. File a new task instead of reassigning.
+
+The rule belongs to the collection, not to the board that declared it. Point a
+second board at the same `defineTaskCollection` value and it declines too, even
+if that board declares nothing detached: the two share task rows, so reassigning
+through either one moves a coordinate the detached board routes by. If a board
+needs freely reassignable tasks, give it its own collection.
+
+Each detached worker also gets a routing coordinate the framework derives:
+`assignee:<name>`, `uniform`, or `floor`. These bubble up from the board's drain
+into a flow-level binding map, so a worker stays addressable from strings alone
+after a restart, without appearing in `flow.actions` where a caller could reach
+it. Nothing is declared to make that happen. Two boards that share a `boardId`
+and land on the same coordinate are refused when the flow is defined, even when
+both hand that coordinate the same worker block: the coordinate is what a
+dispatch names, and two boards answering to it keep separate task ledgers while
+addressing one child session. Reusing a worker block across boards is fine on its
+own — give the boards distinct `boardId`s. One board reached from several places
+is a duplicate rather than a conflict and deduplicates silently.
+
+A detached worker runs in a **Workstream** — a child session dedicated to that
+body of work. The turn that claimed the task returns while the worker keeps
+going; the Workstream re-reads the claimed row, verifies the claim is still
+current, runs the worker, and settles the task itself.
+
+A Workstream is one `boardId`, one worker, one `topic` (read from the task's
+`metadata.topic`). All three have to match for a task to continue an earlier
+task's history. Two tasks sharing a topic but routing to different workers, or
+sitting on boards with different `boardId`s, get separate Workstreams. A task
+with no topic, or a blank one, falls back to its own id, so continuity is
+something you opt into rather than something that happens by accident.
+
+**The board must be addressable from the child session**, because the Workstream
+settles its own task. Session scope resolves against the *current* session, so a
+session-scoped board hydrates empty inside a Workstream unless it declares
+`sharedToWorkstream: true`:
+
+```ts
+const todos = defineTaskCollection({
+  id: "todos",
+  scope: "session",
+  sharedToWorkstream: true,
+  stateSchema: z.object({ topic: z.string() }),
+});
+```
+
+That gives the ledger one identity across the session lineage — the dispatching
+session and every Workstream under it settle against the same rows. `user` and
+`org` scope need nothing extra; they already span every session the principal
+touches. Sharing does not serialize: two Workstreams writing one board is
+ordinary same-resource contention, fenced by the store's `expectedVersion` check
+and nothing more.
+
+**The claim has to survive the wait before the child starts.** A claim carries a
+lease (two minutes by default), and nothing extends it until the worker is
+actually running. A Workstream that starts after its lease has run out does
+nothing at all — the task is already back in the queue, and the next drain picks
+it up. A deep queue backlog in front of the child is where this shows up, and the
+board's lease is not configurable today.
+
+**Serverless without a queue adapter** is the last bound. Detached work runs
+inside the invocation that started it and is bounded by that function's maximum
+duration. With a queue adapter it moves to a worker process and is not.
 
 ### goalSeekLoop
 
@@ -110,9 +402,8 @@ board's drain in an outer, judge-gated loop: seed → drain → judge → (repla
 repeat → finalize. The `judge` returns a three-way `Verdict`
 (`done`/`continue`/`replan`); `maxIterations` is a mandatory finite backstop, and
 the loop lands with a typed `goal-seek-loop-termination` item rather than hanging.
-It generalizes the `taskLoopBack` helper into a real primitive; the board must be
-request- or resource-backed. `parallelTasks` and `planAndExecute` are expressed on
-it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
+The board must be request- or resource-backed. `parallelTasks` and `planAndExecute`
+are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
 ## Skills and delegation
 
@@ -138,41 +429,53 @@ generator({
 A skill that declares an `agents:` field turns on **delegation** (or force it on
 with `delegation: true` even with no `agents:`). An agent is a prompt-driven
 teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
-from the registry (`agent-ref`). Every delegation board also gets an on-demand
-**default worker**: it materializes on demand and runs any task whose assignee is
-unset, so a task with no named agent still runs — and an empty roster still
-delegates. Assignment is checked against the declared roster as the task is
-created: `addTask` (and `assignTask`/`updateTask`) reject an assignee that names
-no declared agent, returning the available agents so the caller can correct it,
-instead of letting a mistyped name fall through to the default worker at drain
-time. A board with no declared agents has no roster to check and accepts any
-assignee. Binding the skill installs a private
+from the registry (`agent-ref`).
+
+The board's other seats are the skill's **tools**, and nothing declares them: every
+key in its `allowed-tools` (or the whole catalog, when it declares none) is
+assignable by that key. The board calls the tool directly with the task's `input`
+as its arguments — no model turn — and records what it returns. A tool task gets
+dependency ordering from `deps` but not an upstream task's output; a step that must
+read one is an agent.
+
+Every delegation board also gets an on-demand **default worker**: it materializes on
+demand and runs any task whose assignee is unset, so a task with no named agent still
+runs, and an empty roster still delegates.
+
+Every tool that writes an `assignee` checks it: `addTask`, `assignTask`,
+and `updateTask` reject a name that is neither a declared agent nor an assignable
+tool, returning the available ones so the caller can correct it, instead of letting a
+mistyped name fall through to the default worker at drain time. A board with no
+agents and an empty catalog has no roster to check and accepts any assignee.
+
+Binding the skill installs a private
 task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
 `listTasks`), `runBoard`, and a guidance context. The generator orchestrates by
 planning a graph with `addTask` (assignee, deps, structured input) and calling
-`runBoard` once — the board drains under concurrency with dependency gating and
+`runBoard` once: the board drains under concurrency with dependency gating and
 returns every task's output. There is no per-agent tool the generator calls
 directly; draining the board is the sole execution path. Agents materialize at
 runtime, so `agent-ref` agents resolve through the library's
 `agentRegistry`/`materializeAgent` options and runtime-activated skills contribute
 their tools too. With no delegation board resolvable, a stray `taskTools` call
-returns `{ ok: false, error: "no_delegation_board" }` rather than throwing. The
-board is bounded by default: `addTask` is refused past 100 tasks enqueued at once
+returns `{ ok: false, error: "no_delegation_board" }` rather than throwing.
+
+The board is bounded by default: `addTask` is refused past 100 tasks enqueued at once
 (`{ ok: false, error: "enqueued_task_cap_exceeded" }` — drain with `runBoard` to
 free slots, though tasks stranded behind a failed dep stay `pending` and hold
 theirs) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
 refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
-`maxTotalTasks` (`null` = unbounded).
+`maxTotalTasks` (`null` = unbounded). It carries no retry budget: a task created
+through the delegation `addTask` tool takes no `maxAttempts`, so it runs once and
+never retries.
 
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards the skills library installs and boards
 > `taskBoard` builds itself — not the capability surface on its own. Wiring the
 > exported `taskTools` singleton by hand (`uses: [taskTools]`) resolves the host
 > generator's own-state board through a bare, **uncapped** collection: `addTask`
-> there is unbounded. That is deliberate — a hand-wired capability has no
-> construction site to take cap options from — but do not read "delegation is
-> capped" as "`taskTools` is capped". For a bounded board on that path, build the
+> there is unbounded. For a bounded board on that path, build the
 > collection yourself with
 > `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and hand a
 > resolver for it to `createTaskToolsCapability(resolver)`. That resolver must
@@ -188,16 +491,17 @@ throw: `completeTask` on a task that was never started answers
 `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
 status and the calls actually available from it. So the recoverable set across
 the eight tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
-`enqueued_task_cap_exceeded`, `total_task_cap_exceeded`, and
-`illegal_status_transition` — a coordinator rule like "when a tool returns
-`ok: false`, re-plan" covers all of them.
+`enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
+`illegal_status_transition`, and `terminal_task_write_declined` — a coordinator
+rule like "when a tool returns `ok: false`, re-plan" covers all of them.
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
-string, but `unknown_assignee` and `illegal_status_transition` are followed by
-`: ` and a sentence of guidance for the model, so `error === "illegal_status_transition"`
-never matches. Use `error.startsWith("illegal_status_transition")`. There is no
-separate structured `code` field today.
+string, but `unknown_assignee`, `illegal_status_transition`, and
+`terminal_task_write_declined` are followed by `: ` and a sentence of guidance for
+the model, so `error === "illegal_status_transition"` never matches. Use
+`error.startsWith("illegal_status_transition")`. There is no separate structured
+`code` field today.
 
 Only the *tool* boundary translates a refusal into a result. Driving a collection
 directly throws, and the error is an exported class you can catch:
@@ -221,9 +525,16 @@ propagating.
 
 The one exception is a call that asked for it. `complete` and `fail` accept the
 advisory options described under [TaskCollection](#taskcollection) above, and a
-refused transition on such a call is a silent no-op rather than a throw — so it
-never reaches this `catch` and never becomes a tool result either. It stays
-opt-in per call precisely so the default above keeps holding.
+refused transition on such a call is a returned `declined` verdict rather than a
+throw, so it never reaches this `catch`.
+
+At the delegation `taskTools` boundary a `declined` verdict **does** become a tool
+result: `assignTask`, `cancelTask`, and an `updateTask` carrying an assignee answer
+`{ ok: false, error: "terminal_task_write_declined: …" }` on a finished task rather
+than reporting a success that did not happen. `ok: true` from those tools means "the
+backing reported no decline", not "the write happened" — for the two built-in
+backings those coincide, but a custom ref that reports nothing is carried past
+rather than having a verdict synthesized for it.
 
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.
@@ -231,8 +542,8 @@ generator({ uses: [skills.with({ active: ["research-lead"] })] });
 ```
 
 An inline agent may set `context-supply: conversation` to inherit the parent
-conversation up to the point it is dispatched (fork-like), bounded to the last
-several turns by default (a turn count, not a token budget), while its own steps
+conversation up to the point it is dispatched (fork-like), bounded to the last 8
+whole turns (a turn count, not a token budget), while its own steps
 stay out of the host's history (output keeps `history: false`). Omitting the
 field is the default: the agent is isolated and sees only its task input — there
 is no `isolated` value to set. It applies to `prompt` / `prompt-ref` agents;
@@ -247,6 +558,26 @@ caller's history.
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `active` / `allowed` / `activeState` surface and
 [Delegation](https://flow-state.dev/docs/skills/delegation) for the `agents:` shape.
+
+### resolveCatalogTools
+
+```ts
+import { resolveCatalogTools } from "@flow-state-dev/orchestration";
+```
+
+`resolveCatalogTools(agentKey, toolKeys, catalog, logPrefix)` resolves an
+agent's `tools:` list against a tool catalog and returns `GeneratorTool[]`.
+`agentKey` is the agent name quoted in the warning text; `toolKeys` is the
+agent's declared `tools:` list (`readonly string[] | undefined`); `catalog` is
+the available tools keyed by name (`Record<string, GeneratorTool>`); and
+`logPrefix` is the bracket tag the warning carries (`"skills"`,
+`"workforce"`). An empty or absent `toolKeys` returns `[]`. An unknown key
+warns (`[skills] agent "x": unknown tool "y" — skipped`) and is dropped rather
+than throwing, so one bad key in a user-authored `SKILL.md` does not take down
+the agent; only own properties count, so a key like `constructor` misses. It
+lives on the package root because the skills worker-materializer and
+`@flow-state-dev/workforce` both need this lookup and the miss path has to stay
+identical between them.
 
 ## Documentation
 

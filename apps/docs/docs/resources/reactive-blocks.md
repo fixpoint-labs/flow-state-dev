@@ -43,6 +43,7 @@ const announceMemo = handler({
 
 const memos = defineResourceCollection({
   pattern: "memos/**",
+  scope: "session",
   stateSchema: memoSchema,
   reactTo: {
     created: announceMemo,
@@ -110,6 +111,7 @@ const summarize = sequencer({ name: "summarize", inputSchema: resourceContentCha
 
 const artifacts = defineResourceCollection({
   pattern: "artifacts/**",
+  scope: "session",
   stateSchema: artifactSchema,
   reactTo: { contentUpdated: summarize },
 });
@@ -133,16 +135,16 @@ Because a content reaction often writes state back (the summary above), note the
 
 A reactive block runs blocking, by default, as part of the turn that triggered it. The mutation, the reaction, and any items the reaction emits all belong to one turn, in order. There is no `mode` field to change this.
 
-Failure is atomic, as a result: if a reactive block throws, the mutating turn fails. That's usually what you want for a reaction that's part of the operation's correctness. When the reaction is a side effect you don't want to block on, or could fail independently, make the reactive block a sequencer that uses `.work()`. Work runs in the background, isolated from the turn's success, and drains before the turn reaches a terminal status:
+Failure is atomic, as a result: if a reactive block throws, the mutating turn fails. That's usually what you want for a reaction that's part of the operation's correctness. When the reaction is a side effect you don't want to block on, or could fail independently, make the reactive block a sequencer that uses `.sideChain()`. Work runs in the background, isolated from the turn's success, and drains before the turn reaches a terminal status:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
 
 const indexMemo = sequencer({ name: "index-memo" })
-  .work(pushToSearchIndex); // background, isolated; a throw here won't fail the turn
+  .sideChain(pushToSearchIndex); // background, isolated; a throw here won't fail the turn
 ```
 
-So the choice is direct: a blocking block when the reaction must succeed for the turn to be correct, a `.work()` sequencer when it's a fan-out side effect that should run on its own.
+So the choice is direct: a blocking block when the reaction must succeed for the turn to be correct, a `.sideChain()` sequencer when it's a fan-out side effect that should run on its own.
 
 ## Conditioning with `when`
 

@@ -13,6 +13,44 @@
 import type { ExpectedVersion, SetResult } from "@flow-state-dev/engine";
 import type { QueryExecutor, QueryResultRow } from "./types";
 
+/**
+ * A NULL-safe exact-match clause on an optional denormalized column
+ * (`tenant_id`, `org_id`), emitted in the form the planner can serve.
+ *
+ * `x IS NOT DISTINCT FROM $n` says exactly the right thing and is exactly the
+ * wrong thing to give a planner: it is not an index condition on a plain
+ * btree, and Postgres has no statistics for it, so it falls back to a default
+ * selectivity. On a filtered ordered read that misestimate is decisive — the
+ * planner concludes one row matches, prices the sort as free, and picks a
+ * bitmap scan that materializes the whole session's history before sorting it.
+ * The result is a read whose work grows with the history it sits on, which is
+ * the one property these listings must not have.
+ *
+ * The two branches below are **provably the same predicate**, per SQL's own
+ * definition of `IS NOT DISTINCT FROM`: against a non-NULL literal it is plain
+ * equality (NULL is never equal to a non-NULL value, and never
+ * not-distinct-from one either); against NULL it is `IS NULL`. Both forms are
+ * index conditions and both carry real statistics. No caller sees a different
+ * row set — only a different plan.
+ *
+ * Shared here rather than inlined in each store's `toWhere` so the session and
+ * request adapters cannot drift into two readings of one rule.
+ */
+export function nullSafeEqualsClause(
+  column: string,
+  value: string | undefined,
+  nextParam: number
+): { clause: string; params: unknown[]; nextParam: number } {
+  if (value === undefined || value === null) {
+    return { clause: `${column} IS NULL`, params: [], nextParam };
+  }
+  return {
+    clause: `${column} = $${nextParam}`,
+    params: [value],
+    nextParam: nextParam + 1
+  };
+}
+
 export type PgRecordStoreConfig<TRecord, TListOptions> = {
   tableName: string;
   /** Column names to insert (excluding 'id' and 'data') */
@@ -23,10 +61,36 @@ export type PgRecordStoreConfig<TRecord, TListOptions> = {
   toWhere: (options?: TListOptions, nextParam?: number) => { clause: string; params: unknown[] };
   /**
    * Resolve the ORDER BY clause (column + direction) from list options.
-   * Defaults to `updated_at DESC`. Must return a trusted, non-parameterized
-   * SQL fragment.
+   * Returns `undefined` for the `updated_at DESC` default, or **`null` to emit
+   * no `ORDER BY` at all** (FIX-1010). Must return a trusted,
+   * non-parameterized SQL fragment.
+   *
+   * The unordered mode is a correctness bound, not a nicety: a `LIMIT 1`
+   * existence check over a status set stops at the first matching row only if
+   * nothing sorts first, and the rows such a check selects are exactly the
+   * ones that accumulate (a request whose approval gate expires stays
+   * non-terminal forever). With a trailing sort on an uncovered column that
+   * read grows with the history it sits on.
    */
-  resolveOrderBy?: (options?: TListOptions) => string;
+  resolveOrderBy?: (options?: TListOptions) => string | null | undefined;
+  /**
+   * Top-level `data` keys that `set` must not write (FIX-1026).
+   *
+   * The stored value wins in both directions: a written record that omits the
+   * key keeps the stored one, and a written record that carries it cannot
+   * change what is stored. Enforced inside the UPDATE itself rather than by a
+   * read-then-write, so a concurrent conditional write cannot land between the
+   * two and be overwritten.
+   *
+   * Used by the request store to take `abortRequested` off `set`'s write
+   * surface: every full-record writer builds its record from a snapshot taken
+   * before the flag existed, so a `set` that honoured the field would erase a
+   * cancellation nobody meant to touch.
+   *
+   * Keys are trusted, non-parameterized SQL literals — framework constants,
+   * never caller input.
+   */
+  preserveJsonKeys?: string[];
 };
 
 export type PgRecordStore<TRecord, TListOptions> = {
@@ -76,6 +140,38 @@ export function createPgRecordStore<
 ): PgRecordStore<TRecord, TListOptions> {
   const { tableName, columns, toRow, toWhere, resolveOrderBy } = config;
 
+  const preserveJsonKeys = config.preserveJsonKeys ?? [];
+  for (const key of preserveJsonKeys) {
+    // These are interpolated into SQL, so refuse anything that isn't a plain
+    // identifier rather than trusting the caller's discipline.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new Error(`preserveJsonKeys entry is not a plain identifier: ${key}`);
+    }
+  }
+
+  /**
+   * A `data` assignment that strips the preserved keys from the incoming value
+   * and re-applies whatever the stored row holds — all inside the one
+   * statement, so the read and the write cannot be separated. `jsonb_exists`
+   * rather than the `?` operator so no driver can mistake it for a placeholder.
+   */
+  function dataAssignment(source: string): string {
+    if (preserveJsonKeys.length === 0) return source;
+    const stripped = preserveJsonKeys.reduce(
+      (acc, key) => `(${acc} - '${key}')`,
+      `${source}::jsonb`
+    );
+    const restored = preserveJsonKeys
+      .map(
+        (key) =>
+          ` || (CASE WHEN jsonb_exists(${tableName}.data, '${key}')` +
+          ` THEN jsonb_build_object('${key}', ${tableName}.data -> '${key}')` +
+          ` ELSE '{}'::jsonb END)`
+      )
+      .join("");
+    return `${stripped}${restored}`;
+  }
+
   const allColumns = ["id", ...columns, "version", "created_at", "updated_at", "data"];
   const placeholders = allColumns.map((_, i) => `$${i + 1}`).join(", ");
   const updateSet = columns
@@ -83,7 +179,7 @@ export function createPgRecordStore<
     .concat([
       "version = EXCLUDED.version",
       "updated_at = EXCLUDED.updated_at",
-      "data = EXCLUDED.data"
+      `data = ${dataAssignment("EXCLUDED.data")}`
     ])
     .join(", ");
 
@@ -94,7 +190,7 @@ export function createPgRecordStore<
     ...columns.map((col, i) => `${col} = $${i + 1}`),
     `version = $${columns.length + 1}`,
     `updated_at = $${columns.length + 2}`,
-    `data = $${columns.length + 3}`
+    `data = ${dataAssignment(`$${columns.length + 3}`)}`
   ].join(", ");
   const idParam = columns.length + 4;
   const expectedVersionParam = columns.length + 5;
@@ -124,6 +220,36 @@ export function createPgRecordStore<
   }
 
   /**
+   * Refuse `"absent"` on a CAS delta verb.
+   *
+   * Mirrors `assertDeltaExpectedVersion` in the engine's
+   * `stores/scope-write-predicate` module — restated rather than imported
+   * because this package depends on `@flow-state-dev/engine` type-only, and
+   * pinned across all four adapters by the shared scope-store conformance
+   * suite. Delta verbs read-modify-write an existing record, so `"absent"` is
+   * a programming error at the call site and not a lost race.
+   *
+   * It has to be refused before the delta SQL is built: both delta paths do
+   * `expectedVersion + 1` (which would yield the string `"absent1"`) and bind
+   * `expectedVersion` to an `int` parameter. Those are the two places a string
+   * fails silently rather than loudly.
+   *
+   * Refused by shape rather than by name, matching the engine module: the
+   * `asserts` signature narrows any future member of `ExpectedVersion` away
+   * without a compile error, so a guard naming only the members it knew would
+   * hand that member to the arithmetic below.
+   */
+  const assertDeltaExpectedVersion: (
+    expectedVersion: ExpectedVersion,
+    verb: string
+  ) => asserts expectedVersion is number | "any" = (expectedVersion, verb) => {
+    if (typeof expectedVersion === "number" || expectedVersion === "any") return;
+    throw new TypeError(
+      `${verb} cannot take expectedVersion ${JSON.stringify(expectedVersion)}: delta verbs update an existing record. Use set(id, record, "absent") to create one.`
+    );
+  };
+
+  /**
    * Common shape for all three delta UPDATEs. The new `data` JSONB is built
    * by applying `valueExpr` at the targeted path, then merging the new
    * `version` / `updatedAt` at the top level via `||` (shallow merge,
@@ -148,8 +274,10 @@ export function createPgRecordStore<
     valueExpr: string,
     operandParams: unknown[],
     expectedVersion: ExpectedVersion,
-    updatedAt: number
+    updatedAt: number,
+    verb: string
   ): Promise<SetResult<TRecord>> {
+    assertDeltaExpectedVersion(expectedVersion, verb);
     // Param layout: $1 = path text[]; $2..$M = operand params; then
     // updatedAt, id; and either (newVersion, expectedVersion) for CAS or
     // nothing for "any" (the SQL computes version + 1 in-place).
@@ -239,6 +367,27 @@ export function createPgRecordStore<
         return { ok: true, version: value.version };
       }
 
+      // "absent" is create-if-absent: no CAS update attempt at all, because
+      // any existing row is a conflict regardless of its version. The
+      // `ON CONFLICT (id) DO NOTHING` insert is the predicate, so the race is
+      // decided atomically by the database across connections — a
+      // read-then-insert would pass every in-process test and still lose it
+      // in production.
+      if (expectedVersion === "absent") {
+        const insertResult = await executor.query(casInsertSQL, [
+          id,
+          ...scalarValues,
+          value.version,
+          value.createdAt,
+          value.updatedAt,
+          data
+        ]);
+        if (insertResult.rowCount === 0) {
+          return loadConflict(id);
+        }
+        return { ok: true, version: value.version };
+      }
+
       // Try the CAS update first — the common case.
       const updateResult = await executor.query(casUpdateSQL, [
         ...scalarValues,
@@ -285,7 +434,8 @@ export function createPgRecordStore<
         "$2::jsonb",
         [JSON.stringify(value ?? null)],
         expectedVersion,
-        updatedAt
+        updatedAt,
+        "patchField"
       );
     },
 
@@ -305,7 +455,8 @@ export function createPgRecordStore<
         "to_jsonb(CASE WHEN jsonb_typeof(data #> $1::text[]) = 'number' THEN (data #>> $1::text[])::numeric ELSE 0 END + $2::numeric)",
         [delta],
         expectedVersion,
-        updatedAt
+        updatedAt,
+        "incField"
       );
     },
 
@@ -325,7 +476,8 @@ export function createPgRecordStore<
         "COALESCE(data #> $1::text[], '[]'::jsonb) || $2::jsonb",
         [JSON.stringify(values)],
         expectedVersion,
-        updatedAt
+        updatedAt,
+        "pushToArray"
       );
     },
 
@@ -335,6 +487,7 @@ export function createPgRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
+      assertDeltaExpectedVersion(expectedVersion, "deleteField");
       const pgPath = statePath(path);
       const updatedAtParam = "$2";
       const idParam = "$3";
@@ -394,7 +547,12 @@ export function createPgRecordStore<
       if (clause.length > 0) {
         sql += ` WHERE ${clause}`;
       }
-      sql += ` ORDER BY ${resolveOrderBy?.(options) ?? "updated_at DESC"}`;
+      // `null` means "no ORDER BY" (FIX-1010); `undefined` keeps the default.
+      const orderBy =
+        resolveOrderBy === undefined ? "updated_at DESC" : resolveOrderBy(options);
+      if (orderBy !== null) {
+        sql += ` ORDER BY ${orderBy ?? "updated_at DESC"}`;
+      }
 
       const offset = Math.max(0, options?.offset ?? 0);
       const limit = options?.limit;

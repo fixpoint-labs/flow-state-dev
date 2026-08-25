@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id     TEXT NOT NULL,
   org_id  TEXT,
   tenant_id   TEXT,
+  parent_session_id TEXT,
   version     INTEGER NOT NULL,
   created_at  BIGINT NOT NULL,
   updated_at  BIGINT NOT NULL,
@@ -24,7 +25,12 @@ const SESSIONS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id)",
-  "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at)"
+  "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at)",
+  // FIX-1009: serves one access path — `{ parentOf: id }` equality lookups
+  // (enumerating one session's children). The default `IS NULL` scan is
+  // low-selectivity and is deliberately not the justification, so a plain btree
+  // is enough and no composite is warranted yet.
+  "CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id)"
 ];
 
 const REQUESTS_TABLE = `
@@ -54,6 +60,82 @@ const REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id)",
   "CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at)"
 ];
+
+/**
+ * FIX-1010 — the two composite indexes the parent-to-child read adds, built
+ * **concurrently**.
+ *
+ * They are the only indexes in this file that can land on an already-populated
+ * table: everything else ships with its `CREATE TABLE`, so on an upgrade its
+ * `IF NOT EXISTS` is a no-op. A plain `CREATE INDEX` takes a lock that blocks
+ * writes for the duration of the build — on exactly the large `requests` and
+ * `sessions` histories this read exists to page through — so an upgrade would
+ * interrupt production writes. `CONCURRENTLY` trades that for two table
+ * passes and cannot run inside a transaction, which is why these are issued
+ * one statement at a time outside any `BEGIN` (the initializers below run
+ * autocommit; the advisory lock is not a transaction).
+ *
+ * Ordering columns are declared ASC and scanned backwards, which Postgres does
+ * for an `ORDER BY` that reverses every key uniformly.
+ *
+ * Paired with {@link DROP_INVALID_FIX_1010_INDEXES}: an interrupted concurrent
+ * build leaves an *invalid* index that `IF NOT EXISTS` would then skip
+ * forever, so the planner would never use it and nothing would say so.
+ */
+const CONCURRENT_INDEXES = [
+  // The child listing: one parent's children, ordered on immutable keys.
+  // Serves the caller whose tenant and org are unbound, which is every
+  // single-tenant deployment.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_created ON sessions(parent_session_id, created_at, id)",
+  // The same listing for a caller that **is** tenant- or org-bound, which the
+  // index above cannot serve: `parent_session_id` holds the *bare* session id
+  // (the route queries it with the id straight off the URL path), so two
+  // tenants reusing a predictable parent id share that index's whole key
+  // prefix. Their rows are then walked and discarded in `created_at` order and
+  // one tenant's history grows another tenant's nominally bounded read.
+  //
+  // Both indexes, not one, because they are not substitutes — measured on
+  // PGlite with the gate's own fixture, examined rows for the listing:
+  //
+  //   index set        unbound caller        tenant-bound caller
+  //   this one only    50, no sort           450 + sort, and the planner
+  //                                          does not pick it at all
+  //   scope one only   450 + sort            flat under a foreign tenant
+  //   both             50, no sort           flat under a foreign tenant
+  //
+  // The scope index alone is a 9x regression on the common single-tenant read,
+  // because Postgres does not treat `IS NULL` as an equality for sort-order
+  // purposes: with `tenant_id`/`org_id` ahead of `created_at`, an all-unbound
+  // caller loses the ordering and sorts the parent's whole child set — the
+  // exact failure the first index exists to prevent. With both present the
+  // planner picks per query, which is what the axis-4 differential pins.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_scope_created ON sessions(parent_session_id, tenant_id, org_id, created_at, id)",
+  // The most-recent-run read. The existence check that precedes it is already
+  // served by `idx_requests_session_status` and needs nothing new.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_created ON requests(session_id, created_at, id)"
+];
+
+/**
+ * Drop a FIX-1010 index left `indisvalid = false` by an interrupted concurrent
+ * build, so the `CREATE INDEX CONCURRENTLY IF NOT EXISTS` below rebuilds it
+ * instead of skipping a dead one. A no-op on every healthy database.
+ */
+const DROP_INVALID_FIX_1010_INDEXES = `DO $$
+DECLARE
+  n TEXT;
+BEGIN
+  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created']
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM pg_class c
+      JOIN pg_index i ON i.indexrelid = c.oid
+      JOIN pg_namespace ns ON ns.oid = c.relnamespace
+      WHERE c.relname = n AND ns.nspname = current_schema() AND NOT i.indisvalid
+    ) THEN
+      EXECUTE format('DROP INDEX %I', n);
+    END IF;
+  END LOOP;
+END $$;`;
 
 const USERS_TABLE = `
 CREATE TABLE IF NOT EXISTS users (
@@ -98,7 +180,8 @@ CREATE TABLE IF NOT EXISTS active_requests (
   input             TEXT,
   metadata          TEXT,
   started_at        BIGINT NOT NULL,
-  last_heartbeat_at BIGINT NOT NULL
+  last_heartbeat_at BIGINT NOT NULL,
+  queued_at         BIGINT
 );
 `;
 
@@ -118,6 +201,30 @@ BEGIN
     WHERE table_schema = current_schema() AND table_name = 'active_requests' AND column_name = 'source'
   ) THEN
     EXECUTE 'ALTER TABLE active_requests ADD COLUMN source TEXT NOT NULL DEFAULT ''http''';
+  END IF;
+END $$;
+`;
+
+/**
+ * Add the `queued_at` column to pre-FIX-999 `active_requests` tables.
+ *
+ * Nullable with no default, and **no backfill is possible or wanted**: the
+ * column marks a request registered at enqueue time and not yet claimed by a
+ * worker, which cannot be reconstructed after the fact. NULL reads back as
+ * "claimed", which is how every existing row already behaves — swept on
+ * `last_heartbeat_at` exactly as before (BP-030). Idempotent.
+ */
+const ADD_ACTIVE_REQUESTS_QUEUED_AT_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'active_requests'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'active_requests' AND column_name = 'queued_at'
+  ) THEN
+    EXECUTE 'ALTER TABLE active_requests ADD COLUMN queued_at BIGINT';
   END IF;
 END $$;
 `;
@@ -148,6 +255,31 @@ BEGIN
 END $$;
 `;
 
+/**
+ * Add the `parent_session_id` column to a pre-FIX-1009 `sessions` table.
+ * Idempotent — wrapped in a DO block so absence of the column adds it and
+ * presence is a no-op. Must run BEFORE the index DDL so
+ * `idx_sessions_parent_session_id` finds the column.
+ *
+ * Nullable with no default, and **no backfill is needed or possible**: nothing
+ * writes a parent id yet, so every pre-existing row is genuinely top-level and
+ * NULL is the correct value for all of them.
+ */
+const ADD_PARENT_SESSION_ID_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'sessions'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'sessions' AND column_name = 'parent_session_id'
+  ) THEN
+    EXECUTE 'ALTER TABLE sessions ADD COLUMN parent_session_id TEXT';
+  END IF;
+END $$;
+`;
+
 const ACTIVE_REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_active_requests_heartbeat  ON active_requests(last_heartbeat_at)",
   "CREATE INDEX IF NOT EXISTS idx_active_requests_user_id    ON active_requests(user_id)",
@@ -174,6 +306,8 @@ CREATE TABLE IF NOT EXISTS resource_state (
   scope_id      TEXT NOT NULL,
   resource_key  TEXT NOT NULL,
   state         JSONB NOT NULL,
+  version       BIGINT NOT NULL DEFAULT 1,
+  lifecycle     TEXT NOT NULL DEFAULT 'live',
   PRIMARY KEY (scope_type, scope_id, resource_key)
 );
 `;
@@ -310,6 +444,31 @@ BEGIN
 END $$;
 `;
 
+/**
+ * Add `version` and `lifecycle` to a pre-CAS `resource_state` table.
+ *
+ * Purely additive: `ADD COLUMN IF NOT EXISTS ... DEFAULT`, no `DROP NOT NULL`,
+ * no table rewrite, indexes untouched. `state` stays `JSONB NOT NULL` — a
+ * tombstone stores `{}` rather than a null state precisely so this stays a
+ * pure `ADD COLUMN`.
+ *
+ * The defaults are the legacy contract: an existing row becomes **live at
+ * version 1**, never absent, so a reader that predates versioning keeps seeing
+ * its data and an `expectedVersion: 0` create against it correctly conflicts.
+ */
+const ADD_RESOURCE_STATE_VERSIONING_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'resource_state'
+  ) THEN
+    EXECUTE 'ALTER TABLE resource_state ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 1';
+    EXECUTE 'ALTER TABLE resource_state ADD COLUMN IF NOT EXISTS lifecycle TEXT NOT NULL DEFAULT ''live''';
+  END IF;
+END $$;
+`;
+
 const SUSPENSION_RECORDS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_suspension_records_request_id ON suspension_records(request_id)",
   "CREATE INDEX IF NOT EXISTS idx_suspension_records_created_at ON suspension_records(created_at)",
@@ -382,13 +541,31 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // Idempotent on fresh databases.
   ADD_ACTIVE_REQUESTS_SOURCE_MIGRATION,
 
+  // FIX-999: add the nullable `queued_at` column to pre-FIX-999
+  // `active_requests`. Existing rows read back as claimed and are swept exactly
+  // as before. Idempotent — no-op once the column exists.
+  ADD_ACTIVE_REQUESTS_QUEUED_AT_MIGRATION,
+
   // FIX-682: add the nullable `tenant_id` column to pre-isolation `sessions`,
   // `requests`, and `active_requests` tables. Existing rows read back as
   // no-tenant. Idempotent — no-op once the column exists.
   ADD_TENANT_ID_MIGRATION,
+
+  // FIX-1009: add the nullable `parent_session_id` column to pre-parentage
+  // `sessions`. Existing rows read back as top-level; no backfill is needed
+  // because nothing writes a parent id yet. Idempotent — no-op once present.
+  ADD_PARENT_SESSION_ID_MIGRATION,
   // FIX-141: ensure `suspension_records.status` / `resolved_at` exist on
   // pre-FIX-141 schemas. Idempotent on fresh databases.
-  ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION
+  ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION,
+
+  // FIX-992: add `version` / `lifecycle` to a pre-CAS `resource_state`.
+  // Purely additive; existing rows become live at version 1.
+  ADD_RESOURCE_STATE_VERSIONING_MIGRATION,
+
+  // FIX-1010: clear an invalid index left by an interrupted concurrent build
+  // so it is rebuilt below rather than skipped by `IF NOT EXISTS`.
+  DROP_INVALID_FIX_1010_INDEXES
 ];
 
 /**
@@ -401,7 +578,12 @@ const PROJECT_TO_ORG_MIGRATIONS = [
  */
 const SCHEMA_LOCK_KEY = 819297; // arbitrary stable integer
 
-function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: string[] } {
+function getSchemaDDL(): {
+  migrations: string[];
+  tables: string[];
+  indexes: string[];
+  concurrentIndexes: string[];
+} {
   return {
     migrations: PROJECT_TO_ORG_MIGRATIONS,
     tables: [
@@ -435,7 +617,8 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...SCHEDULE_INDEX_INDEXES,
       ...SUSPENSION_RECORDS_INDEXES,
       ...LEASES_INDEXES
-    ]
+    ],
+    concurrentIndexes: CONCURRENT_INDEXES
   };
 }
 
@@ -446,7 +629,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
  * you have direct pg.Pool access.
  */
 export async function initializeSchema(executor: QueryExecutor): Promise<void> {
-  const { migrations, tables, indexes } = getSchemaDDL();
+  const { migrations, tables, indexes, concurrentIndexes } = getSchemaDDL();
 
   await executor.query("SELECT pg_advisory_lock($1)", [SCHEMA_LOCK_KEY]);
   try {
@@ -457,6 +640,12 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
       await executor.query(ddl);
     }
     for (const ddl of indexes) {
+      await executor.query(ddl);
+    }
+    // Concurrent builds last, and one statement at a time: they cannot run
+    // inside a transaction, and they are the only DDL here that can land on a
+    // populated table (FIX-1010).
+    for (const ddl of concurrentIndexes) {
       await executor.query(ddl);
     }
   } finally {
@@ -477,7 +666,7 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
 export async function initializeSchemaWithDedicatedClient(
   pool: import("pg").Pool
 ): Promise<void> {
-  const { migrations, tables, indexes } = getSchemaDDL();
+  const { migrations, tables, indexes, concurrentIndexes } = getSchemaDDL();
   const client = await pool.connect();
 
   try {
@@ -514,6 +703,11 @@ export async function initializeSchemaWithDedicatedClient(
         await client.query(ddl);
       }
       for (const ddl of indexes) {
+        await client.query(ddl);
+      }
+      // See `initializeSchema` — concurrent builds run outside a transaction,
+      // one statement at a time (FIX-1010).
+      for (const ddl of concurrentIndexes) {
         await client.query(ddl);
       }
     } finally {

@@ -27,17 +27,28 @@ Good for: mode flags, counters, configuration values, status indicators. Values 
 Named, schema-typed containers attached to a scope. Each carries its own state and optionally content:
 
 ```ts
-session: {
-  resources: {
-    plan: {
-      stateSchema: z.object({
-        steps: z.array(z.string()).default([]),
-        status: z.enum(["draft", "active", "complete"]).default("draft"),
-      }),
-      writable: true,
-    },
+import { defineFlow, defineResource } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const planResource = defineResource({
+  scope: "session",
+  stateSchema: z.object({
+    steps: z.array(z.string()).default([]),
+    status: z.enum(["draft", "active", "complete"]).default("draft"),
+  }),
+  writable: true,
+});
+
+defineFlow({
+  kind: "planner",
+  resources: { plan: planResource },
+  session: {
+    stateSchema: z.object({
+      mode: z.enum(["chat", "agent"]).default("chat"),
+    }),
   },
-}
+  actions: { /* ... */ },
+});
 ```
 
 Good for: artifacts, documents, knowledge entries, configuration bundles. Data that has its own identity, structure, and lifecycle. If you'd naturally think of it as a named object rather than a field, it's a resource.
@@ -66,8 +77,9 @@ This matters most for block-private scratch data. If a block needs a cache or in
 ```ts
 const search = handler({
   name: "search",
-  sessionResources: {
+  resources: {
     searchCache: defineResource({
+      scope: "session",
       stateSchema: z.object({
         lastQuery: z.string().default(""),
         results: z.array(z.string()).default([]),
@@ -77,7 +89,7 @@ const search = handler({
     }),
   },
   execute: async (input, ctx) => {
-    const cache = ctx.session.resources.searchCache;
+    const cache = ctx.resources.searchCache;
     if (cache.state.lastQuery === input.query && Date.now() - cache.state.cachedAt < 60_000) {
       return { results: cache.state.results };
     }
@@ -102,6 +114,35 @@ Quick rules:
 | Personal to one user? | | Yes | |
 | Shared across users? | | | Yes |
 | Temporary working data? | Yes | | |
+
+### Session scope and background work
+
+Background work runs in a session of its own, hanging off the conversation that started it. Each session has its own session scope, so a session-scoped resource in a background job is a different resource from the one in the conversation, holding whatever that job put in it.
+
+To give a session-scoped resource one identity across a conversation and every job under it, mark it `sharedToWorkstream`:
+
+```ts
+const board = defineResource({
+  scope: "session",
+  sharedToWorkstream: true,
+  ref: "board",
+  stateSchema: z.object({
+    items: z.array(z.string()).default([]),
+  }),
+});
+```
+
+Both sides reach it through the ordinary resource API, `ctx.resources.board`, and read and write the same rows. There is no separate call for the parent's copy — there is one copy. Jobs nest, and the resource follows the whole chain: a job filed by a job resolves the same resource as the conversation at the top.
+
+The flag applies to collections too, and to session scope only. On a user- or org-scoped resource it's rejected when the flow is built, since those scopes already span every session the same user touches.
+
+What it won't do:
+
+**Share scope state.** Session state stays private to each session whether or not a resource beside it is shared. Hand state over as input when the work starts, or put it in a shared resource.
+
+**Serialize writes.** Two jobs writing one shared resource is ordinary concurrent access. Nothing queues or orders them, so fence it yourself if the writes can collide.
+
+**Reach sideways.** Sharing runs down one chain. Two conversations, and the jobs under each, hold separate resources.
 
 ## Client visibility
 

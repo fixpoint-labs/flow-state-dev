@@ -5,13 +5,13 @@
  * domain-specific modules: session-routes, action-routes, stream-routes,
  * and state-routes.
  */
+import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
 import { detectInterruptedRequests } from "../execution/request-recovery";
-import { normalizeRouteError } from "../utils/normalize-route-error";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -39,6 +39,7 @@ import {
   handleListSessions,
   handlePatchSessionMetadata
 } from "./session-routes";
+import { handleListSessionWorkstreams } from "./workstream-routes";
 import { handleGetSessionState } from "./state-routes";
 import {
   handleGetResourceContent,
@@ -51,6 +52,7 @@ import {
   handleGetResourceManifest
 } from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
+import { authorizeManagementRoute } from "./route-auth";
 import {
   handleDebugListResources,
   handleDebugListSuspensions,
@@ -62,8 +64,10 @@ import {
 } from "./debug-routes";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
+import { createDetachedStartOperation } from "../context/detached-start-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowDispatcher } from "../transports/dispatcher";
+import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
 export type RequestContext = {
   method: string;
@@ -132,8 +136,6 @@ export type CreateFlowRouteHandlersOptions = {
    * buffering). See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
-  maxConcurrentStreams?: number;
-  staleStreamTtlMs?: number;
   onError?: (error: Error, context: { method: string; path: string }) => void;
   /**
    * Host-level fallback resolver. Per-flow `authentication.resolvePrincipal`
@@ -167,6 +169,14 @@ export type CreateFlowRouteHandlersOptions = {
   debugCountLimit?: number;
   /** Pluggable flow dispatcher. Default: in-process via runAction. */
   dispatcher?: FlowDispatcher;
+  /**
+   * Concurrency arbiter for this router's host. Defaults to a fresh one.
+   *
+   * Supplied by `createFlowState` when it also built a host of its own for
+   * detached dispatch, so one declared `queue`/`reject` policy is enforced once
+   * across both rather than once per host (FIX-1077).
+   */
+  arbiter?: ConcurrencyArbiter;
 };
 
 const DEFAULT_SSE_HEARTBEAT_MS = 15_000;
@@ -213,13 +223,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     debugAllowAnonymousLocal: options.debugAllowAnonymousLocal,
     debugCountLimit: options.debugCountLimit
   });
-  // FIX-569: the legacy active-streams registry (and its `maxConcurrentStreams`
-  // / `staleStreamTtlMs` knobs) is gone. Live tail is owned by the store
-  // interface; long-running flows are no longer at risk of registry eviction.
-  // The options remain on `CreateFlowRouteHandlersOptions` for source-compat
-  // but have no effect.
-  void options.maxConcurrentStreams;
-  void options.staleStreamTtlMs;
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
 
   // Resolve the host-level SSE heartbeat default once, then thread the
@@ -234,19 +237,77 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     defaultSseHeartbeatMs
   };
 
+  const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
+
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,
     stores,
-    resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
+    resolvePrincipal: hostResolver,
     runtimeConfig,
-    dispatcher: options.dispatcher
+    dispatcher: options.dispatcher,
+    arbiter: options.arbiter
   });
+
+  // The LAST-RESORT installer, and only that (FIX-1077).
+  //
+  // This used to be the only one, with a comment claiming the assignment reached
+  // "every request the host serves, including a worker's" because a spread
+  // copies the `requestHost` *reference*. True of this function's own input;
+  // false of the path that mattered. `createFlowApiRouter` hands us a config
+  // whose `requestHost` it has already rebuilt as a fresh literal
+  // (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`), and
+  // that spread is a fork — so anything stamped here lands on a copy nobody
+  // else holds. The object `createFlowState` gives `worker.startWorker` never
+  // saw it, so a colocated queue worker running a detached board met
+  // `no-start-operation`; and because this operation carries no child tracking,
+  // an HTTP-started Workstream was invisible to the shutdown drain.
+  //
+  // `createFlowState` now installs on the shared config before any fork exists,
+  // so in every deployment it owns, the operation is already present here and
+  // the guard below skips. What remains is the case it cannot own: a DIRECT
+  // `createFlowApiRouter` caller, which has no `FlowState`, no worker, and no
+  // `dispose()` to drain — there the router's own config is the only object
+  // there is, so installing on it forks nothing and is the only way the caller
+  // gets the capability at all.
+  //
+  // The guard is therefore load-bearing rather than defensive: it is what makes
+  // "the owner installs it, and this only fills a gap no owner exists for" true
+  // instead of two installers racing to define one field.
+  //
+  // **Do not delete this block to make the ownership rule tidier.** It looks
+  // redundant precisely because it never fires in a `createFlowState`
+  // deployment, which is every deployment you are likely to be reading this
+  // from. Removing it silently drops detached work for anyone mounting this
+  // router in their own server without a `FlowState` — a supported embedding —
+  // and `integration-tests`' `task-board-detached-handoff` scenario, which
+  // drives `createFlowApiRouter` directly, is the thing that will tell you.
+  if (
+    runtimeConfig.requestHost !== undefined &&
+    runtimeConfig.requestHost.startOperation === undefined
+  ) {
+    runtimeConfig.requestHost.startOperation = createDetachedStartOperation({ host });
+  }
 
   // Detect interrupted requests from previous runs on startup
   if (options.detectInterruptedOnStartup !== false) {
     void detectInterruptedRequests({
       stores,
-      staleThresholdMs: options.staleThresholdMs
+      // Both sweep bounds come off the resolved config, not off flat options.
+      // `staleThresholdMs` here is the router's own `staleSweepThresholdMs`
+      // after `resolveStaleSweep`, which is the same value its periodic sweeper
+      // and its liveness gate use — a restart must not reap on a different
+      // clock than the running server, or it deregisters a healthy
+      // cross-process request and the next liveness read calls it dead.
+      // `options.staleThresholdMs` is kept as an explicit override for a direct
+      // `createFlowRouteHandlers` caller, but no shipped path sets it: it is
+      // absent from `CreateFlowApiRouterOptions`, which is exactly how this
+      // path silently kept `detectInterruptedRequests`' own 30s fallback while
+      // everything else in the process ran on 60s.
+      staleThresholdMs:
+        options.staleThresholdMs ?? runtimeConfig.requestHost?.staleThresholdMs,
+      // Same grace the periodic sweeper runs with, so a restart cannot reap a
+      // queued row the running server would have left alone.
+      queuedGraceMs: runtimeConfig.queuedGraceMs
     }).then((interrupted) => {
       if (interrupted.length > 0) {
         console.warn(
@@ -282,6 +343,22 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       // the same way action dispatch does. Undefined for single-tenant
       // requests; rejected (400) inside the try if it contains ":".
       const tenantId = extractTenantId(request, options.tenantIdHeader);
+
+      // Authenticate and authorize the management surface (sessions, state,
+      // resources, request control, debug) before dispatching. Action routes
+      // resolve their own principal inside `handleExecuteAction` and are
+      // exempt here; so are the public metadata routes. No-op for an app on
+      // the framework default resolver — see `route-auth.ts`.
+      const auth = await authorizeManagementRoute(request, route, {
+        registry: options.registry,
+        stores,
+        host,
+        hostResolver,
+        tenantId
+      });
+      if (auth.denied !== undefined) return auth.denied;
+      const principal = auth.principal;
+      const anonymousFlowKinds = auth.anonymousFlowKinds;
 
       if (route.kind === "not_found") {
         return jsonResponse(404, { error: "Route not found" });
@@ -334,7 +411,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListSessions(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          principal,
+          anonymousFlowKinds
         });
       }
 
@@ -354,6 +433,15 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         });
       }
 
+      if (route.kind === "list_session_workstreams") {
+        return await handleListSessionWorkstreams(request, route, {
+          registry: options.registry,
+          stores,
+          tenantId,
+          maxListLimit: runtimeConfig.maxWorkstreamListLimit
+        });
+      }
+
       if (route.kind === "get_session_state") {
         return await handleGetSessionState(request, route, {
           registry: options.registry,
@@ -366,7 +454,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleCreateSession(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          principal
         });
       }
 
@@ -431,6 +520,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           durabilityProvider: runtimeConfig.durabilityProvider,
+          publicReentrySources: runtimeConfig.publicReentrySources,
           seams,
           requestContext
         });
@@ -446,7 +536,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListActiveRequests(request, {
           registry: options.registry,
           stores,
-          runtimeConfig
+          runtimeConfig,
+          principal,
+          anonymousFlowKinds
         });
       }
 
@@ -454,7 +546,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleCheckInterruptedRequests(request, route, {
           registry: options.registry,
           stores,
-          runtimeConfig
+          runtimeConfig,
+          anonymousFlowKinds
         });
       }
 
@@ -568,7 +661,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       return jsonResponse(404, { error: "Route not found" });
     } catch (error) {
-      const normalized = normalizeRouteError(error);
+      const normalized = toError(error, "Unknown route error");
       options.onError?.(normalized, {
         method: request.method.toUpperCase(),
         path: bootstrapPath

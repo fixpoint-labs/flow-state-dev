@@ -161,6 +161,29 @@ export interface CreateFlowStateOptions<
    */
   detectInterruptedOnStartup?: boolean;
 
+  /**
+   * How long `dispose()` waits for detached work running IN THIS PROCESS before
+   * shutting down anyway. Default: 30000 (30s). Queue-backed work is never
+   * waited for and this does not apply to it.
+   *
+   * A ceiling, not a target: work that finishes sooner is never delayed. When it
+   * expires, shutdown proceeds and reports the request and session ids it did
+   * not wait out, so abandoned work is named rather than silently dropped.
+   *
+   * Configurable because the two callers have genuinely different tolerances and
+   * no single number serves both well. A server disposing under a termination
+   * signal lives inside a platform grace period (commonly 30s) and cannot
+   * usefully exceed it — the process is killed regardless. A `fsdev run`
+   * verifying a slow flow has no such ceiling and may reasonably wait longer for
+   * an agent turn to finish, since watching that finish is the point of the run.
+   * The default is set for the first, because exceeding it there is futile;
+   * raise it for the second.
+   *
+   * `0` disables waiting entirely — a legitimate choice for a host that wants
+   * immediate shutdown, and it still reports what it left behind.
+   */
+  detachedDrainTimeoutMs?: number;
+
   /** Forwarded to `createFlowApiRouter` for power users (custom transports). */
   adapters?: CreateFlowApiRouterOptions["adapters"];
 
@@ -177,6 +200,39 @@ export interface CreateFlowStateOptions<
   staleSweepIntervalMs?: number;
   /** Heartbeat-age threshold (ms) for the stale-request sweeper. Default 60000. */
   staleSweepThresholdMs?: number;
+  /**
+   * How long an externally-queued request may sit unclaimed before a sweep
+   * treats it as lost (ms). A queued request has no heartbeat, so
+   * `staleSweepThresholdMs` cannot answer for it. Raise this when a legitimate
+   * backlog can outlast the default. Must be finite and non-negative — it is the
+   * only bound on a queued entry, so a value nothing can exceed would leave a
+   * lost job reported live indefinitely. Default 600000 (10 minutes).
+   */
+  queuedGraceMs?: number;
+
+  /**
+   * Transport sources this deployment adds to the public re-entry allow-list
+   * for `retry`, `continue` and `resume`.
+   *
+   * Name the sources your own out-of-tree `InboundTransportAdapter`s stamp —
+   * without this they are refused with a not-found, because a source the
+   * framework cannot enumerate is refused by default. `webhook` and the
+   * detached-dispatch source are refused: neither is caller-addressed, so
+   * re-entering one from a public route would run it with caller-supplied
+   * input. Default: only the built-in sources.
+   */
+  publicReentrySources?: readonly string[];
+
+  /**
+   * Largest `limit` the workstream listing route accepts. Default 100.
+   *
+   * Raise it for deployments whose conversations start more workstreams
+   * than that: the list a client reads is all-time history, so any fixed
+   * ceiling eventually hides the oldest finished work. Raise it deliberately —
+   * each row resolves its status from the request store and clients re-read
+   * the list on every interaction, so a larger ceiling costs more per turn.
+   */
+  maxWorkstreamListLimit?: number;
 
   /**
    * Enable durable execution. When `true`, `createFlowState` builds the

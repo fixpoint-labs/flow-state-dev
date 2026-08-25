@@ -22,7 +22,7 @@
  *
  * Each worker (the actor body wrapped):
  *
- *   .tap(stashDepth)               // remember `task.metadata.depth`
+ *   .tap(stashTaskId)              // remember the worker task id
  *   .map(unwrapToEntry)            // pass entry to user actor body
  *   .step(actor.block)             // user code
  *   .tap(reEmitIfEnabled)          // append entries from output, spawn next-depth tasks
@@ -38,6 +38,7 @@ import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
   resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
   type TaskCapOptions,
   type TaskCollectionRef,
   type TaskInit,
@@ -244,9 +245,18 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   // over per-ref — so a resolver built without them writes past the bounds the
   // board advertises. Resolved up here rather than read off `board.caps`
   // because `getCollection` is declared before the board is built.
+  // The retry budget (FIX-948) is explicitly OPTED OUT, not merely left
+  // unexposed. An `eventActors` board builds its task inits directly and never
+  // stamps a `maxAttempts`, so its tasks cannot retry and a budget here has no
+  // subject. Omission would not refuse it: this object is spread into BOTH the
+  // collection constructor and `taskBoard` below, and each of those defaults an
+  // absent axis again — so the board would carry an inert, non-configurable cap
+  // that starts binding the moment this surface gains `maxAttempts`. `null` is
+  // the value that survives defaulting.
   const boardCaps = resolveTaskCapDefaults(`[eventActors] "${name}"`, {
     maxTotalTasks: config.maxTotalTasks,
     maxEnqueuedTasks: config.maxEnqueuedTasks,
+    maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE,
   });
 
   async function getCollection(ctx: BlockContext): Promise<TaskCollectionRef> {
@@ -301,12 +311,10 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const spawnInitialTasks = handler({
     name: `${name}-spawn-initial`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { [RESOURCE_KEY]: workspaceResource },
     execute: async (entry, ctx) => {
       const e = entry as { type: string; topic: string; body: unknown };
       await spawnTasksFor(e, 1, ctx as unknown as BlockContext);
-      return entry;
     },
   });
 
@@ -324,17 +332,16 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     const reEmitTap = handler({
       name: `${name}-${a.name}-reemit`,
       inputSchema: z.any(),
-      outputSchema: z.any(),
       resources: { [RESOURCE_KEY]: workspaceResource },
       sequencerStateSchema: actorWrapperStateSchema,
       execute: async (output, ctx) => {
-        if (!reEmit) return output;
+        if (!reEmit) return;
 
         const seqState = ctx.sequencer?.state as
           | { _taskId?: string }
           | undefined;
         const taskId = seqState?._taskId;
-        if (!taskId) return output;
+        if (!taskId) return;
 
         const widerCtx = ctx as unknown as BlockContext;
         const collection = await getCollection(widerCtx);
@@ -343,7 +350,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
           (task?.metadata as { depth?: number } | undefined)?.depth ?? 1;
 
         const entries = normalizeToEntries(output);
-        if (entries.length === 0) return output;
+        if (entries.length === 0) return;
 
         const workspaceRef = (ctx.resources as Record<string, any>)[RESOURCE_KEY];
 
@@ -406,18 +413,15 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
           const collectionForSpawn = await getCollection(widerCtx);
           await collectionForSpawn.addTasks(inits);
         }
-        return output;
       },
     });
 
     const stashTaskId = handler({
       name: `${name}-${a.name}-stash`,
       inputSchema: taskWorkerInputSchema,
-      outputSchema: taskWorkerInputSchema,
       sequencerStateSchema: actorWrapperStateSchema,
       execute: async (input, ctx) => {
         await ctx.sequencer!.patchState({ _taskId: input.taskId });
-        return input;
       },
     });
 
@@ -426,7 +430,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
       inputSchema: taskWorkerInputSchema,
       stateSchema: actorWrapperStateSchema,
     })
-      .step(stashTaskId)
+      .tap(stashTaskId)
       .map((input: TaskWorkerInput) => input.input)
       .step(a.block)
       .tap(reEmitTap);

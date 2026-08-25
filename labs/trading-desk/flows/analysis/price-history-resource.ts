@@ -2,10 +2,11 @@
  * Session-scoped resource holding a thinned price-history slice for the Summary
  * page's price overlay chart.
  *
- * Written once by the `storePriceHistory` tap after Phase 1 (it reads the warm
- * tool cache / fixture — no extra network call, never a generator output, so
- * BP-016 does not bind it). Read client-side via `useResource(session,
- * "priceHistory")`, mirroring how the app reads `valuationSpine`.
+ * Written once by the `storePriceHistory` tap after Phase 1 (it reads the
+ * session `technicalData` spine — no extra network call, never a generator
+ * output, so BP-016 does not bind it). Read client-side via
+ * `useResource(session, "priceHistory")`, mirroring how the app reads
+ * `valuationSpine`.
  *
  * Only `date` + `close` per bar are persisted — the overlay draws a line, not
  * candles — to keep the client payload lean. `source` carries the tool's

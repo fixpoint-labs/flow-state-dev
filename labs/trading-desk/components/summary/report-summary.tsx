@@ -37,11 +37,19 @@ import {
 import type { MemoState } from "@/flows/analysis/resources";
 import type { ValuationSpineState } from "@/flows/analysis/valuation-spine-resource";
 import type { PriceHistorySlice } from "@/flows/analysis/price-history-resource";
+import {
+  buildTradeLevelModel,
+  LEGACY_LEVELS_CAPTION,
+  storedTradeLevelsFrom,
+  type TradeLevelKind,
+} from "@/flows/analysis/lib/trade-levels";
 import { buildReportSummary } from "./aggregate";
 import { DecisionHeader } from "./decision-header";
 import { ConvictionStrip } from "./conviction-strip";
 import { AnalystTldrGrid } from "./analyst-tldr-grid";
+import { ResearchSynthesisBlock } from "./research-synthesis-block";
 import { RiskPanel } from "./risk-panel";
+import { InvalidationList } from "./invalidation-list";
 import { ChartEmpty } from "./chart-empty";
 import { BarGroup } from "./charts/bar-group";
 import { ScenarioStrip } from "./charts/scenario-strip";
@@ -75,7 +83,11 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
   const { clientData: spineRaw } = useResource(session, "valuationSpine");
   const { clientData: priceRaw } = useResource(session, "priceHistory");
   const { session: stop } = useClientData(session, {
-    session: ["stoppedReason", "stoppedMessage", "runComplete"],
+    session: [
+      "stoppedReason",
+      "stoppedMessage",
+      "runComplete",
+    ],
   });
 
   const stoppedReason = (stop?.stoppedReason ?? null) as string | null;
@@ -121,6 +133,10 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* The provenance notice is NOT here. It mounts in `theses-pane.tsx`
+          above the Theses/Summary switch, because it discloses something about
+          the whole report and this branch is a render gate that would hide it
+          from anyone reading the Theses tab. */}
       <DecisionHeader
         ticker={summary.ticker}
         date={summary.date}
@@ -140,6 +156,11 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
       />
 
       <ConvictionStrip nodes={summary.conviction} />
+
+      {/* The research manager's synthesis in words — its stance, its conviction,
+          and where the analysts still disagree. It sits directly under the strip
+          because it is what the strip's spread means (FIX-1060). */}
+      <ResearchSynthesisBlock synthesis={summary.researchSynthesis} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
@@ -175,6 +196,7 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
 
       <RiskPanel
         criticalRisks={summary.criticalRisks}
+        verdict={summary.riskVerdict}
         keyDependencies={summary.keyDependencies}
       />
 
@@ -239,6 +261,20 @@ function SectionLabel({
 }
 
 /**
+ * Line colour per level kind. Presentation only — the NAME of a level is the
+ * shared rule's (`buildTradeLevelModel`), never this table's. A flat run's two
+ * monitoring levels share one colour because they are one kind of thing: lines
+ * the desk is watching, not lines a position hangs off. A pre-fix record's
+ * unnamed levels are drawn muted, matching how little the record can claim.
+ */
+const LEVEL_COLORS: Record<TradeLevelKind, string> = {
+  stop: "var(--c-warn)",
+  target: "var(--c-live)",
+  monitoring: "var(--c-accent)",
+  legacy: "var(--c-fg-faint)",
+};
+
+/**
  * Price panel: draws the close-price overlay when a series exists; otherwise
  * falls back to a trade-levels list so the panel still earns its space. The
  * `source` provenance tag is surfaced so a `"unavailable"` slice reads as
@@ -256,19 +292,17 @@ function PricePanel({
 
   // The spine's fairValue is a company-level $B figure (a fair market cap),
   // not a share price — it must never join the price-axis levels (FIX-778).
-  const levels: PriceOverlayLevel[] = [];
-  if (trade?.targetPrice != null)
-    levels.push({
-      label: "target",
-      value: trade.targetPrice,
-      color: "var(--c-live)",
-    });
-  if (trade?.stopPrice != null)
-    levels.push({
-      label: "stop",
-      value: trade.stopPrice,
-      color: "var(--c-warn)",
-    });
+  //
+  // The legend text comes from the shared labeling rule (FIX-780), so the chart
+  // cannot call a level something the list beside it does not. Only the colour
+  // is the chart's own, keyed off `kind`. A pre-fix flat record's levels are
+  // drawn unlabeled — the numbers are real, the names are not recoverable.
+  const levelModel = buildTradeLevelModel(storedTradeLevelsFrom(trade ?? {}));
+  const levels: PriceOverlayLevel[] = levelModel.rows.map((row) => ({
+    label: row.label,
+    value: row.value,
+    color: LEVEL_COLORS[row.kind],
+  }));
   // Close line only when the series actually renders (consistent with
   // hasSeries) — never dead work on the unavailable/short-series fallback.
   if (hasSeries && price) {
@@ -299,6 +333,12 @@ function PricePanel({
   );
 }
 
+/**
+ * The levels panel shown when the price chart can't draw. It carries the
+ * trader's invalidation criteria alongside the numbers: this block is the only
+ * "Price & levels" content on such a run, and levels without what invalidates
+ * them is half the trade (FIX-1060).
+ */
 function TradeLevelsList({
   trade,
 }: {
@@ -309,30 +349,53 @@ function TradeLevelsList({
     rows.push({ label: "direction", value: trade.direction });
   if (trade?.sizePct != null)
     rows.push({ label: "size", value: `${trade.sizePct}% NAV` });
-  if (trade?.stopPrice != null)
-    rows.push({ label: "stop", value: String(trade.stopPrice) });
-  if (trade?.targetPrice != null)
-    rows.push({ label: "target", value: String(trade.targetPrice) });
-  if (rows.length === 0) return null;
+
+  // Level names come from the shared rule (FIX-780) — this list never spells
+  // them itself. A pre-fix record collapses to a single captioned row: the two
+  // numbers are real, but nothing in the record says which is which, so naming
+  // either one would be a guess wearing a stored value's authority. The
+  // disclosure itself belongs to the report's ONE shared provenance notice,
+  // never to a second marker down here.
+  const levels = buildTradeLevelModel(storedTradeLevelsFrom(trade ?? {}));
+  if (levels.predatesLabelingFix) {
+    rows.push({
+      label: LEGACY_LEVELS_CAPTION,
+      value: levels.rows.map((r) => String(r.value)).join(", "),
+    });
+  } else {
+    for (const row of levels.rows)
+      rows.push({ label: row.label, value: String(row.value) });
+  }
+
+  const invalidation = trade?.invalidationCriteria ?? null;
+  const hasInvalidation = invalidation !== null && invalidation.length > 0;
+  if (rows.length === 0 && !hasInvalidation) return null;
 
   return (
-    <dl
+    <div
       className={cn(
-        "grid grid-cols-2 gap-2 rounded-md border p-3 sm:grid-cols-3",
+        "flex flex-col gap-3 rounded-md border p-3",
         "border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
       )}
-      aria-label="Trade levels"
     >
-      {rows.map((r) => (
-        <div key={r.label} className="flex flex-col gap-0.5">
-          <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-            {r.label}
-          </dt>
-          <dd className="font-mono text-[12px] text-[color:var(--c-fg)]">
-            {r.value}
-          </dd>
-        </div>
-      ))}
-    </dl>
+      {rows.length > 0 ? (
+        <dl
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+          aria-label="Decision levels"
+        >
+          {rows.map((r) => (
+            <div key={r.label} className="flex flex-col gap-0.5">
+              <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                {r.label}
+              </dt>
+              <dd className="font-mono text-[12px] text-[color:var(--c-fg)]">
+                {r.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      <InvalidationList criteria={invalidation} />
+    </div>
   );
 }

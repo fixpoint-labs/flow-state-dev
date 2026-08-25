@@ -1,6 +1,6 @@
 import { runForTest } from "@flow-state-dev/testing";
 import { describe, it, expect } from 'vitest'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import {
   workingMemoryStateSchema,
 } from '../src/working-memory.js'
@@ -43,7 +43,7 @@ import type { ConsolidationOutput, PruneOutput } from '../src/memory-system-bloc
 
 function createMockWmRef(
   initialState?: Partial<WorkingMemoryState>,
-): ResourceHandle<WorkingMemoryState> {
+): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = {
     entries: [],
     currentTurn: 0,
@@ -60,12 +60,12 @@ function createMockWmRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
 function createMockSysRef(
   initialState?: Partial<MemorySystemState>,
-): ResourceHandle<MemorySystemState> {
+): ResourceRef<MemorySystemState> {
   let state: MemorySystemState = {
     lastProcessedIndex: -1,
     episodicWritesSinceLastConsolidation: 0,
@@ -84,12 +84,12 @@ function createMockSysRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: memorySystemStateSchema, writable: true },
-  } as ResourceHandle<MemorySystemState>
+  } as ResourceRef<MemorySystemState>
 }
 
 function createMockEpRef(
   initialState?: Partial<EpisodicMemoryState>,
-): ResourceHandle<EpisodicMemoryState> {
+): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = {
     episodes: [],
     totalEncoded: 0,
@@ -106,7 +106,7 @@ function createMockEpRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
 /**
@@ -135,7 +135,7 @@ function mergeResources(...groups: Array<Record<string, any> | undefined>) {
 
 function createMockSemRef(
   initialState?: Partial<SemanticMemoryState>,
-): ResourceHandle<SemanticMemoryState> {
+): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
@@ -153,7 +153,7 @@ function createMockSemRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceHandle<SemanticMemoryState>
+  } as ResourceRef<SemanticMemoryState>
 }
 
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {
@@ -405,7 +405,7 @@ describe('memory/memorySystem', () => {
 
       it('declares digestMemory on the capture pipeline when digest is configured', () => {
         // When digest is enabled, capture must wire `digestRegenerate` as a
-        // `.work()` step so the rolling summary refreshes every turn whose
+        // `.sideChain()` step so the rolling summary refreshes every turn whose
         // source signature drifted. The block's own staleness guard makes
         // the call cheap when nothing has changed.
         // Build through system() so resource references are shared across
@@ -584,11 +584,11 @@ describe('memory/memorySystem', () => {
     }
 
     async function runReflect(
-      wmRef: ResourceHandle<WorkingMemoryState>,
-      sysRef: ResourceHandle<MemorySystemState>,
+      wmRef: ResourceRef<WorkingMemoryState>,
+      sysRef: ResourceRef<MemorySystemState>,
       items: Array<{ content: string; importance: number; durability: string; category: string; replaces?: string }>,
       config?: typeof baseConfig & { episodic?: any },
-      epRef?: ResourceHandle<EpisodicMemoryState>,
+      epRef?: ResourceRef<EpisodicMemoryState>,
     ) {
       const block = memorySystemReflect(config ?? baseConfig)
       const ctx = {
@@ -747,8 +747,8 @@ describe('memory/memorySystem', () => {
     }
 
     async function runTick(
-      wmRef: ResourceHandle<WorkingMemoryState>,
-      sysRef: ResourceHandle<MemorySystemState>,
+      wmRef: ResourceRef<WorkingMemoryState>,
+      sysRef: ResourceRef<MemorySystemState>,
     ) {
       const block = memorySystemTick(baseConfig)
       const ctx = {
@@ -1151,10 +1151,10 @@ describe('memory/memorySystem', () => {
     }
 
     async function runGuard(
-      wmRef: ResourceHandle<WorkingMemoryState>,
-      sysRef: ResourceHandle<MemorySystemState>,
-      epRef?: ResourceHandle<EpisodicMemoryState>,
-      semRef?: ResourceHandle<SemanticMemoryState>,
+      wmRef: ResourceRef<WorkingMemoryState>,
+      sysRef: ResourceRef<MemorySystemState>,
+      epRef?: ResourceRef<EpisodicMemoryState>,
+      semRef?: ResourceRef<SemanticMemoryState>,
     ) {
       const block = consolidationGuard(semanticConfig)
       const ctx = {
@@ -1273,10 +1273,10 @@ describe('memory/memorySystem', () => {
     }
 
     async function runPersist(
-      wmRef: ResourceHandle<WorkingMemoryState>,
-      sysRef: ResourceHandle<MemorySystemState>,
-      semRef: ResourceHandle<SemanticMemoryState>,
-      epRef: ResourceHandle<EpisodicMemoryState>,
+      wmRef: ResourceRef<WorkingMemoryState>,
+      sysRef: ResourceRef<MemorySystemState>,
+      semRef: ResourceRef<SemanticMemoryState>,
+      epRef: ResourceRef<EpisodicMemoryState>,
       input: ConsolidationOutput,
     ) {
       const block = consolidationPersist(semanticConfig)
@@ -1507,10 +1507,10 @@ describe('memory/memorySystem', () => {
     }
 
     async function runReflectWithSemantic(
-      wmRef: ResourceHandle<WorkingMemoryState>,
-      sysRef: ResourceHandle<MemorySystemState>,
-      epRef: ResourceHandle<EpisodicMemoryState>,
-      semRef: ResourceHandle<SemanticMemoryState>,
+      wmRef: ResourceRef<WorkingMemoryState>,
+      sysRef: ResourceRef<MemorySystemState>,
+      epRef: ResourceRef<EpisodicMemoryState>,
+      semRef: ResourceRef<SemanticMemoryState>,
       items: Array<{ content: string; importance: number; durability: string; category: string; replaces?: string }>,
     ) {
       const block = memorySystemReflect(semanticConfig)
@@ -1686,8 +1686,8 @@ describe('memory/memorySystem', () => {
     }
 
     async function runTickWithSemantic(
-      wmRef: ResourceHandle<WorkingMemoryState>,
-      sysRef: ResourceHandle<MemorySystemState>,
+      wmRef: ResourceRef<WorkingMemoryState>,
+      sysRef: ResourceRef<MemorySystemState>,
     ) {
       const block = memorySystemTick(semanticConfig)
       const ctx = {
@@ -1911,7 +1911,7 @@ describe('memory/memorySystem', () => {
       semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
     }
 
-    async function runPruneGuard(semRef?: ResourceHandle<SemanticMemoryState>) {
+    async function runPruneGuard(semRef?: ResourceRef<SemanticMemoryState>) {
       const block = pruneGuard(semanticConfig)
       const ctx = {
         resources: createMockResources({
@@ -2002,7 +2002,7 @@ describe('memory/memorySystem', () => {
     }
 
     async function runPrunePersist(
-      semRef: ResourceHandle<SemanticMemoryState>,
+      semRef: ResourceRef<SemanticMemoryState>,
       input: PruneOutput,
     ) {
       const block = prunePersist(semanticConfig)

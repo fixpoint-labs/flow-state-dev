@@ -1,12 +1,14 @@
 ---
 sidebar_position: 1
+title: Engine setup
+sidebar_label: Setup
 ---
 
-# Server Setup
+# Engine setup
 
-How to configure the flow-state.dev server runtime in your application.
+The engine is the runtime that registers your flows, runs actions, persists state, and streams results. The package is `@flow-state-dev/engine`. You describe it once with `createFlowState`.
 
-The runtime is the part that registers your flows, runs actions, persists state, and streams results. You describe it once with a config object and hand that object to a platform adapter. The adapter mounts it as HTTP route handlers. See [Host adapters](/docs/server/host-adapters) for which adapter fits your platform.
+HTTP is one way to reach it. A [host adapter](/docs/server/host-adapters) mounts the same handle as route handlers. `fsdev run` and `runAction` call the engine in-process, with no web server. See the [CLI](/docs/cli/overview) and [Calling a flow without a transport](/docs/advanced/manual-flow-execution).
 
 ## A single config object
 
@@ -40,23 +42,12 @@ Move this config object to an `fsdev.config.ts` at your project root that defaul
 
 Construction validates your config up front. An empty `stores` map or a `defaultProfile` that names a profile you didn't declare throws right away, not on the first request.
 
-Common options:
-
-| Option | Purpose |
-|--------|---------|
-| `flows` | Map of stable keys to flow instances. |
-| `models` | Model resolver config. `default` is the fallback model id; `intents` maps named intents to ordered candidate lists. Auto-wires the Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set. |
-| `voice` | Speech and transcription providers. Pass `openai.speech` / `openai.transcription` directly. |
-| `stores` | Named store profiles. See below. |
-| `defaultProfile` | Which profile to use when no `FSD_ENV` is set. |
-| `settings` | Instance-level config read inside blocks via `ctx.settings`. |
-| `onError` | HTTP-level error sink. |
-| `errorCapture` | Block-aware sink for routing runtime block failures to an external service. |
+`flows` and `stores` are the two required fields; everything else has a default. The full field list, with types and defaults, is in [Runtime options](/docs/configuration/runtime).
 
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
-import { openai } from "@ai-sdk/openai";
+import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import myFlow from "@/flows/my-flow/flow";
 
 export const flowstate = createFlowState({
@@ -67,7 +58,7 @@ export const flowstate = createFlowState({
       chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
     },
   },
-  voice: { speech: openai.speech, transcription: openai.transcription },
+  voice: { provider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }) },
   stores: {
     prod: { primary: vercelPostgresStores() },
     dev: { primary: inMemoryStores() },
@@ -209,6 +200,7 @@ If you want to warm the runtime ahead of the first request (or surface a bad con
 | GET | `/api/flows/sessions` | List sessions |
 | GET | `/api/flows/sessions/:sessionId` | Session detail |
 | GET | `/api/flows/sessions/:sessionId/state` | State snapshot (clientData) |
+| GET | `/api/flows/sessions/:sessionId/workstreams` | [Background jobs](./background-work.md) started by this session |
 | POST | `/api/flows/:kind/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
 

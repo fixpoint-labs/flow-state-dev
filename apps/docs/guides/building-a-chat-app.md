@@ -24,11 +24,12 @@ import { z } from "zod";
 
 export const chatGen = generator({
   name: "chat",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant. Be concise and friendly.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 ```
 
@@ -38,6 +39,7 @@ export const chatGen = generator({
 - **`prompt`** — The system instruction. Sent first in every model call. Can be a string or a function `(input, ctx) => string` for dynamic prompts.
 - **`history`** — Prior conversation messages. This is how the model remembers what was said before. The framework calls `ctx.session.items.history()` to get completed messages in `{ role, content }` format, filters and formats them, and injects them into the prompt. Without this, each request would be stateless.
 - **`user`** — The current user input. Extracted from the action input. In our case, it's `input.message`. The framework adds this as the final user-role message before calling the model.
+- **`itemVisibility`** — Who sees streamed messages. `{ client: true, history: true }` is a user-facing chat. Omit it and the generator does not auto-emit items to the UI.
 
 The framework assembles the full prompt in order: prompt, context (if any), history, user. It handles tool calls, retries, and streaming. You focus on what goes in, not how it gets there.
 
@@ -148,11 +150,10 @@ export const flowstate = createFlowState({
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
-import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+import { createNextHandler } from "@flow-state-dev/next";
 
-export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";
-export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
@@ -163,7 +164,7 @@ export const dynamic = "force-dynamic";
 - `GET /api/flows/hello-chat/requests/:requestId/stream` — SSE stream for that request
 - `GET /api/flows/sessions/:sessionId/state` — State snapshot (clientData)
 
-The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You configure models, stores, and settings on `createFlowState`. See [Server Setup](/docs/server/setup) for details.
+The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You configure models, stores, and settings on `createFlowState`. See [Engine setup](/docs/server/setup) for details.
 
 ---
 
@@ -298,7 +299,7 @@ test("message count accumulates across requests", async () => {
 
 **Testing philosophy:** The test harness creates an isolated runtime with in-memory stores. It mocks generators by name: `generators.chat.output` replaces the real LLM call with that string. Same contracts as production: validation, session resolution, block execution, state persistence, lifecycle hooks. No flakiness from API latency or rate limits.
 
-**Seeding state:** Use `seed.session`, `seed.user`, or `seed.project` to simulate scenarios. Here we start with `messageCount: 3` and verify the handler increments to 4. Useful for multi-turn flows, permission checks, and state-dependent behavior.
+**Seeding state:** Use `seed.session`, `seed.user`, or `seed.org` to simulate scenarios. Here we start with `messageCount: 3` and verify the handler increments to 4. Useful for multi-turn flows, permission checks, and state-dependent behavior.
 
 **Generator mocking:** The key in `generators` matches the block name. Our generator is named `"chat"`, so `generators.chat.output` replaces its output. For generators with tools, you can mock tool results too. See the [Testing docs](/docs/testing/testing-flows) for the full API.
 

@@ -137,7 +137,7 @@ describe("FIX-688: three-wave loading", () => {
 
   it("Wave 3: a lazy single is not loaded at context creation", async () => {
     const { stores, get } = spyStores();
-    await stores.resourceState.set("session", "s1", "lazyS", { v: 42 });
+    await stores.resourceState.set("session", "s1", "lazyS", { v: 42 }, "any");
     get.mockClear();
     await createExecutionContext({
       flow,
@@ -153,7 +153,7 @@ describe("FIX-688: three-wave loading", () => {
 
   it("Wave 3: loads a lazy single once at block dispatch, readable synchronously", async () => {
     const { stores, get } = spyStores();
-    await stores.resourceState.set("session", "s1", "lazyS", { v: 42 });
+    await stores.resourceState.set("session", "s1", "lazyS", { v: 42 }, "any");
     get.mockClear();
     const result = await runAction({
       flow,
@@ -172,7 +172,7 @@ describe("FIX-688: three-wave loading", () => {
 
   it("single-flights concurrent loads of the same resource", async () => {
     const { stores, get } = spyStores();
-    await stores.resourceState.set("session", "s1", "lazyS", { v: 9 });
+    await stores.resourceState.set("session", "s1", "lazyS", { v: 9 }, "any");
     const ctx = await createExecutionContext({
       flow,
       actionName: "a",

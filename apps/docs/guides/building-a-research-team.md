@@ -345,11 +345,30 @@ and [Delegation](/docs/skills/delegation) for personas, structured output, and t
 agent resolution table. The example wires both forms in
 [`src/agents.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/agents.ts).
 
-A seat doesn't have to be a persona — the task board can dispatch any block as a
-worker (that's [section 2](#2-the-code-first-board)). Staffing a non-agent block through
-a skill's `agents:` map is a deliberate non-goal here: once a task can be assigned
-to a tool directly, dressing a deterministic block up as an "agent" is the wrong
-shape. Keep `agents:` for prompt-driven participants — inline or registered.
+A seat doesn't have to be a persona, and it doesn't have to be declared. The task
+board dispatches any block as a worker (that's
+[section 2](#2-the-code-first-board)), and a tool is a block — so every tool the
+skill allows is already assignable, by its catalog key:
+
+```yaml
+allowed-tools: [httpGet]
+agents:
+  analyst:
+    prompt: You read fetched page text and extract the key claims.
+```
+
+```
+addTask({ goal: "fetch page A", assignee: "httpGet", input: { url: "https://a.example" } })
+```
+
+That runs as a plain function call — the task's `input` becomes the tool's
+arguments, and no model turn happens. Use it for the deterministic seats: fetching,
+calculating, reshaping a payload. It's the same tool the coordinator could call
+inline; what you get by putting it on the board is `deps` ordering, parallelism, and
+the output recorded on a task. One limit worth knowing before you plan around it: a
+tool seat gets ordering from `deps` but can't read an upstream task's output. See
+[Assigning a task to a tool](/docs/skills/delegation#assigning-a-task-to-a-tool)
+for the full shape.
 
 ## 6. Let an agent decide the tasks
 

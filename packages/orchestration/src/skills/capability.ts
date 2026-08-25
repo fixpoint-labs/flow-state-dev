@@ -114,7 +114,6 @@ export function createSkillsCapability(
 
   const runSkillTool = createRunSkillTool({
     collectionKey,
-    catalog,
     initialSkills,
   });
 

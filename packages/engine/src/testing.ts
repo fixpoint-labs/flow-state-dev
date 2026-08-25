@@ -1,7 +1,7 @@
 /**
  * Testing entry point for `@flow-state-dev/engine`. Imported as
- * `@flow-state-dev/engine/testing`. Hosts conformance harnesses and
- * fixture builders for store-interface tests.
+ * `@flow-state-dev/engine/testing`. Hosts conformance harnesses, fixture
+ * builders, and race-staging helpers for store-interface and route tests.
  */
 export {
   createTraceStoreConformanceTests,
@@ -21,3 +21,13 @@ export {
   type CreateContentStoreConformanceTestsOptions,
   type CreateResourceStateStoreConformanceTestsOptions
 } from "./stores/testing/resource-store-conformance";
+export {
+  createScopeStoreConformanceTests,
+  type CreateScopeStoreConformanceTestsOptions,
+  type ScopeStoreUnderTest
+} from "./stores/testing/scope-store-conformance";
+export {
+  gateNextStateRead,
+  StateReadGateTimeoutError,
+  type StateReadGate
+} from "./stores/testing/state-read-gate";

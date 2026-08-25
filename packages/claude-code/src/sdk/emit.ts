@@ -22,7 +22,7 @@ interface EmitProvenance {
   blockName: string;
   blockInstanceId: string;
   parentBlockInstanceId?: string;
-  phase: "main" | "work";
+  phase: "main" | "sideChain";
 }
 
 /**
@@ -84,7 +84,7 @@ function deriveProvenance(ctx: BlockContext, blockName: string): EmitProvenance 
         blockName?: string;
         blockInstanceId?: string;
         parentBlockInstanceId?: string;
-        phase?: "main" | "work";
+        phase?: "main" | "sideChain";
       };
     }
   )._blockIdentity;
@@ -163,6 +163,14 @@ export async function emitTranslatedEvent(
     case "result":
       // The result event mutates the handle, not the stream. Handled by the
       // agent block from the returned TranslatedEvent; nothing to emit here.
+      return;
+    case "file_op_observed":
+    case "plan_item_observed":
+    case "work_gap_observed":
+      // Same shape as `result` above: these carry data to a non-stream consumer
+      // (the work recorder), not to the item stream. The run's tool activity
+      // already surfaces as `tool_output` items; emitting again here would
+      // double it.
       return;
   }
 }

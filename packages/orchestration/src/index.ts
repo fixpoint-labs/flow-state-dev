@@ -18,3 +18,18 @@
 
 export * from "./tasks";
 export * from "./skills";
+
+// Cross-cutting helper shared by `skills` and the `workforce` package. Lives
+// under `./shared` rather than `./skills` because neither layer owns it.
+export { resolveCatalogTools } from "./shared/resolve-catalog-tools";
+
+// The lease-renewal async-context seam. Deliberately NOT on the `./tasks`
+// subpath: it needs `node:async_hooks`, and that subpath is published
+// browser-safe (`docs/architecture/items.md`). This entry already reaches
+// `node:fs` through skills, so it is the right home for a Node-only seam.
+export {
+  openLeaseRenewalScope,
+  withLeaseRenewalScope,
+  stampLeaseRenewal,
+  currentLeaseRenewal,
+} from "./tasks/lease-renewal-scope";

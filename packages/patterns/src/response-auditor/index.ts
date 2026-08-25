@@ -2,12 +2,12 @@
  * Response Auditor Pattern
  *
  * A generic, composable post-generation analysis sidechain that attaches to
- * any generator via `.work()`, runs pluggable analyzers against the completed
+ * any generator via `.sideChain()`, runs pluggable analyzers against the completed
  * response + original input, and produces structured annotations.
  *
- * Pipeline: [captureContext] → [map to tasks] → [forEach analyzer] → [aggregateResults] → [applyThreshold]
+ * Pipeline: [captureContext tap] → [map to tasks] → [forEach analyzer] → [aggregateResults] → [applyThreshold]
  *
- * Because it runs via `.work()`, the primary response streams unblocked. Audit
+ * Because it runs via `.sideChain()`, the primary response streams unblocked. Audit
  * results appear after the response completes as a "second pass" annotation.
  */
 import { sequencer, handler } from "@flow-state-dev/core";
@@ -40,25 +40,27 @@ export type {
 // ---------------------------------------------------------------------------
 
 /**
- * Extracts userInput and response from the `.work()` input.
+ * Extracts userInput and response from the `.sideChain()` input.
  *
- * When the auditor is composed via `.work()`, it receives the preceding step's
+ * When the auditor is composed via `.sideChain()`, it receives the preceding step's
  * output. The auditor expects `{ userInput, response }` — the connector on
- * `.work()` should map the pipeline value to this shape.
+ * `.sideChain()` should map the pipeline value to this shape.
  *
  * Stores the captured context in sequencer state for downstream blocks.
+ * Wired as `.tap()` — state-only, no echoed output (BP-012 / BP-014).
+ *
+ * @remarks Compose this with `.tap(captureContext)`, never `.step(captureContext)`.
+ * It returns nothing, so as a `.step()` it hands `undefined` to the next step.
  */
 export const captureContext = handler({
   name: "capture-context",
   inputSchema: auditorInputSchema,
-  outputSchema: auditorInputSchema,
   sequencerStateSchema: responseAuditorStateSchema,
   execute: async (input, ctx) => {
     await ctx.sequencer!.patchState({
       userInput: input.userInput,
       response: input.response,
     });
-    return input;
   },
 });
 
@@ -165,14 +167,14 @@ export { createApplyThreshold as applyThreshold };
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a response auditor sequencer — a `.work()`-compatible block that
+ * Creates a response auditor sequencer — a `.sideChain()`-compatible block that
  * runs pluggable analyzers against a completed AI response and produces
  * structured annotations.
  *
  * ```ts
  * mainSequencer
  *   .step(primaryGenerator)
- *   .work(
+ *   .sideChain(
  *     (output) => ({ userInput: output.userInput, response: output.text }),
  *     responseAuditor({
  *       analyzers: [biasAnalyzer, toneAnalyzer],
@@ -196,7 +198,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   );
 
   // Build the pipeline using the sequencer DSL:
-  // 1. captureContext stores input in state
+  // 1. captureContext taps the input into sequencer state
   // 2. map creates an array of identical inputs (one per analyzer) for forEach
   // 3. forEach fans out to analyzers using a factory function that selects
   //    the correct rescue-wrapped analyzer per index
@@ -210,7 +212,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
     inputSchema: auditorInputSchema,
     stateSchema: responseAuditorStateSchema,
   })
-    .step(captureContext)
+    .tap(captureContext)
     .map((input: { userInput: string; response: string }) =>
       analyzers.map(() => ({ userInput: input.userInput, response: input.response })),
     )

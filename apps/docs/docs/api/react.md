@@ -17,7 +17,6 @@ import { FlowProvider } from "@flow-state-dev/react";
   flowKind="my-app"
   sessionId="optional-initial-session"
   userId="devuser"
-  baseUrl="/api/flows"
   renderers={{
     message: MessageComponent,
     reasoning: ReasoningComponent,
@@ -70,6 +69,10 @@ session.isLoading;       // boolean
 session.isStreaming;     // boolean
 session.error;           // Error | null
 
+// Background work running under this session (one entry per body of work):
+session.workstreams;      // readonly WorkstreamSummary[]
+session.workstreamsStale; // boolean — the last re-read failed; rows are kept
+
 // Identity-based filtering:
 session.getItemsByAgent("researcher");      // items stamped with agentName
 session.getItemsByVisibility({ history: false }); // items by visibility
@@ -87,6 +90,8 @@ await session.resumeSuspension({     // approve/reject a suspension, stream the 
 });
 session.refresh();
 ```
+
+`workstreams` lists the background work running under this session, separate from `items` — nothing it produces is folded into the conversation. The list is current as of the reader's last interaction: it is re-read on mount, at the start of each action, and on `refresh()`, and nothing updates it while they wait. A row's `status` is absent until its work has run something; `"active"` means only *not finished*, and reports the last recorded state rather than checking a worker is alive. `refresh()` covers this list along with the rest of the view.
 
 `resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream.
 
@@ -235,7 +240,7 @@ import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
 ## Suspensions
 
-### `useSuspensions(session, options?)`
+### `useSuspensions(session, options?)` {#usesuspensions}
 
 Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` item by `suspensionId`. `approve`/`reject` stream the resumed continuation back into `session.items` (via `session.resumeSuspension`), so the resolution renders live.
 
@@ -271,7 +276,7 @@ interface SuspensionView {
 
 `resolve`, `approve`, and `reject` rethrow on failure so callers can branch on the error. The last failure is also captured in `error`.
 
-### `useSuspensionForm(item, options?)`
+### `useSuspensionForm(item, options?)` {#usesuspensionform}
 
 Headless controller for the non-binary input shapes — a clarifying question, a flat form, or a single/multi selection. Where `useApproval` drives the binary gate, this drives the `submit` / `skip` path. It derives form fields from the suspension's `resumeSchema` (bounded to a flat object of scalars and enums, or a single top-level scalar/enum), holds the in-progress value, validates it client-side, coerces numbers, and resolves through the same streaming transport.
 

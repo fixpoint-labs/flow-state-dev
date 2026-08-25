@@ -15,7 +15,9 @@
 export {
   taskSchema,
   type Task,
+  type TaskClaimIdentity,
   type TaskStatus,
+  type TaskWriteReceipt,
 } from "./schema/task";
 export {
   taskStatusSchema,
@@ -31,8 +33,31 @@ export {
   type TaskFilter,
 } from "./schema/task-init";
 
+// The ownership token a task write presents (FIX-981). `ticketNamesTask` is the
+// guard's own identity rule and stays module-internal — a caller mints a ticket
+// and presents it; deciding whether one matches is the collection's job.
+export {
+  taskClaimTicketSchema,
+  ticketForClaim,
+  type TaskClaimTicket,
+} from "./claim-ticket";
+
+// Durable write provenance (FIX-989) — how a caller finds out whether its own
+// write committed, after a call that threw. `stampWrite` is the backings' own
+// convergence point and stays package-internal: provenance is maintained by the
+// write, never by a caller.
+export {
+  beginTaskWrite,
+  didWriteLand,
+  type TaskWriteToken,
+} from "./write-provenance";
+
 // Change events (emitted as `task-change` component items via getOrCreateTaskCollection)
 export type { TaskChangeEvent, TaskChangeKind } from "./collection/change-event";
+// The client-emission projection and the set it honours (FIX-1005). Exported so
+// a transport adapting `onChange` itself can apply the same omission; see
+// `collection/change-event.ts` for why it is a deny-list.
+export { toEmittedTask, SERVER_ONLY_TASK_FIELDS } from "./collection/change-event";
 
 // Item windowing (FIX-480 §3.1) — substrate utilities for `task.items()`
 // and renderer-side per-task expansion.
@@ -47,18 +72,40 @@ export type {
   ClaimOptions,
   TaskHandle,
   TaskTransitionOptions,
+  TaskWriteOutcome,
+  TaskWriteDeclineReason,
 } from "./collection/types";
 export { createSequencerBackedTaskCollection } from "./collection/sequencer-backed";
 export type { SequencerBackedOptions } from "./collection/sequencer-backed";
 export { createResourceBackedTaskCollection } from "./collection/resource-backed";
 export type { ResourceBackedOptions } from "./collection/resource-backed";
-// Creation caps (FIX-931) — the two bounds a collection enforces on insertion.
+// Claimability and the lease (FIX-1005). `isClaimable` is THE admission
+// predicate — the claim path, the board's wake probe and the ready-task
+// preview all read this one function, and a caller implementing
+// `TaskCollectionRef` itself should read it too rather than write a fourth
+// copy. The constants are exported so a caller can size a lease against the
+// bounds the substrate enforces.
+export {
+  isClaimable,
+  claimDisposition,
+  isReady,
+  leaseLapsed,
+  readAbandonments,
+  DEFAULT_LEASE_DURATION_MS,
+  MIN_LEASE_DURATION_MS,
+  MAX_LEASE_DURATION_MS,
+  DEFAULT_MAX_ABANDONMENTS,
+} from "./collection/internal";
+// Collection caps — the two creation bounds (FIX-931) and the cumulative retry
+// budget (FIX-948).
 export {
   TaskCapExceededError,
   validateTaskCaps,
   resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
   DEFAULT_MAX_TOTAL_TASKS,
   DEFAULT_MAX_ENQUEUED_TASKS,
+  DEFAULT_MAX_TOTAL_RETRIES,
   type TaskCapKind,
   type TaskCapOptions,
 } from "./collection/task-caps";
@@ -76,6 +123,8 @@ export {
 export {
   defineTaskCollection,
   isDefinedTaskCollection,
+  freezeLedgerAssignee,
+  hasFrozenLedgerAssignee,
   type DefinedTaskCollection,
   type DefineTaskCollectionOptions,
 } from "./collection/define-task-collection";
@@ -119,6 +168,25 @@ export {
   type DispatchAndExecuteOptions,
   type DispatchAndExecuteResult,
 } from "./helpers/dispatch-and-execute";
+
+// Lease renewal (FIX-1005) — the worker half of durable-job recovery. Exported
+// so a caller driving `claim` itself renews the lease it holds; a claimed row
+// nobody renews is one the next drain takes back.
+//
+// The DRIVER only. The per-worker `AsyncLocalStorage` seam
+// (`openLeaseRenewalScope` / `withLeaseRenewalScope` / `stampLeaseRenewal` /
+// `currentLeaseRenewal`) is exported from the package's MAIN entry instead:
+// it needs `node:async_hooks`, and this subpath is published browser-safe
+// (`docs/architecture/items.md`). See `test/tasks-subpath-browser-safe.spec.ts`.
+export {
+  startLeaseRenewal,
+  withLeaseRenewal,
+  RENEWAL_DIVISOR,
+  MIN_RENEWAL_DELAY_MS,
+  type LeaseRenewalDriver,
+  type LeaseRenewalOptions,
+  type RenewalTimer,
+} from "./lease-renewal";
 
 // Flow policy — observation ledger + per-task selection policies that
 // shape `TaskWorkerInput.priorWork` for Task Board worker dispatches.

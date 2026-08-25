@@ -170,7 +170,7 @@ describe("delegation surface — assignment validated against the declared roste
     // false promise in context is worse than no promise.
     const { gen, ctx } = rosterSurface();
     const guidance = await buildGuidanceText(gen, ctx);
-    expect(guidance).toContain("Your agents:");
+    expect(guidance).toContain("Your team:");
     expect(guidance).toContain("rejected");
     expect(guidance).not.toContain("unrecognized");
   });
@@ -210,7 +210,7 @@ describe("delegation surface — a rosterless board validates nothing", () => {
     const { ctx } = buildDelegationCtx();
     const guidance = await buildGuidanceText(gen, ctx);
     expect(guidance).toContain("default worker");
-    expect(guidance).not.toContain("Your agents:");
+    expect(guidance).not.toContain("Your team:");
     expect(guidance).not.toContain("rejected");
   });
 });

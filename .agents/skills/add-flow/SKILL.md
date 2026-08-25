@@ -17,7 +17,7 @@ You are a development agent creating a new flow in the flow-state-dev framework.
 Parse $ARGUMENTS to determine:
 1. What is the flow's `kind` (URL-safe identifier)?
 2. What actions does it need? (Each action is an entry point with its own inputSchema and block pipeline)
-3. What state does it manage? (session state, user state, project state)
+3. What state does it manage? (session state, user state, org state)
 4. What resources does it need? (persisted typed data containers)
 5. Does it use capabilities? (bundled resources + helpers from patterns or shared infra)
 6. Does it need client data? (derived views exposed to the frontend)
@@ -29,12 +29,12 @@ Before writing, read at least one existing flow:
 | Flow | What to learn from it |
 |------|----------------------|
 | `examples/hello-chat/src/flows/hello-chat/flow.ts` | Minimal single-action flow, session state, userMessage, history |
-| `apps/kitchen-sink/flows/chat-agent/` | Multi-action flow, resources, clientData, capabilities |
+| `apps/kitchen-sink/flows/chat-agent/` | Multi-action flow, resources, client views, capabilities |
 
 Also read:
 - `docs/architecture/flows-and-actions.md` — Flow definition contract
 - `docs/architecture/state-and-scopes.md` — Scope hierarchy and state operations
-- `docs/architecture/resources-and-client-data.md` — Resources and clientData patterns
+- `docs/architecture/resources-and-client-data.md` — Resources and client projections
 - `docs/contributing/best-practices.md` — universal rules + situational index; block rules (BP-011–BP-014) live in `docs/contributing/best-practices/blocks.md`, and resource/state rules (BP-015/019/023/027) — relevant when a flow declares scopes, resources, or client projections — in `docs/contributing/best-practices/resources.md`
 
 ### Step 3: Design the Flow Structure
@@ -53,11 +53,11 @@ src/flows/<flow-kind>/
 
 1. **Actions**: Each action is an entry point with `inputSchema`, `block`, and optional `userMessage`. Chat actions typically have `userMessage`; system/background actions don't.
 
-2. **Scope state**: Use `session.stateSchema` for conversational state (message count, mode, preferences). Use `user.stateSchema` for cross-session user state. Use `project.stateSchema` for shared team state.
+2. **Scope state**: Use `session.stateSchema` for conversational state (message count, mode, preferences). Use `user.stateSchema` for cross-session user state. Use `org.stateSchema` for shared team state.
 
 3. **Resources vs state**: Resources are named, typed data containers with their own schemas. Use resources for structured entities (plans, artifacts, documents). Use scope state for scalar/simple values (counters, modes, flags).
 
-4. **Client data**: The sole gateway for exposing data to the frontend. Each `clientData` entry computes a view from state + resources.
+4. **Client views**: The sole gateway for exposing data to the frontend. Each `client.expose` field or `client.derived` entry computes a view from state + resources. The on-the-wire snapshot is still `snapshot.clientData`.
 
 ### Step 4: Write the Flow
 
@@ -159,13 +159,14 @@ export default <flowKind>Flow({ id: "default" });
 
 #### Resources
 
-Declare typed data containers on scopes:
+Declare typed data containers on the flow. Each resource's `scope` routes storage:
 
 ```typescript
 import { defineFlow, defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const planResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     steps: z.array(z.object({
       id: z.string(),
@@ -185,30 +186,29 @@ defineFlow({
   kind: "planner",
   requireUser: true,
   actions: { /* ... */ },
+  resources: { plan: planResource },
   session: {
     stateSchema: sessionStateSchema,
-    resources: {
-      plan: planResource,
-    },
   },
 });
 ```
 
-#### Client Data
+#### Client views
 
 Derived views for the frontend — computed from scope state and resources:
 
 ```typescript
 session: {
   stateSchema: sessionStateSchema,
-  resources: { plan: planResource },
-  clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    mode: (ctx) => ctx.state.mode,
-    stats: (ctx) => ({
-      messageCount: ctx.state.messageCount,
-      planStepCount: ctx.resources.plan?.state.steps.length ?? 0,
-    }),
+  client: {
+    derived: {
+      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+      mode: (ctx) => ctx.state.mode,
+      stats: (ctx) => ({
+        messageCount: ctx.state.messageCount,
+        planStepCount: ctx.resources.plan?.state.steps.length ?? 0,
+      }),
+    },
   },
 },
 ```
@@ -222,17 +222,18 @@ import { defineCapability, defineResource } from "@flow-state-dev/core";
 
 const memoryCapability = defineCapability({
   name: "memory",
-  sessionResources: {
+  resources: {
     memory: defineResource({
+      scope: "session",
       stateSchema: z.object({ facts: z.array(z.string()).default([]) }),
       writable: true,
     }),
   },
   fns: (ctx) => ({
-    recall: () => ctx.session.resources.memory.state.facts,
+    recall: () => ctx.resources.memory.state.facts,
     store: async (fact: string) => {
-      const facts = ctx.session.resources.memory.state.facts;
-      await ctx.session.resources.memory.patchState({ facts: [...facts, fact] });
+      const facts = ctx.resources.memory.state.facts;
+      await ctx.resources.memory.patchState({ facts: [...facts, fact] });
     },
   }),
   presets: {
@@ -260,7 +261,7 @@ request: {
   onStarted: logRequestStart,       // Fire when request begins
   onCompleted: logRequestComplete,   // Terminal success only
   onErrored: handleRequestError,     // Terminal failure only
-  onStepErrored: logStepError,       // Non-terminal step/work failure (observational)
+  onStepErrored: logStepError,       // Non-terminal step/side-chain failure (observational)
   onFinished: cleanupRequest,        // Always (success or failure)
   heartbeatIntervalMs: 10000,        // Active request registry heartbeat (default 10s, 0 to disable). Relevant for serverless.
 },
@@ -293,7 +294,6 @@ Flow-level tool defaults and observability:
 tools: {
   defaults: {
     timeoutMs: 30000,
-    concurrency: "parallel",
   },
   onToolStarted: logToolStart,
   onToolCompleted: logToolComplete,
@@ -361,7 +361,7 @@ fsdev run <flow-kind> chat --input '{"message": "hello"}'
 - **Actions are flow-level only.** Don't nest them inside scope configs.
 - **Hooks use past tense.** `onStarted`, `onCompleted`, `onErrored`, `onFinished` — never present tense.
 - **Client data is the sole frontend gateway.** Raw state/resources never reach the client directly.
-- **Block-declared resources auto-merge.** Blocks that declare `sessionResources` etc. get merged into the flow's scope configs automatically. Flow-level declarations win on conflict.
+- **Block-declared resources auto-merge.** Blocks that declare `resources` get merged into the flow's `resources` map automatically. Flow-level declarations win on conflict.
 - **Partial state schemas on blocks.** Blocks declare only the state fields they use. The flow-level `stateSchema` is the full picture.
 - **BP-011**: Don't call `block.run()` inside handlers. Compose with sequencers.
 - **BP-014**: Handlers must never `return input`. Use `.tap()` for state-only mutations.

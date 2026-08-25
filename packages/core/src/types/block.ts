@@ -10,6 +10,8 @@ import type { DefinedResourceCollection, ResourceCollectionRef } from "./resourc
 import type { ExternalResourceCollectionRef } from "./external-resource-collection";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { RequestHost } from "./request-host";
+import type { WorkstreamBindings } from "./workstream";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -95,7 +97,7 @@ export type ExecutionParent = {
    * Execution phase for this scope. Inherited by nested scopes when not
    * explicitly overridden.
    */
-  phase?: "main" | "work";
+  phase?: "main" | "sideChain";
   container?: {
     component?: string;
     label?: string;
@@ -363,14 +365,14 @@ export interface BlockContext<
      * - `message` as a string (including `""`) sets the slot; dedupe suppresses
      *   re-emission when the value is unchanged.
      * - `message` as `undefined` preserves the slot value — useful when updating
-     *   only `blocked` / `backgroundTasks` signals.
+     *   only `blocked` / `sideChainTasks` signals.
      *
      * Defaults to `transient: true` (live-only) — statuses are naturally
      * ephemeral. Pass `{ transient: false }` to persist a status item.
      */
     status: (
       message: string | undefined,
-      options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
+      options?: { blocked?: boolean; sideChainTasks?: number; transient?: boolean }
     ) => void;
     /** @internal — used by framework auto-emitters; user code rarely calls these. */
     trace: {
@@ -446,6 +448,27 @@ export interface BlockContext<
    */
   saveCheckpoint?(): Promise<void>;
 
+  /**
+   * The one declared seam through which a capability reaches facilities only the
+   * runtime can provide — starting a detached child request, settling the row
+   * this request was dispatched for, asking whether dispatched work is still
+   * running (FIX-999).
+   *
+   * Framework-facing, not an app-author surface: there is nothing to declare to
+   * get one. A host built through the shipped entry points supplies it.
+   *
+   * Optional in the *type* so a hand-built test context still type-checks; not
+   * optional in *deployment* — a host that executes requests without one fails at
+   * construction. Read it with `requireRequestHost(ctx)`, which throws by name
+   * when it is absent rather than failing as `undefined is not a function`.
+   *
+   * What crosses is behaviour, never handles: no verb takes an identity or a
+   * session id, and nothing here names a store or a flow. That is the whole point
+   * — reaching the runtime used to require casting this context to a shape
+   * TypeScript said it did not have.
+   */
+  requestHost?: RequestHost;
+
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
     onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
@@ -490,8 +513,8 @@ export interface BlockContext<
      * this scope emits as `OutputItem.taskId`.
      */
     taskId?: string;
-    /** Execution phase — "work" for background scopes, "main" otherwise. */
-    phase?: "main" | "work";
+    /** Execution phase — "sideChain" for side-chain scopes, "main" otherwise. */
+    phase?: "main" | "sideChain";
     /**
      * Structural path to this block within the request's execution tree.
      * Used by runtime helpers to derive deterministic instance IDs for
@@ -514,14 +537,24 @@ export interface BlockContext<
    * metadata. The optional `signalOverride` sets the `ctx.signal` of the
    * child scope (and, transitively, every descendant scope that doesn't
    * supply its own override). The sequencer DSL threads
-   * `_requestBackgroundSignal` here at `.work()` dispatch so background
+   * `_requestSideChainSignal` here at `.sideChain()` dispatch so background
    * task trees see the background signal instead of the request signal.
    * When omitted, the child inherits the current parent ctx's `signal`.
+   *
+   * `sideChainSignalOverride` (FIX-1005) does the same for the signal a
+   * subtree's BACKGROUND dispatches read. It needs its own channel rather than
+   * being derived from `signalOverride`, because the two carry deliberately
+   * different things: `signalOverride` includes the transport signal, and
+   * side-chain work exists precisely to outlive that. It also cannot be passed
+   * by spreading `_requestSideChainSignal` onto a copy of the context — this
+   * function is a closure bound to the context it was built for, so it reads
+   * that context's field and never the copy's.
    */
   _withExecutionScope?<TValue>(
     parent: ExecutionParent,
     execute: (ctx: BlockContext) => Promise<TValue>,
-    signalOverride?: AbortSignal
+    signalOverride?: AbortSignal,
+    sideChainSignalOverride?: AbortSignal
   ): Promise<TValue>;
 
   /**
@@ -599,15 +632,6 @@ export interface BlockContext<
   _blockInputHint?: BlockValueInternal<unknown>;
 
   /**
-   * @internal Shared mutable slot that tracks the id of the most recently
-   * emitted `block_trace` item. Sequencer operations read this immediately
-   * after calling a child block so they can record a `ref` descriptor pointing
-   * at the child's item. Lives on a ref passed through every scope so child
-   * emissions are visible to the parent that spawned them.
-   */
-  _outputTracker?: { lastBlockOutputItemId?: string };
-
-  /**
    * @internal Set by the sequencer runtime when a `.rescue()` handler recovers
    * a thrown error. Read by `_withExecutionScope` post-execution to stamp the
    * block's sibling-registry result (`result.rescued`), which `wasRescued`
@@ -616,13 +640,14 @@ export interface BlockContext<
   _didRescue?: boolean;
 
   /**
-   * @internal Per-request background work pool. Set by the server's request
+   * @internal Per-request side-chain pool. Set by the server's request
    * executor; absent in unit-test contexts. Sequencer DSL pushes here from
-   * `.work()` / `.workIf()` / `.forEachBackground()`. The request executor
-   * drains the pool exactly once before terminal status. When absent (unit
-   * tests), sequencer DSL falls back to per-sequencer auto-await.
+   * `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()`. The request executor
+   * drains the pool to quiescence before terminal status, on every terminal
+   * path. When absent (unit tests), sequencer DSL falls back to
+   * per-sequencer auto-await.
    */
-  _requestWorkPool?: import("../execution/request-work-pool").RequestWorkPool;
+  _requestSideChainPool?: import("../execution/request-side-chain-pool").RequestSideChainPool;
 
   /**
    * @internal Background-work abort signal. Set by the server's request
@@ -630,13 +655,13 @@ export interface BlockContext<
    * explicitly aborted (e.g. POST `/abort`, `session.abortRequest()`), NOT
    * on transport-level events like client disconnect, SSE close, or tab
    * refresh. The sequencer DSL substitutes this for `ctx.signal` when
-   * dispatching `.work()` / `.workIf()` / `.forEachBackground()` tasks so
+   * dispatching `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` tasks so
    * background generators survive transport teardown.
    *
-   * In unit-test contexts where this is absent, `.work()` falls back to the
+   * In unit-test contexts where this is absent, `.sideChain()` falls back to the
    * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
    */
-  _requestBackgroundSignal?: AbortSignal;
+  _requestSideChainSignal?: AbortSignal;
 
   /**
    * @internal Effective tracing verbosity for this request (FIX-406 6H).
@@ -909,6 +934,53 @@ export interface BlockDefinition<
    * for HTTP-layer enforcement.
    */
   requiresOrg: boolean;
+  /**
+   * Every block this block statically composes: a sequencer's step/tap/branch
+   * children and its chain-level rescue handlers, a router's routes, a rescue
+   * handler installed on any block.
+   *
+   * Exists so the block graph is **walkable at definition time**. A
+   * `SequencerOperation` is `{name, run}` — the child it dispatches is captured
+   * inside a closure and retained nowhere else — so before this field the
+   * sequencer edge was opaque and a traversal from an action root could not see
+   * past the first `.step()`. Since a task board's drain *is* a sequencer, that
+   * made "every reachable detached board resolves to a binding" not merely
+   * unchecked but uncomputable. `defineFlow` walks this to assert it.
+   *
+   * Retained for structure only — nothing executes through it. Dispatch still
+   * runs the operation closures.
+   */
+  childBlocks?: readonly BlockDefinition<any, any>[];
+  /**
+   * Detached worker bindings this block and its descendants declare (FIX-982).
+   *
+   * Derived, never threaded: `buildBlock` computes it as this block's OWN
+   * bindings ({@link ownWorkstreamBindings}) merged with every child's already-
+   * merged set ({@link childBlocks}, which includes rescue handlers). Because a
+   * child's set is itself the union of its subtree, one merge at build time
+   * carries the whole tree, and `defineFlow` reads the union off each action
+   * root into `flow.workstreamBindings`.
+   *
+   * `undefined` on every block that declares no detached work, which is every
+   * block that ships today. Not an app-author surface: nothing is declared to
+   * get one.
+   */
+  workstreamBindings?: WorkstreamBindings;
+  /**
+   * The detached worker bindings this block itself carries, excluding every
+   * binding that arrives by way of a child (FIX-982). Where
+   * {@link workstreamBindings} is the bubble-up, this is the strict subset the
+   * block contributes on its own — the same split {@link ownDeclaredResources}
+   * draws, and for the same reason: a rebuild has to be able to tell what to
+   * carry over from what to recompute.
+   *
+   * Written only by `declareWorkstreamBindings`, which a task board calls on the
+   * drain sequencer it just built. Rebuild paths (`connectInput`, `.rescue`,
+   * `asTool`, a sequencer chaining another step) forward THIS and re-derive the
+   * rest, so replacing a block's rescue handlers forgets the old handlers'
+   * boards instead of advertising workers nothing can reach.
+   */
+  ownWorkstreamBindings?: WorkstreamBindings;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;
   connectOutput<TTo>(

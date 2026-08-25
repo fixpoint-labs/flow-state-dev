@@ -1,18 +1,29 @@
 /**
  * DecisionHeader — the Summary's top block: the PM 5-tier rating bar (PmHero
- * idiom), the model-implied rating + band with clamp flag, decision confidence,
- * a one-line trade summary, and agree/differ-with-trader.
+ * idiom), the model-implied rating + band with clamp flag, the absolute and
+ * relative ratings, decision confidence, the scenario the decision underwrites,
+ * agree/differ-with-trader, and — as a sibling block, not nested under the
+ * decision — the trader's proposed trade with its invalidation criteria.
  *
  * Every figure traces to a stored PM/trader field via the aggregate. When the
  * PM memo has not published, it renders a "Decision pending" state rather than a
- * fabricated rating (real-money gate). The not-advice disclaimer is owned by the
- * persistent StatusBar, not duplicated here.
+ * fabricated rating (real-money gate); the trader's proposal still renders, so a
+ * Summary opened between Phase 3 and Phase 5 shows the trade that exists rather
+ * than nothing. The not-advice disclaimer is owned by the persistent StatusBar,
+ * not duplicated here.
  */
 import type { ReactElement } from "react";
 import type {
   DecisionSummary,
   TradeLevels,
 } from "./aggregate";
+import {
+  buildTradeLevelModel,
+  storedTradeLevelsFrom,
+  tradeLineParts,
+} from "@/flows/analysis/lib/trade-levels";
+import { InvalidationList } from "./invalidation-list";
+import { RatingUnanchoredNotice } from "./rating-unanchored-notice";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;
@@ -73,6 +84,15 @@ export function DecisionHeader({
             </p>
           ) : null}
 
+          {/* FIX-1113 — the rating envelope was withheld (the three financial
+              statements could not be placed at one fiscal period), so the
+              5-tier rating below publishes unbounded rather than clamped.
+              Rendered ABOVE the rating bar so a reader meets the disclosure
+              before the rating, never after. */}
+          {decision.ratingUnanchored === true && decision.periodDisclosure !== null ? (
+            <RatingUnanchoredNotice disclosure={decision.periodDisclosure} />
+          ) : null}
+
           {/* 5-tier rating bar */}
           <div className="flex items-center justify-between gap-1">
             {TIERS.map((tier, i) => (
@@ -102,10 +122,32 @@ export function DecisionHeader({
             ))}
           </div>
 
-          {/* Model-implied rating + band + clamp flag */}
+          {/* Model-implied rating + band + clamp flag, plus the PM's absolute
+              (standalone) and relative (vs benchmark) calls. The 5-tier bar
+              above is the decision; these two say what it means on each axis,
+              and both are stored PM fields — omitted individually when the PM
+              left one unpublished. */}
           {decision.modelImpliedRating !== null ||
-          decision.ratingBand !== null ? (
+          decision.ratingBand !== null ||
+          decision.absoluteRating !== null ||
+          decision.relativeRating !== null ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[color:var(--c-fg-muted)]">
+              {decision.absoluteRating !== null ? (
+                <span>
+                  <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                    absolute
+                  </span>{" "}
+                  {decision.absoluteRating}
+                </span>
+              ) : null}
+              {decision.relativeRating !== null ? (
+                <span>
+                  <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                    relative
+                  </span>{" "}
+                  {decision.relativeRating}
+                </span>
+              ) : null}
               {decision.modelImpliedRating !== null ? (
                 <span>
                   <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
@@ -130,8 +172,17 @@ export function DecisionHeader({
             </div>
           ) : null}
 
-          {/* Trade one-liner */}
-          {trade !== null ? <TradeLine trade={trade} /> : null}
+          {/* The scenario bucket the PM says this decision underwrites. The
+              scenario strip flags the same name visually; stating it here means
+              the header does not depend on the strip having rendered. */}
+          {decision.primaryScenario !== null ? (
+            <p className="text-[11px] text-[color:var(--c-fg-muted)]">
+              <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                underwrites
+              </span>{" "}
+              {decision.primaryScenario}
+            </p>
+          ) : null}
 
           {decision.agreesWithTrader === true ? (
             <span className="text-[11px] text-[color:var(--c-live)]">
@@ -144,23 +195,47 @@ export function DecisionHeader({
           ) : null}
         </>
       )}
+
+      {/* The trader's proposal is a SIBLING of the decision block, never nested
+          inside it. The trader publishes in Phase 3 and the PM in Phase 5, so a
+          Summary opened in that window has a stored trade — with its price
+          levels and what would invalidate it — while `decision` is still null.
+          Nesting this under the decision hid all of it, including on runs where
+          the price chart was already drawing those same levels. */}
+      <TradeBlock trade={trade} />
     </section>
   );
 }
 
-function TradeLine({ trade }: { trade: NonNullable<TradeLevels> }): ReactElement {
-  const parts: string[] = [];
-  if (trade.direction !== null) parts.push(trade.direction.toUpperCase());
-  // `sizePct` is "% of NAV as the trader proposed it" — labeled exactly that,
-  // never a dollar amount (no account value in scope; spec 06 §9.1).
-  if (trade.sizePct !== null) parts.push(`${trade.sizePct}% NAV`);
-  if (trade.stopPrice !== null) parts.push(`stop ${trade.stopPrice}`);
-  if (trade.targetPrice !== null) parts.push(`target ${trade.targetPrice}`);
-  if (trade.holdingPeriod !== null) parts.push(trade.holdingPeriod);
-  if (parts.length === 0) return <></>;
+/**
+ * The trader's proposed trade and what would kill it, attributed so it can never
+ * be read as the PM's decision — this block renders in the "Decision pending"
+ * state too, where it is the only trade content on the page.
+ */
+function TradeBlock({ trade }: { trade: TradeLevels }): ReactElement | null {
+  if (trade === null) return null;
+  const levels = buildTradeLevelModel(storedTradeLevelsFrom(trade));
+  const parts = tradeLineParts(trade, levels);
+  const criteria = trade.invalidationCriteria ?? [];
+  if (parts.length === 0 && criteria.length === 0) return null;
+
   return (
-    <p className="font-mono text-[12px] text-[color:var(--c-fg)]">
-      {parts.join(" · ")}
-    </p>
+    <div className="flex flex-col gap-1">
+      <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+        trader proposal
+      </span>
+      {parts.length > 0 ? (
+        <p className="font-mono text-[12px] text-[color:var(--c-fg)]">
+          {parts.join(" · ")}
+        </p>
+      ) : null}
+      {/* No "predates a fix" note here. The report carries exactly ONE such
+          marker — the shared `ReportProvenanceNotice` at the top of the page,
+          which takes a list of reasons so a later fix adds an entry instead of
+          a second banner (FIX-1063). This block's job is to stop NAMING the two
+          numbers, which the captioned segment above does; the disclosure is the
+          notice's. */}
+      <InvalidationList criteria={trade.invalidationCriteria} />
+    </div>
   );
 }

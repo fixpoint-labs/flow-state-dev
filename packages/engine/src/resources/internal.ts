@@ -22,6 +22,7 @@ import type {
 import { isExternalResourceCollection, readExternalRecord } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
+import { toBareStates } from "../stores/resource-state-views";
 import {
   mergeScopeReads,
   resolveSessionStorageKey,
@@ -29,7 +30,9 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
+import { isCollectionConfig } from "./is-collection-config";
 import { resourceStorageKeys } from "./storage-keys";
+import { readSessionScopeWithLineage } from "./lineage-scope";
 import {
   isResourceTemplate,
   parseResourceTemplate,
@@ -57,19 +60,7 @@ export type ResourcePersistenceContext = {
   stores: StoreRegistry;
 };
 
-/**
- * True when a resource entry shape is a collection (has a `pattern`
- * field). Single resources expose `stateSchema`; collections add
- * `pattern` + collection-specific schemas.
- */
-export function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pattern" in value &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
-  );
-}
+export { isCollectionConfig } from "./is-collection-config";
 
 // Re-export so older callers keep working.
 export { resourceStorageKeys } from "./storage-keys";
@@ -191,9 +182,16 @@ export async function getPersistedData(
   if (!tenantMatches(session.tenantId, tenantId)) return undefined;
 
   if (scope === "session") {
+    // FIX-1068: a resource declared `sharedToWorkstream` lives at the lineage
+    // root, so the scope this session reads is its own rows with the shared
+    // keys taken from there — the same view execution resolves.
     const [resources, content] = await Promise.all([
-      ctx.stores.resourceState.getAll("session", session.id),
-      ctx.stores.content.getAll("session", session.id)
+      readSessionScopeWithLineage(session, flow.resources, tenantId, (scopeType, scopeId) =>
+        ctx.stores.resourceState.getAll(scopeType, scopeId).then(toBareStates)
+      ),
+      readSessionScopeWithLineage(session, flow.resources, tenantId, (scopeType, scopeId) =>
+        ctx.stores.content.getAll(scopeType, scopeId)
+      )
     ]);
     return { resources, content };
   }
@@ -206,7 +204,9 @@ export async function getPersistedData(
     // flows' shared rows under the bare key never surface.
     const scopeIds = resourceScopeIds(session.userId, toIsolationFlow(flow), "user");
     const [resources, content] = await Promise.all([
-      mergeScopeReads(scopeIds.map((id) => ctx.stores.resourceState.getAll("user", id))),
+      mergeScopeReads(
+        scopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toBareStates))
+      ),
       mergeScopeReads(scopeIds.map((id) => ctx.stores.content.getAll("user", id)))
     ]);
     return { resources, content };
@@ -216,7 +216,9 @@ export async function getPersistedData(
   if (!session.orgId) return undefined;
   const scopeIds = resourceScopeIds(session.orgId, toIsolationFlow(flow), "org");
   const [resources, content] = await Promise.all([
-    mergeScopeReads(scopeIds.map((id) => ctx.stores.resourceState.getAll("org", id))),
+    mergeScopeReads(
+      scopeIds.map((id) => ctx.stores.resourceState.getAll("org", id).then(toBareStates))
+    ),
     mergeScopeReads(scopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   return { resources, content };

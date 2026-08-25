@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/cli": minor
+"@flow-state-dev/fsdev": minor
 "@flow-state-dev/engine": minor
 ---
 

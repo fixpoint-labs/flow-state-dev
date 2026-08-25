@@ -16,7 +16,7 @@
  * the portfolio-fit derivation is independent of the lens pack.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -133,7 +133,7 @@ function traderStructuredOutput() {
       label: "Trade proposal",
       headline: "Long NVDA, half-position.",
       rating: "long" as const,
-      metrics: { direction: "long", size: "1.4%", stop: "$132", target: "$185", conviction: "0.62" },
+      metrics: { direction: "long", size: "1.4%", conviction: "0.62" },
       body: [
         { h: "Reading the thesis", p: "Constructive.", items: null },
         { h: "Proposal", p: "Long 1.4% NAV.", items: null },
@@ -144,6 +144,8 @@ function traderStructuredOutput() {
       sizePct: 1.4,
       stopPrice: 132,
       targetPrice: 185,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
       holdingPeriod: "months" as const,
       invalidationCriteria: ["weekly close below $132"],
       dependsOn: ["AI cap-ex cycle length"],
@@ -444,7 +446,7 @@ async function runAndReadPmMemo(opts: {
     unmockedGeneratorPolicy: "error",
   });
   expect(result.status).toBe("completed");
-  const resources = await stores.resourceState.getAll("session", opts.sessionId);
+  const resources = toBareStates(await stores.resourceState.getAll("session", opts.sessionId));
   return resources["memos/p5/portfolio-manager"] as PmMemo | undefined;
 }
 

@@ -136,7 +136,7 @@ export const flowstate = createFlowState({
   },
   defaultProfile: "dev",
   // Disable a background Postgres query on startup that can exhaust the pool
-  // during serverless cold starts.
+  // during serverless cold starts. Read the trade-off below before keeping it.
   detectInterruptedOnStartup: false,
   // Keep the function alive for fire-and-forget action execution.
   onBackgroundWork: (promise) => after(() => promise),
@@ -147,7 +147,7 @@ export const flowstate = createFlowState({
 - **Explicit provider/gateway instances**: Next.js bundles server code, breaking the model resolver's dynamic `require()` path. Pass a pre-built `modelResolver` with static provider imports instead of the `models` shorthand.
 - **`vercelPostgresStores()`**: backs the `primary` capability slot with Vercel/Neon-tuned Postgres. Connection string defaults to `FSD_DB_URL` then `DATABASE_URL`. Schema init is skipped (run migrations at build, see step 6).
 - **`stores` profiles + `FSD_ENV`**: declare a `prod` and a `dev` profile, then set `FSD_ENV=prod` on Vercel to select it. `NODE_ENV` is not consulted, so a production build can't silently point at production infrastructure.
-- **`detectInterruptedOnStartup: false`**: disables a background Postgres query on startup that can exhaust the pool during serverless cold starts.
+- **`detectInterruptedOnStartup: false`**: disables a background Postgres query on startup that can exhaust the pool during serverless cold starts. It costs something, so decide rather than copy it: that startup pass is what marks a request abandoned by a stopped process as `interrupted`, which is the status it can be resumed from. The periodic sweeper does not reliably cover for it on this target — its timer does not hold the function open and a serverless process is frozen between invocations, so it fires only when a warm process happens to be running as it comes due. If abandoned runs need to recover on their own, call `POST /api/flows/users/:userId/check-interrupted` from a scheduled route instead of relying on either automatic path.
 - **`onBackgroundWork` + `after()`**: keeps the serverless function alive for fire-and-forget action execution. Without this, Vercel kills the function after the response is sent. It's a `createFlowState` option, not a handler option, because the router is built inside `createFlowState`.
 
 The `@flow-state-dev/vercel/store` (`vercelPostgresStores`) and `@flow-state-dev/vercel/next` (`createVercelNextHandler`) sub-exports are documented in the [`@flow-state-dev/vercel` README](https://github.com/flow-state-dev/flow-state-dev/tree/main/packages/vercel).
@@ -316,7 +316,7 @@ Vercel serverless functions have execution time limits:
 | Pro | 60 seconds |
 | Enterprise | 900 seconds |
 
-The `@flow-state-dev/vercel/config` module exports `maxDuration = 300`. If your Vercel plan's limit is lower, the plan limit takes precedence. The adapter sets the max so that plan upgrades immediately unlock longer execution times without redeploying.
+Set `export const maxDuration = 300` in the route file. If your Vercel plan's limit is lower, the plan limit takes precedence.
 
 **What this means in practice:**
 

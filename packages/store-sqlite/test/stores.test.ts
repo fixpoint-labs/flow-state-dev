@@ -185,7 +185,10 @@ describe("SQLite store adapter", () => {
       await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-b", "user_2", { updatedAt: 300 }), "any");
       await s.session.set("sess_3", makeSessionRecord("sess_3", "flow-a", "user_1", { updatedAt: 200 }), "any");
 
-      const all = await s.session.list();
+      // FIX-1009: re-pointed from `list()` at `parentage: "all"`. The
+      // assertions below are unchanged — that is the claim: `"all"` reproduces
+      // the result set this query returned before parentage existed.
+      const all = await s.session.list({ parentage: "all" });
       expect(all).toHaveLength(3);
       expect(all[0]!.id).toBe("sess_2");
       expect(all[1]!.id).toBe("sess_3");
@@ -859,29 +862,29 @@ describe("SQLite store adapter", () => {
   describe("resource state store", () => {
     it("set then get round-trips JSON state", async () => {
       const s = freshStores();
-      await s.resourceState.set("session", "s1", "files/a.ts", { language: "ts", lines: 10 });
+      await s.resourceState.set("session", "s1", "files/a.ts", { language: "ts", lines: 10 }, "any");
       expect(await s.resourceState.get("session", "s1", "files/a.ts")).toEqual({
-        language: "ts",
-        lines: 10
+        state: { language: "ts", lines: 10 },
+        version: 1
       });
     });
 
     it("getByPrefix returns only keys matching the prefix", async () => {
       const s = freshStores();
-      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
-      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 });
-      await s.resourceState.set("session", "s1", "notes", { v: 3 });
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 }, "any");
+      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 }, "any");
+      await s.resourceState.set("session", "s1", "notes", { v: 3 }, "any");
 
       expect(await s.resourceState.getByPrefix("session", "s1", "files/")).toEqual({
-        "files/a.ts": { v: 1 },
-        "files/b.ts": { v: 2 }
+        "files/a.ts": { state: { v: 1 }, version: 1 },
+        "files/b.ts": { state: { v: 2 }, version: 1 }
       });
     });
 
     it("delete removes a single key", async () => {
       const s = freshStores();
-      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
-      await s.resourceState.delete("session", "s1", "files/a.ts");
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 }, "any");
+      await s.resourceState.delete("session", "s1", "files/a.ts", "any");
       expect(await s.resourceState.get("session", "s1", "files/a.ts")).toBeUndefined();
     });
   });
@@ -985,6 +988,78 @@ describe("SQLite store adapter", () => {
     it("heartbeat for non-existent is a no-op", async () => {
       const s = freshStores();
       await s.activeRequests.heartbeat("nope"); // should not throw
+    });
+
+    // FIX-999. The liveness gate only enables on a registry every process can
+    // see, so a persistent store is where the queued marker actually has to
+    // survive. If it is dropped in serialization the queued-request fix is
+    // silently inert exactly where it is needed.
+    it("round-trips queuedAt so a queued request stays distinguishable", async () => {
+      const s = freshStores();
+      const ts = Date.now();
+      await s.activeRequests.register({
+        requestId: "req_queued",
+        flowKind: "flow-a",
+        actionName: "run",
+        userId: "user_1",
+        startedAt: ts,
+        lastHeartbeatAt: ts,
+        queuedAt: ts
+      });
+
+      expect((await s.activeRequests.get("req_queued"))?.queuedAt).toBe(ts);
+      const listed = (await s.activeRequests.listAll()).find(
+        (e) => e.requestId === "req_queued"
+      );
+      expect(listed?.queuedAt).toBe(ts);
+    });
+
+    it("an entry registered without queuedAt reads back without it", async () => {
+      const s = freshStores();
+      const ts = Date.now();
+      await s.activeRequests.register({
+        requestId: "req_plain",
+        flowKind: "flow-a",
+        actionName: "run",
+        userId: "user_1",
+        startedAt: ts,
+        lastHeartbeatAt: ts
+      });
+
+      // Absent, not 0 or null — the sweeper's `!= null` guard has to see the
+      // legacy shape unchanged.
+      expect(await s.activeRequests.get("req_plain")).toBeDefined();
+      expect((await s.activeRequests.get("req_plain"))?.queuedAt).toBeUndefined();
+    });
+
+    it("the worker's claim clears queuedAt so the row stays reapable", async () => {
+      const s = freshStores();
+      const ts = Date.now();
+      await s.activeRequests.register({
+        requestId: "req_claimed",
+        flowKind: "flow-a",
+        actionName: "run",
+        userId: "user_1",
+        startedAt: ts,
+        lastHeartbeatAt: ts,
+        queuedAt: ts
+      });
+
+      // Exactly what runAction writes when the worker picks the job up: a full
+      // re-register of the same requestId carrying no queued marker. On an
+      // upsert-style adapter this is the collision path, and leaving the old
+      // value in place would make the row forever-queued — never reaped, and
+      // reported live long after the worker died.
+      await s.activeRequests.register({
+        requestId: "req_claimed",
+        flowKind: "flow-a",
+        actionName: "run",
+        userId: "user_1",
+        startedAt: ts,
+        lastHeartbeatAt: ts
+      });
+
+      expect((await s.activeRequests.get("req_claimed"))?.queuedAt).toBeUndefined();
     });
 
     it("deregister removes the entry", async () => {

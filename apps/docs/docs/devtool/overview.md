@@ -33,7 +33,7 @@ The command does three things:
 
 Flow data persists to `.fsdev/data/` on disk, so sessions survive restarts.
 
-For production, `fsdev serve` runs the same flow API and MCP endpoints with no DevTool UI and binds `0.0.0.0:$PORT`. See the [CLI API Reference](/docs/api/cli) for its options and the loopback-bind guard.
+For production, `fsdev serve` runs the same flow API and MCP endpoints with no DevTool UI and binds `0.0.0.0:$PORT`. See the [CLI API](/docs/api/cli) for its options and the loopback-bind guard.
 
 ### Options
 
@@ -41,14 +41,14 @@ For production, `fsdev serve` runs the same flow API and MCP endpoints with no D
 |------|---------|-------------|
 | `-p, --port <port>` | `4200` | Port to listen on |
 | `--flow-dir <path>` | auto-discover | Override flow discovery root (repeatable) |
-| `-m, --model <model>` | — | Override model for all generator blocks |
+| `-m, --model <model>` | — | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `--no-open` | — | Don't open the browser automatically |
 
 ### Example
 
 ```bash
 # Start with a custom port and model override
-fsdev dev --port 3000 --model gpt-4o-mini
+fsdev dev --port 3000 --model openai/gpt-5.4-mini
 
 # Point at a specific flow directory
 fsdev dev --flow-dir ./my-flows
@@ -86,6 +86,22 @@ For generator blocks, the panel also shows what the model actually saw on that t
 
 When a block fails, the detail panel surfaces enough context to diagnose without re-running. The error message renders at the top with the `code` as a small mono-text label. When the runtime captures `details` on the failure — generator output-validation errors carry the raw model text and the Zod issues, author-thrown `FlowError`s carry whatever was attached — the panel renders them as dedicated sections: a "Raw output" pane for the model's text, a typed "Validation issues" list for Zod issues, and a "Details" JSON panel for the rest. For tool-invoked blocks that fail, the panel also surfaces the originating tool call's arguments and the block's resolved input, so the failure stops requiring a hunt through sibling rows for the missing context. See [Error handling](/docs/advanced/error-handling).
 
+## Workstreams
+
+Some work leaves the session you are watching. A task board can declare that a worker's tasks run in a workstream — a session of its own that keeps going after the request which started it has returned — and none of that work shows up in the conversation's own stream or trace.
+
+The Workstreams tab lists it. One row per body of background work, with the topic it is for, the board and worker it was routed to, the state its runs reached, and its session id.
+
+Click a row and the workspace opens that workstream. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it, and a workstream that files work of its own has a Workstreams tab too. A breadcrumb above the tabs shows how deep you are and takes you back.
+
+A few things worth knowing about a row:
+
+- **Status is coarse on purpose.** `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A row with no status has not run anything yet.
+- **Labels can be missing.** The topic and the board/worker labels are stamped by whatever started the work. A workstream started outside a task board may carry neither, and the row still renders — the session id is the address.
+- **The task link is a match, not a foreign key.** Where a row lines up with a task on a board in this session, the Tasks tab shows a link on that task's row and the Workstreams tab names the tasks. Where a task cannot be matched to exactly one workstream, no link is shown rather than a guessed one.
+
+The list is read when you open a session and when you refresh; it does not update on its own while you watch. See [Work that outlives the turn](/guides/background-work).
+
 ## Session state
 
 Inspect current state at every scope level. View session-level state, user-level state, and org-level state. Resources and their content are visible. ClientData values appear in the detail panel.
@@ -108,7 +124,7 @@ Today, that replay granularity stops at the sequencer's own steps. If the crash 
 
 **Reading the boundary.** When a continued run streams back in, the DevTool draws a small divider — "continued here", with a count of prior items — at the point where the crash-recovery re-entry began. Everything above the divider is the prior log; everything below is the live continuation. Be careful how you read "prior" here: it is not a list of every item replayed. The prior log can include rows that were only partially written or still in progress when the crash happened, sitting there as-is, not just the outputs of blocks that had cleanly finished. The divider marks a seam in time, not a guarantee that everything above it finished successfully.
 
-**Background work on continue.** Background work (`.work()`, `.forEachBackground()`) follows the same memoization rule as foreground blocks: a background task that completed and retained its trace before the crash is restored from the log, not re-run. A background task that was still in flight when the crash hit has no completed trace to restore, so it re-runs from the top on continuation — the guarantee is at-least-once, not exactly-once, so any non-idempotent side effect in that task needs its own `runOnce` guard. See [Durability of background work](/docs/advanced/sequencer-side-chains#durability-of-background-work) for the full contract, including the failed-work-under-a-completed-parent case.
+**Background work on continue.** Background work (`.sideChain()`, `.forEachSideChain()`) follows the same memoization rule as foreground blocks: a background task that completed and retained its trace before the crash is restored from the log, not re-run. A background task that was still in flight when the crash hit has no completed trace to restore, so it re-runs from the top on continuation — the guarantee is at-least-once, not exactly-once, so any non-idempotent side effect in that task needs its own `runOnce` guard. See [Durability of background work](/docs/advanced/sequencer-side-chains#durability-of-background-work) for the full contract, including the failed-work-under-a-completed-parent case.
 
 **Example.** Start a flow that does enough work to take a few seconds, kill the server mid-run, and restart it. Reopen the DevTool, find the request — its pill now reads `interrupted` — and click Continue from its overflow menu. Watch the stream: the earlier items appear immediately (restored from the log), then the divider, then new items streaming in live as the in-flight block re-runs and the request finishes.
 

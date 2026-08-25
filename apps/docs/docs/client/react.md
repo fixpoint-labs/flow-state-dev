@@ -100,6 +100,59 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 `resumeLatestRequest` is a no-op when the latest request is `completed`, `aborted`, or `in_progress` — only `interrupted` and `failed` are retryable.
 
+### Background work
+
+Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on somewhere else. `session.workstreams` is how you show it.
+
+Each entry is one body of background work, with enough on it to render a row:
+
+```tsx
+const session = useSession(sessionId, { flowKind: "assistant" });
+
+return (
+  <aside>
+    {session.workstreams.map((work) => (
+      <button key={work.id} onClick={() => setOpenJobId(work.id)}>
+        {work.topic ?? "Background work"} — {work.status ?? "not started"}
+      </button>
+    ))}
+  </aside>
+);
+```
+
+This list sits beside the conversation rather than inside it. Nothing a background job produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
+
+#### When the list changes
+
+The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. It does not update on its own while someone sits and watches, so a job started in another tab shows up on their next action — or immediately, if you give them a refresh control.
+
+`session.workstreamsStale` turns `true` when a re-read fails. The rows already fetched stay on screen, so use this to mark them as possibly out of date rather than showing an empty panel.
+
+#### What a row's status tells you
+
+`status` is missing until the work has actually run something. Otherwise it is either how the work ended, or `"active"`.
+
+`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the job is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up.
+
+New status values can appear over time. Render one you don't recognise instead of switching exhaustively over the set.
+
+#### Opening one
+
+A body of background work is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
+
+```tsx
+function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {
+  // `autoResume` matters here: without it you load one snapshot and it never
+  // fills in while the job keeps going.
+  const job = useSession(jobId, { flowKind, autoResume: true });
+  return <ItemsRenderer items={job.items} />;
+}
+```
+
+Pass the **same flow kind as the conversation the job belongs to**. Background work runs on its parent flow's worker core, so the job is stamped with that flow's kind rather than a kind of its own — you already have the value, and it needs no lookup. Passing a different name reads as a different flow, and an active job's stream comes back 404 with the view stuck on its first snapshot.
+
+Steps show up as the job finishes them. You won't see text being typed out as it is generated — background work surfaces completed steps only.
+
 ### `useClientData` — Client Data
 
 ```tsx
@@ -323,7 +376,7 @@ const { pending } = useSuspensions(session, {
 By default `ItemRenderer` renders a built-in approval card (`ApprovalRenderer`) for `type === "suspension"` items. Set `flowKind` on `<FlowProvider>` so the card can call the resume endpoint:
 
 ```tsx
-<FlowProvider flowKind="my-flow" baseUrl="/api/flows">
+<FlowProvider flowKind="my-flow">
   <ItemsRenderer items={session.items} />
 </FlowProvider>
 ```
@@ -335,7 +388,7 @@ With just `flowKind` set, the inline card resolves with a non-streaming resume �
 ```tsx
 import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
-<FlowProvider flowKind="my-flow" baseUrl="/api/flows">
+<FlowProvider flowKind="my-flow">
   <SuspensionResolverProvider resolve={session.resumeSuspension}>
     <ItemsRenderer items={session.items} />
   </SuspensionResolverProvider>

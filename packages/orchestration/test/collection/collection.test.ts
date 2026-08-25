@@ -344,11 +344,13 @@ describe.each([
     it("resets stale-leased tasks back to pending", async () => {
       setNow(1000);
       await collection.addTask({ id: "t", goal: "t" });
-      // Lease 30s.
+      // Default lease: two minutes (FIX-1005 raised it from 30s, because a
+      // lease is now something a live worker renews rather than a number that
+      // expires under everyone).
       await collection.claim("w");
       events.length = 0;
       // Move past lease expiry.
-      setNow(1000 + 60_000);
+      setNow(1000 + 180_000);
       const reclaimed = await collection.reclaim();
       expect(reclaimed).toBe(1);
       const t = collection.get("t")!;

@@ -14,23 +14,40 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
-import type { Task, TaskStatus } from "../schema/task";
+import { withOutcome } from "@flow-state-dev/core/helpers";
+import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
-import { assertTransitionAllowed } from "../schema/task-status";
-import type { TaskCollectionRef, TaskTransitionOptions } from "./types";
+import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
+import type {
+  TaskCollectionRef,
+  TaskTransitionOptions,
+  TaskWriteOutcome,
+} from "./types";
 import {
+  applyAbandonmentSettlement,
   applyClaimToTask,
   applyTransition,
+  assertValidLeaseDeadline,
+  assertValidLeaseDuration,
   buildInitialTask,
+  claimDisposition,
   createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
-  defaultEligibility,
+  DEFAULT_MAX_ABANDONMENTS,
   defaultOrder,
+  denyRetry,
+  grantRetry,
+  isClaimable,
   listTasks,
-  shouldDeclineTransition,
-  shouldRetryOnFail,
+  retryBudgetExhaustedError,
+  routeFailure,
+  sumGrantedRetries,
+  assertTransitionFrom,
+  transitionDeclineReason,
 } from "./internal";
+import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
+import { createTaskChangeEmitter } from "./change-event";
 import {
   TaskCapExceededError,
   validateTaskCaps,
@@ -60,6 +77,12 @@ export interface SequencerBackedOptions extends TaskCapOptions {
   getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  /**
+   * Execution coordinate stamped onto `task.claimedBy` at claim time
+   * (FIX-1005). The factory reads it off the `BlockContext` it already
+   * receives; omit it and claims record no coordinate.
+   */
+  claimIdentity?: TaskClaimIdentity;
 }
 
 /**
@@ -79,12 +102,15 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
+  // Captured because `fail`'s own `options` parameter shadows the factory's.
+  const collectionId = options.collectionId;
   validateTaskCaps(`[tasks] collection "${options.collectionId}"`, options);
   // `null` (explicitly unbounded) and omission collapse to the same runtime
   // state here — the distinction only matters at the construction points that
   // decide whether to apply a default.
   const maxTotalTasks = options.maxTotalTasks ?? undefined;
   const maxEnqueuedTasks = options.maxEnqueuedTasks ?? undefined;
+  const maxTotalRetries = options.maxTotalRetries ?? undefined;
   const wrap = createTaskHandleWrapper<TInput, TOutput>(
     options.collectionId,
     options.getItems,
@@ -98,20 +124,13 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       : {};
   }
 
-  function emit(
-    kind: TaskChangeKind,
-    task: Task<TInput, TOutput>,
-    prevStatus?: TaskStatus
-  ): void {
-    if (onChange === undefined) return;
-    onChange({
-      collectionId: options.collectionId,
-      taskId: task.id,
-      kind,
-      task: task as Task,
-      prevStatus,
-    });
-  }
+  const emit = createTaskChangeEmitter<TInput, TOutput>(
+    options.collectionId,
+    onChange
+  );
+
+  /** The tasks map `casWrite` hands to its mutator and expects back. */
+  type TasksMap<I, O> = Record<string, Task<I, O>>;
 
   /**
    * Run a CAS-guarded write. The `mutate` callback returns the next tasks
@@ -119,10 +138,9 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
    * propagate; the CAS retry loop in `atomicState` re-runs the callback
    * with the freshest committed tasks map.
    *
-   * This helper does not emit. Each public method emits explicitly after
-   * `casWrite` returns, using the post-mutation task it captured (the
-   * captured value reflects the final winning attempt — earlier retry
-   * attempts are overwritten).
+   * This helper does not emit. Each public method emits explicitly after the
+   * write returns, using the outcome its callback returned through
+   * `withOutcome` — which is by construction the invocation that committed.
    */
   async function casWrite(
     mutate: (
@@ -182,73 +200,203 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   }
 
   /**
-   * Run one lifecycle transition inside the CAS.
+   * Run one lifecycle transition inside the CAS, returning what it did
+   * (FIX-976).
    *
    * `guards` makes the write advisory (FIX-951): evaluated against the
    * freshest committed task from inside the mutator, so the decision is
    * race-free rather than a caller-side pre-check. A declined write returns
-   * `undefined` from the mutator, which patches nothing and emits nothing.
+   * `undefined` from the mutator, which patches nothing and emits nothing —
+   * and the reason travels out on the verdict.
+   *
+   * The verdict travels out as the callback's return value, so it describes the
+   * invocation that committed even when `casWrite` replays this closure with a
+   * fresher tasks map.
    */
   async function transitionTo(
     id: string,
     targetStatus: TaskStatus,
-    kind: TaskChangeKind,
+    kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    guards?: TaskTransitionOptions
-  ): Promise<void> {
-    let captured:
-      | { task: Task<TInput, TOutput>; prevStatus: TaskStatus }
-      | undefined;
-
-    await casWrite((tasks) => {
-      const task = ownTask(tasks, id);
-      if (task === undefined) {
-        throw new Error(`[tasks] task "${id}" not found`);
-      }
-      if (shouldDeclineTransition(task as Task, targetStatus, guards)) {
-        captured = undefined;
-        return undefined;
-      }
-      assertTransitionAllowed(task.status, targetStatus, id);
-      const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
-      captured = { task: next, prevStatus: task.status };
-      return { ...tasks, [id]: next };
-    });
-
-    if (captured !== undefined) {
-      emit(kind, captured.task, captured.prevStatus);
-    }
+    guards?: TaskTransitionOptions,
+    requireFrom?: TaskStatus
+  ): Promise<TaskWriteOutcome> {
+    return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
   }
 
+  /**
+   * What a derived transition decided to write, computed inside the CAS.
+   *
+   * `kind: null` performs the transition without publishing a `task-change`
+   * item — see the resource backing's `transitionRef` for the one caller
+   * (`renewLease`) and why a renewal is not a lifecycle change.
+   */
+  interface DerivedTransition {
+    targetStatus: TaskStatus;
+    kind: TaskChangeKind | null;
+    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
+    /** The one source status this verb may run from — see `assertTransitionFrom`. */
+    requireFrom?: TaskStatus;
+  }
+
+  /**
+   * `transitionTo` for a transition whose TARGET depends on the ledger (FIX-948).
+   *
+   * `fail()` is the only caller: its retry-vs-terminal routing now reads a
+   * board-wide sum, and a sum read outside the write races the write it gates.
+   * So `derive` runs inside the mutator, against the committed map, and re-runs
+   * on every CAS retry — which is what makes "the budget's worth lands, and no
+   * more" a claim we can hold rather than a cosmetic one.
+   *
+   * **`derive` must be pure.** It only chooses what to write; the write itself
+   * happens below, after the decline check. That ordering is a correctness
+   * requirement, not a style preference — see the mutator body.
+   */
+  async function transitionDerived(
+    id: string,
+    derive: (
+      task: Task<TInput, TOutput>,
+      tasks: Readonly<Record<string, Task<TInput, TOutput>>>
+    ) => DerivedTransition,
+    guards?: TaskTransitionOptions
+  ): Promise<TaskWriteOutcome> {
+    /** What one invocation did — returned, never captured outward. */
+    type TransitionResult =
+      | { kind: "declined"; verdict: TaskWriteOutcome }
+      | {
+          kind: "recorded";
+          changeKind: TaskChangeKind | null;
+          task: Task<TInput, TOutput>;
+          prevStatus: TaskStatus;
+        };
+
+    const outcome = await withOutcome(
+      casWrite,
+      (tasks): { state: TasksMap<TInput, TOutput> | undefined; result: TransitionResult } => {
+        const task = ownTask(tasks, id);
+        if (task === undefined) {
+          throw new Error(`[tasks] task "${id}" not found`);
+        }
+        // Choosing the target is pure — it reads the ledger and writes nothing —
+        // so running it here does not weaken the ordering the decline check
+        // below depends on. NOTHING may be recorded before that check: the
+        // board's failure write-back passes `{ ifAllowed, claim }` so a
+        // displaced worker's late failure is discarded, and a retry grant or a
+        // denial marker written ahead of the decline would let that stale
+        // failure spend another task's retry allowance, or mark the board
+        // "retry-budget-exhausted" when nothing was ever refused. Both are
+        // invisible to a test that only checks the task's status.
+        const { targetStatus, kind, patch, requireFrom } = derive(task, tasks);
+        const reason = transitionDeclineReason(
+          task as Task,
+          targetStatus,
+          guards,
+          collectionId,
+          now(),
+          requireFrom,
+          kind ?? undefined
+        );
+        if (reason !== undefined) {
+          return {
+            state: undefined,
+            result: {
+              kind: "declined",
+              verdict: { outcome: "declined", reason, status: task.status },
+            },
+          };
+        }
+        assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
+        assertTransitionAllowed(task.status, targetStatus, id);
+        // Provenance is stamped here, inside the CAS, off the `task` this
+        // invocation read — so a replay against a fresher map stamps off that
+        // map and there is nothing to reset (FIX-989).
+        const next = stampWrite(
+          task,
+          applyTransition(task, { ...patch(task), status: targetStatus }, now()),
+          guards?.write
+        );
+        return {
+          state: { ...tasks, [id]: next },
+          result: { kind: "recorded", changeKind: kind, task: next, prevStatus: task.status },
+        };
+      }
+    );
+
+    if (outcome === undefined) return { outcome: "unchanged" };
+    if (outcome.kind === "declined") return outcome.verdict;
+    if (outcome.changeKind !== null) {
+      emit(outcome.changeKind, outcome.task, outcome.prevStatus);
+    }
+    return { outcome: "recorded" };
+  }
+
+  /**
+   * Patch a task's fields inside the CAS, returning what it did (FIX-976).
+   *
+   * `declineOnTerminal` is the **assignment-only** terminal guard (epic
+   * constraint A1). It is keyed by operation and passed by `setAssignee` alone —
+   * the four sibling patch methods pass nothing and keep writing to terminal
+   * tasks, which two first-party blocks depend on (the supervisor's
+   * failure-category audit and `cascadeSkipDependents`' `skipped` label). Making
+   * this helper-wide would break both.
+   *
+   * Evaluated against the freshest committed task from inside the mutator, so
+   * the decision is race-free rather than a caller-side pre-check.
+   */
   async function patchOne(
     id: string,
     kind: TaskChangeKind,
-    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined
-  ): Promise<void> {
-    let captured: Task<TInput, TOutput> | undefined;
+    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
+    options?: { declineOnTerminal?: boolean }
+  ): Promise<TaskWriteOutcome> {
+    /** What one `patchOne` invocation did — returned, never captured outward. */
+    type PatchResult =
+      | { kind: "declined"; verdict: TaskWriteOutcome }
+      | { kind: "unchanged" }
+      | { kind: "recorded"; task: Task<TInput, TOutput> };
 
-    await casWrite((tasks) => {
-      const task = ownTask(tasks, id);
-      if (task === undefined) {
-        throw new Error(`[tasks] task "${id}" not found`);
+    const outcome = await withOutcome(
+      casWrite,
+      (tasks): { state: TasksMap<TInput, TOutput> | undefined; result: PatchResult } => {
+        const task = ownTask(tasks, id);
+        if (task === undefined) {
+          throw new Error(`[tasks] task "${id}" not found`);
+        }
+        if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
+          return {
+            state: undefined,
+            result: {
+              kind: "declined",
+              verdict: { outcome: "declined", reason: "terminal", status: task.status },
+            },
+          };
+        }
+        const update = patch(task);
+        if (update === undefined) return { state: undefined, result: { kind: "unchanged" } };
+        // No token: these five methods take no options object, so they bump the
+        // revision and mint no receipt (FIX-989).
+        const next = stampWrite(task, applyTransition(task, update, now()));
+        return {
+          state: { ...tasks, [id]: next },
+          result: { kind: "recorded", task: next },
+        };
       }
-      const update = patch(task);
-      if (update === undefined) {
-        captured = undefined;
-        return undefined;
-      }
-      const next = applyTransition(task, update, now());
-      captured = next;
-      return { ...tasks, [id]: next };
-    });
+    );
 
-    if (captured !== undefined) {
-      emit(kind, captured);
-    }
+    if (outcome === undefined || outcome.kind === "unchanged") return { outcome: "unchanged" };
+    if (outcome.kind === "declined") return outcome.verdict;
+    emit(kind, outcome.task);
+    return { outcome: "recorded" };
   }
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    // The one clock this collection stamps and judges leases against
+    // (FIX-1005). Everything comparing against `leaseUntil` reads it, so the
+    // claim write and the readers cannot end up on two timelines.
+    now,
+    // This backing enforces, so the resolved budget IS the limit in force.
+    maxTotalRetries: maxTotalRetries ?? null,
 
     async addTask(init) {
       // Build the task once — id and createdAt are stable across CAS retries
@@ -298,39 +446,109 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async claim(_workerId, claimOptions) {
-      let captured:
-        | { task: Task<TInput, TOutput>; prevStatus: TaskStatus }
-        | undefined;
+      const leaseDurationMs = claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
+      assertValidLeaseDuration(leaseDurationMs);
 
-      await casWrite((tasks) => {
-        const lookup = (id: string): Task | undefined =>
-          (ownTask(tasks, id) as unknown as Task | undefined);
-        const eligibility = claimOptions?.eligibility ?? defaultEligibility(lookup);
-        const order = claimOptions?.order ?? defaultOrder;
+      /** What one attempt wrote — returned, never captured outward, so a CAS
+       *  replay reports only the invocation that committed. */
+      type ClaimPass = {
+        claimed?: { task: Task<TInput, TOutput>; prevStatus: TaskStatus };
+        settled: { task: Task<TInput, TOutput>; prevStatus: TaskStatus }[];
+      };
 
-        const candidates = Object.values(tasks).filter(eligibility).slice().sort(order);
-        const pick = candidates[0];
-        if (pick === undefined) {
-          captured = undefined;
-          return undefined;
+      const captured = await withOutcome(
+        casWrite,
+        (tasks): { state: TasksMap<TInput, TOutput> | undefined; result: ClaimPass } => {
+          const lookup = (id: string): Task | undefined =>
+            ownTask(tasks, id) as unknown as Task | undefined;
+          // A caller's `eligibility` NARROWS the substrate's candidate set; it
+          // does not replace it (FIX-1005) — see the resource backing's `claim`
+          // for why replacement made recovery opt-out-by-accident.
+          const narrow = claimOptions?.eligibility;
+          const at = now();
+          const admits = (task: Task): boolean =>
+            isClaimable(task, lookup, at) && (narrow === undefined || narrow(task));
+          const order = claimOptions?.order ?? defaultOrder;
+
+          const candidates = Object.values(tasks)
+            .filter((task) => admits(task as Task))
+            .slice()
+            .sort(order);
+
+          const next: Record<string, Task<TInput, TOutput>> = { ...tasks };
+          const pass: ClaimPass = { settled: [] };
+
+          // Admission said the claim path should look at these rows;
+          // disposition decides what happens to each. Scanning past a
+          // settlement rather than returning `null` keeps one exhausted row at
+          // the head of the queue from hiding the work behind it — the whole
+          // map is already inside this one write, so it costs nothing here.
+          for (const candidate of candidates) {
+            if (
+              claimDisposition(candidate as Task, at, DEFAULT_MAX_ABANDONMENTS) === "claim"
+            ) {
+              // Three stamps, composed: the claim records where it runs
+              // (FIX-1005), the lease is stamped, and the write records its
+              // provenance (FIX-989).
+              const claimed = stampWrite(
+                candidate,
+                applyClaimToTask(candidate, at, leaseDurationMs, options.claimIdentity)
+              );
+              next[claimed.id] = claimed;
+              pass.claimed = { task: claimed, prevStatus: candidate.status };
+              break;
+            }
+            // The abandonment settlement is a committed write too, so it
+            // advances the record the same way (FIX-989).
+            const settled = stampWrite(
+              candidate,
+              applyAbandonmentSettlement(candidate, at, DEFAULT_MAX_ABANDONMENTS)
+            );
+            next[settled.id] = settled;
+            pass.settled.push({ task: settled, prevStatus: candidate.status });
+          }
+
+          if (pass.claimed === undefined && pass.settled.length === 0) {
+            return { state: undefined, result: pass };
+          }
+          return { state: next, result: pass };
         }
-
-        const next = applyClaimToTask(
-          pick,
-          now(),
-          claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS
-        );
-        captured = { task: next, prevStatus: pick.status };
-        return { ...tasks, [next.id]: next };
-      });
+      );
 
       if (captured === undefined) return null;
-      emit("claimed", captured.task, captured.prevStatus);
-      return captured.task;
+      // A settlement is a successful mutation and owes its `task-change`, or a
+      // streamed UI keeps showing `in_progress` on a row storage terminalized.
+      for (const settled of captured.settled) {
+        emit("errored", settled.task, settled.prevStatus);
+      }
+      if (captured.claimed === undefined) return null;
+      emit("claimed", captured.claimed.task, captured.claimed.prevStatus);
+      return captured.claimed.task;
+    },
+
+    async renewLease(id, leaseUntil, renewOptions) {
+      assertValidLeaseDeadline(leaseUntil);
+      if (renewOptions.claim === undefined) {
+        throw new Error(
+          `[tasks] renewLease requires the claim ticket the lease belongs to. ` +
+            `Renewal is the holder asserting it is still alive, so an unfenced ` +
+            `renewal would let anything keep anyone's lease open.`
+        );
+      }
+      // Same-status, so this rides the ordinary transition path and picks up
+      // all four decline arms — the lease fence among them. See the resource
+      // backing's `renewLease` for why `updatedAt` moving is the right answer.
+      return transitionTo(
+        id,
+        "in_progress",
+        null,
+        () => ({ leaseUntil }),
+        { ...renewOptions, ifAllowed: true }
+      );
     },
 
     async complete(id, output, options) {
-      await transitionTo(
+      return transitionTo(
         id,
         "completed",
         "completed",
@@ -338,6 +556,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           output,
           completedAt: now(),
           leaseUntil: undefined,
+          claimedBy: undefined,
           error: undefined,
         }),
         options
@@ -345,98 +564,150 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async fail(id, error, options) {
-      // Retry path: if the task carries a `maxAttempts` budget that
-      // hasn't been exhausted, soft-fail back to `pending` and capture
-      // the error as `feedback` for the next attempt. The next claim
-      // will increment `attempts` again. Hard-fail (no budget left, or
-      // no budget set) goes terminal.
+      // Retry-vs-terminal, and whether a retry counts against the board's
+      // budget, is `routeFailure`'s decision — gate order, and the reason the
+      // budget is scoped to attempt-owned failures, are documented there.
       //
-      // `options` must reach BOTH branches. `shouldRetryOnFail` is
-      // status-blind — it reads only `attempts` vs `maxAttempts` — so a task
-      // settled mid-flight that still carries retry budget takes the retry
-      // branch and attempts a transition out of a terminal status. Threading
-      // the guards into only the hard-fail branch leaves the escape live for
-      // exactly that shape, and passes any test that never sets `maxAttempts`.
-      const current = ownTask(readTasks(), id);
-      if (current !== undefined && shouldRetryOnFail(current)) {
-        await transitionTo(
-          id,
-          "pending",
-          "retried",
-          () => ({
-            feedback: error,
-            leaseUntil: undefined,
-            error: undefined,
-          }),
-          options
-        );
-        return;
-      }
-      await transitionTo(
+      // Two things belong to this call site rather than to that helper:
+      //
+      // 1. The decision runs INSIDE the atomic write (FIX-948). `fail` used to
+      //    read the task outside the CAS and then open a write — already a
+      //    latent race on `maxAttempts`, and fatal for a board-wide budget,
+      //    since the sum a concurrent failure reads must include the grant its
+      //    rival committed, or two failures at the boundary both retry.
+      // 2. `options` reaches EVERY branch. The routing is status-blind on the
+      //    `maxAttempts` half, so threading the guards into only the hard-fail
+      //    branch leaves live an escape out of a terminal status — and passes
+      //    any test that never sets `maxAttempts`.
+      return transitionDerived(
         id,
-        "errored",
-        "errored",
+        (task, tasks) => {
+          const routing = routeFailure(
+            task as Task,
+            () => sumGrantedRetries(Object.values(tasks) as Task[]),
+            maxTotalRetries
+          );
+          if (routing.action === "retry") {
+            return {
+              targetStatus: "pending" as const,
+              kind: "retried" as const,
+              patch: (current: Task<TInput, TOutput>) => ({
+                feedback: error,
+                leaseUntil: undefined,
+                claimedBy: undefined,
+                error: undefined,
+                ...(routing.countsAgainstBudget
+                  ? { retryLedger: grantRetry(current) }
+                  : {}),
+              }),
+            };
+          }
+          return {
+            targetStatus: "errored" as const,
+            kind: "errored" as const,
+            patch: (current: Task<TInput, TOutput>) => ({
+              error: routing.deniedByBudget
+                ? retryBudgetExhaustedError(error, routing.limit, collectionId)
+                : error,
+              completedAt: now(),
+              leaseUntil: undefined,
+              claimedBy: undefined,
+              ...(routing.deniedByBudget ? { retryLedger: denyRetry(current) } : {}),
+            }),
+          };
+        },
+        options
+      );
+    },
+
+    async block(id, reason, options) {
+      return transitionTo(
+        id,
+        "blocked",
+        "blocked",
+        () => (reason !== undefined ? { error: reason } : {}),
+        options
+      );
+    },
+
+    async unblock(id, options) {
+      return transitionTo(
+        id,
+        "pending",
+        "unblocked",
+        () => ({ error: undefined }),
+        options,
+        // `blocked` is the ONLY status this may run from. The other two paths
+        // to `pending` have their own verbs (`reclaim`, `resumeFromReview`),
+        // and those clear the lease and the claim coordinate; this one has
+        // nothing to clear because `blocked` is reachable only from `pending`.
+        "blocked"
+      );
+    },
+
+    async awaitReview(id, feedback, options) {
+      return transitionTo(
+        id,
+        "awaiting_review",
+        "review_requested",
+        () => (feedback !== undefined ? { feedback } : {}),
+        options
+      );
+    },
+
+    async resumeFromReview(id, feedback, options) {
+      return transitionTo(
+        id,
+        "pending",
+        "resumed",
         () => ({
-          error,
-          completedAt: now(),
+          feedback: feedback ?? undefined,
           leaseUntil: undefined,
+          claimedBy: undefined,
         }),
         options
       );
     },
 
-    async block(id, reason) {
-      await transitionTo(id, "blocked", "blocked", () =>
-        reason !== undefined ? { error: reason } : {}
-      );
-    },
-
-    async unblock(id) {
-      await transitionTo(id, "pending", "unblocked", () => ({
-        error: undefined,
-      }));
-    },
-
-    async awaitReview(id, feedback) {
-      await transitionTo(id, "awaiting_review", "review_requested", () =>
-        feedback !== undefined ? { feedback } : {}
-      );
-    },
-
-    async resumeFromReview(id, feedback) {
-      await transitionTo(id, "pending", "resumed", () => ({
-        feedback: feedback ?? undefined,
-        leaseUntil: undefined,
-      }));
-    },
-
-    async cancel(id, reason) {
-      await transitionTo(
+    async cancel(id, reason, options) {
+      // The decline is now REPORTED (FIX-976) — behaviour is unchanged, but the
+      // caller learns the cancel did nothing instead of reading silence as
+      // success. Substrate write-backs discard this and stay silent.
+      return transitionTo(
         id,
         "cancelled",
         "cancelled",
         () =>
           reason !== undefined
-            ? { error: reason, completedAt: now(), leaseUntil: undefined }
-            : { completedAt: now(), leaseUntil: undefined },
-        // Unchanged behaviour: cancelling an already-settled task is a no-op.
-        // The widened condition adds a disallowed arm, which for a `cancelled`
-        // target can only fire where the terminal arm already did.
-        { ifAllowed: true }
+            ? {
+                error: reason,
+                completedAt: now(),
+                leaseUntil: undefined,
+                claimedBy: undefined,
+              }
+            : {
+                completedAt: now(),
+                leaseUntil: undefined,
+                claimedBy: undefined,
+              },
+        // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
+        // a caller's ticket must reach the guard, but "advisory by
+        // construction" is this method's contract and a caller cannot switch it
+        // off. Unchanged behaviour: cancelling an already-settled task is a
+        // no-op; the disallowed arm, for a `cancelled` target, can only fire
+        // where the terminal arm already did.
+        { ...options, ifAllowed: true }
       );
     },
 
     async reclaim(nowOverride) {
       const at = nowOverride ?? now();
-      const reclaimed: Task<TInput, TOutput>[] = [];
 
-      await casWrite((tasks) => {
+      const reclaimed = (await withOutcome(casWrite, (tasks) => {
         const next: Record<string, Task<TInput, TOutput>> = { ...tasks };
-        // Reset on every CAS retry — `casWrite` may replay this closure
-        // with a fresher tasks snapshot, and we must not push duplicates
-        // from a previous attempt onto `reclaimed` (which the post-write
-        // emit loop iterates).
-        reclaimed.length = 0;
+        // Built per invocation, so a replay reports only the attempt that
+        // committed rather than concatenating every attempt's tasks.
+        const claimedBack: Task<TInput, TOutput>[] = [];
         for (const task of Object.values(tasks)) {
           if (
             task.status === "in_progress" &&
@@ -446,18 +717,22 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
             // Preserve `assignee` — it's the user-set worker-registry
             // routing key, not the runtime worker identity. Clearing it
             // would break re-dispatch through a worker registry.
-            const reset: Task<TInput, TOutput> = {
+            const reset: Task<TInput, TOutput> = stampWrite(task, {
               ...task,
               status: "pending",
               leaseUntil: undefined,
+              claimedBy: undefined,
               updatedAt: at,
-            };
+            });
             next[task.id] = reset;
-            reclaimed.push(reset);
+            claimedBack.push(reset);
           }
         }
-        return reclaimed.length === 0 ? undefined : next;
-      });
+        return {
+          state: claimedBack.length === 0 ? undefined : next,
+          result: claimedBack,
+        };
+      })) ?? [];
 
       // `kind: "resumed"` covers both human-review resume and lease reclaim
       // — the canonical "task is back to pending" event for a lifecycle UI.
@@ -468,19 +743,24 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async setAssignee(id, assignee) {
-      await patchOne(id, "assignee_changed", (task) =>
-        task.assignee === assignee ? undefined : { assignee }
+      // The one guarded patch operation (FIX-976 / A1): reassigning a finished
+      // task is refused, because its work will never run again.
+      return patchOne(
+        id,
+        "assignee_changed",
+        (task) => (task.assignee === assignee ? undefined : { assignee }),
+        { declineOnTerminal: true }
       );
     },
 
     async setPriority(id, priority) {
-      await patchOne(id, "priority_changed", (task) =>
+      return patchOne(id, "priority_changed", (task) =>
         task.priority === priority ? undefined : { priority }
       );
     },
 
     async addLabel(id, label) {
-      await patchOne(id, "label_changed", (task) => {
+      return patchOne(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (labels.includes(label)) return undefined;
         return { labels: [...labels, label] };
@@ -488,7 +768,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async removeLabel(id, label) {
-      await patchOne(id, "label_changed", (task) => {
+      return patchOne(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (!labels.includes(label)) return undefined;
         return { labels: labels.filter((l) => l !== label) };
@@ -496,7 +776,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async patchMetadata(id, patch) {
-      await patchOne(id, "metadata_changed", (task) => {
+      return patchOne(id, "metadata_changed", (task) => {
         const merged = { ...(task.metadata ?? {}), ...patch };
         return { metadata: merged };
       });

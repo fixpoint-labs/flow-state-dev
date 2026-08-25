@@ -76,8 +76,8 @@ const stage = sequencer({ name: "cross-package-validation", inputSchema: z.strin
       })
     }
   })
-  .work((value) => value.numbers[0] ?? 0, scale)
-  .waitForWork({ failOnError: true })
+  .sideChain((value) => value.numbers[0] ?? 0, scale)
+  .waitForSideChain({ failOnError: true })
   .rescue([
     {
       when: [Error],
@@ -125,8 +125,10 @@ const flow = defineFlow({
         })
       }
     },
-    clientData: {
-      activeMode: (ctx) => ctx.state.mode
+    client: {
+      derived: {
+        activeMode: (ctx) => ctx.state.mode
+      }
     }
   }
 });

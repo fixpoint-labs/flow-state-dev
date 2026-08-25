@@ -777,28 +777,25 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
         // "did the selector pick vercel or fall back to just-bash?").
         name: `bash-${provider.type}-ensure-sandbox`,
         inputSchema: z.any(),
-        outputSchema: z.any(),
         activeStatusMessage:
           provider.type === "moat"
             ? "Preparing bash sandbox (moat — first run can take 30–60s while the image builds)…"
             : `Preparing bash sandbox (${provider.type})…`,
-        execute: async (input: unknown, ctx) => {
+        execute: async (_input: unknown, ctx) => {
           await getOrCreate(ctx);
-          return input;
         },
       })
     : null;
 
   // Background purge of stale framework-managed MOAT containers.
-  // Dispatched via `.workIf(isCold, ...)` so it runs in parallel with
+  // Dispatched via `.sideChainIf(isCold, ...)` so it runs in parallel with
   // the cold-boot ensureSandbox step and never appears on warm paths.
   // Bounded by `DEFAULT_MAX_CONTAINERS` (50); excess oldest-first.
   const purgeStaleContainers = provider.type === "moat"
     ? handler({
         name: "bash-purge-stale-containers",
         inputSchema: z.any(),
-        outputSchema: z.any(),
-        execute: async (input: unknown, ctx) => {
+        execute: async (_input: unknown, ctx) => {
           const runName =
             provider.runName ?? `fsdev-${getIdentity(ctx).sessionId}`;
           const { destroyed } = await purgeOldRuns({
@@ -812,7 +809,6 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
               `[moat] purged ${destroyed.length} stale container(s): ${destroyed.join(", ")}`,
             );
           }
-          return input;
         },
       })
     : null;
@@ -944,11 +940,11 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
 
   // Setup-needing providers: `tapIf(isCold, ...)` only emits the
   // ensureSandbox node on the cold path. The purge sidechain (MOAT
-  // only) runs in parallel via `.workIf(isCold, ...)` — fire-and-forget
+  // only) runs in parallel via `.sideChainIf(isCold, ...)` — fire-and-forget
   // so it never blocks the leaf.
-  const withColdSetup = <T extends { workIf: any; tapIf: any }>(s: T): T => {
+  const withColdSetup = <T extends { sideChainIf: any; tapIf: any }>(s: T): T => {
     const stepA = purgeStaleContainers
-      ? s.workIf(isCold, purgeStaleContainers)
+      ? s.sideChainIf(isCold, purgeStaleContainers)
       : s;
     return stepA.tapIf(isCold, ensureSandbox!) as T;
   };

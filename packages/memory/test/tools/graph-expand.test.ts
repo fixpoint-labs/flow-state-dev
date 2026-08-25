@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { runForTest } from '@flow-state-dev/testing'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import { createResourceEdgeApi } from '@flow-state-dev/core/graph'
 import type { Edge, EdgeSlotConfig } from '@flow-state-dev/core/graph'
 
@@ -40,7 +40,7 @@ import {
 // Mocks
 // ---------------------------------------------------------------------------
 
-function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<WorkingMemoryState> {
+function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = { entries: [], currentTurn: 0, ...initial }
   return {
     name: 'workingMemory', scope: 'session',
@@ -51,10 +51,10 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
-function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle<EpisodicMemoryState> {
+function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = { episodes: [], totalEncoded: 0, ...initial }
   return {
     name: 'episodicMemory', scope: 'user',
@@ -65,14 +65,14 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
 function createMockSemRef(
   facts: SemanticFact[],
   edges?: Edge[],
   relations?: EdgeSlotConfig,
-): ResourceHandle<SemanticMemoryState> {
+): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts,
     totalExtracted: 0,
@@ -88,7 +88,7 @@ function createMockSemRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as unknown as ResourceHandle<SemanticMemoryState>
+  } as unknown as ResourceRef<SemanticMemoryState>
   if (relations) {
     ;(ref as { edges?: unknown }).edges = createResourceEdgeApi(ref as never, relations)
   }
@@ -121,9 +121,9 @@ function makeEdge(overrides: Partial<Edge> & { from: string; to: string; type: s
 }
 
 function buildCtx(args: {
-  wm: ResourceHandle<WorkingMemoryState>
-  ep?: ResourceHandle<EpisodicMemoryState>
-  sem: ResourceHandle<SemanticMemoryState>
+  wm: ResourceRef<WorkingMemoryState>
+  ep?: ResourceRef<EpisodicMemoryState>
+  sem: ResourceRef<SemanticMemoryState>
 }): any {
   const refs: Record<string, any> = { workingMemory: args.wm, semanticMemory: args.sem }
   if (args.ep) refs.episodicMemory = args.ep
@@ -134,7 +134,7 @@ function buildCtx(args: {
 }
 
 async function runPrepare(
-  sem: ResourceHandle<SemanticMemoryState>,
+  sem: ResourceRef<SemanticMemoryState>,
   query: string,
 ): Promise<PrepareEnvelope> {
   const strategy = createLlmFilterStrategy({ model: 'mock-model' })

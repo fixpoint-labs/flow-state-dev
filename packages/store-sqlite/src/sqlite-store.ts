@@ -23,10 +23,37 @@ export type SQLiteRecordStoreConfig<TRecord, TListOptions> = {
   toWhere: (options?: TListOptions) => { clause: string; params: unknown[] };
   /**
    * Resolve the ORDER BY clause (column + direction) from list options.
-   * Defaults to `updated_at DESC`. Must return a trusted, non-parameterized
-   * SQL fragment.
+   * Returns `undefined` for the `updated_at DESC` default, or **`null` to emit
+   * no `ORDER BY` at all** (FIX-1010). Must return a trusted,
+   * non-parameterized SQL fragment.
+   *
+   * The unordered mode is a correctness bound, not a nicety: a `LIMIT 1`
+   * existence check over a status set stops at the first matching row only if
+   * nothing sorts first, and the rows such a check selects are exactly the
+   * ones that accumulate (a request whose approval gate expires stays
+   * non-terminal forever). With a trailing sort on an uncovered column that
+   * read grows with the history it sits on.
    */
-  resolveOrderBy?: (options?: TListOptions) => string;
+  resolveOrderBy?: (options?: TListOptions) => string | null | undefined;
+  /**
+   * Top-level `data` keys that `set` must not write (FIX-1026).
+   *
+   * The stored value wins in both directions: a written record that omits the
+   * key keeps the stored one, and a written record that carries it cannot
+   * change what is stored. Enforced **inside the write statement**, not by a
+   * read-then-write around it — SQLite is a multi-process store, so a separate
+   * `SELECT` before the `UPDATE` protects nothing against a second connection
+   * committing between the two.
+   *
+   * Used by the request store to take `abortRequested` off `set`'s write
+   * surface: every full-record writer builds its record from a snapshot taken
+   * before the flag existed, so a `set` that honoured the field would erase a
+   * cancellation nobody intended to touch.
+   *
+   * Keys are trusted, non-parameterized SQL literals — framework constants,
+   * never caller input.
+   */
+  preserveJsonKeys?: string[];
 };
 
 export type SQLiteRecordStore<TRecord, TListOptions> = {
@@ -76,11 +103,46 @@ export function createSQLiteRecordStore<
 ): SQLiteRecordStore<TRecord, TListOptions> {
   const { tableName, columns, toRow, toWhere, resolveOrderBy } = config;
 
+  const preserveJsonKeys = config.preserveJsonKeys ?? [];
+  for (const key of preserveJsonKeys) {
+    // Interpolated into SQL, so refuse anything that isn't a plain identifier
+    // rather than trusting the caller's discipline.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new Error(`preserveJsonKeys entry is not a plain identifier: ${key}`);
+    }
+  }
+
+  /**
+   * A `data` assignment that strips the preserved keys from the incoming value
+   * and re-applies whatever the stored row holds — in the one statement, so
+   * the read and the write cannot be separated by another connection.
+   *
+   * `json_patch` with `json('{}')` is a no-op for a key the stored row does not
+   * have, which is what removes it rather than writing a JSON `null`. The
+   * `->` operator returns the stored value's JSON representation, so a boolean
+   * survives as a boolean (`json_extract` would hand back `1`/`0` and quietly
+   * change the stored type).
+   */
+  function dataAssignment(source: string): string {
+    return preserveJsonKeys.reduce((acc, key) => {
+      const stripped = `json_remove(${acc}, '$.${key}')`;
+      return (
+        `json_patch(${stripped}, CASE WHEN json_type(${tableName}.data, '$.${key}') IS NULL` +
+        ` THEN json('{}')` +
+        ` ELSE json_object('${key}', json(${tableName}.data -> '$.${key}')) END)`
+      );
+    }, source);
+  }
+
   const allColumns = ["id", ...columns, "version", "created_at", "updated_at", "data"];
   const placeholders = allColumns.map(() => "?").join(", ");
   const updateSet = columns
     .map((col) => `${col} = excluded.${col}`)
-    .concat(["version = excluded.version", "updated_at = excluded.updated_at", "data = excluded.data"])
+    .concat([
+      "version = excluded.version",
+      "updated_at = excluded.updated_at",
+      `data = ${dataAssignment("excluded.data")}`
+    ])
     .join(", ");
 
   const upsertSQL = `INSERT INTO ${tableName} (${allColumns.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updateSet}`;
@@ -89,7 +151,9 @@ export function createSQLiteRecordStore<
     ...columns.map((col) => `${col} = ?`),
     "version = ?",
     "updated_at = ?",
-    "data = ?"
+    // Single bind of the incoming blob: the preserve expression reads the
+    // stored row, never the parameter, so the placeholder count is unchanged.
+    `data = ${dataAssignment("?")}`
   ].join(", ");
   const casUpdateSQL = `UPDATE ${tableName} SET ${updateAssignments} WHERE id = ? AND version = ?`;
   const casInsertSQL = `INSERT INTO ${tableName} (${allColumns.join(", ")}) VALUES (${placeholders})`;
@@ -133,8 +197,23 @@ export function createSQLiteRecordStore<
     path: string[],
     expectedVersion: ExpectedVersion,
     updatedAt: number,
+    verb: string,
     mutate: (current: unknown, record: DeltaRecord, path: string[]) => void
   ): SetResult<TRecord> {
+    // Mirrors `assertDeltaExpectedVersion` in the engine's
+    // `stores/scope-write-predicate` module (restated, not imported — this
+    // package depends on the engine type-only). Delta verbs read-modify-write
+    // an existing record, so "absent" is a call-site error rather than a lost
+    // race, and it must never reach the `expectedVersion + 1` below or the
+    // numeric bind parameter beside it.
+    //
+    // Refused by shape rather than by name, so a future member of
+    // `ExpectedVersion` cannot reach that arithmetic either.
+    if (typeof expectedVersion !== "number" && expectedVersion !== "any") {
+      throw new TypeError(
+        `${verb} cannot take expectedVersion ${JSON.stringify(expectedVersion)}: delta verbs update an existing record. Use set(id, record, "absent") to create one.`
+      );
+    }
     if (path.length < 1 || path.length > 2) {
       throw new Error(
         `sqlite delta verbs support depth-1 or depth-2 paths; got [${path.join(", ")}]`
@@ -189,6 +268,29 @@ export function createSQLiteRecordStore<
         return { ok: true, version: value.version };
       }
 
+      // "absent" is create-if-absent: no CAS update attempt at all, because
+      // any existing row is a conflict regardless of its version. The bare
+      // INSERT is the predicate — SQLite's primary key decides the race
+      // atomically, so two concurrent creates cannot both land even across
+      // connections. A read-then-insert here would pass every in-process test
+      // and still lose the race in production.
+      if (expectedVersion === "absent") {
+        try {
+          casInsertStmt.run(
+            id,
+            ...scalarValues,
+            value.version,
+            value.createdAt,
+            value.updatedAt,
+            data
+          );
+          return { ok: true, version: value.version };
+        } catch (error) {
+          if (!isPrimaryKeyConflict(error)) throw error;
+          return loadConflict<TRecord>(getStmt, id);
+        }
+      }
+
       // Try the CAS update first — the common case when a row already exists
       // at the expected version.
       const info = casUpdateStmt.run(
@@ -234,7 +336,7 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+      return runDelta(id, path, expectedVersion, updatedAt, "patchField", (_current, record, p) => {
         if (p.length === 2) {
           if (record.state[p[0]] == null || typeof record.state[p[0]] !== "object") {
             record.state[p[0]] = {};
@@ -256,7 +358,7 @@ export function createSQLiteRecordStore<
       if (path.length !== 1) {
         throw new Error(`incField supports depth-1 paths only; got [${path.join(", ")}]`);
       }
-      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+      return runDelta(id, path, expectedVersion, updatedAt, "incField", (_current, record, p) => {
         const existing = record.state[p[0]];
         record.state[p[0]] = (typeof existing === "number" ? existing : 0) + delta;
       });
@@ -272,7 +374,7 @@ export function createSQLiteRecordStore<
       if (path.length !== 1) {
         throw new Error(`pushToArray supports depth-1 paths only; got [${path.join(", ")}]`);
       }
-      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+      return runDelta(id, path, expectedVersion, updatedAt, "pushToArray", (_current, record, p) => {
         const existing = record.state[p[0]];
         record.state[p[0]] = Array.isArray(existing) ? [...existing, ...values] : [...values];
       });
@@ -284,7 +386,7 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+      return runDelta(id, path, expectedVersion, updatedAt, "deleteField", (_current, record, p) => {
         if (p.length === 2) {
           const parent = record.state[p[0]];
           if (parent != null && typeof parent === "object") {
@@ -307,7 +409,12 @@ export function createSQLiteRecordStore<
       if (clause.length > 0) {
         sql += ` WHERE ${clause}`;
       }
-      sql += ` ORDER BY ${resolveOrderBy?.(options) ?? "updated_at DESC"}`;
+      // `null` means "no ORDER BY" (FIX-1010); `undefined` keeps the default.
+      const orderBy =
+        resolveOrderBy === undefined ? "updated_at DESC" : resolveOrderBy(options);
+      if (orderBy !== null) {
+        sql += ` ORDER BY ${orderBy ?? "updated_at DESC"}`;
+      }
 
       const offset = Math.max(0, options?.offset ?? 0);
       const limit = options?.limit;

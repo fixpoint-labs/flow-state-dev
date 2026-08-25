@@ -9,6 +9,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
+import { isPublicReentryAllowed } from "./public-reentry";
 import { generateId } from "../utils/generate-id";
 import {
   jsonResponse,
@@ -69,6 +70,12 @@ type ResumeRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   durabilityProvider?: DurabilityProvider;
+  /**
+   * The host's `publicReentrySources` (FIX-999), read straight off the runtime
+   * config like `durabilityProvider` above. Absent → only the built-in sources
+   * are re-enterable.
+   */
+  publicReentrySources?: readonly string[];
   seams: InternalRouteSeams;
   requestContext: RequestContext;
 };
@@ -88,13 +95,12 @@ export async function handleResumeSuspension(
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
-  // A webhook request is reachable only through a verified webhook, never this
-  // public surface — resuming one would re-enter the handler with
-  // caller-supplied gate data and no signature check. Reject like the
-  // retry/continue routes (and before anything else can act on the record),
-  // returning the same not-found shape as a missing record so webhook requests
-  // are indistinguishable here.
-  if (originalRequest.source === "webhook") {
+  // Only a caller-facing source may be resumed here: resuming re-enters the
+  // handler with caller-supplied gate data. Shares the allow-list with the
+  // retry/continue routes (FIX-999) and runs before anything else can act on the
+  // record, returning the same not-found shape as a missing record so a refused
+  // request is indistinguishable from one that does not exist.
+  if (!isPublicReentryAllowed(originalRequest.source, ctx.publicReentrySources)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
@@ -249,9 +255,19 @@ export async function handleResumeSuspension(
   } catch (error) {
     // Setup failed before the point-of-no-return (continueRequest threw, or the
     // status transition never happened). Revert the suspension to pending so the
-    // operator can retry, and release the lease. Once runAction crosses into
-    // `in_progress` a failure is a durable terminal `failed` and does not reach
-    // here (continueRequest's `finished` carries it, not awaited above).
+    // operator can retry, and release the lease.
+    //
+    // Reverting is only safe because nothing that runs AFTER the run starts can
+    // reach this catch, and that is enforced, not assumed. `runAction`'s failure
+    // once it crosses into `in_progress` is a durable terminal `failed` carried
+    // by `continueRequest`'s `finished`, which is not awaited above. The one
+    // remaining post-start step — the host handing `finished` to the
+    // `onBackgroundWork` keep-alive hook, which is adapter-supplied and throws
+    // synchronously on Next outside a request scope — is contained inside
+    // `createInboundTransportHost` (see `registerBackgroundWork`) so it cannot
+    // escape as a rejection here. Were it to escape, this catch would revert a
+    // suspension whose run is still going and invite a second, conflicting
+    // resume against the same request (FIX-1095).
     await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
     await provider.releaseLease(route.requestId, lease.leaseId);
     throw error;

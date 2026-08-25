@@ -216,7 +216,7 @@ it("is composable inside sequencers", async () => {
 
 #### E2. Sequencer DSL Method Tests
 
-Test DSL methods like `exitIf()`, `stepAll()`, and `workIf()`:
+Test DSL methods like `exitIf()`, `stepAll()`, and `sideChainIf()`:
 
 ```typescript
 it("exits early when exitIf condition is met", async () => {
@@ -242,7 +242,7 @@ it("runs parallel branches with stepAll", async () => {
 
 it("conditionally runs background work", async () => {
   const chain = seq({ name: "conditional-bg", inputSchema: z.any() })
-    .workIf((input) => input.needsCleanup, cleanupBlock)
+    .sideChainIf((input) => input.needsCleanup, cleanupBlock)
     .step(mainBlock);
 
   const result = await testSequencer(chain, { input: { needsCleanup: false } });
@@ -320,11 +320,12 @@ function makeMockExecutor(responses: string[]) {
 
 #### G. Resource Tests
 
-For blocks that declare `sessionResources`:
+For blocks that declare `resources`:
 
 ```typescript
 it("accesses session resources", async () => {
   const resource = defineResource({
+    scope: "session",
     stateSchema: z.object({ items: z.array(z.string()).default([]) }),
     writable: true
   });
@@ -333,10 +334,10 @@ it("accesses session resources", async () => {
     name: "resource-user",
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { myResource: resource },
+    resources: { myResource: resource },
     execute: async (input, ctx) => {
-      const current = ctx.session.resources.myResource.state;
-      await ctx.session.resources.myResource.patchState({
+      const current = ctx.resources.myResource.state;
+      await ctx.resources.myResource.patchState({
         items: [...current.items, "new"]
       });
       return { added: true };

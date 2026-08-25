@@ -1,12 +1,23 @@
 name: CI
 
 on:
+  # Deliberately unfiltered by base branch. A stacked PR — one opened against an
+  # epic branch rather than against main — is still code we are about to merge,
+  # and with `branches: [main]` here it got no CI at all: not a typecheck, not a
+  # test, not a process guard. The failure mode is silent by construction, since
+  # a PR with no runs looks the same as a PR whose runs passed.
   pull_request:
-    branches: [main]
+  # Stays filtered. Without this, every push to a branch that has a PR open
+  # starts a second, identical run alongside the `pull_request` one.
   push:
     branches: [main]
 
 concurrency:
+  # `github.ref` is the PR's merge ref (`refs/pull/<n>/merge`) on a
+  # `pull_request` event and `refs/heads/main` on a push, so two stacked PRs and
+  # main each get their own group. Worth stating because the grouping is what
+  # keeps `cancel-in-progress` from letting one PR cancel another's run now that
+  # PRs off non-main bases are in scope.
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -46,6 +57,50 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  guards:
+    name: Process guards
+    runs-on: ubuntu-latest
+
+    steps:
+      # Full history so the changeset guard can diff against the base branch.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # A spec PR (branch `spec/<ISSUE-ID>`) and an epic PR (branch
+      # `epic/<name>`, carrying `spec/_epics/<name>.md`) hold the in-flight spec
+      # by design and are never merged, so they are exempt. Keyed on the BRANCH,
+      # not the `spec` label: the label is applied after the PR is created, and
+      # `labeled` is not a default `pull_request` event type — a label-keyed
+      # exemption would fail on the opening run and never re-run.
+      # Every other PR — and main itself — is checked.
+      - name: Spec folder is clear
+        if: >-
+          github.event_name == 'push' ||
+          !(startsWith(github.head_ref, 'spec/') || startsWith(github.head_ref, 'epic/'))
+        run: node scripts/validate-spec-folder.mjs
+
+      - name: Changesets name their Linear issue
+        if: github.event_name == 'pull_request'
+        run: node scripts/validate-changeset-refs.mjs
+
+      # Unconditional, unlike the two above. A literal NUL makes git render the
+      # whole file as binary, so the change lands with no diff for anyone to
+      # review — which is exactly as bad on a push to main as on a PR, and is
+      # how one file already reached main entirely unreviewed.
+      - name: No literal NUL bytes in source
+        run: node scripts/validate-no-nul-bytes.mjs
+
+      # Also unconditional — a doc teaching removed syntax is as broken on a
+      # push to main as on a PR, and package source carrying it is worse: that
+      # one throws. The script header owns the rest.
+      - name: No removed model-string syntax
+        run: node scripts/validate-model-strings.mjs
 
   knip:
     name: Knip (unused files & broken imports)

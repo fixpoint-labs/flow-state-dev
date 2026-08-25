@@ -1,0 +1,14 @@
+---
+"@flow-state-dev/engine": patch
+"@flow-state-dev/fsdev": patch
+---
+
+A runtime can now start background work without an HTTP router in front of it, so `fsdev run`, `fsdev chat`, and a `worker-only` process can each launch a workstream instead of only a server being able to (FIX-1077).
+
+A host that started background work in its own process stays open until that work finishes, bounded by the new `detachedDrainTimeoutMs` option on `createFlowState` (default 30s). Past the budget it cancels what is still running and names the requests and sessions it gave up on. Those records are settled by the framework's ordinary recovery — a lapsed task lease, an interrupted-request sweep — rather than being marked terminal at shutdown.
+
+Interrupted-request detection now runs on every runtime initialization rather than only when an HTTP router is built, so a run abandoned by a stopped process is marked `interrupted` by the next start even on hosts that never serve HTTP. Honours the existing `detectInterruptedOnStartup` option.
+
+On freeze-after-response platforms, a detached child is now registered with the keep-alive hook (`after()` / `waitUntil`) from the request that launched it rather than the one the host was constructed with, so a child launched under a request-scoped hook runs to completion instead of stalling when the parent responds.
+
+A CLI `--model` override covers the generators that run in the command's own process. Background work dispatched to a queue runs under the worker's own model configuration, and the CLI now says so on stderr at each dispatch that loses the override.

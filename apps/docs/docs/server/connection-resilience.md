@@ -46,9 +46,23 @@ export const flowstate = createFlowState({
   staleSweepIntervalMs: 30_000,
   // Heartbeat-age threshold. Should be ≥ 2× the executor's
   // registry heartbeat (default 10s). Default 60_000 ms.
-  staleSweepThresholdMs: 60_000
+  staleSweepThresholdMs: 60_000,
+  // How long a queued job may wait for a worker. Default 600_000 ms.
+  queuedGraceMs: 600_000
 });
 ```
+
+Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to every sweep: the periodic one, the pass that runs when the server starts, and the on-demand `check-interrupted` call. A restart reaps on the same clock the running server used.
+
+### Queued jobs and `queuedGraceMs`
+
+If you run actions through a background queue instead of in-process, a request is accepted and recorded before any worker picks it up. Nothing is executing it yet, so it has no executor heartbeat — and `staleSweepThresholdMs` measures heartbeat age, which for a queued job would only be measuring how long the queue has been busy.
+
+`queuedGraceMs` is the separate answer for those: how long a job may sit unclaimed before the sweeper decides the queue lost it. It defaults to 10 minutes.
+
+Raise it if your worst-case backlog can run longer than 10 minutes. Set too low, a valid job is marked `interrupted` while the queue is still holding it, and recovery can re-dispatch work that later runs anyway.
+
+It has to be a finite, non-negative number of milliseconds, and the host throws at startup if it isn't. Use `0` if you want queued requests reaped as soon as they go stale.
 
 Per-flow overrides win over the host default:
 
@@ -93,6 +107,37 @@ const session = useSession(sessionId, { stuckThresholdMs: 30_000 });
 ```
 
 If you raise `defaultSseHeartbeatMs` on the server, raise `stuckThresholdMs` on the client to match.
+
+## Stopping a request that runs on another server
+
+`session.abortRequest()` and the `POST /api/flows/:flowKind/requests/:requestId/abort` endpoint stop a request on whichever server is running it. That matters for background work: a request dispatched to a worker has no browser attached and no SSE connection to close, so closing a connection is not available as a way to stop it.
+
+The cancellation is recorded on the request record, which is durable. Separately, every running request wakes on a timer to write a **heartbeat** — a periodic note that says the run is still alive. On that same tick, the process running the work checks whether a cancellation has been recorded for it. When it finds one, it stops the run exactly as a same-process cancel would: background `.sideChain()` tasks cancel, and the request settles with status `aborted`.
+
+So the wait is bounded by the heartbeat cadence, which is a per-flow setting:
+
+```ts
+defineFlow({
+  kind: "researcher",
+  request: { heartbeatIntervalMs: 2_000 }, // a cancel lands within about 2s
+  // ...
+});
+```
+
+The default is 10 seconds. Each tick costs one store read per running request, so a shorter interval means proportionally more reads.
+
+### What your deployment needs
+
+1. **A request store shared across processes** — SQLite or Postgres. The default in-memory store is per-process, so a second process cannot see the record at all. The filesystem store does not qualify either: it assumes a single writer per request and does no inter-process locking.
+2. **`heartbeatIntervalMs` greater than 0.** Setting it to `0` disables the timer, and with no tick there is no check and no delivery. The same timer also keeps a running request's registry entry warm, so `0` has a second consequence: a run that lasts longer than the stale-request threshold can be marked `interrupted` while it is still running. See [what a stopped process leaves behind](./background-work.md#what-a-stopped-process-leaves-behind).
+
+### What the endpoint returns
+
+The abort endpoint returns `204` when it fired the request's controller in the process that received the call, and `202` when it recorded the cancellation for the running process to pick up. It returns `404` when no request exists under that id, and `409` when the request is no longer `in_progress`.
+
+Between the `202` and the run actually stopping, the request stays `in_progress` and keeps working, so items produced in that window still land on it. Treat `202` as "recorded", not "stopped". Watch for `status: "aborted"` to know it landed; `GET /api/flows/:flowKind/requests/:requestId/status` reports it with no stream attached.
+
+The endpoint checks neither deployment requirement, so a `202` on its own does not tell you the cancellation will be delivered. Check your deployment, not the status code.
 
 ## What this does *not* do
 

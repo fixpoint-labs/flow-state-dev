@@ -73,6 +73,59 @@ Apply `transientSlot()` last in the schema chain — after `.optional()`, `.defa
 
 Every persisted scope state is versioned. Writes provide an expected version; mismatches trigger optimistic retry.
 
+**Scope stores can also require a record to be absent.** `set(id, record, "absent")` writes only when nothing exists at that id, and returns the ordinary conflict — carrying the winner's record — when something does. It exists because a `get`-then-`set` cannot decide a create race: nothing stops a second writer landing between the two calls, and `set` is an upsert, so both writers won and the second silently overwrote the first. Deriving an id from the work it belongs to does not help; two requests deriving the same id is exactly the case.
+
+The sentinel is a word rather than a number because **`0` was already taken here.** Scope records are created *at* version `0`, so a v0 record is live, and `expectedVersion: 0` means "stored at version 0" — the first CAS write of every new session, user and org depends on it. That is the opposite of resource state below, which starts its versions at `1` and spends its `0` on create-if-absent. `ResourceStateStore` therefore rejects `"absent"` rather than aliasing it: the two agree on `set` but not on `delete`, where "delete only if absent" has no meaning. Two spellings that each mean one thing, until a later change retires the resource side's `0`.
+
+Scope `delete` is a hard delete with no tombstone, so a recreated id may reuse versions — stated rather than defended. The scope store's versions detect concurrent modification; they are not an identity, and nothing in the framework treats them as one.
+
+**Resource state is versioned too.** The four scopes above hold one state record each; resource state lives in `ResourceStateStore`, keyed per resource, and was originally modelled on `ContentStore` as plain last-write-wins. That model is wrong for structured state concurrent workers read-modify-write, so the store contract is now compare-and-swap: `set` and `delete` take an `ExpectedVersion` and return a `SetResult`, and the three reads carry the version alongside the state.
+
+`0` means *no live row*, so it is create-if-absent and a tombstone satisfies it. A numeric expected version must be a non-negative integer; anything else throws, since `number | "any"` admits values the contract has no meaning for, and a mistake at the call site is not a lost race to report as a conflict. Deletes mark a `lifecycle` column rather than removing the row, retain the version, and drop the payload; `deleteAll` bulk-marks the scope. Reads filter to `live`, so a tombstone is indistinguishable from an absent key to callers.
+
+**Retention is the guarantee.** Versions are never reused, and a tombstone keeps its version, so an observer from before a delete can never match the row that replaces it — at key altitude and at scope altitude alike. Nothing reclaims a tombstone; that is deliberate, and it is why the ABA argument needs no sweep, no timer and no retention window. The cost is one row per deleted key, in every scope.
+
+Resource state does **not** reuse `runWithCAS`, and the reason is policy rather than shape. It has its own driver (`stores/resource-cas.ts`), placed at the registry's read/mutate seam rather than at the persister: the persister is value-only, and by the time a write reaches it the caller's intent has already been materialized into an object, so a retry there could only overwrite a concurrent writer's field. The driver takes each write op's real mutator and re-runs it against refreshed state.
+
+Six of `runWithCAS`'s decisions do not transfer: a conflict against a tombstone and a losing create-if-absent are **terminal** here rather than retryable, cancellation is honoured, a no-op is suppressed only against a re-read version, and nothing on the commutative path is inherited. **The policy table lives in one place — the `stores/resource-cas.ts` module header** — beside the code it governs and with the source citations that go stale the moment `cas.ts` is edited. Read it there rather than a copy; `cas.ts` carries the matching pointer back, so a reader arriving at either driver can see there are two and why.
+
+The trap worth knowing at this altitude: `createScopeStateOps` lives in `state-container.ts` and its ops are named `patchState` / `setState` / `updateState`, the same names as the registry's resource ops. Reaching for it is the natural move and the wrong one. The same goes for `createScopePersist`, which downgrades `expectedVersion` to `"any"` for commutative hints on adapters advertising a delta verb.
+
+**Error taxonomy — the write path reports what actually happened**, which is this epic's whole thesis pointed at its own store. Three distinct states must not collapse into one error:
+
+| Situation | Reported as |
+|---|---|
+| Key never persisted (a declared resource living on its schema default), mutator asks for no change | **Not an error** — a verified no-op. Nothing was written and nothing was taken away |
+| We held a live version and the row is now a tombstone | `ResourceDeletedError`, terminal |
+| A create-if-absent lost its race | `ResourceAlreadyExistsError`, terminal, **carrying the winner's row** so the first-touch APIs can finish as a read |
+| A delete's version check failed against a **live** row (deleted and recreated under us) | `ConcurrentModificationError` — nothing was deleted, so a deletion error would report the opposite |
+| Retry budget exhausted | `ConcurrentModificationError` |
+
+**Which writers carry a version, and which deliberately do not.** The list is a search result rather than a judgement — the store's mutating surface is three methods on one named field, so `grep -a "resourceState[?.]*\.\(set\|delete\|deleteAll\)(" packages/*/src` decides it. (The `-a` matters: `resource-registry.ts` carries a NUL byte, so plain `grep` reports it binary and prints nothing.)
+
+Version-checked, through the driver above:
+
+- every registry write op — single-resource and collection-instance `patchState` / `setState` / `updateState`, plus `upsert`'s patch path
+- `create()` at `expectedVersion: 0`, terminal on conflict
+- both delete writers, `collection.delete()` and `evictInstance`, at the version the context observed
+
+Deliberately unconditional, each for a stated reason rather than because it was missed:
+
+- **`create({ replace: true })`** writes at `"any"`. It is an explicit overwrite of a key the caller has decided it owns; opting out of the version check is the posture being requested
+- **`deleteAll`** takes no expected version at all. It is a scope operation, not a key operation — a bulk lifecycle mark over every live key
+- **the two seed helpers in `@flow-state-dev/testing`** pass `"any"` when priming a fresh scope, where no concurrent writer exists by construction
+- **scope state** — `session` / `user` / `org` drive `runWithCAS` directly. Request scope runs that same driver under `withScopeLock` (`serialize: true`), so a same-process fan-out serializes rather than exhausting the retry budget, and the budget stays for a writer the queue cannot see. `createScopePersist` still downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
+
+The collection-item HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
+
+Cancellation uses the request's **background** abort signal, not the transport signal. The transport signal fires on client disconnect, which must not abandon the writes of a `.sideChain()` task the request is still running; and there is no per-scope signal available at this seam anyway, since persisters and `ResourceRef`s are built once per context while `ctx.signal` is per execution scope.
+
+Two orderings are load-bearing and quiet when regressed. `create()` defers its `maxInstances` eviction until **after** the CAS write commits — evicting first lets a create that loses its race still tombstone an unrelated instance, so the caller gets an exception *and* a net loss. And the first-touch APIs translate a terminal already-exists into their own contract rather than surfacing it: `getOrCreate` returns the winner's instance, `upsert` applies its update as a patch.
+
+**What per-key CAS honestly does not close**, recorded so this is not read as full coverage: a create of a *previously-absent* key racing `deleteAll` still lands, because `expectedVersion: 0` is satisfied by a key that never existed and a bulk mark only touches rows that already exist. That is a cross-key invariant, and no per-key predicate expresses one. The `maxInstances` cap is the same shape — a read-then-act on a set.
+
+Per-adapter guarantee: real CAS on memory, SQLite and Postgres; the filesystem adapter compares under a per-key mutex on the store instance, which closes the in-process race and not a cross-process one.
+
 ```ts
 // The framework handles CAS internally. You just use the ops.
 await ctx.session.patchState({ count: newCount });
@@ -128,18 +181,18 @@ ctx.request.patchState()   // + all ScopeStateOps
 // Session scope (always available in Phase 1)
 ctx.session.state          // Readonly<TSessionState>
 ctx.session.metadata       // Readonly<SessionMetadata> (title, description, tags)
-ctx.session.resources      // ResourceRegistry
 ctx.session.items          // SessionItemViews (client/llm views)
 ctx.session.getJournal()
 ctx.session.setMetadata()
 
 // User scope (always available in Phase 1)
 ctx.user.state             // Readonly<TUserState>
-ctx.user.resources         // ResourceRegistry
 
 // Org scope (optional)
-ctx.org?.state         // Readonly<TOrgState>
-ctx.org?.resources     // ResourceRegistry
+ctx.org?.state             // Readonly<TOrgState>
+
+// Flat resource registry (every declared resource, any scope)
+ctx.resources              // ResourceRegistry — keyed by accessor, routed by resource.scope
 ```
 
 ### Partial State Schemas
@@ -244,7 +297,7 @@ Fields are merged (last-write-wins). Only the fields you include in the body are
 
 ### Auto-generating session titles
 
-The `sessionTitleGenerator` utility block reads recent conversation messages and asks the LLM for a short title. It is designed for use as a `.work()` background block:
+The `sessionTitleGenerator` utility block reads recent conversation messages and asks the LLM for a short title. It is designed for use as a `.sideChain()` background block:
 
 ```ts
 import { utility, sequencer } from "@flow-state-dev/core";
@@ -256,7 +309,7 @@ const autoTitle = utility.sessionTitleGenerator({
 
 const pipeline = sequencer({ name: "chat", inputSchema })
   .step(mainGenerator)
-  .work(autoTitle);     // runs in background, sets session title
+  .sideChain(autoTitle);     // runs in background, sets session title
 ```
 
 Internally it is a sequencer with two steps: a generator that produces the title, and a handler that calls `setMetadata` only if the title has changed. The whole block is marked `transient: true` so it produces no visible items in the stream.
@@ -406,6 +459,152 @@ const scopeId = resolveResourceScopeId(userId, flow.kind, isolated); // bare id,
 
 - **Schema versioning / migration.** Flipping `isolateUserState` (or a resource's `flowIsolation`) on an existing flow/resource is a data-affecting change — existing shared records become invisible; new isolated records start fresh. No automatic migration.
 - **Cross-flow read validation.** The registry prevents incompatible writes; it does not re-parse stored state on every read.
+
+## Workstreams and Scope
+
+A workstream is a **child session**, not a new scope level. The hierarchy stays `request → session → user → org`; a workstream occupies a different `session` cell and inherits the rest of its identity from the request that started it.
+
+This section covers what a workstream *addresses*. For what happens to it over its lifetime — where it runs per topology, whether it survives the process, what `dispose()` settles, and what recovers an abandoned run — see [Detached Work](./detached-work.md).
+
+`startDetached` derives the child's session id rather than accepting one (`deriveChildSessionId`, `packages/engine/src/context/detached-child.ts`). The key material is the running request's `tenantId`, `userId` and `parentSessionId` plus the caller's routing seed (`topic` + optional `key`), each length-framed, hashed to `dsx_<sha256[0:32]>`. The caller supplies the *target* of the operation and never the *authority* for it. The derivation is deterministic, which is what makes "adopt if it already exists" the ordinary second-task-same-topic path rather than a conflict.
+
+The child inherits `flowKind`, `userId`, `tenantId` and `orgId`, and records `parentSessionId`. `evaluateAdoption` re-checks all five before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id, and `createExecutionContext` validates user, tenant and org bindings but not `flowKind` or `parentSessionId`.
+
+### What each scope resolves to inside a workstream
+
+| Scope | In the child |
+|---|---|
+| `request` | Fresh — the child's own dispatch |
+| `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources — except a resource declared `sharedToWorkstream` (below) |
+| `user` | **The parent's cell.** `userId` is inherited, and `isolateUserState` keys on `${userId}:${flowKind}` with `flowKind` inherited too — so isolated and shared both resolve to the record the parent reads |
+| `org` | The parent's cell, by the same reasoning |
+
+Tenant follows identity: the child's session storage key is `${tenantId}:dsx_...` under `resolveSessionStorageKey`, exactly as for any other session.
+
+### What connects a child to its parent today
+
+Four channels, and none of them is shared session state:
+
+1. **User and org scope** — live and shared, but keyed to the *principal*, not to the parent session. Two unrelated conversations belonging to the same user read the same cell.
+2. **`input` at spawn** — a one-shot payload handed to the dispatched request, frozen at dispatch.
+3. **`record` on `StartDetachedInput`** — caller bookkeeping persisted on the child session record. Metadata rather than state, and also frozen.
+4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at spawn and closed over. Deliberately not a cross-session browser: one coordinate, one row.
+
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is closed at four verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row.
+
+### Resources shared to the lineage (FIX-1068)
+
+Resources close the gap that state does not, and they close it without a cross-session seam. A session-scoped resource or collection declaring `sharedToWorkstream: true` resolves against the **lineage root** rather than the running session, so a parent and every descendant address one storage cell through the ordinary resource API. There is no new verb, no direction, and no cross-session read path: whether a resource is shared changes only where it stores.
+
+**The lineage identity is minted, not derived.** A root session mints
+`SessionRecord.lineageId` when its record is created; every descendant inherits
+that same literal value at spawn, and the storage address *is* that id. Nothing
+is reconstructed at read time, so there is nothing for a parent and a descendant
+to compute their way to differently.
+
+That is the whole reason the hard cases need no handling. A session id can be
+deleted and recreated by anyone, but a recreate produces a new record and
+therefore a new lineage — so a surviving descendant of the old one keeps its own
+address, with neither the owner nor an incarnation nonce conjoined in to tell
+them apart. An earlier design derived the address from `(tenant, user, root
+session id)` and had to keep growing to stay ahead of the ways session identity
+is not stable; each component it grew added a seam — inheritance, adoption,
+legacy fallback, concurrent minting — that then had to be kept consistent. The
+minted id is the same guarantee without any of them.
+
+A record written before the field existed has no `lineageId` and falls back to a
+value derived from its session storage key, prefixed so it can never *equal* that
+key. This is defensive hygiene for records left by earlier commits in
+development, **not** an upgrade path from a released version — no version of this
+package has been published, so no deployed store holds session records or
+Workstream addresses predating any of this. The prefix is load-bearing: the storage scope is decided by
+comparing a resolved address against the lineage id, and if the fallback were the
+session key itself, an unstamped session's shared and unshared buckets would be
+indistinguishable — routing unshared resources into the lineage namespace.
+
+**Where the id comes from, and where it must not come from.** Two invariants
+hold for every creator on the production path, however it writes: the record is
+stamped with a `lineageId` before it lands, and it lands through
+create-if-absent rather than `get`-then-`set`. Both halves are the point. A creator that omits the id leaves
+a session on the derived fallback, where delete-and-recreate lands on the same
+address again; and `get`-then-`set` lets a concurrent first action's loser
+overwrite the winner with a *different* id, stranding its shared writes at an
+address nothing reads.
+
+`ensureSessionRecord` (`context/ensure-session-record.ts`) is how a creator that
+**mints** satisfies both at once — it generates the id and writes `"absent"`, so
+the caller describes the record it wants, chooses neither the id nor the write
+predicate, and must use the record that comes back (on a lost race, the
+winner's, not its own). `createExecutionContext`, the CLI's `run`, and the
+webhook and chat-SDK session resolvers all go through it.
+
+Two creators satisfy the invariants without it, and neither is an oversight:
+
+- **`routes/session-routes.ts`** (the public create-session route) mints inline
+  and writes `"absent"` itself, because it owes the caller a `409` naming the
+  conflict rather than the helper's adopt-the-winner return.
+- **`context/create-request-host.ts`** (the Workstream path) *cannot* use it.
+  `SessionRecordSeed` is `Omit<SessionRecord, "lineageId">`, so a caller is
+  structurally forbidden from supplying an id — and a child must inherit its
+  parent's **verbatim**, not mint a new one. It also runs `evaluateAdoption` on
+  a conflict, which the helper has no notion of.
+
+So the rule a third creator has to follow is the pair of invariants, not the
+helper. **A new creator on the child side that reaches for `ensureSessionRecord`
+mints a fresh lineage for a session that should have inherited one** — which
+silently splits a Workstream's shared resources away from the conversation that
+owns them.
+
+**The testing helpers are outside this contract, and that costs coverage rather
+than correctness.** `createTestContext` and `testFlow` seed a session record
+directly — no `lineageId`, written `"any"` — so a session either one creates
+lands on the derived fallback instead of a minted lineage. The consequence is
+not a broken invariant in production but an unguarded one: a test whose session
+comes from a helper exercises the fallback, and the lineage tests that do exist
+hand-seed a `lineageId` themselves, so nothing in the suite drives the minting
+path. Removing the mint from `ensureSessionRecord` entirely leaves both the
+engine and integration suites green. FIX-1132 tracks closing that.
+
+Descendants get the id from `createRequestHost.startDetached`, copied verbatim.
+It is also part of the derived child session id, because otherwise a recreated
+session spawning the same seed derives the same child and *adopts* the previous
+lineage's workstream, silently inheriting a dead conversation's address.
+
+**The lineage is its own storage scope.** `StorageScopeType` adds `lineage`
+alongside the three declared scopes, so a lineage bucket is not addressable from
+the session namespace at all. Session scope ids are caller-chosen and nothing
+validates them, so a lineage bucket sharing that space would be one a caller
+could occupy by picking the right session id — unguessable is a weaker property
+than unaddressable. Adapters treat the value as opaque (a plain `TEXT` column,
+no constraint), so this needed no schema change and no migration.
+
+**Where resolution happens.** On the execution path, `resolveConfigScopeId` and `resolveResourceStorageScopeId` in `packages/engine/src/context/createExecutionContext.ts`. Both route the session scope on a `sharedToWorkstream` bucket map built the same way user/org build their `flowIsolation` buckets: singles by canonical storage key, collection instances by longest-matching prefix. Collections sharing a storage prefix must agree on the flag, refused at context construction like the `flowIsolation` case.
+
+The HTTP read/write routes need the same answer and derive it from `packages/engine/src/resources/lineage-scope.ts`. **Which helper depends on what the route holds, and getting that wrong is a cross-session read:**
+
+- `sessionKeyScopeId` for a concrete storage key — the collection CRUD routes. A route names a collection by ref, and a broad pattern accepts keys a narrower sibling owns (`tasks/**` accepts `tasks/meta/a`), so the addressed *declaration's* flag is not the key's owner.
+- `readSessionScopeWithLineage` for anything spanning a prefix or a whole scope — `getPersistedData`, the state route, and collection listing. It drops shared keys from the session's own rows before folding in the lineage's, so a child's view is exactly what a block resolves rather than a union of two sessions' resources.
+- `sessionStorageScope` for the scope kind that goes with a resolved address. It and
+  `createExecutionContext`'s `storageScopeOf` answer one question, and they have already
+  disagreed once about which namespace an unstamped session's shared bucket lives in.
+
+The module also exports `sessionResourceScopeId`, which answers from a
+declaration rather than a key. **It has no callers.** Every route that looked
+like its case turned out to hold a key, not a declaration — which is the
+distinction the first bullet exists for — so reach for it only if a caller
+genuinely arrives holding the declaration and nothing else, and read
+`sessionKeyScopeId`'s contract first to be sure that is what you have.
+
+**Ownership is one rule, in one place.** `resolveOwnershipFlag` (`resources/lineage-scope.ts`) decides which declaration owns a storage key: **an exact single wins outright, then the longest matching collection prefix.** Both `createExecutionContext`'s bucket resolution and the whole-scope reads call it, because two implementations of "longest prefix wins" is how the execution view and the HTTP view drift into disagreeing about which session holds a key.
+
+Two shapes make that precedence load-bearing rather than cosmetic:
+
+- A shared collection with an **empty storage prefix** — any parameterized pattern, e.g. `[topic]/observations` — matches every key in the scope. Treating "matches a shared prefix" as "is shared" hands the whole scope to the root and discards the child's private rows.
+- A **private prefix nested under a shared one** (`tasks/meta/*` under `tasks/**`) is owned by the longer prefix. A collection is loaded by prefix, so the broad scan sweeps up keys the narrow sibling owns; every prefix scan (the eager waves and the lazy `getByPrefix` alike) therefore re-checks each returned key against per-key routing and keeps only what that bucket is the address for. Without it, which copy survives depends on declaration order.
+
+**Filtering a scan changes what it covers.** `loadedCollectionPrefixes` records coverage per `(scopeId, prefix)`, not per prefix, because a filtered scan read one bucket and may legitimately have returned nothing for keys another bucket owns. Recording the bare prefix would claim coverage the scan never had, and `isMissAuthoritative` would then answer "absent" for a row that exists — the read suppressed by its own correctness.
+
+**Sharing does not imply serialization.** Two workstreams writing one shared resource is ordinary same-resource contention, governed by the `expectedVersion` + `SetResult` contract every `ResourceStateStore` adapter implements (FIX-992). Nothing queues, locks or orders those writes.
 
 ## Streaming Integration
 

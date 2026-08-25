@@ -104,7 +104,7 @@ When a config loads, the registry, store profiles, and model resolver all come f
 
 A few interactions are worth knowing:
 
-- `--model <id>` still works with a config. The id is routed through your config's resolver, so your gateways and providers still apply. You are picking a model your resolver knows how to resolve, not bypassing it.
+- `--model <id>` still works with a config. The id is routed through your config's resolver, so your gateways and providers still apply. You are picking a model your resolver knows how to resolve, not bypassing it. It reaches the generators that run in this process; background work your config sends to a queue runs elsewhere, under that process's own model configuration. See [Model overrides](./overview.md#model-overrides).
 - `--flow-dir` together with a config is an error. Directory discovery and a config are two different ways to find flows; mixing them is ambiguous. The error suggests `--no-config` if directory discovery is what you actually want.
 - On exit, `fsdev run` disposes the config's FlowState, releasing pooled resources (database connections, for example).
 
@@ -128,7 +128,10 @@ One sharp edge: the CLI's `engines` field allows any Node 22, but type stripping
 
 ## See also
 
-- [Server Setup](/docs/server/setup) — the `createFlowState` factory and store profiles in full.
+- [Configuration map](/docs/configuration/overview) — every layer: flow, runtime, environment, client.
+- [Runtime options](/docs/configuration/runtime) — the `createFlowState` factory field catalog.
+- [Environment variables](/docs/configuration/environment) — keys, `FSD_ENV`, intent overrides.
+- [Engine setup](/docs/server/setup) — the `createFlowState` factory and store profiles in narrative form.
 - [Models](/docs/fundamentals/models) — model strings, intents, and how the resolver picks a provider.
 - [Persistence](/docs/persistence/overview) — the store adapters and what each one durably keeps.
-- [CLI API Reference](/docs/api/cli) — the full flag reference for `fsdev run`, `fsdev dev`, and `fsdev serve`. `fsdev serve` also reads this config; it supports `--config` but not `--no-config`.
+- [CLI API](/docs/api/cli) — the full flag reference for `fsdev run`, `fsdev dev`, and `fsdev serve`. `fsdev serve` also reads this config; it supports `--config` but not `--no-config`.

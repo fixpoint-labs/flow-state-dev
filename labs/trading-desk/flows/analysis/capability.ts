@@ -108,6 +108,23 @@ const INVESTIGATION_CLAUSE = [
   "the `citations` array with its title. Do not cite URLs you did not",
   "actually fetch. If your <data> already answers the question, do not",
   "fetch — emit `citations: null` and synthesise from <data> only.",
+  "",
+  "A discovery payload carries an `entityCheck` field. Read it before you",
+  "treat any of its items as evidence about this company:",
+  "  - `verified`       — every listed item names this company. Wrong-company",
+  "                       results were removed; `excluded` lists the URLs that",
+  "                       were dropped and why. Do not fetch an excluded URL.",
+  "                       `verified` with an EMPTY `items` list means the filter",
+  "                       ran and nothing passed — that is an absence of",
+  "                       discovery evidence, not confirmation of anything.",
+  "  - `unchecked`      — the company's identity could not be confirmed, so",
+  "                       nothing was validated. Treat the items as unverified:",
+  "                       if a page turns out to be about a different company,",
+  "                       discard it and say so in your dataQuality reasoning.",
+  "  - `not-applicable` — the query was about the macro or sector environment",
+  "                       around this name, not the name itself. These items are",
+  "                       context, never evidence about this company's own",
+  "                       results, guidance, or filings.",
   "</investigation>",
 ].join("\n");
 
@@ -618,18 +635,40 @@ export const tradingDesk = defineCapability({
      *  and research manager. Bull/bear stay blind. */
     valuationSpine: {
       resources: { valuationSpine: valuationSpineResource },
-      context: {
-        valuationSpine: (_input, ctx) => {
+      // Context is an ARRAY of verbatim (bare-string-returning) entries, NOT an
+      // object map (the `corroborate` precedent above). Both formatters
+      // self-wrap their own tag — `formatValuationSpine` carries `ticker`/
+      // `asOf` ATTRIBUTES the auto-wrap has no way to express from an
+      // object-form key — so object-form here would double-wrap the tag AND
+      // escape the inner literal `<`/`>`, leaving every prompt that reads
+      // `<valuationSpine>` / `<ratingEnvelope>` (trader, risk-assessment,
+      // research-manager, PM, lenses) pointed at a tag the model never
+      // receives. Confirmed by rendering, not by reasoning — the same defect
+      // class as the `periodMismatch` context key, found while sweeping for
+      // it.
+      context: [
+        (_input, ctx) => {
           const spine = ctx.resources.valuationSpine?.state;
           if (!spine) return null;
           return formatValuationSpine(spine);
         },
-        ratingEnvelope: (_input, ctx) => {
+        (_input, ctx) => {
           const spine = ctx.resources.valuationSpine?.state;
-          if (!spine) return null;
+          // The ENVELOPE, not just the spine (FIX-1113). A spine that withheld
+          // its cross-statement outputs carries `envelope: null`, and
+          // `formatRatingEnvelope` dereferences its argument on the first line —
+          // so guarding only the spine throws for every generator that opted
+          // into this capability, BEFORE the portfolio manager can publish the
+          // unanchored rating the withholding path exists to preserve.
+          //
+          // Suppressing the tag loses no honesty: `<valuationSpine>` above
+          // renders its WITHHELD form and names the three periods. `ctx.resources`
+          // is `Record<string, any>` at this boundary, so nothing here is
+          // type-checked — the guard is the only mechanism.
+          if (!spine?.envelope) return null;
           return formatRatingEnvelope(spine.envelope);
         },
-      },
+      ],
     },
 
     /** Live-portfolio context for the trader (P3) and PM (P5). Reads the frozen

@@ -19,6 +19,7 @@ import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   createSequencerBackedTaskCollection,
+  DEFAULT_MAX_TOTAL_RETRIES,
   defineTaskCollection,
   getOrCreateTaskCollection,
   TaskCapExceededError,
@@ -178,16 +179,20 @@ describe("taskBoard caps — a board that CONSTRUCTS its collection", () => {
     // `taskBoard({ maxTotalTasks: 50 })` is a request for a SMALLER board, not a
     // contradiction. Supplying the 100 enqueue default beside it independently
     // and then rejecting the pair refused a plainly reasonable configuration.
+    // The retry budget rides the same resolved object but is independent of the
+    // clamp — it counts re-runs, not tasks, so no pairing with a creation cap is
+    // contradictory and none is derived from another (FIX-948).
+    const R = DEFAULT_MAX_TOTAL_RETRIES;
     const small = taskBoard({ name: "cap-lone-total", workers: noopWorker, maxTotalTasks: 50 });
-    expect(small.caps).toEqual({ maxTotalTasks: 50, maxEnqueuedTasks: 50 });
+    expect(small.caps).toEqual({ maxTotalTasks: 50, maxEnqueuedTasks: 50, maxTotalRetries: R });
 
     // Above the default, the default still applies — the clamp only lowers.
     const big = taskBoard({ name: "cap-lone-total-hi", workers: noopWorker, maxTotalTasks: 900 });
-    expect(big.caps).toEqual({ maxTotalTasks: 900, maxEnqueuedTasks: 100 });
+    expect(big.caps).toEqual({ maxTotalTasks: 900, maxEnqueuedTasks: 100, maxTotalRetries: R });
 
     // `null` total is unbounded, so there is nothing to clamp against.
     const none = taskBoard({ name: "cap-lone-total-null", workers: noopWorker, maxTotalTasks: null });
-    expect(none.caps).toEqual({ maxTotalTasks: null, maxEnqueuedTasks: 100 });
+    expect(none.caps).toEqual({ maxTotalTasks: null, maxEnqueuedTasks: 100, maxTotalRetries: R });
   });
 
   it("still rejects an explicitly contradictory pair", () => {

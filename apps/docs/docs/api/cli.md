@@ -1,10 +1,12 @@
 ---
 sidebar_position: 6
+title: CLI API
+sidebar_label: CLI
 ---
 
 # CLI API
 
-`@flow-state-dev/cli` — Terminal interface for running flows, executing blocks, and inspecting definitions.
+`@flow-state-dev/fsdev` — Terminal interface for running flows, executing blocks, and inspecting definitions.
 
 ## Commands
 
@@ -22,18 +24,15 @@ fsdev run my-agent chat -i '{"message": "Hello!"}'
 |------|-------------|
 | `-i, --input <json>` | Inline JSON input |
 | `-f, --input-file <path>` | JSON input from file |
-| `-m, --model <model>` | Override model for all generator blocks |
+| `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
-| `--seed-user <json\|path>` | Seed user-level state |
-| `--seed-org <json\|path>` | Seed org-level state |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
-| `--format <format>` | Output format (default: `json`) |
 
-When a config is loaded, `fsdev run` looks up the flow by `kind` in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit. See [App Configuration](/docs/cli/configuration).
+When a config is loaded, `fsdev run` looks up the flow by `kind` in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect), and it covers the generators that run in this process but not [background work handed to a queue](/docs/cli/overview#model-overrides). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit, and disposal waits for any background work the run started in this process. See [App Configuration](/docs/cli/configuration) and [Background work](/docs/cli/overview#background-work).
 
 **NDJSON events:**
 
@@ -82,7 +81,7 @@ fsdev dev
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
-| `-m, --model <model>` | Override model for all generator blocks. Errors if a config is loaded. |
+| `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides). Errors if a config is loaded. |
 | `--no-open` | Don't open the browser automatically |
 
 **Requires:** `@flow-state-dev/devtool` installed (provides the pre-built UI assets).
@@ -111,7 +110,7 @@ fsdev serve
 
 The two server commands differ in what they mount and where they bind. `fsdev dev` serves the flow API plus the DevTool UI, opens a browser, and binds a fixed port `4200` on a loopback host for local work. `fsdev serve` serves the flow API and MCP endpoints only, binds `$PORT` (then `3000`) on `$HOST` (then `0.0.0.0`) for a PaaS, and never mounts the DevTool SPA. Under the hood it wraps `serve()` from `@flow-state-dev/node` with no `staticDir`, so a non-API GET like `/index.html` returns 404. Bind defaults are the inverse of `dev`: `serve` reaches for a network host and an env-provided port, `dev` stays on loopback and `4200`.
 
-**Loopback-bind guard.** Before binding a non-loopback host, `fsdev serve` checks that every served flow has authentication configured. A flow whose `authentication.resolvePrincipal` is unset or left at the framework default runs on an unauthenticated principal, and exposing it on a network interface would open it to anyone who can reach the port. The guard refuses that bind. Resolve it one of three ways: configure `authentication.resolvePrincipal` on the flow, bind a loopback host (`--host 127.0.0.1`), or pass `--allow-unauthenticated` to opt out deliberately. Loopback binds skip the guard. See [Authentication](/docs/server/authentication).
+**Loopback-bind guard.** Before binding a non-loopback host, `fsdev serve` checks that every served flow has authentication configured. A flow whose `authentication.resolvePrincipal` is unset or left at the framework default runs on an unauthenticated principal, and exposing it on a network interface would open it to anyone who can reach the port. The guard refuses that bind. Resolve it one of three ways: configure `authentication.resolvePrincipal` on the flow, bind a loopback host (`--host 127.0.0.1`), or pass `--allow-unauthenticated` to opt out deliberately. Loopback binds skip the guard. A configured resolver protects the flow's whole API surface, session and resource endpoints included, so passing the guard means the deployment is covered rather than just its action routes. See [Authentication](/docs/server/authentication).
 
 Exit code `3` covers an invalid port, a missing committed config, a guard refusal, and a bind or listen failure such as `EADDRINUSE` or `EACCES`. The server shuts down gracefully on `SIGTERM` and `SIGINT`.
 
@@ -141,7 +140,7 @@ fsdev chat hello-chat chat
 | Flag | Description |
 |------|-------------|
 | `-s, --session <id>` | Resume an engine session for the initially bound flow. Requires a bound target. |
-| `-m, --model <model>` | Override model for all generator blocks |
+| `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `-u, --user <id>` | Engine identity for sessions and turns (default: `cli-user`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
@@ -196,6 +195,27 @@ fsdev block ./src/flows/my-app/blocks/counter.ts -i '{"increment": 1}'
   "execution": { "durationMs": 12 }
 }
 ```
+
+### `fsdev benchmark <file>`
+
+Load a `defineBenchmark` file and print the scorecard.
+
+```bash
+fsdev benchmark ./benchmark.ts
+```
+
+Narrative and flags: [Benchmarks](/docs/testing/benchmarks) and [Choosing a pattern with benchmarks](/guides/choosing-patterns-with-benchmarks).
+
+### `fsdev ui add <name>` / `fsdev ui list`
+
+Install or list components from the Flow State UI registry. `add` shells out to the shadcn CLI.
+
+```bash
+fsdev ui add model-badge
+fsdev ui list
+```
+
+Narrative: [UI](/docs/ui/overview).
 
 ## Flow Discovery
 
@@ -257,7 +277,7 @@ The CLI exports its utilities for use in scripts and CI:
 Scan conventional directories and return all discovered flow instances. Accepts a string (cwd) or an options object.
 
 ```ts
-import { discoverFlows } from "@flow-state-dev/cli";
+import { discoverFlows } from "@flow-state-dev/fsdev";
 
 // Simple: scan from a directory
 const flows = await discoverFlows("./my-project");
@@ -284,7 +304,7 @@ Modules that throw during import are skipped and reported through the `onImportF
 Load a single flow from an explicit file path.
 
 ```ts
-import { resolveFlow } from "@flow-state-dev/cli";
+import { resolveFlow } from "@flow-state-dev/fsdev";
 
 const flow = await resolveFlow("./src/flows/my-chat/flow.ts");
 ```
@@ -294,7 +314,7 @@ const flow = await resolveFlow("./src/flows/my-chat/flow.ts");
 Load a single block from a file path.
 
 ```ts
-import { resolveBlock } from "@flow-state-dev/cli";
+import { resolveBlock } from "@flow-state-dev/fsdev";
 
 const block = await resolveBlock("./src/blocks/counter.ts");
 ```
@@ -314,7 +334,7 @@ import type {
   FlowRunResult,  // Structured result from fsdev run
   FlowEvent,      // NDJSON event union type
   BlockExecResult, // Structured result from fsdev block
-} from "@flow-state-dev/cli";
+} from "@flow-state-dev/fsdev";
 ```
 
 ## Exit Codes

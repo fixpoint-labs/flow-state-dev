@@ -9,7 +9,6 @@
  * (caller injects it via the closure on the factory).
  */
 import type { Task } from "../schema/task";
-import { isReady } from "../collection/internal";
 import type { TaskDispatcher } from "./types";
 
 export interface EventDispatcherOptions {
@@ -33,11 +32,14 @@ export function eventDispatcher(options: EventDispatcherOptions): TaskDispatcher
     async claim(collection, workerId) {
       const topic = resolveTopic(options.topic);
       if (topic === undefined) return null;
-      const lookup = (id: string) => collection.get(id);
 
+      // Topic only. The substrate's admission rule is composed *with* this
+      // narrowing rather than replaced by it (FIX-1005), so an abandoned task
+      // on a matching topic is recovered here — while one on a topic this
+      // drain does not resolve is left alone, which is this filter doing
+      // exactly what the caller asked of it.
       return collection.claim(workerId, {
-        eligibility: (task) =>
-          isReady(task, lookup) && options.topicFor(task) === topic,
+        eligibility: (task) => options.topicFor(task) === topic,
       });
     },
   };

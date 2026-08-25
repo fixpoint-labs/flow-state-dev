@@ -62,6 +62,7 @@ export type DcfUnavailableReason =
   | "non-positive-fcf"
   | "missing-net-debt"
   | "missing-growth"
+  | "missing-market-cap"
   | "negative-equity-value"
   | null;
 
@@ -164,6 +165,13 @@ export function computeDcfValue(args: {
   const netDebt = valuation?.netDebt.value ?? null;
   if (netDebt == null) return unavailable("missing-net-debt");
   if (er.sustainableGrowth == null) return unavailable("missing-growth");
+  // BOTH outputs of this model — the margin of safety and the whole reverse
+  // DCF — are measured against what the market is paying. With no observed
+  // market cap there is nothing to measure against, and a zero-filled cap made
+  // every name read as a 100% discount with the market implying sub-terminal
+  // growth (FIX-1063). Abstain with the reason rather than emit that.
+  const marketCap = f.marketCap;
+  if (marketCap == null) return unavailable("missing-market-cap");
 
   const stage1Growth = clamp(
     Math.min(er.sustainableGrowth, DCF_STAGE1_CAP),
@@ -178,7 +186,6 @@ export function computeDcfValue(args: {
   // A non-positive equity value is uninterpretable as a margin of safety.
   if (intrinsicValue <= 0) return unavailable("negative-equity-value");
 
-  const marketCap = f.marketCap;
   const marginOfSafety = 1 - marketCap / intrinsicValue;
   const terminalValueShare = pvTerminal / enterpriseValue;
   const reliability: DcfValue["reliability"] =

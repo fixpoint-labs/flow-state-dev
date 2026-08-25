@@ -2,7 +2,8 @@ import { defineConfig } from "vitest/config";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const appDir = dirname(fileURLToPath(import.meta.url));
+const root = resolve(appDir, "../..");
 
 export default defineConfig({
   test: {
@@ -21,6 +22,11 @@ export default defineConfig({
       "@flow-state-dev/core/helpers": resolve(root, "packages/core/src/helpers/index.ts"),
       "@flow-state-dev/memory": resolve(root, "packages/memory/src/index.ts"),
       "@thought-fabric/core/metacognition": resolve(root, "packages/thought-fabric-core/src/metacognition/index.ts"),
+      // Mirrors the `@/*` path alias in tsconfig, so a test can import a flow
+      // module that uses it (the flows do, for `@/lib/*`). Listed last: Vite
+      // matches aliases in order, and a bare "@" prefix would otherwise
+      // shadow the `@flow-state-dev/*` and `@thought-fabric/*` entries above.
+      "@": appDir,
     },
   },
 });

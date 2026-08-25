@@ -38,16 +38,12 @@
  * `runAction`'s `resolveAction`.
  */
 import type { ActionCore, FlowInstance } from "@flow-state-dev/core/types";
-
-/**
- * Transport sources set by their adapters on the dispatch envelope. Kept as
- * local literals (not imported from `transports/*`) to avoid an
- * `execution → transports` import cycle; they must stay in sync with each
- * adapter's `*_TRANSPORT_SOURCE`.
- */
-const WEBHOOK_SOURCE = "webhook";
-const CHAT_SOURCE = "chat";
-const SCHEDULED_SOURCE = "scheduled";
+import {
+  CHAT_SOURCE,
+  SCHEDULED_SOURCE,
+  WEBHOOK_SOURCE,
+  WORKSTREAM_SOURCE
+} from "./transport-sources";
 
 type WebhookDispatchMetadata = {
   webhook?: { provider?: string; eventType?: string | null };
@@ -102,6 +98,19 @@ export function resolveActionCore(
       const binding = flow.schedules?.static?.[scheduleId];
       if (binding !== undefined) return binding;
     }
+  }
+
+  // Detached dispatch (FIX-999). TERMINAL for this source — note the `return`
+  // rather than the `if (binding !== undefined) return` shape the event branches
+  // above use. Those may fall through because an event whose coordinate does not
+  // match should still be able to resolve a named action; a detached dispatch
+  // must not. It carries `actionName` as provenance only, and that name can
+  // collide with a public `flow.actions` key, so falling through here would hand
+  // a framework-stamped dispatch a caller-addressed handler — the seam's own
+  // source admitting everything. An absent core returns `undefined`, which the
+  // caller turns into a named refusal.
+  if (source === WORKSTREAM_SOURCE) {
+    return flow.workstream;
   }
 
   return flow.actions[actionName];

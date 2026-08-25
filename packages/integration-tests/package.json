@@ -9,6 +9,7 @@
     "test:watch": "vitest --root ."
   },
   "dependencies": {
+    "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",

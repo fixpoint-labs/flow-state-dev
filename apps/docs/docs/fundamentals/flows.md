@@ -8,10 +8,12 @@ A flow is the top-level unit — the thing you register with the server and clie
 
 Think of a flow as the complete specification of an AI-powered feature: what actions users can trigger, what state is tracked, and what data is exposed to the frontend.
 
+Every `defineFlow` field is tabulated in [Flow options](/docs/configuration/flow). This page teaches the shape; that page is the lookup.
+
 ## Defining a flow
 
 ```ts
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const chatFlow = defineFlow({
@@ -30,13 +32,18 @@ const chatFlow = defineFlow({
     },
   },
 
+  resources: {
+    artifacts: defineResource({
+      scope: "session",
+      stateSchema: artifactSchema,
+      writable: true,
+    }),
+  },
+
   session: {
     stateSchema: z.object({
       messageCount: z.number().default(0),
     }),
-    resources: {
-      artifacts: { stateSchema: artifactSchema, writable: true },
-    },
     client: {
       expose: ["messageCount"],
     },
@@ -64,7 +71,30 @@ const chatFlow = defineFlow({ kind: "my-chat", ... });
 export default chatFlow({ id: "default" });
 ```
 
-This separation lets you create multiple instances of the same flow type with different configurations if needed.
+This separation lets you run several instances of one flow type, each with its own session, resource, or tool configuration.
+
+**Instances that clients address need distinct `kind`s, not just distinct `id`s.** Every external entry point — HTTP action routes, chat, webhooks, schedules, MCP — resolves a flow by `kind` alone, and none of them carry an instance id. When two instances share a `kind`, those paths reach the one whose `id` matches the `kind`, or else the first registered, and the other instance's configuration is never used. `id` distinguishes instances for in-process code holding the registry, which can look up a specific one; it is not an addressing surface over the wire.
+
+### What the definition owns
+
+Inbound transports belong to the flow type. Declare `chat`, `webhooks`, `schedules`, and `mcp` on `defineFlow()`:
+
+```ts
+const supportFlow = defineFlow({
+  kind: "support",
+  chat: { /* ... */ },
+  webhooks: { /* ... */ },
+  actions: { /* ... */ },
+});
+
+export default supportFlow({ id: "default" });
+```
+
+Every instance of a type serves the same transports. Pass one of the four to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option.
+
+Everything else is settable per instance: `id`, `kind`, `actions`, `session`, `request`, `user`, `org`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
+
+`voice` sits on both sides. Unlike the four transports above, you can set it on `defineFlow()` as the default for every instance of the type, then override it on any single instance.
 
 ## Actions — the flow's public API
 
@@ -99,31 +129,37 @@ See [Actions](/docs/fundamentals/actions) for the full picture.
 
 ## Session configuration
 
-Sessions carry state, resources, and a `client` block that persist across requests in a conversation:
+Sessions carry state and a `client` block that persist across requests in a conversation. Resources live on the flow as a flat `resources` map — each resource's own `scope` decides where it is stored:
 
 ```ts
-session: {
-  stateSchema: z.object({
-    mode: z.enum(["chat", "agent"]).default("chat"),
-    messageCount: z.number().default(0),
-  }),
+import { defineFlow, defineResource } from "@flow-state-dev/core";
+import { z } from "zod";
 
+defineFlow({
+  kind: "my-app",
   resources: {
-    plan: {
+    plan: defineResource({
+      scope: "session",
       stateSchema: z.object({
         steps: z.array(z.string()).default([]),
         status: z.enum(["draft", "active", "complete"]).default("draft"),
       }),
       writable: true,
+    }),
+  },
+  session: {
+    stateSchema: z.object({
+      mode: z.enum(["chat", "agent"]).default("chat"),
+      messageCount: z.number().default(0),
+    }),
+    client: {
+      derived: {
+        activePlan: (ctx) => ctx.resources.plan?.state ?? null,
+      },
     },
   },
-
-  client: {
-    derived: {
-      activePlan: (ctx) => ctx.resources.plan?.state ?? null,
-    },
-  },
-},
+  actions: { /* ... */ },
+});
 ```
 
 ### History windowing
@@ -140,19 +176,19 @@ session: {
 
 ### Automatic resource collection
 
-Blocks can declare resource dependencies directly (via `sessionResources`, `userResources`, `orgResources` using `defineResource()` values). When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the session/user/org scope configs automatically:
+Blocks can declare resource dependencies directly with a flat `resources` map of `defineResource()` values. When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the flow's `resources` map:
 
 ```ts
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
-  execute: async (input, ctx) => { /* uses ctx.session.resources.plan */ },
+  resources: { plan: planResource },
+  execute: async (input, ctx) => { /* uses ctx.resources.plan */ },
 });
 
 const myFlow = defineFlow({
   kind: "my-app",
   actions: { manage: { block: planManager } },
-  // session.resources automatically includes { plan: planResource }
+  // resources automatically includes { plan: planResource }
   // from the block — no need to declare it again here
 });
 ```

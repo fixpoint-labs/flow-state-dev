@@ -6,11 +6,13 @@ sidebar_position: 3
 
 Side chains let you run work in the background without blocking the main pipeline. Three primitives cover the common patterns:
 
-- **`.work()`** — queue a single background task
-- **`.workIf(condition, block)`** — conditional variant of `.work()`, dispatches only when condition is truthy
-- **`.forEachBackground()`** — dispatch each element of an array as a background task with concurrency control
+- **`.sideChain()`** — queue a single background task
+- **`.sideChainIf(condition, block)`** — conditional variant of `.sideChain()`, dispatches only when condition is truthy
+- **`.forEachSideChain()`** — dispatch each element of an array as a background task with concurrency control
 
 Work failures never abort the pipeline. The framework logs them and the failed `block_trace` reaches the DevTool via the trace channel; nothing surfaces in the user-visible stream. Use side chains for fire-and-forget side effects: logging, analytics, cache warming, notifications.
+
+A side chain outlives the sequencer that dispatched it, not the request. For work that has to outlive the request or the process, see [Work that outlives the turn](/guides/background-work).
 
 ## Fire-and-forget
 
@@ -32,7 +34,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .step(mainBlock)
-  .work((output) => ({ event: "processed", payload: output }), logAnalytics)
+  .sideChain((output) => ({ event: "processed", payload: output }), logAnalytics)
   .step(nextStep);
 ```
 
@@ -43,13 +45,13 @@ const pipeline = sequencer({
 Without a connector, the work block gets the current pipeline value:
 
 ```ts
-.work(logBlock)
+.sideChain(logBlock)
 ```
 
 With a connector, you reshape the payload for the work block:
 
 ```ts
-.work(
+.sideChain(
   (output) => ({ event: "summary_complete", text: output.text }),
   summarizeAnalytics
 )
@@ -61,48 +63,62 @@ The connector runs in the main thread. Only the block execution is backgrounded.
 
 Work failures are isolated. The framework logs the failure; the DevTool surfaces it via the trace channel. Your user-facing stream is unaffected.
 
-If you need to know whether background work succeeded, use `.waitForWork()`.
+If you need to know whether background work succeeded, use `.waitForSideChain()`.
 
-## Background work is request-scoped
+## Side chains are request-scoped
 
-Background work outlives the sequencer that dispatched it. `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a single per-request pool. Inner sequencers do not block their parent on their own background work, and sibling sequencers run their `.work()` tasks concurrently. The request executor drains the pool exactly once before the SSE stream closes — your stream stays open until every queued task settles, regardless of which sequencer queued it.
+Background work outlives the sequencer that dispatched it. `.sideChain()`, `.sideChainIf()`, and `.forEachSideChain()` queue tasks on a single per-request pool. Inner sequencers do not block their parent on their own background work, and sibling sequencers run their `.sideChain()` tasks concurrently. The request executor drains the pool before the SSE stream closes — your stream stays open until every queued task settles, regardless of which sequencer queued it.
 
-Two siblings each calling `.work()` finish in roughly the time of the slower one, not the sum:
+The drain runs until the pool is empty, so a background task that queues more background work is waited on too, however deep it nests.
+
+### The guarantee holds however the request ends
+
+The request is not reported finished until its background work has settled — whether it succeeded or not. If the action throws, if the user hits stop, or if the client disconnects mid-stream, the request still waits for its queued tasks before the terminal record is written and the stream closes.
+
+That matters most on ephemeral hosts (Vercel, Next.js `after()`, Lambda), where the platform is free to freeze the container the moment the request returns. A task still running at that point can be cut off with a write half-applied. Because the request holds itself open until the pool settles, a `.sideChain()` task that captures memory or writes a summary gets to finish even on a turn the user cancelled.
+
+Two gaps are worth knowing about.
+
+`onFinished` and `onErrored` run *after* the terminal record is written, so background work they queue is not covered — it lands in a pool nothing is waiting on. If one of those hooks needs to do durable work, do it inline in the hook rather than dispatching it with `.sideChain()`. `onCompleted` is different: it runs before the request is finalized, so work it queues is drained like any other.
+
+**Suspension is not an ending, and does not wait.** A request that suspends at a gate closes its stream with background work still in flight, by design — see [Suspension does not wait for background work](#suspension-does-not-wait-for-background-work) below. The guarantee above is about a request *finishing*; a suspended request has not finished, it is paused.
+
+Two siblings each calling `.sideChain()` finish in roughly the time of the slower one, not the sum:
 
 ```ts
 const root = sequencer({ name: "root", inputSchema: z.unknown() })
-  .step(branchA) // .work(slowA) inside
-  .step(branchB) // .work(slowB) inside — starts immediately, doesn't wait for slowA
+  .step(branchA) // .sideChain(slowA) inside
+  .step(branchB) // .sideChain(slowB) inside — starts immediately, doesn't wait for slowA
   .step(thirdStep); // also starts immediately
 ```
 
-If you need a downstream step to read state mutated by a queued task, use `.waitForWork()` as an explicit barrier *in the dispatching sequencer*. It drains only the calling sequencer's tasks, not unrelated siblings'.
+If you need a downstream step to read state mutated by a queued task, use `.waitForSideChain()` as an explicit barrier *in the dispatching sequencer*. It drains only the calling sequencer's tasks, not unrelated siblings'.
 
 ```ts
 const memoryPipeline = sequencer({ name: "memory", inputSchema: z.unknown() })
-  .work(persistMemoryEntry)
-  .waitForWork() // wait for persistence before reading state below
+  .sideChain(persistMemoryEntry)
+  .waitForSideChain() // wait for persistence before reading state below
   .step(readPersistedEntries);
 ```
 
-Before this change, every sequencer auto-awaited its own background work before returning, which serialized sibling work that should have run concurrently. If you have code that previously relied on the inner-sequencer auto-await for ordering — e.g. an inner `.work(setupBlock)` followed by a parent step that read state mutated by `setupBlock` — add an explicit `.waitForWork()` at the inner sequencer boundary.
+Before this change, every sequencer auto-awaited its own background work before returning, which serialized sibling work that should have run concurrently. If you have code that previously relied on the inner-sequencer auto-await for ordering — e.g. an inner `.sideChain(setupBlock)` followed by a parent step that read state mutated by `setupBlock` — add an explicit `.waitForSideChain()` at the inner sequencer boundary.
 
-## waitForWork — convergence points
+## waitForSideChain — convergence points
 
-`.waitForWork()` waits for the calling sequencer's `.work()` tasks. By default, it does not throw on work failures:
+`.waitForSideChain()` waits for the calling sequencer's `.sideChain()` tasks. By default, it does not throw on side-chain failures:
 
 ```ts
 pipeline
-  .work(taskA)
-  .work(taskB)
-  .waitForWork()
+  .sideChain(taskA)
+  .sideChain(taskB)
+  .waitForSideChain()
   .step(nextStep);
 ```
 
-`nextStep` runs after both tasks finish. If either failed, the pipeline still continues. Set `failOnError: true` to promote work failures:
+`nextStep` runs after both tasks finish. If either failed, the pipeline still continues. Set `failOnError: true` to promote side-chain failures:
 
 ```ts
-.waitForWork({ failOnError: true })
+.waitForSideChain({ failOnError: true })
 ```
 
 With `failOnError: true`, if any work task rejects, the sequencer throws and the pipeline aborts. Use this when background work is required for correctness (e.g., persisting a critical record) rather than optional (e.g., analytics).
@@ -111,49 +127,49 @@ With `failOnError: true`, if any work task rejects, the sequencer throws and the
 
 ```ts
 pipeline
-  .work(requiredSyncTask)
-  .work(optionalLogTask)
-  .waitForWork({ failOnError: true });
+  .sideChain(requiredSyncTask)
+  .sideChain(optionalLogTask)
+  .waitForSideChain({ failOnError: true });
 ```
 
-If `requiredSyncTask` fails, the pipeline throws. If only `optionalLogTask` fails, the pipeline continues. The tradeoff: `failOnError` applies to *all* queued work. You can't fail only on specific tasks. If you need per-task behavior, use separate `.work()` / `.waitForWork()` segments.
+If `requiredSyncTask` fails, the pipeline throws. If only `optionalLogTask` fails, the pipeline continues. The tradeoff: `failOnError` applies to *all* queued work. You can't fail only on specific tasks. If you need per-task behavior, use separate `.sideChain()` / `.waitForSideChain()` segments.
 
 ## Waiting on the item stream
 
-`.waitForWork()` is the right tool when you're waiting on work the *same sequencer* dispatched. When the thing you're waiting for happens elsewhere — a worker pattern writing an artifact, a task-board flipping a task status, an external actor resuming a paused review — reach for [`waitForCondition`](/docs/sequencers/wait-for-condition) instead. It subscribes to the request's item stream and re-evaluates a predicate on each fan-out, so the wait is event-driven rather than polled.
+`.waitForSideChain()` is the right tool when you're waiting on work the *same sequencer* dispatched. When the thing you're waiting for happens elsewhere — a worker pattern writing an artifact, a task-board flipping a task status, an external actor resuming a paused review — reach for [`waitForCondition`](/docs/sequencers/wait-for-condition) instead. It subscribes to the request's item stream and re-evaluates a predicate on each fan-out, so the wait is event-driven rather than polled.
 
-## When to use work vs tap
+## When to use sideChain vs tap
 
-| | `tap` | `work` |
+| | `tap` | `sideChain` |
 |--|-------|--------|
 | **Blocks main pipeline?** | Yes | No |
 | **Runs in parallel with next step?** | No | Yes |
 | **Failure affects pipeline?** | Yes (throws) | No (logged + trace-channel signal) |
 | **Use case** | Side effect you must complete before continuing | Fire-and-forget, best-effort |
 
-Use `tap` when the side effect must succeed before the next step. Use `work` when you want non-blocking, best-effort behavior.
+Use `tap` when the side effect must succeed before the next step. Use `sideChain` when you want non-blocking, best-effort behavior.
 
-## Multiple work items
+## Multiple side chains
 
 You can queue several work tasks; they run concurrently:
 
 ```ts
 pipeline
   .step(coreLogic)
-  .work(logUsage)
-  .work(cacheWarm)
-  .work(sendNotification)
+  .sideChain(logUsage)
+  .sideChain(cacheWarm)
+  .sideChain(sendNotification)
   .step(moreWork);
 ```
 
-All three run in parallel. The main chain proceeds to `moreWork` immediately. Call `.waitForWork()` when you need to converge:
+All three run in parallel. The main chain proceeds to `moreWork` immediately. Call `.waitForSideChain()` when you need to converge:
 
 ```ts
 pipeline
   .step(coreLogic)
-  .work(logUsage)
-  .work(cacheWarm)
-  .waitForWork()
+  .sideChain(logUsage)
+  .sideChain(cacheWarm)
+  .waitForSideChain()
   .step(moreWork);
 ```
 
@@ -166,7 +182,7 @@ const chatPipeline = sequencer({
 })
   .step(validateInput)
   .step(agent)
-  .work(
+  .sideChain(
     (output) => ({
       event: "response_generated",
       sessionId: "...",
@@ -174,7 +190,7 @@ const chatPipeline = sequencer({
     }),
     analyticsHandler
   )
-  .work(
+  .sideChain(
     (output) => output.suggestedFollowUps ?? [],
     warmCacheHandler
   )
@@ -184,9 +200,9 @@ const chatPipeline = sequencer({
 
 Analytics and cache warming run in parallel. `logToJournal` runs inline (tap) because we want it done before formatting. The pipeline only continues after the tap completes.
 
-## workIf — conditional background work
+## sideChainIf — conditional side chains
 
-`.workIf()` is the conditional variant of `.work()`. It evaluates a condition at execution time and only dispatches the sidechain when the condition is truthy. When falsy, it's a complete no-op — no block execution, no items emitted, no cost incurred.
+`.sideChainIf()` is the conditional variant of `.sideChain()`. It evaluates a condition at execution time and only dispatches the sidechain when the condition is truthy. When falsy, it's a complete no-op — no block execution, no items emitted, no cost incurred.
 
 The canonical use case is feature-flagged background work:
 
@@ -196,14 +212,14 @@ const pipeline = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .step(agent)
-  .workIf(
+  .sideChainIf(
     (_response, ctx) => ctx.session.state.features.memory,
     memoryObserveBlock
   )
   .step(formatResponse);
 ```
 
-When `features.memory` is disabled, the pipeline behaves as if the `.workIf()` call didn't exist. No block is dispatched and no promise is queued.
+When `features.memory` is disabled, the pipeline behaves as if the `.sideChainIf()` call didn't exist. No block is dispatched and no promise is queued.
 
 ### Static booleans
 
@@ -212,17 +228,17 @@ The condition also accepts a plain `boolean`. This is useful for compile-time fe
 ```ts
 const ENABLE_ANALYTICS = process.env.ANALYTICS === "true";
 
-pipeline.workIf(ENABLE_ANALYTICS, analyticsBlock);
+pipeline.sideChainIf(ENABLE_ANALYTICS, analyticsBlock);
 ```
 
-Static `true` is equivalent to `.work()`. Static `false` is a permanent no-op.
+Static `true` is equivalent to `.sideChain()`. Static `false` is a permanent no-op.
 
 ### With a connector
 
-Like `.work()`, you can reshape the input for the background block:
+Like `.sideChain()`, you can reshape the input for the background block:
 
 ```ts
-pipeline.workIf(
+pipeline.sideChainIf(
   (_response, ctx) => ctx.session.state.observeEnabled,
   (output) => ({ event: "processed", data: output }),
   analyticsBlock,
@@ -240,13 +256,13 @@ dispatch on either the upstream output or live session/request state:
 
 ```ts
 // ✅ Gate on the upstream output (e.g. don't run capture on empty text)
-.workIf((response) => response.length > 0, captureBlock)
+.sideChainIf((response) => response.length > 0, captureBlock)
 
 // ✅ Gate on session/request state
-.workIf((_value, ctx) => ctx.session.state.featureEnabled, block)
+.sideChainIf((_value, ctx) => ctx.session.state.featureEnabled, block)
 
 // ✅ Gate on both
-.workIf((response, ctx) => response.length > 0 && ctx.session.state.captureEnabled, block)
+.sideChainIf((response, ctx) => response.length > 0 && ctx.session.state.captureEnabled, block)
 ```
 
 ### Async conditions
@@ -254,7 +270,7 @@ dispatch on either the upstream output or live session/request state:
 The condition can be async. It's evaluated once before dispatching:
 
 ```ts
-pipeline.workIf(
+pipeline.sideChainIf(
   async (_value, ctx) => {
     const settings = await loadFeatureFlags(ctx.session.state.userId);
     return settings.memoryEnabled;
@@ -263,9 +279,9 @@ pipeline.workIf(
 );
 ```
 
-## forEachBackground — fan-out over arrays
+## forEachSideChain — fan-out over arrays
 
-`.forEachBackground()` dispatches each element of an array to a block as background work. The parent continues immediately. Each iteration runs independently — one failing doesn't stop the others or abort the pipeline.
+`.forEachSideChain()` dispatches each element of an array to a block as background work. The parent continues immediately. Each iteration runs independently — one failing doesn't stop the others or abort the pipeline.
 
 ```ts
 const notifySubscriber = handler({
@@ -284,7 +300,7 @@ const pipeline = sequencer({
   }),
 })
   .map((input) => input.subscribers)
-  .forEachBackground(notifySubscriber, { concurrency: 8 });
+  .forEachSideChain(notifySubscriber, { concurrency: 8 });
 ```
 
 The pipeline's output is the original array, not the block results. This is a fundamental difference from `.forEach()`, which blocks and returns an array of outputs.
@@ -292,16 +308,16 @@ The pipeline's output is the original array, not the block results. This is a fu
 With a connector:
 
 ```ts
-pipeline.forEachBackground(
+pipeline.forEachSideChain(
   (input) => input.channels.map((ch) => ({ channel: ch, payload: input.data })),
   broadcastBlock,
   { concurrency: 4 }
 );
 ```
 
-### forEach vs forEachBackground
+### forEach vs forEachSideChain
 
-| | `forEach` | `forEachBackground` |
+| | `forEach` | `forEachSideChain` |
 |--|-----------|---------------------|
 | **Timing** | Blocks until all iterations complete | Dispatches and continues immediately |
 | **Return type** | `T[]` (array of block outputs) | Pass-through (original input) |
@@ -313,7 +329,7 @@ pipeline.forEachBackground(
 The `concurrency` option (default: 16) limits how many iterations run simultaneously. This prevents overwhelming downstream services when fanning out over large arrays:
 
 ```ts
-.forEachBackground(notifyBlock, { concurrency: 4 })
+.forEachSideChain(notifyBlock, { concurrency: 4 })
 ```
 
 ### Cancellation
@@ -322,23 +338,23 @@ Parent flow cancellation propagates to in-flight background iterations via the a
 
 ## Cancellation signals — two of them
 
-Background work and the request lifecycle are decoupled. A request has two abort signals, and `.work()` tasks see only one of them.
+Background work and the request lifecycle are decoupled. A request has two abort signals, and `.sideChain()` tasks see only one of them.
 
 - **Transport-level events** — client disconnect, SSE close, tab refresh. These are frequent and expected. They abort the foreground chain (the part still streaming to the client), but they leave background work alone.
 - **Explicit user-requested cancellation** — a POST to the `/abort` endpoint, or `session.abortRequest()`. This aborts both the foreground chain and any in-flight background work.
 
 The reason for the split: aborting all background work on every disconnect would silently drop the things you put on the background queue precisely because they should outlive the response. Memory writes, auto-titles, analytics, perspective observations. A user closing their tab should not lose their conversation's memory.
 
-Inside a `.work()`, `.workIf()`, or `.forEachBackground()` task, `ctx.signal` is the background signal. It fires only on explicit cancellation. This holds all the way down: nested sequencers, `.race()`, and `.waitForCondition()` inside a background task all see the background signal, not the request's transport signal.
+Inside a `.sideChain()`, `.sideChainIf()`, or `.forEachSideChain()` task, `ctx.signal` is the background signal. It fires only on explicit cancellation. This holds all the way down: nested sequencers, `.race()`, and `.waitForCondition()` inside a background task all see the background signal, not the request's transport signal.
 
 ### What this means in practice
 
-A memory capture backgrounded with `.work()` survives the user closing their tab:
+A memory capture backgrounded with `.sideChain()` survives the user closing their tab:
 
 ```ts
 const turn = sequencer({ name: "turn", inputSchema: z.unknown() })
   .step(respondToUser)        // foreground — aborts if the user clicks stop
-  .work(memory.captureFromItems); // background — completes even if the tab closes
+  .sideChain(memory.captureFromItems); // background — completes even if the tab closes
 ```
 
 If the user clicks "stop" (an explicit abort), the capture aborts mid-flight and surfaces a failed `block_trace` item carrying the abort cause.
@@ -369,13 +385,13 @@ On a durable sequencer, background work rides the same crash-recovery machinery 
 
 ### Completed work replays
 
-A `.work()` task, or a single `.forEachBackground()` iteration, that finished before the crash is injected from the log, not re-run. This is the same gate foreground steps use. If the block's recorded trace says `completed`, its output is replayed and the body is skipped. It holds only if the block's trace was retained (see the precondition below).
+A `.sideChain()` task, or a single `.forEachSideChain()` iteration, that finished before the crash is injected from the log, not re-run. This is the same gate foreground steps use. If the block's recorded trace says `completed`, its output is replayed and the body is skipped. It holds only if the block's trace was retained (see the precondition below).
 
 ### In-flight work re-runs from scratch
 
 Work that was still running when the crash hit has no completed trace, so it re-runs from the top on continuation. The guarantee is at-least-once, not exactly-once. The runtime replays completed work. It does not checkpoint partway through a task that never finished.
 
-So any non-idempotent side effect in a background task must guard itself. Wrap it in `ctx.runOnce(key, fn)` and pass a provider idempotency key to the external call. For `.forEachBackground()`, the `runOnce` key must be per-item. `ctx.runOnce` dedupes by `(requestId, key)`, and every iteration reuses the same element handler, so a literal key collapses the whole fan-out into one memo entry. Only the first iteration's side effect would fire. Key on something unique to the item:
+So any non-idempotent side effect in a background task must guard itself. Wrap it in `ctx.runOnce(key, fn)` and pass a provider idempotency key to the external call. For `.forEachSideChain()`, the `runOnce` key must be per-item. `ctx.runOnce` dedupes by `(requestId, key)`, and every iteration reuses the same element handler, so a literal key collapses the whole fan-out into one memo entry. Only the first iteration's side effect would fire. Key on something unique to the item:
 
 ```ts
 const notifySubscriber = handler({
@@ -394,13 +410,13 @@ See [Idempotency and `runOnce`](./idempotency.md) for the provider-key pairing.
 
 ### Suspension does not wait for background work
 
-A gate suspends the request without draining the work pool. In-flight background tasks are left running. They are not awaited and not aborted. This is deliberate: a human-approval gate should not block on fire-and-forget analytics. If you need background work finished before a gate, put `.waitForWork()` in front of it.
+A gate suspends the request without draining the work pool. In-flight background tasks are left running. They are not awaited and not aborted. This is deliberate: a human-approval gate should not block on fire-and-forget analytics. If you need background work finished before a gate, put `.waitForSideChain()` in front of it.
 
 ### Failed work under a completed parent
 
 If a background task fails and the parent goes on to complete, the failure is dropped and logged. There is no recovery path. The request is terminal, so nothing retries the task. This is the best-effort contract side chains are built for.
 
-When background work is required for correctness, opt into `.waitForWork({ failOnError: true })`. It surfaces the failure into the parent, but be precise about how. It is drain-then-throw, not fail-fast. The wait drains the scope's queued work first, then throws the first failure, so the parent becomes `failed` only after the scope settles (or the wait times out). A `failed` request is not continuable on the same id. The only follow-up is a fresh `/retry`.
+When background work is required for correctness, opt into `.waitForSideChain({ failOnError: true })`. It surfaces the failure into the parent, but be precise about how. It is drain-then-throw, not fail-fast. The wait drains the scope's queued work first, then throws the first failure, so the parent becomes `failed` only after the scope settles (or the wait times out). A `failed` request is not continuable on the same id. The only follow-up is a fresh `/retry`.
 
 ### Precondition: traces must be retained
 

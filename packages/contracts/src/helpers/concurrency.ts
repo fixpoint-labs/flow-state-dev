@@ -1,9 +1,9 @@
 /**
  * Bounded-concurrency async fan-out for use inside handlers.
  *
- * `.parallel` / `.work` fan out blocks; this helper fans out plain async work
+ * `.parallel` / `.sideChain` fan out blocks; this helper fans out plain async work
  * inside a single handler (e.g. provider HTTP calls across many tickers). It is
- * the one canonical implementation — the sequencer's own `.parallel` / `.work`
+ * the one canonical implementation — the sequencer's own `.parallel` / `.sideChain`
  * paths consume it too, so apps no longer need to re-roll a bounded `map`.
  */
 

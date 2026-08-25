@@ -11,7 +11,7 @@
  *     phases' memos still publish, and `runComplete` stays `false`.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -147,8 +147,6 @@ function traderStructuredOutput() {
       metrics: {
         direction: "long",
         size: "1.4%",
-        stop: "$132",
-        target: "$185",
         conviction: "0.62",
       },
       body: [
@@ -161,6 +159,8 @@ function traderStructuredOutput() {
       sizePct: 1.4,
       stopPrice: 132,
       targetPrice: 185,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
       holdingPeriod: "months" as const,
       invalidationCriteria: [
         "weekly close below $132",
@@ -529,7 +529,7 @@ describe("Phase 5 end-to-end", () => {
     expect(sessionState.runComplete).toBe(true);
     expect(sessionState.activePhase).toBe("phase-5");
 
-    const memoResources = await stores.resourceState.getAll("session", sessionId);
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const pmMemo = memoResources["memos/p5/portfolio-manager"] as
       | {
           status?: string;
@@ -625,7 +625,7 @@ describe("Phase 5 end-to-end", () => {
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.riskAssessment.memoKey)).toBe("published");
     expect(sessionState.runComplete).toBe(false);
 
-    const memoResources = await stores.resourceState.getAll("session", sessionId);
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const pmMemo = memoResources["memos/p5/portfolio-manager"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

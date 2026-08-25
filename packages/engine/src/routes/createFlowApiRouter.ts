@@ -15,7 +15,12 @@ import type {
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
-import { createRuntimeConfig, type RuntimeConfig } from "../runtime-config";
+import {
+  assertMaxWorkstreamListLimit,
+  createRuntimeConfig,
+  resolveStaleSweep,
+  type RuntimeConfig
+} from "../runtime-config";
 import type { ErrorCaptureHandler } from "../errors/error-capture";
 import {
   createFlowRouteHandlers,
@@ -27,6 +32,7 @@ import {
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
+import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
 import type { MatchFunction } from "path-to-regexp";
 import {
@@ -40,6 +46,7 @@ import type {
   TransportRoute
 } from "../transports/types";
 import type { FlowDispatcher } from "../transports/dispatcher";
+import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
 /**
  * Public router adapter options.
@@ -58,8 +65,6 @@ export type CreateFlowApiRouterOptions = {
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
   maxResponseBufferSize?: number;
-  maxConcurrentStreams?: number;
-  staleStreamTtlMs?: number;
   /**
    * Tracing verbosity for observability (non-durable) state snapshots
    * (FIX-406 6H): `"verbose"` (per-step, for DevTool), `"normal"` (block
@@ -144,6 +149,53 @@ export type CreateFlowApiRouterOptions = {
   staleSweepThresholdMs?: number;
 
   /**
+   * How long a request handed to an external dispatcher may sit unclaimed in
+   * the queue before a sweep treats it as lost (milliseconds).
+   *
+   * A queued request has no executor heartbeat — nothing is running it yet — so
+   * its age measures queue wait rather than worker death, and
+   * `staleSweepThresholdMs` cannot answer for it. Raise this when a legitimate
+   * backlog can exceed the default; too low and a valid queued job is marked
+   * `interrupted` and re-dispatched while the queue still holds it.
+   * Must be finite and non-negative; the host throws at construction otherwise.
+   * This is the only bound on a queued entry — a value nothing can exceed would
+   * leave a lost job reported live indefinitely. `0` reaps a queued request as
+   * soon as it is stale.
+   * Default: 600000 (10 minutes).
+   */
+  queuedGraceMs?: number;
+
+  /**
+   * Transport sources this deployment adds to the public re-entry allow-list
+   * (FIX-999).
+   *
+   * `retry`, `continue` and `resume` admit `http`, `mcp`, `chat` and
+   * `scheduled` and refuse everything else with a not-found. That default is
+   * right for a source nobody named, but `InboundTransportAdapter.source` is an
+   * open string: a transport you wrote stamps a source the framework cannot
+   * know about, and its requests would lose re-entry with no way to get it
+   * back. Name those sources here.
+   *
+   * Only your own transports. `webhook` and the framework's detached-dispatch
+   * source are refused at construction — a webhook handler is reachable only
+   * behind signature verification and a detached dispatch is not caller-
+   * addressed at all, so re-entering either from a public route would run it
+   * with caller-supplied input.
+   */
+  publicReentrySources?: readonly string[];
+
+  /**
+   * Largest `limit` the workstream listing route accepts. Default 100.
+   *
+   * Raise it for deployments whose conversations start more workstreams
+   * than that: the list a client reads is all-time history, so any fixed
+   * ceiling eventually hides the oldest finished work. Raise it deliberately —
+   * each row resolves its status from the request store and clients re-read
+   * the list on every interaction, so a larger ceiling costs more per turn.
+   */
+  maxWorkstreamListLimit?: number;
+
+  /**
    * Enable the privileged read-only debug endpoint surface under
    * `/api/flows/sessions/:id/debug/resources*`. Fail-closed: default
    * `false`. Explicit `true` always wins over the env flag. When
@@ -189,6 +241,14 @@ export type CreateFlowApiRouterOptions = {
    * external worker (e.g., BullMQ WorkerDispatcher).
    */
   dispatcher?: FlowDispatcher;
+  /**
+   * Concurrency arbiter for this router's host. Defaults to a fresh one.
+   *
+   * Passed by `createFlowState` when it also built a host for detached
+   * dispatch, so a declared `queue`/`reject` policy is enforced once across the
+   * process rather than once per host (FIX-1077).
+   */
+  arbiter?: ConcurrencyArbiter;
 
   /**
    * @internal — set by `createFlowState`, which has already resolved its
@@ -330,38 +390,89 @@ export async function dispatchDedicatedRoute(
   return dispatch(req, hostBasePath);
 }
 
-const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;
-const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
-
 /**
  * Creates a catch-all route adapter with default no-op internal seam behavior.
  */
 export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowApiRouter {
+  // Server-internal sweeper: marks requests whose executor heartbeat stopped
+  // as interrupted, releasing session locks. Disabled when interval is 0.
+  //
+  // Resolved BEFORE the handlers are built, because the request-host seam's
+  // liveness gate needs this same pair and must describe the sweeper this
+  // router actually constructs. The defaulting rule is shared with
+  // `createFlowState` (`resolveStaleSweep`), which stamps the same facts onto
+  // the runtime config it hands the worker — so a host author configures the
+  // cadence and threshold once and no path can desynchronize the gate from the
+  // sweeper it reasons about.
+  const {
+    staleSweepIntervalMs,
+    staleThresholdMs: staleSweepThresholdMs,
+    queuedGraceMs
+  } = resolveStaleSweep(options);
+
   // Bundle the forwarded instance-level options once at this public boundary.
   // `createFlowState` passes a pre-built `runtimeConfig`; direct callers get
   // it constructed from their flat options here.
-  const runtimeConfig = options.runtimeConfig ?? createRuntimeConfig(options);
+  const baseRuntimeConfig = options.runtimeConfig ?? createRuntimeConfig(options);
+
+  // Wire the request-host seam (FIX-999) for a DIRECT `createFlowApiRouter`
+  // caller — one that never went through `createFlowState` and so has no
+  // shared runtime config to inherit the seam from. Without this the bundle
+  // would be built only for callers that hand `runtimeConfig.requestHost` to
+  // `runAction` themselves, and `requireRequestHost(ctx)` would throw for
+  // every normal request served by such a router.
+  //
+  // Via `createFlowState` these facts are already on `baseRuntimeConfig` and
+  // this restamps them to the identical pair: both sides call
+  // `resolveStaleSweep` on the same forwarded options. The stamp stays because
+  // the router is a public entry point in its own right, and the facts must
+  // describe the sweeper constructed below rather than whatever a caller
+  // happened to hold. `startOperation` and `parentTask` are carried through
+  // untouched — a host that wired them (a worker, a test) keeps them, and one
+  // that did not gets a bundle whose start verb refuses by name. That is the
+  // designed degraded-but-present state: the gate makes a real fail-closed
+  // decision instead of the seam being absent entirely.
+  //
+  // `queuedGraceMs` rides the config rather than the seam. Startup detection
+  // and the `check-interrupted` route sweep too, and this bundle is the only
+  // thing that reaches all three; the seam deliberately does not carry it,
+  // because the liveness read leaves a queued entry unbounded and defers the
+  // bound to the sweep (a second clock there is the desync that would bring
+  // back the false negative).
+  const runtimeConfig: RuntimeConfig = {
+    ...baseRuntimeConfig,
+    queuedGraceMs,
+    requestHost: {
+      ...baseRuntimeConfig.requestHost,
+      staleThresholdMs: staleSweepThresholdMs,
+      staleSweepIntervalMs
+    }
+  };
+
+  // Refuse a host-declared re-entry source the framework never re-enters, here
+  // rather than at the route (FIX-999). Checked on the RESOLVED config so both
+  // entry points are covered by one assert: a direct caller's flat option and
+  // the one `createFlowState` put on the config it shares. A misconfiguration
+  // here is a security assumption, and a production 404 is the wrong place to
+  // discover the option did nothing.
+  assertPublicReentrySources(runtimeConfig.publicReentrySources);
+  // Same reasoning one option over: a cap that cannot bound anything reads as
+  // configured and behaves as absent.
+  assertMaxWorkstreamListLimit(runtimeConfig.maxWorkstreamListLimit);
+
   const handlers = createFlowRouteHandlers({
     ...options,
     runtimeConfig,
     internalSeams: NOOP_INTERNAL_ROUTE_SEAMS,
-    dispatcher: options.dispatcher
+    dispatcher: options.dispatcher,
+    arbiter: options.arbiter
   });
 
-  // Server-internal sweeper: marks requests whose executor heartbeat stopped
-  // as interrupted, releasing session locks. Disabled when interval is 0.
-  const staleSweepIntervalMs =
-    options.staleSweepIntervalMs !== undefined
-      ? options.staleSweepIntervalMs
-      : DEFAULT_STALE_SWEEP_INTERVAL_MS;
-  const staleSweepThresholdMs =
-    options.staleSweepThresholdMs !== undefined
-      ? options.staleSweepThresholdMs
-      : DEFAULT_STALE_SWEEP_THRESHOLD_MS;
   const sweeper = createStaleRequestSweeper({
     stores: handlers.host.stores,
     intervalMs: staleSweepIntervalMs,
-    staleThresholdMs: staleSweepThresholdMs
+    staleThresholdMs: staleSweepThresholdMs,
+    queuedGraceMs
   });
 
   // Server-internal durability sweeper (FIX-141): enforces suspension expiry

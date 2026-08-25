@@ -11,13 +11,13 @@
  * it while a served flow is unauthenticated.
  *
  * The real security boundary is `authentication.resolvePrincipal` itself; this
- * rail only catches the forgot-to-configure case. It is deliberately narrow —
- * see the known limits in `docs/specs/FIX-893.md` §3: an app authenticating via
- * the host-level `createFlowState({ resolvePrincipal })` fallback reads as a
- * false-positive (escape with `allowUnauthenticated`), and a hand-written
- * resolver that itself delegates to the default is a false-negative (out of
- * scope — closing it would need an explicit auth marker, which is new auth
- * machinery this framework intentionally does not add here).
+ * rail only catches the forgot-to-configure case. It is deliberately narrow, with
+ * two known limits: an app authenticating via the host-level
+ * `createFlowState({ resolvePrincipal })` fallback reads as a false-positive
+ * (escape with `allowUnauthenticated`), and a hand-written resolver that itself
+ * delegates to the default is a false-negative (out of scope — closing it would
+ * need an explicit auth marker, which is new auth machinery this framework
+ * intentionally does not add here).
  *
  * Extracted from the per-app entrypoint in `examples/knowledge-base` so both the
  * `fsdev serve` command and any hand-written entry can share one rail instead of
@@ -62,7 +62,9 @@ export interface NetworkBindGuardOptions {
  * bind-immediately-then-`/healthz`-503 cold start for that window, in exchange for
  * failing fast when the app can't start (a deliberate trade for a production
  * command). The precise, init-free alternative is to surface the unauthenticated
- * flow set on `FlowState.meta` framework-side; see `docs/specs/FIX-893.md` §8.
+ * flow set on `FlowState.meta` framework-side, so the guard reads a declared set
+ * instead of resolving the runtime — not done here because it moves a host-level
+ * concern into the framework's public metadata.
  *
  * @throws Error naming the unauthenticated flow kinds when `host` is non-loopback,
  *   `allowUnauthenticated` is not set, and at least one served flow is on the

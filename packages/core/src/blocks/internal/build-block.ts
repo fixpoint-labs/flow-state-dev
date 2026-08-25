@@ -16,6 +16,7 @@ import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
 import type { JsonObject } from "../../schema/common";
 import type { CapabilityRef } from "../../capability/types";
+import { mergeWorkstreamBindings, type WorkstreamBindings } from "../../types/workstream";
 import { getBaseCapability } from "../../capability/merge";
 import { matchesRescueHandler, toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
@@ -46,18 +47,27 @@ export function extractDeclaredResources(config: {
  * Effective-storage-key collisions (different accessor keys pointing at the
  * same `(scope, ref, flowIsolation)`) are detected at flow-build time, not
  * here — this layer only merges the bubble-up sets.
+ *
+ * **Never writes to either argument, and never returns one — the result is
+ * always a fresh object.** Builders hand this function sets a block has already
+ * published, and some pass ONE reference as both a block's own set and its
+ * bubble-up accumulator (a sequencer's capability resources, a leaf's
+ * `resources`). Merging in place therefore rewrote the published
+ * `ownDeclaredResources` that FIX-688's prefetch hook reads (FIX-1052,
+ * FIX-1051). Copying is what lets callers keep sharing that reference.
  */
 export function mergeDeclaredResources(
   target: DeclaredResources | undefined,
   source: DeclaredResources | undefined
 ): DeclaredResources | undefined {
-  if (source === undefined) return target;
+  if (source === undefined) return target === undefined ? undefined : { ...target };
   if (target === undefined) return { ...source };
 
+  const merged = { ...target };
   for (const [name, resource] of Object.entries(source)) {
-    const existing = target[name];
+    const existing = merged[name];
     if (existing === undefined) {
-      target[name] = resource;
+      merged[name] = resource;
       continue;
     }
     if (existing === resource) continue;
@@ -66,7 +76,7 @@ export function mergeDeclaredResources(
     );
   }
 
-  return target;
+  return merged;
 }
 
 type ExecuteFn<
@@ -106,6 +116,28 @@ export type BuildBlockOptions<
    */
   requiresOrg?: boolean;
   /**
+   * Every block this block statically composes — a sequencer's step children
+   * and chain-level rescue handlers, a router's routes, the block `asTool`
+   * wraps. Rescue handlers installed via `config.rescue` are folded in here
+   * automatically and must NOT be passed again.
+   *
+   * Retained on the definition so the graph is walkable at flow-definition
+   * time, and used here as the single source the `workstreamBindings` rail is
+   * derived from.
+   */
+  childBlocks?: readonly BlockDefinition<any, any>[];
+  /**
+   * This block's OWN detached worker bindings (FIX-982) — what it contributes
+   * before any child's. Leaves and freshly-built composites omit it; a board
+   * stamps its own onto the built drain afterwards via
+   * `declareWorkstreamBindings`, and every rebuild path forwards
+   * `definition.ownWorkstreamBindings` so the stamp survives.
+   *
+   * The bubble-up set on the definition is derived from this plus
+   * `childBlocks` — callers never pre-merge it.
+   */
+  ownWorkstreamBindings?: WorkstreamBindings;
+  /**
    * Mapper installed via `BlockDefinition.mapModelOutput`. Carried on the
    * runtime view; the generator tool bridge reads it via `asRuntime(tool)`
    * and forwards it to the AI SDK as `toModelOutput`.
@@ -144,6 +176,13 @@ export function buildBlock<
   const { kind, config } = options;
   const internalExecute = options.execute ?? config.execute;
 
+  if (Object.hasOwn(config, "middleware")) {
+    throw new Error(
+      `Block "${String(config.name)}" uses the removed "middleware" option. ` +
+      "Middleware is not executed; move policy checks to the HTTP authentication layer or block logic."
+    );
+  }
+
   if (typeof config.name !== "string" || config.name.trim().length === 0) {
     throw new Error(`Cannot build "${kind}" block without a non-empty "name"`);
   }
@@ -173,6 +212,29 @@ export function buildBlock<
   // aggregate as `options.requiresOrg`).
   const requiresOrg = Boolean(config.requireOrg) || Boolean(options.requiresOrg);
 
+  // Every block this one statically composes. Rescue handlers are children like
+  // any other — a board reachable only on the failure path is still a board the
+  // flow has to route to — and they are folded in HERE, from the currently
+  // installed `config.rescue`, rather than by the caller. That is what makes
+  // `.rescue([a]).rescue([b])` correct: the rebuild hands over the same
+  // non-rescue children and the new config, and `a` simply is not among the
+  // handlers any more, so nothing has to remember to remove it.
+  const childBlocks: readonly BlockDefinition<any, any>[] = [
+    ...(options.childBlocks ?? []),
+    ...(config.rescue ?? []).map((handler) => handler.block)
+  ];
+
+  // The one place the bindings rail is computed. Callers hand over children and
+  // their own stamp; the union is derived, never threaded. Each child already
+  // carries the union of its own subtree, so a single pass here reaches the
+  // whole tree — and a composition site that forgets to pass a child drops it
+  // from every rail at once, which `defineFlow`'s reachability assertion then
+  // refuses at definition time rather than at a detached wake weeks later.
+  let workstreamBindings = options.ownWorkstreamBindings;
+  for (const child of childBlocks) {
+    workstreamBindings = mergeWorkstreamBindings(workstreamBindings, child.workstreamBindings);
+  }
+
   const definition: BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
@@ -184,6 +246,9 @@ export function buildBlock<
     declaredResources: options.declaredResources,
     ownDeclaredResources: options.ownDeclaredResources,
     requiresOrg,
+    childBlocks,
+    workstreamBindings,
+    ownWorkstreamBindings: options.ownWorkstreamBindings,
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
@@ -332,6 +397,16 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        // Structure and own-stamp ride every rebuild; the bindings rail itself
+        // is re-derived from them (FIX-982). The stamp is read off `definition`,
+        // never `options`: a task board stamps its bindings onto the finished
+        // block via `declareWorkstreamBindings`, so the construction-time
+        // `options` value predates the stamp and rebuilding from it hands back a
+        // block that has silently forgotten the board it contains. Nothing
+        // throws — the symptom is a detached task that is admitted, claimed,
+        // dispatched and then never runs.
+        childBlocks: options.childBlocks,
+        ownWorkstreamBindings: definition.ownWorkstreamBindings,
         // `connectInput` preserves `TOutputSchema`, so any installed
         // `mapModelOutput` mapper is still valid against the rebuilt block's
         // output. Forward it through.
@@ -349,6 +424,8 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        childBlocks: options.childBlocks,
+        ownWorkstreamBindings: definition.ownWorkstreamBindings,
         modelOutputMapper: mapper,
       });
     },
@@ -364,6 +441,14 @@ export function buildBlock<
           mergedRequiresOrg = true;
         }
       }
+      // Bindings are deliberately absent from that loop. `handlers` REPLACES the
+      // installed set, so the rail cannot be accumulated here: seeding from the
+      // post-fold `definition.workstreamBindings` kept a replaced handler's
+      // boards, and `.rescue([a]).rescue([b])` then advertised a worker nothing
+      // could reach — or threw a duplicate-coordinate error between `a` and `b`
+      // when both bound the same coordinate. Passing the own stamp and the new
+      // handlers lets `buildBlock` re-derive the union from what is actually
+      // installed, so `a` drops out because it is no longer a child.
       return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
         kind,
         config: { ...runtimeConfig, rescue: handlers },
@@ -372,6 +457,8 @@ export function buildBlock<
         ownDeclaredResources: options.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: mergedRequiresOrg,
+        childBlocks: options.childBlocks,
+        ownWorkstreamBindings: definition.ownWorkstreamBindings,
         modelOutputMapper: options.modelOutputMapper,
       });
     },
@@ -432,8 +519,10 @@ export function buildBlock<
       };
 
       // declaredResources / resolvedCapabilities are forwarded so the inner
-      // block's resource declarations still bubble up to the flow when the
-      // wrapper is the surface added to a sequencer chain.
+      // block's declarations still bubble up to the flow when the wrapper is the
+      // surface added to a sequencer chain. The wrapper genuinely composes the
+      // inner block — it runs it — so the inner block is its child, and the
+      // bindings rail derives from that rather than being copied across.
       return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
         kind: "handler",
         config: wrappedConfig,
@@ -442,6 +531,7 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        childBlocks: [definition],
       });
     },
     connectOutput<TTo>(
@@ -471,6 +561,8 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        childBlocks: options.childBlocks,
+        ownWorkstreamBindings: definition.ownWorkstreamBindings,
       });
     }
   };

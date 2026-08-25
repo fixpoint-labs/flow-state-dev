@@ -13,7 +13,8 @@ import type {
   SessionDetail,
   SessionRequestSummary,
   SessionStateSnapshotResponse,
-  SessionSummary
+  SessionSummary,
+  WorkstreamSummary
 } from "../types";
 
 /**
@@ -48,6 +49,20 @@ export type ListSessionRequestsOptions = {
    * requests.
    */
   includeItems?: boolean;
+};
+
+/**
+ * Query options for listing the Workstreams under one conversation.
+ *
+ * Paging only — there is no filter here. Which background work a caller may
+ * see is decided by the server from the stored parent record, never from
+ * anything the caller sends (BP-031).
+ */
+export type ListWorkstreamsOptions = {
+  /** 1–100. The server returns 25 rows when this is absent. */
+  limit?: number;
+  /** 0–10000. */
+  offset?: number;
 };
 
 /**
@@ -93,6 +108,23 @@ export type SessionClient = {
     sessionId: string,
     options?: ListSessionRequestsOptions
   ) => Promise<SessionRequestSummary[]>;
+  /**
+   * The background work running under one conversation — the first of two
+   * hops. Each row carries the state its work reached, so a list renders from
+   * this call alone; `listSessionRequests` with a row's `id` is the drill-in
+   * that shows what that work has done.
+   *
+   * A conversation with no background work returns an empty list, which is the
+   * ordinary case rather than an error.
+   *
+   * There is no counterpart that *starts* detached work. Whether work runs in
+   * the background is declared by the flow author when the flow is wired up,
+   * never chosen by the caller.
+   */
+  listWorkstreams: (
+    parentSessionId: string,
+    options?: ListWorkstreamsOptions
+  ) => Promise<WorkstreamSummary[]>;
   getSessionState: (
     sessionId: string,
     options?: GetSessionStateOptions
@@ -186,6 +218,36 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     });
 
     return payload.requests;
+  };
+
+  const listWorkstreams = async (
+    parentSessionId: string,
+    listOptions?: ListWorkstreamsOptions
+  ): Promise<WorkstreamSummary[]> => {
+    const parentId = requireId(parentSessionId, "parentSessionId");
+    const payload = await requestJson<{ workstreams: WorkstreamSummary[] }>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${encodeURIComponent(parentId)}/workstreams`,
+        query: asQuery({
+          limit: listOptions?.limit,
+          offset: listOptions?.offset
+        })
+      })
+    });
+
+    // The client is about to relabel these rows as this conversation's
+    // background work, and it will not relabel a row the server did not claim.
+    return payload.workstreams.filter((workstream) => {
+      if (workstream.parentSessionId === parentId) return true;
+      warnParentMismatchOnce(
+        `${parentId}:${workstream.id}`,
+        `listWorkstreams("${parentId}") dropped row "${workstream.id}" whose ` +
+          `parentSessionId is "${workstream.parentSessionId}", not the requested parent.`
+      );
+      return false;
+    });
   };
 
   const getSessionState = async (
@@ -373,6 +435,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     listSessions,
     getSession,
     listSessionRequests,
+    listWorkstreams,
     getSessionState,
     createSession,
     updateSessionMetadata,
@@ -385,6 +448,43 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetchCollectionItemContent: debugFetchCollectionItemContent
     }
   };
+}
+
+// `@flow-state-dev/core`'s `warnOnceDev` is the codebase's existing pattern
+// for a dev-only, once-per-key diagnostic, but `client` keeps `core`
+// type-only (it ships to the browser and carries no @types/node — see
+// scripts/validate-package-boundaries.mjs), so it cannot be imported as a
+// value here. This mirrors its shape locally, reading `process.env` off
+// `globalThis` the same way `resolveFetch` reads `fetch` (../internal/http.ts)
+// rather than assuming Node's ambient `process` global.
+//
+// The indirect `globalThis.process` read means a bundler's build-time
+// `process.env.NODE_ENV` replacement can't eliminate this branch in a
+// production bundle — a bare `process.env.NODE_ENV` reference would throw in
+// an unbundled browser instead, which is worse. That dead-code loss is a
+// deliberate, cheap trade for a branch this small; don't "fix" it back to a
+// bare reference.
+//
+// Default must be silent, not loud: `isDevEnv` requires an explicit
+// "development" (or "test", so this suite exercises the warning) rather than
+// treating "not production" as development. A production browser normally
+// has no `process` global at all, so a fail-open default (silent only when
+// NODE_ENV is explicitly "production") would warn — with session and row
+// identifiers — everywhere that isn't a bundled dev build.
+const warnedParentMismatches = new Set<string>();
+
+function isDevEnv(): boolean {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process?.env;
+  return env?.NODE_ENV === "development" || env?.NODE_ENV === "test";
+}
+
+function warnParentMismatchOnce(key: string, message: string): void {
+  if (!isDevEnv()) return;
+  if (warnedParentMismatches.has(key)) return;
+  warnedParentMismatches.add(key);
+  // eslint-disable-next-line no-console
+  console.warn(`[flow-state-dev] ${message}`);
 }
 
 function requireId(value: string, name: string): string {

@@ -143,7 +143,7 @@ async function setupCtx(opts: {
   await stores.session.set(sessionId, session, "any");
   // Resource state is canonical in the ResourceStateStore (FIX-689).
   for (const [key, state] of Object.entries(opts.resources ?? {})) {
-    await stores.resourceState.set("session", sessionId, key, state as JsonObject);
+    await stores.resourceState.set("session", sessionId, key, state as JsonObject, "any");
   }
   const debug = resolveDebugConfig(
     opts.debugConfig ?? { debugEndpointsEnabled: true }

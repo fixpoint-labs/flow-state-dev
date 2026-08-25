@@ -17,7 +17,7 @@ export type {
   UserScopeHandle,
 } from "./types/scope";
 export type { ScopeStateOps } from "./types/state";
-export type { AgentType, ItemVisibility } from "./items/types";
+export type { ItemVisibility } from "./items/types";
 export {
   whenAnyItem,
   whenResourceChanged,
@@ -112,6 +112,24 @@ export type {
   PersonaSource,
 } from "./types/agent";
 export { defineCapability, getBaseCapability } from "./capability";
+
+/**
+ * The request-host seam (FIX-999) — how a capability's helpers reach facilities
+ * only the runtime can provide, without casting the context.
+ */
+export { NoRequestHostError, requireRequestHost } from "./types/request-host";
+export type {
+  DetachedProvenance,
+  DetachedRoutingSeed,
+  LivenessAnswers,
+  ParentTaskOutcome,
+  RequestHost,
+  SettleParentTaskInput,
+  SettleParentTaskResult,
+  StartDetachedInput,
+  StartDetachedRefusal,
+  StartDetachedResult
+} from "./types/request-host";
 export type {
   CapabilityPresetCtx,
   CapabilityRef,
@@ -171,7 +189,17 @@ export {
 // `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
 // children are rescued by the core `executeBlock` seam.
 export { runRescue } from "./blocks/sequencer";
-export { defineFlow } from "./flow";
+// Exported for the one first-party seam that dispatches a worker WITHOUT going
+// through the sequencer kernel (`dispatchAndExecuteBlock`'s substrate cast), so
+// it composes a subtree's background signal by the same rule the kernel uses
+// rather than a second copy of it.
+export { composeSideChainSignal } from "./blocks/sequencer";
+export {
+  defineFlow,
+  buildWorkstreamCore,
+  workstreamDispatchInputSchema,
+  type WorkstreamDispatchInput,
+} from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";
@@ -214,7 +242,9 @@ export type {
   ParallelStepOutput,
   RouterConfig,
   SequencerConfig,
-  SequencerDefinition
+  SequencerDefinition,
+  StepOptions,
+  StepOutcome
 } from "./blocks";
 export type {
   CostEstimate,
@@ -373,13 +403,14 @@ export type {
   StrictViolation
 } from "./models";
 export type {
-  RequestWorkPool,
-  RequestWorkPoolResult,
-  RequestWorkPoolDrainOptions,
-  RequestWorkPoolDrainAllOptions,
-  RequestWorkTaskMeta
-} from "./execution/request-work-pool";
-export { getRequestWorkPool } from "./execution/request-work-pool";
+  RequestSideChainPool,
+  RequestSideChainPoolResult,
+  RequestSideChainPoolDrainOptions,
+  RequestSideChainPoolDrainAllOptions,
+  RequestSideChainPoolDrainToQuiescenceOptions,
+  RequestSideChainTaskMeta
+} from "./execution/request-side-chain-pool";
+export { getRequestSideChainPool } from "./execution/request-side-chain-pool";
 
 export {
   FlowError,

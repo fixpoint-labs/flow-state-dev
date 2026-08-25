@@ -45,23 +45,6 @@ export const LLM_AUDIENCE_TYPES = new Set([
 ]);
 
 /**
- * Set of item types visible to the client.
- * `block_trace`, `context` are NOT client-visible.
- */
-export const CLIENT_AUDIENCE_TYPES = new Set([
-  "message",
-  "reasoning",
-  "component",
-  "container",
-  "tool_output",
-  "status",
-  "source",
-  "state_change",
-  "resource_change",
-  "error",
-]);
-
-/**
  * Converts a persisted OutputItem into an LLM-ready message.
  *
  * Items with `history: false` (resolved via `resolveItemVisibility`) are
@@ -325,7 +308,7 @@ export async function selectRequestsByLimit(
  *
  * Optionally includes items from the current in-flight request via
  * `readLiveItems` so that blocks like `sessionTitleGenerator` running as
- * background work can see the current request's output.
+ * side-chain work can see the current request's output.
  */
 export async function loadLLMHistory(
   priorRequests: RequestRecord[],

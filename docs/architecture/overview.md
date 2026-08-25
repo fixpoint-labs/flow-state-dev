@@ -12,7 +12,7 @@ Every AI feature needs the same infrastructure: call an LLM, stream the response
 
 ```ts
 // Define blocks
-const chat = generator({ name: "chat", model: "preset/fast", prompt: "..." });
+const chat = generator({ name: "chat", model: "openai/gpt-5.4-mini", prompt: "..." });
 const track = handler({ name: "track", execute: async (input, ctx) => {
   await ctx.session.incState({ count: 1 });
   return input;
@@ -45,7 +45,7 @@ Six packages with strict dependency boundaries:
 @flow-state-dev/client     Isomorphic API client (actions, sessions, streams)
 @flow-state-dev/react      React hooks and renderers (wraps client)
 @flow-state-dev/testing    Test harnesses and mocks
-@flow-state-dev/cli        Terminal interface (fsdev)
+@flow-state-dev/fsdev      Terminal interface (the fsdev command)
 apps/devtool               First-party inspector app
 ```
 
@@ -113,11 +113,15 @@ Actions are the flow's public API. Clients call them by name. Each action maps t
 Four nested state scopes, each with typed atomic operations:
 
 ```
-request → session → user → project
+request → session → user → org
 (one run)  (conversation)  (across sessions)  (shared across users)
 ```
 
 Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more — all CAS-guarded for concurrency safety. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md).
+
+### Detached work — outliving the request
+
+Work dispatched through `ctx.requestHost.startDetached` runs in a **Workstream**, a child session that keeps going after the request that started it has returned. Where it runs, whether it survives the process, and what recovers it if the process stops all depend on the deployment topology. See [Detached Work](./detached-work.md).
 
 ### Streaming — resilient by default
 
@@ -132,7 +136,7 @@ See [Streaming](./streaming.md) and [Items](./items.md).
 
 ### Resources and client data — data with policy
 
-**Resources** are named, typed state containers scoped to sessions, users, or projects. Think of them as structured data stores that blocks can read and write. Blocks declare their resource dependencies via `defineResource()`, and the framework collects and merges these declarations automatically through sequencers up to the flow level. For dynamic collections where the instance count isn't known ahead of time, [Resource Collections](./resource-collections.md) let you create and destroy instances at runtime under a shared schema.
+**Resources** are named, typed state containers scoped to sessions, users, or orgs. Think of them as structured data stores that blocks can read and write. Blocks declare their resource dependencies via `defineResource()`, and the framework collects and merges these declarations automatically through sequencers up to the flow level. For dynamic collections where the instance count isn't known ahead of time, [Resource Collections](./resource-collections.md) let you create and destroy instances at runtime under a shared schema.
 
 **Client data** is the projection of scope state declared by each scope's `client` block (`expose` for verbatim passthrough, `derived` for computed views). Raw state never reaches the client; the snapshot route returns only what `client` declares. The privacy property is structural: a scope without a `client` block exposes nothing, and a new state field doesn't surface on the wire until it's added to `expose` or `derived`.
 
@@ -151,7 +155,7 @@ const pipeline = sequencer({ name: "review" })
   .step(analyze);
 ```
 
-Ten utilities ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Utility Blocks](./utility-blocks.md).
+The catalog of utilities and their kinds is in [Utility Blocks](./utility-blocks.md). Per-utility config and default models live in [Core Utilities](../../apps/docs/docs/patterns/utility-blocks/core.md).
 
 ## Data flow
 

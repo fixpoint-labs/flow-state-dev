@@ -24,6 +24,7 @@ import {
   taskTools as taskToolsSingleton,
 } from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";
+import { currentWorkerClaim } from "../../src/task-board/flow-policy-wiring";
 import { createMockSkillsCollection } from "./mocks";
 import { buildDelegationCtx } from "./delegation-ctx";
 
@@ -273,6 +274,69 @@ describe("delegation surface — runBoard drains the own-state ledger", () => {
     expect(run.error).toBeNull();
     const output = run.output as { status: string; tasks: Array<{ status: string }> };
     expect(output.status).toBe("blocked");
+  });
+
+  it("leaves a coordinator's own task write unguarded AFTER a drain (FIX-981)", async () => {
+    // The contract that rides with the ownership fence, and the second path
+    // that a test of the fence alone would never walk (BP-035).
+    //
+    // The board stamps each worker's claim ticket onto an `AsyncLocalStorage`
+    // scope with `enterWith`, which persists through the rest of the calling
+    // async chain — including, after the drain returns, the executive's own
+    // tool calls. If a worker's ticket survived into this scope, the
+    // coordinator's write to a task it never claimed would be refused as
+    // `not-my-task`, and a coordinator settling its own board is exactly the
+    // shipped default. So the drain must leave no claim behind it.
+    //
+    // Asserted, never assumed: "a caller presenting no ticket behaves as it
+    // did before" is the whole of Decision 4, and it is invisible to every
+    // other test in this file.
+    const gen = buildTeamGenerator();
+    const { ctx } = buildDelegationCtx();
+    const tools = await resolveTools(gen, ctx);
+    const addTask = toolNamed(tools, "addTask");
+    const runBoard = toolNamed(tools, "runBoard");
+    const cancelTask = toolNamed(tools, "cancelTask");
+    const completeTask = toolNamed(tools, "completeTask");
+
+    await runForTest(
+      addTask,
+      { goal: "drained by a worker", assignee: "analyst", input: { subject: "x" } },
+      ctx,
+    );
+    const drained = await testBlock(runBoard as never, { input: {} as never });
+    expect(drained.error).toBeNull();
+
+    // The mechanism, asserted directly so the behaviour below cannot pass by
+    // accident: `enterWith` persists through the *calling* async chain, and
+    // whether a worker's stamp reaches back out past the drain's fan-out is a
+    // property of how the board composes, not something to reason about. If
+    // this ever flips, the coordinator assertions below are the user-visible
+    // damage.
+    expect(currentWorkerClaim()).toBeUndefined();
+
+    // A NEW task the coordinator never claimed, added after the drain.
+    const later = (await runForTest(
+      addTask,
+      { goal: "settled by the coordinator", assignee: "analyst" },
+      ctx,
+    )) as { taskId: string };
+
+    // Cancelling it is a legal move from `pending` and the coordinator holds no
+    // claim, so it must simply land.
+    expect(await runForTest(cancelTask, { taskId: later.taskId }, ctx)).toEqual({
+      ok: true,
+    });
+
+    // ...and the pre-existing refusals are unchanged: a settled task still
+    // reports terminality, not ownership.
+    const refused = (await runForTest(
+      completeTask,
+      { taskId: later.taskId, output: "too late" },
+      ctx,
+    )) as { ok: boolean; error: string };
+    expect(refused.ok).toBe(false);
+    expect(refused.error).not.toContain("you hold task");
   });
 });
 

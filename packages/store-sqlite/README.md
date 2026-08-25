@@ -15,22 +15,23 @@ pnpm add @flow-state-dev/store-sqlite
 ## Usage
 
 ```ts
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createSQLiteStores, sqliteStores } from "@flow-state-dev/store-sqlite";
+import supportDesk from "./flows/support-desk";
 
-// File-based (persistent)
-const stores = createSQLiteStores({ filename: "./data/flowstate.db" });
+const flowstate = createFlowState({
+  flows: { supportDesk },
+  stores: {
+    default: {
+      primary: sqliteStores({ filename: "./data/flowstate.db" }),
+    },
+  },
+});
 
 // In-memory (testing)
 const testStores = createSQLiteStores({ filename: ":memory:" });
 
-// Use as a drop-in replacement for createInMemoryStores()
-const server = createFlowServer({
-  stores,
-  // ...
-});
-
-// Close when done
-stores.close();
+testStores.close();
 ```
 
 ## Configuration
@@ -75,6 +76,10 @@ See [the schedule index reference](https://flowstate.dev/docs/server/schedule-in
 
 This adapter fully supports interrupted request recovery. The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query.
 
+A request executing here can be cancelled from another process. Both `RequestStore` abort-intent members are implemented: `isAbortRequested` reads the flag off the primary-key row with `json_extract`, never touching `request_items`, and `setFieldsIfStatus` evaluates its status predicate and writes in one transaction.
+
+The registry declares `sharedAcrossProcesses: false`. A SQLite file can sit on a volume every worker opens or on a local disk only one process sees, and the adapter cannot tell which from the database handle it is given — so it reports not shared. Runtime behaviour that depends on reading another process's in-flight requests stays disabled rather than answering from a registry that may be process-local.
+
 ## Resource persistence
 
 Everything this adapter stores survives a process restart, including resource state and resource content. A file-backed registry is a true persistent store, at parity with the Postgres adapter.
@@ -86,6 +91,16 @@ Everything this adapter stores survives a process restart, including resource st
 | Resource state (single + collection instances) | Yes | `resource_state` |
 | Resource content (artifacts, collection bodies, client data) | Yes | `resource_content` |
 | Sequencer checkpoints, suspensions, leases, traces | Yes | dedicated tables |
+
+### Resource state carries a version, and deletes leave a row behind
+
+`resource_state` gained two columns: `version` (monotonic per key, never reused) and `lifecycle` (`live` or `deleted`). Writes are compare-and-swap: a write states the version it expects, and is refused if the row moved since it was read.
+
+**What that guarantee covers.** The compare-and-swap protects any caller that passes the version it read, and that includes resource mutations authored inside a flow: the runtime writes them at the version the execution context observed, so two flow contexts patching one resource can no longer silently drop a write. Choose an adapter here for durability and for the version and tombstone semantics described below — the concurrency guarantee itself is the same on every adapter except the filesystem one, which compares within a single process only.
+
+The migration is applied automatically on open and is **purely additive**: `ADD COLUMN` with defaults, no table rebuild, no backfill, indexes untouched, and `state` stays `NOT NULL`. Rows written before the upgrade read as **live at version 1**. Re-opening an already-migrated database is a no-op, so it is safe to roll forward repeatedly.
+
+**Operator-visible:** deleting a resource does not remove its row. It marks the row `deleted`, keeps the version, and replaces the payload with `{}`. That retained version is what makes delete-then-recreate safe. Nothing reclaims these rows — there is no sweep, no timer, no retention window — so a workload that creates and deletes many resource keys accumulates one small row per deleted key. Plan for it rather than expecting a cleanup pass that does not exist.
 
 ```ts
 const stores = createSQLiteStores({ filename: "./data/flowstate.db" });
@@ -104,6 +119,23 @@ Live-tail subscriptions (`request.subscribeToEvents`) share one poll loop per re
 The store auto-applies schema changes on connection open via `initializeSchema`. No manual migration step.
 
 The `request_items` table was added for incremental item persistence: instead of rewriting the whole request blob on every item boundary, the store upserts one row per changed item keyed by `(request_id, item_id)`. Existing databases upgrade transparently — items written to the old `requests.data` blob are read via a fallback merge, and new items go to the table.
+
+`sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
+
+### Indexes for the ordered listings
+
+Two composite indexes serve the ordered reads behind a session's background-job listing. Both are plain btrees, added by `initializeSchema`; no column and no data migration comes with them.
+
+| Index | Serves |
+| --- | --- |
+| `idx_sessions_parent_created (parent_session_id, created_at, id)` | One parent's children, ordered newest-created first. The single-column parent index serves the equality but not the order, so a page limit would apply after sorting the parent's whole child set. |
+| `idx_requests_session_created (session_id, created_at, id)` | One session's most recent request. The `(session_id, status)` and `(session_id, tenant_id)` composites stop before the ordering column. |
+
+The ordering columns are declared ascending and scanned backwards, which SQLite does for an `ORDER BY` that reverses every key uniformly.
+
+**No third index is needed for the non-terminal existence check.** `idx_requests_session_status` already ships and is exactly that shape's two selective predicates.
+
+**The cost guarantee is unverified on this adapter.** The property those indexes exist for, examined work bounded independently of the history it sits on, cannot be measured here: `better-sqlite3` exposes no per-node row counters.
 
 ## Individual Store Constructors
 

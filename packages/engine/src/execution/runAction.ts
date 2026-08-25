@@ -10,7 +10,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
-import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import { RESUME_ACTION_STATUS, workstreamBindingKey } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -18,7 +18,7 @@ import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
-import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
+import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
   DEFAULT_RUNTIME_LOGGER,
@@ -49,6 +49,7 @@ import { createExecutionMetadata } from "./types";
 import { createTTSEmitterHook, type TTSEmitterHook } from "../voice/tts-emitter-hook";
 import { generateId } from "../utils/generate-id";
 import {
+  abortRequest,
   registerAbortController,
   deregisterAbortController
 } from "./abort-registry";
@@ -86,38 +87,43 @@ function serializeAbortReason(reason: unknown): string {
 }
 
 /**
- * Drains the request-scoped background work pool. Emits `backgroundTasks: N`
- * status updates as tasks settle (parity with the legacy per-sequencer
- * auto-await), logs failures via console.error, and emits a final
- * `backgroundTasks: 0` status before the caller proceeds to terminal status.
+ * Drains the request-scoped side-chain pool to quiescence. Emits
+ * `sideChainTasks: N` status updates as tasks settle (parity with the legacy
+ * per-sequencer auto-await), logs failures via console.error, and emits a
+ * final `sideChainTasks: 0` status before the caller proceeds to terminal
+ * status.
  *
  * Best-effort: emit failures must never throw out of this helper, since the
- * response emitter may have torn down on abort. Skipped entirely on the
- * abort/disconnect/error paths — see callers in runActionInternal.
+ * response emitter may have torn down on abort. Called on every terminal path
+ * — success and the abort/disconnect/error paths alike — see callers in
+ * runActionInternal.
  */
-async function drainRequestWorkPool(
-  ctx: ExecutionContext,
-  signal?: AbortSignal
-): Promise<void> {
-  const pool = getRequestWorkPool(ctx);
+async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
+  const pool = getRequestSideChainPool(ctx);
   if (pool === undefined) {
     return;
   }
-  // No early-return on pendingCount === 0: tasks may have already settled
-  // by the time we reach this point, but their entries remain in the pool
-  // until drainAll removes them. Settled-but-undrained tasks still need
-  // their failures logged. drainAll is a cheap no-op when there are no
-  // entries left.
 
   const safeEmit = (count: number): void => {
     try {
-      ctx.emit.status(undefined, { blocked: false, backgroundTasks: count });
+      ctx.emit.status(undefined, { blocked: false, sideChainTasks: count });
     } catch {
       // Emitter teardown race; non-fatal.
     }
   };
 
-  const result = await pool.drainAll({ signal, onPendingChange: safeEmit });
+  // Quiescence — repeating until a pass consumes nothing, and the
+  // unconditional first pass that catches already-settled entries — is the
+  // pool's own contract, since the need to repeat comes from `drainAll`
+  // awaiting a single spliced snapshot. This helper is only the
+  // request-level decoration around it: failure logging and the
+  // `sideChainTasks` status.
+  //
+  // Takes no signal, deliberately (FIX-663 / Decision 3): side-chain work is
+  // decoupled from the request signal and this wait is not cancellable, so a
+  // parameter offering to short-circuit it would advertise a capability the
+  // design rejects.
+  const result = await pool.drainToQuiescence({ onPendingChange: safeEmit });
   for (const f of result.failed) {
     // eslint-disable-next-line no-console
     console.error(
@@ -126,11 +132,83 @@ async function drainRequestWorkPool(
     );
   }
 
-  // Emit terminal `backgroundTasks: 0` only when we actually drained
+  // Emit terminal `sideChainTasks: 0` only when we actually drained
   // something, so requests that never queued work don't emit a spurious
   // status item.
   if (result.completed.length + result.failed.length > 0) {
     safeEmit(0);
+  }
+}
+
+/**
+ * Refuse a dispatch-time core whose detached boards this flow cannot route
+ * (FIX-982).
+ *
+ * A carried core is produced after `defineFlow` ran — today by a dynamic
+ * schedule's `resolve` — so its blocks were never walked and its declarations
+ * never reached `flow.workstreamBindings`. A task board with a detached worker
+ * inside one is therefore admitted with no route: the drain claims a row, the
+ * spawn refuses `no-workstream-core` (or the workstream core has no route for
+ * that `boardId`), and the row fails or cycles through lease recovery. Work that
+ * stalls without erroring, which is the failure class this whole change exists
+ * to remove.
+ *
+ * Checked HERE because this is the one seam every carried core passes through,
+ * whatever transport produced it, and because it is upstream of everything: the
+ * request is not yet registered and the board has not yet claimed anything, so a
+ * refusal costs a failed dispatch rather than a stranded task.
+ *
+ * **Why this is a refusal and not a build-time one.** A resolver's return value
+ * does not exist at definition time, and the only predicate available there —
+ * "this flow has a `schedules.resolve`" — would refuse flows whose resolvers
+ * never touch a board. This predicate is exact: it fires when a core actually
+ * carries a detached binding this flow cannot route, and never otherwise.
+ *
+ * **Bound worth knowing.** It reads the union already accumulated on the core's
+ * root block, which is what composition bubbles up. A board reachable from the
+ * carried core only through a generator's static `tools` array is not in that
+ * union (a generator carries none of its tools' rails), so it is not caught
+ * here and keeps the late failure it has today. Closing that would mean walking
+ * the tool edge from `engine`, duplicating a traversal `core` owns.
+ */
+function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
+  // Every block an `ActionCore` can execute, which is the root plus the two
+  // lifecycle observers — the same three `defineFlow`'s `actionCoreBlocks`
+  // collects, and for the same reason: `runAction` runs the observers as real
+  // blocks, so a board under one claims work exactly as a board under the root
+  // does. The core's other fields declare no block (`inputSchema` and
+  // `userMessage` are a schema and a pure function; `tokenBudget` and `durable`
+  // are settings), so this list is the whole executable surface.
+  const carriers = [core.block, core.onCompleted, core.onErrored];
+
+  for (const carrier of carriers) {
+    const declared = carrier?.workstreamBindings;
+    if (declared === undefined) continue;
+    assertBindingsRoutable(flow, declared);
+  }
+}
+
+/** Refuse any binding in `declared` the flow has no route for. */
+function assertBindingsRoutable(
+  flow: FlowInstance,
+  declared: NonNullable<BlockDefinition["workstreamBindings"]>
+): void {
+  for (const binding of declared.values()) {
+    const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
+    // Identity, not key equality — the same test `defineFlow`'s reachability
+    // assertion makes. A binding present under a DIFFERENT object is a second
+    // declaration that happens to collide on the coordinate, not this one
+    // arriving by another route, and routing it would run someone else's board.
+    if (flow.workstreamBindings?.get(key) === binding) continue;
+    throw new ValidationError(
+      `Flow "${flow.kind}" cannot route the detached work in this dispatch's action core: ` +
+        `board "${binding.boardId}" coordinate "${binding.coordinateKey}" (worker ` +
+        `"${binding.worker.name}") is not among the flow's declared bindings. The core was ` +
+        `produced at dispatch time — a dynamic schedule's resolver — so its board never reached ` +
+        `the flow definition and no workstream route exists for it. Declare the board on a ` +
+        `statically-reachable action, or drop the detached dispatch from it.`,
+      { scope: "request" }
+    );
   }
 }
 
@@ -155,6 +233,7 @@ function resolveAction(
   carriedCore: ActionCore | undefined
 ): ActionCore {
   if (carriedCore !== undefined) {
+    assertCarriedCoreRoutable(flow, carriedCore);
     return carriedCore;
   }
 
@@ -625,35 +704,128 @@ export async function runActionInternal<
     metadata: options.metadata,
     startedAt: Date.now(),
     lastHeartbeatAt: Date.now()
+    // No `queuedAt`, and that omission is load-bearing (FIX-999). When an
+    // external worker claims a job the host registered at enqueue time, this
+    // re-register replaces that entry wholesale — dropping the queued marker
+    // and handing the entry to the heartbeat timer below. That is the entire
+    // claim transition: from here a dead worker is reaped on the ordinary
+    // stale-heartbeat path, with no queued grace protecting it.
   });
 
+  // The run is discoverable from here (FIX-982). Placed immediately after the
+  // write it reports on, so it can never run ahead of it. Discoverable is NOT
+  // yet safe to hand ownership to — see `onExecutionStarted`, fired at the main
+  // try below, for the boundary that is.
+  options.onRegistered?.();
+
   const heartbeatIntervalMs = options.flow.request?.heartbeatIntervalMs ?? 10_000;
+
+  // --- Cross-process abort delivery (FIX-1026) ---
+  // `/abort` records the intent durably wherever it is called; this is the
+  // reader that makes it land on the process actually running the work. It
+  // rides the heartbeat tick rather than adding a cadence of its own, so
+  // worst-case cancellation latency is `heartbeatIntervalMs`.
+  //
+  // Latched on DELIVERY, not on detection. `runAction` installs this timer
+  // well before `registerAbortController` below, so a tick can legitimately
+  // read a pre-set flag and find no controller to fire; latching there would
+  // suppress every later poll and silently defeat pre-start cancellation. A
+  // tick that cannot deliver changes nothing and tries again next interval.
+  let deliveredAbort = false;
+  // Ticks can overlap: `setInterval` fires again while an earlier callback is
+  // still awaiting, which is exactly what happens when the store is slow. Both
+  // would read the flag and both would call `abortRequest` (which keeps
+  // returning true while the controller is registered, aborted or not),
+  // doubling store reads precisely when the store is already degrading.
+  let abortPollInFlight = false;
+
+  /**
+   * One abort-intent poll. Reads the narrow projection rather than the record —
+   * `get()` materializes the whole item history on the persistent adapters, and
+   * this runs for the life of every request.
+   *
+   * Failures are swallowed with a warning: a transient store error must never
+   * abort or fail a healthy run, which would be a worse outcome than the gap
+   * this closes.
+   */
+  const pollAbortIntent = async (): Promise<void> => {
+    if (deliveredAbort || abortPollInFlight) return;
+    abortPollInFlight = true;
+    try {
+      if (!(await options.stores.request.isAbortRequested(requestId))) return;
+      // Returns false when no controller is registered yet. Not a delivery, so
+      // the latch stays unset and the next tick retries.
+      if (!abortRequest(requestId)) return;
+      deliveredAbort = true;
+      logRuntimeEvent(logger, "info", "[flow-state] [abort] cross-process abort delivered", {
+        requestId
+      });
+    } catch (err) {
+      logRuntimeEvent(logger, "warn", "[flow-state] abort-intent poll failed", {
+        requestId, error: String(err)
+      });
+    } finally {
+      abortPollInFlight = false;
+    }
+  };
+
   const heartbeatTimer = heartbeatIntervalMs > 0
     ? setInterval(() => {
+        // The two halves share a timer, not a fate. The heartbeat writes to the
+        // active-request registry; the poll reads the request store. They are
+        // different stores and fail independently, so the heartbeat keeps its
+        // own `.catch()` and is deliberately not awaited here — a registry
+        // outage must not silently disable cancellation on a deployment that
+        // meets every documented requirement.
         registry.heartbeat(requestId).catch((err) => {
           logRuntimeEvent(logger, "warn", "[flow-state] heartbeat write failed", {
             requestId, error: String(err)
           });
         });
+        void pollAbortIntent();
       }, heartbeatIntervalMs)
     : undefined;
 
+  /**
+   * Stop the shared heartbeat/abort-poll timer.
+   *
+   * Everything between the timer install above and `registerAbortController`
+   * below runs with the timer live and no controller to fire, and it touches
+   * the stores (the session update, the initial status emits). A rejection
+   * there leaves through NEITHER cleanup path — the pre-transition catch and
+   * the terminal paths all sit further down — so without this the timer
+   * outlives the request that owns it and keeps polling the request store on
+   * every interval for the life of the process. One orphaned reader per failed
+   * request, and the outage that fails them is the moment the store can least
+   * afford the extra load. Any await added in this window belongs inside one
+   * of the guards below.
+   */
+  const stopHeartbeatTimer = (): void => {
+    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+  };
+
   // --- Update session's latestRequestId for auto-resume discovery ---
   if (options.sessionId !== undefined) {
-    // Tenant-namespaced key (FIX-682) so this lands on the same record the
-    // execution context reads/writes; a bare key would miss a tenant session.
-    const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
-    const session = await options.stores.session.get(sessionKey);
-    // Tenant-binding guard (FIX-682): this write runs before
-    // createExecutionContext's binding check, so without it a no-tenant caller
-    // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
-    // latestRequestId (an auto-resume hijack) even though the run then fails.
-    if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
-      await options.stores.session.set(
-        sessionKey,
-        { ...session, latestRequestId: requestId, updatedAt: Date.now() },
-        "any"
-      );
+    try {
+      // Tenant-namespaced key (FIX-682) so this lands on the same record the
+      // execution context reads/writes; a bare key would miss a tenant session.
+      const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
+      const session = await options.stores.session.get(sessionKey);
+      // Tenant-binding guard (FIX-682): this write runs before
+      // createExecutionContext's binding check, so without it a no-tenant caller
+      // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
+      // latestRequestId (an auto-resume hijack) even though the run then fails.
+      if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
+        await options.stores.session.set(
+          sessionKey,
+          { ...session, latestRequestId: requestId, updatedAt: Date.now() },
+          "any"
+        );
+      }
+    } catch (setupError) {
+      // Pre-controller window — see `stopHeartbeatTimer`.
+      stopHeartbeatTimer();
+      throw setupError;
     }
   }
 
@@ -792,8 +964,14 @@ export async function runActionInternal<
   // Emit initial status events early — before the potentially expensive
   // createExecutionContext call. This ensures the SSE stream starts delivering
   // events as fast as possible.
-  await response.emitRequestCreated();
-  await response.emitRequestStatus("in_progress");
+  try {
+    await response.emitRequestCreated();
+    await response.emitRequestStatus("in_progress");
+  } catch (setupError) {
+    // Pre-controller window — see `stopHeartbeatTimer`.
+    stopHeartbeatTimer();
+    throw setupError;
+  }
 
   // Same-request continuation detection (FIX-811), computed BEFORE the
   // request-start emits below so a continuation does not re-echo the initial
@@ -850,6 +1028,23 @@ export async function runActionInternal<
   // If anything between here and the main try block throws, the outer
   // try/catch below cleans it up.
   const abortController = registerAbortController(requestId);
+  // First poll (FIX-1026). Placed here rather than beside the timer because a
+  // poll before this line has no controller to fire and therefore cannot
+  // deliver — it would be a guaranteed-useless store read on every request.
+  // Here it closes the window where the cancel was recorded between admission
+  // and the run starting, without waiting a full interval. Gated on the timer
+  // so `heartbeatIntervalMs: 0` really is off.
+  //
+  // AWAITED, not fired and forgotten. The read is issued either way; awaiting
+  // is what makes "a cancel recorded before the run started stops the run" a
+  // guarantee instead of a race the store's latency decides. Left unawaited, an
+  // action shorter than one `isAbortRequested` round trip runs to completion —
+  // model calls included — clears the post-drain abort check, and persists
+  // `completed` before the read that would have stopped it returns; by then the
+  // controller is deregistered and the delivery has nowhere to land. The cost
+  // is one narrow read on the start path, and `pollAbortIntent` swallows its
+  // own failures, so this can delay a request start but can never fail one.
+  if (heartbeatTimer !== undefined) await pollAbortIntent();
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
@@ -880,19 +1075,19 @@ export async function runActionInternal<
     }
   }
 
-  // FIX-663: a separate controller for fire-and-forget `.work()` tasks. It
+  // FIX-663: a separate controller for fire-and-forget `.sideChain()` tasks. It
   // fires ONLY when the abort-registry controller fires (the explicit
   // `/abort` endpoint / `session.abortRequest()`). Transport-level signals
   // composed into `composedSignal` via `AbortSignal.any` do NOT propagate
   // here because we listen on `abortController.signal` directly — so a client
-  // disconnect or SSE close leaves background work to settle.
-  const backgroundController = new AbortController();
-  const fireBackground = (): void => {
+  // disconnect or SSE close leaves side-chain work to settle.
+  const sideChainController = new AbortController();
+  const fireSideChain = (): void => {
     // Guard against the TOCTOU window where both the abort listener and the
     // defensive already-aborted branch below call this: the abort is
     // idempotent, but skipping here avoids a duplicate diagnostic log.
-    if (backgroundController.signal.aborted) return;
-    backgroundController.abort(abortController.signal.reason);
+    if (sideChainController.signal.aborted) return;
+    sideChainController.abort(abortController.signal.reason);
     logRuntimeEvent(logger, "warn", "[flow-state] [abort] background signal fired", {
       requestId,
       reason: serializeAbortReason(abortController.signal.reason)
@@ -908,7 +1103,7 @@ export async function runActionInternal<
       reason: serializeAbortReason(abortController.signal.reason),
       stack: new Error("abort fire site").stack
     });
-    fireBackground();
+    fireSideChain();
   }, { once: true });
   // Defensive: addEventListener does NOT fire for an already-aborted signal.
   // Covers the (microsecond) TOCTOU window between registerAbortController
@@ -916,7 +1111,7 @@ export async function runActionInternal<
   // the /abort endpoint (a network round-trip), so this branch is exercised
   // only if registration races abort — but the guard is free.
   if (abortController.signal.aborted) {
-    fireBackground();
+    fireSideChain();
   }
 
   // Same-request continuation (FIX-811): `isReplayMode` / `resumeContextRaw` /
@@ -1029,7 +1224,7 @@ export async function runActionInternal<
       metadata: effectiveMetadata,
       input: options.input,
       signal: composedSignal,
-      backgroundSignal: backgroundController.signal,
+      sideChainSignal: sideChainController.signal,
       modelResolver: options.runtimeConfig.modelResolver,
       settings: options.runtimeConfig.settings,
       response,
@@ -1037,7 +1232,12 @@ export async function runActionInternal<
       logger,
       tracingLevel: options.runtimeConfig.tracingLevel,
       durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined,
-      errorCapture: options.runtimeConfig.errorCapture
+      errorCapture: options.runtimeConfig.errorCapture,
+      requestHost: options.runtimeConfig.requestHost,
+      // What THIS request is running under, which is not always what the host
+      // was built with — a caller may derive a config (`fsdev run` does, for
+      // `--model`). A detached child inherits it. See `effectiveRuntimeConfig`.
+      effectiveRuntimeConfig: options.runtimeConfig
     });
 
     // Resume mode: load the suspension record + checkpoint to restore the durable
@@ -1178,12 +1378,27 @@ export async function runActionInternal<
     input: summarizeForLog(options.input)
   });
 
-  await emitActionLifecycleSeam(internalSeams, "started", metadata);
+  // The last awaits before the main try, and covered by neither cleanup path on
+  // their own: the pre-transition catch above has already closed, and every
+  // terminal path lives inside the try below. A rejection here — an `onStarted`
+  // observer that throws, an instrumentation seam that rejects — would leave
+  // the heartbeat/abort-poll timer running for the life of the process, reading
+  // the request store once per interval for a request that is already gone.
+  // Same leak the pre-controller guards close, one window further down; the
+  // difference is that the abort controller is registered by now, so this guard
+  // has to release that too. Rethrows, so the caller still sees the failure.
+  try {
+    await emitActionLifecycleSeam(internalSeams, "started", metadata);
 
-  await runObserver(options.flow.request?.onStarted, {
-    requestId,
-    actionName: options.actionName
-  }, ctx, { internalSeams, logger });
+    await runObserver(options.flow.request?.onStarted, {
+      requestId,
+      actionName: options.actionName
+    }, ctx, { internalSeams, logger });
+  } catch (startupError) {
+    stopHeartbeatTimer();
+    deregisterAbortController(requestId);
+    throw startupError;
+  }
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -1375,38 +1590,89 @@ export async function runActionInternal<
       }
     }
 
-    if (terminalStatus === "completed") {
-      await runObserver(action.onCompleted, {
-      requestId,
-      actionName: options.actionName,
-      output: result.output
-    }, ctx, { internalSeams, logger });
-
-      await runObserver(options.flow.request?.onCompleted, {
-      requestId,
-      actionName: options.actionName,
-      output: result.output
-    }, ctx, { internalSeams, logger });
-
-    // Flush and drain TTS pipeline before marking request as completed
-    if (ttsHook !== undefined) {
-      await ttsHook.finalize();
-    }
-    }
-
-    // Drain the request-scoped background work pool before terminal status.
-    // Inner sequencers no longer auto-await their `.work()` tasks (FIX-554) —
-    // the pool consolidates them and we wait once here. Skipped on the
-    // abort/disconnect/error paths below: in-flight tasks see ctx.signal and
-    // either short-circuit or run to completion in the void; either way the
-    // request must not block on them.
+    // Drain the request-scoped side-chain pool before terminal status.
+    // Inner sequencers no longer auto-await their `.sideChain()` tasks (FIX-554) —
+    // the pool consolidates them and we wait here. The catch paths below run
+    // the same drain before their own terminal write, so a request never
+    // reports itself finished while its side-chain work is still writing.
     // FIX-663: drain unconditionally on the success path. Background work is
     // decoupled from the request signal now, so the drain must not early-abort
     // on a transport-level `composedSignal` fire. If an explicit `/abort`
     // arrives mid-drain, in-flight tasks self-cancel via their own
     // `ctx.signal` (the background signal) and settle as rejections — drain
     // still resolves.
-    await drainRequestWorkPool(ctx);
+    await drainRequestSideChainPool(ctx);
+
+    // A cancel accepted during that drain is a cancellation, not a completion.
+    // The drain resolves normally on an abort BY DESIGN — in-flight `.sideChain()`
+    // tasks self-cancel and `drainAll` collects their rejections into
+    // `failed[]` rather than rethrowing — so nothing below would otherwise
+    // learn that the wait it just finished was work being stopped. The success
+    // path would then persist `completed` for a request whose `/abort` was
+    // accepted and demonstrably honoured.
+    //
+    // Keyed on the request controller, which is exactly what fires the
+    // background signal that cancelled those tasks. Both delivery paths
+    // converge on it (the local endpoint and the heartbeat poll's
+    // `abortRequest`), while a transport-level disconnect never reaches it —
+    // FIX-663 deliberately lets side-chain work settle through one, and that
+    // stays true. Throwing hands the run to the single classification in the
+    // catch below, which already distinguishes abort from disconnect, rather
+    // than growing a second copy of it here.
+    if (abortController.signal.aborted) {
+      throw abortController.signal.reason;
+    }
+
+    // Terminal success is only known here — after the drain, and after the
+    // abort check above. `onCompleted` "fires only on terminal success"
+    // (docs/architecture/execution-and-errors.md, "Request Lifecycle"), so it
+    // cannot run any earlier: a cancel accepted during the drain ends this
+    // request as `aborted`, and firing a success hook for it would commit
+    // business side effects or send a success notification for a request whose
+    // own `onFinished` reports `aborted`.
+    //
+    // The TTS finalize moves with them for the same reason. It runs the
+    // pipeline to completion against the client's connection, which is
+    // precisely what the abort path then undoes with `ttsHook.cancel()` — so
+    // leaving it above meant an aborted request finalized AND cancelled,
+    // paying for synthesis nobody would hear.
+    //
+    // `terminalStatus === "incomplete"` (a token budget with `onExceeded:
+    // "stop"`) skips the hooks by the same rule and is covered by
+    // run-action-edge.test.ts.
+    if (terminalStatus === "completed") {
+      await runObserver(action.onCompleted, {
+        requestId,
+        actionName: options.actionName,
+        output: result.output
+      }, ctx, { internalSeams, logger });
+
+      await runObserver(options.flow.request?.onCompleted, {
+        requestId,
+        actionName: options.actionName,
+        output: result.output
+      }, ctx, { internalSeams, logger });
+
+      if (ttsHook !== undefined) {
+        await ttsHook.finalize();
+      }
+    }
+
+    // Second barrier, for work the completion hooks themselves queued. Moving
+    // the hooks below the drain above took them out from under it: an
+    // `onCompleted` that is a sequencer dispatching `.sideChain()` now enqueues into
+    // a pool nothing is waiting on, so the request would emit `completed` and
+    // return while a notification or state write was still running — and the
+    // flushes below could miss its items. Cheap when the hooks queued nothing:
+    // `drainAll` is a no-op on an empty pool and the helper only emits a
+    // `sideChainTasks` status when it actually drained something.
+    //
+    // Deliberately NOT paired with a second abort check. The first one guards a
+    // wait that precedes every success hook; by here `onCompleted` has run and
+    // may have committed side effects, so flipping the request to `aborted`
+    // would report a cancellation for work that demonstrably succeeded. A
+    // cancel arriving this late is the teardown window, which §9 covers.
+    await drainRequestSideChainPool(ctx);
 
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
@@ -1555,8 +1821,15 @@ export async function runActionInternal<
       requestId
     };
   } catch (error) {
-    // Clear heartbeat
-    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+    // The heartbeat is deliberately NOT cleared here. It has to outlive the
+    // drain below: while the pool settles, this request is still alive, and a
+    // request with no heartbeat goes stale. `detectInterruptedRequests` sweeps
+    // `activeRequests.listStale()` and writes `interrupted` over any record
+    // still `in_progress`, with no version guard — so clearing the heartbeat
+    // first would hand a live request to another process's recovery sweep and
+    // recreate the exact false terminal this path is being fixed to avoid,
+    // just written by someone else. It is cleared after the drain, which is
+    // where the success path already clears it.
 
     // The composed signal fires when the abort endpoint calls
     // abortController.abort() or when the client disconnects (browser
@@ -1565,15 +1838,120 @@ export async function runActionInternal<
     // accidental disconnect.
     const signalAborted = composedSignal.aborted;
 
-    if (signalAborted) {
-      const record = await options.stores.request.get(requestId).catch(() => undefined);
-      const wasIntentionalAbort = record?.abortRequested === true;
+    // `deliveredAbort` is first-hand proof: this process read the durable
+    // intent and fired the controller itself (FIX-1026). Falling back to it
+    // matters because the read is allowed to fail — without it, a transient
+    // store error at exactly this moment would file a request we demonstrably
+    // cancelled as an accidental disconnect (`interrupted`), which is a
+    // resumable state.
+    //
+    // The read is issued unconditionally rather than short-circuited behind
+    // `deliveredAbort`: it is the call that absorbs a transient store failure
+    // at this moment, and skipping it merely moves that failure onto the next
+    // reader — `patchRequestRecord`, which does not catch.
+    const classificationRecord = signalAborted
+      ? await options.stores.request.get(requestId).catch(() => undefined)
+      : undefined;
+    let wasIntentionalAbort =
+      signalAborted && (deliveredAbort || classificationRecord?.abortRequested === true);
 
+    // The failure path's normalized error is needed for the client-visible
+    // error item, which is emitted before the drain so a caller hears the
+    // failure immediately rather than after the side-chain work settles.
+    const normalizedError = signalAborted
+      ? undefined
+      : applyNormalizedErrorSeam(
+          internalSeams,
+          normalizeError(error, {
+            scope: "request",
+            blockName: action.block.name
+          }),
+          metadata
+        );
+
+    // Everything from here to the heartbeat clear runs with the heartbeat
+    // still live. The `finally` is what makes that safe: before this change
+    // the timer was cleared on the first line of the catch, so a throwing
+    // emit or TTS cancel could not leak it. Now that it has to outlive the
+    // drain, an unguarded throw in this section would leave a timer polling
+    // the request store for the life of the process.
+    try {
+      // --- Client-visible outcome item, before the drain ---
+      // The item, not the status event: the status event ends the stream for
+      // every subscriber, so it has to wait until the record is written.
+      if (wasIntentionalAbort) {
+        await emitAbortedMessage(ctx);
+      } else if (!signalAborted) {
+        await emitTerminalError(ctx, normalizedError!);
+      }
+
+      // Stop synthesis before the drain, not after the record write. The drain
+      // is unbounded, and a failing request that keeps its TTS hook live
+      // through it starts provider `speak()` calls for audio nobody will ever
+      // receive. Today's catch paths abandon synthesis promptly; adding the
+      // drain without this would turn that into a cost regression.
+      //
+      // Best-effort, and that is load-bearing rather than defensive. Moving
+      // this above the drain also moved it above the terminal write, so a
+      // rejection here — a custom streaming provider whose iterator `return()`
+      // throws synchronously, escaping the pipeline's `.catch()` — would skip
+      // the drain AND the record patch and leave the request `in_progress`
+      // with its side-chain work still running: this issue's own defect,
+      // re-entering through the teardown path. Tearing down synthesis nobody
+      // will receive must never decide whether the request terminalizes.
+      if (ttsHook !== undefined) {
+        await ttsHook.cancel().catch((err: unknown) => {
+          logRuntimeEvent(logger, "warn", "[flow-state] TTS cancel failed during teardown", {
+            requestId,
+            error: String(err)
+          });
+        });
+      }
+
+      // --- The fix: wait for this request's own side-chain work ---
+      // Deliberately passed no signal (FIX-663). Background work is decoupled
+      // from the request signal: tasks that opted into cancellation self-cancel
+      // via their own `ctx.signal` and settle as rejections, and tasks that did
+      // not are precisely the fire-and-forget writes this drain exists to wait
+      // for. Handing `drainAll` a signal would abandon them again.
+      await drainRequestSideChainPool(ctx);
+
+      // --- An abort accepted during the drain wins over the branch already
+      //     chosen. The branch was selected before a wait that can now last as
+      //     long as the side-chain work does, and `/abort` keeps being accepted
+      //     for the whole of it: the record is still `in_progress`, so the
+      //     endpoint's status-checked write applies and the user is told 204.
+      //     Reporting `failed`/`interrupted` for a stop we accepted and acted
+      //     on would be the same lie this issue exists to remove.
+      //
+      //     Re-read, rather than trusting `signalAborted`, because the abort
+      //     may have arrived on either channel: the local endpoint fires the
+      //     controller, while a stop accepted on another instance only sets the
+      //     durable flag and reaches us through the heartbeat's abort poll —
+      //     which is running precisely because the heartbeat outlives the drain.
+      //     `isAbortRequested`, not `get()`: this asks one boolean, and the
+      //     interface requires it be O(1) in item count, where `get()`
+      //     materializes the whole item history to answer it on the persistent
+      //     adapters. A store failure resolves to `false`, which keeps the
+      //     branch already chosen — the same direction the classification read
+      //     above fails in. (That read stays on `get()` deliberately: it is the
+      //     call that absorbs a transient failure before `patchRequestRecord`,
+      //     which does not catch.)
+      if (!wasIntentionalAbort) {
+        wasIntentionalAbort =
+          deliveredAbort ||
+          (await options.stores.request.isAbortRequested(requestId).catch(() => false));
+      }
+    } finally {
+      // Clear the heartbeat — the drain is done and the terminal write is
+      // next. Same position, relative to the record patch, as the success
+      // path's.
+      stopHeartbeatTimer();
+    }
+
+    if (signalAborted || wasIntentionalAbort) {
       if (wasIntentionalAbort) {
         // --- Abort path: user explicitly stopped the request ---
-        await emitAbortedMessage(ctx);
-        await response.emitRequestStatus("aborted");
-
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
@@ -1588,9 +1966,11 @@ export async function runActionInternal<
 
         ctx.requestRuntime.status = "aborted";
 
-        // Abandon in-flight TTS synthesis: the client is gone, so don't run
-        // provider calls to completion against a closed connection.
-        if (ttsHook !== undefined) await ttsHook.cancel();
+        // The record is terminal before any subscriber is told it is. A client
+        // closes its stream on this event and immediately re-reads the record;
+        // publishing first would let it cache `in_progress` off a stream that
+        // is already gone, with nothing left to re-fetch.
+        await response.emitRequestStatus("aborted");
 
         await runObserverSafely(options.flow.request?.onFinished, {
           requestId,
@@ -1605,8 +1985,6 @@ export async function runActionInternal<
         });
       } else {
         // --- Disconnect path: client went away without explicit abort ---
-        await response.emitRequestStatus("interrupted");
-
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
@@ -1620,7 +1998,7 @@ export async function runActionInternal<
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
 
-        if (ttsHook !== undefined) await ttsHook.cancel();
+        await response.emitRequestStatus("interrupted");
 
         await runObserverSafely(options.flow.request?.onFinished, {
           requestId,
@@ -1636,17 +2014,9 @@ export async function runActionInternal<
       }
     } else {
       // --- Failure path: execution error ---
-      const normalized = applyNormalizedErrorSeam(
-        internalSeams,
-        normalizeError(error, {
-          scope: "request",
-          blockName: action.block.name
-        }),
-        metadata
-      );
-
-      await emitTerminalError(ctx, normalized);
-      await response.emitRequestStatus("failed");
+      // `normalizedError` was computed above so the error item could be
+      // emitted before the drain; it is non-undefined on exactly this branch.
+      const normalized = normalizedError!;
 
       await options.stores.request.flushItems(requestId);
       await options.stores.request.flushEvents(requestId);
@@ -1663,7 +2033,7 @@ export async function runActionInternal<
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
 
-      if (ttsHook !== undefined) await ttsHook.cancel();
+      await response.emitRequestStatus("failed");
 
       await runObserverSafely(action.onErrored, {
         requestId,
@@ -1709,7 +2079,19 @@ export async function runActionInternal<
       items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
       requestId,
-      error: signalAborted ? undefined : applyNormalizedErrorSeam(
+      // Keyed on the SAME condition as the terminal-branch dispatch above, so
+      // the returned result and the durable record cannot disagree about the
+      // outcome. Reading the pre-drain `signalAborted` alone would report a
+      // request as failed whose record says `aborted`, because the post-drain
+      // re-read can reclassify a `failed`/`interrupted` branch after that
+      // snapshot was taken — and callers key straight off this field
+      // (`packages/cli/src/commands/run.ts` prints a failure when it is set).
+      //
+      // The client-visible error *item* is deliberately not suppressed to
+      // match: it was already delivered before the drain, the failure really
+      // happened, and withdrawing information a caller has already seen is
+      // worse than reporting both. What has to agree is the classification.
+      error: signalAborted || wasIntentionalAbort ? undefined : applyNormalizedErrorSeam(
         internalSeams,
         normalizeError(error, {
           scope: "request",

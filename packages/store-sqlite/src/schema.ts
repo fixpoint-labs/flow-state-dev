@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id     TEXT NOT NULL,
   org_id  TEXT,
   tenant_id   TEXT,
+  parent_session_id TEXT,
   version     INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
@@ -26,6 +27,35 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at);
+-- FIX-1009: serves one access path — \`{ parentOf: id }\` equality lookups
+-- (enumerating one session's children). The default \`IS NULL\` scan is
+-- low-selectivity and is deliberately not the justification, so a plain btree
+-- is enough and no composite is warranted yet.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id);
+-- FIX-1010: the child listing reads one parent's children ordered by
+-- \`created_at DESC, id DESC\` (immutable keys, so a run starting mid-walk
+-- cannot reorder a caller's pages). The single-column parent index above
+-- serves the equality but not the order, so a page limit would apply after
+-- sorting the parent's whole child set. Both ordering columns are ASC here
+-- deliberately: the scan runs backwards, which SQLite does for an ORDER BY
+-- that reverses every key uniformly.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_created
+  ON sessions(parent_session_id, created_at, id);
+-- The same listing for a caller whose tenant or org **is** bound, which the
+-- index above cannot serve: \`parent_session_id\` holds the bare session id, so
+-- two tenants reusing a predictable parent id share that index's whole key
+-- prefix and one tenant's children are walked and discarded ahead of the
+-- other's. Both indexes are kept because they are not substitutes — on
+-- Postgres, where the cost is measurable, the scope index alone regresses the
+-- unbound (single-tenant) read 9x, since \`IS NULL\` is not an equality for
+-- sort-order purposes and the ordering suffix stops being usable.
+--
+-- **Here the structure is mirrored, not verified.** SQLite's plan output
+-- reports which index was selected, never how many rows a scan examined and
+-- discarded, so this adapter cannot observe the cost property the Postgres
+-- axis-4 differential measures. Asserted only as index selection.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_scope_created
+  ON sessions(parent_session_id, tenant_id, org_id, created_at, id);
 `;
 
 const REQUESTS_TABLE = `
@@ -51,6 +81,15 @@ CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, 
 CREATE INDEX IF NOT EXISTS idx_requests_session_tenant  ON requests(session_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at);
+-- FIX-1010: the most-recent-run read orders one session's requests by
+-- \`created_at DESC, id DESC\` and takes one row. \`idx_requests_session_status\`
+-- stops at \`status\` and \`idx_requests_session_tenant\` at \`tenant_id\`, so
+-- neither carries the ordering and the database would sort the session's whole
+-- history before the limit applied. The existence check that runs *before* it
+-- needs no index of its own — \`idx_requests_session_status\` is exactly its two
+-- selective predicates — so this is the only \`requests\` index this read adds.
+CREATE INDEX IF NOT EXISTS idx_requests_session_created
+  ON requests(session_id, created_at, id);
 `;
 
 const USERS_TABLE = `
@@ -90,7 +129,8 @@ CREATE TABLE IF NOT EXISTS active_requests (
   input             TEXT,
   metadata          TEXT,
   started_at        INTEGER NOT NULL,
-  last_heartbeat_at INTEGER NOT NULL
+  last_heartbeat_at INTEGER NOT NULL,
+  queued_at         INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_active_requests_heartbeat  ON active_requests(last_heartbeat_at);
 CREATE INDEX IF NOT EXISTS idx_active_requests_user_id    ON active_requests(user_id);
@@ -119,6 +159,29 @@ function migrateAddActiveRequestsSource(db: Database.Database): void {
 }
 
 /**
+ * Add the `queued_at` column to pre-FIX-999 `active_requests` tables.
+ *
+ * Nullable with no default, and **no backfill is possible or wanted**: the
+ * column marks a request that was registered at enqueue time and not yet
+ * claimed by a worker, and nothing can reconstruct that after the fact. NULL
+ * reads back as "claimed", which is the pre-existing behaviour for every row —
+ * they are swept on `last_heartbeat_at` exactly as before (BP-030).
+ */
+function migrateAddActiveRequestsQueuedAt(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'active_requests'")
+    .get();
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('active_requests')")
+    .all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "queued_at")) {
+    db.exec("ALTER TABLE active_requests ADD COLUMN queued_at INTEGER");
+  }
+}
+
+/**
  * Add the `tenant_id` column to pre-FIX-682 `sessions`, `requests`, and
  * `active_requests` tables. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we
  * probe `pragma_table_info` first. The column is nullable with no default, so
@@ -138,6 +201,30 @@ function migrateAddTenantId(db: Database.Database): void {
     if (!cols.some((c) => c.name === "tenant_id")) {
       db.exec(`ALTER TABLE ${tableName} ADD COLUMN tenant_id TEXT`);
     }
+  }
+}
+
+/**
+ * Add the `parent_session_id` column to a pre-FIX-1009 `sessions` table.
+ * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info`
+ * first, which also makes a second boot a no-op. Must run BEFORE the index DDL
+ * so `idx_sessions_parent_session_id` finds the column.
+ *
+ * Nullable with no default, and **no backfill is needed or possible**: nothing
+ * writes a parent id yet, so every pre-existing row is genuinely top-level and
+ * NULL is the correct value for all of them.
+ */
+function migrateAddParentSessionId(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'")
+    .get();
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('sessions')")
+    .all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "parent_session_id")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN parent_session_id TEXT");
   }
 }
 
@@ -200,6 +287,8 @@ CREATE TABLE IF NOT EXISTS resource_state (
   scope_id      TEXT NOT NULL,
   resource_key  TEXT NOT NULL,
   state         TEXT NOT NULL,
+  version       INTEGER NOT NULL DEFAULT 1,
+  lifecycle     TEXT NOT NULL DEFAULT 'live',
   PRIMARY KEY (scope_type, scope_id, resource_key)
 );
 CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id);
@@ -401,6 +490,38 @@ function migrateAddSuspensionStatusColumns(db: Database.Database): void {
 }
 
 /**
+ * Add `version` and `lifecycle` to a pre-CAS `resource_state` table.
+ *
+ * Purely additive. `state` stays `TEXT NOT NULL` and the table is never
+ * rebuilt — a tombstone stores `{}` rather than a null state precisely so this
+ * migration needs no `DROP NOT NULL` (SQLite has none) and no twelve-step
+ * table rebuild on live data. Indexes are untouched.
+ *
+ * The defaults are the legacy contract: an existing row becomes **live at
+ * version 1**, never absent, so a reader that predates versioning keeps seeing
+ * its data and an `expectedVersion: 0` create against it correctly conflicts.
+ * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info`
+ * first, which also makes a second boot a no-op.
+ */
+function migrateAddResourceStateVersioning(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'resource_state'")
+    .get();
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('resource_state')")
+    .all() as Array<{ name: string }>;
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has("version")) {
+    db.exec("ALTER TABLE resource_state ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!names.has("lifecycle")) {
+    db.exec("ALTER TABLE resource_state ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'live'");
+  }
+}
+
+/**
  * Apply per-connection PRAGMAs (busy_timeout, synchronous, cache_size,
  * temp_store, foreign_keys) plus journal_mode (persisted on the database
  * file but cheap to re-issue). Every new better-sqlite3 connection starts
@@ -429,8 +550,11 @@ export function initializeSchemaDDL(db: Database.Database): void {
   // its target columns.
   migrateProjectToOrg(db);
   migrateAddActiveRequestsSource(db);
+  migrateAddActiveRequestsQueuedAt(db);
   migrateAddTenantId(db);
+  migrateAddParentSessionId(db);
   migrateAddSuspensionStatusColumns(db);
+  migrateAddResourceStateVersioning(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);

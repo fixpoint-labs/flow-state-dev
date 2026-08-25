@@ -106,7 +106,11 @@ export async function handleExecuteAction(
     userId: principal.userId,
     sessionId,
     requestId: getString(body.requestId) ?? generateId("req"),
-    orgId: getString(body.orgId) ?? principal.orgId,
+    // Org identity comes from the resolved principal only — never re-read
+    // `body.orgId` here, which would let a caller override a verified org
+    // (BP-031). Unauthenticated apps are unaffected: the default resolver
+    // reads `body.orgId` itself. See `docs/architecture/authentication.md`.
+    orgId: principal.orgId,
     tenantId,
     metadata: {
       ...ctx.bootstrapMetadata,
@@ -187,11 +191,12 @@ export async function handleExecuteAction(
     throw error;
   }
 
-  // For external dispatch, hold the ack until the request is accepted: writes
-  // committed AND the dispatcher accepted the job. So a 202 means "discoverable
-  // and enqueued", and a store-write or enqueue failure becomes a failed POST
-  // rather than an ack for a request that never runs (FIX-828). Undefined and a
-  // no-op for in-process dispatch.
+  // Hold the ack until the request is accepted, so a 202 means "discoverable"
+  // and a store-write or enqueue failure becomes a failed POST rather than an
+  // ack for a request that never runs (FIX-828). What acceptance costs differs
+  // by dispatch path — see `DispatchHandle.accepted` — but the ack's meaning
+  // does not: in-process now waits for the run's own registration rather than
+  // acking a request whose registry write could still fail (FIX-982).
   if (handle.accepted !== undefined) {
     try {
       await handle.accepted;

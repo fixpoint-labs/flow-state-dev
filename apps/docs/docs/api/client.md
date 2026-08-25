@@ -20,7 +20,7 @@ import { createClient } from "@flow-state-dev/client";
 const client = createClient({
   flowKind: "my-app",
   userId: "devuser",
-  baseUrl: "/api/flows",  // default
+  // baseUrl: "https://api.example.com",  // only when the API is on another origin
 });
 
 const { requestId } = await client.sendAction("chat", { message: "Hello!" });
@@ -51,7 +51,7 @@ Create a session management client.
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "/api/flows" });
+const sessions = createSessionClient();
 
 const list = await sessions.list();
 const detail = await sessions.get(sessionId);
@@ -61,6 +61,41 @@ const snapshot = await sessions.getSessionState(sessionId, {
 });
 await sessions.delete(sessionId);
 ```
+
+### `sessions.listWorkstreams(parentSessionId, options?)`
+
+List the background work running under one session. Background work runs in its own session hanging off the parent, so it doesn't appear in the parent's own requests.
+
+```ts
+const workstreams = await sessions.listWorkstreams("sess_1", {
+  limit: 25,  // 1–100, defaults to 25
+  offset: 0,  // 0–10000
+});
+
+// A row's `id` is a session id, so every session read works on it.
+for (const workstream of workstreams) {
+  const requests = await sessions.listSessionRequests(workstream.id);
+}
+```
+
+Each row is a `WorkstreamSummary`:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | `string` | The workstream's own session id. |
+| `parentSessionId` | `string` | The session this work hangs off. |
+| `createdAt` / `updatedAt` | `number` | |
+| `topic` | `string \| undefined` | Display label for the body of work. |
+| `coordinate` | `string \| undefined` | Display label for the worker handling it. |
+| `status` | `WorkstreamStatus \| undefined` | Absent until the workstream has run something. |
+
+`WorkstreamStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. Guard `topic`, `coordinate`, and `status` with `== null`.
+
+A session with no background work returns `[]`. An unknown session, or one the caller isn't allowed to read, throws `ClientHttpError`.
+
+There is no client call that starts background work. Whether work detaches is declared by the flow on the server.
+
+Full walkthrough: [Client > Overview](/docs/client/overview#background-work).
 
 ## SSE Clients
 
@@ -121,7 +156,7 @@ Create a client for the request-recovery surface — sweep stale active-request 
 ```ts
 import { createRecoveryClient } from "@flow-state-dev/client";
 
-const recovery = createRecoveryClient({ baseUrl: "/api" });
+const recovery = createRecoveryClient();
 
 // Sweep stale entries for one user; returns the requests this call
 // transitioned from `in_progress` to `interrupted`.

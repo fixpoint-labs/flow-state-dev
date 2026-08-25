@@ -16,6 +16,7 @@ export {
 export {
   useSession,
   type SessionItemsOptions,
+  type SessionWorkstreamsOptions,
   type SessionView,
   type UseSessionHookOptions
 } from "./hooks/useSession";
@@ -41,7 +42,6 @@ export {
 export {
   useResourceCollection,
   type CollectionActions,
-  type CollectionItem,
   type CollectionListOptions,
   type UseResourceCollectionResult
 } from "./hooks/useResourceCollection";
@@ -137,9 +137,6 @@ export type {
 export {
   FlowProvider,
   useFlowContext,
-  getFlowContext,
-  setFlowContext,
-  withFlowContext,
   type FlowContextValue,
   type FlowProviderProps
 } from "./context/FlowContext";

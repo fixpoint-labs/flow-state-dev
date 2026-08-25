@@ -286,7 +286,7 @@ export async function executeBlock(
             stateSchema: options.block.config.stateSchema,
             parentInstanceId: attemptMetadata.parentBlockInstanceId,
             path: blockPath,
-            phase: attemptMetadata.scope === "work" ? "work" : "main",
+            phase: attemptMetadata.scope === "sideChain" ? "sideChain" : "main",
             container:
               containerConfig === undefined
                 ? undefined

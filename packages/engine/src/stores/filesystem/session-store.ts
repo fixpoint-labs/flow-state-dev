@@ -9,7 +9,12 @@ import {
   createFilesystemRecordStore,
   type FilesystemRecordStore
 } from "./shared";
-import { matchesTenantFilter } from "../scope-keys";
+import {
+  matchesOrgFilter,
+  matchesParentageFilter,
+  matchesTenantFilter
+} from "../scope-keys";
+import { compareSessionsForListing } from "../list-order";
 
 export type FilesystemSessionStoreOptions = {
   rootDir: string;
@@ -24,6 +29,8 @@ export class FilesystemSessionStore implements SessionStore {
   constructor(options: FilesystemSessionStoreOptions) {
     this.store = createFilesystemRecordStore<SessionRecord, SessionListOptions>({
       rootDir: options.rootDir,
+      sort: (left, right, listOptions) =>
+        compareSessionsForListing(left, right, listOptions),
       filter: (record, listOptions): boolean => {
         if (
           listOptions?.flowKind !== undefined &&
@@ -40,6 +47,14 @@ export class FilesystemSessionStore implements SessionStore {
         }
 
         if (!matchesTenantFilter(listOptions, record.tenantId)) {
+          return false;
+        }
+
+        if (!matchesOrgFilter(listOptions, record.orgId)) {
+          return false;
+        }
+
+        if (!matchesParentageFilter(listOptions, record.parentSessionId)) {
           return false;
         }
 

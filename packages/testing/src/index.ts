@@ -9,6 +9,7 @@ export { testRouter } from "./test-utilities/testRouter";
 export { testFlow } from "./test-utilities/testFlow";
 export { testItems } from "./test-utilities/testItems";
 export { runForTest } from "./test-utilities/runForTest";
+export { createReplayingRef, type ReplayingRef } from "./test-utilities/replayingRef";
 
 export type {
   StateChange,
@@ -22,7 +23,7 @@ export type {
   TestSequencerSeed,
   TestStateSeed,
   TestTargetSeed,
-  WorkTrace
+  SideChainTrace
 } from "./test-utilities/types";
 
 export { snapshotTrace, type SnapshotTrace } from "./snapshot/snapshotTrace";

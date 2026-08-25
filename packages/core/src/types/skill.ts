@@ -20,6 +20,10 @@ import type { AgentOverrides } from "./agent";
  * Tools are executable code and cannot round-trip through a resource
  * collection — apps register them once and skills reference them by name
  * via `allowed-tools` in frontmatter. Unknown refs are warned and skipped.
+ *
+ * On a delegating skill the catalog is also the board's **tool seats**
+ * (FIX-925): every tool the skill allows is assignable to a task by its
+ * catalog key, with no per-skill re-declaration. See `SkillState.agents`.
  */
 export type ToolCatalog = Record<string, GeneratorTool>;
 
@@ -50,8 +54,9 @@ export type SkillContextMode = "inline";
  *   - **registry** — `agentRef` (+ optional `agentOverrides`), resolving a
  *     named agent through the supplied AgentRegistry.
  *
- * There is no `blockRef`: an arbitrary app block is a *tool* (assign a task to
- * it — a follow-up), while a prompt-driven participant is an *agent*.
+ * There is no `blockRef`, and no tool resolution kind: a tool is already
+ * assignable by its catalog key (FIX-925), so declaring one here would only
+ * re-name something the board can already route to.
  */
 export interface AgentSpec {
   /** Inline agent: prompt body (the persona). Substitutions apply at activation. */
@@ -136,9 +141,15 @@ export interface SkillState {
    * (FIX-918). A bound skill that declares `agents:` turns on the delegation
    * surface in `createSkillsLibrary`: a private task board, `taskTools`, and a
    * board-drain tool. The skill assigns work as tasks (`addTask` with an
-   * `assignee` naming an agent) and executes the graph by draining the board —
-   * there are no per-agent host tools. `prompt`/`promptRef` agents are portable
-   * data (inline, code-free); `agentRef` references a registered agent.
+   * `assignee` naming a participant) and executes the graph by draining the
+   * board — there are no per-agent host tools. `prompt`/`promptRef` agents are
+   * portable data (inline, code-free); `agentRef` references a registered agent.
+   *
+   * These are the board's *agent* seats. Its **tool** seats are not declared
+   * here at all (FIX-925): every tool the skill allows — `allowedTools` when it
+   * declares one, the whole catalog when it doesn't — is assignable by its
+   * catalog key on the same assignee namespace. Declared agent keys win a
+   * collision, so an agent can shadow a tool's name.
    */
   agents?: Record<string, AgentSpec>;
 }

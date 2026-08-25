@@ -113,12 +113,10 @@ const router = createFlowApiRouter({
   stores: createInMemoryStores(),
 });
 
-// Optional runtime safeguards for long-lived servers
+// Optional runtime safeguard for long-lived servers
 const guardedRouter = createFlowApiRouter({
   registry,
   maxResponseBufferSize: 10_000,
-  maxConcurrentStreams: 1_000,
-  staleStreamTtlMs: 300_000,
 });
 ```
 
@@ -185,6 +183,50 @@ const snapshot = await sessions.getState(sessionId, {
 });
 ```
 
+#### Background work (Workstreams)
+
+A Workstream is a child session that outlives the turn that started it. Reading
+one is two hops: `listWorkstreams` for the rows, then the shipped
+`listSessionRequests` with a row's `id` for that work's own history. Detachment
+is declared by the flow author — the client has no way to request it.
+
+```ts
+// Same-origin: the client's paths are already absolute from the root.
+const sessions = createSessionClient();
+
+const workstreams = await sessions.listWorkstreams(parentSessionId, {
+  limit: 25,
+  offset: 0,
+});
+
+// One request for the whole list — the row carries what a list renders.
+for (const ws of workstreams) {
+  render(ws.topic ?? ws.id, ws.status ?? null);
+}
+```
+
+`WorkstreamSummary` is `{ id, parentSessionId, createdAt, updatedAt, topic?,
+coordinate?, status? }` — a named field set, not a `SessionSummary`.
+
+- **`status`** is `"active" | "completed" | "incomplete" | "failed" | "aborted"`,
+  and is **absent** when the Workstream has not run anything yet. `"active"`
+  means *not finished* and nothing more: it does not separate running from
+  queued from paused waiting for a person, and it is the last state the server
+  recorded rather than a liveness check. It is its own `WorkstreamStatus`
+  union rather than `RequestStatus` — that union's run states
+  (`"in_progress"`, `"suspended"`, `"interrupted"`) collapse into `"active"`
+  and can never appear here, so reusing it would hand consumers an exhaustive
+  switch over branches that cannot fire. A finer breakdown arrives later as a
+  separate optional field, never as new members of this union.
+- **`topic` / `coordinate`** are display-only labels. They route, authorize and
+  identify nothing, and are absent on any session that is not background work.
+- Every optional field is `== null`-guarded by consumers (BP-030).
+
+The client's one piece of filtering is a compatibility check: a row whose
+`parentSessionId` does not match the requested parent is dropped rather than
+relabelled as that conversation's background work. Authorization is the
+server's, resolved from the stored parent record (BP-031).
+
 ### SSE Stream Client
 
 ```ts
@@ -237,12 +279,46 @@ const { sessions, activeSessionId, createSession, selectSession } = useFlow();
 **`useSession`** — Primary hook for session data and actions:
 
 ```tsx
-const { detail, items, isStreaming, isFinishing, sendAction, refresh } = useSession(sessionId);
+const {
+  detail, items, isStreaming, isFinishing, sendAction, refresh,
+  workstreams, workstreamsStale
+} = useSession(sessionId);
 
 await sendAction("chat", { message: "Hello!" });
-// isFinishing: true when main chain is done but background .work() tasks are still running.
+// isFinishing: true when main chain is done but background .sideChain() tasks are still running.
 // Use (isStreaming && !isFinishing) to block UI only during main chain execution.
 ```
+
+**Background work (`workstreams`)** — a second axis beside `items`, carrying the
+Workstreams running under this session as `WorkstreamSummary` rows from
+`client`. This layer re-exports the client's row type and names no field shapes
+of its own; nothing is merged into `items`, and no transport shape is decided
+here.
+
+The axis is **interaction-scoped, not live**. It is read on mount, at the
+**start** of every work-starting call on the returned view (`sendAction`,
+`resumeLatestRequest`, `resumeSuspension`, `continueRequest`), and by `refresh`
+— which now covers this axis as well as the snapshot. There is deliberately no
+polling and no stream-driven refresh: the launching turn's stream is
+request-scoped and closes when the turn ends, while the work outlives it, and
+there is no session-level channel to fall back on (`/users/:userId/stream`
+returns 501). The read is therefore anchored to a local fact — this hook
+dispatched the interaction — so no board option, dropped connection or
+`items: false` can remove it. The cost is one Workstream read per turn,
+independent of task-board activity.
+
+Reads are guarded twice, because the two hazards are different. A **generation**
+advances whenever the read identity changes — the session id or the session
+client, which is rebuilt when `baseUrl` changes — and retires responses from a
+superseded identity. A per-read **sequence** orders reads *within* one identity,
+since the mount read, an action-start read and a manual `refresh()` share a
+generation and can be in flight together; an older response is discarded rather
+than allowed to overwrite newer rows or regress a terminal row to `active`.
+
+A failed re-read keeps the last known rows and raises `workstreamsStale`,
+cleared by the next success. Row status is rendered as received: this package
+does not enumerate `WorkstreamStatus`, so an unrecognised value displays without
+a change here.
 
 **`useClientData`** — Scope-grouped client data subscriptions:
 

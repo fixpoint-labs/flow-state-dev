@@ -24,17 +24,21 @@ import {
   pollEvents,
   synthesizeRequestInterrupted,
   StoreSubscriptionError,
+  withStoredAbortRequested,
+  type ConditionalRequestFields,
+  type ConditionalWriteResult,
   type ExpectedVersion,
   type ReadEventsFn,
   type RequestListOptions,
   type RequestRecord,
+  type RequestStatus,
   type RequestStore,
   type SetResult,
   type SubscribeToEventsOptions
 } from "@flow-state-dev/engine";
 import type { Pool, PoolClient } from "pg";
 import type { QueryExecutor } from "./types";
-import { createPgRecordStore } from "./pg-store";
+import { createPgRecordStore, nullSafeEqualsClause } from "./pg-store";
 
 const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_MS = 250;
@@ -108,6 +112,11 @@ export function createPostgresRequestStore(
 
   const base = createPgRecordStore<RequestRecord, RequestListOptions>(executor, {
     tableName: "requests",
+    // `abortRequested` is off `set`'s write surface (FIX-1026): the stored
+    // value wins in both directions, enforced inside the UPDATE so a
+    // concurrent `setFieldsIfStatus` cannot be overwritten by a full-record
+    // write that read the row a moment earlier.
+    preserveJsonKeys: ["abortRequested"],
     columns: ["flow_kind", "user_id", "session_id", "org_id", "tenant_id", "status"],
     toRow: (record) => [
       record.flowKind,
@@ -136,12 +145,36 @@ export function createPostgresRequestStore(
       }
       // Tenant filter (FIX-682): present (incl. explicit undefined) → NULL-safe
       // exact match; absent → no filter. Isolates cross-turn history between
-      // two tenants sharing a bare session id.
+      // two tenants sharing a bare session id. Emitted in the indexable form —
+      // see `nullSafeEqualsClause`.
       if (options !== undefined && "tenantId" in options) {
-        parts.push(`tenant_id IS NOT DISTINCT FROM $${p++}`);
-        params.push(options.tenantId ?? null);
+        const tenant = nullSafeEqualsClause("tenant_id", options.tenantId, p);
+        parts.push(tenant.clause);
+        params.push(...tenant.params);
+        p = tenant.nextParam;
       }
-      if (options?.status !== undefined) {
+      // Org filter (FIX-1010): same present-vs-absent NULL-safe semantics as
+      // the tenant clause — `orgId` is optional on the record and written as
+      // `?? null`, so a bare `=` against an absent value would never match an
+      // unbound request.
+      if (options !== undefined && "orgId" in options) {
+        const org = nullSafeEqualsClause("org_id", options.orgId, p);
+        parts.push(org.clause);
+        params.push(...org.params);
+        p = org.nextParam;
+      }
+      // Status filter: a single value by equality, an array by set membership
+      // (FIX-1010). An empty array matches nothing, which is what an explicit
+      // empty filter means.
+      if (Array.isArray(options?.status)) {
+        const statuses = options.status;
+        if (statuses.length === 0) {
+          parts.push("1 = 0");
+        } else {
+          parts.push(`status IN (${statuses.map(() => `$${p++}`).join(", ")})`);
+          params.push(...statuses);
+        }
+      } else if (options?.status !== undefined) {
         parts.push(`status = $${p++}`);
         params.push(options.status);
       }
@@ -150,9 +183,17 @@ export function createPostgresRequestStore(
     },
     // `started_at` is not a column — startedAtMs lives in the record blob and
     // equals `created_at` (set together at creation, never mutated). Order by
-    // created_at to honor `orderBy: "startedAtMs"`.
-    resolveOrderBy: (options) =>
-      options?.orderBy === "startedAtMs" ? "created_at DESC" : "updated_at DESC"
+    // created_at to honor `orderBy: "startedAtMs"`, with `id` breaking an
+    // exact same-millisecond tie so a `LIMIT 1` read is stable across repeated
+    // reads rather than arbitrary (FIX-1010).
+    //
+    // `null` emits no ORDER BY at all — see `resolveOrderBy` on the config.
+    resolveOrderBy: (options) => {
+      if (options?.orderBy === "none") return null;
+      return options?.orderBy === "startedAtMs"
+        ? "created_at DESC, id DESC"
+        : "updated_at DESC";
+    }
   });
 
   /**
@@ -299,9 +340,12 @@ export function createPostgresRequestStore(
       // Items live in `request_items`; keep them out of `requests.data` to
       // avoid double-storage.
       const { items: _omitted, ...withoutItems } = value;
+      // Strip the abort flag before it is bound: `preserveJsonKeys` re-applies
+      // the stored value on the UPDATE paths, and an INSERT has no stored row
+      // to preserve, so a record carrying the flag must not create one.
       const result = await base.set(
         id,
-        withoutItems as RequestRecord,
+        withStoredAbortRequested(withoutItems as RequestRecord, undefined),
         expectedVersion
       );
       if (result.ok && isTerminalRequestStatus(value.status)) {
@@ -309,6 +353,86 @@ export function createPostgresRequestStore(
       }
       return result;
     },
+
+    async isAbortRequested(requestId: string): Promise<boolean> {
+      // `data` is JSONB and items live in `request_items`, so this is a
+      // primary-key lookup plus a key probe — O(1) in item count, as the
+      // interface requires of every adapter.
+      const result = await executor.query(
+        "SELECT data -> 'abortRequested' AS flag FROM requests WHERE id = $1",
+        [requestId]
+      );
+      const row = result.rows[0] as { flag: unknown } | undefined;
+      return row?.flag === true;
+    },
+
+    async setFieldsIfStatus(
+      id: string,
+      fields: ConditionalRequestFields,
+      allowedStatuses: readonly RequestStatus[],
+      updatedAt: number
+    ): Promise<ConditionalWriteResult> {
+      // ONE statement, and the predicate read is a LOCKING one. `locked`
+      // takes a row lock and — unlike a plain read, which is pinned to the
+      // statement's snapshot — waits out any concurrent writer and returns the
+      // newest committed tuple. Everything downstream then derives from that
+      // single observation: the UPDATE gates on `l.status`, and `l.status` is
+      // also what a failed predicate reports. The two can no longer disagree
+      // because there is only one of them.
+      //
+      // Neither simpler shape works, and each fails in its own direction:
+      //
+      //  - The write cannot be gated on a NON-locking read fused into the same
+      //    statement. The snapshot is taken at statement start, so a status
+      //    change committing after it leaves the read saying `in_progress`
+      //    while the UPDATE — re-checked against the newer tuple — applies
+      //    nothing.
+      //  - The report cannot come from a SECOND statement either. That is a
+      //    new snapshot taken strictly later, so it can name a status the
+      //    record reached AFTER the predicate was evaluated. A `suspended` or
+      //    `interrupted` request is not finished: `runAction` transitions both
+      //    back to `in_progress` when a continuation resumes it (see its
+      //    point-of-no-return). Let one land in that window and the verb
+      //    answers `{ applied: false, status: "in_progress" }` for a predicate
+      //    of `["in_progress"]` — self-contradictory, and the abort route turns
+      //    it into `409 … already in terminal state "in_progress"`, refusing to
+      //    stop a request that is by then running.
+      //
+      // A version CAS cannot stand in for any of this — terminal transitions
+      // persist `version` unchanged, so a version-checked write still validates
+      // after a terminal commit and resurrects a dead record.
+      //
+      // `updatedAt` is merged into the blob as well as the indexed column.
+      // `get()` reads the blob, so writing only the column would leave the
+      // returned record's `updatedAt` stale — list ordering and the record
+      // would disagree, and a later full-record write built from `get()` would
+      // carry the old value back and move the indexed column BACKWARD.
+      const result = await executor.query(
+        `WITH locked AS (
+           SELECT id, status FROM requests WHERE id = $1 FOR UPDATE
+         ),
+         applied AS (
+           UPDATE requests r
+              SET data = r.data || $2::jsonb || jsonb_build_object('updatedAt', $3::bigint),
+                  updated_at = $3
+             FROM locked l
+            WHERE r.id = l.id AND l.status = ANY($4::text[])
+           RETURNING r.id
+         )
+         SELECT l.status AS status, EXISTS (SELECT 1 FROM applied) AS applied
+           FROM locked l`,
+        [id, JSON.stringify(fields), updatedAt, [...allowedStatuses]]
+      );
+
+      // No row means no record: `rows`, not `rowCount` — a PGlite-backed
+      // executor reports `affectedRows` there, which is 0 for a SELECT.
+      const row = result.rows[0] as
+        | { status: RequestStatus; applied: boolean }
+        | undefined;
+      if (row === undefined) return { applied: false, status: undefined };
+      return { applied: row.applied === true, status: row.status };
+    },
+
     patchField: base.patchField,
     incField: base.incField,
     pushToArray: base.pushToArray,

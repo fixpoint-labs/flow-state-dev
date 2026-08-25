@@ -1,11 +1,12 @@
 import path from "node:path";
 import type { CASOptions } from "@flow-state-dev/core/types";
 import { ConcurrentModificationError, runWithCAS } from "./cas";
+import { ResourceAlreadyExistsError, ResourceDeletedError } from "./resource-cas";
 import { createFilesystemActiveRequestRegistry } from "./filesystem/active-request-registry";
 import { createFilesystemCheckpointStore } from "./filesystem/checkpoint-store";
 import { createFilesystemContentStore } from "./filesystem/content-store";
 import { createFilesystemResourceStateStore } from "./filesystem/resource-state-store";
-import { createFilesystemProjectStore } from "./filesystem/org-store";
+import { createFilesystemOrgStore } from "./filesystem/org-store";
 import { createFilesystemRequestStore } from "./filesystem/request-store";
 import { createFilesystemSessionStore } from "./filesystem/session-store";
 import { createFilesystemTraceStore } from "./filesystem/trace-store";
@@ -17,7 +18,12 @@ import { createInMemoryActiveRequestRegistry } from "./memory/active-request-reg
 import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
 import { createInMemoryContentStore } from "./memory/content-store";
 import { createInMemoryResourceStateStore } from "./memory/resource-state-store";
-import { createInMemoryProjectStore } from "./memory/org-store";
+import { toBareState, toBareStates } from "./resource-state-views";
+export type {
+  ResourceStateConflict,
+  ResourceStateRow
+} from "./resource-state-predicate";
+import { createInMemoryOrgStore } from "./memory/org-store";
 import { createInMemoryRequestStore } from "./memory/request-store";
 import { createInMemorySessionStore } from "./memory/session-store";
 import {
@@ -32,14 +38,20 @@ import { createScopeStateOps, createStateContainer } from "./state-container";
 import type { PersistErrorHandler, StoreRegistry } from "./types";
 import type { StoreAdapter } from "./store-adapter";
 
+export { withStoredAbortRequested } from "./shared";
+
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
   CheckpointStore,
+  ConditionalRequestFields,
+  ConditionalWriteResult,
   ContentScopeType,
+  StorageScopeType,
   ContentStore,
   LeaseStore,
   ResourceStateStore,
+  VersionedResourceState,
   ExpectedVersion,
   OrgListOptions,
   OrgRecord,
@@ -52,6 +64,7 @@ export type {
   RequestStore,
   ScopeRecordBase,
   SessionListOptions,
+  SessionParentage,
   SessionRecord,
   SessionStore,
   SetResult,
@@ -80,6 +93,8 @@ export type {
 
 export {
   ConcurrentModificationError,
+  ResourceAlreadyExistsError,
+  ResourceDeletedError,
   ScopeMutationTimeoutError,
   createScopeStateOps,
   createStateContainer,
@@ -87,7 +102,7 @@ export {
   createFilesystemCheckpointStore,
   createFilesystemContentStore,
   createFilesystemResourceStateStore,
-  createFilesystemProjectStore,
+  createFilesystemOrgStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemSuspensionStore,
@@ -98,7 +113,9 @@ export {
   createInMemoryCheckpointStore,
   createInMemoryContentStore,
   createInMemoryResourceStateStore,
-  createInMemoryProjectStore,
+  toBareState,
+  toBareStates,
+  createInMemoryOrgStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
   createInMemoryTraceStore,
@@ -167,7 +184,7 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
     session: createInMemorySessionStore(),
     request: createInMemoryRequestStore(),
     user: createInMemoryUserStore(),
-    org: createInMemoryProjectStore(),
+    org: createInMemoryOrgStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
     content: createInMemoryContentStore(),
     resourceState: createInMemoryResourceStateStore(),
@@ -215,7 +232,7 @@ export function createFilesystemStores(
     user: createFilesystemUserStore({
       rootDir: path.join(options.rootDir, "users")
     }),
-    org: createFilesystemProjectStore({
+    org: createFilesystemOrgStore({
       rootDir: path.join(options.rootDir, "projects")
     }),
     activeRequests: createFilesystemActiveRequestRegistry({

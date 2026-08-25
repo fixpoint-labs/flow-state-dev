@@ -1,33 +1,47 @@
 import type { FetchProviderAdapter, FetchResult } from "../types";
 import { htmlToMarkdown } from "../../_internal/html-to-markdown";
-import { httpFetchError, readTruncatedBody, transportFetchError } from "../errors";
+import {
+  blockedUrlFetchError,
+  httpFetchError,
+  readTruncatedBody,
+  transportFetchError,
+} from "../errors";
+import { BlockedUrlError } from "../../_internal/public-url";
+import { fetchValidated } from "../../_internal/fetch-validated";
 
 export const builtinFetchAdapter: FetchProviderAdapter = {
   name: "builtin",
   async fetch(url, _options): Promise<FetchResult> {
     let response: Response;
+    let finalUrl: string;
+
     try {
-      response = await globalThis.fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; FlowStateDev/1.0)",
-          Accept: "text/html,application/xhtml+xml",
-        },
-        redirect: "follow",
-      });
+      ({ response, finalUrl } = await fetchValidated(url));
     } catch (cause) {
+      // A blocked destination is a policy refusal — permanent, so non-retryable,
+      // and its own `errorType` rather than a transport class. Everything else
+      // — the guard's DNS lookup, the socket, an over-long redirect chain — is a
+      // transport failure and keeps the shaping callers already expect, so
+      // `ENOTFOUND`/`EAI_AGAIN` still classify as network and stay retryable.
+      if (cause instanceof BlockedUrlError) throw blockedUrlFetchError("builtin", url, cause);
       throw transportFetchError("builtin", url, cause);
     }
 
     if (!response.ok) {
-      throw httpFetchError("builtin", url, response, await readTruncatedBody(response));
+      throw httpFetchError(
+        "builtin",
+        finalUrl,
+        response,
+        await readTruncatedBody(response),
+      );
     }
 
     const html = await response.text();
     const contentType = response.headers.get("content-type") ?? "text/html";
-    const parsed = htmlToMarkdown(html, url);
+    const parsed = htmlToMarkdown(html, finalUrl);
 
     return {
-      url,
+      url: finalUrl,
       title: parsed.title,
       markdown: parsed.markdown,
       metadata: {

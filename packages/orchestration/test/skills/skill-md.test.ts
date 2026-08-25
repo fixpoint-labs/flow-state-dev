@@ -338,6 +338,25 @@ describe("parseSkillMd — delegation agents", () => {
     expect(() => parseSkillMd(text)).toThrow(/agent key/);
   });
 
+  // FIX-925: assignee keys and catalog keys are one namespace, and a tool
+  // catalog is app code whose keys are camelCase by convention (`httpGet`).
+  // A lowercase-only pattern would filter exactly those out of the board's
+  // worker registry, so uppercase is legal here too.
+  it("accepts a camelCase agent key", () => {
+    const text = withFrontmatter([`agents:`, `  httpGet:`, `    prompt: hi`].join("\n"));
+    expect(parseSkillMd(text).state.agents?.httpGet?.prompt).toBe("hi");
+  });
+
+  // The leading-alphanumeric anchor is what widening must not cost: it is the
+  // only thing keeping the board's reserved routes unclaimable.
+  it.each(["__proto__", "__floor__", "__no_assignee__", "-lead", "_lead"])(
+    "still rejects the reserved-shape agent key %j",
+    (key) => {
+      const text = withFrontmatter([`agents:`, `  "${key}":`, `    prompt: hi`].join("\n"));
+      expect(() => parseSkillMd(text)).toThrow(/agent key/);
+    },
+  );
+
   // FIX-920 — context-supply sub-key
   it("parses `context-supply: conversation` into contextSupply", () => {
     const text = withFrontmatter(

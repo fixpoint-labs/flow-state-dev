@@ -59,6 +59,17 @@ the spine if it clears every hard gate (`validate-financial-candidate.ts`):
   document.
 - **Period** — a fiscal period end that is present, not in the future, and not
   decades stale versus the run date.
+
+  That period end is also what the promoted statements DECLARE. A recovered set
+  is single-period by construction — one filing, one transcribed column — so all
+  three payloads carry the same `periodEnd`, stated the same way every other
+  producer states it, and the recovered set compares against a filings or
+  market-data statement like any other provider's. `asOf` keeps its filing-date
+  fallback for legacy readers; `periodEnd` deliberately does NOT take it. A
+  filing date is when the document was filed, not the period it covers, so
+  writing one there would assert a year-end the desk never observed — the same
+  class of claim the promote gates exist to refuse. A candidate with no usable
+  period end therefore declares none rather than borrowing one.
 - **Source authority** — an SEC Archives URL. Open-web statements are rejected
   (issuer-IR URLs are context only, never the promoted provenance).
 - **Scale** — parsed explicitly from the table header ("in thousands" /

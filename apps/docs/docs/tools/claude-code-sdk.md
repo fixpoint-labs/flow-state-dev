@@ -105,6 +105,152 @@ a live handle across requests rather than a parallel store. The default provider
 is thin because the SDK resumes cheaply by id; pass your own to hold a heavier
 resource (an open connection, for example).
 
+### Turning it off for background work
+
+A **workstream** is a child session dedicated to one background job, running
+outside the request that started it. If you dispatch the agent into one, set
+`detached: true`:
+
+```ts
+const agent = claudeCodeAgent({ detached: true });
+```
+
+Each job is then one run. Nothing is written to session state, and no prior SDK
+conversation is resumed — a second job addressed to the same workstream begins a
+new agent run. What the run did is still recorded: the workstream's own item
+stream holds its messages, reasoning, and tool calls in order, which is what you
+read the run back from.
+
+**The session id does not disappear.** The option governs session state and
+automatic resume, not the run's own result: the handle the block returns still
+carries the SDK `sessionId` it observed. When the agent runs as a task-board
+worker, that handle is the worker's output, and the board writes the output onto
+the task when it settles — so the id is persisted there. Worth knowing if you are
+reasoning about data retention, or if you plan to resume a run by hand later.
+
+The option is also required rather than optional there. Background workers share
+one flow, so two of them declaring the same session-state key would overwrite
+each other, and the task board refuses to build a background worker that declares
+session state.
+
+That refusal sees the worker block and the blocks composed inside it. It does
+**not** see a session-state schema contributed by a capability, which reaches a
+block through a separate channel that leaves no mark on the block itself. So a
+worker can be accepted while still carrying session state that way. If you attach
+this agent as a capability, pass the option there too — it takes the same one:
+
+```ts
+createClaudeCodeAgentCapability({ detached: true });
+```
+
+See [Background work](../server/background-work.md) for how a workstream is set
+up and read back.
+
+## Recording what the run did
+
+The item stream tells you what the agent said. `recordWork: true` also records
+what it did, as ordinary state you can query afterwards.
+
+```ts
+const agent = claudeCodeAgent({
+  detached: true,
+  recordWork: true,
+});
+```
+
+It is off by default. Turned on, the agent declares three **resource
+collections** — a resource collection is a keyed set of small state records the
+framework stores and serves for you — and writes into them as the run goes:
+
+| Collection | One entry per |
+|---|---|
+| `observed-file-ops` | path the run's file-writing and file-editing tools touched: how it was touched, when, and whether the attempt applied |
+| `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
+| `observed-gaps` | thing the recorder understood and could not record, with the reason and which record it stands in for |
+
+Entries are keyed as `<requestId>/<invocation>`. A workstream can host several
+runs over its life, and a single request can itself run the agent more than once
+— a generator holding it as a tool can call it repeatedly — so both halves are
+needed to keep one run's answer from becoming somebody else's.
+
+### Reading it back
+
+Both records come back over the resource route, one page at a time. Scope the
+read with `topicPrefix`, and follow `nextCursor` while one is returned:
+
+```
+GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
+
+{ "items": [
+  { "topic": "<requestId>/<invocation>/work/repo/src/checkout.ts",
+    "storageKey": "observed-file-ops/<requestId>/<invocation>/work/repo/src/checkout.ts",
+    "clientData": { "lastKind": "edited", "outcome": "applied",
+                    "lastTouchedAt": 1787021400123, "appliedCount": 2 } }
+] }
+```
+
+Prefixing with the request id gives you everything that request did; adding the
+invocation narrows it to one run.
+
+Each row's payload is on `clientData`. `outcome` has three values, not two:
+`pending` while a mutation has been seen and not yet settled, then `applied` or
+`failed`. A run that is killed mid-flight leaves its unsettled entries as
+`pending`, which is the honest answer about a write nobody confirmed.
+
+`appliedCount` sits beside it and counts confirmations, not attempts. Each
+operation is recorded twice, once when the call is seen and once when its
+result arrives, so a count of everything recorded would report double the work
+the run did. `outcome` describes only the last settlement, which is why a
+separate count is worth having: it says how many of a path's touches actually
+landed. Read `0` and `null` differently. `0` means the run touched the path and
+nothing applied. `null` means the row was written before the field existed.
+
+The plan record reads the same way, from `observed-plan`. A to-do item's status
+is the harness's own word for it, and stays empty until the harness reports one.
+
+### What the file record is, and what it isn't
+
+It is a log of the file operations you saw the agent's file tools perform. It is
+not an index of everything that changed on disk. A run that edits a file through
+the shell — a `sed -i`, a redirect, a `mv`, a formatter — makes no file-tool
+call, so nothing is recorded and that file does not appear. If you need an
+authoritative list of what changed, compare the working tree yourself.
+
+Paths are recorded, contents are not. The record points at your source; it does
+not hold a second copy of it.
+
+### Gaps
+
+Recording never interferes with the run. Anything the recorder cannot handle is
+skipped, the run carries on, and the skip lands in `observed-gaps` with the
+reason and the raw path where there was one.
+
+That collection is the difference between "this file was never touched" and "we
+saw it and could not record it". Read it alongside the other two whenever a
+record looks thinner than you expected.
+
+Each gap row carries a `kind` — `file`, `plan`, or `run` — saying which record
+it stands in for. Match on that rather than on the wording of `reason`: a gap
+for a mutation with nothing to key on has no path to identify it by, and the
+reason text is prose meant for a person.
+
+### The plan is not a work queue
+
+A run's to-do list goes into its own record, deliberately separate from the task
+board that dispatched the run. An agent that decides mid-run to do five more
+things writes five to-do items and starts nothing. Picking one up is a separate,
+deliberate act.
+
+Attaching the agent as a capability takes the same option, and needs it — the
+capability declares the collections itself:
+
+```ts
+createClaudeCodeAgentCapability({ detached: true, recordWork: true });
+```
+
+See [Resource collections](../resources/collections.md) for how collections are
+stored, paged, and made visible to clients.
+
 ## Tool approval
 
 By default the agent governs its own tools through the SDK's `permissionMode`. To

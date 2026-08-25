@@ -98,7 +98,7 @@ export function EventedActors({ item }: { item: ContainerItem }) {
 
   // Resolve items scoped to this request. Prefer owned items; fall back
   // to request-scoped session items when ownedBy doesn't propagate
-  // through nested forEachBackground dispatches.
+  // through nested forEachSideChain dispatches.
   const scopedItems = useMemo(() => {
     const hasOwned = ownedItems.some(
       (i) =>

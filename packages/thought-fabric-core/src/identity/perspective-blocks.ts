@@ -46,22 +46,6 @@ import {
 /** Position scope — controls where positions are persisted. */
 export type PositionScope = 'session' | 'user' | 'org'
 
-// ---------------------------------------------------------------------------
-// Internal: positions ref lookup
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve the positions resource ref from a runtime ctx.
- *
- * Under FIX-435 every resource lives on the flat `ctx.resources` registry
- * regardless of intrinsic scope, so the lookup no longer branches on scope.
- * The `scope` parameter is retained so the signature documents the
- * configured placement at the call site.
- */
-export function getPerspectivePositionsRef(ctx: any, _scope: PositionScope) {
-  return ctx.resources.get('perspectivePositions')
-}
-
 /**
  * Build the unified `resources` map that installs the observations + positions
  * resources for a given `positionScope`. Observations are always
@@ -244,10 +228,10 @@ export function perspectiveAnalyze(config: PerspectiveAnalyzeConfig) {
  *   .map((input) => ({ content: input.proposal }))
  *   .step(securityAudit)
  *
- * // As a .work() sidechain
+ * // As a .sideChain() sidechain
  * const pipeline = sequencer({ name: 'review' })
  *   .step(mainBlock)
- *   .work((input) => ({ content: input.proposal }), securityAudit)
+ *   .sideChain((input) => ({ content: input.proposal }), securityAudit)
  *   .step(nextBlock)
  * ```
  */

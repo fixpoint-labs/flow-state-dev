@@ -55,6 +55,10 @@ function sessionState(overrides: Partial<SessionState> = {}): SessionState {
     portfolioMandate: null,
     householdTickerWeightPct: null,
     standingThesis: null,
+    // Default UNSTAMPED, so every test that doesn't opt in exercises the
+    // legacy/pre-fix read path (FIX-1063). The stamped case is asserted
+    // explicitly below.
+    dataHonestyContractVersion: null,
     ...overrides,
   };
 }
@@ -66,12 +70,16 @@ function decisionSnapshot(
     ticker: "NVDA",
     asOfDate: "2026-05-06",
     finalRating: "Overweight",
+    ratingUnanchored: false,
+    periodDisclosure: null,
     decisionConfidence: 0.72,
     decisionSummary: "Constructive on AI demand.",
     direction: "long",
     entryPrice: null,
     stopPrice: 118.5,
     targetPrice: 165,
+    reassessBelowPrice: null,
+    invalidateAbovePrice: null,
     sizePct: 3.5,
     holdingPeriod: "quarters",
     mandateId: "balanced",
@@ -133,6 +141,7 @@ const spine: ValuationSpineState = {
   },
   valuationMethod: "ev-multiples",
   evidenceBasis: "sufficient",
+  periodDisclosure: null,
 };
 
 const rewardToRisk: RewardToRiskState = {

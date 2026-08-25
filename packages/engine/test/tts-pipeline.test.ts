@@ -233,6 +233,45 @@ describe("TTS pipeline — streaming dispatch", () => {
     expect(order.at(-1)!.type).toBe("content.done");
   });
 
+  it("cancel() rejects when an active iterator's return() throws synchronously", async () => {
+    // Characterizes a hazard rather than asserting desired behaviour: `cancel`
+    // retires active iterators with `void it.return?.().catch(() => {})`, and
+    // that `.catch` only covers a *rejected promise*. A provider whose
+    // `return()` throws synchronously escapes it, so `cancel()` — a teardown
+    // call — rejects.
+    //
+    // This is the premise behind `runAction` awaiting `ttsHook.cancel()`
+    // best-effort on its catch paths (FIX-1001). Cancellation runs above the
+    // terminal write there, so an unswallowed rejection would skip the work-
+    // pool drain and the record patch and strand the request `in_progress`.
+    const provider = streamProvider(
+      () =>
+        ({
+          [Symbol.asyncIterator]() {
+            return {
+              async next(): Promise<IteratorResult<SpeakChunk>> {
+                // Park, so this iterator is still active when cancel runs.
+                await new Promise(() => {});
+                return { done: true, value: undefined };
+              },
+              return(): never {
+                throw new Error("iterator return exploded");
+              }
+            } as unknown as AsyncIterator<SpeakChunk>;
+          }
+        }) as AsyncIterable<SpeakChunk>
+    );
+    const { emitter } = makeEmitter();
+    const pipeline = createTTSPipeline({ provider, config, emitter });
+
+    pipeline.onContentDelta("item1", 0, "Hello world.");
+    // Not awaited: the synthesis parks on its first chunk pull.
+    void pipeline.flush("item1");
+    await new Promise((r) => setTimeout(r, 30));
+
+    await expect(pipeline.cancel()).rejects.toThrow("iterator return exploded");
+  });
+
   it("emits a content.added placeholder + single content.done for an empty iterable", async () => {
     const provider = streamProvider(() => (async function* () {})());
     const { emitter, captured } = makeEmitter();

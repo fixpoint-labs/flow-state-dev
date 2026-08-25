@@ -7,6 +7,8 @@ import type { RetentionPolicy } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
 import { parseDuration } from "../utils/duration";
 
+const RETENTION_COUNT_BATCH_SIZE = 16;
+
 /**
  * Pre-resolved retention policy with maxAge converted to milliseconds.
  * Resolve once at action start, not on every write.
@@ -90,14 +92,22 @@ export async function applyRetentionPolicy(
   // Phase 2: maxItems — count items from newest requests, evict the rest
   if (policy.maxItems !== undefined) {
     const maxItems = policy.maxItems;
-    // Counts are independent per request, so fetch them concurrently (one DB
-    // round trip per request on backed adapters) before the order-dependent
-    // greedy walk. The current request is always kept; count it too.
+    // Count in bounded batches so attacker-grown histories cannot enqueue an
+    // unbounded burst of database work. The current request is always kept;
+    // count it too.
     const newestFirst = [...remaining].reverse();
-    const [currentCount, ...historyCounts] = await Promise.all([
-      stores.request.countItems(currentRequestId),
-      ...newestFirst.map((req) => stores.request.countItems(req.id)),
-    ]);
+    const requestIds = [currentRequestId, ...newestFirst.map((req) => req.id)];
+    const counts: number[] = [];
+    for (let i = 0; i < requestIds.length; i += RETENTION_COUNT_BATCH_SIZE) {
+      counts.push(
+        ...(await Promise.all(
+          requestIds
+            .slice(i, i + RETENTION_COUNT_BATCH_SIZE)
+            .map((id) => stores.request.countItems(id))
+        ))
+      );
+    }
+    const [currentCount = 0, ...historyCounts] = counts;
 
     // Walk newest-first, accumulating items until budget is exceeded
     let totalItems = currentCount;

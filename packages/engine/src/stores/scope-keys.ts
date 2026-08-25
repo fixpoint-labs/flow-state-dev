@@ -23,6 +23,8 @@
  * was isolated. The opt-out direction is now honored.
  */
 
+import type { SessionParentage } from "./types";
+
 /** Minimal flow shape carrying the scope-isolation flags plus its own `kind`. */
 export interface IsolationFlow {
   kind: string;
@@ -110,7 +112,32 @@ export function tenantMatches(
   recordTenantId: string | undefined,
   requestTenantId: string | undefined
 ): boolean {
-  return (recordTenantId ?? undefined) === (requestTenantId ?? undefined);
+  return scopeValueMatches(recordTenantId, requestTenantId);
+}
+
+/**
+ * The NULL-safe equality **every** scope-identity comparison uses: a record
+ * that encodes "unbound" as `null` and one that omits the key are the same
+ * record, and both match a filter of `undefined`.
+ *
+ * The parameters admit `null` deliberately, even though `SessionRecord.orgId`
+ * and `tenantId` are declared `string | undefined`. Persisted records reach
+ * these predicates carrying either shape — a JSON round-trip through the
+ * filesystem store, or any custom store that nulls absent keys (BP-030) — so
+ * the coalescing is load-bearing, not defensive noise. A signature that hid
+ * the `null` would invite a later reader to delete the `??` as dead code.
+ *
+ * This exists because the SQL adapters already compare NULL-safely — `IS ?` on
+ * SQLite, `IS NULL` / `IS NOT DISTINCT FROM` on Postgres — and a strict `===`
+ * here made the same call return different rows depending on which store was
+ * configured. NULL-safety is one rule, so it lives in one function rather than
+ * being restated at each comparison site.
+ */
+function scopeValueMatches(
+  recordValue: string | null | undefined,
+  filterValue: string | null | undefined
+): boolean {
+  return (recordValue ?? undefined) === (filterValue ?? undefined);
 }
 
 /**
@@ -129,7 +156,53 @@ export function matchesTenantFilter(
   recordTenantId: string | undefined
 ): boolean {
   if (options === undefined || !("tenantId" in options)) return true;
-  return recordTenantId === options.tenantId;
+  return scopeValueMatches(recordTenantId, options.tenantId);
+}
+
+/**
+ * Org list-filter predicate (FIX-1010), with exactly the present-vs-absent
+ * semantics of {@link matchesTenantFilter} — deliberately, because `orgId` is
+ * optional on both session and request records and a plain equality test would
+ * silently drop every unbound one.
+ *
+ * Org is an enforced identity boundary at adoption (`createExecutionContext`
+ * throws `OrgBindingMismatchError` on a mismatch), so a read that enumerates
+ * across it treats as one conversation what the runtime treats as two
+ * identities. The SQL adapters mirror this as a NULL-safe `org_id IS ?` /
+ * `org_id IS NOT DISTINCT FROM $n` clause.
+ */
+export function matchesOrgFilter(
+  options: { orgId?: string } | undefined,
+  recordOrgId: string | undefined
+): boolean {
+  if (options === undefined || !("orgId" in options)) return true;
+  return scopeValueMatches(recordOrgId, options.orgId);
+}
+
+/**
+ * Parentage list-filter predicate (FIX-1009). The canonical definition of the
+ * three modes; the memory and filesystem session stores call it directly, and
+ * the SQLite / Postgres adapters mirror it in their `WHERE` builders because
+ * they cannot import across the type-only package boundary.
+ *
+ * Absence narrows: no `parentage` (and an explicit `undefined`) means
+ * `"top-level"`, so a caller that passes no filter gets only the sessions a
+ * person started. This is deliberately the **opposite** of
+ * {@link matchesTenantFilter}, where absence widens — see
+ * `SessionListOptions.parentage` for why the two differ.
+ *
+ * The top-level test is `== null` rather than `=== undefined` so a record
+ * persisted before `parentSessionId` existed, and one round-tripped through a
+ * store that nulls absent keys, both read as top-level (BP-030).
+ */
+export function matchesParentageFilter(
+  options: { parentage?: SessionParentage } | undefined,
+  recordParentSessionId: string | undefined
+): boolean {
+  const parentage = options?.parentage ?? "top-level";
+  if (parentage === "all") return true;
+  if (parentage === "top-level") return recordParentSessionId == null;
+  return recordParentSessionId === parentage.parentOf;
 }
 
 /**

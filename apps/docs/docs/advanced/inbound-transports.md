@@ -117,6 +117,34 @@ dispatcher. If two adapters declare the same `(method, path)` pair, the
 router throws `TransportRouteCollisionError` at construction time —
 better than ambiguous runtime dispatch.
 
+### Letting your transport's requests be re-entered
+
+The public `retry`, `continue` and `resume` routes re-run a request that
+already exists, and retry accepts a caller-supplied `inputOverride`. Whether a
+given request may be re-entered that way depends on the transport it arrived
+on, so those routes work from an allow-list: `http`, `mcp`, `chat` and
+`scheduled`. A request on any other source gets the same not-found response a
+missing request does.
+
+Your custom source is not on that list, because the framework has no way to
+know it exists. Name it when you build the host:
+
+```ts
+const router = createFlowApiRouter({
+  registry,
+  stores,
+  adapters: [createEchoAdapter()],
+  publicReentrySources: ["echo"]
+});
+```
+
+`createFlowState` takes the same option. Two sources are refused: `webhook`
+and the framework's detached-dispatch source. A webhook handler is reachable
+only behind signature verification, and a detached dispatch has no
+caller-facing entry at all — re-entering either from a public route would run
+it with input a caller chose. Naming one throws when the router is built,
+rather than quietly doing nothing.
+
 ### Scheduled adapter shape
 
 `@flow-state-dev/scheduled` is the second concrete adapter after MCP.
@@ -187,6 +215,33 @@ auth themselves — see the [Authentication](/docs/server/authentication) page f
 the resolver contract, `requireUser` semantics, and the bundled HMAC and
 JWT helper utilities.
 
+## Execution configuration and the queue
+
+A host's `runtimeConfig` is the execution configuration for everything it
+dispatches: the model resolver, the providers, the logger. When a dispatch runs
+in the same process, work started from it inherits the launching request's
+effective config, so a config a caller derived for one request reaches the
+background work that request spawns.
+
+That inheritance stops at a serialization boundary. A `RuntimeConfig` holds live
+resolvers and provider instances, so a dispatcher that hands work to another
+process — a queue adapter, a separate worker tier — cannot carry it. The job
+carries the serializable envelope only, and the worker runs it under its own
+configuration.
+
+Carrying just the selected model *id* across would not fix it. The worker is a
+different process with its own gateways and keys, so a forced id may not resolve
+there at all, replacing a silently wrong model with a failure surfacing where the
+caller cannot see it. What the host does say out loud is the model: a dispatch
+that drops a caller-derived *model resolver* logs a warning naming the request
+that lost it. That check is on the resolver alone, so a derived config that
+differs somewhere else — a voice provider, a request-scoped logger — is dropped
+without one. Treat the warning as coverage for model overrides, not as a
+guarantee that every dropped field is reported.
+
+Writing a custom host or dispatcher, read this as: honour the inherited config
+when you run work in-process, and expect not to receive it when you don't.
+
 ## Per-registry, not per-flow
 
 Adapters mount onto a host built from one `FlowRegistry`. One adapter
@@ -195,11 +250,11 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 
 ## Conformance
 
-`@flow-state-dev/testing` exports a conformance suite. Run it against
+`@flow-state-dev/testing/conformance` exports a conformance suite. Run it against
 your adapter and you've validated the contract:
 
 ```ts
-import { createInboundTransportConformanceTests } from "@flow-state-dev/testing";
+import { createInboundTransportConformanceTests } from "@flow-state-dev/testing/conformance";
 
 createInboundTransportConformanceTests({
   name: "myAdapter",
@@ -212,4 +267,4 @@ createInboundTransportConformanceTests({
 });
 ```
 
-The HTTP adapter is the first conforming implementation.
+`createMockTransportHost` is on the same subpath, for adapter tests that build a host themselves.

@@ -1,6 +1,6 @@
 # Execution and Errors
 
-The execution runtime orchestrates block dispatch, retry policies, rescue boundaries, work queues, and lifecycle hooks. This document covers how blocks run and how errors are handled.
+The execution runtime orchestrates block dispatch, retry policies, rescue boundaries, side chains, and lifecycle hooks. This document covers how blocks run and how errors are handled.
 
 ## Execution Model
 
@@ -13,7 +13,7 @@ The runtime is responsible for:
 5. Emitting stream items and events
 6. Applying retry policies
 7. Enforcing rescue boundaries
-8. Managing the work queue and convergence
+8. Managing side chains and convergence
 9. Firing request lifecycle observers
 
 ## Block Dispatch
@@ -49,7 +49,7 @@ The framework calls `block.run(input, ctx)` which handles input/output validatio
 **Sequencer:**
 1. Execute DSL steps in order
 2. Maintain per-sequencer runtime state
-3. Support rescue boundaries and work queue
+3. Support rescue boundaries and side chains
 4. Each step executes via `step.run(stepInput, ctx)`
 
 **Router:**
@@ -69,7 +69,7 @@ type FlowError = Error & {
   retryable: boolean;
   blockName?: string;
   blockInstanceId?: string;
-  scope?: "request" | "work" | "resource" | "block";
+  scope?: "request" | "sideChain" | "resource" | "block";
   cause?: unknown;
   details?: Record<string, unknown>;
 };
@@ -160,48 +160,50 @@ The write → stamp → read chain:
 
 This replaced an earlier `{ __rescued: true }` sentinel value that `routedSpecialists` smuggled through the pipeline to signal recovery.
 
-## Work Queue
+## Side chains
 
-The work queue enables non-aborting side-chain execution:
+A side chain runs alongside the main chain without aborting it:
 
 ```ts
 pipeline
   .step(mainProcessing)
-  .work(analyticsBlock)        // queued, won't abort main chain
-  .work(notificationBlock)     // queued, won't abort main chain
+  .sideChain(analyticsBlock)        // queued, won't abort main chain
+  .sideChain(notificationBlock)     // queued, won't abort main chain
   .step(nextMainStep)
-  .waitForWork({ failOnError: false });  // wait for work, keep failures non-terminal
+  .waitForSideChain({ failOnError: false });  // wait for work, keep failures non-terminal
 ```
 
 **Semantics:**
-- `.work(block)` — queues side-chain execution, non-aborting by default
-- `.waitForWork({ failOnError: false })` — waits for work, failures are non-terminal
-- `.waitForWork({ failOnError: true })` — promotes any work failure to terminal request error
+- `.sideChain(block)` — queues side-chain execution, non-aborting by default
+- `.waitForSideChain({ failOnError: false })` — waits for work, failures are non-terminal
+- `.waitForSideChain({ failOnError: true })` — promotes any side-chain failure to terminal request error
 - Work failures are logged and the failed `block_trace` reaches the DevTool's trace channel; `onStepErrored` observers still fire
 
 ### Work queue signal lifecycle
 
-Background `.work()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request constructs two `AbortController`s:
+Background `.sideChain()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request constructs two `AbortController`s:
 
-- `abortController` — the abort-registry controller. Fires on the explicit `/abort` endpoint / `session.abortRequest()` only.
-- `backgroundController` — fires only when `abortController` fires.
+- `abortController` — the abort-registry controller. Fires on an explicit cancellation only, never on a transport signal. Two paths reach it and they converge here: the `/abort` endpoint / `session.abortRequest()` when the request is running in this process, and `runAction`'s heartbeat-tick poll when the intent was recorded by another process (FIX-1026). A cross-process abort is therefore indistinguishable downstream from a local one.
+- `sideChainController` — fires only when `abortController` fires.
 
 ```
 runActionInternal
-  abortController        ← registry; fires on /abort only
+  abortController        ← registry; fires on /abort here, or on the
+                           heartbeat poll reading abortRequested from
+                           the request store (cross-process delivery)
   composedSignal = AbortSignal.any([options.signal, abortController.signal])
                          ← foreground chain; also fires on transport signal
-  backgroundController   ← NEW; listens on abortController.signal ({ once: true })
+  sideChainController   ← NEW; listens on abortController.signal ({ once: true })
                            does NOT see options.signal / composedSignal
 
   createExecutionContext({ signal: composedSignal,
-                           backgroundSignal: backgroundController.signal })
+                           sideChainSignal: sideChainController.signal })
     root ctx.signal = composedSignal
-    root ctx._requestBackgroundSignal = backgroundController.signal
+    root ctx._requestSideChainSignal = sideChainController.signal
     (re-attached on every child scope in _withExecutionScope)
 
-  sequencer .work(block):
-    taskCtx = { ...ctx, signal: ctx._requestBackgroundSignal }
+  sequencer .sideChain(block):
+    taskCtx = { ...ctx, signal: ctx._requestSideChainSignal }
     executeBlock(block, input, taskCtx, path, { signalOverride: taskCtx.signal })
       → _withExecutionScope threads signalOverride to every descendant scope,
         so the whole background task tree sees the background signal
@@ -209,10 +211,16 @@ runActionInternal
 
 Wiring details:
 
-- `backgroundController` listens on `abortController.signal` with `{ once: true }`, plus a defensive `if (signal.aborted)` guard for the registration/abort race. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `backgroundController` because the listener is on `abortController.signal` directly.
-- `_requestBackgroundSignal` is an internal `BlockContext` field, propagated through every scope alongside `_requestWorkPool`.
-- The sequencer DSL substitutes `ctx.signal` with `_requestBackgroundSignal` at `.work()` / `.workIf()` / `.forEachBackground()` dispatch, and threads a `signalOverride` through `_withExecutionScope` so descendant scopes inherit it rather than the closure-captured root signal.
-- `drainRequestWorkPool` no longer takes a signal on the success path: it waits unconditionally. The abort/disconnect path skips drain entirely (unchanged). If an explicit `/abort` arrives mid-drain, in-flight tasks self-cancel via their own `ctx.signal` and settle as rejections, so the drain still resolves.
+- `sideChainController` listens on `abortController.signal` with `{ once: true }`, plus a defensive `if (signal.aborted)` guard for the registration/abort race. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `sideChainController` because the listener is on `abortController.signal` directly.
+- `_requestSideChainSignal` is an internal `BlockContext` field, propagated through every scope alongside `_requestSideChainPool`.
+- The sequencer DSL substitutes `ctx.signal` with `_requestSideChainSignal` at `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` dispatch, and threads a `signalOverride` through `_withExecutionScope` so descendant scopes inherit it rather than the closure-captured root signal.
+- `drainRequestSideChainPool` takes no signal: it waits unconditionally, on every terminal path — success, `failed`, `aborted`, and `interrupted` alike (FIX-1001). If an explicit `/abort` arrives mid-drain, in-flight tasks self-cancel via their own `ctx.signal` and settle as rejections, so the drain still resolves. **The suspend path is not a terminal path and still does not drain** — see the replay contract below; `suspended` is a pause, and its in-flight background work is re-run after resume.
+- Quiescence is the pool's contract, not the caller's: `drainToQuiescence` repeats `drainAll` until a pass consumes nothing, because `drainAll` awaits a single spliced snapshot. `runAction` calls it once and keeps only the failure logging and the `sideChainTasks` status emission.
+- `ttsHook.cancel()` on the catch paths is best-effort. It runs above the drain (so a failing request stops paying for synthesis), which also puts it above the terminal write — an unswallowed rejection there would skip both the drain and the record patch and strand the request `in_progress`.
+- The drain loops until a pass consumes nothing, because `drainAll` splices one snapshot of the pool: a task that queues further work while being drained lands after that splice and a single pass would never await it.
+- On the catch paths the heartbeat deliberately outlives the drain and is cleared immediately after it, before the terminal patch. Clearing it first (as the catch prologue used to) would let the request go stale during its own unbounded drain, and `detectInterruptedRequests` would write `interrupted` over a live request with no version guard.
+- The catch paths patch the record *before* publishing the terminal status event, matching the success path. A client closes its stream on that event and re-reads the record, so publishing first can permanently cache `in_progress`.
+- An abort accepted during the drain overrides a `failed`/`interrupted` branch already chosen: the terminal branch is selected before a wait that now lasts as long as the background work, and `/abort` keeps being accepted for all of it because the record is still `in_progress`.
 
 ## Generator Repair
 
@@ -272,7 +280,7 @@ The full request execution sequence:
 - `onCompleted` fires only on terminal success
 - `onErrored` fires only on terminal failure
 - `onFinished` fires always
-- `onStepErrored` fires for non-terminal step/work failures (visibility hook)
+- `onStepErrored` fires for non-terminal step/side-chain failures (visibility hook)
 
 ## Error-to-Item Mapping
 
@@ -285,6 +293,45 @@ The full request execution sequence:
 ## Error Capture Sink
 
 `RuntimeConfig.errorCapture` (set via `createFlowState({ errorCapture })`) is an opt-in, provider-neutral sink for routing runtime block failures to an external observability service. It is wired in `createExecutionContext`: the per-block `_runtimeHooks.onBlockError` hook fires it for nested block failures (carrying the leaf block's identity), and `executeBlock`'s catch fires it via `ctx._captureError` for the root action block. Both paths dedupe on the raw thrown value through a per-request `Set`, so a single failure propagating up the block tree is reported once, at the leaf. Under a retry policy each failed attempt is a distinct throw and reports once (distinguished by `attempt`): nested blocks fire via `onBlockError` per attempt, and the root block's non-terminal attempts are captured from `retryWithPolicy`'s `onRetry` while the terminal attempt is captured in the catch. The callback is fire-and-forget: a throw or rejection is swallowed and logged, never affecting the request.
+
+## The request-host seam
+
+A capability's helper functions are typed against the `BlockContext` that `@flow-state-dev/core` declares, and `core` must not depend on `engine`. Facilities only the runtime can provide — starting a child request, settling a durable row owned by another session, asking whether dispatched work is still running — live on the engine's context type, so reaching them required casting the context to a shape TypeScript said it did not have. The cast was the only thing holding the package boundary, and nothing warned when the shape it asserted stopped being true.
+
+`core` now declares the interface (`RequestHost`, on the optional `BlockContext.requestHost` member) and `engine` implements it. The package graph is unchanged. Read it with `requireRequestHost(ctx)`, which throws by name when absent rather than failing as `undefined is not a function`.
+
+Two rules make the seam safe, and both are structural rather than validated:
+
+- **What crosses is behaviour, not handles.** No `core` type names a store, a flow instance, a session record, or a task row. A value read from another session crosses as `unknown` and the consumer parses it with its own schema.
+- **Identity is never a parameter, and neither is a session id.** Every verb closes over the running request's server-derived identity. A caller supplies a *routing seed*; the seam derives the child session id by hashing it together with the tenant, the principal, **and the parent session**. The parent session is in the key material because every other verb authorises by descent — omit it and one principal's second parent session derives the first's child key, adopts its child, and its work then settles onto the wrong board while its own interrupt and liveness calls refuse.
+
+Adoption validates the stored record's full identity — flow kind, principal, tenant, org, parent session — before reusing it. The derivation alone is not sufficient, because the seam is not the only writer: the public session-create route lets a caller choose a session id, so a record can be pre-created at the deterministic child key, and `createExecutionContext` validates user/tenant/org bindings but neither flow kind nor parent session. A mismatch is a named refusal, never a silent create.
+
+The member is optional in the *type* so a hand-built test context still type-checks. It is not optional in *deployment*: a process that executes requests without one is a construction failure, `worker-only` included — that mode constructs no dispatcher today, so a deployment whose capabilities dispatch must supply the start operation there explicitly.
+
+### The liveness enablement gate
+
+The liveness verb reads the active request registry, and three supported configurations make that read a lie. All three are checked once, at construction, and the verb is **absent and named** when any fails — never present and wrong. The other verbs are unaffected.
+
+| Arm | Failure it prevents | Direction of the lie |
+|---|---|---|
+| The registry declares itself shared across processes | A per-process registry cannot see another process's requests at all | Live work reads **dead** → double execution |
+| `heartbeatIntervalMs` is nonzero and the stale threshold is at least twice it | `heartbeatIntervalMs: 0` creates no timer while the sweeper still reaps | Live work reads **dead** |
+| A stale sweeper is running at a nonzero cadence | `staleSweepIntervalMs: 0` returns a no-op handle before creating any timer, so a crashed worker's entry is never removed | Dead work reads **alive** → reconciliation deadlocks |
+
+The third arm's failure deadlocks rather than merely overspending, which is why it is a hard gate arm and not a documented caveat. Sweep cadence is a construction input like the registry itself; a host that cannot answer is treated as not sweeping (fail-closed).
+
+The sweeper is constructed by `createFlowApiRouter`, so the cadence only becomes a fact once a router exists. `createFlowState` therefore leaves it unset on the runtime config it builds — a host that initializes solely through `getRuntime()` really has nothing sweeping — and stamps it onto that same config when it builds the router. The stamp is what a **colocated worker** reads: `worker.startWorker` captured the shared config during runtime init, and the context factory reads the cadence per request, so once `ready()` has started the sweeper the worker beside it stops refusing. Fail-closed is the answer for a process with no sweeper, not for a process whose own router is sweeping.
+
+A nonzero cadence is necessary but not sufficient — a cadence much larger than the threshold leaves a worker that crashed just after a sweep registered until the next tick. So the read also compares `lastHeartbeatAt` against the threshold, which is correct however the cadence is tuned and adds nothing for an operator to configure.
+
+The backing read is `ActiveRequestRegistry.get(requestId)`, issued for the ids the caller supplied — never `listStale()` and never `listAll()`. `listStale` returns *registered* entries older than the cutoff, and terminal requests are deregistered, so a completed request and a freshly-registered healthy one are both absent from it: complementing that set reports finished work as alive, and treating membership as alive reports healthy work as dead. `listAll()` is rejected separately because it enumerates across tenants.
+
+**Absence means "no live registration was found", never "definitely dead."** A completed request, one that never registered, and one whose registration was lost are indistinguishable by construction. A consumer may treat a not-live answer as permission to stop waiting; re-dispatching on it alone is how double execution ships, so anything that re-runs work must corroborate against durable state it owns.
+
+### Registry sharedness
+
+`ActiveRequestRegistry` carries a `sharedAcrossProcesses` declaration, read fail-closed through `isRegistrySharedAcrossProcesses` — **absent means not shared**, so an adapter compiled against the older contract gets liveness refused rather than silently wrong. The answer is a property of the *constructed store*, not of the adapter's package name: the Postgres adapter declares shared on the pooled and connection-string shapes and **not** shared when handed an injected `{ executor }` (PGlite is process-local). In-memory declares not shared definitively; filesystem and SQLite cannot tell a shared volume from a per-process path and therefore declare not shared.
 
 ## Canonical Authority
 
@@ -363,12 +410,12 @@ Completed blocks are not re-executed. The runtime replays each one's recorded `b
 
 ### Background work under replay (locked contract)
 
-Background blocks (`.work()`, `.workIf()`, `.forEachBackground()`) ride the **same** `executeBlock` replay gate as foreground steps. There is one replay rule for both, not two. On continuation:
+Background blocks (`.sideChain()`, `.sideChainIf()`, `.forEachSideChain()`) ride the **same** `executeBlock` replay gate as foreground steps. There is one replay rule for both, not two. On continuation:
 
 - A background block whose logical path holds a `completed` `block_trace` is injected from the log; its body is skipped — identical to a completed foreground step.
-- An in-flight background task (no `completed` trace at continuation time) re-runs from the top. There is no intra-task checkpoint, so in-flight background work is **at-least-once**, not exactly-once. Non-idempotent side effects guard themselves with `ctx.runOnce` (a per-item key under `forEachBackground`, since `runOnce` dedupes by `(requestId, key)`) plus a provider idempotency key.
-- The suspend path does **not** drain or abort the work pool. This is the deliberate asymmetry with the terminal/success path, which drains unconditionally (`drainRequestWorkPool`). Background work in-flight at suspension is therefore a reachable, supported state, recovered by the re-run rule above — not an error to defend against.
-- A failed background task is isolated and drop-and-logged: it emits a `failed` `block_trace` (never `completed`), the failure is logged, and it does **not** drive request terminal status (the foreground `result.error` does). `.waitForWork({ failOnError: true })` promotes a failure into the parent by **drain-then-throw**: it drains the scope's queued work, then throws the first failure, so the parent reaches `failed` only after the scope settles (not fail-fast). A `failed` request is not continuable on the same id (the `/continue` route accepts only `interrupted` records); only `/retry` re-runs it as a fresh request.
+- An in-flight background task (no `completed` trace at continuation time) re-runs from the top. There is no intra-task checkpoint, so in-flight background work is **at-least-once**, not exactly-once. Non-idempotent side effects guard themselves with `ctx.runOnce` (a per-item key under `forEachSideChain`, since `runOnce` dedupes by `(requestId, key)`) plus a provider idempotency key.
+- The suspend path does **not** drain or abort the work pool. This is the deliberate asymmetry with the terminal/success path, which drains unconditionally (`drainRequestSideChainPool`). Background work in-flight at suspension is therefore a reachable, supported state, recovered by the re-run rule above — not an error to defend against.
+- A failed background task is isolated and drop-and-logged: it emits a `failed` `block_trace` (never `completed`), the failure is logged, and it does **not** drive request terminal status (the foreground `result.error` does). `.waitForSideChain({ failOnError: true })` promotes a failure into the parent by **drain-then-throw**: it drains the scope's queued work, then throws the first failure, so the parent reaches `failed` only after the scope settles (not fail-fast). A `failed` request is not continuable on the same id (the `/continue` route accepts only `interrupted` records); only `/retry` re-runs it as a fresh request.
 - All of the above presuppose retained `block_trace` items. Trace capture is gated by trace observability (off when `NODE_ENV === "production"`) and suppressed by `transient: true`. With no retained trace, `ReplayLog.getCompletedOutput` returns `undefined` and completed background work re-runs on continuation — exactly as foreground work does under the same precondition.
 
 ### Retention model

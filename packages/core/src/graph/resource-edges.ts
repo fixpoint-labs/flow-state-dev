@@ -17,6 +17,7 @@
 import type { Edge, NodeRef } from "./edge";
 import type { TraversalOpts } from "./traverse";
 import { activeAt, neighbors, egoGraph, shortestPath } from "./traverse";
+import { updateStateWith } from "../helpers/update-state-with";
 
 /** Declares that a resource carries a typed-edge graph in its state. `true` = defaults. */
 export type EdgeSlotConfig = {
@@ -205,14 +206,13 @@ export function createResourceEdgeApi(ref: EdgeBackingRef, slot: EdgeSlotConfig)
 
     async pruneDangling(knownNodes: Iterable<NodeRef>): Promise<number> {
       const known = new Set(knownNodes);
-      let removed = 0;
-      await ref.updateState((s) => {
-        const edges = (s.edges as Edge[] | undefined) ?? [];
-        const kept = edges.filter((e) => known.has(e.from) && known.has(e.to));
-        removed = edges.length - kept.length;
-        return { ...s, edges: kept };
-      });
-      return removed;
+      return (
+        (await updateStateWith(ref, (s) => {
+          const edges = (s.edges as Edge[] | undefined) ?? [];
+          const kept = edges.filter((e) => known.has(e.from) && known.has(e.to));
+          return { state: { ...s, edges: kept }, result: edges.length - kept.length };
+        })) ?? 0
+      );
     },
   };
 }

@@ -1,7 +1,7 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { NodeRef } from '@flow-state-dev/core/graph'
 import type { SemanticFact, SemanticMemoryState } from './semantic-memory'
-import { shortId, tokenOverlap } from '@flow-state-dev/core/helpers'
+import { shortId, tokenOverlap, updateStateWith } from '@flow-state-dev/core/helpers'
 import { canonicalizeSubject } from './internal/helpers'
 import { effectiveConfidence } from './janitor'
 
@@ -51,17 +51,15 @@ export async function updateFact(
   sourceEpisodeIds: string[],
   newConfidence?: number,
 ): Promise<SemanticFact | undefined> {
-  let updatedFact: SemanticFact | undefined
-
-  await ref.updateState((s: SemanticMemoryState) => {
+  return updateStateWith(ref, (s: SemanticMemoryState) => {
     const idx = s.facts.findIndex((f) => f.id === factId)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: undefined }
 
     const existing = s.facts[idx]
     const mergedSourceIds = [...new Set([...existing.sourceEpisodeIds, ...sourceEpisodeIds])]
     const now = new Date().toISOString()
 
-    updatedFact = {
+    const updatedFact: SemanticFact = {
       ...existing,
       content: newContent,
       confidence: newConfidence ?? existing.confidence,
@@ -72,10 +70,8 @@ export async function updateFact(
 
     const facts = [...s.facts]
     facts[idx] = updatedFact
-    return { ...s, facts }
+    return { state: { ...s, facts }, result: updatedFact }
   })
-
-  return updatedFact
 }
 
 /**
@@ -89,17 +85,15 @@ export async function reinforce(
   sourceEpisodeIds: string[],
   confidenceBoost = 0.05,
 ): Promise<SemanticFact | undefined> {
-  let updatedFact: SemanticFact | undefined
-
-  await ref.updateState((s: SemanticMemoryState) => {
+  return updateStateWith(ref, (s: SemanticMemoryState) => {
     const idx = s.facts.findIndex((f) => f.id === factId)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: undefined }
 
     const existing = s.facts[idx]
     const mergedSourceIds = [...new Set([...existing.sourceEpisodeIds, ...sourceEpisodeIds])]
     const now = new Date().toISOString()
 
-    updatedFact = {
+    const updatedFact: SemanticFact = {
       ...existing,
       confidence: Math.min(1, existing.confidence + confidenceBoost),
       sourceEpisodeIds: mergedSourceIds,
@@ -109,10 +103,8 @@ export async function reinforce(
 
     const facts = [...s.facts]
     facts[idx] = updatedFact
-    return { ...s, facts }
+    return { state: { ...s, facts }, result: updatedFact }
   })
-
-  return updatedFact
 }
 
 /**
@@ -162,8 +154,8 @@ export async function cullByEffectiveConfidence(
   halfLife: number,
   cullFloor: number,
 ): Promise<string[]> {
-  const culled: string[] = []
-  await ref.updateState((s: SemanticMemoryState) => {
+  return (await updateStateWith(ref, (s: SemanticMemoryState) => {
+    const culled: string[] = []
     const surviving: SemanticFact[] = []
     for (const fact of s.facts) {
       if (effectiveConfidence(fact, now, halfLife) >= cullFloor) {
@@ -172,10 +164,9 @@ export async function cullByEffectiveConfidence(
         culled.push(fact.id)
       }
     }
-    if (culled.length === 0) return s
-    return { ...s, facts: surviving }
-  })
-  return culled
+    if (culled.length === 0) return { state: s, result: culled }
+    return { state: { ...s, facts: surviving }, result: culled }
+  })) ?? []
 }
 
 /**

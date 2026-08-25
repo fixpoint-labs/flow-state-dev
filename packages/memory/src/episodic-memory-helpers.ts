@@ -1,6 +1,6 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { Episode, EpisodicMemoryState } from './episodic-memory'
-import { shortId } from '@flow-state-dev/core/helpers'
+import { shortId, updateStateWith } from '@flow-state-dev/core/helpers'
 
 type EpRef = ResourceContext<EpisodicMemoryState>
 
@@ -110,8 +110,10 @@ export async function cullByTTL(
   now: number,
   ttl: EpisodicTTLConfig,
 ): Promise<string[]> {
-  const culled: string[] = []
-  await ref.updateState((s: EpisodicMemoryState) => {
+  return (await updateStateWith(ref, (s: EpisodicMemoryState) => {
+    // Built per invocation: a replay must report only the attempt that
+    // committed, not every attempt's IDs concatenated (and duplicated).
+    const culled: string[] = []
     const surviving: Episode[] = []
     for (const ep of s.episodes) {
       if (ep.durability !== 'persistent') {
@@ -139,10 +141,9 @@ export async function cullByTTL(
         surviving.push(ep)
       }
     }
-    if (culled.length === 0) return s
-    return { ...s, episodes: surviving }
-  })
-  return culled
+    if (culled.length === 0) return { state: s, result: culled }
+    return { state: { ...s, episodes: surviving }, result: culled }
+  })) ?? []
 }
 
 /**
@@ -156,8 +157,8 @@ export async function markStale(
   now: number,
   staleDays: number,
 ): Promise<string[]> {
-  const marked: string[] = []
-  await ref.updateState((s: EpisodicMemoryState) => {
+  return (await updateStateWith(ref, (s: EpisodicMemoryState) => {
+    const marked: string[] = []
     let changed = false
     const episodes = s.episodes.map((ep) => {
       if (ep.durability !== 'permanent') return ep
@@ -170,9 +171,8 @@ export async function markStale(
       marked.push(ep.id)
       return { ...ep, stale: true }
     })
-    return changed ? { ...s, episodes } : s
-  })
-  return marked
+    return { state: changed ? { ...s, episodes } : s, result: marked }
+  })) ?? []
 }
 
 /**

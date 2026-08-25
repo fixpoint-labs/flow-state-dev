@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 1
 ---
 
 # Installation
@@ -12,7 +12,7 @@ flow-state.dev is distributed as separate packages. Install what you need:
 # Core (required) — block builders, flow definitions, types
 pnpm add @flow-state-dev/core zod
 
-# Server — action runtime, stores, SSE streaming
+# Engine — action runtime, stores, SSE streaming
 pnpm add @flow-state-dev/engine
 
 # Client — HTTP/SSE transport (no React dependency)
@@ -21,11 +21,17 @@ pnpm add @flow-state-dev/client
 # React — hooks, renderers, context providers
 pnpm add @flow-state-dev/react
 
+# Next.js App Router adapter — local `pnpm dev` and any non-Vercel Next host
+pnpm add @flow-state-dev/next
+
+# Vercel adapter — only when you deploy to Vercel
+pnpm add @flow-state-dev/vercel
+
 # Testing — test harnesses for blocks and flows
 pnpm add -D @flow-state-dev/testing
 
 # CLI — run flows and blocks from the terminal
-pnpm add -D @flow-state-dev/cli
+pnpm add -D @flow-state-dev/fsdev
 ```
 
 ### Which packages do I need?
@@ -33,11 +39,12 @@ pnpm add -D @flow-state-dev/cli
 | Use case | Packages |
 |----------|----------|
 | Define flows only (shared library) | `core` |
-| Server-side execution | `core` + `engine` |
+| Engine / runtime | `core` + `engine` |
 | Client-side consumption | `core` + `client` |
 | Full-stack React app | `core` + `engine` + `react` |
+| Next.js App Router (local or self-hosted) | `core` + `engine` + `next` + `react` |
 | Testing | `core` + `testing` |
-| CLI development workflow | `core` + `engine` + `cli` |
+| CLI development workflow | `core` + `engine` + `fsdev` |
 
 The `react` package depends on `client` internally — you don't need to install `client` separately when using `react`.
 
@@ -68,20 +75,27 @@ export const flowstate = createFlowState({
 });
 ```
 
-`createFlowState` builds synchronously and initializes stores lazily on the first request, so it works in a Next.js Route Handler with no top-level await. See [Server Setup](/docs/server/setup) for stores, profiles, settings, and error handling.
+`createFlowState` builds synchronously and initializes stores lazily on the first request, so it works in a Next.js Route Handler with no top-level await. See [Engine setup](/docs/server/setup) for stores, profiles, settings, and error handling.
 
 ## Mount the route
 
-A platform adapter turns the `flowstate` handle into HTTP route handlers. The framework uses one catch-all route. For Vercel-hosted Next.js:
+A platform adapter turns the `flowstate` handle into HTTP route handlers. The framework uses one catch-all route. For a Next.js app you run locally with `pnpm dev`:
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
-import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+import { createNextHandler } from "@flow-state-dev/next";
 
-export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";
-export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
-For non-Vercel Next.js deployments, use `createNextHandler` from `@flow-state-dev/next`. Any framework that speaks standard `Request`/`Response` can mount `flowstate.getRouter()` directly.
+When you deploy that app to Vercel, switch the import to `createVercelNextHandler` from `@flow-state-dev/vercel/next`. It adds SSE header shaping for Vercel's edge. Any other framework that speaks standard `Request`/`Response` can mount `flowstate.getRouter()` directly. See [Host adapters](/docs/server/host-adapters) and [Deploying to Vercel](/guides/deploying-to-vercel).
+
+## See also
+
+- [Setting up models](/docs/getting-started/setting-up-models) — provider keys and intents
+- [Quick Start](/docs/getting-started/quick-start) — a working chat from this install
+- [Flow options](/docs/configuration/flow) and [Runtime options](/docs/configuration/runtime) — every `defineFlow` and `createFlowState` field
+- [Engine setup](/docs/server/setup) — stores, profiles, and error handling
+- [CLI](/docs/cli/overview) and [DevTool](/docs/devtool/overview) — run and inspect the same engine from the terminal

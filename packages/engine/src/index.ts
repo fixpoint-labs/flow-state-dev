@@ -1,4 +1,6 @@
 export { createExecutionContext } from "./context/createExecutionContext";
+export { ensureSessionRecord } from "./context/ensure-session-record";
+export type { SessionRecordSeed } from "./context/ensure-session-record";
 export type {
   CreateExecutionContextOptions,
   ExecutionContext,
@@ -6,10 +8,12 @@ export type {
 } from "./context/types";
 export {
   ConcurrentModificationError,
+  ResourceAlreadyExistsError,
+  ResourceDeletedError,
   ScopeMutationTimeoutError,
   createFilesystemContentStore,
   createFilesystemResourceStateStore,
-  createFilesystemProjectStore,
+  createFilesystemOrgStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemStores,
@@ -17,7 +21,9 @@ export {
   createFilesystemUserStore,
   createInMemoryContentStore,
   createInMemoryResourceStateStore,
-  createInMemoryProjectStore,
+  toBareState,
+  toBareStates,
+  createInMemoryOrgStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
   createInMemoryStores,
@@ -32,7 +38,8 @@ export {
   resolveOrgStorageKey,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
-  runWithCAS
+  runWithCAS,
+  withStoredAbortRequested
 } from "./stores";
 export type {
   CapabilitySlot,
@@ -56,11 +63,17 @@ export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
   CheckpointStore,
+  ConditionalRequestFields,
+  ConditionalWriteResult,
   ContentScopeType,
+  StorageScopeType,
   ContentStore,
   LeaseStore,
   ResourceStateStore,
+  VersionedResourceState,
   ExpectedVersion,
+  ResourceStateConflict,
+  ResourceStateRow,
   OrgListOptions,
   OrgRecord,
   OrgStore,
@@ -71,6 +84,7 @@ export type {
   PersistErrorInfo,
   RequestStore,
   SessionListOptions,
+  SessionParentage,
   SessionRecord,
   SessionStore,
   SetResult,

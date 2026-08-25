@@ -14,7 +14,12 @@ import {
   patchFieldInMap,
   pushToArrayInMap
 } from "./shared";
-import { matchesTenantFilter } from "../scope-keys";
+import {
+  matchesOrgFilter,
+  matchesParentageFilter,
+  matchesTenantFilter
+} from "../scope-keys";
+import { compareSessionsForListing } from "../list-order";
 
 export class InMemorySessionStore implements SessionStore {
   private readonly records = new Map<string, SessionRecord>();
@@ -89,10 +94,18 @@ export class InMemorySessionStore implements SessionStore {
         return false;
       }
 
+      if (!matchesOrgFilter(options, record.orgId)) {
+        return false;
+      }
+
+      if (!matchesParentageFilter(options, record.parentSessionId)) {
+        return false;
+      }
+
       return true;
     });
 
-    filtered.sort((left, right) => right.updatedAt - left.updatedAt);
+    filtered.sort((left, right) => compareSessionsForListing(left, right, options));
     return applyOffsetLimit(filtered, options).map((record) =>
       cloneValue(record)
     );

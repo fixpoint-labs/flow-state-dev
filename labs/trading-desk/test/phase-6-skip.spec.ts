@@ -10,7 +10,7 @@
  *     with a soft `userThesisWarning` surfaced on session state.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -158,12 +158,14 @@ function makeUpstreamMocks() {
           label: "Trade proposal",
           headline: "Long NVDA, half-position.",
           rating: "long",
-          metrics: { direction: "long", size: "1.4%", stop: "$132", target: "$185", conviction: "0.62" },
+          metrics: { direction: "long", size: "1.4%", conviction: "0.62" },
           body: thesisBody,
           direction: "long",
           sizePct: 1.4,
           stopPrice: 132,
           targetPrice: 185,
+          reassessBelowPrice: null,
+          invalidateAbovePrice: null,
           holdingPeriod: "months",
           invalidationCriteria: ["weekly close below $132"],
           dependsOn: ["AI cap-ex cycle length"],
@@ -376,7 +378,7 @@ describe("Phase 6 gating", () => {
     expect(result.status).toBe("completed");
     expect(validator.calls).toHaveLength(0);
 
-    const resourceState = await stores.resourceState.getAll("session", sessionId);
+    const resourceState = toBareStates(await stores.resourceState.getAll("session", sessionId));
     expect(resourceState["memos/p6/thesis-alignment"]).toBeUndefined();
   });
 
@@ -407,7 +409,7 @@ describe("Phase 6 gating", () => {
     expect(result.status).toBe("completed");
     expect(validator.calls).toHaveLength(1);
 
-    const resourceState = await stores.resourceState.getAll("session", sessionId);
+    const resourceState = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const memo = resourceState["memos/p6/thesis-alignment"] as
       | { status?: string; alignment?: string | null }
       | undefined;

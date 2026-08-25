@@ -88,6 +88,91 @@ describe("fetchFinnhubInsiderTransactions", () => {
     expect(out.transactions[0]!.shares).toBe(1000);
   });
 
+  it("reports an OMITTED transaction price as null, not as a $0 transfer", async () => {
+    // The sparse-but-successful path (FIX-1063): the fetch worked and the
+    // payload carries a live `finnhub` tag, so nothing else marks the gap. The
+    // old `?? 0` made this indistinguishable from a genuine non-cash grant.
+    mockFetch({
+      data: [
+        {
+          name: "Some Officer",
+          position: "Director",
+          filingDate: "2026-04-01",
+          transactionDate: "2026-04-01",
+          transactionCode: "S",
+          change: -500,
+          // no transactionPrice
+        },
+      ],
+    });
+    const out = await fetchFinnhubInsiderTransactions({ ticker: "X", date: "2026-05-06" });
+    expect(out.transactions[0]!.pricePerShare).toBeNull();
+  });
+
+  it("KEEPS a genuine zero price — a non-cash grant is a measurement", async () => {
+    // The over-application guard, and the reason the two cases had to be
+    // separated at all: 0 legitimately means "no cash changed hands".
+    mockFetch({
+      data: [
+        {
+          name: "Some Officer",
+          position: "Director",
+          filingDate: "2026-04-01",
+          transactionDate: "2026-04-01",
+          transactionCode: "A",
+          change: 5000,
+          transactionPrice: 0,
+        },
+      ],
+    });
+    const out = await fetchFinnhubInsiderTransactions({ ticker: "X", date: "2026-05-06" });
+    expect(out.transactions[0]!.pricePerShare).toBe(0);
+  });
+
+  it("drops a row carrying neither `change` nor `share` instead of inventing 0 shares", async () => {
+    // No share count and no direction is no reading. The Alpha Vantage fallback
+    // already dropped this row; the old `?? 0` published a transaction of zero
+    // shares that never happened.
+    mockFetch({
+      data: [
+        { name: "Ghost", position: "Director", filingDate: "2026-04-01", transactionCode: "S" },
+        {
+          name: "Real",
+          position: "CEO",
+          filingDate: "2026-04-02",
+          transactionDate: "2026-04-02",
+          transactionCode: "P",
+          change: 100,
+          transactionPrice: 10,
+        },
+      ],
+    });
+    const out = await fetchFinnhubInsiderTransactions({ ticker: "X", date: "2026-05-06" });
+    expect(out.transactions).toHaveLength(1);
+    expect(out.transactions[0]!.insiderName).toBe("Real");
+  });
+
+  it("KEEPS a row whose `change` is a measured 0 — absence, not falsiness, drops a row", async () => {
+    // A literal `change: 0` IS observed (a filing amending to zero), so it must
+    // survive the absence check rather than being swept up by a falsy test.
+    mockFetch({
+      data: [
+        {
+          name: "Amender",
+          position: "Officer",
+          filingDate: "2026-04-01",
+          transactionDate: "2026-04-01",
+          transactionCode: "S",
+          change: 0,
+          transactionPrice: 12,
+        },
+      ],
+    });
+    const out = await fetchFinnhubInsiderTransactions({ ticker: "X", date: "2026-05-06" });
+    expect(out.transactions).toHaveLength(1);
+    expect(out.transactions[0]!.shares).toBe(0);
+  });
+
   it("caps results at 50 rows", async () => {
     const data = Array.from({ length: 75 }, (_, i) => ({
       name: `Insider ${i}`,
@@ -101,6 +186,36 @@ describe("fetchFinnhubInsiderTransactions", () => {
     mockFetch({ data });
     const out = await fetchFinnhubInsiderTransactions({ ticker: "X", date: "2026-05-06" });
     expect(out.transactions).toHaveLength(50);
+  });
+
+  it("spends the 50-row cap on PUBLISHABLE rows, not on rows it is about to drop", async () => {
+    // Same ordering defect as the Alpha Vantage sibling, and on this path it is
+    // entirely FIX-1063's own: before this issue `shares` defaulted to `0`, so
+    // the map dropped nothing and capping first was harmless. Adding the
+    // no-share-count drop downstream of the cap made rejected rows consume
+    // budget slots and hide usable filings behind them.
+    const unreadable = Array.from({ length: 50 }, (_, i) => ({
+      name: `Unreadable ${i}`,
+      position: "Officer",
+      filingDate: "2026-04-01",
+      transactionDate: "2026-04-01",
+      transactionCode: "S",
+      // neither `change` nor `share` — no share count, no direction
+      transactionPrice: 10,
+    }));
+    const readable = Array.from({ length: 5 }, (_, i) => ({
+      name: `Real Insider ${i}`,
+      position: "Officer",
+      filingDate: "2026-04-02",
+      transactionDate: "2026-04-02",
+      transactionCode: "S",
+      change: -700,
+      transactionPrice: 10,
+    }));
+    mockFetch({ data: [...unreadable, ...readable] });
+    const out = await fetchFinnhubInsiderTransactions({ ticker: "X", date: "2026-05-06" });
+    expect(out.transactions).toHaveLength(5);
+    expect(out.transactions.every((t) => t.shares === -700)).toBe(true);
   });
 
   it("throws on HTTP error so the tool falls through to emptyPayload", async () => {

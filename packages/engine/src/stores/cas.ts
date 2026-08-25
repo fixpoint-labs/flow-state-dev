@@ -1,6 +1,17 @@
 /**
  * CAS retry loop used by scope state ops.
  *
+ * **There are two CAS drivers in this package, and this is the scope one.**
+ * Resource state has its own (`./resource-cas.ts`) rather than calling this,
+ * because its conflict *policy* differs even though the shape does not: a
+ * conflict against a deleted resource and a losing create-if-absent are both
+ * terminal there, where this driver retries every conflict; it suppresses a
+ * no-op only against a re-read version, where this one decides before
+ * `persist`; and it takes an `AbortSignal`, which this one does not. That
+ * file's header carries the full policy table. Changing anything below is
+ * worth checking against it, since the two are meant to diverge deliberately
+ * rather than drift.
+ *
  * Drives the classic load → mutate → persist cycle with exponential backoff
  * on conflict. The `persist` callback is the caller's bridge into the store
  * layer — it takes the proposed next state plus the `expectedVersion` the

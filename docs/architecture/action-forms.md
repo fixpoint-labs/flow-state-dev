@@ -83,6 +83,7 @@ function resolveActionCore(flow, actionName, source, metadata): ActionCore | und
   if (source === "webhook")   { /* read flow.webhooks[md.webhook.provider].on[md.webhook.eventType] */ }
   if (source === "chat")      { /* read flow.chat.on[md.chat.eventKey] */ }
   if (source === "scheduled") { /* read flow.schedules.static[md.schedule.scheduleId] */ }
+  if (source === "workstream") { return flow.workstream; }   // TERMINAL — no fallback
   return flow.actions[actionName];   // caller-addressed fallback
 }
 ```
@@ -108,6 +109,96 @@ scheduler secret).
 The gate closes that pivot for every caller-addressed surface at once. A forged
 `metadata.chat` on an `http`-source dispatch is ignored, because the chat
 branch only runs when `source === "chat"`, which only the chat adapter sets.
+
+## Detached: the workstream core
+
+A running request can start another request from inside a block, through the
+runtime seam on `BlockContext`. That dispatch is stamped `source: "workstream"`
+by the seam — not by any caller — and resolves one pre-assembled entry,
+`flow.workstream`.
+
+It is `undefined` until something populates it, and that *off* state is a normal
+state rather than a gap: a flow with no workstream core refuses detached dispatch
+by name.
+
+**The branch is terminal, and that is the security property.** Note the shape
+difference above: an event branch falls through when its coordinate does not
+match, because an event whose binding is missing should still be able to resolve
+a named action. The detached branch returns unconditionally. A detached dispatch
+carries `actionName` as provenance only, and that name can collide with a public
+`flow.actions` key — so falling through would hand a framework-stamped dispatch a
+caller-addressed handler. Because the seam stamps its own source, that is not a
+caller forging anything; it is the runtime admitting everything through its own
+trusted source. There is no route from the seam to a caller-addressed action.
+
+Two neighbouring paths classify the source with the event forms for the same
+reason:
+
+- **Concurrency.** The arbiter takes the flow default rather than reading
+  `flow.actions[actionName]?.concurrency`, so detached work does not inherit an
+  unrelated action's `queue`/`reject` policy by name collision.
+- **Public re-entry.** `isPublicReentryAllowed(source)` is an allow-list
+  (`http` / `mcp` / `chat` / `scheduled`); retry, continue and resume all route
+  through it. A detached request is not re-enterable from a public surface —
+  retry accepts a caller-supplied `inputOverride`, so re-entry would feed a
+  detached handler caller-chosen input. The allow-list replaced three per-route
+  webhook deny-lists, which admitted every source nobody thought to name.
+
+  A deployment adds its **own** transports' sources with the
+  `publicReentrySources` host option, since `InboundTransportAdapter.source` is
+  an open string and the framework cannot enumerate them. It cannot add these
+  two: `webhook` and the detached source are stamped by the framework and are
+  refused at router construction, because the reason each is excluded is a
+  property of the framework rather than of the deployment.
+
+### Where the workstream core comes from: the binding registry
+
+`flow.workstream` is one entry, but the work behind it is heterogeneous — a flow
+may host several task boards, each with several detached workers. The map that
+holds them is `flow.workstreamBindings`, keyed by `(boardId, coordinateKey)`.
+
+It is produced **by construction, not by declaration**. A board stamps its
+bindings on its drain sequencer; every block retains the blocks it composes
+(`BlockDefinition.childBlocks`), and derives its own binding set from its stamp
+plus its children's. Each child already carries the union of its subtree, so one
+merge per block carries the whole tree up to the action root, where `defineFlow`
+reads it off. There is no author-facing surface — an app declares a board, and
+the registry follows.
+
+`defineFlow` then walks that same retained graph and **refuses a flow that can
+reach a board it cannot route to**, naming the board, coordinate and worker. The
+walk exists because the two halves can disagree only one way: some composition
+step dropped a child on the way up. Without it that failure is invisible until a
+detached task has been admitted, claimed, dispatched, and then never runs. The
+walk is possible at all only because children are retained — a sequencer step is
+a closure, so before retention the sequencer edge was opaque, and a board's drain
+*is* a sequencer.
+
+Two properties are load-bearing:
+
+- **Addressing is strings only.** A binding is `(boardId, coordinateKey) →
+  block`, so a wake that arrives carrying nothing but a durable task row can
+  still find the block that runs it. This is what makes detached routing survive
+  a restart, and why the coordinate is a tagged `assignee`/`uniform`/`floor`
+  value rather than a bare name — a board may legally name an assignee `uniform`.
+- **The registry is not a dispatch-time lookup table.** Resolution for the
+  detached source is terminal on `flow.workstream` alone; nothing indexes this
+  map by a coordinate carried on an envelope. The coordinate on a dispatch
+  matters only *upstream*, where it feeds the child-session derivation, and the
+  worker a request actually runs is selected from the durable task row instead
+  (BP-031). Routing over the bindings therefore happens at one convergence point
+  inside the assembled core, not once per binding.
+
+One coordinate carrying two separate board declarations is refused when the flow
+is defined, whether or not the two name the same worker block. It cannot be
+resolved by picking one: a dispatch names only the coordinate, so the loser's
+tasks would run against the wrong board with no error anywhere, and flow
+definition is the last point where both declarations are visible.
+
+Sharing a worker block between boards is fine — that is ordinary composition, and
+what is refused is the shared coordinate, not the shared block. One board reached
+from several places is a duplicate rather than a conflict, and deduplicates
+silently.
 
 ## The carried core: dynamic schedules
 

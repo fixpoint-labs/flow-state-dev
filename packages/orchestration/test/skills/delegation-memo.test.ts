@@ -192,6 +192,30 @@ describe("collectAgentSources — bundled runtime disable gap (§7.1)", () => {
     expect(sources).toHaveLength(0);
   });
 
+  it("drops a bundled runtime activation whose live manifest has a stale non-inline mode", async () => {
+    const collection = createMockSkillsCollection();
+    collection._store.set("skills/brief/SKILL.md", {
+      name: "skills/brief/SKILL.md",
+      state: { description: "brief", contextMode: "fork" },
+      content: null,
+    });
+    const { ctx } = buildDelegationCtx({ collection });
+    (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
+      { name: "brief", mode: "inline", activatedAt: 1 },
+    ];
+    const sources = await collectAgentSources(ctx, {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "explicit", scope: "session", field: "activeSkills" },
+      staticSources: [],
+      bundledAgentIndex: new Map([
+        ["brief", { agents: { briefer: { prompt: "You write briefs." } } }],
+      ]),
+      dynamicEligible: true,
+    } as never);
+    expect(sources).toHaveLength(0);
+  });
+
   it("drops a static skill also present in activeState (bundled) when disabled", async () => {
     const collection = createMockSkillsCollection();
     collection._store.set("skills/brief/SKILL.md", {

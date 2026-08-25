@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 
@@ -614,7 +614,7 @@ describe("maxInstances with eviction: lru", () => {
 
     // Verify persistence — collection-instance state lives in the
     // ResourceStateStore (FIX-689), not inline in the scope record.
-    const persisted = await stores.resourceState.getAll("session", "sess_1");
+    const persisted = toBareStates(await stores.resourceState.getAll("session", "sess_1"));
     expect(persisted["lrufiles/a.ts"]).toBeUndefined();
     expect(persisted["lrufiles/d.ts"]).toBeDefined();
   });
@@ -769,7 +769,7 @@ describe("flat storage model", () => {
 
     // Collection-instance state is keyed flatly by path-based storage key in
     // the ResourceStateStore (FIX-689), not inline in the scope record.
-    const resources = await stores.resourceState.getAll("session", "sess_1");
+    const resources = toBareStates(await stores.resourceState.getAll("session", "sess_1"));
 
     expect(resources["files/readme.md"]).toEqual({ language: "markdown" });
     expect(resources["files/src/utils.ts"]).toEqual({ language: "typescript" });
@@ -789,15 +789,20 @@ describe("per-key state write routing", () => {
     const stateDeleteKeys: string[] = [];
     let sessionSetCount = 0;
 
+    // Forward every argument, `expectedVersion` included. Dropping it does not
+    // just lose a value — it changes the outcome: the store read `undefined` as
+    // a version matching nothing, so every routed write took the conflict path
+    // while these tests asserted only which keys were touched, and passed
+    // regardless.
     const realStateSet = stores.resourceState.set.bind(stores.resourceState);
-    stores.resourceState.set = async (scope, id, key, value) => {
-      stateSetKeys.push(key);
-      return realStateSet(scope, id, key, value);
+    stores.resourceState.set = async (...args) => {
+      stateSetKeys.push(args[2]);
+      return realStateSet(...args);
     };
     const realStateDelete = stores.resourceState.delete.bind(stores.resourceState);
-    stores.resourceState.delete = async (scope, id, key) => {
-      stateDeleteKeys.push(key);
-      return realStateDelete(scope, id, key);
+    stores.resourceState.delete = async (...args) => {
+      stateDeleteKeys.push(args[2]);
+      return realStateDelete(...args);
     };
     const realSessionSet = stores.session.set.bind(stores.session);
     stores.session.set = async (...args) => {

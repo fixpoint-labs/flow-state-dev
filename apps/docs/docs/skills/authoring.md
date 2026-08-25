@@ -49,7 +49,7 @@ Body goes here.
 | `description` | yes | string (≤ 1024 chars) | What the up-front classifier and the `runSkill` catalog listing both see. The trigger for both activation paths — write it well. |
 | `keywords` | no | string[] | Lowercased tokens for the up-front router's tier-2 keyword scan. Plain substring matches against the user message. Ignored on the `runSkill` path. See below. |
 | `context` | no | `inline` | Activation mode. Only `inline` is supported — a matched skill's body is injected into the parent generator's prompt. |
-| `allowed-tools` | no | string[] | Catalog keys the skill declares. A per-generator binding uses them to scope which tools ride along when the skill is preloaded (see [Binding](./binding)); a delegation skill lists its board-as-tool blocks here too. |
+| `allowed-tools` | no | string[] | Catalog keys the skill declares. A per-generator binding uses them to scope which tools ride along when the skill is preloaded (see [Binding](./binding)); a delegation skill lists its board-as-tool blocks here too, and every key here is [assignable to a task](./delegation#assigning-a-task-to-a-tool). |
 | `agents` | no | map | Agent declarations (inline `prompt`/`prompt-ref`, or `agent-ref`) that turn on delegation. See [Delegation](./delegation). |
 | `when-to-use` | no | string | Extra guidance appended to the description for the classifier and the `runSkill` catalog. Keep it short. |
 | `disable-model-invocation` | no | boolean | When `true`, the skill stays in the collection but every activation path skips it (no slash, no keyword match, hidden from the classifier and the `runSkill` catalog). Useful for drafts or admin-only skills. |

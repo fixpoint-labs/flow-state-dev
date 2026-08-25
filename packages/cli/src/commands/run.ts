@@ -1,6 +1,7 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
+import { ensureSessionRecord } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -88,16 +89,13 @@ export function registerRunCommand(program: Command): void {
     .description("Execute a flow action with streaming NDJSON output")
     .option("-i, --input <json>", "Inline JSON input")
     .option("-f, --input-file <path>", "Path to JSON input file")
-    .option("-m, --model <model>", "Override model for all generator blocks")
+    .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-s, --session <id>", "Session ID for reuse across invocations")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
-    .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
-    .option("--seed-org <json>", "Seed org-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
-    .option("--format <format>", "Output format", "json")
     .option("--quiet", "Suppress runtime logs on stderr (NDJSON on stdout still emitted)")
     .option("--log-level <level>", "Stderr log level: debug | info | warn | error (default: info)")
     .option("--capture <path>", "Write the full structured run output to a JSON file")
@@ -124,8 +122,6 @@ export interface RunCommandOptions {
   model?: string;
   session?: string;
   seedSession?: string;
-  seedUser?: string;
-  seedOrg?: string;
   flowDir?: string[];
   /** Explicit `--dotenv <path>` entries to load before the cwd `.env.local` walk-up. */
   dotenv?: string[];
@@ -134,7 +130,6 @@ export interface RunCommandOptions {
    * is `--no-config`; `true`/absent means search for `fsdev.config.*` in cwd.
    */
   config?: string | boolean;
-  format?: string;
   /** Suppress all runtime logs on stderr. */
   quiet?: boolean;
   /** Minimum runtime log level emitted to stderr (default: "info"). */
@@ -152,8 +147,6 @@ interface CapturePayload {
     model: string | null;
     session: string | null;
     seedSession: unknown;
-    seedUser: unknown;
-    seedOrg: unknown;
   };
   events: FlowEvent[];
   result: FlowRunResult & { exitCode: number };
@@ -286,7 +279,9 @@ export async function executeRunCommand(
           updatedAt: Date.now(),
         }, "any");
       } else {
-        await stores.session.set(sessionId, {
+        // One creation path (FIX-1068) — it mints the lineage id, which a
+        // seeded CLI session needs as much as any other.
+        await ensureSessionRecord(stores, sessionId, () => ({
           id: sessionId,
           flowKind: flowKind,
           userId: "cli-user",
@@ -295,7 +290,7 @@ export async function executeRunCommand(
           createdAt: Date.now(),
           updatedAt: Date.now(),
           journal: [],
-        }, "any");
+        }));
       }
     }
 
@@ -333,6 +328,15 @@ export async function executeRunCommand(
     // 6b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
     const logLevel = resolveLogLevel(options, "info");
     const logger = createCliLogger(logLevel);
+
+    // Install it on the app's OWN runtime config too, not just on the derived
+    // copy below. The FlowState logs on its own account outside any request —
+    // notably while `dispose()` waits for detached work to finish — and it reads
+    // this object, never the copy. Without this, `--quiet` silenced the run and
+    // not the shutdown, which is the opposite of what the flag promises.
+    if (baseRuntimeConfig !== undefined) {
+      baseRuntimeConfig.logger = logger;
+    }
 
     // 7. Execute the flow action. With a config, forward the app's runtimeConfig
     // (durability, settings, ...), overriding only the logger (CLI
@@ -414,8 +418,6 @@ export async function executeRunCommand(
             model: options.model ?? null,
             session: options.session ?? null,
             seedSession: options.seedSession ?? null,
-            seedUser: options.seedUser ?? null,
-            seedOrg: options.seedOrg ?? null,
           },
           events: capturedEvents,
           result: { ...runResult, exitCode },

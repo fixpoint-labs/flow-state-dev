@@ -36,6 +36,13 @@ export type CreateStaleRequestSweeperOptions = {
    */
   staleThresholdMs?: number;
   /**
+   * How long an unclaimed, externally-queued entry may wait before this sweep
+   * treats it as lost (milliseconds). Separate from `staleThresholdMs`, which
+   * measures heartbeat age: a queued entry has no heartbeat because no worker
+   * is running it yet, so its age is queue wait. Default: 600000 (10 minutes).
+   */
+  queuedGraceMs?: number;
+  /**
    * Registry heartbeat interval the executor uses (milliseconds). Used only
    * for the "is your threshold sane?" warning. The sweeper does not consult
    * per-flow `request.heartbeatIntervalMs` because flows can be registered
@@ -67,6 +74,7 @@ export function createStaleRequestSweeper(
     stores,
     intervalMs = DEFAULT_INTERVAL_MS,
     staleThresholdMs = DEFAULT_THRESHOLD_MS,
+    queuedGraceMs,
     registryHeartbeatMs = DEFAULT_REGISTRY_HEARTBEAT_MS,
     logger = DEFAULT_RUNTIME_LOGGER
   } = options;
@@ -101,7 +109,7 @@ export function createStaleRequestSweeper(
   const tick = (): void => {
     if (disposed || inFlight) return;
     inFlight = true;
-    detectInterruptedRequests({ stores, staleThresholdMs, logger })
+    detectInterruptedRequests({ stores, staleThresholdMs, queuedGraceMs, logger })
       .catch((err) => {
         logRuntimeEvent(
           logger,

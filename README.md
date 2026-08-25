@@ -7,7 +7,7 @@ import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core"
 
 const chat = generator({
   name: "chat",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -51,11 +51,11 @@ That's a streaming chat with conversation history, session state, and atomic cou
 
 Any block or sequence of blocks can be used as a tool. A single tool call can trigger an entire multi-step pipeline — your AI's tools can be as sophisticated as any other part of your workflow.
 
-**Scoped state that scales.** Four isolation levels — request, session, user, project — each with atomic operations (`patchState`, `incState`, `pushState`, `atomicState`). Every block declares only the state fields it needs. Type-safe all the way down.
+**Scoped state that scales.** Four isolation levels — request, session, user, org — each with atomic operations (`patchState`, `incState`, `pushState`, `atomicState`). Every block declares only the state fields it needs. Type-safe all the way down.
 
 **Resumable streaming out of the box.** Items stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor and pick up exactly where you left off. No data loss. No duplicate events.
 
-**Resources: hybrid memory and filesystem.** Each resource combines rich text content with structured atomic state — like files that carry metadata. An artifact can hold a document's full text alongside its title, tags, and timestamps. Scoped to sessions, users, or projects. Projections derive client-safe views from state and resources, giving the frontend exactly the shape it needs without manual data wiring.
+**Resources: hybrid memory and filesystem.** Each resource combines rich text content with structured atomic state — like files that carry metadata. An artifact can hold a document's full text alongside its title, tags, and timestamps. Scoped to sessions, users, or orgs. Projections derive client-safe views from state and resources, giving the frontend exactly the shape it needs without manual data wiring.
 
 **First-class error handling.** Retry policies per block. Type-based rescue routing. Non-aborting work queues for side-chain operations. Normalized error model with codes, scopes, and retry signals.
 
@@ -138,7 +138,7 @@ expect(result.output).toBeDefined();
 | [`@flow-state-dev/client`](packages/client) | Isomorphic API client — actions, sessions, streams |
 | [`@flow-state-dev/react`](packages/react) | React hooks and renderers |
 | [`@flow-state-dev/testing`](packages/testing) | Test harnesses and generator mocks |
-| [`@flow-state-dev/cli`](packages/cli) | Terminal interface (`fsdev run`, `fsdev dev`) |
+| [`@flow-state-dev/fsdev`](packages/cli) | Terminal interface (`fsdev run`, `fsdev dev`) |
 | [`@flow-state-dev/devtool`](packages/devtool) | Pre-built DevTool assets for `fsdev dev` |
 | [`apps/devtool`](apps/devtool) | DevTool source app |
 
@@ -167,11 +167,11 @@ Two directories, different purposes:
 The framework ships as six packages with strict dependency boundaries:
 
 ```
-core ← server ← testing
+core ← engine ← testing
 core ← client ← react ← apps/devtool
 ```
 
-- `server` never depends on `client` or `react`
+- `engine` never depends on `client` or `react`
 - `react` wraps `client` — no transport logic in the UI layer
 - `apps/devtool` uses only public APIs
 
@@ -207,7 +207,7 @@ Resume after disconnect: `Last-Event-ID` or `starting_after` query param replays
 
 ## Current status
 
-Phase 1 (Foundation) — Waves 1.a through 1.k are complete. Core contracts, block builders, server runtime, client transport, React bindings, and testing utilities are all implemented and tested. CLI and devtool are in active development.
+Phase 1 (Foundation) — Waves 1.a through 1.m are complete. Core contracts, block builders, server runtime, client transport, React bindings, testing utilities, the CLI and the devtool are all implemented and tested. Remaining: 1.n, cross-package validation.
 
 ## Contributing
 

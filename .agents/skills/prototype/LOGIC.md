@@ -32,7 +32,7 @@ The piece that's actually answering the question — the candidate block / patte
 Pick whichever construct best fits the question:
 
 - **A handler block** when the question is about a single transformation or side-effect.
-- **A sequencer** when the question is about composition: how does state flow through `.step()` / `.parallel()` / `.forEach()` / `.rescue()` / `.workIf()` chains, what gets emitted at each step.
+- **A sequencer** when the question is about composition: how does state flow through `.step()` / `.parallel()` / `.forEach()` / `.rescue()` / `.sideChainIf()` chains, what gets emitted at each step.
 - **A generator** when the question involves model behaviour or tool invocation. Use `mockGenerator` (from `@flow-state-dev/testing`) to make the loop deterministic during prototyping; swap to a real provider only if the question is specifically about provider behaviour.
 - **A capability** when the question is "what does the right `uses: [cap]` surface look like for this set of tools/context/resources?"
 - **A pattern factory** when the question is "what's the right input shape for this reusable composition?"
@@ -72,7 +72,7 @@ Add a script entry to `apps/kitchen-sink/package.json`:
 ```json
 {
   "scripts": {
-    "prototype:<name>": "pnpm --filter @flow-state-dev/cli fsdev run _prototype_<name> run --flow-dir flows/_prototypes -i"
+    "prototype:<name>": "pnpm --filter @flow-state-dev/fsdev fsdev run _prototype_<name> run --flow-dir flows/_prototypes -i"
   }
 }
 ```

@@ -14,9 +14,160 @@
  *   present when `includePartialMessages` is on).
  */
 import type { SdkMessageLike, SdkResultSubtype, TranslatedEvent } from "./types";
+import type { ObservedFileOpKind } from "./work-collections";
 
 /** The SDK tool names that denote a sub-agent spawn (alias pair). */
 const SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
+
+/**
+ * THE VENDOR MAPPING. Every tool name this package understands lives in this
+ * block and nowhere else — a second site that also knows what `Edit` means is
+ * how the next harness rename breaks half the recording while the tests for the
+ * other half stay green.
+ *
+ * The table starts at `Write` and `Edit` because those are the two a real run
+ * has been observed using. A tool we do not list records nothing, which is the
+ * designed outcome (§9) rather than a gap — add a name once a run is seen using
+ * it, not because a type declaration mentions it.
+ */
+const FILE_MUTATION_TOOLS = new Map<string, ObservedFileOpKind>([
+  ["Write", "created"],
+  ["Edit", "edited"],
+]);
+
+/**
+ * The kind a file tool's own structured output reports, when it reports one.
+ *
+ * The tool NAME is only a guess at the kind: `Write` to an existing path
+ * overwrites it, which is an edit however the tool is spelled. Recording that as
+ * `created` is the same family of error as everything else this record guards —
+ * the record asserting something about the run that did not happen. The measured
+ * `Write` output carries `type: "create" | "update"`; `Edit`'s carries no `type`
+ * at all, which is why the call-time kind stays the fallback rather than the
+ * exception.
+ */
+const FILE_OUTPUT_KINDS = new Map<string, ObservedFileOpKind>([
+  ["create", "created"],
+  ["update", "edited"],
+]);
+
+/**
+ * The to-do surface, which is `TaskCreate`/`TaskUpdate` and NOT the `TodoWrite`
+ * the vendor's own `sdk-tools.d.ts` still declares — the shipped binary does not
+ * offer that tool at all. The two are not spellings of one thing: `TodoWrite`
+ * took a whole-list snapshot with no ids, this one is per-item CRUD with ids, so
+ * code written for either is silently inert against the other.
+ */
+const PLAN_CREATE_TOOL = "TaskCreate";
+const PLAN_UPDATE_TOOL = "TaskUpdate";
+
+/**
+ * THE RULE FOR EVERYTHING BELOW: **the record reflects what the harness
+ * confirms happened, not what the agent asked for.**
+ *
+ * A tool call and its result are two different claims. The call is the agent's
+ * *request*; the result is the harness's *report*. They diverge for ordinary
+ * reasons — an `onToolApproval` seam can hand the SDK an `updatedInput`, so the
+ * tool executes something other than the call we saw, and the harness resolves
+ * paths and prior states we never had. Populating a field from the call when the
+ * result confirms it is how the record ends up asserting something that did not
+ * happen, which is the one thing it exists not to do.
+ *
+ * Three separate review findings were instances of exactly this before it was
+ * written down. So, per field: prefer the result, fall back to the call, and
+ * where the call-time value cannot be abandoned, say why.
+ *
+ * **The considered exceptions, both KEYS.** A row's key is fixed when the call
+ * is seen, because that is when the attempt is recorded — so re-keying at
+ * settlement would not update the row, it would write a second one and leave a
+ * phantom `pending` beside it. The file path and the plan item id therefore keep
+ * their call-time value, and a result that names a different one is recorded as
+ * a GAP rather than silently followed.
+ */
+
+/** Read a string field off an untyped tool input/output. `null` when absent. */
+function readString(source: unknown, field: string): string | null {
+  if (typeof source !== "object" || source === null) return null;
+  const value = (source as Record<string, unknown>)[field];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** Read a boolean field off an untyped tool output. `null` when absent. */
+function readBool(source: unknown, field: string): boolean | null {
+  if (typeof source !== "object" || source === null) return null;
+  const value = (source as Record<string, unknown>)[field];
+  return typeof value === "boolean" ? value : null;
+}
+
+/**
+ * Read a nested string off an untyped tool output (`{ a: { b: "…" } }`).
+ * `null` when any hop is absent or the wrong shape.
+ */
+function readNestedString(source: unknown, outer: string, inner: string): string | null {
+  if (typeof source !== "object" || source === null) return null;
+  return readString((source as Record<string, unknown>)[outer], inner);
+}
+
+/**
+ * Which fields the harness says it actually applied (`TaskUpdateOutput`'s
+ * `updatedFields`). `null` when absent — an older or unknown shape, where the
+ * tolerant reading is "no opinion", not "applied nothing" (BP-030).
+ */
+function readAppliedFields(structured: unknown): ReadonlySet<string> | null {
+  if (typeof structured !== "object" || structured === null) return null;
+  const value = (structured as Record<string, unknown>).updatedFields;
+  if (!Array.isArray(value)) return null;
+  return new Set(value.filter((v): v is string => typeof v === "string"));
+}
+
+/**
+ * Read the created item's id off the structured create Output
+ * (`{ task: { id } }`). Accepts a number as well as a string — the id is an
+ * opaque handle we key on, so its wire type is the vendor's business.
+ */
+function readCreatedItemId(structured: unknown): string | null {
+  if (typeof structured !== "object" || structured === null) return null;
+  const task = (structured as { task?: unknown }).task;
+  if (typeof task !== "object" || task === null) return null;
+  const id = (task as { id?: unknown }).id;
+  if (typeof id === "string" && id.length > 0) return id;
+  if (typeof id === "number" && Number.isFinite(id)) return String(id);
+  return null;
+}
+
+/**
+ * Flatten a tool result's `content` to a searchable string. It arrives as a
+ * bare string on the shape measured, but the block type is `unknown` and an
+ * array of text blocks is the other shape this content field takes, so both are
+ * tolerated and anything else reads as empty.
+ */
+function resultProse(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === "object" && part !== null ? readString(part, "text") : null))
+      .filter((text): text is string => text !== null)
+      .join(" ");
+  }
+  return "";
+}
+
+/**
+ * Recover a created item's id from the result prose ("Task #5 created
+ * successfully: …") when the structured Output is absent.
+ *
+ * **Scope of what was measured, because this fallback keeps being read as dead
+ * code.** On `claude` 2.1.234 — the CLI version `@anthropic-ai/claude-agent-sdk@0.3.234`
+ * pins — one probe run showed `tool_use_result.task.id` present on 2 of 2
+ * `TaskCreate` calls. That is a single run on a single pinned version, not a
+ * guarantee for every version or every call: the same probe is why we know this
+ * vendor renamed its whole to-do surface between versions while its shipped type
+ * declarations still described the old one. Keep the fallback.
+ */
+function recoverItemIdFromProse(content: unknown): string | null {
+  const match = /task\s*#\s*([A-Za-z0-9_.-]+)/i.exec(resultProse(content));
+  return match?.[1] ?? null;
+}
 
 /**
  * Mutable bookkeeping carried across a single run's messages. Created once per
@@ -34,12 +185,42 @@ export interface TranslateState {
    * `assistant` message must NOT re-emit them — it only closes the open items.
    */
   readonly partialMessages: boolean;
+  /**
+   * Whether a tool's input can differ from the call we saw.
+   *
+   * Only an `onToolApproval` seam does that: it becomes the SDK's `canUseTool`,
+   * which may return an `updatedInput`, and the tool then executes something
+   * the `tool_use` block never showed. Without that seam the call-time input IS
+   * what ran, so a call-time value is confirmed by construction.
+   *
+   * The distinction matters where the harness confirms that a field CHANGED
+   * without reporting what to — `updatedFields` does exactly that. With no
+   * approval seam the requested value is the answer; with one, it is a guess,
+   * and a guess is not something this record is allowed to label as confirmed.
+   */
+  readonly inputsMayBeRevised: boolean;
+  /** File mutations whose call was seen, awaiting the result that settles them. */
+  readonly openFileOps: Map<string, { path: string; op: ObservedFileOpKind }>;
+  /**
+   * Plan creates whose call was seen. Nothing is emitted at call time because
+   * the item has no id yet — the id only exists once the harness answers, and
+   * inferring it from call order is exactly the mistake the ids being
+   * non-positional makes possible.
+   */
+  readonly openPlanCreates: Map<string, { title: string | null }>;
+  /** Plan updates whose call was seen, awaiting confirmation or rejection. */
+  readonly openPlanUpdates: Map<
+    string,
+    { itemId: string; status: string | null; title: string | null }
+  >;
 }
 
 /** Options controlling how messages are interpreted across a run. */
 export interface TranslateStateOptions {
   /** Mirrors the SDK's `includePartialMessages`. Default `true`. */
   partialMessages?: boolean;
+  /** See {@link TranslateState.inputsMayBeRevised}. Default `false`. */
+  inputsMayBeRevised?: boolean;
 }
 
 /** Create a fresh, empty {@link TranslateState} for one run. */
@@ -48,6 +229,13 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
     openTools: new Set<string>(),
     openSubagents: new Set<string>(),
     partialMessages: options.partialMessages ?? true,
+    inputsMayBeRevised: options.inputsMayBeRevised ?? false,
+    openFileOps: new Map<string, { path: string; op: ObservedFileOpKind }>(),
+    openPlanCreates: new Map<string, { title: string | null }>(),
+    openPlanUpdates: new Map<
+      string,
+      { itemId: string; status: string | null; title: string | null }
+    >(),
   };
 }
 
@@ -73,6 +261,40 @@ function stringifyArgs(input: unknown): string {
   } catch {
     return "{}";
   }
+}
+
+/**
+ * Everything still in flight when the stream ended, as durable gaps.
+ *
+ * Called once after the message loop — on the success path AND the throw path,
+ * because an aborted or max-turns run is exactly when this fires.
+ *
+ * **This closes an asymmetry, not a hypothetical.** A file mutation records a
+ * `pending` row the instant its call is seen, so an interrupt leaves visible
+ * evidence that a write was attempted. A plan CREATE cannot do that: the item
+ * has no id until the harness answers, so there is nothing to key a row under.
+ * Without this drain an interrupted create is indistinguishable from a run that
+ * never planned — which is the same "empty means two different things" confusion
+ * the plan half's whole INCONCLUSIVE arm exists to resolve, reappearing one
+ * layer down.
+ *
+ * Open plan UPDATES and open file ops need nothing here: both already emitted a
+ * `pending` observation at call time, and an unsettled attempt keeping its
+ * attempted state is the designed record of an interrupted run.
+ */
+export function drainUnsettledObservations(state: TranslateState): TranslatedEvent[] {
+  const events: TranslatedEvent[] = [];
+  for (const [, create] of state.openPlanCreates) {
+    events.push({
+      kind: "work_gap_observed",
+      subject: "plan",
+      reason:
+        `a plan item was being created when the run ended, so it never got an id to be ` +
+        `recorded under${create.title !== null ? ` ("${create.title}")` : ""}`,
+    });
+  }
+  state.openPlanCreates.clear();
+  return events;
 }
 
 /**
@@ -152,10 +374,316 @@ function translateAssistant(
           arguments: stringifyArgs(block.input),
           ...withParent,
         });
+        observeToolCall(block, state, events);
       }
     }
   }
   return events;
+}
+
+/**
+ * A tool call the work recorder cares about: remember what settles it, and emit
+ * the attempt. Recording at CALL time rather than at result time is what keeps a
+ * killed run's record — a run that wrote files and was then cancelled is exactly
+ * the one whose record matters most, and a result that never arrives would
+ * otherwise erase it.
+ *
+ * A call whose input carries nothing to key on is **not** skipped silently: it
+ * emits `work_gap_observed`, which becomes a durable row. That row is the whole
+ * point — we recognised the tool and still recorded nothing, so without it a
+ * later comparison of the run's tool activity against the file record cannot
+ * tell "we could not key this" from "the record lost a write". Do not simplify
+ * the gap emission away on the grounds that the run is unaffected; the run is
+ * unaffected either way, and the reader is not.
+ *
+ * A tool we never claimed to record is different, and correctly stays silent.
+ */
+function observeToolCall(
+  block: { id: string; name: string; input?: unknown },
+  state: TranslateState,
+  events: TranslatedEvent[],
+): void {
+  const fileOp = FILE_MUTATION_TOOLS.get(block.name);
+  if (fileOp !== undefined) {
+    const path = readString(block.input, "file_path");
+    if (path === null) {
+      events.push({
+        kind: "work_gap_observed",
+        subject: "file",
+        reason: "a file mutation arrived with no path to record it under",
+      });
+      return;
+    }
+    state.openFileOps.set(block.id, { path, op: fileOp });
+    events.push({
+      kind: "file_op_observed",
+      callId: block.id,
+      path,
+      op: fileOp,
+      outcome: "pending",
+    });
+    return;
+  }
+  if (block.name === PLAN_CREATE_TOOL) {
+    state.openPlanCreates.set(block.id, { title: readString(block.input, "subject") });
+    return;
+  }
+  if (block.name === PLAN_UPDATE_TOOL) {
+    const itemId = readString(block.input, "taskId");
+    if (itemId === null) {
+      events.push({
+        kind: "work_gap_observed",
+        subject: "plan",
+        reason: "a plan update arrived naming no item",
+      });
+      return;
+    }
+    // An update can re-word the item, not just move it. Dropping the new
+    // wording leaves `observed-plan` holding the CREATE-time title forever
+    // while claiming to be the run's current plan — the collection's own claim,
+    // falsified by a stale field. Declared on `TaskUpdateInput` in the pinned
+    // SDK's types; only the status path has been observed on a live run, which
+    // is why both are read the same tolerant way and neither is required.
+    state.openPlanUpdates.set(block.id, {
+      itemId,
+      status: readString(block.input, "status"),
+      title: readString(block.input, "subject"),
+    });
+    // Attempted, not applied: the harness may still refuse the transition, and
+    // writing the requested status now would be recording a move that never
+    // happened.
+    events.push({ kind: "plan_item_observed", callId: block.id, itemId, outcome: "pending" });
+  }
+}
+
+/**
+ * Settle a recorder-relevant tool call from its result.
+ *
+ * `structured` is the message-level `tool_use_result` when it can be attributed
+ * to THIS call — see {@link translateUser}. Everything here degrades rather than
+ * throws: an unrecognised call id, an absent structured field, a create with no
+ * recoverable id, all record nothing.
+ *
+ * Returns whether this call was one the recorder tracks, so the caller can tell
+ * a message that settled recorded work from one that settled none.
+ */
+function observeToolResult(
+  callId: string,
+  content: unknown,
+  isError: boolean,
+  structured: unknown,
+  state: TranslateState,
+  events: TranslatedEvent[],
+): boolean {
+  const fileOp = state.openFileOps.get(callId);
+  if (fileOp !== undefined) {
+    state.openFileOps.delete(callId);
+    // Settle under the CALL-TIME path, not the harness's resolved one.
+    //
+    // Recording at call time fixes the row's key at call time, so settling
+    // under a different path cannot update that row — it writes a SECOND one,
+    // leaving a permanent `pending` row beside an `applied` one for a single
+    // operation. A phantom unresolved mutation is worse than a slightly less
+    // canonical key: it is indistinguishable from the record having lost a
+    // write, which is the one confusion this whole feature exists to remove.
+    //
+    // The harness's own path still rides along so the recorder can compare the
+    // two AFTER canonicalization — which is where that comparison belongs,
+    // since `notes.txt` and `/work/notes.txt` are the same key and only the
+    // recorder knows it. A real divergence becomes a gap, never a silent
+    // mis-keying.
+    const resolved = readString(structured, "filePath");
+    // With an approval seam installed the executed `file_path` can differ from
+    // the call we saw, and this row is KEYED by the call-time path. When the
+    // result confirms a path we compare them and gap on divergence — but when
+    // it reports none, there is nothing to compare and settling anyway marks
+    // the original path `applied` while the harness may have written elsewhere.
+    // That is the worst version of this defect: not merely a wrong row, but a
+    // SILENT one, with the file actually written omitted entirely and no gap
+    // pointing at either. The attempt stays `pending`, which is what we know.
+    //
+    // A FAILURE is unattributable for exactly the same reason, so this does not
+    // test `isError`. An errored result naming no path leaves two worlds we
+    // cannot separate — the seam denied the call, or it revised the input and
+    // the write failed somewhere else — and `failed` on the call-time path only
+    // describes the first. Settling it anyway asserts an event at a path the
+    // harness may never have touched, which is the wrong-subject defect with
+    // its polarity flipped, not a safer version of it.
+    if (resolved === null && state.inputsMayBeRevised) {
+      events.push({
+        kind: "work_gap_observed",
+        subject: "file",
+        reason:
+          `a file mutation ${isError ? "failed" : "settled"} without the harness naming the ` +
+          `path it wrote, and an approval seam may have revised what was asked for, so the ` +
+          `attempt could not be confirmed against any path`,
+        rawPath: fileOp.path,
+      });
+      return true;
+    }
+    // The harness knows whether the path already existed; the tool name does
+    // not. Prefer what it reports, and fall back to the call-time kind when it
+    // reports nothing — including on a failure, where there is no outcome to
+    // read a kind from.
+    const reportedKind = isError
+      ? undefined
+      : FILE_OUTPUT_KINDS.get(readString(structured, "type") ?? "");
+    events.push({
+      kind: "file_op_observed",
+      callId,
+      path: fileOp.path,
+      op: reportedKind ?? fileOp.op,
+      outcome: isError ? "failed" : "applied",
+      ...(resolved !== null && resolved !== fileOp.path ? { resolvedPath: resolved } : {}),
+    });
+    return true;
+  }
+
+  const create = state.openPlanCreates.get(callId);
+  if (create !== undefined) {
+    state.openPlanCreates.delete(callId);
+    if (isError) return true; // a create that failed created nothing to record
+    const itemId = readCreatedItemId(structured) ?? recoverItemIdFromProse(content);
+    if (itemId === null) {
+      // The harness DID create the item and we cannot address it. That is a
+      // gap, not an absence: later updates naming it will also record nothing.
+      events.push({
+        kind: "work_gap_observed",
+        subject: "plan",
+        reason: "a plan item was created and its id could not be read from the result",
+      });
+      return true;
+    }
+    // The subject the harness CREATED, not the one the run asked for. An
+    // approval seam can revise a tool's input before it executes, so the two
+    // differ for an ordinary reason, and the create result declares `subject`
+    // as a required field — so the row would be stale the moment it was
+    // written. Falls back to the request when the result omits it.
+    const title = readNestedString(structured, "task", "subject") ?? create.title;
+    events.push({
+      kind: "plan_item_observed",
+      callId,
+      itemId,
+      ...(title !== null ? { title } : {}),
+      outcome: "applied",
+    });
+    return true;
+  }
+
+  const update = state.openPlanUpdates.get(callId);
+  if (update !== undefined) {
+    state.openPlanUpdates.delete(callId);
+    // WHICH ITEM the result is about is settled before WHAT it says happened,
+    // because the second question is meaningless until the first is answered.
+    // The id is a KEY, so it keeps its call-time value for the same reason the
+    // file path does — but a result naming a different item means the row we
+    // are about to settle describes work done to something else.
+    //
+    // This guard sits above the refusal branch deliberately. Ordered the other
+    // way, a refusal that also named a different item wrote `failed` onto
+    // `update.itemId` — a refusal is a claim about a subject too, so pinning it
+    // to the wrong one is the same corruption as pinning a success there, and
+    // is not made harmless by being negative.
+    const reportedId = readString(structured, "taskId");
+    if (reportedId !== null && reportedId !== update.itemId) {
+      // THE GAP IS THE WHOLE RECORD HERE. Settling as well would take the
+      // confirmed fields — which describe item `reportedId` — and write them
+      // onto item `update.itemId`'s row, corrupting a row the harness never
+      // touched while omitting the one it did. The key correctly stays
+      // call-time and the fields correctly come from the result; applying both
+      // at once is what makes them wrong together.
+      //
+      // The attempt stays `pending`, which is the honest state: we asked to
+      // move this item and cannot confirm what became of it.
+      events.push({
+        kind: "work_gap_observed",
+        subject: "plan",
+        reason:
+          `a plan update was attempted on item ${update.itemId} and the harness reported ` +
+          `${isError || readBool(structured, "success") === false ? "refusing" : "updating"} ` +
+          `${reportedId} instead, so nothing was settled for either`,
+      });
+      return true;
+    }
+
+    // A refusal can arrive two ways: as a tool error, or IN BAND as
+    // `success: false` on an otherwise ordinary result. Reading only the first
+    // records a refused transition as applied — the worst available outcome,
+    // and the same mistake as trusting the request over the report.
+    if (isError || readBool(structured, "success") === false) {
+      // Neither the status nor the wording is carried: claiming a move the
+      // harness refused is worse than recording nothing about it.
+      events.push({
+        kind: "plan_item_observed",
+        callId,
+        itemId: update.itemId,
+        outcome: "failed",
+      });
+      return true;
+    }
+
+    // The harness reports the transition it performed, both ends of it. That
+    // `from` is the only source for the item's PRIOR status on a first move —
+    // the create result carries no status, so deriving it downstream can only
+    // produce null for a transition the harness described in full.
+    const movedFrom = readNestedString(structured, "statusChange", "from");
+    const movedTo = readNestedString(structured, "statusChange", "to");
+    const applied = readAppliedFields(structured);
+    /**
+     * `updatedFields` establishes THAT a field changed, never WHAT it changed
+     * to. When the input could have been revised on the way to the tool, the
+     * requested value is therefore not the confirmed one — the harness has told
+     * us the field moved and left us unable to say where. Recording the request
+     * would be the round-6 rule applied one notch too far: a stale value under
+     * a confirmed label.
+     */
+    const changedButUnreadable = (field: string): boolean =>
+      state.inputsMayBeRevised && applied?.has(field) === true;
+
+    // With no `statusChange` and no opinion from `updatedFields`, the requested
+    // status is the best available answer. With an explicit opinion that status
+    // was NOT among the applied fields, the right answer is to record none.
+    const status =
+      movedTo ??
+      (applied?.has("status") === false || changedButUnreadable("status")
+        ? null
+        : update.status);
+    const title =
+      applied?.has("subject") === false || changedButUnreadable("subject")
+        ? null
+        : update.title;
+
+    // Uncertain is fine; uncertain-while-looking-certain is not. The row keeps
+    // whatever wording it already had, which we now know is out of date, so the
+    // gap is what stops a reader trusting it.
+    const unreadable = [
+      ...(changedButUnreadable("subject") ? ["its wording"] : []),
+      ...(movedTo === null && changedButUnreadable("status") ? ["its status"] : []),
+    ];
+    if (unreadable.length > 0) {
+      events.push({
+        kind: "work_gap_observed",
+        subject: "plan",
+        reason:
+          `the harness changed ${unreadable.join(" and ")} on plan item ${update.itemId} ` +
+          `without reporting the new value, and an approval seam may have revised what was ` +
+          `asked for, so the recorded item is out of date`,
+      });
+    }
+
+    events.push({
+      kind: "plan_item_observed",
+      callId,
+      itemId: update.itemId,
+      ...(title !== null ? { title } : {}),
+      ...(status !== null ? { status } : {}),
+      ...(movedFrom !== null ? { previousStatus: movedFrom } : {}),
+      outcome: "applied",
+    });
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -169,7 +697,24 @@ function translateUser(
   const events: TranslatedEvent[] = [];
   const parentCallId = msg.parent_tool_use_id ?? undefined;
   const withParent = parentCallId ? { parentCallId } : {};
-  for (const block of msg.message?.content ?? []) {
+  const blocks = msg.message?.content ?? [];
+  // `tool_use_result` sits on the MESSAGE, while results sit on its blocks, so
+  // it can only be attributed when the message carries exactly one result. With
+  // two, there is no way to tell which one it describes, and guessing would put
+  // one tool's structured output onto another's record.
+  const resultCount = blocks.filter((b) => b.type === "tool_result").length;
+  const attributable = resultCount === 1;
+  const structured = attributable ? msg.tool_use_result : undefined;
+  // Confirmation that EXISTED and could not be attributed is different from
+  // confirmation that was never sent, and the difference has to reach the
+  // record. Every settlement below then falls back to call-time values — which
+  // is the right behaviour when the harness says nothing, but leaves a row
+  // indistinguishable from a genuinely confirmed one unless the discard is
+  // written down. An approval that revised the input, or an in-band
+  // `success: false`, is invisible in exactly this case.
+  const discardedConfirmation = !attributable && msg.tool_use_result !== undefined;
+  let settledRecordedWork = false;
+  for (const block of blocks) {
     if (block.type !== "tool_result") continue;
     const callId = block.tool_use_id;
     const isError = block.is_error === true;
@@ -179,7 +724,22 @@ function translateUser(
     } else {
       state.openTools.delete(callId);
       events.push({ kind: "tool_result", callId, output: block.content, isError, ...withParent });
+      if (observeToolResult(callId, block.content, isError, structured, state, events)) {
+        settledRecordedWork = true;
+      }
     }
+  }
+  // Only when recorded work actually settled from it: a batch of results for
+  // tools nobody records discarded nothing that mattered.
+  if (discardedConfirmation && settledRecordedWork) {
+    events.push({
+      kind: "work_gap_observed",
+      subject: "run",
+      reason:
+        `${resultCount} tool results arrived in one message carrying a single structured ` +
+        `result, so it could not be attributed to any of them — the settlements in that ` +
+        `message fell back to what the run asked for`,
+    });
   }
   return events;
 }

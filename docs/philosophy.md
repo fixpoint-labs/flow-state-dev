@@ -121,6 +121,14 @@ means a *defaulted option* on that surface. A value buried in a constant doesn't
 shrink the footprint; it defers the knob to the moment a caller needs it and
 can't have it.
 
+**"Nothing calls it yet" is not the test.** This is a framework, so sometimes there
+simply are no callers: the surface exists for consumers who are not in this repo, and an
+in-repo count measures our own example apps rather than the addition's worth.
+Consumer-facing surface that serves a real need earns its place with zero callers. What
+fails is a **second seam for a capability already served** — two routes to one job, which
+is the old-and-new pair below arriving together instead of in sequence. Ask "is this a
+duplicate route?", not "does anything call it?"
+
 And subtract as you go: a change that supersedes a path deletes it in the same
 change. Old and new side by side is how incoherence starts.
 
@@ -155,6 +163,21 @@ through, and a check is only as strong as the producers it rules out. If you can
 find that convergence point, you haven't found the owning layer — you're patching
 call sites, and review will keep finding more of them.
 
+**Converging a decision is usually carrying it, not re-deriving it.** Two sites that
+compute the same answer from the same inputs are two writers of one invariant, and they
+drift the moment either input moves; so are two values a consumer must hold together
+before it can state one fact. Compute it once and pass it along; store it once and
+derive from it. Where you see a comparison re-deciding something the caller already
+knew, that is the shape to distrust.
+
+**The same arithmetic governs what you write down.** A decision restated in ten places
+is corrected in none of them until every restatement moves, and a coordination
+document's tables, indexes, diagrams, and completion criteria *are* restatements — they
+are what a reader acts on, not decoration around the section that owns the decision. So
+the change is the edit plus every surface carrying the old answer. The tell is the same
+one: if review keeps finding another place the old answer survived, you corrected a site
+rather than the thing.
+
 *Derives:* BP-028.
 
 ### 6. Readability is an output
@@ -166,15 +189,30 @@ tradeoffs, and the decisions, *before* the deep detail. Density is a cost we pay
 deliberately where it buys precision (the agent-facing half of a spec, a contract
 definition), never by default.
 
-*Derives:* BP-039 (specs lead with plain language), the spec's two-part structure.
+**Altitude is also *whose chair they sit in.*** The human decides as the product
+owner — they hold the objective and know things about the business we don't. So an
+ask is translated into the decision they are actually making: what it costs in
+promises, customers, timing, and reversibility, not the mechanism that produced it.
+They may well be technical, which makes handing them the mechanism easy and still
+wrong — every paragraph they spend re-deriving a call we already made is attention
+not spent on the objective only they are tracking. Dropping them into the engineer's
+chair is sometimes necessary and should be rare; when it is, say so rather than
+letting it happen by default.
+
+*Derives:* BP-039 (specs lead with plain language), BP-041 (frame every ask as a
+business decision), the spec's two-part structure.
 
 ### 7. Prove the goal, not the mock
 
 A deliverable is not done because tests are green. It is done when something
 exercises the **real path** and shows the outcome a user would care about. Mocked
 tests prove the pieces; a real-model goal check proves the point. And tests must
-encode *why* a behavior matters, not just *what* it does — a test that can't fail
-when the business logic changes is not a test.
+encode *why* a behavior matters, not just *what* it does. That cuts at both ends: a
+test that can't fail when the business logic changes is not a test, and **a check that
+cannot fire is not a check** — a filter that always returns empty, a parameter no call
+site passes, a branch no input reaches. Both are correct at the seam and absent end to
+end, and neither the compiler nor a green suite will tell you. For either one the move
+is the same: break it on purpose and confirm the signal changes.
 
 *Derives:* BP-003 (verification evidence), the two-kinds-of-test discipline.
 

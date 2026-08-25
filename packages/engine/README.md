@@ -39,10 +39,22 @@ That's a full API with action execution, session management, SSE streaming with 
 
 - `getRouter(): Promise<FlowApiRouter>` — resolve the route handlers (first call triggers store init).
 - `ready(): Promise<void>` — eager warmup, idempotent.
-- `dispose(): Promise<void>` — release pooled resources across every declared store.
+- `dispose(): Promise<void>` — drain in-process background work, close the worker, release pooled resources.
 - `activeProfile`, `settings`, `meta` — read-only diagnostics.
 
 Construction is synchronous; stores initialize lazily and memoized on the first `getRouter()` / `ready()`. There's no top-level await, so the same instance works in a Next.js Route Handler.
+
+### Shutdown
+
+`dispose()` runs in order:
+
+1. Waits for background work still running in this process. A job handed to a queue is not waited for here — but if this process also *consumes* that queue, step 5 waits for whatever it has already claimed.
+2. Bounds that wait with `detachedDrainTimeoutMs`, a `createFlowState` option defaulting to 30000 ms. It's a ceiling, not a target: work that finishes sooner is not delayed. `0` means don't wait at all.
+3. Cancels whatever is still running when the budget runs out, and gives it a brief window, inside that same budget rather than added to it, to unwind.
+4. Reports the request ids and session ids it gave up on, on stderr. That report prints even when the runtime's logger is silenced, since work may have been left unfinished.
+5. Closes the worker and releases pooled resources across every declared store adapter. Closing the worker waits for any queue job this process has already claimed, and that wait is **not** bounded by `detachedDrainTimeoutMs` — it takes as long as the job does. Size your platform's kill timeout for the longest job.
+
+Shutdown mostly does not write a terminal status on background work's behalf. It cancels the work rather than marking those records finished or failed. The exception is a run still waiting behind a concurrency limit when the drain reaches it, which is recorded `aborted` without ever having started. Otherwise the task is taken back by the next claim once its lease has lapsed — the row stays `in_progress` as a fresh attempt, and settles `errored` only past the abandonment allowance — and the request record reads `interrupted`: written by the run itself if it unwinds inside the drain's budget, or by a later runtime start's sweep once its heartbeat has been quiet longer than the staleness threshold. See [what a stopped process leaves behind](https://flow-state.dev/docs/server/background-work#what-a-stopped-process-leaves-behind).
 
 ### Stores and capability profiles
 
@@ -121,7 +133,11 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 ### Connection resilience
 
-`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
+`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, `staleSweepThresholdMs`, and `queuedGraceMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
+
+It also forwards `publicReentrySources` — the sources your own inbound transports stamp that `retry` / `continue` / `resume` may re-enter. See [Inbound transports](https://flow-state.dev/docs/advanced/inbound-transports).
+
+`maxWorkstreamListLimit` sets the largest `limit` the workstream listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
 
 ### DevTool connection (dev-only)
 
@@ -275,8 +291,18 @@ for scheduled and webhook callers), and `extractBearerToken` cover the
 most common verification patterns; hosts plug in their own for anything
 else.
 
+A configured resolver governs the flow's whole `/api/flows` surface, not only
+action calls: session CRUD, session state, resource content, request control,
+and the debug endpoints resolve a principal the same way, and additionally
+require that principal to own the session or request the URL addresses (`403`
+otherwise). Endpoints that span every flow (`GET /sessions`,
+`GET /active-requests`) resolve through the host-level fallback and scope their
+results to the caller; reached without one, they serve only the flows that
+configure no resolver of their own.
+
 When no resolver is configured, a flow runs on the framework default that
-trusts a caller-supplied `body.userId` — unauthenticated. `isDefaultBodyUserIdPrincipalResolver(resolver)`
+trusts a caller-supplied `body.userId` — unauthenticated, management surface
+included. `isDefaultBodyUserIdPrincipalResolver(resolver)`
 reports whether a resolver is that default, via a globally-registered brand
 rather than function identity (so it holds across duplicate package instances,
 e.g. a config that resolves its own copy of the engine). Tooling uses it to
@@ -309,13 +335,14 @@ const router = createFlowApiRouter({ registry });
 
 // Testing: in-memory (fast, no cleanup)
 const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+```
 
-// Runtime safety guards (optional)
-const guardedRouter = createFlowApiRouter({
+Pass `maxResponseBufferSize` to cap how large a live SSE response the router buffers:
+
+```ts
+const router = createFlowApiRouter({
   registry,
   maxResponseBufferSize: 10_000,
-  maxConcurrentStreams: 1_000,
-  staleStreamTtlMs: 300_000,
 });
 ```
 
@@ -327,6 +354,60 @@ const stores = createFilesystemStores({
   traceStore: { maxRequests: 200 }
 });
 ```
+
+## Background jobs on a session
+
+`GET /api/flows/sessions/:sessionId/workstreams` lists the background jobs
+started by a session — the child sessions attached to it. Each row carries the
+child's id, its parent, `topic` and `coordinate` labels, timestamps, and a
+`status` of `active` (not finished) or a terminal outcome (`completed`,
+`failed`, `aborted`, `incomplete`). A job with no runs has no `status`.
+
+`topic` and `coordinate` are written by `ctx.requestHost.startDetached` when it
+creates the job's session, taken from the routing seed that session's id was
+derived from (`seed.topic` and `seed.key`). The caller's own `record` bag lands
+on the child session record and never becomes a label. Both labels are display
+only — nothing routes, authorizes or adopts on them — and both are optional, so
+guard with `== null`.
+
+The route is session-addressed: the parent is loaded and ownership-checked
+before the handler runs, and the answer is scoped to the stored parent's owner,
+tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
+0–10000; anything outside returns `400`. Use each row's `id` with the existing
+`/sessions/:id/requests` endpoint to read that job's history.
+
+Those runs carry a `metadata.workstream` bag on the request record: `topic` and
+`key` from the routing seed, plus `taskId` naming the task-board row the run was
+started for. Read the bag at all only when the record's `source` is
+`"workstream"` — `metadata` is caller-writable on an ordinary request, `source`
+is not. `topic` and `key` are the seed the child session's id was derived from,
+so they cannot disagree with the run they sit on. `taskId` holds whatever the
+caller of `startDetached` passed and is checked against no board, so treat it as
+a correlation to display rather than one to key on. `key` and `taskId` are
+optional, so guard with `== null`.
+
+See [Background work](https://flow-state.dev/docs/server/background-work) for
+the full contract.
+
+## Store list options
+
+`SessionListOptions` and `RequestListOptions` are part of the store contract.
+Adapters must implement all four options:
+
+- `RequestListOptions.status` accepts a `RequestStatus` **or an array** of them.
+  An array matches set membership; an empty array matches nothing.
+- `RequestListOptions.orderBy` accepts `"none"` alongside `"startedAtMs"` and
+  `"updatedAt"`. `"none"` returns the matching set unordered. An
+  existence check needs that: its work must not grow with the set it selects
+  on.
+  `"startedAtMs"` orders by `(startedAtMs, id)` so an exact tie resolves
+  deterministically.
+- `SessionListOptions.orderBy` accepts `"createdAt"` or `"updatedAt"` (default).
+  `"createdAt"` orders by `(createdAt, id)`, both immutable, so a record written
+  during a caller's walk cannot reorder its pages.
+- Both types accept `orgId`, with the same present-vs-absent NULL-safe matching
+  as `tenantId`: an absent key filters nothing, a present key (including an
+  explicit `undefined`) exact-matches.
 
 ## Session retention policies
 
@@ -354,6 +435,35 @@ Retention policies operate at **request granularity** — entire old request rec
 The `maxItems` check counts items through `RequestStore.countItems(requestId)` rather than loading item payloads, so a retention sweep stays cheap on sessions with large logs. Custom `RequestStore` implementations must provide `countItems`; it returns what `get(id)` would surface as `items.length`.
 
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
+
+## Abort intent on `RequestStore` (adapter authors)
+
+`RequestStore` carries two required members for cancellation. An out-of-tree adapter that leaves either one out fails the build with a missing-member error.
+
+```ts
+isAbortRequested(requestId: string): Promise<boolean>;
+
+setFieldsIfStatus(
+  id: string,
+  fields: ConditionalRequestFields,
+  allowedStatuses: readonly RequestStatus[],
+  updatedAt: number
+): Promise<ConditionalWriteResult>;
+```
+
+Both named types are exported from `@flow-state-dev/engine`. `ConditionalRequestFields` is a `Partial` of `RequestRecord` minus the fields that have their own write path: `id`, `version`, `createdAt`, `updatedAt`, `state`, `items`, `status`, and the indexed access-path fields (`flowKind`, `userId`, `sessionId`, `orgId`, `tenantId`). `abortRequested` is in the set. `ConditionalWriteResult` is `{ applied: boolean; status?: RequestStatus }`.
+
+**`isAbortRequested`** answers whether cancellation has been requested, without materializing the request. It runs on the heartbeat tick for the life of every request, so it **must be O(1) in item count** — reading the record and deserializing a growing item array turns a long run into quadratic work. Return `false` for an unknown request. Read the flag with `=== true`; it is `boolean | undefined`.
+
+**`setFieldsIfStatus`** applies `fields` only while the record's status is one of `allowedStatuses`, evaluating the predicate and the write as one atomic step. Three outcomes: `{ applied: true, status }` when the predicate held; `{ applied: false, status }` when a record exists outside the predicate; `{ applied: false, status: undefined }` when no record exists.
+
+Do not implement it as a version CAS. Terminal transitions persist `version` **unchanged**, so a version-checked write still validates after a terminal commit and resurrects a dead record. The predicate has to read status.
+
+**`setFieldsIfStatus` is the only member that may write `abortRequested`.** `set` must ignore the field in both directions: a full record handed to `set` cannot set the flag and cannot clear a stored one. The compiler will not enforce this, since the field is still on `RequestRecord` for reading. An adapter that honours it on `set` lets a full-record write built from a stale snapshot erase a cancellation.
+
+How you store the flag is yours. The shipped adapters differ: in-memory and the SQL pair keep it on the record and force the stored value through on `set`; the filesystem adapter keeps a marker file beside the record, because its `get()` loads inline items and would break the O(1) bound. Whichever you pick, `get()` must still surface the flag on the returned record.
+
+The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
 
 ## Custom model resolution
 
@@ -400,7 +510,8 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 - `createFilesystemStores` — Persistent stores for local development (not for production load; use SQLite or Postgres in production)
 - `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
 - `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
-- Scope store factories and CAS/state ops
+- `createInMemoryOrgStore` / `createFilesystemOrgStore` — Org scope store adapters, implementing `OrgStore`. The filesystem adapter keeps org records under `{rootDir}/projects/`.
+- Session, user, and request scope store factories, and CAS/state ops
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request
@@ -411,9 +522,9 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 **Request abort:**
 - `abortRequest(requestId)` — Signal an in-progress request to stop via `AbortController`
 - `hasActiveAbortController(requestId)` — Check if a request can be aborted
-- Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 on success, 404 if not in progress, 409 if already terminal
+- Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 when the running process was signalled directly, 202 when the cancellation was recorded for another process to pick up, 404 when no request exists under that id, 409 when the request is no longer `in_progress`. See [Connection Resilience](https://flow-state.dev/docs/server/connection-resilience#stopping-a-request-that-runs-on-another-server) for the cross-process path and what a `202` does and doesn't promise
 - Aborted requests receive `status: "aborted"` with an `abortedAt` timestamp. The SSE stream emits `request.aborted` and closes.
-- Background `.work()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See the [sequencer side-chains reference](https://flow-state.dev/docs/advanced/sequencer-side-chains) for the two-signal cancellation contract.
+- Background `.sideChain()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See the [sequencer side-chains reference](https://flow-state.dev/docs/advanced/sequencer-side-chains) for the two-signal cancellation contract.
 
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances
@@ -486,20 +597,117 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 
 ## ResourceStateStore
 
-`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence — the state-layer twin of `ContentStore`. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem `ResourceStateStore` writes each resource's state as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
+`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem adapter writes each resource as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
+
+It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so the contract is compare-and-swap: every write takes an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
+
+That guarantee reaches flow-authored mutations, not only callers holding the store directly. The runtime drives every resource write through a CAS retry driver at the registry's read/mutate seam, passing the version the execution context observed: a conflict re-runs the op's mutator against the value that won and retries, so two contexts patching different fields of one resource both land.
+
+Conflicts report what actually happened rather than collapsing into one error:
+
+| Situation | Result |
+|---|---|
+| Key never persisted, write asks for no change | Verified no-op — not an error |
+| Held a live version, row is now a tombstone | `ResourceDeletedError`, terminal |
+| A `create` lost its race | `ResourceAlreadyExistsError`, terminal. `getOrCreate` and `upsert` absorb it and complete as a read / patch |
+| A delete's version check failed against a live row | `ConcurrentModificationError` — nothing was deleted |
+| Retry budget exhausted | `ConcurrentModificationError` |
+
+The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable, suppresses a no-op before checking any version, and has no cancellation. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.sideChain()` tasks keep running and their writes must land.
 
 ```ts
+// branded — see the note under the table below
+type VersionedResourceState = { state: JsonObject; version: number };
+
 interface ResourceStateStore {
-  get(scopeType, scopeId, resourceKey): Promise<JsonObject | undefined>;
-  set(scopeType, scopeId, resourceKey, state): Promise<void>;
-  delete(scopeType, scopeId, resourceKey): Promise<void>;
-  getAll(scopeType, scopeId): Promise<Record<string, JsonObject>>;
-  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, JsonObject>>;
+  get(scopeType, scopeId, resourceKey): Promise<VersionedResourceState | undefined>;
+  set(scopeType, scopeId, resourceKey, state, expectedVersion): Promise<SetResult<JsonObject>>;
+  delete(scopeType, scopeId, resourceKey, expectedVersion): Promise<SetResult<JsonObject>>;
+  getAll(scopeType, scopeId): Promise<Record<string, VersionedResourceState>>;
+  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, VersionedResourceState>>;
   deleteAll(scopeType, scopeId): Promise<void>;
 }
 ```
 
-The interface and loading semantics mirror `ContentStore` exactly: declared state is loaded per-request (`get` for fixed resources, `getByPrefix` for collections), and a state mutation writes only the affected key rather than rewriting the whole scope record. `createInMemoryResourceStateStore()` is the simplest implementation; database adapters can route state to a dedicated table (Postgres uses `JSONB`). A separate store from `ContentStore` keeps payload types clean — state is `JsonObject`, content is `string`, and a resource can have one without the other.
+`expectedVersion` is a non-negative integer, or `"any"` to write unconditionally. Two meanings differ from the scope stores that share these types, and both are deliberate:
+
+- **`0` means "no live row"** — create-if-absent. A tombstoned key satisfies it just as a never-existed one does.
+- **Some conflicts are terminal.** A conflict against a deleted resource must not be retried into a resurrection, and a losing create must not be retried into an overwrite.
+
+A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any" | "absent"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
+
+**`"absent"` throws here too.** It is the scope stores' create-if-absent sentinel, and this store keeps spelling create-if-absent `0`. Accepting it as an alias would be cheap on `set` and incoherent on `delete`, where `0` has a meaning ("no live row, so the terminal state already holds") and "delete only if absent" has none. One sentinel with a verb-dependent meaning on the subtlest predicate in these adapters is worse than two spellings that each mean one thing. Converging them — moving these callers to `"absent"` and retiring this store's `0` — is a later change that removes a spelling rather than adding one.
+
+### Versions, deletes and retention
+
+| Rule | Behaviour |
+|---|---|
+| Reads | `get` / `getAll` / `getByPrefix` return **live rows only**. A deleted key reads exactly like an absent one |
+| Version | First create writes `1`; each committed write adds one; **never reused**. A recreate continues from the tombstone's version |
+| `delete` | Takes a version like every other write, retains it, and drops the payload. A delete chosen from a stale snapshot conflicts rather than tombstoning a newer generation |
+| `delete(…, "any")` | Never reports a conflict. Finding no live row is the whole answer to a blind delete, so it succeeds at `version: 0` even if a concurrent recreate makes the key live again a moment later. A positive `expectedVersion` in the same race still conflicts — it asserted something that did not hold |
+| `deleteAll` | Bulk-marks every live key in the scope. A scope operation, so it carries no expected version |
+| Retention | Tombstones are kept **indefinitely, in every scope**. Nothing reclaims one |
+| Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
+
+Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it. A tombstone that is never removed is always sound. It costs one row per deleted key.
+
+`toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
+
+Both are generic in the state shape, so a caller that knows what it stored names it in the call instead of casting the result:
+
+```ts
+const rows = toBareStates<InboxRecord>(await stores.resourceState.getAll("user", userId));
+const one = toBareState<InboxRecord>(await stores.resourceState.get("user", userId, key));
+const bare = toBareStates(rows); // no type argument → Record<string, JsonObject>
+```
+
+The type argument is asserted, not validated — nothing checks the stored row against it at runtime, exactly as the cast it replaces did not. What it buys is that the assertion is named and greppable at the call site rather than hidden in an `as unknown as`. The `JsonObject` bound keeps it honest: it rejects any shape the store could not have held (a `Date` field, say) and rejects `VersionedResourceState` itself, so the projection cannot be used to launder the versioned shape back in.
+
+A `delete` is idempotent at the terminal state: deleting a key that is already absent or already tombstoned succeeds and reports the retained version, and that holds under a race — two concurrent deletes of one live key both report success. A conflict is reserved for a version mismatch against a row that is **still live**.
+
+### Per-adapter guarantee
+
+Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts that share that instance, and does not coordinate two instances over one directory, whether they sit in one Node process or two.
+
+### The collection-item HTTP routes use it
+
+The two client-facing write routes are the callers that pass a real
+`expectedVersion` today. Both follow one rule: settle the state key first, then
+touch content, so a request that loses a race never reaches `ContentStore`.
+
+- `POST /sessions/:id/resources/:ref` inserts the state row at
+  `expectedVersion: 0` (create-if-absent) and writes content only after that
+  commits. Two clients creating the same topic get one `201` and one `409`, and
+  the stored body belongs to the client that won; on the filesystem adapter that
+  holds only among writes through one store instance, per the per-adapter
+  guarantee above. The conflict is terminal — a losing create is never retried
+  into an overwrite.
+- `DELETE /sessions/:id/resources/:ref/:topic` reads the row's version, deletes
+  state conditionally on it, and deletes content only after that commits. If
+  the row moves between that read and the delete, the request returns `409` and
+  leaves the item intact in both stores. Deleting an absent topic is still an
+  idempotent `200`. The version is one the **route** observes, not one the
+  client supplied, so the window it closes is the route's own — a `DELETE` from
+  an out-of-date client view still reads the live row and removes it.
+
+Because each route writes two stores, some windows stay open: an item can exist
+with **no content row** after a create whose content write **failed** — the state
+row commits first, so a failed `POST` is not a no-op, and the item is live and
+listable but reads back as `content: null` rather than `""` — a create's body
+can be orphaned by an overlapping delete, an acknowledged `PATCH` can be
+overwritten by an in-flight create, and a recreation can lose its content to a
+delete already in flight. Only the first surfaces as an error; the others are
+silent. A collection whose content comes from `contentTemplate` /
+`contentTemplateRef` loses only the *repair* half of the first — it renders from
+state and never reads the content row, so it stays readable — but the create
+route does not guard its content write on the template config, so the
+half-commit is identical there. These are
+accepted — content is deliberately unversioned, so no state predicate fences a
+write to it, and closing them is cross-record atomicity, which this store does
+not provide. The full contract, with the reasoning and the residual table, is
+in `docs/architecture/resources-and-client-data.md`; client-facing guidance is
+in the resources / client access docs.
 
 ## CheckpointStore
 
@@ -586,7 +794,16 @@ createFlowApiRouter({
   staleSweepIntervalMs: 30_000,
   // Heartbeat-age threshold the sweeper uses to mark a request `interrupted`.
   // Should be ≥ 2× the executor's registry heartbeat. Default 60_000 ms.
-  staleSweepThresholdMs: 60_000
+  staleSweepThresholdMs: 60_000,
+  // How long a request queued with an external dispatcher may wait, unclaimed,
+  // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
+  queuedGraceMs: 600_000,
+  // Sources from your own inbound transports that `retry` / `continue` /
+  // `resume` may re-enter. The built-ins (`http`, `mcp`, `chat`, `scheduled`)
+  // are always admitted; every other source is refused with a not-found unless
+  // named here. `webhook` and the detached-dispatch source are never openable
+  // — naming one throws at construction.
+  publicReentrySources: ["echo"]
 });
 ```
 
@@ -620,14 +837,17 @@ The DevTool's Resources panel uses this surface. `fsdev dev` enables it automati
 
 See [Debug vs client state](https://flow-state.dev/docs/devtool/debug-vs-client-state) for the full mental model.
 
-## State mutations: two-tier model
+## State mutations
 
-Every state mutator (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) routes through one of two paths inside the runtime, picked by whether the scope has a `persist` callback:
+Every state mutator (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) picks a persist posture and a concurrency driver:
 
 - **In-memory scopes** — target state, sequencer state, and any scope without a `persist` bridge. Mutations serialize through a per-`StateContainer` FIFO queue (`withScopeLock`). Concurrent mutators run one at a time in submission order; there is no version check, no retry, and no `ConcurrentModificationError`. Reads are still synchronous against `container.read()`.
-- **External-store scopes** — `request`, `session`, `user`, `org` scopes bridged through `persist` (filesystem, sqlite, postgres). Mutations use the optimistic `runWithCAS` retry loop because a remote authority can advance the version underneath the local cache. `ConcurrentModificationError` still surfaces on retry exhaustion at this boundary.
+- **Request scope** — persists each write (so `/continue` can restore it) and serializes through `withScopeLock`, with the same version-checked `runWithCAS` underneath. Serialized writers each read a current version, so a wide same-run fan-out never conflicts and never spends a retry; the retry budget stays for the one writer the queue cannot order, a recovery continuation running against the same request record. `ConcurrentModificationError` surfaces on retry exhaustion.
+- **Session, user, and org scopes** — bridged through `persist` (filesystem, sqlite, postgres) and the optimistic `runWithCAS` retry loop, because a remote authority can advance the version underneath the local cache. `ConcurrentModificationError` still surfaces on retry exhaustion at this boundary.
 
 `flow.request.mutationTimeoutMs` (default `30_000`, set to `Infinity` to disable) bounds the worst-case wait for any in-memory mutation. When a mutator's queue wait + execution exceeds the budget, the call rejects with `ScopeMutationTimeoutError` instead of hanging the request indefinitely.
+
+The budget covers in-memory scopes only. It is not applied to any scope that persists — request scope included. The timeout rejects the caller without cancelling the mutation, so a write that outran it would still reach the store afterwards, landing on a record the runtime may already have finished with. A bounded error is worth having where the only casualty is the caller; it is not worth having where the casualty is the stored record.
 
 ```ts
 defineFlow({
@@ -638,6 +858,33 @@ defineFlow({
 ```
 
 The lock is non-reentrant: a mutator that calls `atomicState` again on the same container would await its own completion forever. Compose state mutations within a single mutator instead. Cross-scope mutator chains (scope A's mutator calls `atomicState` on scope B) are fine — different containers have independent queues.
+
+## Request registry sharedness
+
+`ActiveRequestRegistry` carries a `sharedAcrossProcesses` declaration: whether entries written by one process are visible to every other process in the deployment.
+
+Read it with `isRegistrySharedAcrossProcesses(registry)`, never directly — **absent is read as not shared.** An adapter written against the older contract keeps working and simply does not enable liveness-dependent behaviour, rather than enabling it on a registry that cannot support it.
+
+| Registry | Declares |
+|---|---|
+| In-memory | `false` (definitively — entries are in this process's heap) |
+| Filesystem | `false` (cannot tell a shared volume from a per-process dir) |
+| SQLite | `false` (same reason) |
+| Postgres | `true` for pooled / connection-string construction, `false` for an injected `{ executor }` |
+
+Sharedness is a property of the **constructed store**, not of the adapter's package name.
+
+## Liveness enablement
+
+Runtime behaviour that reads "is this request still running?" from the registry is enabled only when all three of these hold, checked once at construction:
+
+1. the registry declares itself shared across processes;
+2. `request.heartbeatIntervalMs` is nonzero and the stale threshold is at least twice it;
+3. a stale-request sweeper is running at a nonzero cadence.
+
+When any of the three fails, the capability is absent and names the condition that failed. On the default in-memory registry it is absent.
+
+Reads are bounded by the ids the caller supplies and compare each entry's heartbeat against the stale threshold, so a crashed worker is not reported live while waiting for the next sweep. A not-live answer means *no live registration was found*, never *definitely dead*.
 
 ## Notes
 
@@ -657,6 +904,6 @@ pnpm --filter @flow-state-dev/engine test
 
 ## Architecture reference
 
-- [Server Setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
-- [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — Retry, rescue, work queue
+- [Engine setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
+- [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — Retry, rescue, side chains
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

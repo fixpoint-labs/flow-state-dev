@@ -128,7 +128,6 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      catalog: {},
     });
     const ctx = buildCtx(c);
     const result = await runForTest(tool, { name: "pptx", input: "Q2 deck" }, ctx);
@@ -146,7 +145,6 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      catalog: {},
     });
     await expect(runForTest(tool, { name: "missing" }, buildCtx(c))).rejects.toThrow(
       /Unknown skill/,
@@ -167,7 +165,6 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      catalog: {},
     });
     await expect(runForTest(tool, { name: "legacy" }, buildCtx(c))).rejects.toThrow(
       /removed|workers:/,
@@ -183,7 +180,6 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      catalog: {},
     });
     await expect(runForTest(tool, { name: "private" }, buildCtx(c))).rejects.toThrow(
       /disable-model-invocation/,

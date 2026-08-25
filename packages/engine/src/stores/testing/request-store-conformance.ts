@@ -109,18 +109,19 @@ export function createRequestStoreConformanceTests(
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const liveTolerance = Math.max(pollIntervalMs * 3, 200);
 
-  describe(`${name} (RequestStore subscribeToEvents conformance)`, () => {
-    async function withStore(
-      run: (store: RequestStore) => Promise<void>
-    ): Promise<void> {
-      const store = await createStore();
-      try {
-        await run(store);
-      } finally {
-        if (cleanup !== undefined) await cleanup(store);
-      }
+  /** Run one case against a fresh store, cleaning it up even when the case throws. */
+  async function withStore(
+    run: (store: RequestStore) => Promise<void>
+  ): Promise<void> {
+    const store = await createStore();
+    try {
+      await run(store);
+    } finally {
+      if (cleanup !== undefined) await cleanup(store);
     }
+  }
 
+  describe(`${name} (RequestStore subscribeToEvents conformance)`, () => {
     it("catch-up phase yields events strictly greater than fromSequence", async () => {
       await withStore(async (store) => {
         for (let i = 1; i <= 5; i += 1) {
@@ -375,17 +376,6 @@ export function createRequestStoreConformanceTests(
   });
 
   describe(`${name} (RequestStore same-request item persistence conformance)`, () => {
-    async function withStore(
-      run: (store: RequestStore) => Promise<void>
-    ): Promise<void> {
-      const store = await createStore();
-      try {
-        await run(store);
-      } finally {
-        if (cleanup !== undefined) await cleanup(store);
-      }
-    }
-
     // A get-returns-merged check across a same-request continuation (FIX-811).
     // The runtime persists incrementally via `persistItems` AND writes the
     // merged set onto the record at each transition via `set`; both adapter
@@ -456,17 +446,6 @@ export function createRequestStoreConformanceTests(
   });
 
   describe(`${name} (RequestStore countItems conformance)`, () => {
-    async function withStore(
-      run: (store: RequestStore) => Promise<void>
-    ): Promise<void> {
-      const store = await createStore();
-      try {
-        await run(store);
-      } finally {
-        if (cleanup !== undefined) await cleanup(store);
-      }
-    }
-
     it("returns 0 for an unknown request", async () => {
       await withStore(async (store) => {
         expect(await store.countItems("req_count_missing")).toBe(0);
@@ -514,6 +493,334 @@ export function createRequestStoreConformanceTests(
         const reread = await store.get(requestId);
         expect(await store.countItems(requestId)).toBe(reread?.items?.length);
         expect(await store.countItems(requestId)).toBe(4);
+      });
+    });
+  });
+
+  describe(`${name} (RequestStore abort-intent conformance)`, () => {
+    /** Seed an `in_progress` record with no abort intent. */
+    async function seed(
+      store: RequestStore,
+      requestId: string,
+      status: RequestRecord["status"] = "in_progress",
+      items: OutputItem[] = []
+    ): Promise<void> {
+      await store.set(requestId, makeRecord(requestId, status, items), "any");
+    }
+
+    describe("isAbortRequested", () => {
+      it("returns false for an unknown request", async () => {
+        await withStore(async (store) => {
+          expect(await store.isAbortRequested("req_abort_missing")).toBe(false);
+        });
+      });
+
+      it("returns false when the flag was never set", async () => {
+        await withStore(async (store) => {
+          await seed(store, "req_abort_absent");
+          expect(await store.isAbortRequested("req_abort_absent")).toBe(false);
+        });
+      });
+
+      it("returns true once the conditional write sets the flag", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_abort_set";
+          await seed(store, requestId);
+
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(result.applied).toBe(true);
+          expect(await store.isAbortRequested(requestId)).toBe(true);
+        });
+      });
+
+      // A cross-adapter consistency claim, not an adapter detail. Adapters that
+      // keep the flag on the record get this for free; one that stores it
+      // beside the record has to overlay it onto listed records too, or the
+      // same request reads as cancelled through `get` and not cancelled
+      // through `list` — including through the session request-list endpoint.
+      it("agrees with list() on the same record", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_abort_list_agrees";
+          await seed(store, requestId);
+          await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          const listed = (await store.list()).find((r) => r.id === requestId);
+          expect(listed).toBeDefined();
+          expect(listed?.abortRequested).toBe(true);
+          expect(listed?.abortRequested).toBe(
+            (await store.get(requestId))?.abortRequested
+          );
+        });
+      });
+
+      it("agrees with get() on the same record", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_abort_agrees";
+          await seed(store, requestId);
+          expect((await store.get(requestId))?.abortRequested).not.toBe(true);
+
+          await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(await store.isAbortRequested(requestId)).toBe(true);
+          expect((await store.get(requestId))?.abortRequested).toBe(true);
+        });
+      });
+
+      // The case that proves the read is narrow. An adapter that answers this
+      // by loading the record deserializes the whole item array on every
+      // heartbeat tick — the quadratic cost this method exists to remove. The
+      // shape is asserted here; the bound itself is the interface contract.
+      it("reads the flag on a record carrying a large item set", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_abort_many_items";
+          const items = Array.from({ length: 250 }, (_unused, index) =>
+            makeItem(requestId, index)
+          );
+          store.persistItems(requestId, items);
+          await store.flushItems(requestId);
+          await seed(store, requestId, "in_progress", items);
+
+          expect(await store.isAbortRequested(requestId)).toBe(false);
+
+          await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(await store.isAbortRequested(requestId)).toBe(true);
+          // The item history is untouched by the abort write.
+          expect((await store.get(requestId))?.items?.length).toBe(250);
+        });
+      });
+    });
+
+    describe("setFieldsIfStatus", () => {
+      it("applies the fields when the predicate holds", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_applies";
+          await seed(store, requestId);
+
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(result).toEqual({ applied: true, status: "in_progress" });
+        });
+      });
+
+      // The resurrection case. A version predicate cannot express this, which
+      // is why the verb exists: terminal writes persist `version` unchanged, so
+      // a CAS validates after the terminal commit and restores a dead record.
+      it("does not apply on a terminal status, and reports the status it found", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_terminal";
+          await seed(store, requestId, "completed");
+
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(result).toEqual({ applied: false, status: "completed" });
+          expect(await store.isAbortRequested(requestId)).toBe(false);
+          // The record is not resurrected to the predicated status.
+          expect((await store.get(requestId))?.status).toBe("completed");
+          // A not-applied result must never name a status inside the predicate:
+          // that combination is self-contradictory, and a caller turning it into
+          // an error emits nonsense like `409 … terminal state "in_progress"`.
+          // It is what an adapter produces when the status it reports comes
+          // from a read that is not the same observation as the write.
+          expect(["in_progress"]).not.toContain(result.status);
+        });
+      });
+
+      it("does not apply to an unknown request and reports no status", async () => {
+        await withStore(async (store) => {
+          const result = await store.setFieldsIfStatus(
+            "req_cond_missing",
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(result).toEqual({ applied: false, status: undefined });
+          expect(await store.get("req_cond_missing")).toBeUndefined();
+        });
+      });
+
+      it("matches any status in the predicate list", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_multi";
+          await seed(store, requestId, "suspended");
+
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress", "suspended"],
+            Date.now()
+          );
+
+          expect(result.applied).toBe(true);
+          expect(await store.isAbortRequested(requestId)).toBe(true);
+        });
+      });
+
+      it("writes a field that is not the abort flag", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_general";
+          await seed(store, requestId);
+
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { interruptedAt: 4242 },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(result.applied).toBe(true);
+          expect((await store.get(requestId))?.interruptedAt).toBe(4242);
+        });
+      });
+
+      // The record's own `updatedAt` must move with the write, not just any
+      // indexed column an adapter keeps beside it. An adapter that advances
+      // only its column leaves `get()` reporting the old timestamp — list
+      // ordering and the record disagree, and a later full-record write built
+      // from `get()` carries the stale value back and moves the column
+      // BACKWARD.
+      it("advances the record's updatedAt", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_updated_at";
+          await seed(store, requestId);
+          const before = await store.get(requestId);
+          expect(before?.updatedAt).toBeTypeOf("number");
+
+          const stamp = (before as RequestRecord).updatedAt + 5_000;
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            stamp
+          );
+          expect(result.applied).toBe(true);
+
+          const after = await store.get(requestId);
+          expect(after?.updatedAt).toBe(stamp);
+        });
+      });
+
+      it("clears the flag when written false", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_clear";
+          await seed(store, requestId);
+          await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+          expect(await store.isAbortRequested(requestId)).toBe(true);
+
+          await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: false },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(await store.isAbortRequested(requestId)).toBe(false);
+          expect((await store.get(requestId))?.abortRequested).not.toBe(true);
+        });
+      });
+    });
+
+    // The pair that pins `abortRequested` leaving `set`'s write surface. Both
+    // directions matter: one-directional preservation is a monotonic
+    // "never lower a stored true" rule wearing a different hat, and that rule
+    // makes undelivered intent permanent.
+    describe("set ignores abortRequested", () => {
+      it("does not clear a stored flag when the written record omits it", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_set_omits";
+          await seed(store, requestId);
+          await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          // A worker's full-record write, built from a snapshot taken before
+          // the flag was set. This is all six full-record writers.
+          const stale = makeRecord(requestId, "in_progress", []);
+          expect(stale.abortRequested).toBeUndefined();
+          await store.set(requestId, stale, "any");
+
+          expect(await store.isAbortRequested(requestId)).toBe(true);
+          expect((await store.get(requestId))?.abortRequested).toBe(true);
+        });
+      });
+
+      it("does not set the flag when the written record carries it", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_set_carries";
+          await seed(store, requestId);
+
+          await store.set(
+            requestId,
+            { ...makeRecord(requestId, "in_progress", []), abortRequested: true },
+            "any"
+          );
+
+          expect(await store.isAbortRequested(requestId)).toBe(false);
+          expect((await store.get(requestId))?.abortRequested).not.toBe(true);
+        });
+      });
+
+      it("does not clear a stored flag on a record created carrying it", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_set_create";
+          await store.set(
+            requestId,
+            { ...makeRecord(requestId, "in_progress", []), abortRequested: true },
+            "any"
+          );
+          // Creation cannot set it either — `set` is inert in both directions.
+          expect(await store.isAbortRequested(requestId)).toBe(false);
+
+          await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+          // ...and a later full-record write still cannot clear it.
+          await store.set(requestId, makeRecord(requestId, "in_progress", []), "any");
+          expect(await store.isAbortRequested(requestId)).toBe(true);
+        });
       });
     });
   });

@@ -1,7 +1,6 @@
 import type { StateRef } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { DeclaredResources } from "@flow-state-dev/core";
-import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
 import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
@@ -16,6 +15,12 @@ import type {
   StateChange,
   TestBlockOptions
 } from "../test-utilities/types";
+import {
+  asRecord,
+  generateId,
+  toJsonObject,
+  toJsonObjectRecord
+} from "../internal/json-helpers";
 import { createMockModelResolver } from "../mocks/mockGenerator";
 
 const STATE_OPERATIONS = [
@@ -72,42 +77,8 @@ export type TestContextRuntime = {
   getItems: () => OutputItem[];
 };
 
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function toJsonObject(value: Record<string, unknown>): JsonObject {
-  const out: JsonObject = {};
-
-  for (const [key, entry] of Object.entries(value)) {
-    out[key] = entry as JsonValue;
-  }
-
-  return out;
-}
-
-function toJsonObjectRecord(
-  value: Record<string, unknown>
-): Record<string, JsonObject> {
-  const out: Record<string, JsonObject> = {};
-
-  for (const [key, entry] of Object.entries(value)) {
-    out[key] = toJsonObject(asRecord(entry));
-  }
-
-  return out;
-}
-
 function nowMs(): number {
   return Date.now();
-}
-
-function generateId(prefix: string): string {
-  return `${prefix}_${nowMs()}_${Math.random().toString(16).slice(2)}`;
 }
 
 function buildFlatResourceMap(
@@ -200,7 +171,10 @@ async function seedStores(options: {
     if (resources === undefined) return;
     const normalized = toJsonObjectRecord(cloneValue(resources));
     for (const [key, value] of Object.entries(normalized)) {
-      await options.stores.resourceState.set(scopeType, scopeId, key, value);
+      // Seeding a fresh scope before the flow runs: no concurrent writer
+      // exists, so `"any"` is the honest posture rather than a version the
+      // harness would have to invent.
+      await options.stores.resourceState.set(scopeType, scopeId, key, value, "any");
     }
   };
 

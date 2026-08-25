@@ -12,7 +12,7 @@
  *     publish, and convergence is computed over the survivors.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -167,7 +167,7 @@ function phase3to5Mocks() {
       script: [{
         structuredOutput: {
           label: "Trade proposal", headline: "Long.", rating: "long" as const,
-          metrics: { direction: "long", size: "1.4%", stop: "$132", target: "$185", conviction: "0.62" },
+          metrics: { direction: "long", size: "1.4%", conviction: "0.62" },
           body: [
             { h: "Reading", p: "x.", items: null },
             { h: "Proposal", p: "x.", items: null },
@@ -175,6 +175,7 @@ function phase3to5Mocks() {
             { h: "Exit", p: "x.", items: null },
           ],
           direction: "long" as const, sizePct: 1.4, stopPrice: 132, targetPrice: 185,
+          reassessBelowPrice: null, invalidateAbovePrice: null,
           holdingPeriod: "months" as const, invalidationCriteria: ["x"], dependsOn: ["AI cap-ex cycle length"],
           citations: null,
         },
@@ -296,7 +297,7 @@ describe("phase-2b lens pack", () => {
     });
     expect(result.status).toBe("completed");
 
-    const resources = await stores.resourceState.getAll("session", sessionId);
+    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     for (const id of LENS_IDS) {
       const memo = resources[`memos/p2b/${id}`] as { status?: string } | undefined;
       expect(memo?.status).toBe("published");
@@ -327,7 +328,7 @@ describe("phase-2b lens pack", () => {
     });
     expect(result.status).toBe("completed");
 
-    const resources = await stores.resourceState.getAll("session", sessionId);
+    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     for (const id of LENS_IDS) {
       expect(resources[`memos/p2b/${id}`]).toBeUndefined();
     }
@@ -360,7 +361,7 @@ describe("phase-2b lens pack", () => {
     });
     expect(result.status).toBe("completed");
 
-    const resources = await stores.resourceState.getAll("session", sessionId);
+    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     expect((resources["memos/p2b/forensic-skeptic"] as { status?: string })?.status).toBe("error");
     for (const id of ["quality-value", "cycle-risk", "macro-reflexive"]) {
       expect((resources[`memos/p2b/${id}`] as { status?: string })?.status).toBe("published");

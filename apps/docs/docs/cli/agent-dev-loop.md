@@ -47,6 +47,8 @@ pnpm fsdev run ... 2>/dev/null | jq -r 'select(.type=="content_delta") | .delta'
 
 `--quiet` silences stderr when you only want the NDJSON. `--log-level debug` adds nested-block events for tracing inside sequencers and routers.
 
+A run that prints `flow_complete` and then sits there is usually waiting on background work the flow started; stderr says so, unless you silenced it. See [Background work](./overview.md#background-work).
+
 ## Useful flag combinations
 
 | Flag | What it does | When to reach for it |
@@ -55,9 +57,7 @@ pnpm fsdev run ... 2>/dev/null | jq -r 'select(.type=="content_delta") | .delta'
 | `-f, --input-file <path>` | Read input from a JSON file | Long fixtures |
 | `-s, --session <id>` | Reuse session state across invocations | Multi-turn flows |
 | `--seed-session <json\|path>` | Pre-populate session state | Reproducing a specific bug state |
-| `--seed-user <json\|path>` | Pre-populate user-scoped state | User-memory features |
-| `--seed-org <json\|path>` | Pre-populate org-scoped state | Multi-tenant features |
-| `-m, --model <id>` | Override the model for every generator | Cheap iteration, forcing a path |
+| `-m, --model <id>` | Override the model for every generator in this process; [not for background work sent to a queue](./overview.md#model-overrides) | Cheap iteration, forcing a path |
 | `--flow-dir <path>` | Restrict flow discovery (repeatable) | Monorepo with many candidate flows |
 | `--capture <path>` | Write the full structured run output to a JSON file (additive with stdout) | Diffing runs, sharing a trace |
 | `--quiet` | Suppress stderr runtime logs | Piping NDJSON cleanly |

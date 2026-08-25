@@ -31,6 +31,15 @@ export type FilesystemActiveRequestRegistryOptions = {
 };
 
 export class FilesystemActiveRequestRegistry implements ActiveRequestRegistry {
+  /**
+   * The registry file may sit on a volume every worker mounts, or in a
+   * per-process temp dir — and this adapter cannot tell which from its own
+   * construction. Where it cannot know, it declares not shared (FIX-999), so a
+   * deployment that really is shared gets liveness refused rather than a
+   * deployment that is not getting liveness that lies.
+   */
+  readonly sharedAcrossProcesses = false;
+
   private readonly filePath: string;
   private readonly directory: string;
   private readonly fsync: boolean;

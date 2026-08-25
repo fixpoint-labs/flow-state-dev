@@ -105,7 +105,7 @@ export const skillsCap = createSkillsCapability({
     crawl: crawlTool,
   },
   initialSkills,
-  scope: "project",
+  scope: "user",
   itemVisibility: { client: true, history: true },
 });
 ```
@@ -115,7 +115,7 @@ A few notes:
 - `readSkillsDirectory` is async. Top-level `await` works in ESM (which Next.js, modern Node, and bundlers all support). If your toolchain doesn't support it, wrap the module in an async initializer.
 - `initialSkills` is lazy-seeded. The skills aren't written to the collection until the first `runSkill` call, so module load is cheap.
 - `errors` is an array, not a throw. A single malformed skill doesn't block the rest from seeding.
-- `scope: "project"` puts the skills in the project resource scope, shared across users. Use `"user"` for per-user skills, `"session"` mostly for tests.
+- `scope` decides where the collection lives, and it defaults to `"org"`. This guide passes `"user"` explicitly: a user-scoped library needs nothing beyond the `userId` every request already carries, and each person gets their own copy. `"org"` gives everyone in an organization one shared library, but it only works once sessions are bound to an org, and that binding should come from a principal your server resolves rather than from anything the browser sends. See [Authentication](/docs/server/authentication). `"session"` is mainly for tests. Whichever you pick, the activator in Step 5 picks it up on its own — it looks the collection up by name at runtime, so it reads whatever scope you set here.
 - `itemVisibility: { client: true, history: true }` is explained in Step 5.
 
 ## Step 4: Attach the capability to your generator
@@ -128,7 +128,7 @@ import { skillsCap } from "./lib/capabilities";
 export const assistant = generator({
   name: "assistant",
   itemVisibility: { client: true, history: true },
-  model: "preset/medium",
+  model: "openai/gpt-5.5",
   prompt: [
     "You are a helpful assistant.",
     "When the user's request matches a skill description, call runSkill.",
@@ -154,7 +154,7 @@ Three tiers, each gated by whether an earlier tier resolved:
 
 1. **Slash match.** `/check-news how is OpenAI doing?` activates `check-news` deterministically. No LLM call.
 2. **Keyword scan.** Each skill's `keywords` frontmatter is matched as plain substrings of the lowercased message. No LLM call.
-3. **LLM classifier.** A `preset/fast` generator with structured output decides when the earlier tiers don't. Confidence-gated and validated against the catalog so it can't hallucinate skill names.
+3. **LLM classifier.** An `intent/utility` generator with structured output decides when the earlier tiers don't. Confidence-gated and validated against the catalog so it can't hallucinate skill names.
 
 Build a `skillActivator` next to your skills capability and opt out of the `runSkill` preset at the use site:
 
@@ -176,7 +176,9 @@ export const skillsCap = createSkillsCapability({
 });
 
 export const skillActivator = createSkillActivator({
-  scope: "user", // must match the skills capability
+  // The activator runs before the generator, so it seeds the catalog itself.
+  // Without this, the tiers scan an empty collection on the very first turn.
+  initialSkills,
 });
 ```
 
@@ -189,7 +191,7 @@ import { skillActivator, skillsCap } from "./lib/capabilities";
 export const assistant = generator({
   name: "assistant",
   itemVisibility: { client: true, history: true },
-  model: "preset/medium",
+  model: "openai/gpt-5.5",
   prompt: "You are a helpful assistant. Active skills override defaults.",
   // The active-skill body formatter (in the `context` preset) stays on,
   // so matched skills still get their body injected.
@@ -316,7 +318,7 @@ If you don't use the bash capability, skip this step — reference files remain 
 
 ## Step 9: Let users edit skills at runtime
 
-This is where the Markdown-as-resource design earns its keep. Skills live in the project-scoped `skills` collection. Any surface that can write to a resource can edit them:
+This is where the Markdown-as-resource design earns its keep. Skills live in the `skills` resource collection. Any surface that can write to a resource can edit them:
 
 - **DevTool** (built-in). Navigate to the skills collection, open a SKILL.md, edit, save. The next turn reflects the change.
 - **CLI.** Use the client package to read and write resource content programmatically.
@@ -328,7 +330,7 @@ If you want to ship skill updates alongside code, the pattern most apps use is: 
 
 ## Step 10 (optional): Delegate to sub-workers
 
-Some skills are better handled by a small team than a single agent. A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool when it's bound to a generator. The generator assigns work as tasks (`addTask` with an `assignee` naming one of the skill's agents, `deps` to order them) and runs the whole graph by calling `runBoard`. The board runs the agents — there is no per-agent tool the generator calls by hand.
+Some skills are better handled by a small team than a single agent. A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool when it's bound to a generator. The generator assigns work as tasks (`addTask` with an `assignee` naming one of the skill's agents, `deps` to order them) and runs the whole graph by calling `runBoard`. The board runs the agents — there is no per-agent tool the generator calls by hand. An assignee can also name one of the generator's own tools, which runs as a direct call with no model turn.
 
 [Authoring a delegating skill](/guides/agents-command-the-board) walks the whole path end to end: declaring the team, staffing each seat, planning the graph, draining it, and what the failures look like. See [Delegation](/docs/skills/delegation) for the frontmatter shape and the board overrides.
 

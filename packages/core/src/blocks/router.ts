@@ -232,6 +232,11 @@ export function router<
     ownDeclaredResources,
     resolvedCapabilities,
     requiresOrg: routesRequireOrg,
+    // The routes ARE the router's children, so detached worker bindings bubble
+    // up from them without a rail of their own (FIX-982). A board reached only
+    // down one arm is still a board the flow must be able to route to after a
+    // restart.
+    childBlocks: config.routes ?? [],
     execute: async (input, ctx) => {
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>

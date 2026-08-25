@@ -3,7 +3,6 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
-  ActionConfig,
   ActionCore,
   BlockDefinition,
   FlowInstance,
@@ -36,7 +35,7 @@ export type ExecutionMetadata = {
   scope?: FlowErrorScope;
   attempt?: number;
   stepIndex?: number;
-  workGroupId?: string;
+  sideChainGroupId?: string;
   tags?: Record<string, unknown>;
 };
 
@@ -130,6 +129,32 @@ export type RunActionOptions<
    */
   onItem?: (item: OutputItem, kind: "added" | "updated" | "done") => void;
   /**
+   * Fired once this run's `activeRequests` entry has committed — the point the
+   * request becomes discoverable to a stream read, the stale-request sweeper
+   * and recovery (FIX-982).
+   *
+   * Exists because starting a run and having a run are different facts, and
+   * only `runAction` knows when the second one becomes true. `runAction` is
+   * async, so a caller holding its promise has a run that may still fail during
+   * registration; a caller that wants "it exists" without waiting for "it
+   * finished" has nothing else to await. The in-process dispatcher turns this
+   * into its handle's `accepted`, which is what a detached spawn awaits before
+   * it lets go of the task it handed over.
+   *
+   * Fires at most once, and never at all for a run that dies before
+   * registration — that failure surfaces on the returned promise, which is the
+   * signal a consumer pairs this with.
+   *
+   * **Registration is discoverability, not safety**, and the difference is
+   * smaller than it looks. Setup after this point can still fail without
+   * recording anything — but a caller handing over durable work is protected by
+   * that work's own lease, not by this signal: if the run dies at any point, the
+   * lease lapses and the owner recovers the row. What this buys is that the
+   * failure is *visible* rather than silent, which is what a fire-and-forget
+   * caller has no other way to learn.
+   */
+  onRegistered?: () => void;
+  /**
    * Same-request continuation flag (FIX-811). Set by `continueRequest` when a
    * suspended/interrupted request re-enters under its OWN id. Triggers replay
    * mode: prior persisted items are loaded into a `ReplayLog` so completed
@@ -146,15 +171,6 @@ export type RunActionOptions<
    * {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
-};
-
-export type RunActionResolved<
-  TFlow extends FlowInstance = FlowInstance,
-  TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
-> = {
-  action: ActionConfig;
-  requestId: string;
-  startedAtMs: number;
 };
 
 /**
@@ -183,7 +199,7 @@ export function createExecutionMetadata(
     scope: overrides.scope,
     attempt: overrides.attempt,
     stepIndex: overrides.stepIndex,
-    workGroupId: overrides.workGroupId,
+    sideChainGroupId: overrides.sideChainGroupId,
     tags: overrides.tags
   };
 }

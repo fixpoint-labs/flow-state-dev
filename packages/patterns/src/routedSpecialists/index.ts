@@ -38,8 +38,14 @@ import type {
 } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
+  currentLeaseRenewal,
   getOrCreateTaskCollection,
+  stampLeaseRenewal,
+  startLeaseRenewal,
+  withLeaseRenewalScope,
+  ticketForClaim,
   type Task,
+  type TaskClaimTicket,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration";
 import {
@@ -373,56 +379,78 @@ export function routedSpecialists<
     name: `${name}-record-iteration`,
     inputSchema: controllerOutputSchema,
     sequencerStateSchema: routedSpecialistsControlSchema,
-    execute: async (input, ctx) => {
-      const state = ctx.sequencer!.state;
-      const nextIteration = state.iteration + 1;
+    // FIRST STATEMENT, before any await (FIX-1005) — the wrapper opens the
+    // slot the driver below is published through. Past the first `await` the
+    // slot would land on a scope that dies with this block and no later step
+    // could reach it. It also stops that driver if anything below throws: the
+    // claim is committed by then, but the dispatch step that would have settled
+    // it never runs, so nothing else would.
+    execute: async (input, ctx) =>
+      withLeaseRenewalScope(async () => {
+        const state = ctx.sequencer!.state;
+        const nextIteration = state.iteration + 1;
 
-      let currentTaskId: string | undefined;
-      let currentAttempt: number | undefined;
-      if (!input.done && input.specialist) {
-        const collection = await getCollection(ctx, collectionId);
-        const task = await collection.addTask({
-          goal: input.reasoning || `iteration ${nextIteration}`,
-          assignee: input.specialist,
-          metadata: {
-            iteration: nextIteration,
-            reasoning: input.reasoning,
-          },
+        let currentTaskId: string | undefined;
+        let currentClaim: TaskClaimTicket | undefined;
+        if (!input.done && input.specialist) {
+          const collection = await getCollection(ctx, collectionId);
+          const task = await collection.addTask({
+            goal: input.reasoning || `iteration ${nextIteration}`,
+            assignee: input.specialist,
+            metadata: {
+              iteration: nextIteration,
+              reasoning: input.reasoning,
+            },
+          });
+          // Claim immediately so recordCompletion can transition to completed —
+          // the substrate enforces pending → in_progress → completed.
+          const claimed = await collection.claim(`routedSpecialists:${name}`, {
+            eligibility: (t) => t.id === task.id,
+          });
+          currentTaskId = task.id;
+          // Mint from the CLAIM, not from `task` — `addTask` returns the
+          // pre-claim task, whose `attempts` is still 0 (FIX-951/FIX-981). Left
+          // undefined if the claim somehow lost, which skips the ownership guard
+          // rather than declining every write with a ticket nobody holds.
+          currentClaim =
+            claimed === null ? undefined : ticketForClaim(collection.collectionId, claimed);
+          // FIX-1005: renew this claim's lease while the specialist runs. The
+          // claim and the work are in different steps here, so the driver rides
+          // the per-claim async scope rather than a callback — same rules, same
+          // driver, and `recordCompletion` / `recordError` stop it on both exits.
+          if (claimed !== null && currentClaim !== undefined) {
+            stampLeaseRenewal(
+              startLeaseRenewal({
+                collection,
+                ticket: currentClaim,
+                claimedTask: claimed,
+                signal: ctx.signal,
+              })
+            );
+          }
+        }
+
+        // Always overwrite `currentTaskId` (including clearing it when no task
+        // was created this iteration) so `recordCompletion` doesn't re-complete
+        // a previous iteration's task with this iteration's controller output.
+        await ctx.sequencer!.patchState({
+          iteration: nextIteration,
+          currentSpecialist: input.specialist ?? undefined,
+          done: input.done,
+          currentTaskId,
+          currentClaim,
         });
-        // Claim immediately so recordCompletion can transition to completed —
-        // the substrate enforces pending → in_progress → completed.
-        const claimed = await collection.claim(`routedSpecialists:${name}`, {
-          eligibility: (t) => t.id === task.id,
-        });
-        currentTaskId = task.id;
-        // Read `attempts` off the CLAIM, not off `task` — `addTask` returns
-        // the pre-claim task, whose `attempts` is still 0 (FIX-951). Left
-        // undefined if the claim somehow lost, which skips the attempt guard
-        // rather than declining every write with a mismatched number.
-        currentAttempt = claimed?.attempts;
-      }
 
-      // Always overwrite `currentTaskId` (including clearing it when no task
-      // was created this iteration) so `recordCompletion` doesn't re-complete
-      // a previous iteration's task with this iteration's controller output.
-      await ctx.sequencer!.patchState({
-        iteration: nextIteration,
-        currentSpecialist: input.specialist ?? undefined,
-        done: input.done,
-        currentTaskId,
-        currentAttempt,
-      });
-
-      if (input.done) {
-        ctx.emit.status(
-          `[routedSpecialists:${name}] converged after ${state.iteration} iterations`
-        );
-      } else if (input.specialist) {
-        ctx.emit.status(
-          `[routedSpecialists:${name}] invoking specialist: ${input.specialist}`
-        );
-      }
-    },
+        if (input.done) {
+          ctx.emit.status(
+            `[routedSpecialists:${name}] converged after ${state.iteration} iterations`
+          );
+        } else if (input.specialist) {
+          ctx.emit.status(
+            `[routedSpecialists:${name}] invoking specialist: ${input.specialist}`
+          );
+        }
+      }),
   });
 
   // 4. Dispatch: routes to the named specialist. Wrapped in rescue so a
@@ -438,12 +466,23 @@ export function routedSpecialists<
       ctx.emit.status(
         `[routedSpecialists:${name}] specialist failed: ${message}`
       );
-      if (state.currentTaskId) {
-        const collection = await getCollection(ctx, collectionId);
-        await collection.fail(state.currentTaskId, message, {
-          ifAllowed: true,
-          expectAttempt: state.currentAttempt,
-        });
+      try {
+        if (state.currentTaskId) {
+          const collection = await getCollection(ctx, collectionId);
+          await collection.fail(state.currentTaskId, message, {
+            ifAllowed: true,
+            ...(state.currentClaim !== undefined ? { claim: state.currentClaim } : {}),
+          });
+        }
+      } finally {
+        // AFTER the fenced write, not before it. `fail` is fenced on this
+        // iteration's claim, and the fence refuses a write on a row whose lease
+        // has lapsed — so stopping first would let a lease that expires during
+        // one store round trip turn a recorded failure into a lost claim, and
+        // the task would be re-run. A renewal still in flight is harmless: it
+        // writes only `leaseUntil`, and on a settled row it is declined and the
+        // driver stops itself.
+        currentLeaseRenewal()?.stop();
       }
       // Recovery is signalled out-of-band via `ctx.wasRescued(dispatch)`, so
       // the value threaded downstream carries no rescue marker.
@@ -467,12 +506,20 @@ export function routedSpecialists<
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
       const state = ctx.sequencer!.state;
-      if (state.currentTaskId !== undefined && !ctx.wasRescued(dispatch)) {
-        const collection = await getCollection(ctx, collectionId);
-        await collection.complete(state.currentTaskId, input, {
-          ifAllowed: true,
-          expectAttempt: state.currentAttempt,
-        });
+      try {
+        if (state.currentTaskId !== undefined && !ctx.wasRescued(dispatch)) {
+          const collection = await getCollection(ctx, collectionId);
+          await collection.complete(state.currentTaskId, input, {
+            ifAllowed: true,
+            ...(state.currentClaim !== undefined ? { claim: state.currentClaim } : {}),
+          });
+        }
+      } finally {
+        // The specialist returned AND its result is recorded, so the claim has
+        // nothing left to assert. Stopping before the `complete` would expose a
+        // healthy iteration to a lapsed-lease refusal and a re-run — see
+        // `recordError` above.
+        currentLeaseRenewal()?.stop();
       }
     },
   });
@@ -527,7 +574,25 @@ export function routedSpecialists<
     .tap(initWorkspace)
     .step(controller)
     .tap(recordIteration)
-    .stepIf((r: ControllerOutput) => !r.done, dispatch)
+    .stepIf((r: ControllerOutput) => !r.done, dispatch, {
+      // Run the specialist under the lease-loss signal, composed with the
+      // request's by the step dispatch (FIX-1005). Losing the claim stops the
+      // specialist paying for work it can no longer record.
+      abortSignal: () => currentLeaseRenewal()?.signal,
+      // `recordCompletion` / `dispatch-rescue` stop the driver on the exits
+      // they own, but a specialist that calls `ctx.suspend()` takes neither —
+      // `SuspensionError` bypasses `.rescue()` and a suspended request never
+      // aborts its signal — so without this the driver renews a parked row for
+      // as long as the host lives and nothing can recover it.
+      //
+      // ONLY that exit. On `returned` this hook fires before `recordCompletion`
+      // has written anything, and that write is fenced on the claim; stopping
+      // here would risk the fence refusing a healthy iteration's result and the
+      // work being redone.
+      onSettled: (_ctx, outcome) => {
+        if (outcome === "suspended") currentLeaseRenewal()?.stop();
+      },
+    })
     .tap(recordCompletion)
     .tap(emitSnapshot)
     .step(checkLoop)

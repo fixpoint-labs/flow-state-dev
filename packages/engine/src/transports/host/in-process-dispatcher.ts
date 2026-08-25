@@ -53,6 +53,25 @@ export interface InProcessDispatcher extends FlowDispatcher {
 }
 
 /**
+ * Whether a dispatcher runs work in THIS process.
+ *
+ * `dispatchLocal` is the discriminator because it is the capability that cannot
+ * cross a serialization boundary — a dispatcher that accepts a live
+ * `AbortSignal` and `ResponseEmitter` is necessarily running the work here. An
+ * `undefined` dispatcher is in-process too: the host builds its own
+ * `createInProcessDispatcher` for that case.
+ *
+ * Shared rather than re-tested per call site so the host's dispatch branch and
+ * anything else keying on locality cannot drift apart and disagree about the
+ * same dispatcher (FIX-1077).
+ */
+export function isInProcessDispatcher(
+  dispatcher: FlowDispatcher | undefined
+): boolean {
+  return dispatcher === undefined || "dispatchLocal" in dispatcher;
+}
+
+/**
  * Create a dispatcher that runs actions in the current process. The host
  * delegates to `dispatchLocal` (which accepts non-serializable context)
  * while the generic `FlowDispatcher.dispatch` interface is also satisfied
@@ -77,6 +96,23 @@ export function createInProcessDispatcher(
       ? combineSignals(local.signal, abortController.signal)
       : abortController.signal;
 
+    // Acceptance, separated from completion (FIX-982). `runAction` is async, so
+    // this function returns while the run is still at its first await — the
+    // `activeRequests` write has been *issued* and not committed. A caller that
+    // reads the bare handle as "the request exists" is trusting a write that can
+    // still fail, into a `finished` a fire-and-forget caller is not holding.
+    //
+    // It reports discoverability and nothing more. Setup after it can still
+    // fail; what protects a caller that handed over durable work is that work's
+    // own lease, and what this adds is that the failure is visible rather than
+    // silent.
+    let markAccepted: () => void = () => {};
+    let failAccepted: (error: unknown) => void = () => {};
+    const accepted = new Promise<void>((resolve, reject) => {
+      markAccepted = resolve;
+      failAccepted = reject;
+    });
+
     const finished = runAction({
       flow,
       actionName: envelope.actionName as keyof typeof flow.actions & string,
@@ -92,12 +128,23 @@ export function createInProcessDispatcher(
       signal,
       stores,
       responseEmitter: local.responseEmitter,
-      runtimeConfig: local.effectiveRuntimeConfig
+      runtimeConfig: local.effectiveRuntimeConfig,
+      onRegistered: markAccepted
     });
+
+    // Settles acceptance for a run that never reached registration: the failure
+    // it died of becomes the acceptance failure. A run that DID register has
+    // already resolved it, so both arms are no-ops by then.
+    finished.then(markAccepted, failAccepted);
+    // Every existing caller wants `finished` only. Marking it handled keeps an
+    // early failure from surfacing as an unhandled rejection; callers that await
+    // it still observe it.
+    void accepted.catch(() => {});
 
     return {
       requestId: envelope.requestId,
       finished: finished as Promise<ExecutionResult>,
+      accepted,
       abort: () => abortController.abort()
     };
   };
@@ -118,7 +165,12 @@ export function createInProcessDispatcher(
   };
 }
 
-function combineSignals(outer: AbortSignal, inner: AbortSignal): AbortSignal {
+/**
+ * One signal that aborts when either does. Exported so a caller that already
+ * holds a cancellation for a run can hand it in rather than mint a competing
+ * one — see the queued branch in `createInboundTransportHost`.
+ */
+export function combineSignals(outer: AbortSignal, inner: AbortSignal): AbortSignal {
   if (outer.aborted) return outer;
   return AbortSignal.any([outer, inner]);
 }

@@ -1,8 +1,12 @@
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { applyOffsetLimit } from "../shared";
+import { applyOffsetLimit, assertMaxDepthTwo } from "../shared";
 import { sortByUpdatedAtDesc } from "../../utils/sort";
 import type { ExpectedVersion, SetResult } from "../types";
+import {
+  assertDeltaExpectedVersion,
+  checkScopeWriteVersion
+} from "../scope-write-predicate";
 
 function toFileName(id: string): string {
   return `${encodeURIComponent(id)}.json`;
@@ -157,10 +161,26 @@ export type FilesystemRecordStore<
   TListOptions extends StoreListOptions
 > = {
   get(id: string): Promise<TRecord | undefined>;
+  /**
+   * Write a record under the per-id write lock.
+   *
+   * `beforeWrite` runs inside that lock, immediately before the record file
+   * is written, and receives the record as it exists on disk right then. It
+   * is the write-side counterpart of `delete`'s `alsoDelete`: it lets a
+   * caller inspect or migrate what is already stored without a second,
+   * separately-locked round trip. Doing that work ahead of the call instead
+   * releases the lock in between, and a delete issued afterwards can run to
+   * completion in the gap — leaving this write to recreate the record it
+   * just removed.
+   *
+   * It does not run when a CAS conflict refuses the write, because nothing
+   * is written in that case.
+   */
   set(
     id: string,
     value: TRecord,
-    expectedVersion: ExpectedVersion
+    expectedVersion: ExpectedVersion,
+    beforeWrite?: (current: TRecord | undefined) => Promise<void>
   ): Promise<SetResult<TRecord>>;
   /**
    * Atomically read-modify-write a record under the per-id write lock.
@@ -171,23 +191,34 @@ export type FilesystemRecordStore<
    * write that lands while the merge is pending is observed by `current`
    * here and preserved by the merge.
    *
+   * The merge may be async, and anything it awaits also runs inside the lock.
+   * That is what lets a caller keep a sidecar file (the request store's abort
+   * marker) in step with the record it belongs to: without it, the sidecar
+   * write lands after the lock is released, where a terminal write or a delete
+   * can slip in between the two.
+   *
    * Returns the new record, or `undefined` if the record does not exist.
    */
   update(
     id: string,
-    merge: (current: TRecord) => TRecord
+    merge: (current: TRecord) => TRecord | Promise<TRecord>
   ): Promise<TRecord | undefined>;
   /**
    * Version-predicated read-modify-write under the per-id lock. Unlike
    * `update` (which always writes), `casUpdate` aborts with a conflict when
    * the record is missing or its version doesn't match `expectedVersion`
    * (unless `"any"`). Returns the standard `SetResult`. Backs the delta verbs.
+   *
+   * `expectedVersion: "absent"` throws — this path updates an existing
+   * record. `verb` names the delta verb that called in, so the error points
+   * at the real call site rather than at this helper.
    */
   casUpdate<T extends TRecord>(
     id: string,
     expectedVersion: ExpectedVersion,
     mutate: CasUpdateMutator<TRecord>,
-    updatedAt: number
+    updatedAt: number,
+    verb: string
   ): Promise<SetResult<T>>;
   /** Replace a single depth-1 field inside the record's `state` slice (CAS). */
   patchField<T extends TRecord>(
@@ -220,7 +251,22 @@ export type FilesystemRecordStore<
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<T>>;
-  delete(id: string): Promise<void>;
+  /**
+   * Remove a record under the per-id write lock.
+   *
+   * The lock matters as much here as it does on the write verbs. Deleting
+   * outside it lets the removal land *inside* another writer's
+   * read-modify-write — between its read and its trailing `writeRecord` — and
+   * that write then puts the record straight back, so a delete that reported
+   * success leaves the record on disk.
+   *
+   * `alsoDelete` runs inside the same lock, immediately after the record file
+   * is removed. It is the delete-side counterpart of `update`'s async merge:
+   * a store with sidecar files (the request store's abort marker, event log
+   * and runOnce results) uses it to sweep them in the same serialized step, so
+   * no concurrent writer can observe the record and its sidecars disagreeing.
+   */
+  delete(id: string, alsoDelete?: () => Promise<void>): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
 };
 
@@ -237,6 +283,11 @@ export type CreateFilesystemRecordStoreOptions<
    */
   sort?: (left: TRecord, right: TRecord, options?: TListOptions) => number;
   /**
+   * Whether these list options ask for an **unordered** result (FIX-1010),
+   * in which case `sort` is skipped entirely. Defaults to always ordering.
+   */
+  unordered?: (options?: TListOptions) => boolean;
+  /**
    * Skip `.events.json`/`.runonce.*.json` sidecar files in `list`. Only the
    * request store (which co-locates sidecars with records and uses
    * framework-generated `req_*` ids) should enable this; see `isSidecarFile`.
@@ -250,11 +301,23 @@ function createWriteLock(): <T>(id: string, fn: () => Promise<T>) => Promise<T> 
   return <T>(id: string, fn: () => Promise<T>): Promise<T> => {
     const prior = inflight.get(id) ?? Promise.resolve();
     const next = prior.then(fn, fn);
-    const tracked = next.finally(() => {
-      if (inflight.get(id) === tracked) {
-        inflight.delete(id);
-      }
-    });
+    // `tracked` exists only to order the queue, so its rejection is nobody's
+    // to receive — the caller gets `next`, which carries the real outcome.
+    // Without the trailing `catch` a failed operation leaves a rejected
+    // promise with no handler attached, which Node reports as an unhandled
+    // rejection and, under the default `--unhandled-rejections=throw`, takes
+    // the process down. Locked operations do real I/O and can genuinely fail
+    // (EIO, ENOSPC, a rejecting `beforeWrite`/merge callback), so a store
+    // write that failed cleanly would otherwise kill the host it failed on.
+    // Swallowing here also keeps one failure from settling the next waiter,
+    // which `prior.then(fn, fn)` already assumes.
+    const tracked: Promise<unknown> = next
+      .finally(() => {
+        if (inflight.get(id) === tracked) {
+          inflight.delete(id);
+        }
+      })
+      .catch(() => undefined);
     inflight.set(id, tracked);
     return next;
   };
@@ -269,6 +332,7 @@ export function createFilesystemRecordStore<
   const { rootDir } = options;
   const filter = options.filter;
   const sort = options.sort ?? sortByUpdatedAtDesc;
+  const unordered = options.unordered;
   const skipSidecars = options.skipSidecars ?? false;
   const withLock = createWriteLock();
 
@@ -279,26 +343,37 @@ export function createFilesystemRecordStore<
     set: (
       id: string,
       value: TRecord,
-      expectedVersion: ExpectedVersion
+      expectedVersion: ExpectedVersion,
+      beforeWrite?: (current: TRecord | undefined) => Promise<void>
     ): Promise<SetResult<TRecord>> =>
       withLock(id, async () => {
+        // The read and the decision both sit inside the per-id lock, which
+        // is what makes `"absent"` atomic here — but only within this
+        // process. Two processes over one directory still race; the
+        // limitation is stated on the store contract and unchanged by this.
+        const needsCurrent = expectedVersion !== "any" || beforeWrite !== undefined;
+        const current = needsCurrent
+          ? await readRecord<TRecord>(rootDir, id)
+          : undefined;
         if (expectedVersion !== "any") {
-          const current = await readRecord<TRecord>(rootDir, id);
-          const currentVersion = current?.version ?? 0;
-          if (currentVersion !== expectedVersion) {
+          const refused = checkScopeWriteVersion(current, expectedVersion);
+          if (refused !== undefined) {
             return {
               ok: false,
-              conflict: { currentValue: current, currentVersion }
+              conflict: { currentValue: current, currentVersion: refused.currentVersion }
             };
           }
         }
+        // Same lock, same read. A hook that had to re-read or re-lock would
+        // reopen the window this parameter exists to close.
+        if (beforeWrite !== undefined) await beforeWrite(current);
         await writeRecord(rootDir, id, value);
         return { ok: true, version: value.version };
       }),
 
     update: (
       id: string,
-      merge: (current: TRecord) => TRecord
+      merge: (current: TRecord) => TRecord | Promise<TRecord>
     ): Promise<TRecord | undefined> =>
       withLock(id, async () => {
         // Re-read inside the lock so concurrent CAS writes (which take the
@@ -306,7 +381,7 @@ export function createFilesystemRecordStore<
         // with state-mutation writes and silently overwrite the state field.
         const current = await readRecord<TRecord>(rootDir, id);
         if (current === undefined) return undefined;
-        const next = merge(current);
+        const next = await merge(current);
         await writeRecord(rootDir, id, next);
         return next;
       }),
@@ -315,9 +390,14 @@ export function createFilesystemRecordStore<
       id: string,
       expectedVersion: ExpectedVersion,
       mutate: CasUpdateMutator<TRecord>,
-      updatedAt: number
-    ): Promise<SetResult<T>> =>
-      withLock(id, async () => {
+      updatedAt: number,
+      verb: string
+    ): Promise<SetResult<T>> => {
+      // Ahead of the lock, and ahead of the `+ 1` below: `"absent"` would
+      // otherwise reach that arithmetic and produce the string "absent1" as a
+      // version. Throws rather than conflicts — see `assertDeltaExpectedVersion`.
+      assertDeltaExpectedVersion(expectedVersion, verb);
+      return withLock(id, async () => {
         const current = await readRecord<TRecord>(rootDir, id);
         if (current === undefined) {
           return {
@@ -341,7 +421,8 @@ export function createFilesystemRecordStore<
         } as TRecord;
         await writeRecord(rootDir, id, nextRecord);
         return { ok: true, version: newVersion, record: nextRecord as T };
-      }),
+      });
+    },
 
     patchField: <T extends TRecord>(
       id: string,
@@ -368,7 +449,8 @@ export function createFilesystemRecordStore<
             state: { ...currentState, [path[0]]: value }
           };
         },
-        updatedAt
+        updatedAt,
+        "patchField"
       );
     },
 
@@ -393,7 +475,8 @@ export function createFilesystemRecordStore<
             state: { ...(current.state ?? {}), [path[0]]: baseline + delta }
           };
         },
-        updatedAt
+        updatedAt,
+        "incField"
       );
     },
 
@@ -418,7 +501,8 @@ export function createFilesystemRecordStore<
             state: { ...(current.state ?? {}), [path[0]]: [...baseline, ...values] }
           };
         },
-        updatedAt
+        updatedAt,
+        "pushToArray"
       );
     },
 
@@ -443,13 +527,18 @@ export function createFilesystemRecordStore<
           }
           return { ...current, state: currentState };
         },
-        updatedAt
+        updatedAt,
+        "deleteField"
       );
     },
 
-    delete: async (id: string): Promise<void> => {
-      await deleteRecord(rootDir, id);
-    },
+    delete: (id: string, alsoDelete?: () => Promise<void>): Promise<void> =>
+      withLock(id, async () => {
+        await deleteRecord(rootDir, id);
+        if (alsoDelete !== undefined) {
+          await alsoDelete();
+        }
+      }),
 
     list: async (listOptions?: TListOptions): Promise<TRecord[]> => {
       const all = await listRecords<TRecord>(rootDir, skipSidecars);
@@ -458,18 +547,12 @@ export function createFilesystemRecordStore<
           ? all
           : all.filter((entry) => filter(entry, listOptions));
 
-      filtered.sort((left, right) => sort(left, right, listOptions));
+      if (unordered?.(listOptions) !== true) {
+        filtered.sort((left, right) => sort(left, right, listOptions));
+      }
       return applyOffsetLimit(filtered, listOptions);
     }
   };
 
   return record;
-}
-
-function assertMaxDepthTwo(path: string[], verb: string): void {
-  if (path.length < 1 || path.length > 2) {
-    throw new Error(
-      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
-    );
-  }
 }

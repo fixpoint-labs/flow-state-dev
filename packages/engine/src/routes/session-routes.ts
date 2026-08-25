@@ -4,6 +4,7 @@
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
+import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import {
   asObject,
@@ -31,6 +32,18 @@ type SessionRouteContext = {
    * Undefined for single-tenant requests.
    */
   tenantId?: string;
+  /**
+   * The authenticated caller, when route-level authentication is active
+   * (see `route-auth.ts`). Undefined for an app on the framework default
+   * resolver, where these routes behave exactly as they always have.
+   */
+  principal?: ResolvedPrincipal;
+  /**
+   * For an anonymous cross-flow listing in a mixed app: the flow kinds that
+   * may be listed without a principal. Undefined means unrestricted. See
+   * `route-auth.ts`.
+   */
+  anonymousFlowKinds?: Set<string>;
 };
 
 export async function handleListSessions(
@@ -41,7 +54,11 @@ export async function handleListSessions(
   const url = new URL(request.url);
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
-    userId: getString(url.searchParams.get("userId")),
+    // An authenticated caller sees only their own sessions — the `userId`
+    // query param is a convenience filter, never a way to widen the result
+    // set past the principal. Without a principal (framework default
+    // resolver) the param is the only filter there is, unchanged.
+    userId: ctx.principal?.userId ?? getString(url.searchParams.get("userId")),
     // Always pass the tenant (present, possibly undefined) so listing isolates
     // to the calling tenant's sessions (FIX-682).
     tenantId: ctx.tenantId,
@@ -49,9 +66,18 @@ export async function handleListSessions(
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
 
+  // Anonymous cross-flow listing in a mixed app: withhold rows belonging to a
+  // flow that authenticates. Filtered after the query, so a page can come back
+  // shorter than `limit` — the alternative is one query per allowed kind, which
+  // is not worth it for a path that only exists when a host-level
+  // `resolvePrincipal` is absent.
+  const allowed = ctx.anonymousFlowKinds;
+  const visible =
+    allowed === undefined ? sessions : sessions.filter((s) => allowed.has(s.flowKind));
+
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key.
-    sessions: sessions.map((s) => ({
+    sessions: visible.map((s) => ({
       ...s,
       id: toBareSessionId(s.id, ctx.tenantId)
     }))
@@ -93,7 +119,12 @@ export async function handleCreateSession(
   }
 
   const body = await parseJsonBody(request);
-  const userId = getString(body.userId);
+  // Ownership comes from the resolved principal when one exists — never from
+  // `body.userId`, which the caller writes. The same rule the action path
+  // applies to `orgId` (BP-031): a verified identity is not displaceable by a
+  // request field. Apps on the framework default resolver have no principal,
+  // and `body.userId` remains the identity, as it is for their actions.
+  const userId = ctx.principal?.userId ?? getString(body.userId);
   if (userId === undefined) {
     return jsonResponse(400, {
       error: "Session creation requires non-empty userId"
@@ -103,12 +134,6 @@ export async function handleCreateSession(
   const now = Date.now();
   const sessionId = getString(body.sessionId) ?? generateId("sess");
   const sessionKey = resolveSessionStorageKey(sessionId, ctx.tenantId);
-  const existing = await ctx.stores.session.get(sessionKey);
-  if (existing !== undefined) {
-    return jsonResponse(409, {
-      error: `Session "${sessionId}" already exists`
-    });
-  }
 
   // Pre-apply the session state schema's defaults (`z.string().default("...")`,
   // `z.record(...).default({})`, etc.) so a brand-new session's `state`
@@ -142,20 +167,38 @@ export async function handleCreateSession(
     id: sessionKey,
     flowKind: flow.kind,
     userId,
-    orgId: getString(body.orgId),
+    // Same rule as `userId` above, and it matters more here: `validateDispatch`
+    // reads the stored session's `orgId` to satisfy a flow's `requiresOrg`, so
+    // a caller-supplied one would become an org binding the runtime later
+    // trusts. An authenticated caller gets the principal's org or none.
+    orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId,
     tenantId: ctx.tenantId,
     title: getString(body.title),
     description: getString(body.description),
     tags: asStringArray(body.tags),
     metadata: asObject(body.metadata),
     state: initialState,
+    // Minted per record. Recreating a deleted id therefore yields a NEW
+    // lineage, which is what makes a surviving descendant of the old one keep
+    // its own address with nothing conjoined in to keep them apart (FIX-1068).
+    lineageId: generateId("lin"),
     version: 0,
     createdAt: now,
     updatedAt: now,
     journal: []
   };
 
-  await ctx.stores.session.set(record.id, record, "any");
+  // The store decides the create race, not a `get`-then-`set` above it: two
+  // concurrent requests for one session id both passed an existence check and
+  // both wrote, and the loser silently overwrote the winner. "absent" makes
+  // the loser fail, so exactly one caller gets the 201.
+  const created = await ctx.stores.session.set(record.id, record, "absent");
+  if (!created.ok) {
+    return jsonResponse(409, {
+      error: `Session "${sessionId}" already exists`
+    });
+  }
+
   return jsonResponse(201, {
     session: { ...record, id: sessionId }
   });
@@ -253,6 +296,20 @@ export async function handleListSessionRequests(
     // (always present, possibly undefined) so history never crosses tenants.
     sessionId: route.sessionId,
     tenantId: ctx.tenantId,
+    // Conjoin the *stored session's* flow kind (FIX-1046). Nothing binds a
+    // request's flow kind to its session's — the adopt-an-existing-session
+    // branch of `createExecutionContext` validates user, org and tenant, and
+    // the engine defines no flow-kind binding error — while route
+    // authorization picks its resolver from the **session's** flow kind. So a
+    // request dispatched under a flow that authenticates, into a session
+    // stored under one that does not, was served here in full (items
+    // included) to a caller authorized only for the permissive flow.
+    //
+    // BP-030: this narrows an existing endpoint's results. A request whose
+    // recorded flow kind differs from its session's no longer appears — which
+    // is the point, and which no shipped writer produces on the ordinary path.
+    // Taken from the loaded record, never from the caller (BP-031).
+    flowKind: session.flowKind,
     status: getString(url.searchParams.get("status")) as
       | RequestStatus
       | undefined,

@@ -41,7 +41,13 @@ import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ExternalResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import { createScopePersist } from "../stores/scope-persist";
-import type { TraceStore } from "../stores/types";
+import { toBareState, toBareStates, toVersions } from "../stores/resource-state-views";
+import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
+import {
+  ConcurrentModificationError,
+  ResourceAlreadyExistsError
+} from "../errors/flow-error";
+import type { TraceStore, VersionedResourceState } from "../stores/types";
 import type {
   ContentScopeType,
   OrgRecord,
@@ -51,12 +57,14 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
-import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
-import { createRequestWorkPool } from "../execution/request-work-pool";
+import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
+import { createRequestHost } from "./create-request-host";
+import { ensureSessionRecord } from "./ensure-session-record";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
-import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
+import { cloneValue, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
@@ -78,6 +86,8 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { resolveOwnershipFlag } from "../resources/lineage-scope";
+import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { createInitialRequestRecord } from "./initial-request-record";
 import {
@@ -99,13 +109,13 @@ import {
   loadDeclaredScopeContent,
   loadDeclaredResourceState,
   filterFlowLevelEager,
-  isCollectionConfig,
   normalizeStateDefault,
   type LazyLoadOutcome,
   type ScopeLazyLoad,
   type ResourceChangeDelta,
   type ResourceSeamChangeType,
 } from "./resource-registry";
+import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 
 
@@ -267,10 +277,10 @@ type StatusSlot = { message: string };
 function createEmitStatus(
   emCtx: EmissionContext,
   slot: StatusSlot
-): (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }) => void {
+): (message: string | undefined, options?: { blocked?: boolean; sideChainTasks?: number; transient?: boolean }) => void {
   return function emitStatus(
     message: string | undefined,
-    options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
+    options?: { blocked?: boolean; sideChainTasks?: number; transient?: boolean }
   ): void {
     if (message !== undefined) {
       // Dedupe: skip when the proposed message matches the slot. `undefined`
@@ -299,7 +309,7 @@ function createEmitStatus(
       taskId: emCtx.taskId,
       message: slot.message,
       blocked: options?.blocked,
-      backgroundTasks: options?.backgroundTasks
+      sideChainTasks: options?.sideChainTasks
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -333,7 +343,7 @@ function buildTraceEmitters(
     blockKind?: "handler" | "generator" | "sequencer" | "router";
     blockInstanceId?: string;
     parentBlockInstanceId?: string;
-    phase?: "main" | "work";
+    phase?: "main" | "sideChain";
   } | undefined
 ): {
   blockTrace: (item: BlockTraceItem) => void;
@@ -438,13 +448,22 @@ export async function createExecutionContext<
     flow,
     stores
   } = options;
+
+  // The request-host seam (FIX-999) is built further down, once the session
+  // and org bindings have been RESOLVED — see "the request-host seam" below.
+  // It cannot be built here: `options.sessionId` may be absent (an ephemeral
+  // session is generated below) and `options.orgId` may be absent on a request
+  // against an org-bound session, so both would be read before the authoritative
+  // value exists.
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
-  // any scope without a `persist` callback). Plumbed through to every
-  // ScopeStateOpsOptions so the lock branch can fire
-  // ScopeMutationTimeoutError instead of hanging the request. External-
-  // store scopes still receive the option but ignore it — runWithCAS
-  // owns its own retry/timeout semantics.
+  // any scope without a `persist` callback). Plumbed through to those
+  // scopes so the lock branch can fire ScopeMutationTimeoutError instead
+  // of hanging the request. Deliberately NOT handed to any persist-backed
+  // scope: the timeout rejects the caller without cancelling the mutation,
+  // so applying it to a durable write lets an abandoned closure land on the
+  // store after the request has already terminalized. `applyMutation`
+  // enforces that too — this is the call site staying honest about it.
   const resolvedMutationTimeoutMs =
     flow.request?.mutationTimeoutMs ?? 30_000;
   // FIX-435: resources live in a single flat `flow.resources` map. Each
@@ -578,9 +597,12 @@ export async function createExecutionContext<
     await stores.user.set(userRecord.id, userRecord, "any");
   }
 
-  let sessionRecord = loadedSession;
-  if (sessionRecord === undefined) {
-    sessionRecord = {
+  // Created through the one path that mints the lineage id and writes
+  // create-if-absent (FIX-1068), so this request cannot overwrite a concurrent
+  // first action and cannot invent a second address for the same session.
+  let sessionRecord =
+    loadedSession ??
+    ((await ensureSessionRecord(stores, sessionKey, () => ({
       id: sessionKey,
       flowKind: flow.kind,
       userId,
@@ -592,11 +614,18 @@ export async function createExecutionContext<
       createdAt: now,
       updatedAt: now,
       journal: []
-    };
-    await stores.session.set(sessionRecord.id, sessionRecord, "any");
-  } else {
-    ensureJournalDefaults(sessionRecord);
+    }))) as typeof loadedSession & object);
 
+  ensureJournalDefaults(sessionRecord);
+
+  // The binding checks run HERE, on one path, rather than inside the
+  // already-existed branch. A request that loses the create race adopts the
+  // WINNER's record — which it did not build and whose identity it has not
+  // checked — so a branch-local check would let a losing request run against
+  // another principal's or another tenant's session. Running them
+  // unconditionally costs a comparison on the branch that built the record
+  // itself, where they pass by construction, and that is the cheaper mistake.
+  {
     // userId mismatch — closes a long-standing gap. The loaded session record's
     // userId is authoritative; a request claiming a different identity would
     // route this user's actions against another user's data.
@@ -632,6 +661,25 @@ export async function createExecutionContext<
   }
 
   const resolvedOrgId = sessionOrgId;
+
+  // The lineage root this session's `sharedToWorkstream` resources address
+  // (FIX-1068). Stamped on a child at creation by the detached-start writer; a
+  // record without it IS the root — true of every top-level session and of every
+  // record persisted before the field existed, so `== null` reads both the
+  // absent and the store-nulled form (BP-030).
+  // The lineage this session addresses its shared resources through (FIX-1068).
+  //
+  // Read back, not reconstructed. A record without the field predates it and is
+  // its own lineage, keyed by its session storage key — safe because a recreated
+  // session always gets a record that carries the field, so two records can
+  // never both land on one fallback id (BP-030).
+  // Prefixed, so the fallback can never EQUAL the session key. The storage
+  // scope is decided by comparing a resolved address against this value, and if
+  // an unstamped session's lineage id were its session key the two would be
+  // indistinguishable — routing unshared resources into the lineage namespace
+  // along with the shared ones.
+  const lineageId = sessionRecord.lineageId ?? `lin_${sessionKey}`;
+
   const resolvedOrgKey =
     resolvedOrgId !== undefined
       ? resolveOrgStorageKey(resolvedOrgId, flow)
@@ -656,6 +704,71 @@ export async function createExecutionContext<
       updatedAt: now
     };
     await stores.org.set(orgRecord.id, orgRecord, "any");
+  }
+
+  // The request-host seam (FIX-999), built ONCE here. Every nested scope
+  // inherits this same reference below, exactly as `stores` does, so a
+  // memoized capability helper reached from a nested block sees the same
+  // request-bound operations as the root scope.
+  //
+  // Built HERE, after session and org binding resolution, rather than from the
+  // raw `options`. Every verb authorises by descent from the running session
+  // and inherits the parent's org, so the seam has to close over the values
+  // execution actually ran with:
+  //
+  //  - `sessionId` is the EFFECTIVE session. An HTTP action may omit it, in
+  //    which case an ephemeral session is generated and persisted above. Such a
+  //    request has a perfectly valid `ctx.session`, so gating the seam on
+  //    `options.sessionId` withheld it from a request that had lineage to
+  //    reason about. The approved decision — no seam without a session — is
+  //    unchanged and now checks the thing it meant: every context has a session
+  //    by this point, so the seam is present whenever the host wired it.
+  //  - `resolvedOrgId` is the session's authoritative org. A dispatch against an
+  //    org-bound session may omit `orgId` (only a *differing* value is
+  //    rejected, above), so capturing `options.orgId` left the host unbound and
+  //    `startDetached` created children outside the parent's org, contrary to
+  //    its inheritance contract.
+  //
+  // `userId` and `tenantId` need no such resolution: both are validated to be
+  // equal to the loaded record's above (`UserBindingMismatchError`, and
+  // `tenantMatches` is strict equality), so the option and the resolved value
+  // cannot differ. Org is the one identity field whose check permits a
+  // difference, which is why it is the one that had to change.
+  const requestHostBuild =
+    options.requestHost !== undefined
+      ? createRequestHost({
+          stores,
+          flow,
+          identity: {
+            userId,
+            tenantId: options.tenantId,
+            orgId: resolvedOrgId,
+            sessionId,
+            lineageId
+          },
+          startOperation: options.requestHost.startOperation,
+          parentTask: options.requestHost.parentTask,
+          effectiveRuntimeConfig: options.effectiveRuntimeConfig,
+          liveness: {
+            heartbeatIntervalMs: flow.request?.heartbeatIntervalMs,
+            staleThresholdMs: options.requestHost.staleThresholdMs,
+            staleSweepIntervalMs: options.requestHost.staleSweepIntervalMs
+          }
+        })
+      : undefined;
+
+  if (requestHostBuild?.livenessRefusal !== undefined) {
+    // Named, not silent. An operator who never writes a capability still meets
+    // this, and a capability that is quietly missing reads as a bug.
+    logRuntimeEvent(
+      options.logger ?? DEFAULT_RUNTIME_LOGGER,
+      "info",
+      "[flow-state] request-host liveness capability not enabled",
+      {
+        reason: requestHostBuild.livenessRefusal.reason,
+        detail: requestHostBuild.livenessRefusal.detail
+      }
+    );
   }
 
   // FIX-701: per-block resource-load tracing. Records, per block dispatch,
@@ -808,67 +921,91 @@ export async function createExecutionContext<
   const scopeIdentityId = (scope: ContentScopeType): string | undefined =>
     scope === "session" ? sessionKey : scope === "user" ? userId : resolvedOrgId;
 
-  // Per scope: which storage keys (singles) and collection prefixes are
-  // isolated. Built once from the full config maps so any read/write can map a
-  // key to its bucket. Session never isolates, so only user/org are tracked.
-  type IsolationBuckets = {
+  // Per scope: which storage keys (singles) and collection prefixes carry the
+  // scope's storage-routing flag. Built once from the full config maps so any
+  // read/write can map a key to its bucket.
+  //
+  // The flag means something different per scope, but routes identically:
+  // user/org route on `flowIsolation` (bare identity vs `${id}:${flowKind}`,
+  // FIX-735); session routes on `sharedToWorkstream` (this session vs the
+  // lineage root, FIX-1068).
+  type ScopeBuckets = {
     singles: Map<string, boolean>;
-    prefixes: Array<{ prefix: string; isolated: boolean }>;
+    prefixes: Array<{ prefix: string; flag: boolean }>;
   };
-  const buildIsolationBuckets = (scope: "user" | "org"): IsolationBuckets => {
-    const configs = scope === "user" ? userResourceConfigs : orgResourceConfigs;
+  const buildScopeBuckets = (
+    scope: ContentScopeType,
+    configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
+    flagOf: (config: ResourceConfig | ResourceCollectionConfig) => boolean,
+    flagName: string
+  ): ScopeBuckets => {
     const keys = scopeStorageKeyMaps[scope];
     const singles = new Map<string, boolean>();
-    const prefixes: Array<{ prefix: string; isolated: boolean }> = [];
+    const prefixes: Array<{ prefix: string; flag: boolean }> = [];
     // FIX-735: collection storage is keyed by pattern prefix (load waves,
     // `getByPrefix`, single-flight tokens, and the loaded-prefix cache all key
     // on it). Two collections that share a prefix therefore share one storage
-    // slot and MUST share an isolation bucket — otherwise one would silently
-    // shadow the other's loads/writes. Patterns whose first segment is a
+    // slot and MUST share a bucket — otherwise one would silently shadow the
+    // other's loads/writes. Patterns whose first segment is a
     // parameter/wildcard collapse to the empty prefix (whole-scope scan), so
     // this most often bites two parameterized collections at one scope. Reject
     // the conflict loudly at setup rather than mis-route data.
-    const prefixIsolation = new Map<string, boolean>();
+    const prefixFlag = new Map<string, boolean>();
     for (const [accessor, config] of Object.entries(configs)) {
-      const isolated = resolveResourceIsolation(
-        (config as { flowIsolation?: boolean }).flowIsolation,
-        flow,
-        scope
-      );
+      const flag = flagOf(config);
       if (isCollectionConfig(config)) {
         const rawPrefix = getPatternPrefix(config.pattern);
         const keyPrefix = rawPrefix === "" ? "" : `${rawPrefix}/`;
-        const existing = prefixIsolation.get(keyPrefix);
-        if (existing !== undefined && existing !== isolated) {
+        const existing = prefixFlag.get(keyPrefix);
+        if (existing !== undefined && existing !== flag) {
           throw new Error(
             `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
-              `"${keyPrefix || "(whole scope)"}" declare conflicting flowIsolation. ` +
-              `Collections that share a storage prefix must share an isolation bucket — ` +
-              `give them distinct static prefixes or matching flowIsolation (FIX-735).`
+              `"${keyPrefix || "(whole scope)"}" declare conflicting ${flagName}. ` +
+              `Collections that share a storage prefix must share a storage bucket — ` +
+              `give them distinct static prefixes or matching ${flagName} (FIX-735).`
           );
         }
-        prefixIsolation.set(keyPrefix, isolated);
-        prefixes.push({ prefix: keyPrefix, isolated });
+        prefixFlag.set(keyPrefix, flag);
+        prefixes.push({ prefix: keyPrefix, flag });
       } else {
-        singles.set(keys[accessor] ?? accessor, isolated);
+        singles.set(keys[accessor] ?? accessor, flag);
       }
     }
     return { singles, prefixes };
   };
-  const isolationBuckets: Record<"user" | "org", IsolationBuckets> = {
-    user: buildIsolationBuckets("user"),
-    org: buildIsolationBuckets("org")
+  const isolationFlagOf =
+    (scope: "user" | "org") =>
+    (config: ResourceConfig | ResourceCollectionConfig): boolean =>
+      resolveResourceIsolation((config as { flowIsolation?: boolean }).flowIsolation, flow, scope);
+  const sharedToWorkstreamFlagOf = (
+    config: ResourceConfig | ResourceCollectionConfig
+  ): boolean => (config as { sharedToWorkstream?: boolean }).sharedToWorkstream === true;
+  const scopeBuckets: Record<ContentScopeType, ScopeBuckets> = {
+    session: buildScopeBuckets(
+      "session",
+      sessionResourceConfigs,
+      sharedToWorkstreamFlagOf,
+      "sharedToWorkstream"
+    ),
+    user: buildScopeBuckets("user", userResourceConfigs, isolationFlagOf("user"), "flowIsolation"),
+    org: buildScopeBuckets("org", orgResourceConfigs, isolationFlagOf("org"), "flowIsolation")
   };
 
   // Resolve the per-resource storage `scopeId` from a (scope, config). Used by
   // the eager load waves and persist paths, which hold the config and so can
-  // read its `flowIsolation` directly (correct for collections, whose accessor
-  // is not a key prefix). `undefined` when the scope is absent this request.
+  // read its `flowIsolation` / `sharedToWorkstream` directly (correct for
+  // collections, whose accessor is not a key prefix). `undefined` when the scope
+  // is absent this request.
   const resolveConfigScopeId = (
     scope: ContentScopeType,
     config: ResourceConfig | ResourceCollectionConfig
   ): string | undefined => {
-    if (scope === "session") return sessionKey;
+    // FIX-1068: a session-scoped resource marked `sharedToWorkstream` addresses
+    // the lineage root, so a parent and its Workstreams resolve one resource.
+    // Everything else stays on the running session, unchanged.
+    if (scope === "session") {
+      return sharedToWorkstreamFlagOf(config) ? lineageId : sessionKey;
+    }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
     const isolated = resolveResourceIsolation(
@@ -886,25 +1023,42 @@ export async function createExecutionContext<
   // *longest* declared prefix that owns them, so nested prefixes (e.g. `a/` and
   // `a/b/`) route to the right collection rather than the first one declared;
   // an undeclared key falls back to the flow-flag bucket.
+  // Ownership precedence lives in `resources/lineage-scope.ts` so the HTTP
+  // whole-scope reads resolve a key's owner with the same rule this does. Two
+  // implementations of "longest prefix wins" is how the two sides drift into
+  // disagreeing about which session a key belongs to.
+  const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined =>
+    resolveOwnershipFlag(scopeBuckets[scope], storageKey);
+
+  /**
+   * The scope kind a resolved address STORES under (FIX-1068).
+   *
+   * The lineage bucket is not a session bucket: session scope ids are
+   * caller-chosen, so a lineage address sharing that space is one a caller can
+   * occupy by picking the right session id. Giving it its own scope kind makes
+   * that collision unexpressible rather than merely unlikely — the two live in
+   * different key spaces, and no reservation has to hold at every entry point
+   * forever to keep them apart.
+   *
+   * Exactly the addresses `lineageId` names, which is the one
+   * address a session-scoped shared resource resolves to.
+   */
+  const storageScopeOf = (scope: ContentScopeType, scopeId: string): StorageScopeType =>
+    scope === "session" && scopeId === lineageId ? "lineage" : scope;
   const resolveResourceStorageScopeId = (
     scope: ContentScopeType,
     storageKey: string
   ): string | undefined => {
-    if (scope === "session") return sessionKey;
+    // FIX-1068: an undeclared session key falls back to `false` — the running
+    // session — which is the address it had before shared resources existed.
+    if (scope === "session") {
+      return resolveBucketFlag("session", storageKey) === true
+        ? lineageId
+        : sessionKey;
+    }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
-    const buckets = isolationBuckets[scope];
-    let isolated = buckets.singles.get(storageKey);
-    if (isolated === undefined) {
-      let bestLen = -1;
-      for (const p of buckets.prefixes) {
-        const matches = p.prefix === "" || storageKey.startsWith(p.prefix);
-        if (matches && p.prefix.length > bestLen) {
-          bestLen = p.prefix.length;
-          isolated = p.isolated;
-        }
-      }
-    }
+    let isolated = resolveBucketFlag(scope, storageKey);
     if (isolated === undefined) {
       isolated = scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
     }
@@ -912,10 +1066,11 @@ export async function createExecutionContext<
   };
 
   // Group a per-scope config subset by the storage scopeId each entry resolves
-  // to (at most two groups: shared + isolated). Lets the eager load waves issue
-  // one store read per bucket and merge. Empty when the scope is absent.
+  // to (at most two groups per scope: user/org split on `flowIsolation`,
+  // session on `sharedToWorkstream`). Lets the eager load waves issue one store
+  // read per bucket and merge. Empty when the scope is absent.
   const partitionConfigsByScopeId = (
-    scope: "user" | "org",
+    scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Map<string, Record<string, ResourceConfig | ResourceCollectionConfig>> => {
     const groups = new Map<string, Record<string, ResourceConfig | ResourceCollectionConfig>>();
@@ -929,27 +1084,93 @@ export async function createExecutionContext<
     return groups;
   };
 
+  // Drop rows a bucket scan swept up but does not own. A collection is loaded by
+  // its pattern PREFIX, so a broad prefix scans keys a narrower sibling owns —
+  // shared `tasks/**` reads `tasks/meta/a` at the lineage root even though
+  // private `tasks/meta/*` owns it in this session. Per-key routing already
+  // decides that correctly, so re-check each returned key against it and keep
+  // only the ones this bucket is the address for. Without this the surviving
+  // copy depends on which collection was declared first.
+  const retainOwnedKeys = <T>(
+    scope: ContentScopeType,
+    scopeId: string,
+    rows: Record<string, T>
+  ): Record<string, T> => {
+    const owned: Record<string, T> = {};
+    for (const [key, value] of Object.entries(rows)) {
+      if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
+    }
+    return owned;
+  };
+
+  /**
+   * Rows a session-scoped resource held BEFORE it was marked
+   * `sharedToWorkstream` (FIX-1068).
+   *
+   * Turning the flag on moves a resource from this session's own key to the
+   * lineage address. A resource already carrying data in a deployed app would
+   * otherwise read empty the moment the flag ships — not because anything was
+   * lost, but because nothing looks where it still is. So a shared key with no
+   * row at the lineage address falls back to this session's own key, which is
+   * exactly where the pre-adoption copy lives.
+   *
+   * Read-only and one-directional: the next write lands at the lineage address
+   * and the stale copy stops being consulted. Nothing is deleted, so a rollback
+   * finds its data where it left it.
+   */
+  const adoptionFallback = async <T>(
+    scope: ContentScopeType,
+    scopeId: string,
+    loaded: Record<string, T>,
+    sub: Record<string, ResourceConfig | ResourceCollectionConfig>,
+    read: (scopeId: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) => Promise<Record<string, T>>
+  ): Promise<Record<string, T>> => {
+    if (scope !== "session" || scopeId !== lineageId) return loaded;
+    if (scopeId === sessionKey) return loaded; // nothing moved
+    const prior = retainOwnedKeys(scope, sessionKey, await read(sessionKey, sub));
+    const merged: Record<string, T> = {};
+    for (const [key, value] of Object.entries(prior)) merged[key] = value;
+    for (const [key, value] of Object.entries(loaded)) merged[key] = value;
+    return merged;
+  };
+
   const loadScopeStateByBuckets = async (
-    scope: "user" | "org",
+    scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
-  ): Promise<Record<string, JsonObject>> => {
+  ): Promise<Record<string, VersionedResourceState>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
+    const readState = (id: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) =>
+      loadDeclaredResourceState(stores.resourceState, storageScopeOf(scope, id), id, sub);
     const results = await Promise.all(
-      [...groups].map(([scopeId, sub]) =>
-        loadDeclaredResourceState(stores.resourceState, scope, scopeId, sub)
+      [...groups].map(async ([scopeId, sub]) =>
+        adoptionFallback(
+          scope,
+          scopeId,
+          retainOwnedKeys(scope, scopeId, await readState(scopeId, sub)),
+          sub,
+          readState
+        )
       )
     );
-    return Object.assign({}, ...results) as Record<string, JsonObject>;
+    return Object.assign({}, ...results) as Record<string, VersionedResourceState>;
   };
 
   const loadScopeContentByBuckets = async (
-    scope: "user" | "org",
+    scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Promise<Record<string, string>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
+    const readContent = (id: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) =>
+      loadDeclaredScopeContent(stores.content, storageScopeOf(scope, id), id, sub);
     const results = await Promise.all(
-      [...groups].map(([scopeId, sub]) =>
-        loadDeclaredScopeContent(stores.content, scope, scopeId, sub)
+      [...groups].map(async ([scopeId, sub]) =>
+        adoptionFallback(
+          scope,
+          scopeId,
+          retainOwnedKeys(scope, scopeId, await readContent(scopeId, sub)),
+          sub,
+          readContent
+        )
       )
     );
     return Object.assign({}, ...results) as Record<string, string>;
@@ -957,7 +1178,7 @@ export async function createExecutionContext<
 
   const wave1Start = Date.now();
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    loadDeclaredScopeContent(stores.content, "session", sessionKey, sessionFlowLevelConfigs),
+    loadScopeContentByBuckets("session", sessionFlowLevelConfigs),
     loadScopeContentByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeContentByBuckets("org", orgFlowLevelConfigs)
@@ -983,19 +1204,34 @@ export async function createExecutionContext<
   // per-scope caches; in-execution reads/writes hit the cache and persist
   // per-key, never rewriting the whole scope record.
   const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
-    loadDeclaredResourceState(stores.resourceState, "session", sessionKey, sessionFlowLevelConfigs),
+    loadScopeStateByBuckets("session", sessionFlowLevelConfigs),
     loadScopeStateByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeStateByBuckets("org", orgFlowLevelConfigs)
-      : Promise.resolve<Record<string, JsonObject>>({})
+      : Promise.resolve<Record<string, VersionedResourceState>>({})
   ]);
 
-  const initialSessionState = normalizeScopeResources(sessionFlowLevelConfigs, sessionStateFromStore);
-  const initialUserState = normalizeScopeResources(userFlowLevelConfigs, userStateFromStore);
+  const initialSessionState = normalizeScopeResources(
+    sessionFlowLevelConfigs,
+    toBareStates(sessionStateFromStore)
+  );
+  const initialUserState = normalizeScopeResources(
+    userFlowLevelConfigs,
+    toBareStates(userStateFromStore)
+  );
   const initialOrgState = normalizeScopeResources(
     orgFlowLevelConfigs,
-    resolvedOrgId !== undefined ? orgStateFromStore : undefined
+    resolvedOrgId !== undefined ? toBareStates(orgStateFromStore) : undefined
   );
+
+  // FIX-992: the version each key was read at, kept beside the state cache and
+  // carried into every write as its `expectedVersion`. A key absent here has no
+  // observed version, which reads as `0` — "no live row" — so a write against
+  // it is create-if-absent rather than a blind overwrite.
+  const initialSessionVersions = toVersions(sessionStateFromStore);
+  const initialUserVersions = toVersions(userStateFromStore);
+  const initialOrgVersions =
+    resolvedOrgId !== undefined ? toVersions(orgStateFromStore) : {};
 
   // FIX-701 Wave 1: record the flow-eager preloads (content + state loaded in
   // the two parallel bursts above). These run before any block dispatch, so
@@ -1070,6 +1306,9 @@ export async function createExecutionContext<
   const sessionStateRef = { current: initialSessionState };
   const userStateRef = { current: initialUserState };
   const orgStateRef = { current: initialOrgState };
+  const sessionVersionRef = { current: initialSessionVersions };
+  const userVersionRef = { current: initialUserVersions };
+  const orgVersionRef = { current: initialOrgVersions };
 
   const readSessionResources = (): Record<string, JsonObject> =>
     sessionStateRef.current;
@@ -1092,13 +1331,19 @@ export async function createExecutionContext<
   // flow-level collections Wave 1 already loaded. Single resources are tracked
   // implicitly by presence in the state cache. `inflightLoads` single-flights
   // concurrent loads of the same key/prefix across parallel block dispatch
-  // (e.g. a sequencer's `.work()` fan-out), and clears entries in `finally`
+  // (e.g. a sequencer's `.sideChain()` fan-out), and clears entries in `finally`
   // so a failed load retries on the next attempt instead of poisoning the map.
   const loadedCollectionPrefixes: Record<ContentScopeType, Set<string>> = {
     session: new Set<string>(),
     user: new Set<string>(),
     org: new Set<string>()
   };
+  /**
+   * One coverage entry: the bucket a prefix scan actually read, plus the prefix.
+   * `\n` cannot occur in a scopeId, so the join is unambiguous.
+   */
+  const coverageToken = (scopeId: string, keyPrefix: string): string =>
+    `${scopeId}\n${keyPrefix}`;
   // Negative cache for lazy single-row reads: a key confirmed absent by a
   // `resourceState.get` returning undefined. Caps each missing key at one store
   // round-trip per request instead of re-reading on every `get`/`getOptional`.
@@ -1110,13 +1355,48 @@ export async function createExecutionContext<
     user: new Set<string>(),
     org: new Set<string>()
   };
+  // Keys this request deleted. A bulk prefix load merges the store snapshot
+  // *under* the cache, and a deleted key is absent from the cache rather than
+  // present-and-empty — so without this the snapshot's pre-delete row wins and
+  // the key comes back. State and content are deleted through separate calls
+  // and tracked separately: a content delete must not suppress a live state row.
+  // Like `missingResourceKeys` these need no invalidation on re-create, because
+  // the cache is spread last and so always wins over the snapshot.
+  const deletedStateKeys: Record<ContentScopeType, Set<string>> = {
+    session: new Set<string>(),
+    user: new Set<string>(),
+    org: new Set<string>()
+  };
+  const deletedContentKeys: Record<ContentScopeType, Set<string>> = {
+    session: new Set<string>(),
+    user: new Set<string>(),
+    org: new Set<string>()
+  };
+  const withoutDeleted = <T>(snapshot: Record<string, T>, deleted: Set<string>): Record<string, T> => {
+    if (deleted.size === 0) return snapshot;
+    const kept: Record<string, T> = {};
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (!deleted.has(key)) kept[key] = value;
+    }
+    return kept;
+  };
   // A cache miss is *authoritative* (no store read needed) when the key falls
   // under a prefix already bulk-loaded via `getByPrefix` — the whole prefix is
   // materialized, so an absent key is definitively absent. Prefixes end in `/`
   // (or are `""`, the whole-scope load), so `startsWith` is the coverage test.
+  //
+  // Coverage is per BUCKET, not per prefix. A prefix scan reads one scopeId, and
+  // ownership filtering means it may legitimately return nothing for keys a
+  // sibling declaration owns at a different address (FIX-1068). Recording the
+  // bare prefix would claim coverage the scan never had, and the next lazy read
+  // of such a key would answer "absent" for a row that exists.
   const isMissAuthoritative = (scope: ContentScopeType, storageKey: string): boolean => {
-    for (const prefix of loadedCollectionPrefixes[scope]) {
-      if (storageKey.startsWith(prefix)) return true;
+    const scopeId = resolveResourceStorageScopeId(scope, storageKey);
+    if (scopeId === undefined) return false;
+    for (const token of loadedCollectionPrefixes[scope]) {
+      const split = token.indexOf("\n");
+      if (token.slice(0, split) !== scopeId) continue;
+      if (storageKey.startsWith(token.slice(split + 1))) return true;
     }
     return false;
   };
@@ -1133,7 +1413,11 @@ export async function createExecutionContext<
       if (isExternalResourceCollection(config)) continue;
       if (!isCollectionConfig(config)) continue;
       const prefix = getPatternPrefix(config.pattern);
-      loadedCollectionPrefixes[scope].add(prefix === "" ? "" : `${prefix}/`);
+      const scanned = resolveConfigScopeId(scope, config);
+      if (scanned === undefined) continue;
+      loadedCollectionPrefixes[scope].add(
+        coverageToken(scanned, prefix === "" ? "" : `${prefix}/`)
+      );
     }
   };
   seedLoadedPrefixes("session", sessionFlowLevelConfigs);
@@ -1159,6 +1443,8 @@ export async function createExecutionContext<
     scope === "session" ? sessionStateRef : scope === "user" ? userStateRef : orgStateRef;
   const scopeContentRef = (scope: ContentScopeType): { current: Record<string, string> } =>
     scope === "session" ? sessionContentRef : scope === "user" ? userContentRef : orgContentRef;
+  const scopeVersionRef = (scope: ContentScopeType): { current: Record<string, number> } =>
+    scope === "session" ? sessionVersionRef : scope === "user" ? userVersionRef : orgVersionRef;
 
   // FIX-688 Slice 3: per-scope on-demand loaders backing lazy collection
   // accessors. Reuses the same single-flight map and `loadedCollectionPrefixes`
@@ -1167,6 +1453,7 @@ export async function createExecutionContext<
     if (scopeIdentityId(scope) === undefined) return undefined; // scope absent this request (org)
     const stateRef = scopeStateRef(scope);
     const contentRef = scopeContentRef(scope);
+    const versionRef = scopeVersionRef(scope);
     return {
       async getInstance(storageKey: string): Promise<LazyLoadOutcome> {
         if (storageKey in stateRef.current) return { fetched: false, durationMs: 0 }; // already loaded
@@ -1182,14 +1469,18 @@ export async function createExecutionContext<
         await runSingleFlight(`${scope}:key:${storageKey}`, async () => {
           if (storageKey in stateRef.current) return;
           const started = Date.now();
-          const [state, content] = await Promise.all([
-            stores.resourceState.get(scope, scopeId, storageKey),
-            stores.content.get(scope, scopeId, storageKey)
+          const [row, content] = await Promise.all([
+            stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, storageKey),
+            stores.content.get(storageScopeOf(scope, scopeId), scopeId, storageKey)
           ]);
           durationMs = Date.now() - started;
           fetched = true;
+          const state = toBareState(row);
           if (state !== undefined) {
             stateRef.current = { [storageKey]: state, ...stateRef.current };
+            // Record the version this read observed — without it a write to a
+            // lazily-loaded key would have no basis to be conditional on.
+            versionRef.current[storageKey] = row!.version;
           } else {
             // Negatively cache: one round-trip caps repeated reads of an absent key.
             missingResourceKeys[scope].add(storageKey);
@@ -1201,23 +1492,41 @@ export async function createExecutionContext<
         return { fetched, durationMs };
       },
       async getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome> {
-        if (loadedCollectionPrefixes[scope].has(keyPrefix)) return { fetched: false, durationMs: 0 };
         // FIX-735: the collection's prefix resolves to its isolation bucket.
         const scopeId = resolveResourceStorageScopeId(scope, keyPrefix)!;
+        if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
+          return { fetched: false, durationMs: 0 };
+        }
         let fetched = false;
         let durationMs = 0;
         await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
-          if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
+          if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) return;
           const started = Date.now();
-          const [state, content] = await Promise.all([
-            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix),
-            stores.content.getByPrefix(scope, scopeId, keyPrefix)
+          // Same ownership re-check as the eager waves: a lazy collection is
+          // fetched by prefix too, so a broad prefix sweeps up keys a narrower
+          // sibling owns at a different address.
+          const [rawRows, rawContent] = await Promise.all([
+            stores.resourceState.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix),
+            stores.content.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix)
           ]);
+          const rows = retainOwnedKeys(scope, scopeId, rawRows);
+          const content = retainOwnedKeys(scope, scopeId, rawContent);
           durationMs = Date.now() - started;
           fetched = true;
-          stateRef.current = { ...state, ...stateRef.current };
-          contentRef.current = { ...content, ...contentRef.current };
-          loadedCollectionPrefixes[scope].add(keyPrefix);
+          const state = toBareStates(rows);
+          stateRef.current = { ...withoutDeleted(state, deletedStateKeys[scope]), ...stateRef.current };
+          // Versions for the keys this prefix read just brought in. Keys the
+          // cache already held keep the version they were first read at, so a
+          // later bulk load never silently re-bases an in-flight write.
+          for (const [key, version] of Object.entries(toVersions(rows))) {
+            if (deletedStateKeys[scope].has(key)) continue;
+            versionRef.current[key] ??= version;
+          }
+          contentRef.current = {
+            ...withoutDeleted(content, deletedContentKeys[scope]),
+            ...contentRef.current
+          };
+          loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
         });
         return { fetched, durationMs };
       }
@@ -1267,6 +1576,7 @@ export async function createExecutionContext<
       const mode = (config as { prefetchMode?: string }).prefetchMode ?? "eager";
       const stateRef = scopeStateRef(scope);
       const contentRef = scopeContentRef(scope);
+      const versionRef = scopeVersionRef(scope);
       // Key the load by the canonical storage key (from the full-map resolution
       // above), so aliased single resources load under the same slot the
       // registry reads. Collections canonicalize to their accessor, so this is
@@ -1275,12 +1585,24 @@ export async function createExecutionContext<
       const subConfig = { [storageKey]: config };
 
       const applyLoad = async (): Promise<void> => {
-        const [stateSeed, contentSeed] = await Promise.all([
-          loadDeclaredResourceState(stores.resourceState, scope, scopeId, subConfig),
-          loadDeclaredScopeContent(stores.content, scope, scopeId, subConfig)
+        // FIX-1068: the same ownership re-check the eager waves and the lazy
+        // prefix loader perform. A collection loads by PREFIX, so a broad scan at
+        // one bucket returns keys a narrower sibling owns at another — seeding
+        // those here would shadow the child-owned row for the rest of the request.
+        const [rawState, rawContent] = await Promise.all([
+          loadDeclaredResourceState(stores.resourceState, storageScopeOf(scope, scopeId), scopeId, subConfig),
+          loadDeclaredScopeContent(stores.content, storageScopeOf(scope, scopeId), scopeId, subConfig)
         ]);
+        const stateSeed = retainOwnedKeys(scope, scopeId, rawState);
+        const contentSeed = retainOwnedKeys(scope, scopeId, rawContent);
+        // Same precedence as the state merge below: a key already in the cache
+        // keeps the version it was first observed at.
+        for (const [key, version] of Object.entries(toVersions(stateSeed))) {
+          if (deletedStateKeys[scope].has(key)) continue;
+          versionRef.current[key] ??= version;
+        }
         stateRef.current = {
-          ...normalizeScopeResources(subConfig, stateSeed),
+          ...normalizeScopeResources(subConfig, toBareStates(stateSeed)),
           ...stateRef.current
         };
         contentRef.current = {
@@ -1293,19 +1615,19 @@ export async function createExecutionContext<
         if (mode === "lazy") continue; // lazy collections fetch via async accessor
         const prefix = getPatternPrefix(config.pattern);
         const keyPrefix = prefix === "" ? "" : `${prefix}/`;
-        if (loadedCollectionPrefixes[scope].has(keyPrefix)) {
+        if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
           recordResourceLoad({ storageKey: keyPrefix, scope, source, durationMs: 0, cacheHit: true });
           continue;
         }
         tasks.push(
           runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
-            if (loadedCollectionPrefixes[scope].has(keyPrefix)) {
+            if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
               recordResourceLoad({ storageKey: keyPrefix, scope, source, durationMs: 0, cacheHit: true });
               return;
             }
             const started = Date.now();
             await applyLoad();
-            loadedCollectionPrefixes[scope].add(keyPrefix);
+            loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
             loadSourceByToken.set(`${scope}:prefix:${keyPrefix}`, source);
             recordResourceLoad({
               storageKey: keyPrefix, scope, source, durationMs: Date.now() - started, cacheHit: false
@@ -1394,16 +1716,113 @@ export async function createExecutionContext<
   // regardless of which bucket backs it.
   const makeKeyPersisters = (scope: ContentScopeType) => {
     const stateRef = scopeStateRef(scope);
+    const versionRef = scopeVersionRef(scope);
     const contentRef = scopeContentRef(scope);
     return {
-      persistResourceKey: async (key: string, value: JsonObject): Promise<void> => {
+      /**
+       * FIX-992 (D10): the CAS boundary for resource state.
+       *
+       * The driver owns the retry, because only here does the caller's intent
+       * still exist as a mutator — one layer down, at the store call, the next
+       * object has already been materialized and a retry could only overwrite
+       * a concurrent writer's field.
+       *
+       * There is deliberately **no** `deepEqual` short-circuit in front of the
+       * store call: `runResourceCAS` is the only thing that decides a no-op,
+       * and the reason that matters is in its header, not restated here.
+       *
+       * **Cancellation uses `sideChainSignal`, not `options.signal`.** The
+       * spec said `ctx.signal`, which is wrong here for two reasons found in
+       * the code. `options.signal` is the composed transport signal and fires
+       * on client disconnect / SSE teardown, so threading it would abandon the
+       * resource writes of a `.sideChain()` background task the request is still
+       * running — the exact failure FIX-663 exists to prevent. And there is no
+       * per-scope signal available at this seam anyway: persisters and
+       * `ResourceRef`s are built once per context, while `ctx.signal` is
+       * per-execution-scope, so one ref serves foreground and background
+       * callers alike. `sideChainSignal` "fires only on explicit
+       * user-requested abort, not on transport-level teardown", which is
+       * precisely the condition under which a durable write should stop.
+       * Absent for non-server callers, where no cancellation applies.
+       */
+      mutateResourceKey: async (
+        key: string,
+        mutator: (current: JsonObject) => JsonObject | Promise<JsonObject>,
+        opts?: { intent?: ResourceCASIntent; seed?: JsonObject }
+      ): Promise<{ committed: boolean; previousState: JsonObject }> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
-        if (scopeId === undefined) return;
-        if (deepEqual(stateRef.current[key], value)) return;
-        await stores.resourceState.set(scope, scopeId, key, value);
-        stateRef.current[key] = value;
+        if (scopeId === undefined) {
+          // Scope absent this request — nothing was read and nothing written.
+          return { committed: false, previousState: opts?.seed ?? {} };
+        }
+        const intent = opts?.intent ?? "mutate";
+
+        // State comes from the registry's own read (which applies a declared
+        // default for a key the store has never held); the version comes from
+        // what this context observed, which is `0` — "no live row" — for a key
+        // it never read.
+        const container = createStateContainer<JsonObject>(
+          opts?.seed ?? stateRef.current[key] ?? {},
+          versionRef.current[key] ?? 0
+        );
+
+        let result: Awaited<ReturnType<typeof runResourceCAS>>;
+        try {
+          result = await runResourceCAS({
+            key,
+            container,
+            mutator,
+            intent,
+            signal: options.sideChainSignal,
+            persist: (next, expectedVersion) =>
+              stores.resourceState.set(storageScopeOf(scope, scopeId), scopeId, key, next, expectedVersion),
+            reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
+          });
+        } catch (err) {
+          // A lost create still taught us something: the store reported the
+          // winner's row on the conflict. Fold it into the cache before
+          // rethrowing, so `getOrCreate` / `upsert` can turn the refusal into
+          // a read of the real instance rather than a second round trip or a
+          // ref that would serve schema defaults.
+          if (err instanceof ResourceAlreadyExistsError && err.currentValue !== undefined) {
+            // Clone on the way INTO the cache rather than on the way into the
+            // error. Either side breaks the aliasing, but only one of the two
+            // objects carries an invariant: the cache's value must match what
+            // the store holds at the version recorded beside it, because
+            // `ref.state` reads from it and a later patch persists from it. The
+            // error payload is a detached diagnostic the loser may annotate or
+            // mutate freely — and now that this error is exported for
+            // `instanceof`, callers will. So the clone goes where the invariant
+            // is, leaving exactly one owner of the live object.
+            stateRef.current[key] = cloneValue(err.currentValue) as JsonObject;
+            versionRef.current[key] = err.currentVersion;
+          }
+          throw err;
+        }
+
+        // Refresh the cache from EVERY outcome that saw a live row, not only
+        // committed ones. A verified no-op can arrive after the driver refreshed
+        // to a newer row — the caller wrote a value another context had already
+        // committed — and it carries that row's state and version. Skipping the
+        // refresh there leaves this request reading a value the store no longer
+        // holds and, worse, holding a stale version that makes the next
+        // conditional write or delete conflict for no reason.
+        //
+        // `version === 0` is the one outcome with nothing to refresh: the key
+        // has no live row, so writing the seed into the cache would invent a
+        // key the store does not have and change what `exists` means upstream.
+        //
+        // Only NOTIFICATIONS are gated on `committed` (D8), and they are gated
+        // by the registry, not here.
+        if (result.version > 0) {
+          // Mutate the live cache IN PLACE at this key (FIX-744) so concurrent
+          // distinct-key writes still coexist in the in-memory view.
+          stateRef.current[key] = result.state;
+          versionRef.current[key] = result.version;
+        }
+        return { committed: result.committed, previousState: result.previousState };
       },
-      deleteResourceKey: async (key: string): Promise<void> => {
+      deleteResourceKey: async (key: string): Promise<boolean> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
         // `!(key in stateRef.current)` is a load-state check, not a
         // correctness guarantee: it scopes the delete to keys present in the
@@ -1412,23 +1831,87 @@ export async function createExecutionContext<
         // exact; for a `prefetchMode: 'lazy'` instance never loaded this
         // request the store row is left untouched — a pre-existing gap, not
         // introduced by the per-key path.
-        if (scopeId === undefined || !(key in stateRef.current)) return;
-        await stores.resourceState.delete(scope, scopeId, key);
+        if (scopeId === undefined || !(key in stateRef.current)) return false;
+        // FIX-992 (D7): carry the version this context observed, so a delete
+        // decided from a stale snapshot conflicts instead of tombstoning the
+        // generation that replaced it. Terminal on conflict — a retry could
+        // only re-delete something it has already been told it does not own.
+        const expectedVersion = versionRef.current[key] ?? 0;
+        const result = await stores.resourceState.delete(
+          storageScopeOf(scope, scopeId),
+          scopeId,
+          key,
+          expectedVersion
+        );
+        if (!result.ok) {
+          // Report what actually happened, which is two different things:
+          //
+          //  - a LIVE row at a version we did not expect — the key was deleted
+          //    and recreated under us, which is the ABA this version check
+          //    exists to catch. Nothing was deleted, so `resource_deleted`
+          //    would say the opposite of the truth.
+          //  - no live row — someone else's delete got there first.
+          // Either way the store has just told us, conclusively, what the key
+          // actually holds — so take it before rethrowing. This matches the
+          // create path (which folds the winner's row in off its conflict) and
+          // the no-op refresh: a caller that catches one of these errors must
+          // not then read a generation the store has already superseded.
+          if (result.conflict.currentValue !== undefined) {
+            // A live row at a version we did not expect.
+            //
+            // The clone is deliberate but, unlike the create path's, NOT
+            // falsifiable — and it is worth saying which so nobody later reads
+            // it as a tested guard. There is no second owner to defend against
+            // today: the store deep-copies `currentValue` out of its row (a
+            // documented, conformance-held property), and
+            // `ConcurrentModificationError` carries no payload, so nothing this
+            // caller can reach ever aliases what goes into the cache. It stays
+            // because the cache's one-owner invariant should not depend
+            // silently on the store's copy, and because enriching this error
+            // with the conflict row — exactly what was just done to
+            // `ResourceAlreadyExistsError` — would reintroduce the aliasing
+            // with no test to catch it.
+            stateRef.current[key] = cloneValue(result.conflict.currentValue) as JsonObject;
+            versionRef.current[key] = result.conflict.currentVersion;
+            throw new ConcurrentModificationError(
+              `Resource "${key}" was replaced by another writer (expected version ${expectedVersion}, found ${result.conflict.currentVersion}) — the delete was refused rather than applied to the new generation`,
+              1
+            );
+          }
+          // Unreachable by contract, kept as a guard rather than deleted.
+          // `delete` answers an already-tombstoned key with idempotent SUCCESS
+          // before it ever consults the version — the conformance suite pins
+          // that on all four adapters, in the raced form as well as the
+          // sequential one. So a delete conflict can only come from a LIVE row
+          // at an unexpected version, which always carries a value. (The
+          // `currentValue: undefined` conflict is real, but it belongs to
+          // `set`, not to `delete`.) Reaching here would mean an adapter had
+          // broken that rule, so it says so instead of inventing a story about
+          // a resource that was deleted.
+          throw new ConcurrentModificationError(
+            `Resource "${key}" delete was refused with no current value — the store reported a conflict where the contract requires an idempotent success`,
+            1
+          );
+        }
         delete stateRef.current[key];
+        delete versionRef.current[key];
+        deletedStateKeys[scope].add(key);
+        return true;
       },
       persistResourceContentKey: async (key: string, content: string): Promise<void> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
         if (scopeId === undefined) return;
         if (contentRef.current[key] === content) return;
-        await stores.content.set(scope, scopeId, key, content);
+        await stores.content.set(storageScopeOf(scope, scopeId), scopeId, key, content);
         contentRef.current[key] = content;
       },
       deleteResourceContentKey: async (key: string): Promise<void> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
         // Load-state check, as in `deleteResourceKey` above.
         if (scopeId === undefined || !(key in contentRef.current)) return;
-        await stores.content.delete(scope, scopeId, key);
+        await stores.content.delete(storageScopeOf(scope, scopeId), scopeId, key);
         delete contentRef.current[key];
+        deletedContentKeys[scope].add(key);
       }
     };
   };
@@ -1475,6 +1958,7 @@ export async function createExecutionContext<
       : 0;
 
   const requestOps = createScopeStateOps(requestContainer, {
+    serialize: true,
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
       stores.request,
@@ -2033,11 +2517,11 @@ export async function createExecutionContext<
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
 
-  // Per-request background work pool. Sequencer DSL pushes `.work()` /
-  // `.workIf()` / `.forEachBackground()` tasks here; runActionInternal
+  // Per-request side-chain pool. Sequencer DSL pushes `.sideChain()` /
+  // `.sideChainIf()` / `.forEachSideChain()` tasks here; runActionInternal
   // drains the pool exactly once on the success path. Replaces the legacy
   // per-sequencer auto-await scoping.
-  const requestWorkPool = createRequestWorkPool();
+  const requestSideChainPool = createRequestSideChainPool();
 
   // Request-scoped status slot — shared across every scope's createEmitStatus.
   // Terminates naturally when this context is discarded at request end.
@@ -2412,7 +2896,7 @@ export async function createExecutionContext<
     // FIX-663: when provided, sets this scope's `ctx.signal` instead of the
     // closure-captured `options.signal`. `_withExecutionScope` threads the
     // current parent ctx's signal here so child scopes inherit the parent's
-    // signal (which may be the background signal inside a `.work()` tree)
+    // signal (which may be the background signal inside a `.sideChain()` tree)
     // rather than the root request signal via closure capture.
     signalOverride?: AbortSignal
   ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
@@ -2486,6 +2970,8 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
+      // Same reference in every nested scope (FIX-999).
+      ...(requestHostBuild !== undefined ? { requestHost: requestHostBuild.host } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,
@@ -2767,7 +3253,7 @@ export async function createExecutionContext<
           result: { status: "completed", output }
         });
       },
-      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
+      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
@@ -2888,9 +3374,9 @@ export async function createExecutionContext<
           taskId: resolvedTaskId,
         };
         // FIX-663: propagate the signal down the scope chain. An explicit
-        // `signalOverride` (threaded by `.work()` dispatch) wins; otherwise
+        // `signalOverride` (threaded by `.sideChain()` dispatch) wins; otherwise
         // inherit the *current* parent ctx's signal so descendant scopes of
-        // a `.work()` task tree keep seeing the background signal. Reading
+        // a `.sideChain()` task tree keep seeing the background signal. Reading
         // `context.signal` (not the closure-captured `options.signal`) is
         // what makes the override propagate beyond one level.
         const childSignal = signalOverride ?? context.signal;
@@ -2914,14 +3400,31 @@ export async function createExecutionContext<
           transient: resolvedParent.transient
         };
 
-        // Propagate the request-scoped work pool through every nested scope
-        // so `.work()` calls in inner sequencers reach the same pool the
-        // request executor drains. See `request-work-pool.ts`.
-        (childContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+        // Propagate the request-scoped side-chain pool through every nested scope
+        // so `.sideChain()` calls in inner sequencers reach the same pool the
+        // request executor drains. See `request-side-chain-pool.ts`.
+        (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
         // FIX-663: re-attach the background signal on every scope so nested
-        // `.work()` dispatches can read it (the dispatch site reads
-        // `ctx._requestBackgroundSignal`, not `ctx.signal`).
-        (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+        // `.sideChain()` dispatches can read it (the dispatch site reads
+        // `ctx._requestSideChainSignal`, not `ctx.signal`).
+        //
+        // Inherited from the PARENT CONTEXT, falling back to the request's
+        // (FIX-1005). Reading the closure-captured `options.sideChainSignal`
+        // unconditionally is the same defect the `childSignal` line above calls
+        // out and fixes for `ctx.signal`: it makes the value un-overridable
+        // below the root, because every scope resets it to the request's.
+        //
+        // That matters now that a caller can add a signal to a whole subtree
+        // via `.step(block, { abortSignal })`. The dispatch composes that
+        // signal into the background signal for the subtree, and background
+        // work is exactly where an un-cancelled subtree keeps costing money —
+        // a displaced worker's `.sideChain()` generators go on calling models for
+        // output the substrate will refuse. Without this line reading the
+        // parent, that composition survives one scope and is then discarded.
+        (childContext as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal =
+          sideChainSignalOverride ??
+          (context as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal ??
+          options.sideChainSignal;
         // FIX-406 6H: propagate the request's tracing level so sequencers in
         // any nested scope gate observability snapshots consistently.
         (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
@@ -3165,7 +3668,7 @@ export async function createExecutionContext<
         blockKind?: "handler" | "generator" | "sequencer" | "router";
         blockInstanceId?: string;
         parentBlockInstanceId?: string;
-        phase?: "main" | "work";
+        phase?: "main" | "sideChain";
       } })._blockIdentity
     );
     context.emit = {
@@ -3255,19 +3758,19 @@ export async function createExecutionContext<
   };
 
   const rootContext = createContext(undefined, undefined, undefined);
-  // Attach the per-request background work pool so sequencer DSL can push
-  // `.work()` / `.workIf()` / `.forEachBackground()` tasks. Each child
+  // Attach the per-request side-chain pool so sequencer DSL can push
+  // `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` tasks. Each child
   // context constructed by `_withExecutionScope` re-attaches the same pool
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
-  (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers
   // (wired into the registries above) close over `reactiveCtxRef`.
   reactiveCtxRef.current = rootContext as unknown as ExecutionContext;
   // FIX-663: attach the background signal to the root context. Child scopes
-  // re-attach it in `_withExecutionScope` (alongside the work pool).
-  (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+  // re-attach it in `_withExecutionScope` (alongside the side-chain pool).
+  (rootContext as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal = options.sideChainSignal;
   // FIX-406 6H: stamp the tracing level on the root context too, for symmetry
   // with child scopes — keeps observability gating correct if a sequencer ever
   // executes directly on the root context.

@@ -11,7 +11,7 @@ export { cloneValue } from "./clone";
 export { mapLimit } from "./concurrency";
 export { deepEqual, looseDeepEqual } from "./deep-equal";
 export { deepMerge } from "./deep-merge";
-export { warnDeprecated, __resetDeprecationWarningsForTests } from "./deprecation";
+export { __resetDeprecationWarningsForTests } from "./deprecation";
 export { sanitizeToolName, ensureUniqueAlias, computeToolAliases } from "./tool-name";
 export {
   transientSlot,
@@ -31,3 +31,10 @@ export {
   type ZodSchemaCompareResult,
 } from "./zod-introspect";
 export { shortId, tokenize, tokenOverlap, findBestOverlap } from "./text-match";
+export {
+  withOutcome,
+  updateStateWith,
+  type UpdateOutcome,
+  type UpdateStateRunner,
+} from "./update-state-with";
+export { toError } from "./to-error";

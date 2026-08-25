@@ -18,7 +18,10 @@ transport — an architecturally novel surface every time.
 
 The contract collapses that to one shape: every transport translates its
 input into an `InboundRequestEnvelope` and hands it to the host. The
-runtime below the adapter is identical regardless of source.
+runtime below the adapter is identical regardless of source — the pipeline
+is the same one every time, though a single envelope may carry the
+configuration its own dispatch runs under (see
+[Execution configuration](#execution-configuration-is-per-host-with-one-per-envelope-exception)).
 
 ## The contract
 
@@ -65,6 +68,7 @@ interface InboundRequestEnvelope {
   responseEmitter?: ResponseEmitter | null;
   signal?: AbortSignal;
   resolvedActionCore?: ActionCore;
+  runtimeConfig?: RuntimeConfig;
 }
 ```
 
@@ -79,6 +83,37 @@ across crashes. See [Action forms](./action-forms.md).
 `ActiveRequestEntry`, propagated through to DevTool's request list. It is
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
 `scheduled`, `notification`, `chat`. Custom transports pick their own.
+
+### Execution configuration is per-host, with one per-envelope exception
+
+The host's `runtimeConfig` is the execution configuration for everything it
+dispatches. That is the rule, and `runtimeConfig` on the envelope is the single
+exception to it — set by the framework, never by an adapter and never read from
+a request body.
+
+It exists for one invariant: **a detached child inherits the launching request's
+effective config, not the host's construction-time one.** A host is built once,
+but any given request may be running under a config its caller derived. `fsdev
+run` is the shipped case: it builds `{ ...appConfig, modelResolver, logger }` so
+`--model` takes effect, and a Workstream that request spawns is that request's
+own work continued in the background. Without the field the child would silently
+resolve the app's default model while the flag claimed otherwise.
+
+**The inheritance cannot cross a serialization boundary, and that is part of the
+rule rather than an exception to it.** A `RuntimeConfig` holds live resolvers and
+providers, so the external-dispatcher branch ignores this field: a queued job
+runs under its own worker's configuration, which is the only thing that process
+can honour. Carrying just the selected model *id* across would not fix it — the
+worker has its own gateways and keys, so a forced id may not resolve there at
+all, replacing a silently wrong model with a failure surfacing where the caller
+cannot see it. The host therefore emits a warning at the dispatch that drops an
+override rather than pretending it applied.
+
+A custom host or dispatcher should read this as: honour `envelope.runtimeConfig`
+when you run work in-process, and expect not to receive it when you don't.
+
+Which dispatches run in-process, and what else changes with that answer, is
+[Detached Work](./detached-work.md).
 
 ### The shared action core
 
@@ -305,12 +340,14 @@ notes.
 
 ## Conformance suite
 
-`@flow-state-dev/testing` exports `createInboundTransportConformanceTests`,
-modeled on `store-cas-contract.test.ts`. Every adapter implementation
-should run the suite:
+`@flow-state-dev/testing/conformance` exports
+`createInboundTransportConformanceTests`, modeled on
+`store-cas-contract.test.ts`. The helpers live on that subpath because
+they import `vitest` at module top level; the package index does not
+re-export them. Every adapter implementation should run the suite:
 
 ```ts
-import { createInboundTransportConformanceTests } from "@flow-state-dev/testing";
+import { createInboundTransportConformanceTests } from "@flow-state-dev/testing/conformance";
 
 createInboundTransportConformanceTests({
   name: "myAdapter",

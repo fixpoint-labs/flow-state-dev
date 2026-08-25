@@ -9,8 +9,22 @@
  */
 import { FlowError } from "@flow-state-dev/core";
 
-/** Failure category surfaced in `error.details.errorType`. */
-export type FetchErrorType = "http" | "network" | "timeout" | "abort" | "parse" | "unknown";
+/**
+ * Failure category surfaced in `error.details.errorType`.
+ *
+ * `blocked` is a policy refusal rather than a failed request: the destination
+ * is not one the built-in providers may reach. It is its own category because
+ * none of the transport classes describe it, and conflating it with `network`
+ * would make it look retryable when retrying can only refuse again.
+ */
+export type FetchErrorType =
+  | "http"
+  | "network"
+  | "timeout"
+  | "abort"
+  | "parse"
+  | "blocked"
+  | "unknown";
 
 /** Max characters of a non-2xx response body retained for error reporting. */
 const BODY_LIMIT = 1000;
@@ -115,6 +129,28 @@ export function transportFetchError(provider: string, url: string, cause: unknow
     cause,
     details: {
       errorType,
+      url,
+    },
+  });
+}
+
+/**
+ * Build the `FlowError` thrown when the network guard refuses a URL — a
+ * non-public destination, a non-HTTP scheme, or embedded credentials.
+ *
+ * Never retryable: the refusal is a property of the URL, so a retry re-refuses.
+ * Keeps blocked destinations inside the same structured contract as every other
+ * fetch failure (`code`, `details.errorType`, `retryable`) instead of surfacing
+ * a bare `Error` that consumers branching on that shape cannot classify.
+ */
+export function blockedUrlFetchError(provider: string, url: string, cause: unknown): FlowError {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return new FlowError(`${provider} fetch blocked: ${message}`, {
+    code: "fetch_blocked_url",
+    retryable: false,
+    cause,
+    details: {
+      errorType: "blocked" satisfies FetchErrorType,
       url,
     },
   });

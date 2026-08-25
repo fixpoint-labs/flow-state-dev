@@ -12,8 +12,6 @@ pnpm add @thought-fabric/core
 
 ## Status
 
-This package is in Wave 1 foundation mode.
-
 | Domain | Namespace | Status |
 |--------|-----------|--------|
 | Attention | `attention` | Salience scoring + relevance filtering implemented |
@@ -23,7 +21,7 @@ This package is in Wave 1 foundation mode.
 | Metacognition | `metacognition` | Bias & sycophancy detection |
 | Learning | — | Wave 4+ |
 
-> **Memory has moved.** Cross-turn memory previously lived here as the `memory` domain. It now ships from `@flow-state-dev/memory`. Thought Fabric will host specialized cognitive memory variants on top of the same `MemoryProvider` contract when those land — until then it doesn't address memory at all.
+Cross-turn memory (working / episodic / semantic / digest) ships from [`@flow-state-dev/memory`](../memory/). Import from there.
 
 ## Usage
 
@@ -164,7 +162,7 @@ const securityEngineer = perspective({
 // Analyze content through the perspective's lens
 const analysis = perspectiveAnalyze({
   perspective: securityEngineer,
-  model: 'gpt-5',
+  model: 'openai/gpt-5.5',
 })
 
 const result = await analysis.run(
@@ -208,7 +206,7 @@ const result = await analysis.run(
 
 #### Resource-backed state (capability + system factory)
 
-The static blocks above are stateless — useful as one-shot prompt shapers. For perspectives that accumulate over a session (observations recorded, positions reached, conclusions challenged), use the capability or the `system()` bundle factory. Both are additive on top of the static foundation: the frozen `PerspectiveInstance` remains the initial configuration, and two session/user/project-scoped resources hold evolving state.
+The static blocks above are stateless — useful as one-shot prompt shapers. For perspectives that accumulate over a session (observations recorded, positions reached, conclusions challenged), use the capability or the `system()` bundle factory. Both are additive on top of the static foundation: the frozen `PerspectiveInstance` remains the initial configuration, and two session/user/org-scoped resources hold evolving state.
 
 ```ts
 import { perspective, system } from '@thought-fabric/core/identity'
@@ -219,13 +217,13 @@ const securityEngineer = perspective({ ... })
 // Bundle: pre-configured blocks + capability + helpers
 const sec = system(securityEngineer, {
   positionScope: 'user', // positions persist across sessions for the user
-  model: 'gpt-5',
+  model: 'openai/gpt-5.5',
 })
 
 // Declarative capability use: auto-installs resources, context, and helpers
 const chat = generator({
   name: 'chat',
-  model: 'gpt-5',
+  model: 'openai/gpt-5.5',
   uses: [sec.capability],
   user: (input) => input,
   // Gets static framing + accumulated observations/positions injected as context,
@@ -247,14 +245,13 @@ const observe = handler({
 
 // Or use the bundled capture sequencer (analyze → observe)
 const pipeline = sequencer({ name: 'review' })
-  .work((input) => ({ content: input.proposal }), sec.capture)
+  .sideChain((input) => ({ content: input.proposal }), sec.capture)
   .step(nextBlock)
 
 // Wire resources in the flow
 const flow = defineFlow({
   // ...
-  session: { resources: { ...sec.sessionResources, ...otherSession } },
-  user: { resources: { ...sec.userResources, ...otherUser } },
+  resources: { ...sec.resources, ...otherResources },
 })
 ```
 
@@ -277,7 +274,7 @@ Disable either via `cap.with({ accumulated: false })` when token budget is tight
 | `perspectiveAdvance(config)` | handler | Bumps the observation turn counter. Designed for `.tap()`. |
 | **Resources** | | |
 | `perspectiveObservationsResource` | resource | Singleton; the capability and bundled blocks always declare it at session scope. |
-| `perspectivePositionsResource` | resource | Singleton; scope is decided by where the capability or block declares it (session/user/project). |
+| `perspectivePositionsResource` | resource | Singleton; scope is decided by where the capability or block declares it (session/user/org). |
 | **Schemas (Phase B)** | | |
 | `perspectiveObservationSchema` | Zod schema | `{ id, content, category, confidence, source?, addedAt }` |
 | `perspectiveObservationsStateSchema` | Zod schema | `{ observations[], turnCounter }` |
@@ -299,7 +296,7 @@ Disable either via `cap.with({ accumulated: false })` when token budget is tight
 | **Types (Phase B)** | | |
 | `PerspectiveObservation` | type | A single recorded observation. |
 | `PerspectivePosition` | type | A recorded position with challenges. |
-| `PositionScope` | type | `'session' \| 'user' \| 'project'` |
+| `PositionScope` | type | `'session' \| 'user' \| 'org'` |
 | `PerspectiveSystem` | type | Return type of `system()`. |
 | `PerspectiveCapability` | type | Return type of `createPerspectiveCapability()`. |
 

@@ -17,6 +17,7 @@ import {
   type CandidateScale,
   type FinancialCandidate,
 } from "./financial-candidate";
+import { normalizeEntityName } from "./entity-identity";
 
 /** Reconciliation tolerance on FCF ≈ operating − |capex| (raw USD): the larger
  *  of $1M absolute and 1% relative, so rounded prospectus tables reconcile
@@ -68,10 +69,15 @@ function isUsdCurrency(currency: string): boolean {
  *  pass handles issuers made only of short tokens (`XP Inc.`, `C3.ai, Inc.`)
  *  whose token sets are empty after the 4-char filter — the candidate name is
  *  copied from the same submissions record as `expected`, so an exact normalized
- *  match must agree rather than reject. */
+ *  match must agree rather than reject.
+ *
+ *  Shares `normalizeEntityName` with `entity-identity.ts` but keeps its own,
+ *  looser token rule on purpose: both names here come from the SAME SEC
+ *  submissions vocabulary, so a shared corporate-form token is weak-but-real
+ *  agreement. The discovery guard matches a name against arbitrary open-web
+ *  text and strips those tokens. */
 function namesAgree(candidate: string, expected: string): boolean {
-  const normalize = (s: string) =>
-    s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const normalize = normalizeEntityName;
   const na = normalize(candidate);
   if (na && na === normalize(expected)) return true;
 

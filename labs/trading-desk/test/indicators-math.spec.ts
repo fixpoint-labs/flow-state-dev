@@ -1,8 +1,15 @@
 /**
  * Unit tests for the technical-indicator math. Verifies known reference values
  * for the full indicator set against constructed series and confirms the
- * edge-case behavior (short series → 0 / neutral baseline, flat market → RSI
- * 50ish, trend label gating on the SMA stack, etc.).
+ * edge-case behavior (short series → null, flat market → RSI 50ish, trend label
+ * gating on the SMA stack, etc.).
+ *
+ * The intent these encode (FIX-1063): a series too short to compute an
+ * indicator yields `null` — the indicator was NOT MEASURED — while an indicator
+ * that genuinely computes to zero on a long enough series stays `0`. Both
+ * directions are asserted, because getting either wrong is a real-money defect:
+ * a fabricated zero enters the arithmetic as a measurement, and a nulled real
+ * zero deletes a reading the desk actually took.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -32,9 +39,11 @@ function bar(date: string, close: number, range = 1, volume = 1000): Bar {
 }
 
 describe("indicators math", () => {
-  it("SMA averages the last N values", () => {
+  it("SMA averages the last N values, and reports null when it cannot", () => {
     expect(simpleMovingAverage([1, 2, 3, 4, 5], 3)).toBe(4);
-    expect(simpleMovingAverage([1, 2, 3], 5)).toBe(0); // too short
+    // Too short to compute. Reporting `0` here made a 3-month-old listing carry
+    // a 200-day average of zero into the trend label and the momentum score.
+    expect(simpleMovingAverage([1, 2, 3], 5)).toBeNull();
   });
 
   it("RSI returns 100 on a strictly rising series (no losses)", () => {
@@ -42,8 +51,8 @@ describe("indicators math", () => {
     expect(rsi(rising, 14)).toBe(100);
   });
 
-  it("RSI returns 0 on a series shorter than the period", () => {
-    expect(rsi([1, 2, 3], 14)).toBe(0);
+  it("RSI reports null on a series shorter than the period", () => {
+    expect(rsi([1, 2, 3], 14)).toBeNull();
   });
 
   it("RSI sits below 100 on a series with at least one down day", () => {
@@ -74,11 +83,17 @@ describe("indicators math", () => {
     expect(atr(bars, 14)).toBeCloseTo(4, 5);
   });
 
-  it("trendLabel returns 'up' when stack is bullish", () => {
+  it("trendLabel reads the stack, and reports no trend when it cannot", () => {
     expect(trendLabel(110, 105, 100)).toBe("up");
     expect(trendLabel(95, 100, 105)).toBe("down");
+    // A MEASURED flat: all three exist and the stack is neither up nor down.
     expect(trendLabel(100, 100, 100)).toBe("flat");
-    expect(trendLabel(110, 0, 100)).toBe("flat"); // SMA200 not yet computable
+    // Not measurable. A trend we could not read is reported as NO trend, never
+    // as "flat" (FIX-1063 decision 2) — a "flat" label is a finding, and the
+    // desk never made it. Before the fix each of these returned "flat".
+    expect(trendLabel(110, 105, null)).toBeNull(); // no 200-day history yet
+    expect(trendLabel(110, null, 100)).toBeNull();
+    expect(trendLabel(null, 105, 100)).toBeNull(); // no bars, so no last close
   });
 
   it("Bollinger Bands collapse around the mean on a flat series", () => {
@@ -89,14 +104,14 @@ describe("indicators math", () => {
     expect(out.lower).toBeCloseTo(100, 5);
   });
 
-  it("Bollinger Bands returns zeros when the series is too short", () => {
-    expect(bollinger([1, 2, 3])).toEqual({ upper: 0, middle: 0, lower: 0 });
+  it("Bollinger Bands report null when the series is too short", () => {
+    expect(bollinger([1, 2, 3])).toEqual({ upper: null, middle: null, lower: null });
   });
 
   it("VWMA equals SMA when every bar has equal volume", () => {
     const bars = Array.from({ length: 20 }, (_, i) => bar(`2026-01-${i + 1}`, 100 + i, 1, 1000));
     const closes = bars.map((b) => b.close);
-    expect(vwma(bars, 20)).toBeCloseTo(simpleMovingAverage(closes, 20), 5);
+    expect(vwma(bars, 20)).toBeCloseTo(simpleMovingAverage(closes, 20)!, 5);
   });
 
   it("VWMA biases toward higher-volume bars", () => {
@@ -108,8 +123,8 @@ describe("indicators math", () => {
     expect(vwma(bars, 20)).toBeGreaterThan(150);
   });
 
-  it("VWMA returns zero when the series is shorter than the period", () => {
-    expect(vwma([bar("2026-01-01", 100)], 20)).toBe(0);
+  it("VWMA reports null when the series is shorter than the period", () => {
+    expect(vwma([bar("2026-01-01", 100)], 20)).toBeNull();
   });
 
   it("Stochastic Oscillator is near 100 at a multi-period high", () => {
@@ -119,15 +134,18 @@ describe("indicators math", () => {
     expect(out.d).toBeGreaterThan(50);
   });
 
-  it("Stochastic returns zeros when the series is too short", () => {
-    expect(stochastic([bar("2026-01-01", 100)])).toEqual({ k: 0, d: 0 });
+  it("Stochastic reports null when the series is too short", () => {
+    expect(stochastic([bar("2026-01-01", 100)])).toEqual({ k: null, d: null });
   });
 
-  it("KDJ derives J from 3K - 2D", () => {
+  it("KDJ derives J from 3K - 2D, and reports null when K/D are unmeasured", () => {
     const bars = Array.from({ length: 25 }, (_, i) => bar(`2026-01-${i + 1}`, 100 + i, 1));
     const out = kdj(bars);
-    const expectedJ = 3 * out.k - 2 * out.d;
+    const expectedJ = 3 * out.k! - 2 * out.d!;
     expect(out.j).toBeCloseTo(expectedJ, 5);
+    // 3 × null − 2 × null coerces to 0 in JS — the exact shape that would
+    // publish a fabricated neutral J on a name with no usable history.
+    expect(kdj([bar("2026-01-01", 100)])).toEqual({ k: null, d: null, j: null });
   });
 
   it("OBV is positive on a steadily rising series", () => {
@@ -135,13 +153,16 @@ describe("indicators math", () => {
     expect(obv(bars)).toBeGreaterThan(0);
   });
 
-  it("OBV is zero on a flat series (no up or down closes)", () => {
+  it("OBV is zero on a flat series — a MEASURED zero, which survives", () => {
+    // Ten bars, no up or down closes. OBV genuinely computes to 0. This is the
+    // over-application guard: the rule is *unobserved → null*, not
+    // *falsy → null*, so a real zero must not be nulled (FIX-1063).
     const bars = Array.from({ length: 10 }, (_, i) => bar(`2026-01-${i + 1}`, 100, 1, 1000));
     expect(obv(bars)).toBe(0);
   });
 
-  it("OBV returns zero when only a single bar is provided", () => {
-    expect(obv([bar("2026-01-01", 100)])).toBe(0);
+  it("OBV reports null when only a single bar is provided", () => {
+    expect(obv([bar("2026-01-01", 100)])).toBeNull();
   });
 
   it("computeIndicators returns finite numbers for a realistic 250-bar series", () => {
@@ -158,8 +179,8 @@ describe("indicators math", () => {
     expect(out.sma200).toBeGreaterThan(0);
     expect(out.trend).toBe("up"); // rising drift dominates
     expect(Number.isFinite(out.bollinger.upper)).toBe(true);
-    expect(out.bollinger.upper).toBeGreaterThan(out.bollinger.middle);
-    expect(out.bollinger.middle).toBeGreaterThan(out.bollinger.lower);
+    expect(out.bollinger.upper).toBeGreaterThan(out.bollinger.middle!);
+    expect(out.bollinger.middle).toBeGreaterThan(out.bollinger.lower!);
     expect(Number.isFinite(out.vwma20)).toBe(true);
     expect(out.vwma20).toBeGreaterThan(0);
     expect(Number.isFinite(out.stoch.k)).toBe(true);
@@ -168,17 +189,36 @@ describe("indicators math", () => {
     expect(Number.isFinite(out.obv)).toBe(true);
   });
 
-  it("computeIndicators falls back to neutral zeros on a 5-bar series", () => {
+  it("computeIndicators reports every unmeasurable indicator as null on a 5-bar series", () => {
+    // Five bars is too short for anything but OBV. Every one of these was `0`
+    // before FIX-1063, and `trend` was "flat" — a full technical read the desk
+    // never took, published under a live source tag.
     const bars = Array.from({ length: 5 }, (_, i) => bar(`2026-01-${i + 1}`, 100, 1));
     const out = computeIndicators(bars);
-    expect(out.rsi14).toBe(0);
-    expect(out.macd.line).toBe(0);
-    expect(out.atr14).toBe(0);
-    expect(out.trend).toBe("flat");
-    expect(out.bollinger.upper).toBe(0);
-    expect(out.vwma20).toBe(0);
-    expect(out.stoch.k).toBe(0);
-    expect(out.kdj.j).toBe(0);
+    expect(out.rsi14).toBeNull();
+    expect(out.macd.line).toBeNull();
+    expect(out.atr14).toBeNull();
+    expect(out.trend).toBeNull();
+    expect(out.sma50).toBeNull();
+    expect(out.sma200).toBeNull();
+    expect(out.bollinger.upper).toBeNull();
+    expect(out.vwma20).toBeNull();
+    expect(out.stoch.k).toBeNull();
+    expect(out.kdj.j).toBeNull();
+    // OBV IS computable on 5 flat bars and genuinely reads 0 — a measurement,
+    // so it stays a number even in the middle of an otherwise-empty payload.
     expect(out.obv).toBe(0);
+  });
+
+  it("a 120-bar history reports sma50 but no sma200 and no trend (the partial case)", () => {
+    // The shape a naive fix leaves live: the payload LOOKS populated because
+    // sma50 is a real number, but the 200-day average and therefore the trend
+    // were never measured. `setup-score` must not read this as a momentum
+    // reading — see the momentum-trap test in setup-score.spec.ts.
+    const bars = Array.from({ length: 120 }, (_, i) => bar(`2026-01-${i + 1}`, 100 + i, 1));
+    const out = computeIndicators(bars);
+    expect(out.sma50).toBeGreaterThan(0);
+    expect(out.sma200).toBeNull();
+    expect(out.trend).toBeNull();
   });
 });

@@ -44,7 +44,6 @@ type ResourceConfig = {
   render?: (content: string, state: JsonObject) => string | Promise<string>; // Optional renderer
   llmReadable?: boolean;        // Allows read tool access when readResourceContentTool is installed
   llmWritable?: boolean;        // Allows write tool access when writeResourceContentTool is installed
-  dynamic?: boolean;            // Resolved at runtime
   writable?: boolean;           // Allow mutation from blocks
   allowedExtensions?: string[]; // Content type restrictions
   metadata?: Record<string, unknown>;
@@ -140,7 +139,7 @@ Where each wave fires:
 - **Wave 2 (action-tree, dispatch)** — also in `createExecutionContext`. A context is always bound to exactly one action, so the context loads that action's declared resources in one parallel burst at creation time. This lives in `createExecutionContext`, not in `runAction`, precisely because the binding is one-context-per-action — there's no separate point where the action "starts" that the context doesn't already know about. Sibling actions' resources never load.
 - **Wave 3 (per-block dispatch)** — the block runtime's `run` loads a block's `prefetchMode: 'lazy'` single resources when that block dispatches, through `_loadDeclaredResources`. Lazy collections defer further: they load per access through the on-demand accessor (below) rather than at block dispatch.
 
-**Per-scope cache and dedupe.** Each scope (session / user / org) keeps an in-memory state and content cache that the waves fill. A `loadedCollectionPrefixes` set per scope records which collection pattern-prefixes have already been bulk-loaded, seeded with the flow-level prefixes from Wave 1, so a re-dispatch never re-scans. Single resources are tracked implicitly by presence in the state cache. An `inflightLoads` single-flight map collapses concurrent loads of the same key or prefix across parallel block dispatch (for example a sequencer's `.work()` fan-out), and clears its entry in `finally` so a failed load retries on the next attempt instead of poisoning the map.
+**Per-scope cache and dedupe.** Each scope (session / user / org) keeps an in-memory state and content cache that the waves fill. A `loadedCollectionPrefixes` set per scope records which collection pattern-prefixes have already been bulk-loaded, seeded with the flow-level prefixes from Wave 1, so a re-dispatch never re-scans. Single resources are tracked implicitly by presence in the state cache. An `inflightLoads` single-flight map collapses concurrent loads of the same key or prefix across parallel block dispatch (for example a sequencer's `.sideChain()` fan-out), and clears its entry in `finally` so a failed load retries on the next attempt instead of poisoning the map.
 
 **Concurrent writes to the cache.** Every write commits one key to the per-key store and then mutates the live per-scope cache in place at that key (`cache[key] = value`) rather than replacing the whole map (FIX-744). Because `.parallel`/`.forEach` branches share one execution context, this is what lets distinct-key collection writes from a fan-out coexist in the cache: a convergence read (`.list()`/`.count()`) after the fan-out sees every instance, not just the last branch's. Same-key concurrent writes are last-writer-wins. See [State and Scopes — concurrency guidance](./state-and-scopes.md).
 
@@ -205,6 +204,30 @@ async function addStep(ctx: PlanContext, step: string) {
 }
 ```
 
+The updater above reports nothing, which is why a plain `updateState` is right for
+it. As soon as a helper needs to tell its caller *what it did* — "yes, I removed
+that step", "here are the three I dropped" — reaching outside the callback for a
+variable is wrong: on the CAS path the updater can run more than once, and the
+value left behind describes whichever attempt ran last rather than the one that
+committed. Return the outcome through `updateStateWith` instead:
+
+```ts
+import { updateStateWith } from "@flow-state-dev/core/helpers";
+
+async function removeStep(ctx: PlanContext, step: string): Promise<boolean> {
+  return (await updateStateWith(ctx, (plan) => {
+    if (!plan.steps.includes(step)) return { state: plan, result: false };
+    return {
+      state: { ...plan, steps: plan.steps.filter((s) => s !== step) },
+      result: true,
+    };
+  })) ?? false;
+}
+```
+
+See [State mutation model](https://flow-state.dev/docs/state/mutation-model) →
+"Writing an updater that may run twice" for the full rule.
+
 ### Resource Collections
 
 Static resources are declared by name at definition time. Resource collections let you create typed sets of resources dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge stores, dynamic workspaces).
@@ -258,18 +281,23 @@ Identity-equal re-registration is always safe (diamond dependencies through capa
 
 ## Client Data
 
-Client data entries are derived views — computed from state and resources within a single scope. They're the mechanism for exposing server-side data to clients.
+Scope state is private to the server by default. Each scope declares what crosses the boundary with a `client` block, which has two halves:
+
+- **`expose`** — names of top-level state fields, passed through verbatim.
+- **`derived`** — named projections computed from `{ state, resources }` within that single scope.
 
 ```ts
 session: {
-  clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    messageCount: (ctx) => ctx.state.messageCount ?? 0,
+  client: {
+    expose: ["messageCount"],
+    derived: {
+      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+    },
   },
 }
 ```
 
-Every `clientData` entry is a function, and every entry is client-visible. There's no `client: true/false` toggle — if it's in `clientData`, clients can see it.
+Everything named in `expose` or `derived` is client-visible; there is no per-entry `client: true/false` toggle. The two share one namespace per scope (the scope's `clientData` object on the wire), so a name used in both throws at `defineFlow`.
 
 ### ClientDataComputeFn
 
@@ -284,7 +312,7 @@ type ClientDataContext<TState, TResources> = {
 ```
 
 **Key differences from the former projection system:**
-- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `clientData` entry sees session state and session resources, nothing else.
+- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `derived` entry sees session state and session resources, nothing else.
 - **No output schema validation**: Compute functions return `JsonValue` directly. Type safety comes from usage patterns, not runtime schema validation.
 - **No `defineProjection()`**: There's no portable projection builder. For shared computation logic, extract a regular function.
 
@@ -294,31 +322,37 @@ type ClientDataContext<TState, TResources> = {
 defineFlow({
   kind: "my-app",
   session: {
-    clientData: {
-      artifactsList: (ctx) => {
-        const artifacts = ctx.resources.artifacts?.state;
-        return artifacts?.order.map(id => ({
-          id,
-          title: artifacts.byId[id]?.title ?? "Untitled",
-        })) ?? [];
+    client: {
+      derived: {
+        artifactsList: (ctx) => {
+          const artifacts = ctx.resources.artifacts?.state;
+          return artifacts?.order.map(id => ({
+            id,
+            title: artifacts.byId[id]?.title ?? "Untitled",
+          })) ?? [];
+        },
+        modeStatus: (ctx) => ({
+          currentMode: ctx.state.mode ?? "chat",
+          requestCount: ctx.state.requestCount ?? 0,
+        }),
       },
-      modeStatus: (ctx) => ({
-        currentMode: ctx.state.mode ?? "chat",
-        requestCount: ctx.state.requestCount ?? 0,
-      }),
     },
   },
   user: {
-    clientData: {
-      preferences: (ctx) => ({
-        displayName: ctx.state.displayName ?? "User",
-        preferredModel: ctx.state.preferredModel ?? "preset/fast",
-      }),
+    client: {
+      derived: {
+        preferences: (ctx) => ({
+          displayName: ctx.state.displayName ?? "User",
+          preferredModel: ctx.state.preferredModel ?? "openai/gpt-5.4-mini",
+        }),
+      },
     },
   },
-  project: {
-    clientData: {
-      sharedConfig: (ctx) => ctx.state.config ?? {},
+  org: {
+    client: {
+      derived: {
+        sharedConfig: (ctx) => ctx.state.config ?? {},
+      },
     },
   },
 });
@@ -331,18 +365,17 @@ Generators use `contextFn()` to pull typed data from scopes into model context �
 ```ts
 import { contextFn } from "@flow-state-dev/core";
 
-const myContext = contextFn({
-  sessionStateSchema: z.object({ mode: z.string() }),
-  sessionResources: { plan: planResource },
-  fn: (ctx) => {
-    const steps = ctx.session.resources.plan?.state.steps ?? [];
-    return `Current mode: ${ctx.session.state.mode}\nPlan steps: ${steps.join(", ")}`;
+const myContext = contextFn(
+  { session: z.object({ mode: z.string() }) },
+  ({ session }, ctx) => {
+    const steps = ctx.resources.plan?.state.steps ?? [];
+    return `Current mode: ${session.mode}\nPlan steps: ${steps.join(", ")}`;
   },
-});
+);
 
 const chatGenerator = generator({
   name: "chat",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   context: [myContext],
   history: true,
@@ -385,12 +418,12 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 Client-facing data is exposed through two complementary mechanisms:
 
-1. **Scope-level `clientData`** — derived views computed from scope state and resources. Best for cross-resource projections and non-resource data.
+1. **Scope-level `client`** — `expose` for verbatim state fields, `derived` for views computed from scope state and resources. Best for cross-resource projections and non-resource data.
 2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
 
 ### Scope-Level Client Data
 
-Scope-level `clientData` remains unchanged — it computes derived values from state and resources within a single scope:
+A scope's `client` block projects state and resources from that single scope. The result is served grouped by scope:
 
 ```
 GET /api/flows/sessions/:sessionId/state
@@ -483,6 +516,29 @@ DELETE /api/flows/sessions/:sessionId/resources/:ref/:topic         → delete i
 
 Server enforces declared permissions and rejects operations that exceed them.
 
+#### Write ordering and `409 Conflict`
+
+Item state and item content live in two stores (`ResourceStateStore`, `ContentStore`). Both write routes therefore follow one rule: **settle the state key first, then touch content.** A request that loses the state race returns `409` and never reaches `ContentStore`.
+
+- **`POST`** inserts the state row at `expectedVersion: 0` (create-if-absent) and writes content only after that commits. Two concurrent creates of one topic yield one `201` and one `409`, and the stored body always belongs to the winner. The conflict is terminal — a losing create is never retried into an overwrite.
+- **`DELETE`** reads the row's version, deletes state conditionally on it, and deletes content only after that commits. Deleting an absent topic is still an idempotent `200`.
+
+**What the `DELETE` check covers.** The version is the one the *route* observes while serving the request, not one the caller supplied, so the window it closes is the route's own read→write window. A `DELETE` issued from a client view fetched earlier still reads the live row and removes it. A caller-supplied precondition is separate surface these routes do not accept ([FIX-1006](https://linear.app/fixpoint-labs/issue/FIX-1006)).
+
+**Residuals, because a create is still two writes to two stores.** Between the `POST`'s state insert and its content write the item is *live but its content is not final*, and `ContentStore` is unversioned by decision, so no state predicate can fence a write to it:
+
+| Window | Outcome |
+| --- | --- |
+| The content write fails | **The request fails, but the item exists anyway**, with **no content row**. The state row committed first and the `content.set` is a bare `await`, so the rejection propagates out of the handler — a failed `POST` is not a no-op. The item is live and listable, a retry of the topic gets an honest `409`, and repair is `PATCH` when the collection grants `client.content.update`. Applies to content-storing collections only — see the shape note below |
+| A `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later create carrying no content revives the row over it, surfacing a deleted generation's content as current. **No error** |
+| A `PATCH` lands in the window | It is acknowledged `200` and then overwritten by the in-flight create. **No error** |
+
+**The shape of a missing body is `null`, not `""`.** A failed content write leaves no content row, and `renderContent` (`packages/engine/src/resources/internal.ts`) returns `null` when `rawContent === undefined`. `handleGetCollectionItemContent` passes that straight through, so the item reads back as `{ content: null }`. Adapter and client code that branches on `content === ""` takes the wrong path — the distinction is between *absent* and *empty*, and only the former occurs here.
+
+**A template-backed collection splits that row rather than escaping it.** `renderContent` checks `contentTemplate` and `contentTemplateRef` *before* it looks at `rawContent` and returns from the template branch without consulting it, so **readability** costs nothing — the item renders from state whether or not a content row exists, and there is nothing to repair with `PATCH`. But the create route writes content whenever the caller sends any, with **no template guard**, so the **partial commit** is exactly as real: the request still fails, the item is still live and listable, and a retry still gets a `409`. Read the first row as two claims — *the body is absent*, which a template answers, and *the create half-committed*, which it does not.
+
+These are accepted, not oversights. A version cannot distinguish a create's own row after a state write (version 2) from a successor generation created after a delete (also version 2) — the counter is per key, not per generation — so no post-hoc fence closes them without a generation-owner token, and a token still cannot fence a write to an unversioned store. Closing them is cross-record atomicity ([FIX-854](https://linear.app/fixpoint-labs/issue/FIX-854)). All three are pinned by tests in `packages/engine/test/resource-collection-routes.test.ts`.
+
 ### React Hooks
 
 ```ts
@@ -499,7 +555,7 @@ await actions.create({ topic: 'spec.md', content: '# New Spec' })
 await actions.update({ topic: 'readme.md', content: '# Updated' })
 ```
 
-Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](/docs/resources/reactive-blocks) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
+Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](../../apps/docs/docs/resources/reactive-blocks.md) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
 
 ## Canonical Authority
 

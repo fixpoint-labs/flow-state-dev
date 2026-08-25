@@ -4,7 +4,7 @@ sidebar_position: 12
 
 # Sequencer State
 
-The four persistence scopes — `request`, `session`, `user`, `org` — are tied to identity. Sequencer state is tied to execution: it lives for one execution of one sequencer instance and is checkpointed at every step boundary so the run can resume after an interruption (FIX-401). When the run finishes, the state is done.
+The four persistence scopes — `request`, `session`, `user`, `org` — are tied to identity. Sequencer state is tied to execution: it lives for one execution of one sequencer instance and is checkpointed at every step boundary so the run can resume after an interruption. When the run finishes, the state is done.
 
 Sequencer state is [block state](/docs/advanced/block-state) addressed through the nearest enclosing sequencer — `ctx.sequencer` is one of four handles onto the same underlying container. A sequencer just happens to be the block kind that also gets durable checkpointing.
 
@@ -114,13 +114,13 @@ const research = pipeline
   );
 ```
 
-DSL callbacks — `.map`, `.tap`, `.tapIf`, `.stepIf`, `.workIf`, `.forEach`, `.doUntil`, `.exitIf`, `.throwIf`, `.branch`, and inline connector functions — all receive a `ctx` where `ctx.sequencer.state` is typed from the sequencer's `stateSchema`. If the sequencer has no `stateSchema`, `ctx.sequencer` is `undefined` as before.
+DSL callbacks — `.map`, `.tap`, `.tapIf`, `.stepIf`, `.sideChainIf`, `.forEach`, `.doUntil`, `.exitIf`, `.throwIf`, `.branch`, and inline connector functions — all receive a `ctx` where `ctx.sequencer.state` is typed from the sequencer's `stateSchema`. If the sequencer has no `stateSchema`, `ctx.sequencer` is `undefined` as before.
 
 ## The durability boundary
 
 Sequencer state has a different lifetime from the persistence scopes — but it is **not** purely in-memory.
 
-At every step boundary, durable sequencers checkpoint their state via the `CheckpointStore` (FIX-401). Each write is keyed by `(requestId, blockInstanceId)` and overwrites the prior record — latest-only semantics, so storage is constant per sequencer regardless of step count. The resume runtime reads the latest checkpoint to pick up after an interrupted request.
+At every step boundary, durable sequencers checkpoint their state via the `CheckpointStore`. Each write is keyed by `(requestId, blockInstanceId)` and overwrites the prior record — latest-only semantics, so storage is constant per sequencer regardless of step count. The resume runtime reads the latest checkpoint to pick up after an interrupted request.
 
 The checkpoint (`state_snapshot`) restores accumulator state only — the sequencer's `stateSchema` fields. It is not what decides which steps to re-run. Skipping a completed step is a separate mechanism: the runtime replays the step's recorded `block_trace` output, keyed by its logical path (`${requestId}:${path}`), not by a positional step index. Keying on the logical path is what lets a resume tolerate code changes between suspend and resume. See [Block memoization and replay](/docs/advanced/block-memoization-and-replay).
 

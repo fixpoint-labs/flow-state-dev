@@ -18,6 +18,7 @@ import {
   buildReportSummary,
   stanceToAxis,
 } from "../components/summary/aggregate";
+import { shownRationale } from "../components/summary/risk-panel";
 import type { MemoState } from "../flows/analysis/resources";
 import type { ValuationSpineState } from "../flows/analysis/valuation-spine-resource";
 import type { AnyMemoShortName } from "../flows/analysis/registry";
@@ -188,7 +189,7 @@ describe("buildReportSummary — decision", () => {
     ).toBeNull();
   });
 
-  it("reads finalRating, band, clamp, confidence, and primary scenario from the PM memo", () => {
+  it("reads finalRating, band, clamp, confidence, both rating axes, and primary scenario from the PM memo", () => {
     const summary = buildReportSummary(
       mapOf([
         [
@@ -202,6 +203,8 @@ describe("buildReportSummary — decision", () => {
             decisionConfidence: 0.78,
             agreesWithTrader: true,
             primaryScenario: "Data-center beat",
+            absoluteRating: "Buy",
+            relativeRating: "Overweight",
             keyDependencies: ["AI cap-ex cycle length"],
           }),
         ],
@@ -214,7 +217,21 @@ describe("buildReportSummary — decision", () => {
     expect(summary.decision?.ratingBand).toEqual({ floor: "Hold", ceiling: "Buy" });
     expect(summary.decision?.decisionConfidence).toBe(0.78);
     expect(summary.decision?.primaryScenario).toBe("Data-center beat");
+    // The two rating axes the PM publishes alongside the 5-tier rating. They are
+    // stored fields with no derivation, so a null here must stay null — a
+    // defaulted "Hold" would assert a call the PM did not make.
+    expect(summary.decision?.absoluteRating).toBe("Buy");
+    expect(summary.decision?.relativeRating).toBe("Overweight");
     expect(summary.keyDependencies).toEqual(["AI cap-ex cycle length"]);
+  });
+
+  it("leaves the absolute/relative rating axes null when the PM published neither", () => {
+    const summary = buildReportSummary(
+      mapOf([["portfolioManager", memo({ finalRating: "Hold" })]]),
+      null,
+    );
+    expect(summary.decision?.absoluteRating).toBeNull();
+    expect(summary.decision?.relativeRating).toBeNull();
   });
 
   it("collapses an empty-string primaryScenario to null (no fake scenario reference)", () => {
@@ -225,6 +242,51 @@ describe("buildReportSummary — decision", () => {
       null,
     );
     expect(summary.decision?.primaryScenario).toBeNull();
+  });
+
+  // FIX-1113 — the desk withholds the rating envelope (never the rating) when
+  // the three statements do not share a fiscal period, and marks the record
+  // with `ratingUnanchored` + `periodDisclosure`. The PM memo already carries
+  // both fields (`writer.ts`); the aggregate must carry them through to the
+  // report surfaces rather than stopping at the stored resource.
+  it("carries ratingUnanchored + periodDisclosure through to the decision summary", () => {
+    const disclosure = {
+      reason: "periods-disagree" as const,
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({
+            finalRating: "Buy",
+            ratingUnanchored: true,
+            periodDisclosure: disclosure,
+          }),
+        ],
+      ]),
+      null,
+    );
+    expect(summary.decision?.ratingUnanchored).toBe(true);
+    expect(summary.decision?.periodDisclosure).toEqual(disclosure);
+  });
+
+  it("leaves ratingUnanchored false and periodDisclosure null on an ordinary anchored decision", () => {
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({ finalRating: "Buy", ratingUnanchored: false, periodDisclosure: null }),
+        ],
+      ]),
+      null,
+    );
+    expect(summary.decision?.ratingUnanchored).toBe(false);
+    expect(summary.decision?.periodDisclosure).toBeNull();
   });
 });
 
@@ -490,5 +552,262 @@ describe("buildReportSummary — lens convergence (Slice 6)", () => {
       null,
     );
     expect(summary.lensConvergence).toBeNull();
+  });
+});
+
+/**
+ * FIX-1060 — the fields the report computed and then dropped on the floor
+ * between the aggregate and the screen.
+ *
+ * These encode a completeness guarantee, and it has two opposite failure modes,
+ * both real-money: a stored field silently missing from the view model (the
+ * original bug), and an ABSENT field materializing as a fabricated value — a
+ * defaulted "calibrated" verdict asserts a review that never happened, which is
+ * worse than the gap it papers over. The populated/absent round-trip pair at the
+ * bottom of this file is the contract for both directions; the cases here are
+ * the PARTIAL states it cannot express.
+ */
+describe("buildReportSummary — research synthesis (FIX-1060)", () => {
+  it("collapses a published RM memo that left the lists unpublished to empty lists", () => {
+    const synthesis = buildReportSummary(
+      mapOf([["researchManager", memo({ stance: "neutral", conviction: 0.4 })]]),
+      null,
+    ).researchSynthesis;
+    expect(synthesis.stance).toBe("neutral");
+    expect(synthesis.keyRisks).toEqual([]);
+    expect(synthesis.unresolvedDisagreements).toEqual([]);
+  });
+});
+
+describe("buildReportSummary — risk verdict (FIX-1060)", () => {
+  it("stays null when the risk memo published critical risks but no calibration", () => {
+    const verdict = buildReportSummary(
+      mapOf([
+        [
+          "riskAssessment",
+          memo({
+            criticalRisks: [
+              {
+                description: "Customer concentration",
+                raisedBy: "aggressive",
+                severity: "high",
+              },
+            ],
+          }),
+        ],
+      ]),
+      null,
+    ).riskVerdict;
+    expect(verdict.confidenceCalibration).toBeNull();
+    expect(verdict.recommendedAdjustments).toBeNull();
+  });
+});
+
+describe("buildReportSummary — trade invalidation criteria (FIX-1060)", () => {
+  /**
+   * The mid-run state that hid the criteria entirely: the trader has published
+   * (Phase 3) and the PM has not (Phase 5), so `decision` is null while the
+   * trade — stop, target, and what would invalidate it — is fully stored. The
+   * decision header must render the trade block from `trade` alone; nesting it
+   * under a non-null `decision` dropped stored analysis for the whole window
+   * between the two phases, including on runs whose price chart was already
+   * drawing the same stop and target lines.
+   */
+  it("carries a full trade with its invalidation criteria while the PM decision is still null", () => {
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "trader",
+          memo({
+            direction: "long",
+            stopPrice: 780,
+            targetPrice: 1050,
+            invalidationCriteria: [
+              "Gross margin below 70% for two consecutive quarters",
+            ],
+          }),
+        ],
+        // The PM memo exists as a pending scaffold with no rating yet.
+        ["portfolioManager", memo({})],
+      ]),
+      null,
+    );
+    expect(summary.decision).toBeNull();
+    expect(summary.trade?.stopPrice).toBe(780);
+    expect(summary.trade?.targetPrice).toBe(1050);
+    expect(summary.trade?.invalidationCriteria).toEqual([
+      "Gross margin below 70% for two consecutive quarters",
+    ]);
+  });
+
+  it("stays null when the trader published none — an empty list is missing signal, not 'nothing invalidates this'", () => {
+    const summary = buildReportSummary(
+      mapOf([["trader", memo({ direction: "flat" })]]),
+      null,
+    );
+    expect(summary.trade).not.toBeNull();
+    expect(summary.trade?.invalidationCriteria).toBeNull();
+  });
+
+  /**
+   * FIX-780 / BP-030. The `memo()` helper above deliberately does NOT list the
+   * two monitoring-level fields, so this memo is the shape a report stored
+   * before FIX-780 actually has: the keys are ABSENT, not null. The aggregate
+   * must hand the components the `null` they type against — an `undefined`
+   * leaking through is a third state every downstream null-check would miss.
+   */
+  it("normalizes a pre-FIX-780 trader memo's absent monitoring keys to null", () => {
+    const legacy = memo({ direction: "flat", stopPrice: 320, targetPrice: 195 });
+    expect("reassessBelowPrice" in legacy).toBe(false);
+
+    const summary = buildReportSummary(mapOf([["trader", legacy]]), null);
+    expect(summary.trade?.reassessBelowPrice).toBeNull();
+    expect(summary.trade?.invalidateAbovePrice).toBeNull();
+    // The record itself is untouched — relabeled, never re-interpreted.
+    expect(summary.trade?.stopPrice).toBe(320);
+    expect(summary.trade?.targetPrice).toBe(195);
+  });
+});
+
+/**
+ * The completeness round-trip the issue's acceptance criteria names directly:
+ * one report with every previously-dropped field populated, and one with none.
+ * If a future change stops threading a field into the view model, the populated
+ * case fails; if it starts defaulting an absent field, the empty case fails.
+ */
+describe("buildReportSummary — every previously-dropped field, populated and absent", () => {
+  const RECOMMENDED = {
+    sizing: {
+      direction: "smaller",
+      rationale: "Position sized ahead of an unhedged print.",
+      attributedTo: "conservative",
+    },
+    holdingPeriod: {
+      direction: "shorter",
+      rationale: "Thesis resolves at the next guide.",
+      attributedTo: "neutral",
+    },
+    // Left null by the risk memo — the axis the panel must omit rather than
+    // render as "unchanged", which the memo did not say.
+    invalidation: null,
+  } satisfies NonNullable<MemoState["recommendedAdjustments"]>;
+
+  const FULL = mapOf([
+    [
+      "researchManager",
+      memo({
+        stance: "bearish",
+        conviction: 0.55,
+        keyRisks: ["Cap-ex digestion", "Customer concentration"],
+        keyOpportunities: ["Networking attach rate"],
+        unresolvedDisagreements: [
+          "Whether 2027 cap-ex is committed or aspirational",
+        ],
+      }),
+    ],
+    [
+      "trader",
+      memo({
+        direction: "short",
+        invalidationCriteria: [
+          "Gross margin below 70% for two consecutive quarters",
+        ],
+      }),
+    ],
+    [
+      "riskAssessment",
+      memo({
+        confidenceCalibration: "underconfident",
+        calibrationRationale: "Confidence lags the evidence on the 2027 ramp.",
+        recommendedAdjustments: RECOMMENDED,
+      }),
+    ],
+    [
+      "portfolioManager",
+      memo({
+        finalRating: "Underweight",
+        absoluteRating: "Hold",
+        relativeRating: "Underweight",
+        primaryScenario: "Cap-ex pause",
+      }),
+    ],
+  ]);
+
+  it("renders every field into the view model when the report populated them all", () => {
+    const s = buildReportSummary(FULL, null);
+    expect(s.researchSynthesis.stance).toBe("bearish");
+    expect(s.researchSynthesis.conviction).toBe(0.55);
+    expect(s.researchSynthesis.keyRisks).toEqual([
+      "Cap-ex digestion",
+      "Customer concentration",
+    ]);
+    expect(s.researchSynthesis.keyOpportunities).toEqual([
+      "Networking attach rate",
+    ]);
+    // The divergence answer the Summary page was specified to give.
+    expect(s.researchSynthesis.unresolvedDisagreements).toEqual([
+      "Whether 2027 cap-ex is committed or aspirational",
+    ]);
+    expect(s.trade?.invalidationCriteria).toEqual([
+      "Gross margin below 70% for two consecutive quarters",
+    ]);
+    expect(s.riskVerdict.confidenceCalibration).toBe("underconfident");
+    expect(s.riskVerdict.calibrationRationale).toBe(
+      "Confidence lags the evidence on the 2027 ramp.",
+    );
+    // Passed through as stored — the aggregate derives no adjustment and drops
+    // no axis.
+    expect(s.riskVerdict.recommendedAdjustments).toEqual(RECOMMENDED);
+    expect(s.riskVerdict.recommendedAdjustments?.invalidation).toBeNull();
+    expect(s.decision?.absoluteRating).toBe("Hold");
+    expect(s.decision?.relativeRating).toBe("Underweight");
+    expect(s.decision?.primaryScenario).toBe("Cap-ex pause");
+  });
+
+  it("collapses every field to null/empty when no memo populated any of them", () => {
+    const s = buildReportSummary(mapOf([]), null);
+    expect(s.researchSynthesis).toEqual({
+      stance: null,
+      conviction: null,
+      keyRisks: [],
+      keyOpportunities: [],
+      unresolvedDisagreements: [],
+    });
+    expect(s.trade).toBeNull();
+    expect(s.riskVerdict).toEqual({
+      confidenceCalibration: null,
+      calibrationRationale: null,
+      recommendedAdjustments: null,
+    });
+    expect(s.decision).toBeNull();
+  });
+});
+
+/**
+ * The risk panel's calibration section is gated on one helper so its heading and
+ * its body can't disagree. A blank rationale is the case that separates them: it
+ * is non-null (so a `!== null` heading gate opens) but unrenderable (so the body
+ * stays empty), which put a "Confidence calibration" heading over nothing —
+ * chrome asserting a review the risk memo did not publish.
+ */
+describe("shownRationale — the risk panel's calibration gate", () => {
+  it("treats a blank rationale as absent, so the section cannot open on it alone", () => {
+    expect(
+      shownRationale({
+        confidenceCalibration: null,
+        calibrationRationale: "",
+        recommendedAdjustments: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns a published rationale verbatim", () => {
+    expect(
+      shownRationale({
+        confidenceCalibration: "overconfident",
+        calibrationRationale: "Confidence outruns the evidence.",
+        recommendedAdjustments: null,
+      }),
+    ).toBe("Confidence outruns the evidence.");
   });
 });

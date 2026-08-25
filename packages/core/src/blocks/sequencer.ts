@@ -12,7 +12,7 @@ import type {
   SequencerConfig,
   SequencerDefinition,
   SequencerRuntimeState,
-  WorkResult
+  SideChainResult
 } from "./sequencer-methods";
 import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
 import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../errors/sequencer-output-schema-error";
@@ -21,8 +21,10 @@ import { resolveActiveStatusMessage } from "./internal/resolve-active-status-mes
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import type { ReplayLog } from "./internal/replay-log";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
-import { runBackground, runChild } from "./internal/sequencer-kernel";
+import type { StepOutcome } from "./internal/arg-shapes";
+import { runSideChain, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
+import type { WorkstreamBindings } from "../types/workstream";
 import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError, withTimeout } from "./internal/utils";
 import {
   blockPathBranch,
@@ -35,7 +37,7 @@ import {
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
 import { resolveTracingLevel, type TracingLevel } from "../helpers/tracing-level";
-import { getRequestWorkPool } from "../execution/request-work-pool";
+import { getRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { getTransientKeys, stripTransientKeys } from "../helpers/transient-slot";
 import { compareZodSchemasStructurally } from "../helpers/zod-introspect";
 import { mapLimit } from "../helpers/concurrency";
@@ -91,7 +93,7 @@ type SequencerOpResult = {
   /**
    * BlockValue hint for the sequencer's output after this op runs (FIX-413).
    * - Unset: op did not change the sequencer's output kind. The running
-   *   descriptor from prior ops carries over (e.g., `.tap`, `.work`, no-op
+   *   descriptor from prior ops carries over (e.g., `.tap`, `.sideChain`, no-op
    *   `.stepIf`).
    * - Set: replaces the running descriptor. `.step` produces a ref to the
    *   child item, `.map` produces inline, `.stepAll` produces structure.
@@ -214,11 +216,11 @@ function recordSequentialChild(
   runtime.lastChildInputHint = undefined;
 }
 
-type WorkOptions = {
+type SideChainOptions = {
   name?: string;
 };
 
-type WaitForWorkOptions = {
+type WaitForSideChainOptions = {
   failOnError?: boolean;
   timeoutMs?: number;
 };
@@ -404,8 +406,8 @@ function childBlockPath(
  * `ctx._withExecutionScope` — opens a scoped child context that drives the
  * unified trace lifecycle; otherwise it runs the block directly (unit-test
  * contexts). The `options.phase`/`signalOverride` thread background dispatch
- * (`"work"` phase, FIX-663 signal) into the descendant scope. The kernel
- * primitives (`runChild`/`runBackground`) and the loop/aggregator/rescue paths
+ * (`"sideChain"` phase, FIX-663 signal) into the descendant scope. The kernel
+ * primitives (`runChild`/`runSideChain`) and the loop/aggregator/rescue paths
  * all dispatch through here; it is the one place a child block is invoked.
  */
 export async function executeBlock(
@@ -413,7 +415,12 @@ export async function executeBlock(
   input: unknown,
   ctx: BlockContext,
   path: string,
-  options?: { phase?: "main" | "work"; signalOverride?: AbortSignal }
+  options?: {
+    phase?: "main" | "sideChain";
+    signalOverride?: AbortSignal;
+    /** The background signal this child's SUBTREE dispatches read (FIX-1005). */
+    sideChainSignalOverride?: AbortSignal;
+  }
 ): Promise<unknown> {
   const startedAt = Date.now();
   const requestId = ctx.request.identity.id;
@@ -444,6 +451,8 @@ export async function executeBlock(
   if (replayLog !== undefined) {
     const cached = replayLog.getCompletedOutput(`${requestId}:${path}`);
     if (cached !== undefined && cached.kind === "inline") {
+      // Keep this condition and `childWillReplay` in agreement — the dispatch
+      // sites ask that predicate whether this child is about to be injected.
       // `buildReplayLog` materialises recorded outputs to `inline`, so the
       // value is read directly with no live item lookup.
       //
@@ -594,7 +603,7 @@ export async function executeBlock(
 
   if (ctx._withExecutionScope === undefined) {
     // No server scope hook (unit-test context). `ctx.signal` was already
-    // substituted by the caller's `taskCtx` spread when dispatching `.work()`,
+    // substituted by the caller's `taskCtx` spread when dispatching `.sideChain()`,
     // so the override is implicit here. Nothing more to thread.
     return run(ctx);
   }
@@ -632,9 +641,10 @@ export async function executeBlock(
             }
     },
     run,
-    // FIX-663: thread the background signal override (set at `.work()`
+    // FIX-663: thread the background signal override (set at `.sideChain()`
     // dispatch) into the child scope so the entire descendant tree sees it.
-    options?.signalOverride
+    options?.signalOverride,
+    options?.sideChainSignalOverride
   );
 }
 
@@ -681,7 +691,7 @@ function createRuntimeState(): SequencerRuntimeState {
   return {
     stepHistory: [],
     loopCounts: new Map<string, number>(),
-    workTasks: [],
+    pendingSideChainTasks: [],
     stateVersion: 0,
     scopeId: `seq_scope_${sequencerScopeCounter}`,
     lastChildPath: undefined,
@@ -691,19 +701,49 @@ function createRuntimeState(): SequencerRuntimeState {
 }
 
 /**
- * Build the context for a background `.work()` / `.workIf()` /
- * `.forEachBackground()` task. FIX-663: when the request executor supplied a
- * `_requestBackgroundSignal`, substitute it for `ctx.signal` so the task tree
+ * The background signal a subtree's `.sideChain()` dispatches should read, once
+ * `extra` has been composed into it (FIX-1005).
+ *
+ * `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` deliberately do NOT run
+ * under `ctx.signal` — they substitute the request's background signal so a
+ * task tree survives transport teardown (FIX-663). That substitution is right
+ * about the transport signal and wrong about everything else composed on top:
+ * a caller that added a signal to this subtree via `.step(block, { abortSignal })`
+ * has that signal silently dropped the moment the subtree dispatches background
+ * work, which is precisely where the un-cancelled work goes on costing money.
+ *
+ * Composing rather than substituting keeps both promises: the task still
+ * outlives a disconnected client, and it still stops when the caller's signal
+ * fires.
+ *
+ * Returns `undefined` when the request installed no background signal (unit
+ * contexts). That case must stay untouched — there, `sideChainTaskCtx` runs
+ * the task on `ctx.signal`, which already carries `extra`, and installing one
+ * here would substitute `extra` for the request signal instead of adding to it.
+ */
+export function composeSideChainSignal(
+  ctx: BlockContext,
+  extra: AbortSignal
+): AbortSignal | undefined {
+  const background = ctx._requestSideChainSignal;
+  if (background === undefined) return undefined;
+  return AbortSignal.any([background, extra]);
+}
+
+/**
+ * Build the context for a background `.sideChain()` / `.sideChainIf()` /
+ * `.forEachSideChain()` task. FIX-663: when the request executor supplied a
+ * `_requestSideChainSignal`, substitute it for `ctx.signal` so the task tree
  * survives transport teardown and aborts only on explicit user cancellation.
  * Returns the parent ctx unchanged in unit-test contexts (no background
  * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
  * threaded into `executeBlock` so descendant scopes inherit the same signal.
  */
-export function backgroundTaskCtx(ctx: BlockContext): {
+export function sideChainTaskCtx(ctx: BlockContext): {
   taskCtx: BlockContext;
   signalOverride: AbortSignal | undefined;
 } {
-  const bgSignal = ctx._requestBackgroundSignal;
+  const bgSignal = ctx._requestSideChainSignal;
   if (bgSignal === undefined) {
     return { taskCtx: ctx, signalOverride: undefined };
   }
@@ -711,19 +751,76 @@ export function backgroundTaskCtx(ctx: BlockContext): {
 }
 
 /**
- * Dispatch a background work task. When the request-scoped pool is present
+ * True when the child at `path` will be INJECTED from the resume replay log
+ * rather than executed (FIX-811).
+ *
+ * A pure query over the same log and the same key `executeBlock`'s
+ * short-circuit uses — deliberately a shared predicate rather than a flag the
+ * short-circuit sets, because sibling dispatches run concurrently and a
+ * context-level marker could not say which of them it belonged to.
+ *
+ * The dispatch sites need it because a replayed child is not a dispatch: its
+ * body never runs, it emits nothing, and it mutates nothing. Anything a caller
+ * hangs off the *act* of dispatching — `StepOptions.onSettled` — must not fire
+ * for it, exactly as it does not fire for a `.stepIf()` whose condition was
+ * false. Both are "nothing was dispatched"; a resume would otherwise re-run
+ * every completed step's cleanup on every re-entry.
+ */
+export function childWillReplay(ctx: BlockContext, path: string): boolean {
+  const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
+  if (replayLog === undefined) return false;
+  const cached = replayLog.getCompletedOutput(`${ctx.request.identity.id}:${path}`);
+  return cached !== undefined && cached.kind === "inline";
+}
+
+/**
+ * Run a step's `onSettled` hook without letting it change the step's outcome.
+ *
+ * The hook runs in a `finally`, and a synchronous throw out of a `finally`
+ * REPLACES whatever the block was completing with — its return value, its
+ * error, or, worst of the three, its `SuspensionError`. Suspension is control
+ * flow rather than failure, and it is the specific exit this hook exists to
+ * catch, so a cleanup bug there would turn a parked request into a crash. The
+ * documented contract is that the hook cannot change the outcome; this is what
+ * makes that true instead of a request the caller has to honour.
+ *
+ * Its own failure is logged rather than swallowed. The hook releases something
+ * — a timer, a lease renewal, a subscription — and a release that fails in
+ * silence is exactly how a mechanism goes on running with nothing left to say
+ * so.
+ */
+function runOnSettled(
+  onSettled: ((ctx: BlockContext, outcome: StepOutcome) => void) | undefined,
+  ctx: BlockContext,
+  outcome: StepOutcome,
+  blockName: string
+): void {
+  if (onSettled === undefined) return;
+  try {
+    onSettled(ctx, outcome);
+  } catch (error) {
+    console.error(
+      `[sequencer] onSettled hook for step "${blockName}" threw on the "${outcome}" path; ` +
+        `the step's own outcome is unchanged:`,
+      error instanceof Error ? (error.stack ?? error.message) : error
+    );
+  }
+}
+
+/**
+ * Dispatch a side-chain task. When the request-scoped pool is present
  * (server runtime), push to it tagged with the sequencer's scopeId. When
  * absent (unit-test contexts), fall back to the per-sequencer work list so
  * the inner-sequencer auto-await path keeps working unchanged. Consumed by the
- * `runBackground` kernel primitive and `.forEachBackground`'s batch dispatch.
+ * `runSideChain` kernel primitive and `.forEachSideChain`'s batch dispatch.
  */
-export function dispatchWorkTask(
+export function dispatchSideChainTask(
   ctx: BlockContext,
   runtime: SequencerRuntimeState,
   name: string,
   rawPromise: Promise<unknown>
 ): void {
-  const pool = getRequestWorkPool(ctx);
+  const pool = getRequestSideChainPool(ctx);
   if (pool !== undefined) {
     pool.addTask({ promise: rawPromise, meta: { name, scopeId: runtime.scopeId } });
     return;
@@ -731,9 +828,9 @@ export function dispatchWorkTask(
 
   // Fallback: per-sequencer auto-await path (unit-test contexts).
   const wrapped = rawPromise
-    .then((result): WorkResult => ({ name, status: "fulfilled", value: result }))
-    .catch((error): WorkResult => ({ name, status: "rejected", reason: toError(error) }));
-  runtime.workTasks.push({ name, promise: wrapped });
+    .then((result): SideChainResult => ({ name, status: "fulfilled", value: result }))
+    .catch((error): SideChainResult => ({ name, status: "rejected", reason: toError(error) }));
+  runtime.pendingSideChainTasks.push({ name, promise: wrapped });
 }
 
 /**
@@ -848,15 +945,15 @@ function runSequencerOperations(
         }
 
         // Per-sequencer auto-await fallback. Runs only when the request
-        // executor's `_requestWorkPool` is absent (unit-test contexts). Under
+        // executor's `_requestSideChainPool` is absent (unit-test contexts). Under
         // the request-scoped pool model, inner sequencers do not block on
-        // their own background work — the request executor drains the pool
-        // exactly once before terminal status. See FIX-554.
-        const hasRequestPool = getRequestWorkPool(ctx) !== undefined;
-        if (!hasRequestPool && runtime.workTasks.length > 0) {
-          const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
+        // their own side-chain work — the request executor drains the pool to
+        // quiescence before terminal status. See FIX-554, FIX-1001.
+        const hasRequestPool = getRequestSideChainPool(ctx) !== undefined;
+        if (!hasRequestPool && runtime.pendingSideChainTasks.length > 0) {
+          const pending = runtime.pendingSideChainTasks.splice(0, runtime.pendingSideChainTasks.length);
           let remaining = pending.length;
-          ctx.emit.status(undefined, { blocked: false, backgroundTasks: remaining });
+          ctx.emit.status(undefined, { blocked: false, sideChainTasks: remaining });
 
           await Promise.all(pending.map((t) =>
             t.promise.then(async (result) => {
@@ -864,7 +961,7 @@ function runSequencerOperations(
               if (result.status === "rejected") {
                 console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
               }
-              ctx.emit.status(undefined, { blocked: false, backgroundTasks: remaining });
+              ctx.emit.status(undefined, { blocked: false, sideChainTasks: remaining });
             })
           ));
         }
@@ -1007,7 +1104,23 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   // Surfaced as `BlockDefinition.ownDeclaredResources` for the block-dispatch
   // prefetch hook (FIX-688), which must load this block's own declarations
   // without re-loading descendants'.
-  ownDeclaredResources?: DeclaredResources
+  ownDeclaredResources?: DeclaredResources,
+  // This sequencer's OWN detached worker bindings (FIX-982) — the set a task
+  // board stamps on the drain it just built. Carried across every rebuild;
+  // the bubble-up set is NOT carried, it is re-derived from `childBlocks` by
+  // `buildBlock`, so a chained step can never hand back a sequencer that has
+  // silently forgotten one of its children's boards.
+  ownWorkstreamBindings?: WorkstreamBindings,
+  // Every child block this chain has composed so far — one per `.step()`,
+  // `.tap()`, `.branch()` arm, and so on, in the order they were added.
+  //
+  // Retained because a `SequencerOperation` is `{name, run}`: the child lives
+  // inside the closure and nowhere else, which made the sequencer edge opaque to
+  // any definition-time traversal. Since a board's drain IS a sequencer, that
+  // opacity is what stopped "every reachable detached board resolves to a
+  // binding" from being checkable at all. It is also the single input the
+  // bindings rail is derived from, which is why the two are one change.
+  childBlocks: readonly BlockDefinition<any, any>[] = []
 ): SequencerDefinition<TInput, TOutput, TStateSchema> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
@@ -1039,6 +1152,12 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     ownDeclaredResources,
     resolvedCapabilities: capabilityRefs,
     requiresOrg: accumulatedRequiresOrg,
+    // A chain-level rescue handler is a child like any other — it runs as a real
+    // block and may itself contain a board. It is listed here rather than in
+    // `config.rescue` (which `buildBlock` folds in on its own) because a
+    // sequencer keeps its handlers outside the config, in the operation loop.
+    childBlocks: [...childBlocks, ...rescueHandlers.map((handler) => handler.block)],
+    ownWorkstreamBindings,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -1068,14 +1187,51 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     return merged;
   };
 
+  /**
+   * Append one operation and the block(s) it dispatches, returning the extended
+   * chain.
+   *
+   * **Every chaining method funnels through here, and hands over the child
+   * blocks themselves rather than per-rail projections of them.** That is the
+   * whole point: a child block carries `declaredResources`, `requiresOrg` and
+   * `workstreamBindings`, and each rail used to be re-derived and re-passed by
+   * hand at every one of the ~16 call sites — so the defect rate was sites ×
+   * rails, and a site that remembered two rails out of three failed silently.
+   * With the block itself as the argument, a site can only forget the block, and
+   * forgetting the block drops all rails at once — which `defineFlow`'s
+   * reachability assertion refuses at definition time.
+   *
+   * `undefined` entries are accepted and skipped: `.tap()` and `.forEach()` take
+   * a plain function or a per-item factory in some shapes, and there is no child
+   * block to hand over in those.
+   */
   const extend = <TNext>(
     operation: SequencerOperation,
     newOutputSchema?: ZodTypeAny,
     newInputSchema?: ZodTypeAny,
-    newResources?: DeclaredResources,
-    newRequiresOrg?: boolean
-  ): SequencerDefinition<TInput, TNext, TStateSchema> =>
-    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg, ownDeclaredResources);
+    ...stepBlocks: Array<BlockDefinition<any, any> | undefined>
+  ): SequencerDefinition<TInput, TNext, TStateSchema> => {
+    const children = stepBlocks.filter(
+      (block): block is BlockDefinition<any, any> => block !== undefined
+    );
+    return createSequencer<TInput, TNext, TStateSchema>(
+      config,
+      [...operations, operation],
+      rescueHandlers,
+      newOutputSchema,
+      newInputSchema ?? resolvedInputSchema,
+      mergeFrom(...children),
+      capabilityRefs,
+      mergeRequiresOrgFrom(...children),
+      ownDeclaredResources,
+      // The stamp, read off `baseBlock` rather than the closure parameter so a
+      // board that stamped the finished drain survives chaining. The bubble-up
+      // set is not threaded at all — `buildBlock` re-derives it from the
+      // children below.
+      baseBlock.ownWorkstreamBindings,
+      [...childBlocks, ...children]
+    );
+  };
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -1092,12 +1248,16 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   const definition = Object.assign(baseBlock, {
     step<TStepIn, TNext>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
-      arg2?: BlockDefinition<any, any> | Record<string, unknown>
+      arg2?: BlockDefinition<any, any> | Record<string, unknown>,
+      arg3?: Record<string, unknown>
     ): SequencerDefinition<TInput, TNext, TStateSchema> {
-      // Shapes: step(block) | step(connector, block) | step(factory, inlineConfig).
-      const shape = resolveCallShape([arg1, arg2], "child");
+      // Shapes: step(block) | step(connector, block) | step(factory, inlineConfig),
+      // each optionally followed by a `StepOptions` bag (FIX-1005).
+      const shape = resolveCallShape([arg1, arg2, arg3], "child");
       const block = shape.block ?? buildInlineBlock(shape.factory!, shape.inlineConfig!, lastOutputSchema);
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
+      const resolveAbortSignal = shape.stepOptions?.abortSignal;
+      const onSettled = shape.stepOptions?.onSettled;
       const capturedInput = inferFirstBlockInput(block);
 
       return extend<TNext>(
@@ -1105,29 +1265,67 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           name: block.name,
           run: async (value, ctx, runtime, stepIndex) => {
             const path = childBlockPath(ctx, runtime, "step", stepIndex);
-            const result = await runChild(ctx, { block, connector }, path, value, sequentialInputHint(ctx, runtime));
-            recordSequentialChild(runtime, path);
-            return result;
+            // A replayed child is injected, not dispatched, so it has no
+            // settle to report — see `childWillReplay`.
+            const replayed = childWillReplay(ctx, path);
+            // `finally`, so it also runs on the one exit no composed handler
+            // sees: a `SuspensionError`, which bypasses `.rescue()` by design.
+            // The outcome is reported because those exits are not
+            // interchangeable to a caller releasing a resource — see
+            // `StepOptions.onSettled`.
+            let outcome: StepOutcome = "returned";
+            try {
+              // Resolved INSIDE the guard, per dispatch. The signal is a runtime
+              // fact (which claim this iteration holds), so a step composed once
+              // and run many times gets its own each turn — and a resolver that
+              // throws is a failed dispatch like any other. Resolving above the
+              // `try` would skip `onSettled` entirely on that path, leaking
+              // whatever a preceding setup step established, against a contract
+              // that promises every exit.
+              //
+              // Skipped on replay for the same reason the hook is: there is no
+              // dispatch to run under. The resolver reads live runtime state,
+              // and on a resume that state belongs to the original run.
+              const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
+              const result = await runChild(
+                ctx,
+                { block, connector },
+                path,
+                value,
+                sequentialInputHint(ctx, runtime),
+                extraSignal
+              );
+              recordSequentialChild(runtime, path);
+              return result;
+            } catch (error) {
+              outcome = error instanceof SuspensionError ? "suspended" : "threw";
+              throw error;
+            } finally {
+              if (!replayed) runOnSettled(onSettled, ctx, outcome, block.name);
+            }
           }
         },
         block.config.outputSchema,
         capturedInput,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        block
       );
     },
 
     stepIf<TStepIn, TNext>(
       condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
-      arg3?: BlockDefinition<any, any> | Record<string, unknown>
+      arg3?: BlockDefinition<any, any> | Record<string, unknown>,
+      arg4?: Record<string, unknown>
     ): SequencerDefinition<TInput, TOutput | TNext, TStateSchema> {
       // Shapes: stepIf(cond, block) | stepIf(cond, connector, block) |
-      // stepIf(cond, factory, inlineConfig). The condition is stripped before
+      // stepIf(cond, factory, inlineConfig), each optionally followed by a
+      // `StepOptions` bag (FIX-1005). The condition is stripped before
       // resolving and re-applied as a runtime gate below.
-      const shape = resolveCallShape([arg2, arg3], "child");
+      const shape = resolveCallShape([arg2, arg3, arg4], "child");
       const block = shape.block ?? buildInlineBlock(shape.factory!, shape.inlineConfig!, lastOutputSchema);
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
+      const resolveAbortSignal = shape.stepOptions?.abortSignal;
+      const onSettled = shape.stepOptions?.onSettled;
 
       return extend<TOutput | TNext>(
         {
@@ -1140,15 +1338,36 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             }
 
             const path = childBlockPath(ctx, runtime, "stepIf", stepIndex);
-            const result = await runChild(ctx, { block, connector }, path, value, sequentialInputHint(ctx, runtime));
-            recordSequentialChild(runtime, path);
-            return result;
+            // Below the condition gate on purpose: a step that was never
+            // dispatched has nothing to settle (see `StepOptions.onSettled`).
+            // A replayed child is the same situation one layer over.
+            const replayed = childWillReplay(ctx, path);
+            let outcome: StepOutcome = "returned";
+            try {
+              // Inside the guard, and gated on replay, for the reasons `.step`
+              // above spells out. This dispatch path carries its own copy.
+              const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
+              const result = await runChild(
+                ctx,
+                { block, connector },
+                path,
+                value,
+                sequentialInputHint(ctx, runtime),
+                extraSignal
+              );
+              recordSequentialChild(runtime, path);
+              return result;
+            } catch (error) {
+              outcome = error instanceof SuspensionError ? "suspended" : "threw";
+              throw error;
+            } finally {
+              if (!replayed) runOnSettled(onSettled, ctx, outcome, block.name);
+            }
           }
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        block
       );
     },
 
@@ -1241,8 +1460,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         compositeSchema,
         undefined,
-        mergeFrom(...stepBlocks),
-        mergeRequiresOrgFrom(...stepBlocks)
+        ...stepBlocks
       );
     },
 
@@ -1323,12 +1541,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         arraySchema,
         undefined,
-        mergeFrom(elementBlock),
-        mergeRequiresOrgFrom(elementBlock)
+        elementBlock
       );
     },
 
-    forEachBackground<TItem, TStepIn>(
+    forEachSideChain<TItem, TStepIn>(
       arg1:
         | BlockDefinition<any, any>
         | ((item: TItem, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
@@ -1351,33 +1568,33 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         ? (blockOrFactory as BlockDefinition<any, any>)
         : undefined;
 
-      const DEFAULT_BACKGROUND_CONCURRENCY = 16;
+      const DEFAULT_SIDE_CHAIN_CONCURRENCY = 16;
 
       return extend<TOutput>(
         {
-          name: "forEachBackground",
+          name: "forEachSideChain",
           run: async (value, ctx, runtime, stepIndex) => {
             const items = (
               connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
             ) ?? [];
 
             if (!Array.isArray(items)) {
-              throw new Error("forEachBackground expected an array input");
+              throw new Error("forEachSideChain expected an array input");
             }
 
-            const concurrency = Math.max(1, options?.concurrency ?? DEFAULT_BACKGROUND_CONCURRENCY);
+            const concurrency = Math.max(1, options?.concurrency ?? DEFAULT_SIDE_CHAIN_CONCURRENCY);
 
             // FIX-663: iterations are fire-and-forget, so substitute the
             // background signal. The per-iteration abort check below and each
             // executeBlock then break only on explicit user cancellation, not
-            // on transport teardown — consistent with `.work()`.
-            const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
+            // on transport teardown — consistent with `.sideChain()`.
+            const { taskCtx, signalOverride } = sideChainTaskCtx(ctx);
 
-            // Dispatch all iterations as background work with concurrency limiting.
+            // Dispatch all iterations as side-chain work with concurrency limiting.
             // Each iteration's failure is isolated — one failing doesn't stop others
             // or propagate to the parent sequencer.
             let nextIndex = 0;
-            const iterationResults: WorkResult[] = [];
+            const iterationResults: SideChainResult[] = [];
             const worker = async (): Promise<void> => {
               while (nextIndex < items.length) {
                 if (taskCtx.signal?.aborted) break;
@@ -1391,14 +1608,14 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                     : (blockOrFactory as BlockDefinition<any, any>);
 
                 const iterName = `${block.name}[${currentIndex}]`;
-                const path = childBlockPath(ctx, runtime, "forEachBackground", stepIndex, currentIndex);
+                const path = childBlockPath(ctx, runtime, "forEachSideChain", stepIndex, currentIndex);
                 try {
-                  // Background iterations run in the "work" phase; this flows
+                  // Side-chain iterations run in the "sideChain" phase; this flows
                   // into _blockIdentity.phase and drives the generator's
-                  // position-based default role (work → "trace"). Element is
+                  // position-based default role (sideChain → "trace"). Element is
                   // the iteration's input — stamp it inline (FIX-573 §5).
                   stashInputHint(ctx, { kind: "inline", value: item });
-                  const result = await executeBlock(block, item, taskCtx, path, { phase: "work", signalOverride });
+                  const result = await executeBlock(block, item, taskCtx, path, { phase: "sideChain", signalOverride });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
                   iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
@@ -1412,25 +1629,24 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               workers.push(worker());
             }
 
-            // Wrap the whole batch as a single work task. Pushed to the
+            // Wrap the whole batch as a single side-chain task. Pushed to the
             // request-scoped pool when present, otherwise the per-sequencer
-            // fallback list (see dispatchWorkTask).
-            const batchName = `forEachBackground[${items.length}]`;
+            // fallback list (see dispatchSideChainTask).
+            const batchName = `forEachSideChain[${items.length}]`;
             const rawBatchPromise = Promise.all(workers).then(() => {
               const failed = iterationResults.filter((r) => r.status === "rejected");
               if (failed.length > 0) {
-                throw failed[0].reason ?? new Error(`forEachBackground batch failed`);
+                throw failed[0].reason ?? new Error(`forEachSideChain batch failed`);
               }
               return undefined;
             });
-            dispatchWorkTask(ctx, runtime, batchName, rawBatchPromise);
+            dispatchSideChainTask(ctx, runtime, batchName, rawBatchPromise);
             return { value };
           }
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(elementBlock),
-        mergeRequiresOrgFrom(elementBlock)
+        elementBlock
       );
     },
 
@@ -1479,8 +1695,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        block
       );
     },
 
@@ -1525,8 +1740,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        block
       );
     },
 
@@ -1567,53 +1781,52 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       );
     },
 
-    work<TStepIn>(
+    sideChain<TStepIn>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
-      arg2?: BlockDefinition<any, any> | WorkOptions,
-      arg3?: WorkOptions
+      arg2?: BlockDefinition<any, any> | SideChainOptions,
+      arg3?: SideChainOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
-      // Shapes: work(block) | work(connector, block) | work(block, options) |
-      // work(connector, block, options).
-      const shape = resolveCallShape([arg1, arg2, arg3], "background");
+      // Shapes: sideChain(block) | sideChain(connector, block) |
+      // sideChain(block, options) | sideChain(connector, block, options).
+      const shape = resolveCallShape([arg1, arg2, arg3], "sideChain");
       const block = shape.block;
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
-      const options = shape.options as WorkOptions | undefined;
+      const options = shape.options as SideChainOptions | undefined;
 
       return extend<TOutput>(
         {
-          name: options?.name ?? `work:${block.name}`,
+          name: options?.name ?? `sideChain:${block.name}`,
           run: async (value, ctx, runtime, stepIndex) => {
-            // Dispatched in the "work" phase so nested generators apply the
-            // trace default; the work block's input is the parent step's
-            // output (FIX-573 §5). runBackground passes the value through.
-            const path = childBlockPath(ctx, runtime, "work", stepIndex);
-            return runBackground(ctx, runtime, { block, connector }, path, value, options?.name ?? block.name);
+            // Dispatched in the "sideChain" phase so nested generators apply the
+            // trace default; the side-chain block's input is the parent step's
+            // output (FIX-573 §5). runSideChain passes the value through.
+            const path = childBlockPath(ctx, runtime, "sideChain", stepIndex);
+            return runSideChain(ctx, runtime, { block, connector }, path, value, options?.name ?? block.name);
           }
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        block
       );
     },
 
-    workIf<TStepIn>(
+    sideChainIf<TStepIn>(
       condition:
         | boolean
         | ((value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>),
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
-      arg3?: BlockDefinition<any, any> | WorkOptions,
-      arg4?: WorkOptions
+      arg3?: BlockDefinition<any, any> | SideChainOptions,
+      arg4?: SideChainOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
-      // Shapes mirror work(), prefixed by a boolean/predicate condition.
-      const shape = resolveCallShape([arg2, arg3, arg4], "background");
+      // Shapes mirror sideChain(), prefixed by a boolean/predicate condition.
+      const shape = resolveCallShape([arg2, arg3, arg4], "sideChain");
       const block = shape.block;
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
-      const options = shape.options as WorkOptions | undefined;
+      const options = shape.options as SideChainOptions | undefined;
 
       return extend<TOutput>(
         {
-          name: options?.name ?? `workIf:${block.name}`,
+          name: options?.name ?? `sideChainIf:${block.name}`,
           run: async (value, ctx, runtime, stepIndex) => {
             const shouldDispatch =
               typeof condition === "function"
@@ -1624,24 +1837,23 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               return { value };
             }
 
-            // workIf() dispatches run in the "work" phase, matching work().
-            const path = childBlockPath(ctx, runtime, "workIf", stepIndex);
-            return runBackground(ctx, runtime, { block, connector }, path, value, options?.name ?? block.name);
+            // sideChainIf() dispatches run in the "work" phase, matching work().
+            const path = childBlockPath(ctx, runtime, "sideChainIf", stepIndex);
+            return runSideChain(ctx, runtime, { block, connector }, path, value, options?.name ?? block.name);
           }
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        block
       );
     },
 
-    waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput, TStateSchema> {
+    waitForSideChain(options?: WaitForSideChainOptions): SequencerDefinition<TInput, TOutput, TStateSchema> {
       return extend<TOutput>(
         {
-          name: "waitForWork",
+          name: "waitForSideChain",
           run: async (value, ctx, runtime) => {
-            const pool = getRequestWorkPool(ctx);
+            const pool = getRequestSideChainPool(ctx);
             if (pool !== undefined) {
               // No early-return on hasPendingForScope: a task can settle
               // (resolve or reject) between dispatch and this barrier, but
@@ -1651,7 +1863,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               const result = await withTimeout(
                 pool.drainScope(runtime.scopeId, { failOnError: options?.failOnError }),
                 options?.timeoutMs,
-                "waitForWork"
+                "waitForSideChain"
               );
               // drainScope already throws when failOnError is true and any
               // task failed. With failOnError off, log failures so they still
@@ -1667,15 +1879,15 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             }
 
             // Per-sequencer fallback (unit-test path).
-            if (runtime.workTasks.length === 0) {
+            if (runtime.pendingSideChainTasks.length === 0) {
               return { value };
             }
 
-            const workTasks = runtime.workTasks.splice(0, runtime.workTasks.length);
+            const pendingSideChainTasks = runtime.pendingSideChainTasks.splice(0, runtime.pendingSideChainTasks.length);
             const results = await withTimeout(
-              Promise.all(workTasks.map((task) => task.promise)),
+              Promise.all(pendingSideChainTasks.map((task) => task.promise)),
               options?.timeoutMs,
-              "waitForWork"
+              "waitForSideChain"
             );
 
             if (options?.failOnError === true) {
@@ -1718,8 +1930,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           },
           lastOutputSchema,
           undefined,
-          mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+          block
         );
       }
 
@@ -1755,8 +1966,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(tapBlock),
-        mergeRequiresOrgFrom(tapBlock)
+        tapBlock
       );
     },
 
@@ -1799,8 +2009,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(tapIfBlock),
-        mergeRequiresOrgFrom(tapIfBlock)
+        tapIfBlock
       );
     },
 
@@ -1815,7 +2024,16 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         (acc, h) => acc || Boolean(h.block.requiresOrg),
         accumulatedRequiresOrg ?? false
       );
-      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources);
+      // A rescue handler is an ordinary block and may itself contain a board (a
+      // cleanup drain, say), so its bindings bubble like every other child's —
+      // but `handlers` REPLACES the installed set, so the rail is re-derived
+      // from them rather than accumulated. Accumulating (seeding from
+      // `baseBlock.workstreamBindings`, which already folds in the handlers this
+      // call is dropping) is what made `.rescue([a]).rescue([b])` advertise a
+      // worker nothing could reach. `createSequencer` lists `handlers` among the
+      // children, so `a` disappears by not being passed rather than by being
+      // removed.
+      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources, baseBlock.ownWorkstreamBindings, childBlocks);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -1859,8 +2077,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         firstBranchSchema,
         undefined,
-        mergeFrom(...branchBlocks),
-        mergeRequiresOrgFrom(...branchBlocks)
+        ...branchBlocks
       );
     },
 
@@ -1915,8 +2132,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         undefined,
         undefined,
-        mergeFrom(...stepBlocks),
-        mergeRequiresOrgFrom(...stepBlocks)
+        ...stepBlocks
       );
     },
 
@@ -1956,8 +2172,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         undefined,
         undefined,
-        mergeFrom(...blocks),
-        mergeRequiresOrgFrom(...blocks)
+        ...blocks
       );
     },
 
@@ -2075,8 +2290,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         undefined,
         undefined,
-        mergeFrom(...blocks),
-        mergeRequiresOrgFrom(...blocks)
+        ...blocks
       );
     },
 
@@ -2236,7 +2450,14 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         // accumulatedRequiresOrg; forward only the constant own-resources set.
         undefined,
         undefined,
-        ownDeclaredResources
+        ownDeclaredResources,
+        // Bindings are NOT among the defaults dropped above (FIX-982). Read off
+        // `baseBlock` rather than the closure parameter: a board stamps the
+        // finished drain, so the parameter predates the stamp and
+        // `board.drain.connectInput(...)` would return an executable sequencer
+        // with no route to its own worker.
+        baseBlock.ownWorkstreamBindings,
+        childBlocks
       );
     },
 

@@ -179,11 +179,17 @@ try {
 
 In practice, this is rare for typical conversational flows. It surfaces under sustained concurrency on the same scope — usually a sign that the contended writes belong on a different scope, or that the work should be batched.
 
-### Two dispatch paths
+### Three dispatch paths
 
-Not every scope uses the CAS retry loop. Scopes wired through a `persist` callback to a durable store (`request`, `session`, `user`, `org` on filesystem / sqlite / postgres) use CAS because a remote authority — another connection, another process — can advance the stored version under a stale read. Scopes that don't bridge through `persist` (`sequencer` state, target containers) use a per-container FIFO lock. The lock path serializes mutators in submission order with no version checks, no retries, and never throws `ConcurrentModificationError`.
+Not every scope uses the CAS retry loop. `session`, `user`, and `org` do, because a remote authority — another connection, another process — can advance the stored version under a stale read.
 
-Note: sequencer state going through the lock path doesn't mean it's lost on restart. The runtime still checkpoints sequencer state asynchronously at step boundaries (FIX-401), so a Phase 2 resume can rehydrate it. See [Sequencer State](/docs/advanced/sequencer-state).
+`request` state is written to a store too. Its writes serialize through a per-container FIFO queue and persist under it, so a fan-out of concurrent writers inside one run commits every write, in submission order. The version check stays underneath the queue, because the queue orders one run's writers and nothing else.
+
+Scopes that don't bridge through `persist` at all (`sequencer` state, target containers) take the same queue with no store write behind it. Nothing there can conflict, so your mutator runs exactly once and `ConcurrentModificationError` never surfaces.
+
+Request scope is the one to read carefully. Its queue removes the conflicts between writers in the same run, but the version check underneath can still lose to a writer the queue cannot order, such as a recovery continuation re-entering the same request. The operation then refreshes from the store and calls your mutator again, and `ConcurrentModificationError` surfaces if the retries run out. So treat a request-scope mutator the way you treat one on session, user, or org: a pure function of the state it receives, with no side effects. See [Writing an updater that may run twice](/docs/state/mutation-model#writing-an-updater-that-may-run-twice).
+
+Note: sequencer state going through the lock path doesn't mean it's lost on restart. The runtime still checkpoints sequencer state asynchronously at step boundaries, so a Phase 2 resume can rehydrate it. See [Sequencer State](/docs/advanced/sequencer-state).
 
 The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps` API regardless of which path runs. For the full breakdown — when you'd see `ConcurrentModificationError` vs `ScopeMutationTimeoutError`, and how to bound the lock path's worst case — see [State Mutation Model](/docs/state/mutation-model).
 

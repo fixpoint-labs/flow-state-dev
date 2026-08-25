@@ -102,9 +102,15 @@ export default defineFlow({
       userMessage: (input) => input.message,
     },
   },
+  resources: {
+    artifacts: defineResource({
+      scope: "session",
+      stateSchema: artifactSchema,
+      writable: true,
+    }),
+  },
   session: {
     stateSchema: z.object({ mode: z.string().default("chat"), count: z.number().default(0) }),
-    resources: { artifacts: { stateSchema: artifactSchema, writable: true } },
     client: {
       derived: {
         artifactsList: (ctx) => /* derive list from resource state */,
@@ -123,7 +129,7 @@ export default defineFlow({
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair (deterministic `jsonrepair` then LLM coercion that reshapes off-schema output to the schema; on by default, configured via `repair.coerce` / `repair.coerce.model`, defaulting to `intent/utility`)
   - Provider-native web search: set `search: true` (or a `GeneratorSearchConfig`). This is the model provider's built-in search, distinct from the `@flow-state-dev/tools` `tools.search` tool — the tools `tier` knob does not apply, and the generator's `searchDepth` (`"low" | "medium" | "high"`, OpenAI `searchContextSize`) is a different field from the tools `searchDepth` (`"basic" | "advanced"`). See [Web search](https://flow-state.dev/docs/fundamentals/blocks#web-search).
   - Human-in-the-loop inside the tool loop: a generator tool can call `ctx.suspend()` to gate its own call. The request suspends like any sequencer gate, and on a durable resume the tool re-enters past the approval — prior turns and completed sibling tools replay from the item log, so the model is not re-called for them. Constraints: gate before side effects (the tool re-enters from the top on resume, so guard pre-gate work with `runOnce`), one approval gate per model turn (first-suspension-wins), and a gated tool can't be `cacheable` (the cache short-circuits before the tool body). See [Generator and router suspend/resume](https://flow-state.dev/docs/advanced/generator-and-router-suspend-resume).
-- `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `waitForWork`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
+- `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `sideChain`, `sideChainIf`, `waitForSideChain`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes. Route names must be unique per router (validated at build). The selected branch dispatches through the same replay seam as sequencer children, so on a durable resume the branch decision stays stable — the framework validates the re-run selection against the recorded decision and throws `RouteUnavailableError` on a mismatch — and completed work inside the branch replays instead of re-executing. A router whose branch can suspend needs a pure `execute` selector (no side effects, no ambient state reads); see [Control-flow determinism](https://flow-state.dev/docs/advanced/block-memoization-and-replay#control-flow-determinism)
 
 **Block methods** (available on every `BlockDefinition`):
@@ -132,7 +138,7 @@ export default defineFlow({
 - `.mapModelOutput(mapper)` — when the block is used as a generator tool, supply a model-visible string representation of its output
 - `.asTool(opts?)` — wrap the block so it emits a `tool_output` item when run from a sequencer step (same envelope and lifecycle as the AI SDK tool-loop path)
 
-**Background work lifetime:** `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool exactly once before terminal status. Use `.waitForWork()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
+**Background work lifetime:** `.sideChain()`, `.sideChainIf()`, and `.forEachSideChain()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool before terminal status — on every outcome, and repeatedly until no task is left, so a task that queues more background work is waited on too. Use `.waitForSideChain()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
 
 **Event-driven waits:** `.waitForCondition(predicate, { timeoutMs, wakeOn? })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, an external actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch. The optional `wakeOn` filter lets high-fanout patterns skip predicate re-evaluation on irrelevant item types; `@flow-state-dev/orchestration` ships `onTaskChangeFor(collectionId)` for collection-bound waiters.
 
@@ -143,7 +149,7 @@ export default defineFlow({
 
 An action can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it per-action via `ActionConfig.concurrency`, or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `action.concurrency ?? flow.request.concurrency ?? "allow"`.
 
-`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently, today's behavior).
+`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
 
 ```ts
 defineFlow({
@@ -173,18 +179,20 @@ Exported types: `ConcurrencyConfig`, `ConcurrencyKey`, `ConcurrencyKeyContext`, 
 Every generator-based utility above accepts an optional `itemVisibility` (`{ client: boolean; history: boolean }`) to control whether output is surfaced to the client/history. All default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.
 
 **Resources:**
-- `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)
+- `defineResource(config)` — Portable resource definition. Requires `scope: "session" | "user" | "org"`. Register on a flow's or block's `resources` map.
   - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows. `contentFile` and file-path `contentTemplate` accept a bare string (resolved from the working directory) or an `AnchoredPath` — `{ path, importerUrl: import.meta.url }` — resolved relative to the declaring module first, with a working-directory fallback
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — `'lazy'` defers the load until the declaring block dispatches. Once the resource is resolved its `ref.state` getter is synchronous. Declaring `'lazy'` on a flow-level single resource throws at build time (no per-block load trigger).
+  - `sharedToWorkstream?: boolean` (default `false`, `scope: "session"` only) — give the resource ONE identity across a session lineage, so a session and every background child session under it (a Workstream, and a Workstream's own Workstreams) resolve the same resource through the ordinary resource API. Session **state** is never shared, and sharing does not serialize writes — two children writing one shared resource is ordinary same-resource contention fenced by `expectedVersion`. `true` at `user`/`org` scope throws at build time (those scopes already span every session the principal touches). Also accepted by `defineResourceCollection`, applying to every instance.
   - `reactTo?: { created?, stateUpdated?, deleted?, contentUpdated? }` — bind a block (handler/generator/sequencer) to a mutation. Each entry is a bare block or `{ block, when }`. A state binding (`created`/`stateUpdated`/`deleted`) runs with a `ResourceChange` payload (`key`, `ref`, `kind`, `state`, `prevState`, `evicted`), typed with `resourceChangeSchema(stateSchema)`. A `contentUpdated` binding runs after a server-side content write with a minimal `ResourceContentChange` payload (`key`, `ref`, `kind`), typed with `resourceContentChangeSchema()`; the block `readContent()`s for the fresh body. The block runs blocking inside the originating turn. See the [Reactive blocks](https://flow-state.dev/docs/resources/reactive-blocks) reference.
   - Runtime `ResourceRef` provides `state` (sync getter) plus `patchState`, `setState`, `updateState`, and **`getOrPatchState(key, compute)`** — get-or-compute over state: returns `state[key]` if present, else runs `compute`, patches the result under `key`, and returns it (callback runs only on a miss, so a fetch happens at most once per stored key and downstream readers reuse the stored copy). A stored `null` is a hit; a `compute` resolving to `undefined` stores nothing. No TTL — a per-resource data spine, not a cache. Concurrent misses on the same key within a request are single-flighted (they share one `compute`, so a fanned-out read issues one upstream fetch); distinct keys still compute in parallel.
-- `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, lifecycle hooks, and `reactTo` (same `{ created?, stateUpdated?, deleted?, contentUpdated? }` shape as `defineResource`; supersedes the `onInstance*` callbacks for the block case)
+  - **`updateStateWith(ref, updater)` / `withOutcome(run, updater)`** (`@flow-state-dev/core/helpers`) — run a state update whose callback *returns* what it did, as `{ state, result }`, instead of assigning it to a variable outside the callback. On the CAS path an updater can run more than once, so an outward-assigned value can describe an attempt that never committed; these return the result belonging to the invocation that did (or `undefined` if none completed). `withOutcome` takes any mutation runner — `ref.updateState`, a scope's `atomicState`, or your own wrapper — so one helper covers every retry entry point. `scripts/validate-updater-purity.mjs` (in `pnpm typecheck`) rejects the common outward-write forms as a backstop — it catches the naive shapes, not every possible one.
+- `defineResourceCollection(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), required `scope: "session" | "user" | "org"`, optional `maxInstances`/`eviction`, lifecycle hooks, and `reactTo` (same `{ created?, stateUpdated?, deleted?, contentUpdated? }` shape as `defineResource`; supersedes the `onInstance*` callbacks for the block case)
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — a loading-cost knob, not an API-shape knob. Eager preloads the whole prefix into a per-request cache so reads resolve instantly; `'lazy'` reads per access from the store. The call shape is identical in both modes: `get`/`getOptional`/`list`/`count` all return Promises (always `await` them), and the mutations `create`/`getOrCreate`/`upsert`/`delete` were already async. Flipping `prefetchMode` needs no call-site changes. `'lazy'` requires `eviction: 'none'` (a partial cache can't drive eviction) and throws at build time otherwise.
-  - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
+  - Runtime `ResourceCollectionRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
   - **`create(key, initial, { replace: true })`** — overwrites an existing instance instead of throwing. `setState` semantics; Zod `.default(null)` fills nullables on both the create and replace branches. `maxInstances` only checked when adding a new instance. Use for setup/reset paths.
   - **`upsert(key, update, createOnly?)`** — patch-or-create. On exists: applies `update` via `patchState` semantics (other fields preserved). On missing: creates with `{ ...createOnly, ...update }` (update wins on overlap). The `createOnly` extras fill fields you only need to supply at creation time. Use for incremental-update paths that need to handle first-touch in a single call.
   - "If-exists / if-missing" summary: `create` throws / `create({ replace })` replaces / `getOrCreate` returns as-is / `upsert` patches — all four create on missing.
-- `isDefinedResourceNamespace(value)` — Type guard for namespace definitions
+- `isDefinedResourceCollection(value)` — Type guard for collection definitions
 
 **Capabilities:**
 - `defineCapability(config)` — Bundle resources, state schemas, targets, and helper functions under a single name. Blocks declare capabilities via `uses: [cap]` and the framework merges everything transitively.
@@ -197,7 +205,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
 
 **Capability schema forwarding:**
 
-When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, `sequencerStateSchema` (from presets), and `stateSchema` (the block's own state, `ctx.self` — valid on any block kind). Block-own declarations merge in; for most axes the block wins on key collision, but `stateSchema` requires a shared field to be the *same schema reference* instead (matching the `resources`/`targetStateSchemas` merges) — a duplicate field with a different reference throws at build time rather than one side silently winning.
+When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The forwarded axes are `sessionStateSchema`, `resources` (resource handles), `targetStateSchemas`, `sequencerStateSchema` (from presets), and `stateSchema` (the block's own state, `ctx.self` — valid on any block kind). Block-own declarations merge in; for most axes the block wins on key collision, but `stateSchema` requires a shared field to be the *same schema reference* instead (matching the `resources`/`targetStateSchemas` merges) — a duplicate field with a different reference throws at build time rather than one side silently winning.
 
 ```ts
 const myCap = defineCapability({
@@ -228,7 +236,7 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
-- `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. `clientData` is the previous name for `client.derived` and is deprecated.
+- `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. The former `clientData` key on scope configs has been removed — `defineFlow` throws if it is still set.
 
 **Prompt formatters** (`@flow-state-dev/core/prompt`):
 - `section`, `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context. `section` takes a string title (default `##`) or `{ title, level }` to nest under another section; `table` renders an array of records as a Markdown table. The same `keyValues` / `list` / `table` shapes are auto-registered as `fsd_*` filters inside `.md` prompt templates.
@@ -385,7 +393,7 @@ Per-provider implementations live in separate packages — `@flow-state-dev/voic
 
 Block, flow, resource, scope, streaming, and model type definitions. Use this subpath for type-only imports.
 
-`defineResourceCollection` accepts `llmReadable?: boolean` / `llmWritable?: boolean` (default `false`), the collection-level analog of the single-resource flags. Declared once, they apply to every instance: `llmReadable` exposes instance content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`); `llmWritable` lets `writeResourceContentTool()` overwrite an instance body. The generic tools address resources by scope-qualified uri (e.g. `session/files/readme.md`), so a content-bearing collection no longer needs hand-rolled per-collection read/write blocks.
+`defineResourceCollection` accepts `llmReadable?: boolean` / `llmWritable?: boolean` (default `false`), the collection-level analog of the single-resource flags. Declared once, they apply to every instance: `llmReadable` exposes instance content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`); `llmWritable` lets `writeResourceContentTool()` overwrite an instance body. The generic tools address resources by scope-qualified uri (e.g. `session/files/readme.md`). A content-bearing collection uses those tools; keep collection-specific tools for domain logic they do not cover.
 
 `defineResourceCollection` accepts a `prefetchWindow?: number` (default `0`) that inlines the first N items in the snapshot's `prefetched` window in lexicographic storage-key order. Per-item `clientData` in the window appears only when `client.state.read: true` is also set. `CollectionStateClientConfig` controls per-item state visibility separately from content; single resources don't accept `client.state` (state visibility is governed by `client.data` on those).
 
@@ -405,15 +413,70 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 **`BlockValue<T>`** — `block_output.output` is a discriminated union with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
 
+### Running a step under an extra abort signal
+
+`.step(block, { abortSignal })` and `.stepIf(cond, block, { abortSignal })` run one
+step under an additional abort signal, resolved per dispatch from the running
+context:
+
+```ts
+sequencer({ name: "work" })
+  .tap(startSomethingCancellable)
+  .step(worker, { abortSignal: (ctx) => currentCancellation(ctx)?.signal })
+  .tap(recordResult);
+```
+
+The signal is **composed with the request's, never substituted for it**, so a step
+cannot be made to outlive a cancelled request. Return `undefined` and the step runs
+exactly as it would without the option. The whole descendant tree sees the composed
+signal, so a model call several blocks down aborts with it.
+
+Reach for it when the thing that should stop the step is known only at runtime — a
+lease the step's claim depends on, an external cancellation the block itself has no
+way to see. A block that can decide for itself should just read `ctx.signal`.
+
+### Releasing what a step was holding
+
+The same bag takes `onSettled`, called once when the step's dispatch leaves by every
+path — and told which one: `"returned"`, `"threw"` or `"suspended"`.
+
+```ts
+sequencer({ name: "work" })
+  .tap(startSomethingCancellable)
+  .step(worker, {
+    onSettled: (_ctx, outcome) => {
+      if (outcome === "suspended") stopSomethingCancellable();
+    },
+  })
+  .tap(recordResult); // stops it itself, once the result is written
+```
+
+Suspension is why it exists. `.rescue()` is deliberately never run for a
+`SuspensionError` — suspension is control flow, not a failure — and a suspended
+request does not abort its signal either, so a step that parks on `ctx.suspend()`
+reaches no handler you can compose. Whatever the leading `.tap` started then
+outlives the request, silently.
+
+Read the outcome before you release. The hook fires before `recordResult` above,
+so releasing on `"returned"` would stop the thing while the step that still needs
+it is running. Release on `"suspended"` — the exit with nothing downstream — and
+let the downstream handler release the other two when it is finished.
+
+It runs in a `finally` and cannot change the step's outcome, and it is skipped
+whenever nothing was dispatched — a `stepIf` condition that skipped the step, or
+a step replayed from a durable resume rather than executed (so cleanup does not
+re-run on every re-entry). For recovery, use `.rescue()`.
+
 ### Helpers (`@flow-state-dev/core/helpers`)
 
-State-shape primitives shared across the framework. All three operate on the same JSON-serializable state trees, so they live together as the single canonical home — no per-package copies.
+Helpers shared across the framework. `cloneValue`, `deepMerge`, and `deepEqual` operate on the same JSON-serializable state trees and live here as the single canonical home — no per-package copies.
 
-> The pure, dependency-free helpers `deepEqual` / `looseDeepEqual`, `mapLimit`, and the string-case utilities (`camelToKebab`, `normalizeTagName`) now live in [`@flow-state-dev/contracts`](../contracts) and are re-exported from these same `@flow-state-dev/core/helpers` paths. Import them from `core` exactly as before; browser packages can value-import them from `contracts` without core's heavy runtime.
+> The pure, dependency-free helpers `deepEqual` / `looseDeepEqual`, `mapLimit`, `toError`, and the string-case utilities (`camelToKebab`, `normalizeTagName`) now live in [`@flow-state-dev/contracts`](../contracts) and are re-exported from these same `@flow-state-dev/core/helpers` paths. Import them from `core` exactly as before; browser packages can value-import them from `contracts` without core's heavy runtime.
 
 - **`cloneValue(value)`** — structural deep copy via the platform `structuredClone`, falling back to a JSON round-trip. Stores clone records on read/write so callers can't mutate stored state through a retained reference.
 - **`deepMerge(base, override)`** — recursive merge returning a new object. Scalars and arrays in `override` replace; nested plain objects merge; `base` is never mutated.
 - **`deepEqual(a, b)`** — structural equality powering the state-write no-op guard. Primitives compared by `Object.is` (NaN-equal-NaN, `+0 != -0`); plain objects and arrays compared recursively. Rejects non-JSON shapes (Map, Set, functions) with a `TypeError`. `looseDeepEqual` is the throw-free variant.
+- **`toError(value, fallback?)`** — coerce an unknown value to `Error`. An `Error` is returned as-is. A non-empty string becomes `new Error(value)`. Anything else, including `""` and objects with a `message`, becomes `new Error(fallback)`. `fallback` defaults to `"Unknown block execution error"`.
 
 ### Graph (`@flow-state-dev/core/graph`)
 
@@ -453,6 +516,32 @@ const counter = sequencer({
 
 Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.default()`, etc. — so the marker sits on the outermost schema instance referenced by the parent `z.object` shape.
 
+## Reaching the runtime from a capability (`ctx.requestHost`)
+
+`BlockContext` carries an optional `requestHost` member — the one declared way a capability's helper functions reach facilities only the runtime can provide, such as starting a detached child request or settling a durable row owned by another session.
+
+It is **framework-facing**. There is nothing to declare to get one, and app code does not normally touch it: a host built through the shipped entry points supplies it.
+
+```ts
+import { requireRequestHost } from "@flow-state-dev/core";
+
+const host = requireRequestHost(ctx); // throws by name when none is wired
+```
+
+The member is optional in the *type* so a hand-built test context still type-checks. `requireRequestHost` turns a missing host into a named error rather than `undefined is not a function`.
+
+**Which operations answer depends on the deployment, and each says so by name.** Getting a host is not the same as getting every verb on it:
+
+- `livenessOf` is **absent** unless the deployment can support a trustworthy answer. It needs a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. Check for it rather than asserting it.
+- `startDetached` refuses `no-workstream-core` for a flow that declares no workstream core, `board-not-routable` where the input names a task-board worker the flow does not route, and `no-start-operation` where the host wired no start operation. A `board-not-routable` refusal returns before anything starts, so the caller still holds its claim and can settle the row itself. A `createFlowState` deployment wires a start operation in every topology, and so does the shipped HTTP router, so `no-start-operation` is reachable only on a runtime config assembled without either. Where the work then runs depends on the topology: with no dispatcher, including under `worker-only`, it runs in that process rather than on the queue, and it does not survive the process.
+- `parentTask()` resolves `undefined` and `settleParentTask` refuses `no-parent-task` unless the request was dispatched for a parent-board row.
+
+Nothing on this interface names a store, a flow, a session record or a task row, and no operation takes an identity or a session id. A caller supplies a routing seed and the runtime derives the rest from the running request. Values read from another session cross as `unknown`, to be parsed with your own schema.
+
+`startDetached` takes the caller's bookkeeping two ways, and they are not interchangeable. `record` is a free-form bag that lands on the child session record and never reaches the request record. `provenance` is a closed, optional field, today just `taskId`, and it is the one stamped onto the detached request record under `metadata.workstream` beside the routing seed's `topic` and `key`.
+
+`topic` and `key` are the seed the child session's id was derived from, so they cannot disagree with the child they name. `taskId` is recorded as you pass it and is checked against nothing, so a reader should treat it as a correlation the spawning code asserted. The shipped task-board caller takes it off the claim it holds on the row. Nothing carries authority either way: routing, adoption, authorization and settlement all run off values the runtime derives and re-reads, never off request metadata.
+
 ## Key design decisions
 
 **Partial state schemas.** Each block declares only the state fields it touches. A counter block doesn't need to know about a preferences block's state. This keeps blocks reusable and self-documenting about their dependencies.
@@ -461,7 +550,7 @@ Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.defa
 
 **Request-scoped status slot.** `emit.status` writes to a single request-scoped slot — the latest message wins. Clients render one in-flight indicator line, falling back to "Working..." when the slot is empty. See `docs/architecture/items.md` for the full semantics.
 
-**Automatic resource collection.** Blocks declare their resource dependencies via `sessionResources`/`userResources`/`orgResources` using `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's scope configs automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
+**Automatic resource collection.** Blocks declare their resource dependencies via a flat `resources` map of `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's `resources` map automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
 
 **Resource content handles.** `ResourceRef.readContent()` returns rendered text or `null`; `readContentRaw()` returns raw text or `null`; `writeContent()` overwrites content when writable.
 
@@ -508,7 +597,7 @@ Two adapter helpers are shared through `@flow-state-dev/core/helpers`: `sanitize
 
 Generators reference a model with a string. The string can be:
 
-- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4.6"`
+- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4-6"`
 - `gateway/provider/model` — routed through a gateway, e.g., `"vercel/openai/gpt-5.5"`
 - `intent/<name>` — a named routing group resolved by the model resolver
 
@@ -518,11 +607,11 @@ Configure intents on the resolver. Each intent maps a name to an ordered list of
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4.6",
+  defaultModel: "anthropic/claude-sonnet-4-6",
   intents: {
-    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
-    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
-    synthesize: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
+    chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    synthesize: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
   },
 });
 ```
@@ -538,7 +627,7 @@ Configure `providerOptions` (e.g. Anthropic thinking) per intent so generators d
 ```ts
 const resolver = createModelResolver({
   defaultModel: "openai/gpt-5.4",
-  intents: { plan: ["anthropic/claude-opus-4.7"] },
+  intents: { plan: ["anthropic/claude-opus-4-7"] },
   intentDefaults: {
     plan: {
       providerOptions: {

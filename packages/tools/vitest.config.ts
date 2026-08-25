@@ -4,6 +4,10 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "../..");
 
 export default defineConfig({
+  test: {
+    // Stubs DNS so the fetch/crawl network guard never hits a real resolver.
+    setupFiles: [resolve(import.meta.dirname, "test/setup/dns.ts")],
+  },
   resolve: {
     alias: {
       "@flow-state-dev/core/resource-template": resolve(root, "packages/core/src/resource-template/resource-template.ts"),

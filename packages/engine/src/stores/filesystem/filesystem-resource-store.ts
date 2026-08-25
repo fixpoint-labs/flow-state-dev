@@ -13,7 +13,7 @@
  */
 import { link, lstat, mkdir, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ContentScopeType } from "../types";
+import type { StorageScopeType } from "../types";
 import {
   collectRecords,
   isWindowsReservedName,
@@ -57,25 +57,59 @@ export type FilesystemResourceStoreOptions<T> = {
   deserialize: (raw: string) => T;
 };
 
+/**
+ * Layout-aware operations the versioned resource-state store needs on top of
+ * the six methods, and which `ContentStore` does not.
+ *
+ * `ResourceStateStore` replaced its `deleteAll` with an enumerate-and-mark
+ * pass (a scope purge must retain each key's version, so it cannot `rm -rf`),
+ * but it still has to honour the same legacy-layout rules the factory owns.
+ * Rather than reimplementing the marker protocol outside the factory, the
+ * versioned store asks these two questions and composes the answers.
+ */
+export interface KeyedResourceStoreLayoutOps {
+  /**
+   * True when a valid nested-layout marker is present. False when it is
+   * absent (fresh subtree, or one predating the nested layout). Throws on a
+   * marker this build cannot interpret, exactly as every other op does.
+   */
+  hasValidLayoutMarker(): Promise<boolean>;
+  /**
+   * Re-validate before a mutating op: reject an incompatible marker, and — if
+   * the marker is absent — re-scan for legacy data the memoized layout result
+   * may have missed. The versioned store decides some writes (a conflict, a
+   * delete of an absent key) without reaching the factory's own mutators, so
+   * it has to run this guard itself or those paths would skip it.
+   */
+  assertWritableLayout(): Promise<void>;
+  /**
+   * Remove a scope's directory outright — the pre-nested-layout escape hatch
+   * `deleteAll` has always provided, so an upgraded install can tear down old
+   * flat scopes without a read first. Only reachable when no valid marker is
+   * present; a marked subtree is purged by marking, not by removal.
+   */
+  purgeScopeDirectory(scopeType: StorageScopeType, scopeId: string): Promise<void>;
+}
+
 /** The six-method keyed-resource-store contract shared by both public stores. */
 export interface KeyedResourceStore<T> {
-  get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<T | undefined>;
-  set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, value: T): Promise<void>;
-  delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
-  getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, T>>;
+  get(scopeType: StorageScopeType, scopeId: string, resourceKey: string): Promise<T | undefined>;
+  set(scopeType: StorageScopeType, scopeId: string, resourceKey: string, value: T): Promise<void>;
+  delete(scopeType: StorageScopeType, scopeId: string, resourceKey: string): Promise<void>;
+  getAll(scopeType: StorageScopeType, scopeId: string): Promise<Record<string, T>>;
   getByPrefix(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     keyPrefix: string
   ): Promise<Record<string, T>>;
-  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+  deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }
 
 function errno(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException | undefined)?.code;
 }
 
-class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
+class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResourceStoreLayoutOps {
   private readonly root: string;
   private readonly ext: string;
   private readonly serialize: (value: T) => string;
@@ -105,7 +139,7 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     }
   }
 
-  private scopeDir(scopeType: ContentScopeType, scopeId: string): string {
+  private scopeDir(scopeType: StorageScopeType, scopeId: string): string {
     this.validateScopeId(scopeId);
     // `encodeURIComponent` (NOT encodeSegment) keeps the scope dir name
     // byte-identical to the legacy layout, so a dotted userId (e.g. an email)
@@ -120,7 +154,7 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     return dir;
   }
 
-  private filePath(scopeType: ContentScopeType, scopeId: string, resourceKey: string): string {
+  private filePath(scopeType: StorageScopeType, scopeId: string, resourceKey: string): string {
     return path.join(this.scopeDir(scopeType, scopeId), keyToRelativePath(resourceKey, this.ext));
   }
 
@@ -310,7 +344,7 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
 
   private collisionError(
     error: unknown,
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string,
     target: string
@@ -328,7 +362,7 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
   // --- the six methods ----------------------------------------------------
 
   async get(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string
   ): Promise<T | undefined> {
@@ -349,7 +383,7 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
   }
 
   async set(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string,
     value: T
@@ -389,7 +423,7 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
   }
 
   async delete(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string
   ): Promise<void> {
@@ -418,12 +452,12 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     }
   }
 
-  async getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, T>> {
+  async getAll(scopeType: StorageScopeType, scopeId: string): Promise<Record<string, T>> {
     return this.getByPrefix(scopeType, scopeId, "");
   }
 
   async getByPrefix(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     keyPrefix: string
   ): Promise<Record<string, T>> {
@@ -440,13 +474,29 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     return result;
   }
 
-  async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
+  /** See {@link KeyedResourceStoreLayoutOps.hasValidLayoutMarker}. */
+  async hasValidLayoutMarker(): Promise<boolean> {
+    return this.markerValidOrAbsent();
+  }
+
+  /** See {@link KeyedResourceStoreLayoutOps.assertWritableLayout}. */
+  async assertWritableLayout(): Promise<void> {
+    await this.ensureLayout();
+    await this.assertNoUnmarkedLegacyData();
+  }
+
+  async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {
     // Skips the has-data legacy SCAN — an absent marker (legacy or fresh) must
     // stay deletable so an upgraded install can tear old scopes down without a
     // read first. But still refuse a PRESENT-but-incompatible marker: never
     // `rm -rf` data owned by a layout this build can't interpret (e.g. after a
     // version rollback), which the full-bypass would have destroyed.
     await this.markerValidOrAbsent();
+    await this.purgeScopeDirectory(scopeType, scopeId);
+  }
+
+  /** See {@link KeyedResourceStoreLayoutOps.purgeScopeDirectory}. */
+  async purgeScopeDirectory(scopeType: StorageScopeType, scopeId: string): Promise<void> {
     const dir = this.scopeDir(scopeType, scopeId);
     await this.assertAncestorsSafe(dir);
     let stat;
@@ -479,5 +529,19 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
 export function createFilesystemResourceStore<T>(
   options: FilesystemResourceStoreOptions<T>
 ): KeyedResourceStore<T> {
+  return new FilesystemResourceStore<T>(options);
+}
+
+/**
+ * Same store, widened to expose {@link KeyedResourceStoreLayoutOps}.
+ *
+ * Used by the filesystem `ResourceStateStore`, which layers versioning and an
+ * enumerate-and-mark `deleteAll` over this factory and needs to ask about the
+ * layout marker to do it. `ContentStore` keeps the narrow factory above, so
+ * its surface is unchanged by the state store's divergence.
+ */
+export function createFilesystemResourceStoreWithLayoutOps<T>(
+  options: FilesystemResourceStoreOptions<T>
+): KeyedResourceStore<T> & KeyedResourceStoreLayoutOps {
   return new FilesystemResourceStore<T>(options);
 }

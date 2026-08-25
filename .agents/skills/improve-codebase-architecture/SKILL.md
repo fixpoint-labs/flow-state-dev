@@ -32,7 +32,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 
 **FSD-native domain language** (use these as the names of things):
 
-- **block** (handler / generator / sequencer / router), **pattern**, **capability**, **flow**, **action**, **scope** (request/session/user/project), **item** (message, reasoning, block_output, component, container, status, context, state_change, error, step_error), **store adapter**.
+- **block** (handler / generator / sequencer / router), **pattern**, **capability**, **flow**, **action**, **scope** (request/session/user/org), **item** (message, reasoning, block_output, component, container, status, context, state_change, error, step_error), **store adapter**.
 - See [LANGUAGE.md § "FSD vocabulary mapping"](LANGUAGE.md) for how each maps to module/interface/seam/adapter.
 
 **Authority hierarchy** (suggestions must respect this):
@@ -53,7 +53,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 **Lock state to check before proposing**:
 
 - BP-001–BP-039 are constraints, not guidelines. A candidate that violates a BP needs to either (a) align with it instead, or (b) explicitly justify why the BP should be revisited.
-- Package boundaries: `server` never depends on `client` or `react`; `react` wraps `client` (no transport in `react`). Cross-boundary refactors are off-limits — the boundary validator at `scripts/validate-package-boundaries.mjs` will catch violations.
+- Package boundaries: `engine` never depends on `client` or `react`; `react` wraps `client` (no transport in `react`). Cross-boundary refactors are off-limits — the boundary validator at `scripts/validate-package-boundaries.mjs` will catch violations.
 - Block interception: there is no block-middleware system (retracted and removed) — `docs/architecture/internal-execution-seams.md` documents `InternalExecutionSeams`, the framework-internal interception hooks. Keep suggestions aligned with what's currently exposed (lifecycle hooks, `.tap()`, capabilities, seams) rather than inventing a parallel middleware mechanism.
 
 ## Process
@@ -82,7 +82,7 @@ Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't
 | Thin connector handler whose `execute` is `return { x: input.y }` | `.step()` chain bloated with adapter blocks | Use a connector function: `.step((v) => ({ x: v.y }), block)` (BP-013) |
 | Handler that calls another block inside `execute` | Hidden composition; defeats observability | Lift to a sequencer (`BP-011`) |
 | Handler returning its input unchanged | Items log polluted with echoes | Replace with `.tap()` (BP-012, BP-014) |
-| Wrapper sequencer just to gate a `.step()` on a condition | Indirection that obscures control flow | `.stepIf` / `.workIf` / `.tapIf` (BP-036) |
+| Wrapper sequencer just to gate a `.step()` on a condition | Indirection that obscures control flow | `.stepIf` / `.sideChainIf` / `.tapIf` (BP-036) |
 | Multiple blocks each plumbing the same tools/context/resources into a generator | Capability-shaped duplication | Extract a `defineCapability` and use `uses: [cap]` |
 | Generator `outputSchema` with `z.record` / `z.optional` / heterogeneous `z.union` | OpenAI strict-mode incompatibility | Collapse to fixed shape + nullable (BP-016) |
 | `useEffect` doing derived-state computation in React layer | Renders out of sync, brittle to deps | `useMemo` (BP-010) |

@@ -1,12 +1,21 @@
 export { applyOffsetLimit } from "../shared";
 
 import { cloneValue as clone } from "@flow-state-dev/core/helpers";
+import { assertMaxDepthTwo } from "../shared";
 import type { ExpectedVersion, SetResult } from "../types";
+import {
+  assertDeltaExpectedVersion,
+  checkScopeWriteVersion
+} from "../scope-write-predicate";
 
 /**
  * CAS-aware write against an in-memory Map. Returns the new version on
  * success or the current value/version on conflict. When `expectedVersion`
- * is "any" the write is unconditional (used for creates and system writes).
+ * is "any" the write is unconditional (used for creates and system writes);
+ * when it is "absent" the write lands only if no record exists at `id`.
+ *
+ * The single-threaded event loop is what makes "absent" atomic here: nothing
+ * yields between the read and the `Map.set` below.
  */
 export function casWriteToMap<TRecord extends { version: number }>(
   records: Map<string, TRecord>,
@@ -15,17 +24,15 @@ export function casWriteToMap<TRecord extends { version: number }>(
   expectedVersion: ExpectedVersion
 ): SetResult<TRecord> {
   const current = records.get(id);
-  if (expectedVersion !== "any") {
-    const currentVersion = current?.version ?? 0;
-    if (currentVersion !== expectedVersion) {
-      return {
-        ok: false,
-        conflict: {
-          currentValue: current === undefined ? undefined : clone(current),
-          currentVersion
-        }
-      };
-    }
+  const refused = checkScopeWriteVersion(current, expectedVersion);
+  if (refused !== undefined) {
+    return {
+      ok: false,
+      conflict: {
+        currentValue: current === undefined ? undefined : clone(current),
+        currentVersion: refused.currentVersion
+      }
+    };
   }
 
   records.set(id, clone(value));
@@ -51,10 +58,17 @@ function conflict<TRecord>(
   };
 }
 
+/**
+ * Version gate shared by the four delta verbs. Throws on `"absent"` before
+ * anything else — a delta verb updates an existing record, so the value is a
+ * call-site error rather than a lost race (see `assertDeltaExpectedVersion`).
+ */
 function checkVersion<TRecord extends { version: number }>(
   current: TRecord | undefined,
-  expectedVersion: ExpectedVersion
+  expectedVersion: ExpectedVersion,
+  verb: string
 ): SetResult<TRecord> | undefined {
+  assertDeltaExpectedVersion(expectedVersion, verb);
   if (current === undefined) {
     return conflict<TRecord>(undefined, 0);
   }
@@ -62,14 +76,6 @@ function checkVersion<TRecord extends { version: number }>(
     return conflict(current, current.version);
   }
   return undefined;
-}
-
-function assertMaxDepthTwo(path: string[], verb: string): void {
-  if (path.length < 1 || path.length > 2) {
-    throw new Error(
-      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
-    );
-  }
 }
 
 export function patchFieldInMap<TRecord extends DeltaRecord>(
@@ -81,7 +87,7 @@ export function patchFieldInMap<TRecord extends DeltaRecord>(
   updatedAt: number
 ): SetResult<TRecord> {
   const current = records.get(id);
-  const conflictResult = checkVersion(current, expectedVersion);
+  const conflictResult = checkVersion(current, expectedVersion, "patchField");
   if (conflictResult !== undefined) return conflictResult;
   assertMaxDepthTwo(path, "patchField");
 
@@ -114,7 +120,7 @@ export function incFieldInMap<TRecord extends DeltaRecord>(
   updatedAt: number
 ): SetResult<TRecord> {
   const current = records.get(id);
-  const conflictResult = checkVersion(current, expectedVersion);
+  const conflictResult = checkVersion(current, expectedVersion, "incField");
   if (conflictResult !== undefined) return conflictResult;
   if (path.length !== 1) {
     throw new Error(`incField only supports depth-1 paths; received path of length ${path.length}`);
@@ -143,7 +149,7 @@ export function pushToArrayInMap<TRecord extends DeltaRecord>(
   updatedAt: number
 ): SetResult<TRecord> {
   const current = records.get(id);
-  const conflictResult = checkVersion(current, expectedVersion);
+  const conflictResult = checkVersion(current, expectedVersion, "pushToArray");
   if (conflictResult !== undefined) return conflictResult;
   if (path.length !== 1) {
     throw new Error(`pushToArray only supports depth-1 paths; received path of length ${path.length}`);
@@ -177,7 +183,7 @@ export function deleteFieldInMap<TRecord extends DeltaRecord>(
   updatedAt: number
 ): SetResult<TRecord> {
   const current = records.get(id);
-  const conflictResult = checkVersion(current, expectedVersion);
+  const conflictResult = checkVersion(current, expectedVersion, "deleteField");
   if (conflictResult !== undefined) return conflictResult;
   assertMaxDepthTwo(path, "deleteField");
 

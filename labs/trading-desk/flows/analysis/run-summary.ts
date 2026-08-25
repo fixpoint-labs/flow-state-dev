@@ -24,6 +24,7 @@
  */
 import { z } from "zod";
 import { ratingSchema } from "./lib/rating-engine";
+import { levelsForStance } from "./lib/trade-levels";
 import type { DecisionSnapshotState } from "./decision-snapshot-resource";
 import { ALL_MEMO_KEYS } from "./registry";
 import type { MemoState, MemoStatus } from "./resources";
@@ -69,12 +70,27 @@ export const runSummaryStateSchema = z.object({
 
   // Decision-of-record (null on stopped / errored runs).
   finalRating: ratingSchema.nullable().default(null),
+  // FIX-1113 — the published rating carries NO deterministic bound because the
+  // three statements could not be placed at one fiscal period, so the valuation
+  // envelope was withheld and its clamp never ran. This is the DISCLOSURE, not a
+  // suppression: the rating above is the portfolio manager's own, published
+  // unchanged. Absent/false means the ordinary path (either the clamp ran, or
+  // the envelope was absent for an unrelated reason).
+  // It is also the RUN MARKER: this is the field that makes "how often does the
+  // period guard fire" answerable from ordinary runs, which is the number the
+  // publish-or-suppress question waits on.
+  ratingUnanchored: z.boolean().nullable().default(null),
   decisionConfidence: z.number().nullable().default(null),
   targetWeightPct: z.number().nullable().default(null),
   direction: z.enum(["long", "short", "flat"]).nullable().default(null),
   sizePct: z.number().nullable().default(null),
+  // FIX-780 — two stance-specific pairs; a summary carries at most one. A flat
+  // run has no stop and no target, so a consumer reading `stopPrice` alone sees
+  // absence rather than a monitoring level wearing a trade name.
   stopPrice: z.number().nullable().default(null),
   targetPrice: z.number().nullable().default(null),
+  reassessBelowPrice: z.number().nullable().default(null),
+  invalidateAbovePrice: z.number().nullable().default(null),
   holdingPeriod: z
     .enum(["days", "weeks", "months", "quarters"])
     .nullable()
@@ -195,12 +211,19 @@ export function buildRunSummary(input: BuildRunSummaryInput): RunSummary {
     ranAt,
 
     finalRating: decision?.finalRating ?? null,
+    ratingUnanchored: decision?.ratingUnanchored ?? null,
     decisionConfidence: decision?.decisionConfidence ?? null,
     targetWeightPct,
     direction: decision?.direction ?? null,
     sizePct: decision?.sizePct ?? null,
-    stopPrice: decision?.stopPrice ?? null,
-    targetPrice: decision?.targetPrice ?? null,
+    // FIX-780 — the SAME read-seam gate `adoptThesis` applies, for the same
+    // reason: a report completed before the write-side fix and merely reopened
+    // never re-runs the Phase 5 write, so its stored snapshot can still carry a
+    // flat call's monitoring levels under the trade names. Mirroring verbatim
+    // would publish `direction: "flat"` alongside a `stopPrice` — contradicting
+    // the invariant this schema's own field comment states. Idempotent for every
+    // run decided after the fix.
+    ...levelsForStance(decision?.direction ?? null, decision ?? {}),
     holdingPeriod: decision?.holdingPeriod ?? null,
     decidedAt: decision?.decidedAt ?? null,
 

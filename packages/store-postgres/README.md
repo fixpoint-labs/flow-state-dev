@@ -1,6 +1,6 @@
 # @flow-state-dev/store-postgres
 
-PostgreSQL persistence adapter for flow-state-dev. Implements all 5 store interfaces (`SessionStore`, `RequestStore`, `UserStore`, `ProjectStore`, `ActiveRequestRegistry`) using `pg` with connection pooling.
+PostgreSQL persistence adapter for flow-state-dev. Implements the full `StoreRegistry` using `pg` with connection pooling.
 
 ## Why PostgreSQL
 
@@ -15,27 +15,28 @@ pnpm add @flow-state-dev/store-postgres pg
 ## Usage
 
 ```ts
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createPostgresStores, postgresStores } from "@flow-state-dev/store-postgres";
+import supportDesk from "./flows/support-desk";
 
-// From connection string (pool created automatically)
-const stores = await createPostgresStores({
-  connectionString: "postgres://user:pass@localhost:5432/mydb",
-  max: 20 // pool size, default: 10
+const flowstate = createFlowState({
+  flows: { supportDesk },
+  stores: {
+    default: {
+      primary: postgresStores({
+        connectionString: "postgres://user:pass@localhost:5432/mydb",
+        max: 20, // pool size, default: 10
+      }),
+    },
+  },
 });
 
-// Or with a pre-configured pg.Pool
+// Or open a registry yourself — pre-configured pool, tests, deploy-time schema init
 import { Pool } from "pg";
 
 const pool = new Pool({ connectionString: "postgres://..." });
 const stores = await createPostgresStores({ pool });
 
-// Use as a drop-in replacement for createInMemoryStores()
-const server = createFlowServer({
-  stores,
-  // ...
-});
-
-// Close when done (drains the connection pool)
 await stores.close();
 ```
 
@@ -123,15 +124,50 @@ The schema uses:
 
 | Table | Primary Key | Purpose |
 |-------|-------------|---------|
-| `sessions` | `id` | Session records with flow kind, user, project |
+| `sessions` | `id` | Session records with flow kind, user, org |
 | `requests` | `id` | Request records with status tracking |
 | `users` | `id` | User-scoped state and resources |
-| `projects` | `id` | Project-scoped state and resources |
+| `orgs` | `id` | Org-scoped state and resources |
 | `active_requests` | `request_id` | In-flight request registry for interrupted request recovery |
 | `resource_content` | `(scope_type, scope_id, resource_key)` | Resource content bodies (`TEXT`), keyed per resource, separate from scope records |
 | `resource_state` | `(scope_type, scope_id, resource_key)` | Resource state (`JSONB`), single + collection instances, keyed per resource, separate from scope records |
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
+
+### Session parentage
+
+`sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
+
+### Indexes for the ordered listings, and how they are built
+
+Two composite indexes serve the ordered reads behind a session's background-job listing. Both are plain btrees; no column and no data migration comes with them.
+
+| Index | Serves |
+| --- | --- |
+| `idx_sessions_parent_created (parent_session_id, created_at, id)` | One parent's children, ordered newest-created first. The single-column parent index serves the equality but not the order, so a page limit would apply after sorting the parent's whole child set. |
+| `idx_requests_session_created (session_id, created_at, id)` | One session's most recent request. The `(session_id, status)` and `(session_id, tenant_id)` composites stop before the ordering column. |
+
+The ordering columns are declared ascending and scanned backwards, which Postgres does for an `ORDER BY` that reverses every key uniformly.
+
+**No third index is needed for the non-terminal existence check.** `idx_requests_session_status` already ships and is exactly that shape's two selective predicates.
+
+**These two are built `CONCURRENTLY`.** They are the only indexes here that can land on an already-populated table. Everything else ships with its `CREATE TABLE`, so on an upgrade its `IF NOT EXISTS` is a no-op. A plain build holds a lock against writes for its whole duration, on exactly the large `requests` and `sessions` histories these reads exist to page through. The concurrent form trades that for two table passes and cannot run inside a transaction, so `initializeSchema` issues them one statement at a time, after the rest of the DDL.
+
+An interrupted concurrent build leaves an *invalid* index that `IF NOT EXISTS` would then skip forever, so the schema step drops an invalid one by that name before rebuilding. On a healthy database that check is a no-op.
+
+### The tenant and org filters
+
+`tenant_id` and `org_id` filter NULL-safely: an absent option key filters nothing, a present key (including an explicit `undefined`) exact-matches, and `undefined` matches only unbound rows.
+
+### Resource state carries a version, and deletes leave a row behind
+
+`resource_state` gained two columns: `version` (monotonic per key, never reused) and `lifecycle` (`live` or `deleted`). Writes are compare-and-swap: a write states the version it expects, and is refused if the row moved since it was read.
+
+**What that guarantee covers.** The compare-and-swap protects any caller that passes the version it read, and that includes resource mutations authored inside a flow: the runtime writes them at the version the execution context observed, so two flow contexts patching one resource can no longer silently drop a write. Choose an adapter here for durability and for the version and tombstone semantics described below — the concurrency guarantee itself is the same on every adapter except the filesystem one, which compares within a single process only.
+
+The migration is applied automatically on open and is **purely additive**: `ADD COLUMN` with defaults, no table rebuild, no backfill, indexes untouched, and `state` stays `NOT NULL`. Rows written before the upgrade read as **live at version 1**. Re-opening an already-migrated database is a no-op, so it is safe to roll forward repeatedly.
+
+**Operator-visible:** deleting a resource does not remove its row. It marks the row `deleted`, keeps the version, and replaces the payload with `{}`. That retained version is what makes delete-then-recreate safe. Nothing reclaims these rows — there is no sweep, no timer, no retention window — so a workload that creates and deletes many resource keys accumulates one small row per deleted key. Plan for it rather than expecting a cleanup pass that does not exist.
 
 ## Items storage
 
@@ -262,6 +298,18 @@ See [the schedule index reference](https://flowstate.dev/docs/server/schedule-in
 ## Interrupted Request Recovery
 
 This adapter fully supports the interrupted request recovery feature. The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query on `last_heartbeat_at`.
+
+A request executing on one instance can be cancelled from another. Both `RequestStore` abort-intent members are implemented: `isAbortRequested` probes `data -> 'abortRequested'` on the primary-key row without touching `request_items`, and `setFieldsIfStatus` evaluates its status predicate and applies the write in a single statement.
+
+The registry answers `sharedAcrossProcesses` from **how the store was constructed**, not from the package name:
+
+| Construction | `sharedAcrossProcesses` |
+|---|---|
+| `{ connectionString }` / connection config | `true` |
+| `{ pool }` | `true` |
+| `{ executor }` | `false` |
+
+An injected executor is documented as PGlite-capable and is process-local, so it is reported as not shared. That is the same reason that shape disables `LISTEN`.
 
 ## Cross-process live tail
 

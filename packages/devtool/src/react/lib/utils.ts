@@ -5,6 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Enough of a session id to recognise, without filling the column it sits in.
+ *
+ * A derived Workstream id is a 32-character hash, so the whole value is both
+ * unreadable and too wide for a header crumb or a table cell — but the ends of
+ * it are what a developer matches against a store dump or a log line.
+ */
+export function shortSessionId(id: string): string {
+  return id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
+}
+
 export function safeParseJson(raw: string): unknown {
   try {
     return JSON.parse(raw);

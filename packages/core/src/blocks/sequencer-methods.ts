@@ -7,6 +7,9 @@ import type {
   RescueHandlerSpec
 } from "../types/block";
 import type { UsesEntry } from "../capability/types";
+import type { StepOptions } from "./internal/arg-shapes";
+
+export type { StepOptions, StepOutcome } from "./internal/arg-shapes";
 
 /**
  * Shorthand for a `BlockContext` whose `sequencer.state` slot is typed from
@@ -66,7 +69,7 @@ export type BranchStepOutput<TStep> = TStep extends readonly [
   ? V
   : never;
 
-export type WorkResult = {
+export type SideChainResult = {
   name: string;
   status: "fulfilled" | "rejected";
   value?: unknown;
@@ -127,6 +130,11 @@ export interface SequencerDefinition<
   step<TOutSchema extends ZodTypeAny>(
     block: BlockDefinition<any, TOutSchema>
   ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  // step(block, options) — per-step dispatch options (FIX-1005)
+  step<TOutSchema extends ZodTypeAny>(
+    block: BlockDefinition<any, TOutSchema>,
+    options: StepOptions
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
   // step(factory, inlineConfig) — inline block definition
   step<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
     factory: TFactory,
@@ -137,11 +145,23 @@ export interface SequencerDefinition<
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
   ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  // step(connector, block, options) — both
+  step<TStepIn, TOutSchema extends ZodTypeAny>(
+    connector: ConnectorFn<TOutput, TStepIn>,
+    block: BlockDefinition<any, TOutSchema>,
+    options: StepOptions
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
 
   // stepIf(condition, block) — conditional, union of current | block output
   stepIf<TOutSchema extends ZodTypeAny>(
     condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
     block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
+  // stepIf(condition, block, options) — per-step dispatch options (FIX-1005)
+  stepIf<TOutSchema extends ZodTypeAny>(
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    block: BlockDefinition<any, TOutSchema>,
+    options: StepOptions
   ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
   // stepIf(condition, factory, inlineConfig) — conditional inline
   stepIf<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
@@ -154,6 +174,13 @@ export interface SequencerDefinition<
     condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
+  // stepIf(condition, connector, block, options) — both
+  stepIf<TStepIn, TOutSchema extends ZodTypeAny>(
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    connector: ConnectorFn<TOutput, TStepIn>,
+    block: BlockDefinition<any, TOutSchema>,
+    options: StepOptions
   ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
 
   map<TNext>(
@@ -181,15 +208,15 @@ export interface SequencerDefinition<
     options?: { maxConcurrency?: number }
   ): SequencerDefinition<TInput, z.infer<TOutSchema>[], TStateSchema>;
 
-  // forEachBackground(block) — fire-and-forget fan-out, dispatches each iteration as background work
-  forEachBackground(
+  // forEachSideChain(block) — fire-and-forget fan-out, dispatches each iteration as side-chain work
+  forEachSideChain(
     blockOrFactory:
       | BlockDefinition<any, any>
       | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, any>),
     options?: { concurrency?: number }
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
-  // forEachBackground(connector, block) — connector provides items, each dispatched as background work
-  forEachBackground<TStepIn>(
+  // forEachSideChain(connector, block) — connector provides items, each dispatched as side-chain work
+  forEachSideChain<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn[]>,
     blockOrFactory:
       | BlockDefinition<any, any>
@@ -227,15 +254,15 @@ export interface SequencerDefinition<
     }
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
 
-  work(block: BlockDefinition<any, any>, options?: { name?: string }): SequencerDefinition<TInput, TOutput, TStateSchema>;
-  work<TStepIn>(
+  sideChain(block: BlockDefinition<any, any>, options?: { name?: string }): SequencerDefinition<TInput, TOutput, TStateSchema>;
+  sideChain<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, any>,
     options?: { name?: string }
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
 
   /**
-   * Conditional variant of `.work()` — dispatches a fire-and-forget sidechain
+   * Conditional variant of `.sideChain()` — dispatches a fire-and-forget sidechain
    * only when the condition is truthy. Complete no-op when falsy (no items, no trace).
    *
    * The condition is evaluated once per execution before dispatching. The
@@ -244,14 +271,14 @@ export interface SequencerDefinition<
    * gate dispatch on either the upstream output or live session/request
    * state.
    */
-  workIf(
+  sideChainIf(
     condition:
       | boolean
       | ((value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>),
     block: BlockDefinition<any, any>,
     options?: { name?: string }
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
-  workIf<TStepIn>(
+  sideChainIf<TStepIn>(
     condition:
       | boolean
       | ((value: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>),
@@ -260,7 +287,7 @@ export interface SequencerDefinition<
     options?: { name?: string }
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
 
-  waitForWork(options?: {
+  waitForSideChain(options?: {
     failOnError?: boolean;
     timeoutMs?: number;
   }): SequencerDefinition<TInput, TOutput, TStateSchema>;
@@ -431,9 +458,9 @@ export type SequencerConfig<
   };
 };
 
-export type SequencerWorkTask = {
+export type SequencerSideChainTask = {
   name: string;
-  promise: Promise<WorkResult>;
+  promise: Promise<SideChainResult>;
 };
 
 export type SequencerRuntimeState = {
@@ -441,15 +468,15 @@ export type SequencerRuntimeState = {
   loopCounts: Map<string, number>;
   /**
    * Per-sequencer fallback work list. Populated only when the request-scoped
-   * work pool is absent (unit-test contexts without `_requestWorkPool`). When
+   * side-chain pool is absent (unit-test contexts without `_requestSideChainPool`). When
    * a pool is present, sequencer DSL pushes tasks onto the pool tagged with
    * `scopeId`, and this list stays empty.
    */
-  workTasks: SequencerWorkTask[];
+  pendingSideChainTasks: SequencerSideChainTask[];
   stateVersion: number;
   /**
-   * Per-sequencer-instance scope ID. `.work()` / `.workIf()` /
-   * `.forEachBackground()` tag pool tasks with this id so `.waitForWork()`
+   * Per-sequencer-instance scope ID. `.sideChain()` / `.sideChainIf()` /
+   * `.forEachSideChain()` tag pool tasks with this id so `.waitForSideChain()`
    * drains only the calling sequencer's contributions to the pool.
    */
   scopeId: string;

@@ -1,10 +1,11 @@
 /**
- * Task-creation caps (FIX-931) — the two bounds a collection enforces on
- * insertion, plus the typed breach every caller must reckon with.
+ * Collection caps — the two bounds a collection enforces on insertion
+ * (FIX-931), the cumulative retry budget (FIX-948), and the typed breach every
+ * caller must reckon with.
  *
- * Three bounds sit at three scopes on a board. `concurrency` (the task-board
- * pattern's existing knob) bounds how many tasks run *at once*. The two here
- * bound creation:
+ * Four bounds sit at four scopes on a board. `concurrency` (the task-board
+ * pattern's existing knob) bounds how many tasks run *at once*. Two bound
+ * creation, and one bounds re-running what already exists:
  *
  * - `maxEnqueuedTasks` — how many tasks may be *added* while others are still
  *   waiting in `pending`. Checked at creation against the resulting `pending`
@@ -14,11 +15,19 @@
  *   ledger, terminal ones included. Never refunded on drain, so it is the
  *   backstop that catches a drain-then-re-enqueue runaway.
  *
+ * - `maxTotalRetries` — how many times, in total, this collection may put a
+ *   FAILED task back in the queue (FIX-948). Not a creation bound: it counts
+ *   re-runs of tasks that already exist, which is exactly what the two above
+ *   cannot see. Enforced inside `fail()`'s atomic write; at the bound the
+ *   failing task settles terminal `errored` instead of re-pending.
+ *
  * Roughly *in-flight ⊆ enqueued ⊆ total*, but only **at creation time**. Tasks
  * also re-enter `pending` through the lifecycle (a retry under `maxAttempts`, an
- * `unblock`, a `resumeFromReview`, a reclaimed lease), and those paths are
- * deliberately **not** capped — so `pending` can transiently exceed
- * `maxEnqueuedTasks`. The hard runaway bound is `maxTotalTasks`.
+ * `unblock`, a `resumeFromReview`, a reclaimed lease). Of those, only the RETRY
+ * is bounded, and only by `maxTotalRetries`; `unblock` / `resumeFromReview` /
+ * `reclaim` remain deliberately uncapped and do not consume the retry budget —
+ * so `pending` can still transiently exceed `maxEnqueuedTasks`. The hard runaway
+ * bounds are `maxTotalTasks` on creation and `maxTotalRetries` on re-runs.
  *
  * Caps are a property of the COLLECTION, not the board: they are applied where a
  * collection is constructed. A board handed a collection it did not build
@@ -26,10 +35,22 @@
  *
  * ## Lifetime — the canonical statement (cite this, don't restate it)
  *
- * Neither cap is a stored counter. Both are DERIVED from the ledger's contents
+ * No cap is a stored counter. All three are DERIVED from the ledger's contents
  * at check time (`maxTotalTasks` = the task map's size, `maxEnqueuedTasks` = its
- * `pending` count). So they persist exactly as far as the ledger does, and no
- * further:
+ * `pending` count, `maxTotalRetries` = the sum of every task's granted-retry
+ * count).
+ *
+ * The two creation caps are pure derives — they read task fields that exist for
+ * other reasons. `maxTotalRetries` is not: each grant is explicitly WRITTEN to
+ * `task.retryLedger` at authorization time, and the check sums those stored
+ * per-task grants. What is absent is a *global* counter field, not the
+ * per-task record — so do not read "derived" here as "recomputed from
+ * `attempts` or a status histogram". Neither would be correct: `attempts` also
+ * moves for re-claims that were never retries (see "Counting begins at
+ * upgrade" below).
+ *
+ * Either way the derivation is over the ledger, so all three persist exactly as
+ * far as the ledger does, and no further:
  *
  * - **Request-backed** — the ledger lives on `ctx.request`, so it ends with the
  *   request. A new request starts empty and both counts start from zero.
@@ -49,7 +70,7 @@
  *   from `stateSchema` per scope entry with no persist callback, so a DELEGATION
  *   board's ledger — and its counts — start over. Durable non-sequencer block
  *   state is FIX-917's deferred follow-up.
- * - **Resource-backed** — neither cap is enforced. The nearest durable analogue
+ * - **Resource-backed** — no cap is enforced. The nearest durable analogue
  *   is `defineTaskCollection({ maxInstances })`, but it is a CAPACITY limit and
  *   NOT a lifetime ceiling, so it does not substitute for `maxTotalTasks`. The
  *   registry checks it with `countInstances` over the LIVE instances
@@ -63,6 +84,33 @@
  *   write that makes this file's caps atomic on the sequencer/request backings.
  *   Bounding the `pending` subset stays deferred: the registry counts instances
  *   and has no notion of a task's status (see FIX-939).
+ *
+ *   **Counting and enforcing are separate on this backing, and the distinction
+ *   is deliberate.** The retry COUNT is maintained here — `fail()`'s retry patch
+ *   increments the granted count exactly as the sequencer backing does — because
+ *   the count is a public `Task` field feeding the board's report, and a durable
+ *   board reporting zero retries having actually retried is a false statement,
+ *   not a coverage gap. What is absent is ENFORCEMENT: the budget check must be
+ *   atomic against the whole ledger, and the resource layer has no CAS across
+ *   instances. So `maxTotalRetries` is kept off `ResourceBackingSpec` (asking
+ *   for it there is a compile error, not an accepted-and-ignored ceiling), and
+ *   the ref reports `maxTotalRetries: null` so no caller can read a non-zero
+ *   count as evidence a budget applied.
+ *
+ * ## Counting begins at upgrade (`maxTotalRetries` only)
+ *
+ * A task persisted before FIX-948 carries no granted-retry count, so it reads as
+ * zero and its pre-upgrade retries are not in the sum. The count means
+ * "authorized retries since the upgrade", not "since the task was created".
+ * Backfilling from `attempts` is deliberately NOT done: `attempts` also moves
+ * for re-claims that were never failure retries, so a backfill would put
+ * non-retries into both the enforcement and the report — the exact quantity this
+ * budget was designed not to count.
+ *
+ * The exposure is narrow because enforcement and long-lived legacy records never
+ * coincide: request-backed ledgers die with their request, resource-backed ones
+ * live indefinitely but do not enforce, and the single real case — a sequencer
+ * board resumed across a deploy — overshoots by at most one budget, once.
  *
  * "The caps reset on resume" is false for a true sequencer host and was wrong in
  * the docs before FIX-931 landed. What the spec actually scoped out was a
@@ -116,9 +164,9 @@ export class TaskCapExceededError extends Error {
 }
 
 /**
- * The two creation caps, as accepted by every construction point. A finite
- * positive integer sets the bound; `null` means explicitly unbounded on that
- * axis; omitting the option leaves it to whatever default the construction point
+ * The collection's caps, as accepted by every construction point. A finite
+ * integer sets the bound; `null` means explicitly unbounded on that axis;
+ * omitting the option leaves it to whatever default the construction point
  * applies (which is why `null` exists — omission is not an off switch).
  */
 export interface TaskCapOptions {
@@ -126,6 +174,44 @@ export interface TaskCapOptions {
   maxTotalTasks?: number | null;
   /** Enqueued-at-creation `pending` count. `null` = unbounded. */
   maxEnqueuedTasks?: number | null;
+  /**
+   * Cumulative failure retries this collection may authorize, across every task
+   * (FIX-948). `null` = unbounded.
+   *
+   * **What omission does depends on where you are constructing.** Only the
+   * DEFAULTING SURFACES turn an omitted axis into
+   * {@link DEFAULT_MAX_TOTAL_RETRIES}: `taskBoard`'s declarative branch, the
+   * task-board capability, and the delegation surface — everything that routes
+   * through {@link resolveTaskCapDefaults}. Constructing a collection DIRECTLY
+   * (`createSequencerBackedTaskCollection`, `getOrCreateTaskCollection({ backing:
+   * "sequencer" | "request" })`) applies no default: an omitted axis is passed
+   * through as `undefined`, and `routeFailure` reads `undefined` as unbounded.
+   * So a direct caller who omits this option gets NO cumulative retry bound, not
+   * 50. Pass the value you want, or `resolveTaskCapDefaults` first.
+   *
+   * Three things about it are surprising and all three are deliberate:
+   *
+   * - **`0` is legal** and means "run every task once, never retry". Unlike the
+   *   two creation caps — where `0` would mean "this board can do nothing" and
+   *   is rightly refused — a zero retry budget is a coherent configuration, and
+   *   without accepting it there would be no way to express one: on a defaulting
+   *   surface omission gives the default, and `null` gives unbounded. A first
+   *   attempt is never refused at any budget value, by construction.
+   * - **The budget is spent at AUTHORIZATION**, not at execution. If a re-pended
+   *   task is never re-claimed (the worker died, the lease expired) the grant
+   *   stays spent. That errs conservative — the bound can only under-spend
+   *   relative to real model calls, never over-spend — and refunding it would
+   *   mean inferring abandonment from lease expiry, which the task substrate
+   *   does not treat as evidence.
+   * - **Only failure retries count.** `unblock`, `resumeFromReview`, and
+   *   `reclaim` also return a task to `pending` and do NOT consume the budget.
+   *
+   * Enforced only on the backings that can check atomically against the whole
+   * ledger (sequencer / request). The resource backing still COUNTS retries but
+   * does not enforce, and reports `maxTotalRetries: null` so a caller can never
+   * read a non-zero count as evidence a budget applied.
+   */
+  maxTotalRetries?: number | null;
 }
 
 /** Default lifetime ceiling applied where a board/library constructs a collection. */
@@ -134,11 +220,52 @@ export const DEFAULT_MAX_TOTAL_TASKS = 500;
 /** Default enqueue-burst ceiling applied where a board/library constructs a collection. */
 export const DEFAULT_MAX_ENQUEUED_TASKS = 100;
 
+/**
+ * Default cumulative retry budget applied where a board/pattern constructs a
+ * collection (FIX-948).
+ *
+ * Sized to be invisible in normal operation and decisive on a storm: a 25-task
+ * board whose tasks each retry twice produces exactly 50 retries, so ordinary
+ * work on a small board never reaches it, while a single task looping on a
+ * permissive `maxAttempts` hits it in seconds.
+ *
+ * It is deliberately far tighter than the *implicit* bound it replaces
+ * (`maxTotalTasks × maxAttempts` ≈ 1000 at the defaults), and it WILL bind large
+ * boards under ordinary flakiness — a 500-task board on a bad day reaches 50
+ * retries legitimately. That is the accepted cost of a bound an operator can
+ * actually see and set: raise it with `maxTotalRetries`, or pass `null` to opt
+ * out entirely.
+ */
+export const DEFAULT_MAX_TOTAL_RETRIES = 50;
+
 function assertCapValue(label: string, name: string, value: number | null | undefined): void {
   if (value === undefined || value === null) return;
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(
       `${label} ${name} must be a positive integer, or null for explicitly unbounded (got ${value})`,
+    );
+  }
+}
+
+/**
+ * Validate the retry budget — **nonnegative**, deliberately asymmetric with
+ * {@link assertCapValue}'s positive rule.
+ *
+ * `maxTotalTasks: 0` means "this board can do nothing", which is nonsense.
+ * `maxTotalRetries: 0` means "run every task once, never retry", which is a
+ * coherent and probably common configuration, and is the only way to express it.
+ * `NaN` / `Infinity` / negative / fractional stay refused on both.
+ */
+function assertRetryBudgetValue(
+  label: string,
+  name: string,
+  value: number | null | undefined
+): void {
+  if (value === undefined || value === null) return;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `${label} ${name} must be a nonnegative integer (0 means "never retry"), or null for ` +
+        `explicitly unbounded (got ${value})`,
     );
   }
 }
@@ -154,6 +281,11 @@ function assertCapValue(label: string, name: string, value: number | null | unde
 export function validateTaskCaps(label: string, caps: TaskCapOptions): void {
   assertCapValue(label, "maxTotalTasks", caps.maxTotalTasks);
   assertCapValue(label, "maxEnqueuedTasks", caps.maxEnqueuedTasks);
+  assertRetryBudgetValue(label, "maxTotalRetries", caps.maxTotalRetries);
+  // No cross-cap ordering rule involves the retry budget. It counts a different
+  // quantity (re-runs, not tasks), so no pairing with either creation cap is
+  // contradictory — `maxTotalRetries: 1000` on a 5-task board is a legitimate
+  // request for a board that retries hard.
   if (
     typeof caps.maxTotalTasks === "number" &&
     typeof caps.maxEnqueuedTasks === "number" &&
@@ -209,10 +341,31 @@ export function resolveTaskCapDefaults(label: string, caps: TaskCapOptions): Tas
         : DEFAULT_MAX_ENQUEUED_TASKS
       : caps.maxEnqueuedTasks;
 
-  const resolved: TaskCapOptions = { maxTotalTasks, maxEnqueuedTasks };
+  const maxTotalRetries =
+    caps.maxTotalRetries === undefined ? DEFAULT_MAX_TOTAL_RETRIES : caps.maxTotalRetries;
+
+  const resolved: TaskCapOptions = { maxTotalTasks, maxEnqueuedTasks, maxTotalRetries };
   // Re-validate the resolved pair. The clamp above makes this unreachable for a
   // derived enqueue bound, so what it still catches is an EXPLICIT enqueue bound
   // above a defaulted total — which is a real contradiction worth naming.
   validateTaskCaps(label, resolved);
   return resolved;
 }
+
+/**
+ * The retry-budget opt-out a surface passes when its tasks can never retry
+ * (FIX-948) — the delegation board and `eventActors`.
+ *
+ * It is `null`, not omission, and the difference is the whole point. Omitting
+ * the axis means "take the default", so every defaulting site downstream —
+ * `resolveTaskCapDefaults` here, and `resolveBoardCaps` again inside
+ * `taskBoard` — re-applies the finite default. A surface that merely leaves the
+ * option undeclared therefore still installs a real, non-configurable cap, with
+ * no way to raise it or turn it off, that starts binding the day that surface
+ * gains `maxAttempts`. `null` is the value that survives every defaulting site,
+ * which is exactly why it exists.
+ *
+ * Spelled as a named constant so the refusal is one greppable decision rather
+ * than a bare `null` at two call sites.
+ */
+export const RETRY_BUDGET_NOT_APPLICABLE = null;

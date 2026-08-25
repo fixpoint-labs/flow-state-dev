@@ -80,7 +80,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    await stores.resourceState.set("session", "s1", "lazyS", { v: 7 });
+    await stores.resourceState.set("session", "s1", "lazyS", { v: 7 }, "any");
 
     const { byName } = await run(flow, stores);
     const fetches = loadsOf(byName("reads-lazy-single")).filter(
@@ -108,7 +108,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    await stores.resourceState.set("session", "s1", "eagerS", { v: 9 });
+    await stores.resourceState.set("session", "s1", "eagerS", { v: 9 }, "any");
 
     const { byName } = await run(flow, stores);
     // Declared on the action's block (not flow-level), so it loads at the
@@ -143,7 +143,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    await stores.resourceState.set("session", "s1", "boomLazy", { v: 1 });
+    await stores.resourceState.set("session", "s1", "boomLazy", { v: 1 }, "any");
 
     const response = createResponseEmitter({ requestId: "req_boom", now: () => Date.now() });
     const result = await runAction({
@@ -188,7 +188,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    await stores.resourceState.set("session", "s1", "ec/x", { n: 1 });
+    await stores.resourceState.set("session", "s1", "ec/x", { n: 1 }, "any");
 
     const { byName } = await run(flow, stores);
     const hits = loadsOf(byName("reads-eager-many")).filter(
@@ -224,7 +224,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    for (const k of ["a", "b", "c"]) await stores.resourceState.set("session", "s1", `lz/${k}`, { n: 1 });
+    for (const k of ["a", "b", "c"]) await stores.resourceState.set("session", "s1", `lz/${k}`, { n: 1 }, "any");
 
     const { byName } = await run(flow, stores);
     const loads = loadsOf(byName("reads-lazy-coll")).filter((r) => r.source === "lazy");
@@ -262,8 +262,8 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    await stores.resourceState.set("session", "s1", "flowRes", { v: 3 });
-    await stores.resourceState.set("session", "s1", "ac/one", { n: 1 });
+    await stores.resourceState.set("session", "s1", "flowRes", { v: 3 }, "any");
+    await stores.resourceState.set("session", "s1", "ac/one", { n: 1 }, "any");
 
     const { byName } = await run(flow, stores);
     const loads = loadsOf(byName("entry"));
@@ -307,8 +307,8 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    await stores.resourceState.set("session", "s1", "pz/a", { n: 1 });
-    await stores.resourceState.set("session", "s1", "pz/b", { n: 2 });
+    await stores.resourceState.set("session", "s1", "pz/a", { n: 1 }, "any");
+    await stores.resourceState.set("session", "s1", "pz/b", { n: 2 }, "any");
 
     const { byName } = await run(flow, stores);
     const aKeys = loadsOf(byName("branch-a")).filter((r) => r.source === "lazy").map((r) => r.storageKey);
@@ -337,7 +337,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    await stores.resourceState.set("session", "s1", "decl", { v: 1 });
+    await stores.resourceState.set("session", "s1", "decl", { v: 1 }, "any");
 
     const { byName } = await run(flow, stores);
     expect(byName("declarer")?.declaredResources).toContain("decl");
@@ -365,7 +365,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
-    await stores.resourceState.set("session", "s1", "off/a", { n: 1 });
+    await stores.resourceState.set("session", "s1", "off/a", { n: 1 }, "any");
 
     const response = createResponseEmitter({ requestId: "req_off", now: () => Date.now() });
     const result = await runAction({

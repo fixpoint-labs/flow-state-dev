@@ -1,13 +1,17 @@
 /**
- * PriceOverlay — inline-SVG close-price line with entry/stop/target
- * horizontal overlays. No chart library, no interactivity, no ResizeObserver:
+ * PriceOverlay — inline-SVG close-price line with the decision's price levels
+ * as horizontal overlays. No chart library, no interactivity, no ResizeObserver:
  * a static figure projected into a fixed viewBox.
  *
  * The series comes from the stored `priceHistory` resource slice (date + close
- * only). The overlay levels come from the trader memo (stop/target); the
- * latest close is drawn as a reference line. Only per-share price quantities
- * may join the levels — the spine's fairValue is a company-level $B figure
- * and must never be plotted here (FIX-778).
+ * only). The overlay levels come from the trader memo, already named by the
+ * shared labeling rule (FIX-780: stop/target on a directional call, the
+ * monitoring pair on a flat one, unnamed on a pre-fix record); the latest close
+ * is drawn as a reference line. This component draws whatever it is handed and
+ * names nothing itself, so a level's name here always matches the list beside
+ * it. A label may repeat or be empty, so the react key carries the value too.
+ * Only per-share price quantities may join the levels — the spine's fairValue
+ * is a company-level $B figure and must never be plotted here (FIX-778).
  * Every level that falls outside the price domain widens the domain so it stays
  * visible. With fewer than two bars the caller renders the trade-levels fallback
  * instead — this component assumes a drawable series.
@@ -61,13 +65,13 @@ export function PriceOverlay({ bars, levels }: PriceOverlayProps): ReactElement 
         preserveAspectRatio="none"
         className="h-40 w-full rounded-md border border-[color:var(--c-border)] bg-[color:var(--c-surface)]"
         role="img"
-        aria-label="Price history with trade levels"
+        aria-label="Price history with the decision's price levels"
       >
         {levels.map((level) => {
           const y = projectY(level.value, min, max);
           return (
             <line
-              key={level.label}
+              key={`${level.label}-${level.value}`}
               x1={0}
               x2={VIEW_W}
               y1={y}
@@ -87,11 +91,13 @@ export function PriceOverlay({ bars, levels }: PriceOverlayProps): ReactElement 
         />
       </svg>
       {/* Level legend below the chart — readable regardless of where the line
-          lands inside the non-uniformly-scaled SVG. */}
+          lands inside the non-uniformly-scaled SVG. A level with no name (a
+          report stored before the flat-stance labeling fix) shows its number
+          alone rather than a name-shaped gap. */}
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {levels.map((level) => (
           <span
-            key={level.label}
+            key={`${level.label}-${level.value}`}
             className="flex items-center gap-1 font-mono text-[10px] text-[color:var(--c-fg-muted)]"
           >
             <span
@@ -99,7 +105,7 @@ export function PriceOverlay({ bars, levels }: PriceOverlayProps): ReactElement 
               className="inline-block h-0.5 w-3"
               style={{ background: level.color }}
             />
-            {level.label} {level.value}
+            {level.label === "" ? level.value : `${level.label} ${level.value}`}
           </span>
         ))}
       </div>

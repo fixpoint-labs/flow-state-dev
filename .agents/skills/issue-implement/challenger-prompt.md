@@ -76,8 +76,11 @@ Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger i
 
 ## Acting on a BLIND SPOT verdict
 
-- **Human available:** surface it with the tradeoff named (`AskUserQuestion` for a
-  crisp choice). Do not proceed on a changed direction without the call.
+- **Human available:** surface it as a decision they can make — all six parts, per
+  [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), with the
+  fork stated as what the code turned out to do.
+  `AskUserQuestion` for the crisp choice. Do not proceed on a changed direction without
+  the call.
 - **Autonomous / AFK:** take the **best-judgment path**, fold the correction into the
   spec (the live Linear document), and **flag it loudly** — in the PR body and the
   Linear comment — as a *spec deviation the challenger made*, with the assumed-vs-real

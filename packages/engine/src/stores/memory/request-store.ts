@@ -1,9 +1,12 @@
 import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
+  ConditionalRequestFields,
+  ConditionalWriteResult,
   ExpectedVersion,
   RequestListOptions,
   RequestRecord,
+  RequestStatus,
   RequestStore,
   SetResult,
   SubscribeToEventsOptions
@@ -15,8 +18,13 @@ import {
   patchFieldInMap,
   pushToArrayInMap
 } from "./shared";
-import { withRequestSourceDefault } from "../shared";
-import { matchesTenantFilter } from "../scope-keys";
+import {
+  matchesRequestStatusFilter,
+  withRequestSourceDefault,
+  withStoredAbortRequested
+} from "../shared";
+import { matchesOrgFilter, matchesTenantFilter } from "../scope-keys";
+import { compareRequestsForListing } from "../list-order";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
 import { endsRequestStream } from "../subscribe-helpers";
@@ -44,7 +52,37 @@ export class InMemoryRequestStore implements RequestStore {
     value: RequestRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>> {
-    return casWriteToMap(this.records, id, value, expectedVersion);
+    // `abortRequested` is off `set`'s write surface (FIX-1026): carry the
+    // stored value through whatever the caller's record says. The map read and
+    // the write below are not separated by an await, so no other task can slip
+    // a conditional write between them.
+    return casWriteToMap(
+      this.records,
+      id,
+      withStoredAbortRequested(value, this.records.get(id)?.abortRequested),
+      expectedVersion
+    );
+  }
+
+  async isAbortRequested(requestId: string): Promise<boolean> {
+    return this.records.get(requestId)?.abortRequested === true;
+  }
+
+  async setFieldsIfStatus(
+    id: string,
+    fields: ConditionalRequestFields,
+    allowedStatuses: readonly RequestStatus[],
+    updatedAt: number
+  ): Promise<ConditionalWriteResult> {
+    const current = this.records.get(id);
+    if (current === undefined) return { applied: false, status: undefined };
+    if (!allowedStatuses.includes(current.status)) {
+      return { applied: false, status: current.status };
+    }
+    // Atomic by construction: nothing above yields, so the status that was
+    // checked is the status this write lands on.
+    this.records.set(id, { ...current, ...cloneValue(fields), updatedAt });
+    return { applied: true, status: current.status };
   }
 
   async patchField(
@@ -232,17 +270,23 @@ export class InMemoryRequestStore implements RequestStore {
         return false;
       }
 
-      if (options?.status !== undefined && record.status !== options.status) {
+      if (!matchesOrgFilter(options, record.orgId)) {
+        return false;
+      }
+
+      if (!matchesRequestStatusFilter(options?.status, record.status)) {
         return false;
       }
 
       return true;
     });
 
-    if (options?.orderBy === "startedAtMs") {
-      filtered.sort((left, right) => right.startedAtMs - left.startedAtMs);
-    } else {
-      filtered.sort((left, right) => right.updatedAt - left.updatedAt);
+    // `orderBy: "none"` skips the sort outright (FIX-1010) — an existence
+    // check has no ordering preference, and sorting the set it selects on is
+    // what makes such a read grow with history on the SQL adapters. Kept
+    // symmetric here so a behaviour proved in memory holds in production.
+    if (options?.orderBy !== "none") {
+      filtered.sort((left, right) => compareRequestsForListing(left, right, options));
     }
     return applyOffsetLimit(filtered, options).map((record) =>
       withRequestSourceDefault(cloneValue(record))

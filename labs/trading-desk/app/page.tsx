@@ -22,13 +22,17 @@ import { MobileHeader } from "@/components/mobile/mobile-header";
 import { MobileStatusLine } from "@/components/mobile/mobile-status";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { NewAnalysisDialog } from "@/components/new-analysis-dialog";
-import { TranscriptPane } from "@/components/transcript/transcript-pane";
+import {
+  TranscriptPane,
+  type TranscriptJump,
+} from "@/components/transcript/transcript-pane";
 import { ThesesPane } from "@/components/theses/theses-pane";
 import { PastReportsPane } from "@/components/reports/past-reports-pane";
 import { PortfolioPane } from "@/components/portfolio/portfolio-pane";
 import { parseReportRow, reportRowTuple } from "@/flows/analysis/report-index";
 import { buildAnalyzeInput } from "@/flows/analysis/analyze-input";
 import type { RiskMandateId } from "@/flows/analysis/lib/risk-mandate";
+import type { AgentName } from "@/flows/analysis/registry";
 import type { MemoStatus } from "@/flows/analysis/resources";
 import {
   EMPTY_INSTRUCTIONS,
@@ -151,6 +155,13 @@ function TradingDeskApp(): ReactElement {
   // `view`: both shells render (CSS-toggled at `lg`, the kitchen-sink
   // precedent), so each keeps its own navigation state.
   const [mobileTab, setMobileTab] = useState<MobileTab>("report");
+  // Cross-pane jump request from a memo header (FIX-1062). It lives here, not
+  // in ThesesPane, because the transcript surface is a SIBLING of the theses
+  // surface on desktop and a different mobile tab below `lg` — a jump has to
+  // be able to reveal it, which only this component can do.
+  const [transcriptJump, setTranscriptJump] = useState<TranscriptJump | null>(
+    null,
+  );
   // Optional per-run user thesis. Frozen into session state at `seedSession`
   // (server-side); editing here after a run starts doesn't touch the running
   // session. A non-null thesis gates the Phase 6 audit.
@@ -343,6 +354,23 @@ function TradingDeskApp(): ReactElement {
     [handleOpenReport],
   );
 
+  // Jump from a memo header to that agent's originating transcript event
+  // (FIX-1062). Below `lg` the transcript is a separate tab, so the jump must
+  // reveal it first; on desktop both panes are already mounted and the
+  // `mobileTab` write is inert (the `handleOpenReport` view-write precedent).
+  // The bumped nonce — not a timestamp — makes a repeat click on the same memo
+  // a distinct request even within the same millisecond.
+  const handleJumpToTranscript = useCallback((agent: AgentName) => {
+    setMobileTab("transcript");
+    setTranscriptJump((prev) => ({ agent, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
+  // A jump is an event, not a mode: once the panes have acted on it, drop it.
+  // Held, it would re-fire on every remount of a transcript pane — a mobile tab
+  // switch away and back, or a desktop desk→reports→desk trip — scrolling and
+  // stealing focus with no click behind it.
+  const handleJumpHandled = useCallback(() => setTranscriptJump(null), []);
+
   // Fires once `useSession` is bound to the resolved session id. Without
   // this, calling `session.sendAction` synchronously after `selectSession`
   // would dispatch against the previously-active session because the hook's
@@ -419,8 +447,15 @@ function TradingDeskApp(): ReactElement {
             className="grid overflow-hidden"
             style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)" }}
           >
-            <ThesesPane session={session} />
-            <TranscriptPane session={session} />
+            <ThesesPane
+              session={session}
+              onJumpToTranscript={handleJumpToTranscript}
+            />
+            <TranscriptPane
+              session={session}
+              jumpTo={transcriptJump}
+              onJumpHandled={handleJumpHandled}
+            />
           </main>
         )}
         <StatusBar
@@ -455,9 +490,16 @@ function TradingDeskApp(): ReactElement {
             exactly as the desktop grid cells size them). */}
         <main className="grid min-h-0 flex-1 overflow-hidden">
           {mobileTab === "report" ? (
-            <ThesesPane session={session} />
+            <ThesesPane
+              session={session}
+              onJumpToTranscript={handleJumpToTranscript}
+            />
           ) : mobileTab === "transcript" ? (
-            <TranscriptPane session={session} />
+            <TranscriptPane
+              session={session}
+              jumpTo={transcriptJump}
+              onJumpHandled={handleJumpHandled}
+            />
           ) : mobileTab === "portfolio" ? (
             <FlowProvider flowKind="portfolio" userId={USER_ID} baseUrl="">
               <PortfolioView />

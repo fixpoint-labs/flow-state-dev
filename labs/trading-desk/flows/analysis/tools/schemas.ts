@@ -85,10 +85,27 @@ const periodInput = z.object({
 // (e.g. a missing operatingIncome must not read as a real zero). Extends the
 // nullable-PE discipline (FIX-692) to the statements after live runs showed
 // Yahoo's legacy modules returning zero-filled statements (FIX-705 follow-up).
+//
+// `periodEnd` (FIX-1113) is the ONE date every figure in the statement was read
+// at — the enforcement half of "read every figure at one chosen year-end". Two
+// rules on it:
+//   - EMPTY ONLY WHEN THE STATEMENT CARRIES NO FIGURES. The `unavailable` path
+//     has no period to declare, and the only values available to fill one in
+//     (the request date, a guess) would fabricate a year-end. So `null` is
+//     legal exactly there, and `asOf` is NOT a substitute — `asOf` still falls
+//     back to the request date for legacy readers.
+//   - `.default(null)` IS LOAD-BEARING, NOT DECORATION (BP-030). These payloads
+//     are persisted resource state re-parsed on every read. The value fields
+//     are nullable but NOT optional, so a stored record written before this key
+//     existed fails to parse without the default while an explicit `null`
+//     succeeds. The shape that matters in test is the MISSING key, not the null
+//     one. It stays required in the OUTPUT type, so a producer that cannot
+//     state its period fails to build.
 export const balanceSheetSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
+  periodEnd: z.string().nullable().default(null),
   totalAssets: z.number().nullable(),
   totalLiabilities: z.number().nullable(),
   totalEquity: z.number().nullable(),
@@ -101,6 +118,7 @@ export const incomeStatementSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
+  periodEnd: z.string().nullable().default(null),
   revenue: z.number().nullable(),
   grossProfit: z.number().nullable(),
   operatingIncome: z.number().nullable(),
@@ -113,11 +131,25 @@ export const cashflowSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
+  periodEnd: z.string().nullable().default(null),
   operating: z.number().nullable(),
   investing: z.number().nullable(),
   financing: z.number().nullable(),
   freeCashFlow: z.number().nullable(),
   unit: z.string().default("USD billions"),
+});
+
+/**
+ * What one statement's provider-ladder resolution observed, and what it settled
+ * on (FIX-1113). Written per statement by `loadStatementWithRecovery`.
+ *
+ * `observedNewest` covers ONLY the payloads that resolution actually fetched —
+ * a provider the ladder short-circuited past is deliberately not represented,
+ * because claiming otherwise would assert a period nobody looked for.
+ */
+export const periodObservationSchema = z.object({
+  observedNewest: z.string().nullable(),
+  returned: z.string().nullable(),
 });
 
 /**
@@ -146,17 +178,23 @@ export const recoveryAuditSchema = z.object({
 });
 export type RecoveryAudit = z.infer<typeof recoveryAuditSchema>;
 
+// Every numeric field is nullable for the same reason the statements above are:
+// a figure no provider reported is UNOBSERVED, and `0` is a measurement. The
+// difference is not cosmetic — a missing `marketCap` read as a real zero makes
+// enterprise value equal net debt and price-to-book read `0.00×` (cheap) on a
+// company nobody has data for (FIX-1063). The rule is *unobserved → null*, NOT
+// *falsy → null*: a genuinely measured 0% operating margin stays `0`.
 export const fundamentalsSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  marketCap: z.number(),
+  marketCap: z.number().nullable(),
   forwardPE: z.number().nullable(),
   trailingPE: z.number().nullable(),
-  priceToSales: z.number(),
-  returnOnEquity: z.number(),
-  operatingMargin: z.number(),
-  grossMargin: z.number(),
+  priceToSales: z.number().nullable(),
+  returnOnEquity: z.number().nullable(),
+  operatingMargin: z.number().nullable(),
+  grossMargin: z.number().nullable(),
   dividendYield: z.number().nullable(),
 });
 
@@ -176,21 +214,38 @@ export const priceHistorySchema = z.object({
   bars: z.array(priceBar),
 });
 
+// Nullable throughout: an indicator the series is too short to compute was NOT
+// measured. A 3-month-old listing has no 200-day average, and recording one as
+// `0` also labelled the name a "flat" trend the desk never read (FIX-1063).
+// `trend` widens to nullable rather than gaining a fourth enum member — "we did
+// not measure it" is an absence, not a fourth kind of trend.
 export const indicatorsSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  rsi14: z.number(),
-  macd: z.object({ line: z.number(), signal: z.number(), histogram: z.number() }),
-  atr14: z.number(),
-  trend: z.enum(["up", "down", "flat"]),
-  sma50: z.number(),
-  sma200: z.number(),
-  bollinger: z.object({ upper: z.number(), middle: z.number(), lower: z.number() }),
-  vwma20: z.number(),
-  stoch: z.object({ k: z.number(), d: z.number() }),
-  kdj: z.object({ k: z.number(), d: z.number(), j: z.number() }),
-  obv: z.number(),
+  rsi14: z.number().nullable(),
+  macd: z.object({
+    line: z.number().nullable(),
+    signal: z.number().nullable(),
+    histogram: z.number().nullable(),
+  }),
+  atr14: z.number().nullable(),
+  trend: z.enum(["up", "down", "flat"]).nullable(),
+  sma50: z.number().nullable(),
+  sma200: z.number().nullable(),
+  bollinger: z.object({
+    upper: z.number().nullable(),
+    middle: z.number().nullable(),
+    lower: z.number().nullable(),
+  }),
+  vwma20: z.number().nullable(),
+  stoch: z.object({ k: z.number().nullable(), d: z.number().nullable() }),
+  kdj: z.object({
+    k: z.number().nullable(),
+    d: z.number().nullable(),
+    j: z.number().nullable(),
+  }),
+  obv: z.number().nullable(),
 });
 
 const newsItem = z.object({
@@ -220,18 +275,24 @@ export const marketNewsSchema = z.object({
   items: z.array(newsItem),
 });
 
+// Nullable per series, because the read is PER SERIES: FRED can answer six of
+// the nine, and the payload still reports `source: "fred"`. Before FIX-1063 the
+// three misses were written as `0` under that live tag — 0% inflation, 0%
+// unemployment, 0% policy rate presented as measurements. The source tag is
+// unchanged by this issue (a partial answer still says "fred"); what changes is
+// that the values no longer imply the source measured them.
 export const macroIndicatorsSchema = z.object({
   source: sourceTag,
   asOf: z.string(),
-  cpiYoy: z.number(),
-  unemployment: z.number(),
-  fedFundsRate: z.number(),
-  tenYearYield: z.number(),
-  oilWtiUsd: z.number(),
-  yieldCurve2s10s: z.number(),
-  hyCreditSpread: z.number(),
-  dollarIndex: z.number(),
-  industrialProduction: z.number(),
+  cpiYoy: z.number().nullable(),
+  unemployment: z.number().nullable(),
+  fedFundsRate: z.number().nullable(),
+  tenYearYield: z.number().nullable(),
+  oilWtiUsd: z.number().nullable(),
+  yieldCurve2s10s: z.number().nullable(),
+  hyCreditSpread: z.number().nullable(),
+  dollarIndex: z.number().nullable(),
+  industrialProduction: z.number().nullable(),
 });
 
 /**
@@ -332,10 +393,15 @@ export const socialSentimentSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  score7d: z.number(),
-  positive: z.number(),
-  negative: z.number(),
-  neutral: z.number(),
+  // Nullable for the same reason `shortInterestPct` already is: the
+  // `unavailable` payload observed no chatter at all, and a `0` score reads to
+  // an analyst as measured neutrality (FIX-1063). The live xAI route is a
+  // GENERATOR whose own output schema stays strict — a model that read posts
+  // and scored them `0` genuinely measured a zero.
+  score7d: z.number().nullable(),
+  positive: z.number().nullable(),
+  negative: z.number().nullable(),
+  neutral: z.number().nullable(),
   /** Null when the provider can't measure short interest (e.g. xAI/xSearch
    *  reads X chatter, not exchange short-interest filings). Honest null
    *  beats a fabricated 0 — analysts must not read 0 as "no shorts." */
@@ -358,7 +424,9 @@ export const redditMentionsSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  mentions7d: z.number(),
+  /** Null when no provider could answer — "we did not count" is not the same
+   *  reading as "we counted zero mentions" (FIX-1063). */
+  mentions7d: z.number().nullable(),
   topThreads: z.array(redditMention),
 });
 
@@ -414,8 +482,13 @@ const insiderTransactionItem = z.object({
   transactionCode: z.string(),
   /** Signed share count: positive for acquisitions, negative for dispositions. */
   shares: z.number(),
-  /** USD per share. 0 for non-cash transactions (gifts, awards, withholdings). */
-  pricePerShare: z.number(),
+  /** USD per share. A genuine `0` is a NON-CASH transaction (gift, award, tax
+   *  withholding) — a real reading. `null` means the filing carried no price at
+   *  all. These were the same value until FIX-1063: both providers mapped an
+   *  omitted price to `0`, so a sparse-but-successful response was
+   *  indistinguishable from an observed non-cash transfer, and the reader had
+   *  no way to tell "granted, no cash changed hands" from "we don't know". */
+  pricePerShare: z.number().nullable(),
   /** True for derivative-security transactions (options, RSUs). */
   isDerivative: z.boolean(),
 });
@@ -504,6 +577,31 @@ const discoveryItem = z.object({
   provider: z.enum(searchProviders),
 });
 
+/**
+ * Entity-identity verdict for the payload's surviving `items` (FIX-779):
+ *
+ *   - `"verified"`        — the subject entity was resolved and every item in
+ *                           `items` names it. Wrong-entity results were removed
+ *                           and are listed, URL-only, in `excluded`.
+ *   - `"unchecked"`       — the subject entity could not be resolved (profile
+ *                           unavailable, or a name with no distinctive tokens),
+ *                           so no item was validated. Items are UNVERIFIED
+ *                           context, not confirmed evidence about the subject.
+ *   - `"not-applicable"`  — the tool's query is about the environment (macro
+ *                           conditions, sector/peer context), not the entity,
+ *                           so naming the subject is not expected.
+ */
+const discoveryEntityCheck = z.enum(["verified", "unchecked", "not-applicable"]);
+
+/** A search result removed by the entity check. URL + reason only — the
+ *  wrong-company title and snippet are deliberately dropped so contaminated
+ *  prose never reaches an analyst prompt, while the audit trail of what was
+ *  removed, and why, survives. */
+const discoveryExclusion = z.object({
+  url: z.string(),
+  reason: z.string(),
+});
+
 export const discoveryPayloadSchema = z.object({
   source: discoverySourceTag,
   ticker: z.string(),
@@ -513,9 +611,24 @@ export const discoveryPayloadSchema = z.object({
    *  `"unavailable"` empty payload. */
   query: z.string(),
   items: z.array(discoveryItem),
+  entityCheck: discoveryEntityCheck,
+  excluded: z.array(discoveryExclusion),
 });
 
 export type DiscoveryPayload = z.infer<typeof discoveryPayloadSchema>;
+
+/** The eight tools that return a `DiscoveryPayload`. Declared here (not in the
+ *  discovery runtime) so `empty-payloads.ts` and `runtime/discover.ts` can both
+ *  name it without importing each other. */
+export type DiscoveryTool =
+  | "discover_fundamentals_context"
+  | "discover_sentiment_context"
+  | "discover_technical_context"
+  | "discover_profile_context"
+  | "discover_market_context"
+  | "discover_macro_context"
+  | "discover_quant_context"
+  | "discover_disclosure_context";
 
 /**
  * Sector context: how the name's sector is positioned vs. the broad market,

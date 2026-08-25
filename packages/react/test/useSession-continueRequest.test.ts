@@ -52,7 +52,6 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 });
 
 import { useSession } from "../src/hooks/useSession";
-import { setFlowContext } from "../src/context/FlowContext";
 
 let seq = 0;
 function base(requestId: string) {
@@ -109,7 +108,6 @@ describe("useSession.continueRequest (FIX-865)", () => {
   beforeEach(() => {
     connections.length = 0;
     seq = 0;
-    setFlowContext({});
     vi.clearAllMocks();
     sessionClientMock.getSession.mockResolvedValue({
       id: "sess1",
@@ -124,7 +122,6 @@ describe("useSession.continueRequest (FIX-865)", () => {
 
   afterEach(() => {
     cleanup();
-    setFlowContext({});
   });
 
   it("continues the request by the given id and streams its items into the hook (not resumeLatestRequest's /retry path)", async () => {

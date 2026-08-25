@@ -2,8 +2,118 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator, handler, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
+import { defineResourceCollection } from "../src/types/resource-collection";
 import { createMockContext, runForTest } from "./helpers";
 describe("defineFlow", () => {
+  it("fails closed when removed middleware is passed to a flow", () => {
+    const middleware = vi.fn();
+
+    expect(() =>
+      defineFlow({
+        kind: "legacy-middleware",
+        actions: {},
+        middleware
+      } as any)
+    ).toThrow(/removed "middleware" option/);
+    expect(middleware).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when removed middleware is passed to flow instance options", () => {
+    const flow = defineFlow({ kind: "legacy-instance-middleware", actions: {} });
+
+    expect(() => flow({ middleware: vi.fn() } as any)).toThrow(
+      /removed "middleware" option/
+    );
+  });
+
+  /**
+   * The flow-level `work` config was REMOVED by FIX-766, not renamed. Its four
+   * hooks were never invoked, so nothing about lifecycle behaviour changes —
+   * but they were walked for resource declaration, so silently dropping the key
+   * would unregister any resource declared only there. Both call sites, matching
+   * how the removed `middleware` option is rejected.
+   */
+  it("fails closed when the removed work option is passed to a flow", () => {
+    const onStarted = vi.fn();
+
+    expect(() =>
+      defineFlow({
+        kind: "legacy-work",
+        actions: {},
+        work: { onStarted }
+      } as any)
+    ).toThrow(/removed "work" option/);
+    expect(onStarted).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the removed work option is passed to flow instance options", () => {
+    const flow = defineFlow({ kind: "legacy-instance-work", actions: {} });
+
+    expect(() => flow({ work: { onCompleted: vi.fn() } } as any)).toThrow(
+      /removed "work" option/
+    );
+  });
+
+  it("names the resource-declaration consequence, not a lifecycle one", () => {
+    // The message is the only place a consumer learns WHY this throws when the
+    // hooks never ran. Asserting the substance stops it decaying into "removed".
+    expect(() =>
+      defineFlow({ kind: "legacy-work-msg", actions: {}, work: {} } as any)
+    ).toThrow(/no longer registered/);
+  });
+
+  // Definition-only instance options (FIX-1048); see `rejectDefinitionOnlyOptions`.
+  //
+  // Runtime assertions rather than `@ts-expect-error` on purpose: this package's
+  // `typecheck` compiles `src/**/*` only, so a type-level assertion in a test file
+  // is never verified by anything. The `as any` below reaches the runtime guard.
+  it.each(["webhooks", "chat", "schedules", "mcp"])(
+    "fails closed when definition-only %s is passed to flow instance options",
+    (option) => {
+      const flow = defineFlow({ kind: "instance-transport-override", actions: {} });
+
+      expect(() => flow({ [option]: {} } as any)).toThrow(
+        new RegExp(`instance options set "${option}", which is not an instance option`)
+      );
+    }
+  );
+
+  it("still applies a transport config declared on the flow definition", () => {
+    const webhookHandler = handler({
+      name: "definition-webhook-handler",
+      execute: () => ({ ok: true })
+    });
+
+    const flow = defineFlow({
+      kind: "definition-transport",
+      authentication: { defaultUserId: "system", requireUser: false },
+      actions: {},
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": { block: webhookHandler, input: () => ({}) }
+          }
+        }
+      }
+    });
+
+    // The guard reads instance options only. A definition-declared transport is
+    // the supported shape and must survive instantiation untouched.
+    const instance = flow({ id: "definition-transport-instance" });
+
+    expect(instance.webhooks?.stripe.on["invoice.paid"]).toBeDefined();
+  });
+
+  it("fails closed when removed middleware is passed to a block", () => {
+    expect(() =>
+      handler({
+        name: "legacy-middleware-block",
+        middleware: vi.fn(),
+        execute: () => "secret"
+      } as any)
+    ).toThrow(/removed "middleware" option/);
+  });
+
   it("returns callable flow type with defaults and merge-based overrides", () => {
     const baseAction = handler({
       name: "base-action",
@@ -148,15 +258,15 @@ describe("defineFlow", () => {
   });
 
   it("rejects requireUser: false when user.client is declared", () => {
-    // Legacy `clientData` normalizes into `client.derived`, so the
-    // requireUser-consistency check applies to either input shape.
     expect(() =>
       defineFlow({
         kind: "user-clientdata-with-no-user",
         requireUser: false,
         user: {
-          clientData: {
-            displayName: () => "anon"
+          client: {
+            derived: {
+              displayName: () => "anon"
+            }
           }
         },
         actions: {
@@ -621,6 +731,58 @@ describe("defineFlow", () => {
         })({ id: "y" })
       ).not.toThrow();
     });
+
+    // FIX-1068: a flow-level declaration overrides a block's under the same
+    // accessor. Silently moving a resource between the running session and the
+    // lineage that way breaks the block that declared it — a detached board
+    // claims rows in one place while its Workstream reads an empty ledger.
+    it("rejects a flow-level override that changes sharedToWorkstream", () => {
+      const blockLedger = defineResourceCollection({
+        pattern: "tasks/**",
+        scope: "session",
+        sharedToWorkstream: true,
+        stateSchema: z.object({})
+      });
+      const flowLedger = defineResourceCollection({
+        pattern: "tasks/**",
+        scope: "session",
+        stateSchema: z.object({})
+      });
+      const worker = handler({
+        name: "worker",
+        resources: { ledger: blockLedger },
+        execute: () => "ok"
+      });
+
+      expect(() =>
+        defineFlow({
+          kind: "override-shared",
+          actions: { run: { inputSchema: z.any(), block: worker } },
+          resources: { ledger: flowLedger }
+        })({ id: "override-shared" })
+      ).toThrow(/sharedToWorkstream/);
+    });
+
+    // FIX-1068: `defineResource` guards this too, but a resource can reach a
+    // flow without passing through it, so the flow-build check has to stand on
+    // its own — otherwise a user-scoped resource carrying the flag would build
+    // clean and mean nothing at runtime.
+    it("rejects sharedToWorkstream on a non-session-scoped resource at flow build", () => {
+      const shared = {
+        ref: "leaked",
+        scope: "user" as const,
+        sharedToWorkstream: true,
+        stateSchema: z.object({})
+      };
+
+      expect(() =>
+        defineFlow({
+          kind: "shared-outside-session",
+          actions: {},
+          resources: { shared: shared as never }
+        })({ id: "shared-outside-session" })
+      ).toThrow(/sharedToWorkstream: true on a user-scoped resource/);
+    });
   });
 
   describe("scope client config normalization (FIX-505)", () => {
@@ -641,42 +803,19 @@ describe("defineFlow", () => {
       });
       expect(flow.session?.client?.expose).toEqual(["count"]);
       expect(typeof flow.session?.client?.derived?.greeting).toBe("function");
-      expect((flow.session as { clientData?: unknown })?.clientData).toBeUndefined();
     });
 
-    it("normalizes legacy clientData into client.derived and warns once per scope", async () => {
-      const { __resetDeprecationWarningsForTests } = await import("../src/helpers/deprecation");
-      __resetDeprecationWarningsForTests();
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-      const flow = defineFlow({
-        kind: "ccnorm-2",
-        actions: {},
-        session: {
-          stateSchema: z.object({}),
-          clientData: { legacy: () => ({ ok: true }) }
-        }
-      });
-      flow({ id: "ccnorm-2-instance" });
-
-      expect(typeof flow.session?.client?.derived?.legacy).toBe("function");
-      expect((flow.session as { clientData?: unknown })?.clientData).toBeUndefined();
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      warnSpy.mockRestore();
-    });
-
-    it("throws when both client and clientData are set on the same scope", () => {
+    it("rejects leftover session.clientData", () => {
       expect(() =>
         defineFlow({
-          kind: "ccnorm-3",
+          kind: "ccnorm-2",
           actions: {},
           session: {
             stateSchema: z.object({}),
-            client: { derived: { a: () => 1 } },
-            clientData: { b: () => 2 }
-          }
+            clientData: { legacy: () => ({ ok: true }) }
+          } as any
         })
-      ).toThrow(/sets both session\.client and session\.clientData/);
+      ).toThrow(/session\.clientData was removed/);
     });
 
     it("throws when expose and derived share a name", () => {

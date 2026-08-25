@@ -8,7 +8,7 @@
  *     `error` while Phase 1 / Phase 2 memos still publish (per-step rescue).
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -144,8 +144,6 @@ function traderStructuredOutput() {
       metrics: {
         direction: "long",
         size: "1.4%",
-        stop: "$132",
-        target: "$185",
         conviction: "0.62",
       },
       body: [
@@ -158,6 +156,8 @@ function traderStructuredOutput() {
       sizePct: 1.4,
       stopPrice: 132,
       targetPrice: 185,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
       holdingPeriod: "months" as const,
       invalidationCriteria: [
         "weekly close below $132",
@@ -252,7 +252,7 @@ describe("Phase 3 end-to-end", () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");
 
-    const memoResources = await stores.resourceState.getAll("session", sessionId);
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const traderMemo = memoResources["memos/p3/trader"] as
       | {
           status?: string;
@@ -332,7 +332,7 @@ describe("Phase 3 end-to-end", () => {
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.bear.memoKey)).toBe("published");
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.researchManager.memoKey)).toBe("published");
 
-    const memoResources = await stores.resourceState.getAll("session", sessionId);
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const traderMemo = memoResources["memos/p3/trader"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

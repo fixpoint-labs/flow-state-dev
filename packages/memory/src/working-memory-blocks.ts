@@ -253,12 +253,12 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
  * import { workingMemoryCapture } from '@flow-state-dev/memory'
  *
  * const pipeline = sequencer({ name: 'pipeline', inputSchema: chatInput })
- *   .work((input) => input.message, workingMemoryCapture({ model: 'gpt-5-mini' }))
+ *   .sideChain((input) => input.message, workingMemoryCapture({ model: 'gpt-5-mini' }))
  *   .step(chat)
  * ```
  *
  * Input: `z.string()` — the user's message (where new facts, preferences,
- * and goals live). Use a connector function with `.work()` to extract the
+ * and goals live). Use a connector function with `.sideChain()` to extract the
  * message string from your pipeline's input. Place it early in the pipeline
  * so capture runs in the background while the generator responds.
  *

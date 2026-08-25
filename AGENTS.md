@@ -32,7 +32,7 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 **On every PR with user-facing impact:**
 
 1. Run `pnpm changeset`. Pick the affected publishable package(s).
-2. Pre-1.0: choose `patch` for non-breaking, `minor` for breaking. Never `major`.
+2. Pre-1.0: select `patch` for non-breaking, `minor` for new capabilities or breaking changes. Never `major`.
 3. Write a single user-facing sentence describing the change. Multi-paragraph or migration notes are fine when warranted.
 4. Commit the generated `.changeset/<name>.md` file with the PR.
 
@@ -44,10 +44,18 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 
 - Do not reference wave labels in runtime code or tests.
 - Keep exported API surfaces documented with concise, high-signal comments.
-- Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `cli`).
+- Preserve canonical package boundaries (`core`, `engine`, `client`, `react`, `testing`, `fsdev`).
 - **Working memory is session-only — never commit it.** Orchestration state (the epic board, per-issue handle caches, any coordination scratch) lives in the **gitignored `.orchestration/`** directory. Never `git add`, commit, or open a PR for these files — commit only the actual issue work, in the issue's own worktree/branch. A PR whose diff is a board / status / scratch file is a bug; don't open it, and if one exists, close it.
 
-> **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Two rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`), and **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds.
+> **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Three rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`); **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds; and **a coordinator dispatches, it never does the work** — including work the user asks it for directly mid-run, which is the case that gets through (a request says *what* should happen, not *who* does it).
+
+## Asking the user for a decision
+
+**You are the engineer; the user is the product owner.** They set the objectives and track the process as a whole. Their attention is the scarce resource, and every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. They are technical — that makes handing them the mechanism easy, and it is still the wrong move. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening and why the business framing doesn't decide it.
+
+So **translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts: **the fork as a plain-language heading** · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **your recommendation, always** · **what would change your mind** · **what being wrong costs**. Each part, why it exists, and a worked example are canonical in [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) — read it before putting any fork, gate, or sign-off to the user.
+
+This applies in **conversation** as much as in artifacts. Batch a turn's asks under one `Need your sign-off` heading, numbered, hardest first; two to four is normal. And **don't ask when you shouldn't**: the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line.
 
 ## Model tiering — match the model to where judgment lives
 
@@ -57,7 +65,7 @@ We front-load architectural judgment (spec authoring, the coherence / Philosophy
 
 | Tier | Model | Roles |
 |---|---|---|
-| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`), the **challenger**, ambiguous debugging, necessity/refinement calls |
+| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`) + **alternatives** (`adhd`, both its diverge and focus passes — idea quality is the whole product there, so it is not tiered down), the **challenger**, ambiguous debugging, necessity/refinement calls |
 | Decided execution | **Sonnet** | implementing a task from an approved spec (`spec-implementer`), the **completeness** + **correctness** review lenses, straightforward PR-feedback fixes, tests for a named behaviour, settling one already-framed factual claim with a throwaway POC (`poc-agent`) |
 | Mechanical | **Haiku** | read-only orientation (`scout` / `zoom-out`), status/handle fetches (coordinator & lifecycle refreshes), simple lookups, boilerplate/formatting |
 
@@ -201,8 +209,16 @@ Update when a package's exported surface, behavior, or setup commands materially
 - Update `architecture-reference.md` when locked contracts change or new ones are established.
 - Update `development-setup.md` when monorepo tooling, build order, or development workflow changes.
 
-**User-facing docs** (`apps/docs/docs/`):
+**User-facing docs** (`apps/docs/`):
 Update when integration patterns change — server setup, React hooks usage, testing approach, or new concepts are introduced. These docs are for developers building apps WITH the framework.
+
+**Route this prose through the `docs-writer` agent, then `docs-editor`.** Don't write it inline while you're holding the spec and the diff: implementation rationale leaks into published pages in a predictable way (design defense, defect narrative, before/after framing), and knowing the rules doesn't prevent it. The writer runs in a fresh context on a surface brief — the symbols a user touches, what a caller sees including failures, and the limits — and derives the rest from the public API. The standard both agents work to is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md). The same applies to the API sections of `packages/*/README.md`.
+
+**Artifacts a human reads** (PR descriptions, Linear issues, review comments, specs):
+
+Lead with the **problem** in plain language, then the solution, then what's being asked of the reader. **Nothing precedes the problem** — not a ref, not a label, not a statement of what kind of artifact it is. Everything else goes below the fold, collapsed rather than deleted, except news the reader wouldn't think to look for: a decision, a risk, a known gap, anything hard to reverse, or scope that grew. That goes above the fold, short.
+
+The rule, the per-artifact word budgets, and the density checks are canonical in [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039); the PR-description layout applies them in [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md); what the *"what's being asked"* part contains is [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041, above). Don't re-derive any of them — a skill or template restating them is how the copies drift.
 
 **Root files**:
 - Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts).
@@ -213,7 +229,7 @@ Update when integration patterns change — server setup, React hooks usage, tes
 
 This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or external services are required. All tests use mocked generators — no API keys needed for `pnpm test`.
 
-**Build order matters for typecheck.** `pnpm typecheck` requires `packages/core` to be built first (its `dist/` must exist). The update script handles this, but if you see TS6305 errors about missing output files, run `pnpm --filter @flow-state-dev/core build` before retrying. The full build order is: core → server + client → react + testing → cli (see `docs/contributing/development-setup.md`).
+**Build order matters for typecheck.** `pnpm typecheck` requires `packages/core` to be built first (its `dist/` must exist). The update script handles this, but if you see TS6305 errors about missing output files, run `pnpm --filter @flow-state-dev/core build` before retrying. The full build order is: core → engine + client → react + testing → fsdev (see `docs/contributing/development-setup.md`).
 
 **Key commands** are documented in `CLAUDE.md` and `docs/contributing/development-setup.md`. Summary: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter <pkg> test`.
 

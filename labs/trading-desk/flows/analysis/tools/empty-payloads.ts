@@ -3,11 +3,18 @@
  *
  * Returned by tools in live mode when no provider can answer (either because
  * none is wired or because every wired provider failed). The analyst sees
- * explicit zeros / empty arrays and the transcript pill marks the result as
- * unavailable — honest about coverage, no false fixture data masquerading as
- * live data.
+ * `null` for every figure the desk did not observe, empty arrays for the
+ * collections, and the transcript pill marks the result as unavailable — honest
+ * about coverage, no false fixture data masquerading as live data.
+ *
+ * NULL, NOT ZERO (FIX-1063). A builder here fires precisely when nothing was
+ * measured, so every numeric field it emits is unobserved by construction.
+ * Writing `0` made a missing market cap arithmetically indistinguishable from a
+ * company worth nothing, and a missing 200-day average indistinguishable from a
+ * flat trend. A genuinely measured `0` still reads `0` — that value comes from a
+ * provider path, never from this file.
  */
-import type { ToolInput, ToolName, ToolOutput } from "./schemas";
+import type { DiscoveryTool, ToolInput, ToolName, ToolOutput } from "./schemas";
 
 type EmptyBuilder<T extends ToolName> = (input: ToolInput<T>) => ToolOutput<T>;
 
@@ -16,6 +23,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
+    // No figures, so no period to declare (FIX-1113). `asOf` keeps the request
+    // date for legacy readers; `periodEnd` must NOT — a request date is not a
+    // year-end, and writing one here fabricates the very thing this issue
+    // stopped the mappers doing.
+    periodEnd: null,
     totalAssets: null,
     totalLiabilities: null,
     totalEquity: null,
@@ -27,6 +39,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
+    // No figures, so no period to declare (FIX-1113). `asOf` keeps the request
+    // date for legacy readers; `periodEnd` must NOT — a request date is not a
+    // year-end, and writing one here fabricates the very thing this issue
+    // stopped the mappers doing.
+    periodEnd: null,
     revenue: null,
     grossProfit: null,
     operatingIncome: null,
@@ -38,6 +55,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
+    // No figures, so no period to declare (FIX-1113). `asOf` keeps the request
+    // date for legacy readers; `periodEnd` must NOT — a request date is not a
+    // year-end, and writing one here fabricates the very thing this issue
+    // stopped the mappers doing.
+    periodEnd: null,
     operating: null,
     investing: null,
     financing: null,
@@ -48,13 +70,13 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
-    marketCap: 0,
+    marketCap: null,
     forwardPE: null,
     trailingPE: null,
-    priceToSales: 0,
-    returnOnEquity: 0,
-    operatingMargin: 0,
-    grossMargin: 0,
+    priceToSales: null,
+    returnOnEquity: null,
+    operatingMargin: null,
+    grossMargin: null,
     dividendYield: null,
   }),
   get_price_history: (i) => ({
@@ -67,17 +89,17 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
-    rsi14: 0,
-    macd: { line: 0, signal: 0, histogram: 0 },
-    atr14: 0,
-    trend: "flat",
-    sma50: 0,
-    sma200: 0,
-    bollinger: { upper: 0, middle: 0, lower: 0 },
-    vwma20: 0,
-    stoch: { k: 0, d: 0 },
-    kdj: { k: 0, d: 0, j: 0 },
-    obv: 0,
+    rsi14: null,
+    macd: { line: null, signal: null, histogram: null },
+    atr14: null,
+    trend: null,
+    sma50: null,
+    sma200: null,
+    bollinger: { upper: null, middle: null, lower: null },
+    vwma20: null,
+    stoch: { k: null, d: null },
+    kdj: { k: null, d: null, j: null },
+    obv: null,
   }),
   search_news: (i) => ({
     source: "unavailable",
@@ -98,24 +120,24 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
   get_macro_indicators: (i) => ({
     source: "unavailable",
     asOf: i.date,
-    cpiYoy: 0,
-    unemployment: 0,
-    fedFundsRate: 0,
-    tenYearYield: 0,
-    oilWtiUsd: 0,
-    yieldCurve2s10s: 0,
-    hyCreditSpread: 0,
-    dollarIndex: 0,
-    industrialProduction: 0,
+    cpiYoy: null,
+    unemployment: null,
+    fedFundsRate: null,
+    tenYearYield: null,
+    oilWtiUsd: null,
+    yieldCurve2s10s: null,
+    hyCreditSpread: null,
+    dollarIndex: null,
+    industrialProduction: null,
   }),
   get_social_sentiment: (i) => ({
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
-    score7d: 0,
-    positive: 0,
-    negative: 0,
-    neutral: 0,
+    score7d: null,
+    positive: null,
+    negative: null,
+    neutral: null,
     shortInterestPct: null,
     posts: [],
   }),
@@ -123,7 +145,7 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
-    mentions7d: 0,
+    mentions7d: null,
     topThreads: [],
   }),
   get_prediction_markets: (i) => ({
@@ -166,6 +188,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   discover_sentiment_context: (i) => ({
     source: "unavailable",
@@ -173,6 +197,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   discover_technical_context: (i) => ({
     source: "unavailable",
@@ -180,6 +206,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   discover_profile_context: (i) => ({
     source: "unavailable",
@@ -187,6 +215,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   get_sector_context: (i) => ({
     source: "unavailable",
@@ -228,6 +258,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   discover_macro_context: (i) => ({
     source: "unavailable",
@@ -235,6 +267,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   get_factor_ranks: (i) => ({
     source: "unavailable",
@@ -315,6 +349,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   get_sec_filings: (i) => ({
     source: "unavailable",
@@ -351,6 +387,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
 };
 
@@ -365,16 +403,6 @@ export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): 
  * downstream analysts that investigation was deliberately not run on this
  * preset, distinct from "tried and failed".
  */
-type DiscoveryTool =
-  | "discover_fundamentals_context"
-  | "discover_sentiment_context"
-  | "discover_technical_context"
-  | "discover_profile_context"
-  | "discover_market_context"
-  | "discover_macro_context"
-  | "discover_quant_context"
-  | "discover_disclosure_context";
-
 export function skippedDiscoveryPayload<T extends DiscoveryTool>(
   tool: T,
   input: ToolInput<T>,

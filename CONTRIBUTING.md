@@ -30,7 +30,7 @@ pnpm test
 | `@flow-state-dev/client` | Isomorphic API client |
 | `@flow-state-dev/react` | React hooks and renderers |
 | `@flow-state-dev/testing` | Test harnesses and generator mocks |
-| `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
+| `@flow-state-dev/fsdev` | Terminal interface — the `fsdev` command |
 
 ## Key constraints
 
@@ -40,7 +40,7 @@ The architecture has locked contracts. Don't change these without explicit discu
 - Actions are flow-level: `defineFlow({ actions })`
 - Required caller input: `userId`
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
-- `server` never depends on `client` or `react`
+- `engine` never depends on `client` or `react`
 - `react` wraps `client` — no transport logic in react
 
 ## Submitting changes

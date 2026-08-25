@@ -1,5 +1,5 @@
 /**
- * Public execution runtime API surface for server package consumers.
+ * Public execution runtime API surface for engine package consumers.
  */
 export { executeBlock } from "./executeBlock";
 export {
@@ -42,7 +42,7 @@ export {
   summarizeForLog
 } from "./logging";
 export type { RuntimeLogger, RuntimeLoggerLevel } from "./logging";
-export { createRequestWorkPool } from "./request-work-pool";
+export { createRequestSideChainPool } from "./request-side-chain-pool";
 export type {
   ExecuteBlockContext,
   ExecuteBlockOptions,

@@ -6,9 +6,13 @@
  * Tasks with `priority === undefined` are treated as priority `0` for
  * comparison — a deliberate choice so unprioritized tasks slot in
  * after explicitly-prioritized ones rather than being skipped.
+ *
+ * This dispatcher orders; it does not narrow. Its `isReady` eligibility
+ * conjunct was a restatement of the substrate's own admission rule and came
+ * out in FIX-1005 — a dispatcher carrying its own copy is one that stops
+ * recovering abandoned work the day that rule widens.
  */
 import type { Task } from "../schema/task";
-import { isReady } from "../collection/internal";
 import type { TaskDispatcher } from "./types";
 
 function priorityOf(task: Task): number {
@@ -18,7 +22,6 @@ function priorityOf(task: Task): number {
 export const priorityDispatcher: TaskDispatcher = {
   async claim(collection, workerId) {
     return collection.claim(workerId, {
-      eligibility: (task) => isReady(task, (id) => collection.get(id)),
       order: (a, b) => {
         const dp = priorityOf(b) - priorityOf(a);
         if (dp !== 0) return dp;

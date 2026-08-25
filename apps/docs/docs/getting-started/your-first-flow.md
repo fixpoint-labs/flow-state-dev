@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Your First Flow
 
-The [Quick Start](/docs/getting-started/quick-start) gives you a working app fast. This page is for the other reader — the one who wants to understand what each piece does before they trust it.
+The [Quick Start](/docs/getting-started/quick-start) gets an app running. Stay here if you want the why for each piece.
 
 We'll build the same chat, but slowly. By the end you'll know what a block is, what a flow adds on top, why generators read history automatically, and where state lives. Roughly twenty minutes of reading and typing.
 
@@ -23,7 +23,7 @@ We'll build it in five steps. Each step is runnable on its own.
 
 ## Step 0. Prerequisites
 
-If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/react`, and `zod` installed, and that one of `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set in your environment.
+If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/next`, `@flow-state-dev/react`, and `zod` installed, along with the SDK package for your provider (`@ai-sdk/openai`, `@ai-sdk/anthropic`, or `@ai-sdk/google`), and that the matching API key is set in your environment.
 
 ## Step 1. A generator on its own
 
@@ -37,21 +37,23 @@ export const inputSchema = z.object({ message: z.string() });
 
 export const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 ```
 
 A few things to notice:
 
 - **`name`** is the block's identifier. It shows up in traces and the DevTool.
-- **`model`** is a string. `"preset/small"` resolves at runtime to the first small-tier model whose provider has a key. See [Setting Up Models](/docs/getting-started/setting-up-models).
+- **`model`** is a string. `"intent/chat"` names an *intent* — a role you point at an ordered list of models in your runtime config, rather than a specific model here in the block. The framework takes the first candidate you have a key and an SDK package for, so this same block runs against whichever provider you set up. You can also name a model outright (`"openai/gpt-5.4-mini"`). [Setting Up Models](/docs/getting-started/setting-up-models) covers both.
 - **`inputSchema`** is a Zod schema. It's what the framework validates incoming data against, and what TypeScript uses to type the `input` parameter in `user`.
 - **`history: true`** tells the generator to read prior conversation turns out of the session and include them in the LLM call. You don't manage messages yourself.
 - **`user`** is a function that builds the user message from the input. The system prompt comes from `prompt`.
+- **`itemVisibility`** decides who sees the generator's streamed messages. `{ client: true, history: true }` is the user-facing chat. Omit it and the generator does not auto-emit items to the UI.
 
 The block is a value. Once you wrap it in a flow (step 4), you can run it from the CLI without a server or browser:
 
@@ -76,7 +78,7 @@ There are four scopes you'll see in practice:
 
 We're using `session`. Define the schema, then use a second block to mutate it.
 
-For state-mutation-only work, the right pattern is a handler attached with `.tap()`. `.tap()` runs the handler for its side effects but passes the upstream value through unchanged. That keeps the items log clean (no echoed input) and gives the handler a reason to exist that isn't "transform this value."
+For state-mutation-only work, attach a handler with `.tap()`. `.tap()` runs the handler for its side effects and passes the upstream value through, so the chat result stays the pipeline output.
 
 ```ts title="src/flows/hello-chat/blocks.ts"
 import { generator, handler } from "@flow-state-dev/core";
@@ -90,11 +92,12 @@ export const sessionStateSchema = z.object({
 
 export const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 
 export const bumpCounter = handler({
@@ -107,12 +110,11 @@ export const bumpCounter = handler({
 });
 ```
 
-Two things worth pointing out:
+The handler's `inputSchema` is `z.string()` because it sits after the generator, which produces the assistant's response as a string. We don't use the value — we just need the type to match.
 
-- The handler's `inputSchema` is `z.string()` because it sits after the generator, which produces the assistant's response as a string. We don't use the value — we just need the type to match.
-- `execute` is `async` and takes `(input, ctx)`. The context exposes the scopes (`ctx.session`, `ctx.user`, etc.). We call `incState` to atomically bump the counter.
+`execute` is `async` and takes `(input, ctx)`. The context exposes the scopes (`ctx.session`, `ctx.user`, etc.). We call `incState` to atomically bump the counter.
 
-The handler doesn't `return` anything. That matters: handlers used with `.tap()` shouldn't return their input verbatim, and shouldn't manufacture output they don't have. State mutation is the whole job.
+The handler doesn't `return` anything. `.tap()` already forwards the chat result. State mutation is the whole job.
 
 ## Step 3. Compose with a sequencer
 
@@ -131,7 +133,7 @@ export const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
 
 `.tap(bumpCounter)` runs the handler for its effect and forwards the upstream value to the next step. Compare to `.step`, which would replace the value with whatever the handler returned.
 
-Sequencers have more methods — `.parallel`, `.work`, `.doUntil`, `.rescue` — but you only need `.step` and `.tap` to get this far. See [Sequencers](/docs/sequencers/overview) when you want the rest.
+Sequencers have more methods — `.parallel`, `.sideChain`, `.doUntil`, `.rescue` — but you only need `.step` and `.tap` to get this far. See [Sequencers](/docs/sequencers/overview) when you want the rest.
 
 ## Step 4. Wrap it as a flow
 
@@ -178,22 +180,32 @@ import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: {
+    default: "openai/gpt-5.4-mini",
+    intents: {
+      chat: [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-5.4-mini",
+        "google/gemini-3.1-pro",
+      ],
+    },
+  },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
 
+The `intents` map is what `model: "intent/chat"` in step 1 resolves against. Keeping it here means the model list lives in one place instead of being spread across every block that calls an LLM.
+
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
-import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+import { createNextHandler } from "@flow-state-dev/next";
 
-export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";
-export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
-The handler returns standard `GET`/`POST`/`PATCH`/`DELETE` handlers. They handle action dispatch, SSE streaming with sequence-based resume, session creation, and state snapshots. `stores` names where state lives; `primary` is the catch-all slot. See [Server Setup](/docs/server/setup) for swapping in SQLite or Postgres.
+The handler returns standard `GET`/`POST`/`PATCH`/`DELETE` handlers. They handle action dispatch, SSE streaming with sequence-based resume, session creation, and state snapshots. `stores` names where state lives; `primary` is the catch-all slot. See [Engine setup](/docs/server/setup) for swapping in SQLite or Postgres.
 
 The React side uses three pieces from `@flow-state-dev/react`:
 
@@ -235,24 +247,23 @@ function Chat() {
 }
 ```
 
-Three new ideas:
-
 - **`FlowProvider`** sets the flow kind and user identity for everything beneath it. You only need one near the root of your app.
 - **`useFlow` and `useSession`** are the two hooks you'll use most. `useFlow` discovers or creates a session. `useSession` subscribes to its items, state snapshot, and streaming status.
 - **`ItemsRenderer`** is the default plural item renderer. It dispatches each item to a built-in renderer based on its type — text messages, reasoning blocks, tool output, errors. You can register custom renderers later, but the defaults give you a working chat for free.
 
-The counter you bumped in step 2 lives in session state. To surface it in the UI, the typed path is `clientData` — see [State and Scopes](/docs/fundamentals/state-and-scopes). For now it's enough to know it's there.
+The counter you bumped in step 2 lives in session state. To surface it in the UI, declare it on the flow's `session.client.expose` (see [State and Scopes](/docs/fundamentals/state-and-scopes)). For now it's enough to know it's there.
 
 ## What just happened
 
 You wrote four things: a generator, a handler, a sequencer that chains them, and a flow that exposes the sequencer over HTTP. The framework gave you streaming, history, validation, persistence, and a React rendering layer.
 
-The shape of every flow you write will be the same. You'll add more blocks, sometimes new kinds (a router for branching, a sequencer-of-sequencers for sub-pipelines), sometimes more scopes (user state, resources, work-pool jobs). But the primitive set doesn't grow. That's the design.
+The shape of every flow you write will be the same. You'll add more blocks, sometimes new kinds (a router for branching, a sequencer-of-sequencers for sub-pipelines), sometimes more scopes (user state, resources, work-pool jobs).
 
 ## Where to go from here
 
 - **[Blocks](/docs/fundamentals/blocks)** — All four kinds in detail, including the rules for tool emission and sub-agents.
 - **[Flows](/docs/fundamentals/flows)** — Actions, lifecycle hooks, authentication, resources.
 - **[State and Scopes](/docs/fundamentals/state-and-scopes)** — When to put data in `session` versus `user` versus a resource.
-- **[Sequencers](/docs/sequencers/overview)** — `parallel`, `work`, loops, `rescue`, and conditional steps.
+- **[Sequencers](/docs/sequencers/overview)** — `parallel`, `sideChain`, loops, `rescue`, and conditional steps.
 - **[Streaming](/docs/streaming/overview)** — How items, deltas, and the SSE wire format fit together.
+- **[Fundamentals](/docs/fundamentals/overview)** — blocks, flows, state. Field catalogs sit on the page after each concept.

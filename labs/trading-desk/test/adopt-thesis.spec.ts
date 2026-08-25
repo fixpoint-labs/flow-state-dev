@@ -10,7 +10,7 @@
  * session — has nothing valid to adopt and the action throws.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../flows/analysis/flow";
 import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
@@ -22,19 +22,23 @@ const USER_ID = "devuser";
 async function thesesOf(
   stores: ReturnType<typeof createInMemoryStores>,
 ): Promise<Record<string, ThesisRecord>> {
-  return (await stores.resourceState.getAll("user", USER_ID)) as Record<string, ThesisRecord>;
+  return toBareStates<ThesisRecord>(await stores.resourceState.getAll("user", USER_ID));
 }
 
 const completedSnapshot: DecisionSnapshotState = {
   ticker: "NVDA",
   asOfDate: "2026-05-06",
   finalRating: "Buy",
+  ratingUnanchored: false,
+  periodDisclosure: null,
   decisionConfidence: 0.8,
   decisionSummary: "Compute super-cycle intact; initiate.",
   direction: "long",
   entryPrice: null,
   stopPrice: 120,
   targetPrice: 180,
+  reassessBelowPrice: null,
+  invalidateAbovePrice: null,
   sizePct: 4,
   holdingPeriod: "quarters",
   mandateId: null,
@@ -109,6 +113,118 @@ describe("adoptThesis action", () => {
     ]);
     // Report linkage captured automatically.
     expect(thesis.sourceSessionId).toBe(sessionId);
+  });
+
+  /**
+   * FIX-780 §9 — adopting a FLAT report. There is no position, so there is no
+   * stop and no target, and therefore no price tripwire. The existing null
+   * guards deliver this with no new code; this test is what proves the flat
+   * snapshot shape actually reaches them, and that the monitoring levels do NOT
+   * quietly become a stop (turning them into tripwires belongs with outcome
+   * tracking, FIX-763 — not here).
+   */
+  it("adopts a flat report with no price levels and no price tripwire", async () => {
+    const sessionId = "run_nvda_flat";
+    const result = await testFlow({
+      flow: analysisFlow,
+      action: "adoptThesis",
+      userId: USER_ID,
+      sessionId,
+      stores,
+      input: {},
+      seed: {
+        session: {
+          state: { ticker: "NVDA", date: "2026-05-06", runComplete: true },
+          resources: {
+            tradingDeskDecisionSnapshot: {
+              ...completedSnapshot,
+              finalRating: "Hold" as const,
+              direction: "flat" as const,
+              sizePct: 0,
+              stopPrice: null,
+              targetPrice: null,
+              reassessBelowPrice: 195,
+              invalidateAbovePrice: 320,
+            },
+            "memos/p3/trader": {
+              status: "published",
+              agentName: "trader",
+              invalidationCriteria: ["A weekly close above $320."],
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.status).toBe("completed");
+    const thesis = (await thesesOf(stores))["theses/NVDA"];
+    expect(thesis.stopPrice).toBeNull();
+    expect(thesis.targetPrice).toBeNull();
+    // A tripwire here would be a stop on a position the desk did not take.
+    expect(thesis.tripwires).toEqual([]);
+  });
+
+  /**
+   * FIX-780 — the LEGACY flat snapshot, which is the durable-data case.
+   *
+   * A report COMPLETED before the write-side gate and merely reopened never
+   * re-runs the Phase 5 write, so its stored snapshot still carries the flat
+   * call's two monitoring levels under `stopPrice` / `targetPrice`. Adopting
+   * that verbatim persisted a standing thesis with a stop and a live tripwire on
+   * a position the desk declined to take — the report defect escaping into user
+   * data with an alert attached.
+   *
+   * The monitoring keys are OMITTED here, not set to null: that missing-key
+   * shape is what a pre-fix record actually reads back as, and it is the shape a
+   * `=== null` guard gets wrong (BP-030).
+   *
+   * The numbers must not be re-filed under the monitoring names either — nothing
+   * in the record says which of the two was which.
+   */
+  it("adopts a LEGACY flat report with no levels and no tripwire (never re-files the pair)", async () => {
+    const sessionId = "run_nvda_flat_legacy";
+    const result = await testFlow({
+      flow: analysisFlow,
+      action: "adoptThesis",
+      userId: USER_ID,
+      sessionId,
+      stores,
+      input: {},
+      seed: {
+        session: {
+          state: { ticker: "NVDA", date: "2026-05-06", runComplete: true },
+          resources: {
+            tradingDeskDecisionSnapshot: {
+              ...completedSnapshot,
+              finalRating: "Hold" as const,
+              direction: "flat" as const,
+              sizePct: 0,
+              // The mislabeled pair, exactly as a pre-fix run stored it.
+              stopPrice: 320,
+              targetPrice: 195,
+            },
+            "memos/p3/trader": {
+              status: "published",
+              agentName: "trader",
+              invalidationCriteria: ["The thesis broke down."],
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.status).toBe("completed");
+    const thesis = (await thesesOf(stores))["theses/NVDA"];
+    // Absent stays absent: no named level survives adoption.
+    expect(thesis.stopPrice).toBeNull();
+    expect(thesis.targetPrice).toBeNull();
+    // The defect: a stop tripwire on a stand-aside call, from a number the desk
+    // never meant as a stop.
+    expect(thesis.tripwires).toEqual([]);
+    // Neither number is re-filed anywhere on the record under any name — that
+    // would be a guess wearing a stored record's authority.
+    expect(JSON.stringify(thesis)).not.toContain("320");
+    expect(JSON.stringify(thesis)).not.toContain("195");
   });
 
   it("throws when there is no completed decision to adopt", async () => {

@@ -28,7 +28,8 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
   prefix to the Flow State router.
   → [MCP Server Adapter](../architecture/mcp-server.md)
 - MCP per-action session: `ActionMcpConfig.session?: string | { fromInput: string }` (`core`). Default (omitted) → stateless (fresh ephemeral session per `tools/call`). String = mint template (first `*` → random token, else appended); `{ fromInput }` = read the flow `sessionId` from that input field. The MCP adapter derives the dispatch `sessionId` from it (`deriveSessionId`). Flow session key, not protocol `Mcp-Session-Id`; principal still from `resolvePrincipal`. `fromInput` is caller-controlled → single-trusted-principal only until caller-supplied session keys are principal-namespaced (follow-up).
-- Action forms: every action shares `ActionCore` (handler `block` + execution policy). Caller-addressed = `ActionConfig` in `flow.actions`; event-addressed (webhook/chat/scheduled) carries the core inline on its transport map and has no HTTP/MCP caller surface (no `internal` flag — the structural fact is the boundary). Resolution seam `resolveActionCore(flow, actionName, source, metadata)` reads a namespaced coordinate (`metadata.webhook` / `metadata.chat.eventKey` / `metadata.schedule.scheduleId`) gated on `source` (set only by adapters), else falls back to `flow.actions[name]`. Dynamic schedules carry the core on `InboundRequestEnvelope.resolvedActionCore` (transient — not persisted, so durable dynamic schedules don't recover).
+- Action forms: every action shares `ActionCore` (handler `block` + execution policy). Caller-addressed = `ActionConfig` in `flow.actions`; event-addressed (webhook/chat/scheduled) carries the core inline on its transport map and has no HTTP/MCP caller surface (no `internal` flag — the structural fact is the boundary); detached (`source: "workstream"`) resolves the single pre-assembled `flow.workstream` core. Resolution seam `resolveActionCore(flow, actionName, source, metadata)` reads a namespaced coordinate (`metadata.webhook` / `metadata.chat.eventKey` / `metadata.schedule.scheduleId`) gated on `source` (set only by adapters), else falls back to `flow.actions[name]` — **except for `"workstream"`, where the branch is terminal: an absent core is a named refusal and never reaches `flow.actions`.** Dynamic schedules carry the core on `InboundRequestEnvelope.resolvedActionCore` (transient — not persisted, so durable dynamic schedules don't recover).
+- Public re-entry: `isPublicReentryAllowed(source, additionalSources?)` (`engine/routes/public-reentry.ts`) is an **allow-list** — `http` / `mcp` / `chat` / `scheduled` — routed through by retry, continue and resume. Anything else gets the not-found shape. Replaces the three per-route webhook deny-lists, which admitted any source nobody named. A host extends it for its own out-of-tree transports with the `publicReentrySources` option on `createFlowState` / `createFlowApiRouter` (carried on `RuntimeConfig`); `webhook` and `workstream` are never openable and `assertPublicReentrySources` throws at router construction if one is named.
   → [Action Forms](../architecture/action-forms.md)
 - Scheduled actions: `schedules` config on `defineFlow` (`static` map + dynamic `resolve` hook). `ScheduleConfig = ActionCore & { cron; input?; principal?; ... }` — carries `block` inline (no `action: string`); `defineScheduleBinding` helper. Dynamic resolver via `createResourceCollectionScheduleResolver({ collection, blocks })` maps a persisted `kind` discriminator → block (`defineScheduleCollection` schema field renamed `action` → `kind`). Dispatch route `POST /api/flows/:kind/schedules/:scheduleId/dispatch`.
   → [Scheduled Actions](../architecture/scheduled-actions.md)
@@ -41,23 +42,23 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Sequencer Surface (21 methods)
 
-`step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
+`step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `loopBack`, `sideChain`, `sideChainIf`, `waitForSideChain`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
 
 - `.stepAll([...blocks])`: run array of blocks concurrently, collect all results as ordered array (like `Promise.all`)
 - `.stepAny([...blocks])`: try blocks sequentially in order, return first successful result; throws `AggregateError` if all fail
 - `.race([...blocks])`: run blocks concurrently, return first successful result, abort the rest; throws `AggregateError` if all fail
 - `.exitIf(condition)`: break out of sequencer chain early when condition is true; auto-await of background work still runs
 
-- `.work(...)`: non-aborting by default
-- `.workIf(condition, block)`: conditional variant of `.work()` — dispatches sidechain only when condition is truthy; accepts static boolean or `(ctx) => boolean | Promise<boolean>`; complete no-op when falsy
-- `.forEachBackground(...)`: fire-and-forget fan-out; dispatches each iteration as background work with configurable concurrency (default 16)
-- `.waitForWork({ failOnError: true })`: promote background failures to terminal request error
+- `.sideChain(...)`: non-aborting by default
+- `.sideChainIf(condition, block)`: conditional variant of `.sideChain()` — dispatches sidechain only when condition is truthy; accepts static boolean or `(ctx) => boolean | Promise<boolean>`; complete no-op when falsy
+- `.forEachSideChain(...)`: fire-and-forget fan-out; dispatches each iteration as background work with configurable concurrency (default 16)
+- `.waitForSideChain({ failOnError: true })`: promote background failures to terminal request error
 
 → [Sequencer DSL](../architecture/sequencer-dsl.md)
 
 ## Scopes and State
 
-- Hierarchy: `request → session → user → project` → [State and Scopes](../architecture/state-and-scopes.md)
+- Hierarchy: `request → session → user → org` → [State and Scopes](../architecture/state-and-scopes.md)
 - State ops (atomic): `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
 - Session metadata: `ctx.session.setMetadata({ title?, description?, tags?, metadata? })` — first-class fields, emits `session.metadata.changed` SSE event
 - CAS + bounded retries for concurrency safety
@@ -65,6 +66,17 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - `targetStateSchemas`: typed declaration surface for `ctx.targets.<name>` state handles
 - `getBlockOutput(blockDef)`: returns completed output from already-dispatched sibling blocks at the current execution level, otherwise `undefined`
 - `getBlockResult(blockDef)`: returns `{status: not_started|running|completed|failed}` for already-dispatched sibling blocks at the current execution level (not ancestor chain), with output/error payload on terminal states
+
+## Detached work (Workstreams)
+
+- A Workstream is a **child session**, not a new scope level
+- Locality is decided by the effective dispatcher (`isInProcessDispatcher`), **not** by `worker.mode`
+- `worker-only` constructs no dispatcher → detached work runs **in-process and is not durable**
+- `dispose()`'s **drain** covers in-process detached children only, bounded by `detachedDrainTimeoutMs`; a queued job is not drained — but closing the worker afterwards waits, unbounded, for any job this process has claimed (`colocated` and `worker-only` both consume)
+- Shutdown cancels rather than settling, with one exception today: a child still queued behind the concurrency gate is written `aborted` before it ever runs (FIX-1121)
+- Recovery is by re-claim, not by lease expiry alone — the next claim takes a lapsed task back as a fresh attempt and the row stays `in_progress` (`errored` only past the abandonment allowance); a sweep marks the request `interrupted`
+
+→ [Detached Work](../architecture/detached-work.md)
 
 ## Streaming
 
@@ -108,48 +120,44 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 | `contracts` | Zero-dep shared layer (item taxonomy + leaf types) | Imports no workspace package; declares no dependencies (guarded). `core` re-exports it |
 | `core` | Isomorphic builders/types/items | No platform-specific code; value-imports `contracts` |
 | `engine` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
-| `client` | Transport + session/request APIs | No dependency on server or react |
+| `client` | Transport + session/request APIs | No dependency on engine or react |
 | `react` | Hooks/renderers only | Wraps client; no transport logic |
-| `testing` | Deterministic harnesses + mocks | Uses core + server |
-| `cli` | Run/inspect/scaffold flows | Uses core + server + testing |
+| `testing` | Deterministic harnesses + mocks | Uses core + engine |
+| `cli` | Run/inspect/scaffold flows | Uses core + engine + testing |
 | `apps/devtool` | Inspector app | Public APIs only (client + react) |
 
 → [Architecture Overview](../architecture/overview.md)
 
 ## Utility Blocks
 
-Ten pre-built utility factories wrapping generator/handler blocks:
+Eleven pre-built factories, exported from `packages/core/src/utility/index.ts`:
 
-| Utility | Kind | Purpose |
-|---------|------|---------|
-| `contextReducer` | generator | Context reduction (distill, denoise, compress) |
-| `memoryExtractor` | generator | Extract durable memory candidates |
-| `decomposer` | generator | Break requests into subtasks with dependency graph |
-| `composer` | generator | Assemble coherent output from parts |
-| `summarizer` | generator | Summarize at brief/detailed/executive granularity |
-| `combiner` | handler | Deterministic artifact merge (no LLM) |
-| `synthesizer` | generator | Reconcile overlapping/conflicting inputs |
-| `analyzer` | generator | Evaluate artifacts against criteria |
-| `intentClassifier` | generator | Classify input into bounded category set for routing |
-| `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
+| Kind | Factories |
+|------|-----------|
+| generator | `contextReducer`, `memoryExtractor`, `decomposer`, `summarizer`, `analyzer`, `intentClassifier` |
+| handler | `combiner`, `upsertResource` |
+| sequencer | `intentRouter`, `sessionTitleGenerator` |
+| router | `keyedRouter` |
 
 - Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
-- All generators default to `"preset/fast"` model
-- All utilities accept optional `outputSchema` override
-- Combiner is handler-based (deterministic, no model)
+- All utilities accept an optional `outputSchema` override
+- Handler- and router-based utilities take no `model` (deterministic, no LLM)
 
-> [Utility Blocks](../architecture/utility-blocks.md)
+Purposes and default models live in the catalog — don't restate them here.
+
+> [Utility Blocks](../architecture/utility-blocks.md) · [Core Utilities (user docs)](../../apps/docs/docs/patterns/utility-blocks/core.md)
 
 ## Resources and Client Data
 
 - Concrete resources are persisted, attached to scopes
-- `clientData` entries are derived views — every entry is client-visible (no `client: true/false` toggle)
-- Each `clientData` compute function receives only its own scope's state and resources (single-scope context)
+- Scope state is server-private by default; each scope's `client` block declares what crosses — `expose` (verbatim state fields) and `derived` (computed projections). Both land at `snapshot.clientData.<scope>.<name>`
+- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
+- Each `derived` compute function receives only its own scope's state and resources (single-scope context)
 - Generator context uses `contextFn()` for typed scope access, not raw state dumps
 - `defineResource()` for portable resource declarations
-- Blocks declare resources via `sessionResources`, `userResources`, `projectResources` (using `defineResource()` values)
+- Blocks and flows declare resources via a flat `resources` map (using `defineResource()` values); each resource's `scope` (`"session"` | `"user"` | `"org"`) routes storage. Access at runtime is `ctx.resources.<key>`
 - Sequencers collect `declaredResources` from all child blocks automatically
-- `defineFlow` merges block-declared resources into flow scope configs; flow-level wins over block-level
+- `defineFlow` merges block-declared resources into the flow's `resources` map; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
 - Collection snapshots emit `count` always and `prefetched` when `prefetchWindow > 0`; per-item `clientData` is gated by `client.state.read`. Lazy reads via `GET /sessions/:id/resources/:ref` and a flow-static manifest at `GET /sessions/:id/manifest` (FIX-427).
 

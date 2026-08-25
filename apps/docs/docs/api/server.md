@@ -1,8 +1,10 @@
 ---
 sidebar_position: 2
+title: Engine API
+sidebar_label: Engine
 ---
 
-# Server API
+# Engine API
 
 `@flow-state-dev/engine` — Action runtime, stores, SSE streaming, orchestration.
 
@@ -22,21 +24,7 @@ const flowstate = createFlowState({
 });
 ```
 
-Selected options:
-
-| Option | Type | Notes |
-|--------|------|-------|
-| `flows` | `Record<string, FlowInstance>` | Required. Stable key to flow instance. |
-| `models` | `FlowStateModelsConfig` | `{ default?, intents?, ... }`. Auto-wires AI Gateway via `AI_GATEWAY_API_KEY`. |
-| `modelResolver` | `ModelResolver` | Escape hatch: a pre-built resolver (test mocks, custom resolvers). Used instead of `models`. |
-| `voice` | `{ provider?: VoiceProvider }` | A voice provider for TTS/STT, e.g. `new OpenAIVoiceProvider(...)`. See [Voice](/docs/advanced/voice). |
-| `stores` | `StoresConfig` | Required. Named profiles of capability slots. |
-| `defaultProfile` | `string` | Active profile when `FSD_ENV` is unset. |
-| `settings` | `TSettings` | Read in blocks via `ctx.settings`. |
-| `onError` | `(error, ctx) => void` | `ctx` is `{ method, path }`. HTTP-level sink. |
-| `errorCapture` | `(event: ErrorCaptureEvent) => void \| Promise<void>` | Opt-in, block-aware sink for routing runtime block failures to Sentry, Datadog, etc. See [Error capture](/docs/advanced/error-capture). |
-| `onBackgroundWork` | `(p) => void` | Serverless keep-alive, e.g. `(p) => after(() => p)`. |
-| `defaultSseHeartbeatMs` | `number` | Wire-level SSE heartbeat cadence. |
+`flows` and `stores` are required; the rest have defaults. Every option, with its type and default, is catalogued in [Runtime options](/docs/configuration/runtime) — including the model, store, worker, durability, and sweeper groups.
 
 Construction is synchronous and validates config (empty `stores`, unknown `defaultProfile`) by throwing `FlowStateConfigError`. Stores initialize lazily on first `getRouter()` / `ready()`.
 
@@ -50,7 +38,7 @@ interface FlowState<TSettings extends object = FlowStateSettings> {
   getRouter(): Promise<FlowApiRouter>;
   /** Eager warmup. Idempotent. */
   ready(): Promise<void>;
-  /** Dispose pooled resources across every declared adapter. */
+  /** Drain in-process background work, close the worker, release pooled resources. */
   dispose(): Promise<void>;
   /** The active profile name. */
   readonly activeProfile: string;
@@ -64,6 +52,20 @@ interface FlowState<TSettings extends object = FlowStateSettings> {
   };
 }
 ```
+
+#### Shutdown
+
+`dispose()` runs in order:
+
+1. Waits for background work still running in this process. A job handed to a queue is not waited for here — but if this process also *consumes* that queue, step 5 waits for whatever it has already claimed.
+2. Bounds that wait with `detachedDrainTimeoutMs`, default 30000 ms. It's a ceiling, not a target: work that finishes sooner is not delayed. `0` means don't wait at all.
+3. Cancels whatever is still running when the budget runs out, and gives it a brief window, inside that same budget rather than added to it, to unwind.
+4. Reports the request ids and session ids it gave up on, on stderr. That report prints even when the runtime's logger is silenced, since work may have been left unfinished.
+5. Closes the worker and releases pooled resources across every declared store adapter. Closing the worker waits for any queue job this process has already claimed, and that wait is **not** bounded by `detachedDrainTimeoutMs` — it takes as long as the job does. Size your platform's kill timeout for the longest job.
+
+Shutdown mostly does not write a terminal status on background work's behalf. It cancels the work rather than marking those records finished or failed. One case doesn't follow that yet: work still waiting behind a concurrency limit when shutdown reaches it is recorded `aborted` without ever having started. For what the cancelled work leaves in the task board and the request log, and how each recovers, see [What a stopped process leaves behind](../server/background-work.md#what-a-stopped-process-leaves-behind).
+
+`fsdev run` and `fsdev chat` shut down through the same path. See [Waiting for in-process work](../cli/overview.md#waiting-for-in-process-work).
 
 ### `StoreAdapter`
 
@@ -160,7 +162,7 @@ const stores = createInMemoryStores();
 
 ### `createModelResolver(options?)`
 
-Create a model resolver. Auto-detects providers from environment variables with zero config, or accepts explicit keys, presets, and retry policy.
+Create a model resolver. Auto-detects providers from environment variables with zero config, or accepts explicit keys, intents, and retry policy.
 
 ```ts
 import { createModelResolver } from "@flow-state-dev/core/models";
@@ -171,7 +173,8 @@ const resolver = createModelResolver();
 // With options:
 const resolver = createModelResolver({
   keys: { openai: "sk-..." },
-  presets: { fast: { models: ["openai/gpt-5.4-mini"] } },
+  defaultModel: "openai/gpt-5.4-mini",
+  intents: { utility: ["openai/gpt-5.4-mini", "anthropic/claude-haiku-4-5"] },
   retryPolicy: { maxAttemptsPerModel: 3 },
 });
 ```

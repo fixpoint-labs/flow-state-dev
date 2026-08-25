@@ -17,6 +17,7 @@ import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { ChatConfig } from "./chat";
 import type { WebhookConfig } from "./webhooks";
+import type { WorkstreamBindings } from "./workstream";
 import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
@@ -114,7 +115,6 @@ export type ToolLifecycleEvent = {
 export type ToolsConfig = {
   defaults?: {
     timeoutMs?: number;
-    concurrency?: "parallel" | "serial";
     retry?: RetryPolicy;
   };
   onToolStarted?: HookHandler<ToolLifecycleEvent> | BlockDefinition<any, any>;
@@ -308,12 +308,6 @@ export type SessionConfig = {
    * projections appear in `clientData.session`.
    */
   client?: ScopeClientConfig<JsonObject>;
-  /**
-   * @deprecated Use `client.derived` instead. `clientData` keeps working
-   * with a one-time deprecation warning per scope per process; removal
-   * lands in a future minor.
-   */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
   /** Retention policy that bounds session item log size. */
   retention?: RetentionPolicy;
   /**
@@ -337,6 +331,12 @@ export type RequestConfig = {
   /**
    * Heartbeat interval in milliseconds for the active request registry.
    * Default: 10000 (10 seconds). Set to 0 to disable.
+   *
+   * The same tick carries cross-process abort delivery and keeps a running
+   * request's registry entry warm, so `0` disables both: a cancellation
+   * recorded elsewhere is never delivered, and a run outliving the stale
+   * threshold can be marked `interrupted` while it is still running
+   * (FIX-1131).
    */
   heartbeatIntervalMs?: number;
   /**
@@ -366,9 +366,14 @@ export type RequestConfig = {
    * with `ScopeMutationTimeoutError` instead of hanging the request
    * indefinitely. Default 30000 (30s). Set to `Infinity` to disable.
    *
-   * Does not apply to external-store scopes (filesystem / sqlite /
-   * postgres adapters) — those use the optimistic CAS retry path and
-   * surface contention as `ConcurrentModificationError`.
+   * Does not apply to any scope that persists. `session` / `user` / `org`
+   * go through the optimistic CAS retry path, which owns its own retry
+   * semantics and surfaces contention as `ConcurrentModificationError`.
+   * `request` serializes its writes and runs that same retry path beneath
+   * the lock, and is left off this budget too: the timeout rejects the caller
+   * without cancelling the mutation, so a durable write that outran it
+   * would still reach the store afterwards — on top of a record the
+   * runtime may already have written as terminal.
    */
   mutationTimeoutMs?: number;
   /**
@@ -385,8 +390,6 @@ export type UserConfig = {
   cas?: CASOptions;
   /** See `SessionConfig.client`. */
   client?: ScopeClientConfig<JsonObject>;
-  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
 export type OrgConfig = {
@@ -394,15 +397,6 @@ export type OrgConfig = {
   cas?: CASOptions;
   /** See `SessionConfig.client`. */
   client?: ScopeClientConfig<JsonObject>;
-  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
-};
-
-export type WorkConfig = {
-  onStarted?: BlockDefinition<any, any>;
-  onCompleted?: BlockDefinition<any, any>;
-  onErrored?: BlockDefinition<any, any>;
-  onFinished?: BlockDefinition<any, any>;
 };
 
 export type FlowDefinition<
@@ -411,7 +405,6 @@ export type FlowDefinition<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
@@ -434,7 +427,6 @@ export type FlowDefinition<
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
-  work?: TWork;
   /**
    * Flow-level resource declarations. Single flat map, accessor key →
    * resource definition. Resources are routed to the right storage layer
@@ -497,8 +489,6 @@ export type FlowDefinition<
 
   /** Org-scope equivalent of `isolateUserState`. Default: false. */
   isolateOrgState?: boolean;
-
-  defaultBlockRenderer?: unknown | false;
 };
 
 export type FlowInstanceOptions<
@@ -507,7 +497,6 @@ export type FlowInstanceOptions<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   id?: string;
@@ -519,14 +508,11 @@ export type FlowInstanceOptions<
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
-  work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  mcp?: McpConfig;
-  chat?: ChatConfig;
-  webhooks?: WebhookConfig;
-  schedules?: SchedulesConfig;
+  // `mcp`, `chat`, `webhooks` and `schedules` are deliberately ABSENT — they are
+  // definition-only; see `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
@@ -539,7 +525,6 @@ export type FlowInstance<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   id: string;
@@ -553,11 +538,45 @@ export type FlowInstance<
   requiresOrg: boolean;
   authentication?: AuthenticationConfig;
   actions: TActions;
+  /**
+   * The single pre-assembled entry a detached dispatch resolves — a request
+   * started from inside a running block rather than by a caller (FIX-999).
+   *
+   * `undefined` on every flow until something populates it, and that *off* state
+   * is a real, testable state rather than a gap: resolution for the detached
+   * source is **terminal**, so an absent core is a named refusal and never falls
+   * through to {@link actions}. That is the security invariant — a detached
+   * dispatch must have no route to a caller-addressed action.
+   *
+   * Not an app-author surface. It is assembled by the framework from a board's
+   * drain bindings; nothing is declared to get one.
+   */
+  workstream?: ActionCore;
+  /**
+   * Every detached worker binding declared anywhere in this flow's block tree
+   * (FIX-982), keyed by board and coordinate.
+   *
+   * This is the **durable** half of detached routing, and it is why the routing
+   * decision survives a restart: a binding is `(boardId, coordinateKey) → block`,
+   * all strings on the addressing side, so a wake that arrives with nothing but a
+   * task row can still find the block that runs it. {@link workstream} is the
+   * assembled entry a dispatch executes; this is what that entry is assembled
+   * *from*, and what a board's reconciler re-reads to rebuild a routing tuple.
+   *
+   * Produced by construction, never authored — bindings accumulate on the
+   * declaring board's drain sequencer and bubble to the action root exactly as
+   * resource declarations do. `undefined` on every flow that declares no
+   * detached work.
+   *
+   * Deliberately **not** a dispatch-time lookup table: resolution for the
+   * detached source is terminal on {@link workstream} alone, so nothing indexes
+   * this map by a coordinate carried on an envelope (BP-031).
+   */
+  workstreamBindings?: WorkstreamBindings;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
-  work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
@@ -585,20 +604,34 @@ export type FlowType<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
   requireUser: boolean;
   /** Mirror of `FlowInstance.requiresOrg`. */
   requiresOrg: boolean;
+  /**
+   * Mirror of `FlowInstance.workstreamBindings` — every detached worker binding
+   * declared anywhere in this flow's block tree.
+   *
+   * Present because this blueprint is inspected directly, not only called: code
+   * reading it saw actions, resources, schedules and `requiresOrg` here and
+   * reasonably concluded a flow with none of it declared no detached work. The
+   * value is copied from the base instance, so the two never disagree.
+   */
+  workstreamBindings?: WorkstreamBindings;
+  /**
+   * Mirror of `FlowInstance.workstream` — the single assembled entry a detached
+   * dispatch resolves, present exactly when {@link workstreamBindings} is
+   * non-empty.
+   */
+  workstream?: ActionCore;
   authentication?: AuthenticationConfig;
   actions: TActions;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
-  work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
@@ -611,13 +644,12 @@ export type FlowType<
   /** Mirror of `FlowInstance.flowLevelResourceKeys` (FIX-688). */
   flowLevelResourceKeys: ReadonlySet<string>;
 
-  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>): FlowInstance<
+  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TResources>): FlowInstance<
     TActions,
     TSession,
     TRequest,
     TUser,
     TOrg,
-    TWork,
     TResources
   >;
 };

@@ -260,6 +260,48 @@ describe("applyRetentionPolicy", () => {
       expect(result.deletedRequestIds).toContain("req_2");
       expect(result.deletedRequestIds).not.toContain("req_3");
     });
+
+    it("bounds concurrent item counts for large session histories", async () => {
+      const priorRequests = Array.from({ length: 40 }, (_, i) =>
+        makeRequest(`req_${i}`, SESSION_ID, {
+          startedAtMs: i * 2,
+          completedAtMs: i * 2 + 1,
+          itemCount: 0,
+        })
+      );
+      const stores = await setupStores([
+        ...priorRequests,
+        makeRequest(CURRENT_REQ, SESSION_ID, {
+          startedAtMs: 100,
+          completedAtMs: 101,
+          itemCount: 0,
+        }),
+      ]);
+
+      const countItems = stores.request.countItems.bind(stores.request);
+      let activeCounts = 0;
+      let maxActiveCounts = 0;
+      stores.request.countItems = async (requestId: string) => {
+        activeCounts += 1;
+        maxActiveCounts = Math.max(maxActiveCounts, activeCounts);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        const count = await countItems(requestId);
+        activeCounts -= 1;
+        return count;
+      };
+
+      const result = await applyRetentionPolicy(
+        stores,
+        SESSION_ID,
+        CURRENT_REQ,
+        { maxItems: 1 },
+        200
+      );
+
+      expect(result.deletedRequestIds).toEqual([]);
+      expect(maxActiveCounts).toBeLessThanOrEqual(16);
+      expect(maxActiveCounts).toBeGreaterThan(1);
+    });
   });
 
   describe("edge cases", () => {

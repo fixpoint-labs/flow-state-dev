@@ -73,10 +73,11 @@ The model won't re-research a topic it already covered, because the state system
 
 A filesystem gives you bytes at a path. That's a low enough abstraction that almost anything can use it, but it pushes all the meaning-making onto the application. The filesystem doesn't know what a "draft document" is, which user it belongs to, or whether a write was valid.
 
-Resources are the typed, scoped alternative. A resource is a named container attached to a scope — a session, a user, or a project — that combines structured state with file content. You define what a resource means: its schema, its content type, its mutability. A `draft` resource isn't a path; it's a contract any block can work with directly.
+Resources are the typed, scoped alternative. A resource is a named container attached to a scope — a session, a user, or an org — that combines structured state with file content. You define what a resource means: its schema, its content type, its mutability. A `draft` resource isn't a path; it's a contract any block can work with directly.
 
 ```ts
 const draftResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     title: z.string().default(""),
     wordCount: z.number().default(0),
@@ -129,7 +130,7 @@ Adapting a request/response framework to handle this produces a lot of workaroun
 ```ts
 const agent = generator({
   name: "agent",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a research assistant.",
   // history feeds completed turns back to the model automatically
   history: true,
@@ -138,7 +139,8 @@ const agent = generator({
 
 export default defineFlow({
   kind: "research-assistant",
-  session: { stateSchema, resources: { docs: docResource } },
+  resources: { docs: docResource },
+  session: { stateSchema },
   actions: { chat: { block: agent } },
 })({ id: "default" });
 ```
@@ -149,9 +151,9 @@ The LLM tool loop, streaming, state persistence, and error recovery are all hand
 
 A lot of AI orchestration tools stop at the server. They'll run your LLM pipeline, but getting the output to your users is your problem.
 
-flow-state.dev covers the full path. The server package runs flows and streams results over SSE. The client package manages sessions and dispatches actions from any environment (Node, browser, edge). The React package gives you hooks and a stream renderer. Every layer talks to the others without glue code, because they share the same type contracts.
+flow-state.dev covers the full path. The engine package runs flows and streams results over SSE. The client package manages sessions and dispatches actions from any environment (Node, browser, edge). The React package gives you hooks and a stream renderer. Every layer talks to the others without glue code, because they share the same type contracts.
 
-That said, the server and core packages work fine on their own. If you're building a CLI tool or a mobile backend, you don't pull in React.
+That said, the engine and core packages work fine on their own. If you're building a CLI tool or a mobile backend, you don't pull in React.
 
 ```ts
 // Server: register your flow, get a REST + SSE API for free
@@ -312,7 +314,8 @@ export default defineFlow({
   actions: {
     chat: { block: agent, userMessage: (i) => i.message },
   },
-  session: { stateSchema, resources: { docs: docResource } },
+  resources: { docs: docResource },
+  session: { stateSchema },
 })({ id: "default" });
 ```
 

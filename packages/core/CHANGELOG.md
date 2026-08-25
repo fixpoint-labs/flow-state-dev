@@ -69,9 +69,9 @@ Collection snapshots dropped the eager `items` map; entries now carry `count` an
 
 New `item.updated` event carrying `{ itemId, patch }` with shallow top-level merge semantics. Identity-invariant keys (`id`, `type`, `provenance`, `agentType`, `transient`) are stripped server-side. New `emitItemUpdated(itemId, patch)` on `ResponseEmitter`.
 
-### 2026-05-07 — Lift `.work()` background tasks to a request-level pool (FIX-554) [BREAKING]
+### 2026-05-07 — Lift `.sideChain()` background tasks to a request-level pool (FIX-554) [BREAKING]
 
-Background tasks are queued on a single per-request pool. Inner sequencers no longer auto-await; the request executor drains the pool exactly once before terminal status. `.waitForWork()` now drains by sequencer-instance scope. Migration: code that relied on inner-sequencer auto-await for ordering needs an explicit `.waitForWork()` at the inner sequencer boundary.
+Background tasks are queued on a single per-request pool. Inner sequencers no longer auto-await; the request executor drains the pool exactly once before terminal status. `.waitForSideChain()` now drains by sequencer-instance scope. Migration: code that relied on inner-sequencer auto-await for ordering needs an explicit `.waitForSideChain()` at the inner sequencer boundary.
 
 ### 2026-05-06 — `clientData` privacy fix + rename (FIX-505) [BREAKING]
 
@@ -91,7 +91,7 @@ When a generator's output schema rejects the model's response and repair gives u
 
 ### 2026-05-02 — Memory pipeline + naming reliability fixes
 
-`sanitizeToolName` is now exported from `@flow-state-dev/core/utils/tool-name` (and the `@flow-state-dev/core/utils` barrel). `BlockToolOutputItem.toolCall` gains an optional `alias` field so tool-call replay reads the model-facing sanitized name from item metadata rather than re-sanitizing the framework name at replay time. `workIf` predicate signature changed to `(value, ctx)` like `thenIf` and `tapIf`.
+`sanitizeToolName` is now exported from `@flow-state-dev/core/utils/tool-name` (and the `@flow-state-dev/core/utils` barrel). `BlockToolOutputItem.toolCall` gains an optional `alias` field so tool-call replay reads the model-facing sanitized name from item metadata rather than re-sanitizing the framework name at replay time. `sideChainIf` predicate signature changed to `(value, ctx)` like `thenIf` and `tapIf`.
 
 ### 2026-05-02 — Resource content moved out of scope records (FIX-347)
 

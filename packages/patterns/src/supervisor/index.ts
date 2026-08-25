@@ -36,6 +36,7 @@ import {
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
 import { resolveGoalSynthesisStep } from "../shared/planning-entry";
+import { pickTaskCapOverrides } from "../shared/task-caps";
 import { buildReviewedWorker } from "./blocks/reviewer-check";
 import { createSynthesize } from "./blocks/synthesize";
 import { createLabelFailedReviews } from "./blocks/label-failed-reviews";
@@ -45,7 +46,6 @@ export {
   supervisorStateSchema,
   reviewerVerdictSchema,
   reviewerInputSchema,
-  reviewOutputSchema,
   plannerOutputSchema,
   executableTaskSchema,
 } from "./schemas";
@@ -53,7 +53,6 @@ export {
 export type {
   SupervisorInput,
   SupervisorState,
-  ReviewOutput,
   PlannerOutput,
   ExecutableTask,
   ReviewerVerdict,
@@ -90,6 +89,23 @@ export interface SupervisorConfig<
    */
   maxTotalTasks?: number | null;
   maxEnqueuedTasks?: number | null;
+  /**
+   * Cumulative failure retries the internal board may authorize, across every
+   * task (FIX-948). Default 50 — a number, or `null` for explicitly unbounded.
+   *
+   * The two bounds above count only *new* tasks, so a task that keeps failing
+   * keeps spending while both sit still. This is the one number that bounds
+   * that. At the bound the failing task settles terminal `errored` instead of
+   * re-pending, and the board reports `terminationReason:
+   * "retry-budget-exhausted"`. `0` means "run every task once, never retry".
+   *
+   * Reachable here because it BINDS this pattern out of the box:
+   * `maxAttemptsPerTask` defaults to 3, so a supervisor board retries by
+   * default and a large plan on a flaky day can reach the ceiling
+   * legitimately. Without this option the default would be an
+   * un-opt-out-able ceiling on an existing pattern.
+   */
+  maxTotalRetries?: number | null;
   planner?: BlockDefinition<any, any>;
   /** Reviewer block. Pass `false` to disable per-task review entirely. */
   reviewer?: BlockDefinition<any, any> | false;
@@ -276,12 +292,23 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       `[supervisor] "${name}" requires either \`worker\` or \`workers\``,
     );
   }
-  if (onSubTaskError === "retry") {
+  // Deliberately still checked for a value the type no longer permits (FIX-1210).
+  // Dropping `"retry"` from `SubTaskErrorStrategy` withdrew a *type-level*
+  // affordance; it did not make this coercion dead. An untyped JS caller, a TS
+  // caller crossing an untyped config boundary, or anyone reaching for `as any`
+  // can still land here with `"retry"` — and their failed sub-tasks are silently
+  // dropped while they believe retries were requested. The warn is the only
+  // signal those callers get, so it stays. Do not "simplify" it away.
+  //
+  // Not a throw: rejecting a previously-accepted value at construction time is a
+  // runtime behaviour change, and behaviour changes get their own PR.
+  if ((onSubTaskError as string) === "retry") {
     console.warn(
       `[flow-state-dev] supervisor "${name}": onSubTaskError="retry" is not supported; ` +
         `treated as "skip". Use \`maxAttemptsPerTask\` for review-driven retries.`,
     );
   }
+
   const boardOnError: "skip" | "fail" =
     onSubTaskError === "fail" ? "fail" : "skip";
 
@@ -350,10 +377,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // who legitimately needs a bigger board must be able to say so. Unset falls
     // through to the 500/100 defaults, and `board.caps` is what the seed writer
     // is handed, so the two can never disagree.
-    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
-    ...(config.maxEnqueuedTasks !== undefined
-      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
-      : {}),
+    ...pickTaskCapOverrides(config),
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
     dispatcher: "topological",

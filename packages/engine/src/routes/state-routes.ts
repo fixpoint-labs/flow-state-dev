@@ -6,6 +6,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
+import { toBareStates } from "../stores/resource-state-views";
 import {
   mergeScopeReads,
   resolveOrgStorageKey,
@@ -26,6 +27,7 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { buildExternalResourceContextFromSession } from "../resources/internal";
+import { readSessionScopeWithLineage } from "../resources/lineage-scope";
 
 const DEFAULT_STATE_ITEMS_LIMIT = 100;
 
@@ -144,15 +146,26 @@ export async function handleGetSessionState(
   const orgScopeIds =
     session.orgId !== undefined ? resourceScopeIds(session.orgId, isoFlow, "org") : [];
 
+  // FIX-1068: session scope reads its own rows, with any resource declared
+  // `sharedToWorkstream` taken from the lineage root instead — the same view a
+  // block resolves through `ctx.resources`.
   const [sessionContent, userContent, orgContent] = await Promise.all([
-    ctx.stores.content.getAll("session", session.id),
+    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
+      ctx.stores.content.getAll(scopeType, scopeId)
+    ),
     mergeScopeReads(userScopeIds.map((id) => ctx.stores.content.getAll("user", id))),
     mergeScopeReads(orgScopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   const [sessionState, userState, orgState] = await Promise.all([
-    ctx.stores.resourceState.getAll("session", session.id),
-    mergeScopeReads(userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id))),
-    mergeScopeReads(orgScopeIds.map((id) => ctx.stores.resourceState.getAll("org", id)))
+    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
+      ctx.stores.resourceState.getAll(scopeType, scopeId).then(toBareStates)
+    ),
+    mergeScopeReads(
+      userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toBareStates))
+    ),
+    mergeScopeReads(
+      orgScopeIds.map((id) => ctx.stores.resourceState.getAll("org", id).then(toBareStates))
+    )
   ]);
 
   // FIX-435: partition the flat flow.resources map back into per-scope

@@ -152,6 +152,47 @@ export type SessionDetail = SessionSummary & {
 };
 
 /**
+ * How a Workstream's runs ended, or that they have not ended. `"active"`
+ * asserts only *not finished* — never gloss it as "running" or "live".
+ *
+ * See `docs/architecture/server-and-client.md` § Background work (Workstreams)
+ * for the full semantics, including why this is not `RequestStatus`.
+ */
+export type WorkstreamStatus =
+  | "active"
+  | "completed"
+  | "failed"
+  | "incomplete"
+  | "aborted";
+
+/**
+ * One body of background work running under a conversation.
+ *
+ * A Workstream is a child session that outlives the turn that started it, so
+ * its history is read with {@link SessionClient.listSessionRequests} — the
+ * same call a conversation's own turns are read with.
+ *
+ * The wire sends a named field set rather than a whole session record, so this
+ * stands on its own instead of extending {@link SessionSummary}: the listing
+ * carries no `flowKind`, `userId`, `title` or `metadata`, and declaring them
+ * here would type fields the server never sends.
+ */
+export type WorkstreamSummary = {
+  /** Bare child session id — the address for reading this Workstream's requests. */
+  id: string;
+  /** Bare id of the conversation this work hangs off. */
+  parentSessionId: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Display-only label for what body of work this is; guard with `== null` (BP-030). */
+  topic?: string;
+  /** Display-only label for which worker within the work; same absence rule as `topic`. */
+  coordinate?: string;
+  /** Absent when nothing has run yet — not a status to render a placeholder for. */
+  status?: WorkstreamStatus;
+};
+
+/**
  * Request record fields consumed by client/session views.
  */
 export type SessionRequestSummary = {

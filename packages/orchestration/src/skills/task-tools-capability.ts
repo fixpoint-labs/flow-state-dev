@@ -9,8 +9,9 @@
  *
  * The board is a **ledger** these tools plan on — `addTask` records a row and
  * returns its id; nothing executes it by itself. The executive runs delegated
- * work by assigning tasks (`addTask` with an `assignee` naming an agent) and
- * then calling `runBoard`, the delegation surface's drain over this same ledger.
+ * work by assigning tasks (`addTask` with an `assignee` naming a participant —
+ * an agent or, since FIX-925, a deterministic tool) and then calling `runBoard`,
+ * the delegation surface's drain over this same ledger.
  *
  * Board resolution goes through an injectable resolver (FIX-918). The default
  * reads the host generator's own-state board via `ctx.parent` (each handler
@@ -18,6 +19,26 @@
  * per-call scope — reaches the generator's ledger). An injected resolver
  * targets a shared board instead. With no board resolvable, every tool returns
  * `{ ok: false, error: "no_delegation_board" }` rather than throwing.
+ *
+ * ## Ownership (FIX-981)
+ *
+ * The four status-changing tools present the caller's claim ticket, read from
+ * the board's per-worker seam. A worker holding task "a" that calls
+ * `completeTask({ taskId: "b" })` is refused, and told which task it holds. The
+ * model never sees a token: it names a task id, and that id is the target of
+ * the check rather than the authority for it.
+ *
+ * **A call with no ticket is unguarded, and that is the contract rather than a
+ * gap.** The seam has exactly one stamp site — the board's worker body — so
+ * "no ticket presented" and "not a claimed worker" are the same condition and
+ * cannot drift apart. A coordinator settling a task it never claimed is not a
+ * stale owner and is not guarded; failing closed there would break the shipped
+ * default `taskTools` instance, which a coordinator holds against its own board
+ * with no claim of any kind.
+ *
+ * `assignTask` and `updateTask` present nothing, deliberately: they travel the
+ * patch path, not the transition path, and a live block relabelling tasks it
+ * does not hold is a supported thing to do.
  */
 
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
@@ -31,9 +52,16 @@ import {
   taskSchema,
   TaskCapExceededError,
   type Task,
+  type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskStatus,
+  type TaskTransitionOptions,
+  type TaskWriteOutcome,
 } from "../tasks";
+// The board's per-worker claim seam. A deep import for the same reason
+// `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
+// the task-board's public API to advertise it.
+import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
 // `shouldRetryOnFail` is the collection's own routing predicate for `fail()`.
 // Imported from the module rather than the package barrel so the recovery
 // composer stays in step with `fail()` without widening the public surface —
@@ -121,23 +149,26 @@ const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_no
 // Assignee validation (FIX-924)
 // ---------------------------------------------------------------------------
 /**
- * The declared agents a delegation board can be assigned to, plus a
- * human-readable rendering for error messages. Supplied by the delegation
- * surface so assignment is checked against the board's real participant
- * registry — the same list the executive's guidance advertises as "Your
- * agents:", so context and validation cannot disagree.
+ * The declared participants a delegation board can be assigned to — agents and
+ * tools alike, one namespace — plus a human-readable rendering for error
+ * messages. Supplied by the delegation surface so assignment is checked against
+ * the board's real participant registry — the same list the executive's guidance
+ * advertises as "Your team:", so context and validation cannot disagree.
  */
 export interface WorkerRoster {
-  /** True when `assignee` names a declared agent on this board. */
+  /**
+   * True when `assignee` names a participant on this board — a declared agent
+   * or one of its tool seats (FIX-925). Both live on one namespace.
+   */
   has(assignee: string): boolean;
-  /** Roster rendered for an error message, e.g. `researcher (…), writer (…)`. */
+  /** Roster rendered for an error message, e.g. `researcher (…), fetch (tool)`. */
   describe(): string;
 }
 
 const unknownAssigneeError = (assignee: string, roster: WorkerRoster) => ({
   ok: false as const,
   error:
-    `unknown_assignee: "${assignee}" is not an agent on this board. ` +
+    `unknown_assignee: "${assignee}" is not on this board's team. ` +
     `Available: ${roster.describe()}. Name one of these exactly, or leave ` +
     `assignee unset to run the task on the default worker.`,
 });
@@ -219,6 +250,42 @@ function listCalls(names: string[]): string {
 }
 
 /**
+ * The one renderer for "this task is finished, so your write was refused"
+ * (FIX-976, Decision 6).
+ *
+ * Four tools now report this — `blockTask` and `completeTask`/`failTask` via a
+ * refused transition, `assignTask`/`cancelTask`/`updateTask` via a declined
+ * write — and they must not drift into four ways of saying the same thing. One
+ * sentence shape, one `snake_case` prefix convention (the one
+ * `task_not_found` / `unknown_assignee` already use), and exactly one clause
+ * that varies: **what would not change**.
+ *
+ * That clause has to vary, which is why this is parameterized rather than
+ * reused verbatim. `assignTask` attempts no status transition, so telling it
+ * "its status will not change again" would name the wrong thing and
+ * `illegal_status_transition:` would be the wrong code.
+ */
+const terminalWriteToolError = (options: {
+  /** `snake_case` code leading the `error` string. */
+  code: string;
+  taskId: string;
+  status: TaskStatus;
+  /** The varying clause, a full sentence: what about this task will not change. */
+  clause: string;
+}) => ({
+  ok: false as const,
+  taskId: options.taskId,
+  error:
+    `${options.code}: task "${options.taskId}" is ${options.status}, which is terminal. ` +
+    `${options.clause} Add a new task instead.`,
+});
+
+/** The `clause` for a write that would have moved the task's status. */
+const STATUS_CLAUSE = "Its status will not change again.";
+/** The `clause` for a write that would have changed who the task is assigned to. */
+const ASSIGNEE_CLAUSE = "Its assignee will not change.";
+
+/**
  * Turn a refused transition into the recoverable result shape the rest of this
  * surface uses, naming the task's current status and the calls actually
  * available from it.
@@ -254,13 +321,12 @@ const illegalTransitionToolError = (err: IllegalTaskTransitionError, task: Task 
   // the model meant by "fail this" — all of its terminal-source rejections land
   // here, where no target is quoted, so the divergence is never rendered.
   if (isTerminalStatus(err.from)) {
-    return {
-      ok: false as const,
+    return terminalWriteToolError({
+      code: "illegal_status_transition",
       taskId: err.taskId,
-      error:
-        `${subject}, which is terminal. Its status will not change again. ` +
-        `Add a new task instead.`,
-    };
+      status: err.from,
+      clause: STATUS_CLAUSE,
+    });
   }
 
   const available = statusChangingTools(task)
@@ -280,6 +346,62 @@ const illegalTransitionToolError = (err: IllegalTaskTransitionError, task: Task 
   };
 };
 
+/**
+ * Map a declined substrate write onto the recoverable result shape (FIX-976,
+ * Decision 5). The reason travels inside the `error` string behind a
+ * `snake_case` prefix; the result schema is unchanged and gains no `code` field.
+ *
+ * `clause` names what the attempted write would not have changed, so the model
+ * is told about the operation it actually called.
+ *
+ * **`not-my-task` gets its own branch, like `terminal` does** (FIX-981). The
+ * generic path below cannot express it: it receives only the *target* id, the
+ * reason and the status, and the one fact that makes this refusal correctable
+ * is the task the caller actually **holds**. A model told "the write was
+ * refused (not-my-task)" learns nothing it can act on; a model told which task
+ * is its own retries against the right id.
+ *
+ * `heldTaskId` is present exactly when a ticket was presented, which is exactly
+ * when `not-my-task` can be reported — so the branch never renders an empty
+ * name.
+ *
+ * The remaining generic branch covers `disallowed` and `lost-claim`. Both are
+ * now reachable: a worker's own ticket goes stale when a lease reclaim hands
+ * its task on mid-call.
+ */
+const declinedWriteToolError = (
+  taskId: string,
+  declined: Extract<TaskWriteOutcome, { outcome: "declined" }>,
+  clause: string,
+  heldTaskId?: string,
+) => {
+  if (declined.reason === "terminal") {
+    return terminalWriteToolError({
+      code: "terminal_task_write_declined",
+      taskId,
+      status: declined.status,
+      clause,
+    });
+  }
+  if (declined.reason === "not-my-task" && heldTaskId !== undefined) {
+    return {
+      ok: false as const,
+      taskId,
+      error:
+        `task_write_declined: you hold task "${heldTaskId}", not "${taskId}". ` +
+        `You can only settle the task you are working on — call this on ` +
+        `"${heldTaskId}" instead.`,
+    };
+  }
+  return {
+    ok: false as const,
+    taskId,
+    error:
+      `task_write_declined: the write to task "${taskId}" was refused ` +
+      `(${declined.reason}); the task is ${declined.status}. ${clause}`,
+  };
+};
+
 /** Shared output shape for the six tasked-by-id mutators. */
 const okOrError = z.union([
   z.object({ ok: z.literal(true) }),
@@ -288,6 +410,24 @@ const okOrError = z.union([
 
 const parentStateSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema });
 
+/**
+ * The options a status-changing tool passes to the substrate (FIX-981).
+ *
+ * `undefined` when the caller holds no claim, rather than `{ claim: undefined }`
+ * — so a coordinator context calls the collection with exactly the arguments it
+ * called with before this change, and "unguarded behaves byte for byte as
+ * today" is a property of the call, not of the guard's tolerance for an empty
+ * options object.
+ *
+ * `ifAllowed` is deliberately NOT set. These tools rely on
+ * `IllegalTaskTransitionError` propagating so `illegalTransitionToolError` can
+ * tell the model which calls are available from the task's current status;
+ * declining silently instead would trade that for a worse message.
+ */
+const claimGuard = (
+  claim: TaskClaimTicket | undefined,
+): TaskTransitionOptions | undefined => (claim === undefined ? undefined : { claim });
+
 // ---------------------------------------------------------------------------
 // Tool factory — closes over the resolver so a capability instance targets a
 // specific board (own-state default or an injected shared board).
@@ -295,24 +435,60 @@ const parentStateSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSc
 
 function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) {
   /**
-   * `assignee`, when given, is the assignee this mutation would write; it is
-   * validated after the board and the task resolve, so the three tools all
+   * `options.assignee`, when given, is the assignee this mutation would write;
+   * it is validated after the board and the task resolve, so the three tools all
    * report the same failure order: no board, then unknown task, then unknown
    * assignee. The task is left untouched on any of them.
+   *
+   * The mutator **carries the substrate's verdict out** (FIX-976). Its declared
+   * return is `TaskWriteOutcome | void`, not `unknown`: widening it to `unknown`
+   * would silence the type errors while throwing the verdict away, which is the
+   * bug this change exists to fix. `void` stays in the union for `updateTask`,
+   * whose composed mutator returns nothing on the paths that cannot decline.
+   *
+   * `options.declineClause` is what the attempted write would not have changed,
+   * for a tool whose write can decline (`assignTask`, `cancelTask`,
+   * `updateTask`). It defaults to the status clause, which is right for every
+   * transition-shaped write on this surface.
+   *
+   * **The claim ticket is read here, never from the model** (FIX-981). The
+   * mutator receives whatever the caller's worker scope holds — `undefined`
+   * outside one — and forwards it to the collection, so the ownership question
+   * is answered at the substrate's one guard rather than re-asked per tool. The
+   * model's input is unchanged: it names a task id, and that id is the *target*
+   * of the check, never the authority for it (BP-031).
    */
   async function withTask(
     ctx: BlockContext,
     taskId: string,
-    mutator: (collection: TaskCollectionRef) => Promise<void>,
-    assignee?: string,
+    mutator: (
+      collection: TaskCollectionRef,
+      claim: TaskClaimTicket | undefined,
+    ) => Promise<TaskWriteOutcome | void>,
+    options?: { assignee?: string; declineClause?: string },
   ): Promise<{ ok: true } | { ok: false; error: string; taskId?: string }> {
     const collection = await resolve(ctx);
     if (!collection) return noBoardError;
     if (!collection.get(taskId)) return taskNotFoundError(taskId);
-    const bad = checkAssignee(assignee, roster);
+    const bad = checkAssignee(options?.assignee, roster);
     if (bad) return bad;
+    // Read once, so the ticket the write presented is the ticket the refusal is
+    // rendered against even if the scope somehow changed mid-call.
+    const claim = currentWorkerClaim();
     try {
-      await mutator(collection);
+      // Typed as nullable at this boundary on purpose (BP-030): a custom
+      // `TaskCollectionRef` written before the widening — or one reached through
+      // a cast — returns nothing, and `== null` carries that past rather than
+      // reading silence as a decline.
+      const outcome: TaskWriteOutcome | undefined | void = await mutator(collection, claim);
+      if (outcome != null && outcome.outcome === "declined") {
+        return declinedWriteToolError(
+          taskId,
+          outcome,
+          options?.declineClause ?? STATUS_CLAUSE,
+          claim?.taskId,
+        );
+      }
     } catch (err) {
       // A refused status change is a recoverable mistake the model can act on,
       // so it becomes the same `{ ok: false, error }` result the rest of this
@@ -333,6 +509,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
       }
       throw err;
     }
+    // Read this precisely: `ok: true` means **the backing reported no decline**,
+    // not "the write happened" (FIX-976). For the two built-in backings those
+    // coincide. A custom ref that determines nothing still lands here, and the
+    // framework will not synthesize a verdict it was not given — inferring one by
+    // re-reading task state would be the check-after-write race the guards were
+    // moved inside the atomic write to avoid.
     return { ok: true as const };
   }
 
@@ -340,9 +522,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     name: "addTask",
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
-      "assignee optionally names one of your agents; leave it unset to run the task " +
+      "assignee optionally names one of your agents or tools; leave it unset to run the task " +
       "on a capable default worker. Set deps to task ids that must finish first, and input " +
-      "to a structured payload for the worker. This records the task on the board; it does " +
+      "to a structured payload for the worker — when the assignee is a tool that payload is " +
+      "the tool's own arguments, and it is all the tool receives (deps order it, but it " +
+      "cannot read an upstream task's result). This records the task on the board; it does " +
       "not run it. The board may bound how many tasks wait at once and how many it may hold " +
       "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
       "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
@@ -400,17 +584,17 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
 
   const assignTask = handler({
     name: "assignTask",
-    description: "Reassign an existing task to a different worker.",
+    description:
+      "Reassign an existing task to a different worker. A task that has already " +
+      "finished cannot be reassigned — you get told so rather than a silent success.",
     inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(
-        ctx,
-        input.taskId,
-        (c) => c.setAssignee(input.taskId, input.assignee),
-        input.assignee,
-      ),
+      withTask(ctx, input.taskId, (c) => c.setAssignee(input.taskId, input.assignee), {
+        assignee: input.assignee,
+        declineClause: ASSIGNEE_CLAUSE,
+      }),
   });
 
   const completeTask = handler({
@@ -420,7 +604,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.complete(input.taskId, input.output)),
+      withTask(ctx, input.taskId, (c, claim) =>
+        c.complete(input.taskId, input.output, claimGuard(claim)),
+      ),
   });
 
   const failTask = handler({
@@ -430,7 +616,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.fail(input.taskId, input.error)),
+      withTask(ctx, input.taskId, (c, claim) =>
+        c.fail(input.taskId, input.error, claimGuard(claim)),
+      ),
   });
 
   const blockTask = handler({
@@ -440,17 +628,24 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.block(input.taskId, input.reason)),
+      withTask(ctx, input.taskId, (c, claim) =>
+        c.block(input.taskId, input.reason, claimGuard(claim)),
+      ),
   });
 
   const cancelTask = handler({
     name: "cancelTask",
-    description: "Cancel a task (terminal). Use when the work is no longer needed.",
+    description:
+      "Cancel a task (terminal). Use when the work is no longer needed. A task that " +
+      "has already finished cannot be cancelled — you get told so rather than a " +
+      "silent success.",
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.cancel(input.taskId, input.reason)),
+      withTask(ctx, input.taskId, (c, claim) =>
+        c.cancel(input.taskId, input.reason, claimGuard(claim)),
+      ),
   });
 
   const updateTask = handler({
@@ -475,15 +670,35 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
         input.taskId,
         async (c) => {
           const { patch } = input;
+          // The assignee write runs FIRST and short-circuits (FIX-976, Decision
+          // 4). Under the assignment-only guard exactly one of these five writes
+          // can decline, so ordering it first makes a single verdict honest in
+          // both directions: a decline means nothing has run and nothing was
+          // mutated. If it succeeds, the remaining four are unguarded by design
+          // and land correctly even if the task settles underneath them — which
+          // is precisely what should happen to a label or priority write.
+          //
+          // Nullable on purpose: a pre-widening custom ref returns nothing, and
+          // that is carried past rather than read as a decline (BP-030).
+          if (patch.assignee !== undefined) {
+            const outcome: TaskWriteOutcome | undefined = await c.setAssignee(
+              input.taskId,
+              patch.assignee,
+            );
+            if (outcome != null && outcome.outcome === "declined") return outcome;
+          }
           if (patch.priority !== undefined) await c.setPriority(input.taskId, patch.priority);
-          if (patch.assignee !== undefined) await c.setAssignee(input.taskId, patch.assignee);
           if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
           if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
           if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
         },
-        // A patch that doesn't touch `assignee` leaves this undefined, so the
-        // gate stays inert for a priority/label-only update.
-        input.patch.assignee,
+        {
+          // A patch that doesn't touch `assignee` leaves this undefined, so the
+          // gate stays inert for a priority/label-only update.
+          assignee: input.patch.assignee,
+          // Only the assignee write can decline here, so the clause names it.
+          declineClause: ASSIGNEE_CLAUSE,
+        },
       ),
   });
 

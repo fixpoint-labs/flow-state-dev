@@ -274,7 +274,7 @@ type ItemProvenance = {
   blockName: string;
   blockInstanceId: string;
   parentBlockInstanceId?: string;
-  phase: "main" | "work";
+  phase: "main" | "sideChain";
   stepIndex?: number;
   attempt?: number;
 };

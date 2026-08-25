@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { testBlock } from "@flow-state-dev/testing";
+import { testBlock, createTestContext } from "@flow-state-dev/testing";
+import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import {
   claudeCodeAgent,
   forwardSignalToController,
+  runNamespace,
   SDK_SESSION_ID_KEY,
   SDK_AGENT_RUNS_KEY,
 } from "../../src/sdk/agent";
@@ -501,4 +503,757 @@ describe("claudeCodeAgent", () => {
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
+});
+
+/**
+ * `detached: true` — the mode that runs the block as detached background work.
+ *
+ * The task board refuses a detached worker whose block (or any block under it)
+ * authors a `sessionStateSchema`, because every detached worker in a flow
+ * becomes a route on one shared Workstream flow. A background job is one run in
+ * one workstream, so the conversation state this block keeps — a resume handle
+ * and a run log — has no reader on that path. Detaching stops it being
+ * declared, stops the reads and writes that go with it, and stops the resume.
+ *
+ * The option is three-state — `true`, `false`, omitted — and omitted must keep
+ * meaning the default. So each state is asserted EXPLICITLY below rather than
+ * inferred from its neighbour, and both observable consequences are pinned for
+ * each: whether the schema is declared, and whether the SDK is handed a
+ * `resume`. A polarity slip reverses behaviour with no type error, since
+ * `boolean | undefined` accepts either sense of the flag.
+ */
+describe("claudeCodeAgent — detached", () => {
+  /** The read the board's refusal performs, spelled the same way. */
+  function authoredSessionStateSchema(block: unknown): unknown {
+    return (block as { config?: { sessionStateSchema?: unknown } }).config?.sessionStateSchema;
+  }
+
+  /**
+   * Run the block against a provider that ALWAYS returns a saved session, and
+   * report the `resume` the SDK was handed. `undefined` means the provider was
+   * never consulted.
+   *
+   * The assertion is on the OPTIONS HANDED TO THE SDK, not on the schema:
+   * suppressing the declaration and the `ctx.session` read while leaving the
+   * provider resolution intact would resume a prior conversation with every
+   * declared-schema assertion still passing. The shipped default provider
+   * returns nothing for an empty key, which is exactly why that would hide.
+   */
+  async function resumeHandedToSdk(options: { detached?: boolean }): Promise<unknown> {
+    const spy = vi.fn();
+    const resumingProvider = {
+      async resolve() {
+        return { sdkSessionId: "sess_saved" };
+      },
+      async release() {},
+    };
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      sessionProvider: resumingProvider,
+      ...options,
+    });
+    await testBlock(block, {
+      input: { prompt: "go" },
+      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+    });
+    return spy.mock.calls[0][0].options?.resume;
+  }
+
+  it("declares the conversation-state schema and resumes when the option is omitted", async () => {
+    // BP-030. A caller who never heard of this option must be unaffected, and
+    // this is the assertion that fails if the default ever flips.
+    expect(authoredSessionStateSchema(claudeCodeAgent())).toBeDefined();
+    expect(await resumeHandedToSdk({})).toBe("sess_saved");
+  });
+
+  it("declares the conversation-state schema and resumes when `detached: false`", async () => {
+    // Spelled out rather than folded into the omitted case: `false` and
+    // `undefined` are different values arriving at the same read site, and only
+    // asserting both catches a read that collapses one into the other.
+    expect(authoredSessionStateSchema(claudeCodeAgent({ detached: false }))).toBeDefined();
+    expect(await resumeHandedToSdk({ detached: false })).toBe("sess_saved");
+  });
+
+  it("declares no schema and hands the SDK no `resume` when `detached: true`", async () => {
+    // The board's refusal reads exactly this field, on the block and on every
+    // block composed under it, before any context exists.
+    expect(authoredSessionStateSchema(claudeCodeAgent({ detached: true }))).toBeUndefined();
+    expect(await resumeHandedToSdk({ detached: true })).toBeUndefined();
+  });
+
+  it("writes no session state when `detached: true`", async () => {
+    // Suppressing only the DECLARATION would leave the writes landing under a
+    // key nothing declared — the silent-corruption shape the board's refusal
+    // exists to prevent, not a smaller version of the same behaviour.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      detached: true,
+    });
+    const { state, output, error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(state.session[SDK_SESSION_ID_KEY]).toBeUndefined();
+    expect(state.session[SDK_AGENT_RUNS_KEY]).toBeUndefined();
+    // The run still happened and still reports what it observed — the handle is
+    // the return value, which is a different thing from persisted state.
+    expect((output as SdkAgentHandle).sessionId).toBe("sess_new");
+  });
+
+  it("writes session state when `detached: false`", async () => {
+    // The contrast that makes the assertion above able to fail: the same run on
+    // the in-session path DOES persist both keys.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      detached: false,
+    });
+    const { state, error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(state.session[SDK_SESSION_ID_KEY]).toBe("sess_new");
+    expect(state.session[SDK_AGENT_RUNS_KEY]).toHaveLength(1);
+  });
+});
+
+/**
+ * `recordWork` — the option that turns "what the run did" into ordinary state.
+ *
+ * The end-to-end readback runs the block against a real test context rather than
+ * through `testBlock`, because the artifact under test is the CONTENT of two
+ * resource collections and `testBlock` returns items and scope state, not
+ * resource rows.
+ */
+describe("claudeCodeAgent — recordWork", () => {
+  /** A real run's shapes, trimmed to what the recorder consumes. */
+  const RECORDING_SCRIPT: SdkMessageLike[] = [
+    { type: "system", subtype: "init", session_id: "sess_new" },
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_c",
+            name: "TaskCreate",
+            input: { subject: "Create the file", description: "…", activeForm: "Creating" },
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      tool_use_result: { task: { id: "5", subject: "Create the file" } },
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_c",
+            content: "Task #5 created successfully: Create the file",
+          },
+        ],
+      },
+    },
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_u",
+            name: "TaskUpdate",
+            input: { taskId: "5", status: "in_progress" },
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      tool_use_result: { success: true, taskId: "5" },
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5 status" }],
+      },
+    },
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_w",
+            name: "Write",
+            input: { file_path: "/work/notes.txt", content: "HELLO" },
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      tool_use_result: { type: "create", filePath: "/work/notes.txt" },
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_w",
+            content: "File created successfully at: /work/notes.txt",
+          },
+        ],
+      },
+    },
+    RESULT_OK,
+  ];
+
+  /**
+   * The same run, plus a plan create the harness never answers — so the run
+   * ends with a row owed to all THREE collections (a file op, a plan item, and
+   * a gap for the create that was lost).
+   */
+  const RECORDING_SCRIPT_WITH_GAP: SdkMessageLike[] = [
+    ...RECORDING_SCRIPT.slice(0, -1),
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_lost",
+            name: "TaskCreate",
+            input: { subject: "Draft the follow-up", description: "…", activeForm: "Drafting" },
+          },
+        ],
+      },
+    },
+    // …and the stream ends without a result for it.
+    RESULT_OK,
+  ];
+
+  it("is off by default and declares nothing", () => {
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK]) });
+    expect(block.declaredResources).toBeUndefined();
+  });
+
+  it("declares all three collections when on", () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      recordWork: true,
+    });
+    expect(Object.keys(block.declaredResources ?? {}).sort()).toEqual([
+      "observed-file-ops",
+      "observed-gaps",
+      "observed-plan",
+    ]);
+  });
+
+  it("declares EVERY collection readable by clients, or the read route answers 403", () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      recordWork: true,
+    });
+    for (const config of Object.values(block.declaredResources ?? {})) {
+      expect((config as { client?: { state?: { read?: boolean } } }).client?.state?.read).toBe(true);
+    }
+  });
+
+  it("declares every collection lazily prefetched", () => {
+    // Rows are namespaced per run and a workstream is reused across runs, so an
+    // eager collection would bulk-load every historical run's rows before this
+    // run touched one of its own keys.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      recordWork: true,
+    });
+    for (const config of Object.values(block.declaredResources ?? {})) {
+      expect((config as { prefetchMode?: string }).prefetchMode).toBe("lazy");
+    }
+  });
+
+  it("records the run's file operations and plan into the two collections", async () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    const runId = runNamespace(runtime.ctx as never);
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+
+    const fileRows = await resources["observed-file-ops"].list();
+    expect(fileRows.map((r) => r.path)).toEqual([
+      `observed-file-ops/${runId}/work/notes.txt`,
+    ]);
+    expect(fileRows[0].state).toMatchObject({ lastKind: "created", outcome: "applied" });
+
+    const planRows = await resources["observed-plan"].list();
+    expect(planRows.map((r) => r.path)).toEqual([`observed-plan/${runId}/5`]);
+    expect(planRows[0].state).toMatchObject({
+      title: "Create the file",
+      status: "in_progress",
+      lastOutcome: "applied",
+    });
+  });
+
+  it("records all three collections when the request id carries path syntax", async () => {
+    // The request id is CALLER-SUPPLIED — `sendOptions.requestId` rides the
+    // action request body through to `ctx.request.identity.id` — and it goes
+    // into the namespace that keys all three collections. Raw, an id holding a
+    // `..` segment is rejected by `normalizeResourcePath`, so every file key,
+    // every plan key AND every gap key is unkeyable at once. The gap rows are
+    // the fallback that exists to record "we lost something", so when they die
+    // with the rest the run finishes CLEAN with three empty collections and
+    // nothing anywhere saying anything was dropped.
+    for (const requestId of ["release/../42", "tenant/a/run"]) {
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT_WITH_GAP),
+        recordWork: true,
+        includePartialMessages: false,
+      });
+      const runtime = await createTestContext({
+        requestId,
+        declaredResources: block.declaredResources,
+      });
+      await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+      const runId = runNamespace(runtime.ctx as never);
+      const resources = runtime.ctx.resources as unknown as Record<
+        string,
+        { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+      >;
+
+      const fileRows = await resources["observed-file-ops"].list();
+      expect(fileRows.map((r) => r.path)).toEqual([`observed-file-ops/${runId}/work/notes.txt`]);
+      expect(fileRows[0].state).toMatchObject({ lastKind: "created", outcome: "applied" });
+
+      const planRows = await resources["observed-plan"].list();
+      expect(planRows.map((r) => r.path)).toEqual([`observed-plan/${runId}/5`]);
+
+      // The gap row matters most: it is the record OF a loss, so if it shares
+      // the doomed namespace there is nothing left to notice the failure by.
+      const gapRows = await resources["observed-gaps"].list();
+      expect(gapRows).toHaveLength(1);
+      expect(String(gapRows[0].state.reason)).toContain("Draft the follow-up");
+    }
+  });
+
+  it("keeps the request id to ONE key segment, whatever syntax it carries", () => {
+    // The invariant, stated against the normalizer that actually rejects these
+    // rather than against a copy of its rules: whatever a caller supplies, the
+    // composed namespace has to be a usable key, and the id has to stay one
+    // segment so the path segments after it belong to the file and nothing else.
+    const ids = [
+      "release/../42",
+      "..",
+      ".",
+      "a\\b",
+      `x${String.fromCharCode(7)}y`,
+      "100%",
+      "a/b/c",
+    ];
+    for (const id of ids) {
+      const ns = runNamespace({ request: { identity: { id } } } as never);
+      expect(() => normalizeResourcePath(`${ns}/work/notes.txt`)).not.toThrow();
+      expect(ns.split("/")).toHaveLength(2);
+    }
+  });
+
+  it("leaves an already-keyable request id byte for byte, bar one", () => {
+    // Rows written before this change are still keyed by the raw id, so an id
+    // the normalizer already accepted must key the same after it — otherwise
+    // the fix orphans the very records it exists to protect. `.` and `...` are
+    // in here because only `..` is rejected: escaping every run of dots would
+    // move rows that were keyed fine.
+    for (const id of ["plain-42", "a[1]", "x.y", ".", "...", "a-b_c", "req:1"]) {
+      const ns = runNamespace({ request: { identity: { id } } } as never);
+      expect(ns).toBe(`${id}/0#0`);
+    }
+    // The one exception, and it is forced: injectivity needs `%` escaped first,
+    // or a literal `a%2Fb` could not be told from an encoded `a/b`. An id
+    // carrying a `%` therefore moves, and that is a documented migration.
+    expect(runNamespace({ request: { identity: { id: "a%b" } } } as never)).toBe("a%25b/0#0");
+  });
+
+  it("keeps apart two request ids a lossy sanitiser would collide", () => {
+    // Stripping or replacing the offending characters would also be "safe", and
+    // is the wrong fix: it maps distinct ids onto ONE namespace, trading a
+    // silent empty recorder for silent CROSS-RUN MIXING — two runs' file rows
+    // merging under one key. That is worse, because the result looks healthy.
+    const ns = (id: string) => runNamespace({ request: { identity: { id } } } as never);
+    const collidable = [
+      ["a/b", "a%2Fb"],
+      ["a/b", "a-b"],
+      ["a/b", "ab"],
+      ["a..b", "a.b"],
+      ["..", "."],
+      ["x/y", "x\\y"],
+    ];
+    for (const [left, right] of collidable) {
+      expect(ns(left)).not.toBe(ns(right));
+    }
+    // And distinctness must survive the NORMALIZER, not just the encoder — it
+    // is the normalized key that two runs would actually end up sharing.
+    const ids = [...new Set(collidable.flat())];
+    const keys = ids.map((id) => normalizeResourcePath(`${ns(id)}/work/notes.txt`));
+    expect(new Set(keys).size).toBe(ids.length);
+  });
+
+  it("namespaces by INVOCATION, so two calls in one request do not merge", async () => {
+    // A generator holding this agent as a tool can call it several times in one
+    // request — the framework's tool executor disambiguates each call by
+    // `stepNumber:toolCallId` precisely because that happens. Keying on the
+    // request id alone would merge every such run: same paths overwritten, same
+    // to-do ids merged, and gap ordinals (which restart at 1 per recorder)
+    // clobbering each other outright.
+    const requestId = "req_shared";
+    const first = {
+      request: { identity: { id: requestId } },
+      _blockIdentity: { blockPath: "root/tool(claude-code-agent,0:call_a)" },
+    };
+    const second = {
+      request: { identity: { id: requestId } },
+      _blockIdentity: { blockPath: "root/tool(claude-code-agent,1:call_b)" },
+    };
+
+    expect(runNamespace(first as never)).not.toBe(runNamespace(second as never));
+    // …and both still begin with the request id, so a reader can still ask
+    // "everything this request did" with one prefix.
+    for (const ns of [runNamespace(first as never), runNamespace(second as never)]) {
+      expect(ns.startsWith(`${requestId}/`)).toBe(true);
+    }
+    // One invocation stays ONE key segment, so the path segments that follow it
+    // are the file's and nothing else.
+    expect(runNamespace(first as never).split("/")).toHaveLength(2);
+  });
+
+  it("falls back to a stable discriminator when there is no block identity", () => {
+    // A context with no block identity has exactly one invocation by
+    // construction, so a constant is honest — and must stay stable, or every
+    // run would land in a different namespace.
+    const ctx = { request: { identity: { id: "req_x" } } };
+    expect(runNamespace(ctx as never)).toBe("req_x/0#0");
+    expect(runNamespace(ctx as never)).toBe(runNamespace(ctx as never));
+  });
+
+  it("separates the ATTEMPTS of a retried block, which re-enter at one path", async () => {
+    // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
+    // instance id from `(request, path, attempt)` while leaving the PATH
+    // untouched — so a retried run re-enters at the same path, opens a second
+    // recorder, and restarts its gap ordinals at 1. Keying on the path alone
+    // used two thirds of the framework's own invocation identity, and the
+    // earlier attempt's rows lost to the later one.
+    const atPath = (attempt: number) =>
+      runNamespace({
+        request: { identity: { id: "req_retry" } },
+        _blockIdentity: { blockPath: "root/tool(claude-code-agent,0:call_a)", attempt },
+      } as never);
+
+    expect(atPath(0)).not.toBe(atPath(1));
+    // Both still begin with the request id, so one prefix still reads
+    // everything that request did — retries included.
+    for (const ns of [atPath(0), atPath(1)]) {
+      expect(ns.startsWith("req_retry/")).toBe(true);
+      expect(ns.split("/")).toHaveLength(2);
+    }
+  });
+
+  it("records an interrupted plan create as a gap rather than losing it", async () => {
+    // The plan side's version of the pending file row. A create has no id until
+    // the harness answers, so an interrupt leaves nothing to key a row under —
+    // and without this an interrupted plan attempt is indistinguishable from a
+    // run that never planned.
+    const interrupted: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_c",
+              name: "TaskCreate",
+              input: { subject: "Create the file", description: "…", activeForm: "Creating" },
+            },
+          ],
+        },
+      },
+      // …and the stream ends. No result ever arrives.
+      RESULT_OK,
+    ];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(interrupted),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+    expect(await resources["observed-plan"].list()).toHaveLength(0);
+    const gapRows = await resources["observed-gaps"].list();
+    expect(gapRows).toHaveLength(1);
+    // The wording is carried through, so the gap says WHICH item was lost.
+    expect(String(gapRows[0].state.reason)).toContain("Create the file");
+  });
+
+  it("delivers a whole translated message to the recorder even if emission throws", async () => {
+    // Translation consumes a message and clears its correlation maps for every
+    // call in it, so the events are then the only record of what those calls
+    // did. Delivering them one at a time, interleaved with the emission await,
+    // made every event after the first conditional on item persistence
+    // succeeding — one rejection and a settled `TaskCreate` vanished from
+    // `observed-plan` AND `observed-gaps`, because the end-of-run drain finds
+    // no open create either.
+    //
+    // The script puts a settled create SECOND in one message, and emission of
+    // the first event rejects.
+    const batched: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_c",
+              name: "TaskCreate",
+              input: { subject: "Create the file", description: "…", activeForm: "Creating" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { task: { id: "5", subject: "Create the file" } },
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_c", content: "Task #5 created" },
+          ],
+        },
+      },
+      RESULT_OK,
+    ];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(batched),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+
+    const realEmit = runtime.ctx.response.emit.bind(runtime.ctx.response);
+    (runtime.ctx.response as { emit: unknown }).emit = async (event: {
+      type?: string;
+      item?: { type?: string };
+    }) => {
+      // Reject on the tool_output the settling message emits FIRST, so the
+      // plan event behind it in the same batch would be stranded.
+      if (event?.type === "item.done" && event.item?.type === "tool_output") {
+        throw new Error("the request record rejected the tool item");
+      }
+      return realEmit(event as never);
+    };
+
+    await expect(
+      block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+    ).rejects.toThrow();
+
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+    // The create is in the record. Without batch-first delivery it is in
+    // neither collection.
+    const planRows = await resources["observed-plan"].list();
+    expect(planRows).toHaveLength(1);
+    expect(planRows[0].state).toMatchObject({ title: "Create the file" });
+  });
+
+  it("marks inputs revisable exactly when an approval seam is installed", async () => {
+    // The translation layer's `inputsMayBeRevised` is only as good as the wire
+    // that sets it, and the flag is invisible from outside — so the WIRING gets
+    // its own guard, at the level where the option lives.
+    const rewording: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", subject: "What the run asked for" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { success: true, taskId: "5", updatedFields: ["subject"] },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5" }],
+        },
+      },
+      RESULT_OK,
+    ];
+    const gapsFor = async (options: Partial<Parameters<typeof claudeCodeAgent>[0]>) => {
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: scriptedQuery(rewording),
+        recordWork: true,
+        includePartialMessages: false,
+        ...options,
+      });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const resources = runtime.ctx.resources as unknown as Record<
+        string,
+        { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+      >;
+      return resources["observed-gaps"].list();
+    };
+
+    // With the seam, the executed input may differ from the call we saw.
+    expect(await gapsFor({ onToolApproval: async () => ({ decision: "allow" }) })).toHaveLength(1);
+    // Without it, the call-time value IS what ran.
+    expect(await gapsFor({})).toHaveLength(0);
+  });
+
+  it("still shuts the recorder down when item finalization throws", async () => {
+    // The third variation on one theme: the durability machinery is fine and
+    // something UPSTREAM of it stops it running. Shutdown is in a `finally` for
+    // exactly this reason — if it were another statement on the happy path,
+    // every step added before it would be a new way to skip it.
+    //
+    // A response emitter that rejects on the finalizing `item.done` reproduces
+    // it: the run fails, and the file the run already wrote must still be in the
+    // record.
+    // A settled Write (so there is something to record), then a tool call whose
+    // result never arrives — so stream end leaves an open tool and
+    // `finalizeOpenItems` has an `incomplete` item to persist.
+    const openAtEnd: SdkMessageLike[] = [
+      ...RECORDING_SCRIPT.slice(0, -1),
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "tool_use", id: "toolu_never", name: "Read", input: { path: "a" } }],
+        },
+      },
+      RESULT_OK,
+    ];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(openAtEnd),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+
+    const realEmit = runtime.ctx.response.emit.bind(runtime.ctx.response);
+    (runtime.ctx.response as { emit: unknown }).emit = async (event: {
+      type?: string;
+      item?: { status?: string };
+    }) => {
+      if (event?.type === "item.done" && event.item?.status === "incomplete") {
+        throw new Error("the request record rejected the incomplete item");
+      }
+      return realEmit(event as never);
+    };
+
+    await expect(
+      block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+    ).rejects.toThrow("the request record rejected the incomplete item");
+
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+    // The record survived the failure. Without the `finally` this is empty.
+    expect((await resources["observed-file-ops"].list()).length).toBeGreaterThan(0);
+  });
+
+  it("leaves ONE row for one write, even when the harness resolves a different path", async () => {
+    // The defect this pins is only visible where translate and the recorder
+    // compose: the attempt is keyed at call time and the settlement arrived
+    // under the resolved path, so a single write produced a permanent `pending`
+    // row beside an `applied` one.
+    const divergent: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_w",
+              name: "Write",
+              input: { file_path: "/work/notes.txt", content: "HELLO" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { type: "create", filePath: "/work/elsewhere/notes.txt" },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_w", content: "ok" }],
+        },
+      },
+      RESULT_OK,
+    ];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(divergent),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+    const fileRows = await resources["observed-file-ops"].list();
+    expect(fileRows).toHaveLength(1);
+    // Unsettled, not applied: the harness reported writing somewhere else, so
+    // there is nothing confirming a write at the path this row is keyed by.
+    expect(fileRows[0].state).toMatchObject({ outcome: "pending" });
+    // …and the divergence is visible rather than swallowed.
+    const gapRows = await resources["observed-gaps"].list();
+    expect(gapRows).toHaveLength(1);
+  });
+
+  it("writes nothing when the option is off, on the same script", async () => {
+    // The contrast that makes the assertion above able to fail. Declaring the
+    // resources here would be the only way to read them back, and the point is
+    // that the OFF block declares none — so the absence is asserted on the
+    // declaration, and the run is asserted to complete unchanged.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT),
+      includePartialMessages: false,
+    });
+    const { output, error } = await testBlock(block, { input: { prompt: "go" } });
+    expect(error).toBeNull();
+    expect((output as SdkAgentHandle).status).toBe("completed");
+    expect(block.declaredResources).toBeUndefined();
+  });
+
+  it("keeps running, with a visible note, when the collections are not registered", async () => {
+    // Watching the work must never break the work: a flow that reaches this
+    // block without the refs registered gets an unrecorded run and a status
+    // item, not a killed coding run.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    // Deliberately NOT passing `declaredResources`, so `ctx.resources` is empty.
+    const runtime = await createTestContext({});
+    const handle = await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    expect((handle as SdkAgentHandle).status).toBe("completed");
+    const notes = runtime
+      .getItems()
+      .filter((i) => i.type === "status")
+      .map((i) => (i as { message?: string }).message ?? "")
+      .join(" ");
+    expect(notes).toContain("not recording this run's work");
+  });
 });

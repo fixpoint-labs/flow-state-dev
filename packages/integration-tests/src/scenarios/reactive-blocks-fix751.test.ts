@@ -4,7 +4,7 @@
  * End-to-end coverage of the server dispatch seam through `testFlow`:
  * - a reactive block runs in-session when its bound mutation fires, and its
  *   emitted item lands in the same stream, ordered after the mutating block;
- * - a reactive block wrapped in `.work()` inside a sequencer is isolated, so a
+ * - a reactive block wrapped in `.sideChain()` inside a sequencer is isolated, so a
  *   failure inside the worker doesn't fail the mutating turn;
  * - a self-mutating reactive block converges under the cascade depth cap, and a
  *   runaway one terminates with a `reactive_cascade_exceeded` diagnostic rather
@@ -139,7 +139,7 @@ describe("FIX-751: reactive blocks", () => {
     );
   });
 
-  it("isolates a .work()-wrapped reactive failure — the turn still completes", async () => {
+  it("isolates a .sideChain()-wrapped reactive failure — the turn still completes", async () => {
     let workerRan = false;
     const failingWorker = handler({
       name: "reactive-worker-boom",
@@ -150,12 +150,12 @@ describe("FIX-751: reactive blocks", () => {
       },
     });
     // The reactive block is a sequencer that dispatches the failing handler as
-    // background work. `.work()` isolation means the worker's throw settles in
+    // background work. `.sideChain()` isolation means the worker's throw settles in
     // the pool, not on the mutating turn.
     const reactiveSeq = sequencer({
       name: "reactive-seq",
       inputSchema: resourceChangeSchema(noteSchema),
-    }).work(failingWorker);
+    }).sideChain(failingWorker);
 
     const notes = defineResourceCollection({
       scope: "session",
@@ -187,7 +187,7 @@ describe("FIX-751: reactive blocks", () => {
       unmockedGeneratorPolicy: "allow",
     });
 
-    // The turn completes despite the worker failing — `.work()` isolation.
+    // The turn completes despite the worker failing — `.sideChain()` isolation.
     expect(result.status).toBe("completed");
     expect(workerRan).toBe(true);
   });
@@ -379,9 +379,9 @@ describe("FIX-843: content reactions", () => {
     expect(reactIdx).toBeGreaterThan(mutateIdx);
   });
 
-  it("isolates a .work()-wrapped content reaction failure — the content write still completes", async () => {
+  it("isolates a .sideChain()-wrapped content reaction failure — the content write still completes", async () => {
     // The kitchen-sink artifact summarizer relies on this: a failing content
-    // reaction wrapped in `.work()` must not fail the writeContent that triggered
+    // reaction wrapped in `.sideChain()` must not fail the writeContent that triggered
     // it. Mirrors the FIX-751 state-axis isolation test, on the content axis.
     let workerRan = false;
     const failingWorker = handler({
@@ -395,7 +395,7 @@ describe("FIX-843: content reactions", () => {
     const reactiveSeq = sequencer({
       name: "content-reactive-seq",
       inputSchema: resourceContentChangeSchema(),
-    }).work(failingWorker);
+    }).sideChain(failingWorker);
 
     const docs = defineResourceCollection({
       scope: "session",
@@ -428,7 +428,7 @@ describe("FIX-843: content reactions", () => {
       unmockedGeneratorPolicy: "allow",
     });
 
-    // The turn completes despite the content reaction failing — `.work()` isolation.
+    // The turn completes despite the content reaction failing — `.sideChain()` isolation.
     expect(result.status).toBe("completed");
     expect(workerRan).toBe(true);
   });

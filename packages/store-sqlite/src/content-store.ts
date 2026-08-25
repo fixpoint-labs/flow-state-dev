@@ -5,10 +5,10 @@
  * stored durably in the `resource_content` table, parallel to the Postgres
  * adapter. Reads are scoped via the `(scope_type, scope_id)` index — never a
  * process-wide scan. Defined locally so store-sqlite keeps a type-only
- * dependency on the server package.
+ * dependency on the engine package.
  */
 import type Database from "better-sqlite3";
-import type { ContentStore, ContentScopeType } from "@flow-state-dev/engine";
+import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine";
 
 /**
  * Create a SQLite-backed `ContentStore` over the provided database handle.
@@ -42,7 +42,7 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
 
   return {
     async get(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string
     ): Promise<string | undefined> {
@@ -53,7 +53,7 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
     },
 
     async set(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string,
       content: string
@@ -62,7 +62,7 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
     },
 
     async delete(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string
     ): Promise<void> {
@@ -70,7 +70,7 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
     },
 
     async getAll(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string
     ): Promise<Record<string, string>> {
       const rows = getAllStmt.all(scopeType, scopeId) as Array<{
@@ -83,7 +83,7 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
     },
 
     async getByPrefix(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, string>> {
@@ -98,7 +98,7 @@ export function createSQLiteContentStore(db: Database.Database): ContentStore {
       return result;
     },
 
-    async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
+    async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {
       deleteAllStmt.run(scopeType, scopeId);
     }
   };

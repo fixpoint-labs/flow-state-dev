@@ -18,6 +18,24 @@ describe("defineResource", () => {
     })).toThrow("at most one content source");
   });
 
+  it("throws when sharedToWorkstream is set outside session scope", () => {
+    // FIX-1068: a user/org-scoped resource is already reachable from every
+    // session the principal touches, so the flag can only be a mistake there.
+    expect(() => defineResource({
+      scope: "org",
+      sharedToWorkstream: true,
+      stateSchema: z.object({}),
+    })).toThrow("sharedToWorkstream:true on org-scoped");
+  });
+
+  it("accepts sharedToWorkstream on a session-scoped resource", () => {
+    expect(() => defineResource({
+      scope: "session",
+      sharedToWorkstream: true,
+      stateSchema: z.object({}),
+    })).not.toThrow();
+  });
+
   it("throws when content and contentTemplate are both provided", () => {
     expect(() => defineResource({
       scope: "session",

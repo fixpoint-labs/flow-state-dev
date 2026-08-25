@@ -60,8 +60,8 @@ Current state (Phase 1):
 | 1.i | Complete | Client APIs, React hooks/components |
 | 1.j | Complete | Testing harness |
 | 1.k | Complete | Example flows, AI SDK resolver |
-| 1.l | Pending | CLI package implementation |
-| 1.m | Pending | DevTool app implementation |
+| 1.l | Complete | CLI package implementation |
+| 1.m | Complete | DevTool app implementation |
 | 1.n | Pending | Cross-package validation |
 
 ## Rules
