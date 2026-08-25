@@ -179,6 +179,22 @@ const infinitizing = defineResource({
   default: { n: 0, keep: "schema-default" }
 });
 
+/**
+ * A schema with NO valid complete default: `required` has no default, so
+ * neither `safeParse(undefined)` nor `safeParse({})` yields a complete object
+ * and `normalizeResourceDefault` bottoms out at `{}`. This is the shape §9's
+ * invalid-default row is about — a row that was READ rather than run, and was
+ * wrong as a result.
+ */
+const noDefault = defineResource({
+  scope: "session",
+  ref: "noDefault",
+  stateSchema: z.object({
+    required: z.string(),
+    n: z.number().default(0)
+  })
+});
+
 function makeFlow() {
   return defineFlow({
     kind: "fix1154-poc",
@@ -195,7 +211,8 @@ function makeFlow() {
             refusing,
             overlapping,
             caught,
-            infinitizing
+            infinitizing,
+            noDefault
           },
           execute: () => "ok"
         })
@@ -682,12 +699,24 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     //    caller. That divergence is why §7c states the hazard as "survives a
     //    JSON round-trip unchanged" rather than as a list of forbidden kinds:
     //    a Date is perfectly JSON-safe and still stores differently.
-    expect(JSON.parse(JSON.stringify(items))).toEqual([
+    const flattened = JSON.parse(JSON.stringify(items));
+    expect(flattened).toEqual([
       "2020-01-01T00:00:00.000Z",
       {},
       {},
       {}
     ]);
+
+    // 4. And the flattened form STILL PARSES on the next durable read, so this
+    //    row does NOT reach D1. Under `z.array(z.any())` a string and three
+    //    `{}` are all accepted, which means nothing is rejected, nothing is
+    //    replaced, and no error is raised at any point — the loss is silent and
+    //    permanent rather than loud. Round 18 corrected §7c here: D1's
+    //    replacement needs a schema that REFUSES the serialized form (an
+    //    `Infinity` under `z.number()` does; these four do not), so a
+    //    round-trip hazard must not be routed into D1 by default.
+    const reread = bag.stateSchema.safeParse({ n: 0, keep: "k", items: flattened });
+    expect(reread.success).toBe(true);
   });
 
   it("data loss: a BIGINT or SYMBOL delta throws a RETRYABLE raw TypeError", async () => {
@@ -744,6 +773,57 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect(after?.state).toMatchObject({ n: 0, keep: "schema-default" });
     // ...and the version advanced, so this was a real write, not a no-op.
     expect(after?.version).toBeGreaterThan(before?.version as number);
+  });
+
+  it("row 5: a field the callback OMITS comes back at its schema DEFAULT, not absent", async () => {
+    // Map row 5 said omitted fields are "gone". They are not absent — the
+    // whole returned object is re-parsed by `normalizeResourceState`
+    // (`resource-registry.ts:664`), so Zod REINTRODUCES a defaulted field at
+    // its default, replacing the live value with something that looks
+    // deliberate. That is a harder failure to notice than a hole, which is why
+    // the row now says so.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_omit");
+    const ref = ctx.resources.counter as unknown as MutableRef;
+
+    await ref.updateState(() => ({ n: 5, log: ["DO-NOT-LOSE"] }));
+    expect((await readRow(stores, "counter"))?.state).toEqual({
+      n: 5,
+      log: ["DO-NOT-LOSE"]
+    });
+
+    // The callback returns ONLY `n`. `log` is never mentioned.
+    await ref.updateState((s) => ({ n: toNumber(s.n) + 1 }));
+
+    // Not `{ n: 6 }` — `log` is back, emptied.
+    expect((await readRow(stores, "counter"))?.state).toEqual({ n: 6, log: [] });
+  });
+
+  it("row: a first touch on a schema with NO valid complete default is a NO-OP, not a throw", async () => {
+    // §9 asserted this row THROWS and landed it in D1. Both halves were wrong,
+    // and the second contradicted D1 itself (which never throws). Nothing on
+    // this path throws: `normalizeResourceState` falls back to
+    // `normalizeResourceDefault`, that bottoms out at `{}`, and `{}` equals the
+    // `{}` the write started from — so the driver verifies a no-op and writes
+    // nothing at all. The failure mode is silence, not an error.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_nodefault");
+    const ref = ctx.resources.noDefault as unknown as MutableRef;
+
+    await expect(
+      ref.updateState((s) => ({ ...s, n: toNumber(s.n) + 1 }))
+    ).resolves.toBeUndefined();
+
+    // No row was created. No version. No error anyone could act on.
+    expect(await readRow(stores, "noDefault")).toBeUndefined();
+
+    // The boundary: an updater that DOES supply every required field is
+    // ordinary and succeeds — so the absence above is about the candidate, not
+    // about the resource being unwritable.
+    await ref.updateState(() => ({ required: "present", n: 1 }));
+    const row = await readRow(stores, "noDefault");
+    expect(row?.state).toEqual({ required: "present", n: 1 });
+    expect(row?.version).toBe(1);
   });
 
   it("control: a plain Error is retryable too — which is why D6 is a defect", async () => {
