@@ -54,9 +54,10 @@ the honest description of it.**
 - **FIX-1158** (cross-flow resource validation never runs) is a **same-subsystem
   unintended-asymmetry lodger** — the epic's own thesis pointed at itself, where the
   architecture doc already promises the two primitives behave alike and the code silently
-  doesn't. **It would ship independently and needs no epic parentage — and it has: PR
-  [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) merged, the issue is
-  Done.** It is kept on that footing and no other. *That does not reopen the
+  doesn't.
+  **It would ship independently and needs no epic parentage — and it has:**
+  PR [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) merged, the issue is
+  Done. It is kept on that footing and no other. *That does not reopen the
   epic-classification fork (§5, resolved): the condition stated there was FIX-1158 merging
   before FIX-1154 was **specced**, and FIX-1154 has been in spec review since before this
   merge.* The earlier membership argument — that all the children edit one
@@ -92,10 +93,10 @@ surface with no state analogue at all — content, `client`, `reactTo`, `edges`,
 **Nor is any verb reconciled at all — increment and append included** (D-6). Every difference —
 a verb one primitive lacks, or a verb they nominally share whose shape differs — is **mapped by
 FIX-1154, not closed by it**. Two different reasons sit behind that one word, and collapsing
-them is how a reader concludes the wrong thing: most of these differences are out of scope **by
-construction** and are not coming back, while **increment and append are deferred** — the one
-pair that was going to close, now cut from this cycle and explicitly not dropped (theme 2,
-Decision 2). **No child deprecates, removes, or
+them is how a reader concludes the wrong thing: most of these differences are
+out of scope **by construction** and are not coming back, while
+**increment and append are deferred** — the one pair that was going to close, now cut from
+this cycle and explicitly not dropped (theme 2, Decision 2). **No child deprecates, removes, or
 migrates a primitive** — every one of them fixes, generalizes, or documents. A child that
 finds itself proposing a removal has hit the rejected framings in §2 and comments up on this
 PR rather than deciding locally.
@@ -228,16 +229,16 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    survives* under a held version is a **type-level read no code has exercised**, and it stays
    that way. With the verbs cut (D-6) there is nothing left this cycle for a proof to gate, so
    **FIX-1154 carries no proof obligation** — an obligation attached to a deliverable that is
-   not shipping costs a child real work and proves nothing. The proof rides **Decision 2's
-   deferred native deltas** instead, as the epic-theme rewrite next to FIX-992, and it is that
+   not shipping costs a child real work and proves nothing. The proof rides
+   **Decision 2's deferred native deltas** instead — the epic-theme rewrite next to FIX-992 — and it is that
    rewrite's first task: a characterization test or a `settle-claim` on the real resource path
    covering tombstone, lost create-if-absent and verified no-op, **before** any delta verb is
    locked. If it fails, this theme changes rather than one issue's design. It remains the
    least-evidenced claim in this document — it is simply no longer *this cycle's* risk,
    because this cycle writes no code against it.
 
-   **Constrains:** no issue in this set may reach for `"any"` on a resource **delta or
-   read-modify-write** path. That qualifier is load-bearing and was missing: `"any"` already
+   **Constrains:** no issue in this set may reach for `"any"` on a resource
+   **delta or read-modify-write** path. That qualifier is load-bearing and was missing: `"any"` already
    travels the resource path on one intent by design — `runResourceCAS` passes it for
    `replace`, the deliberate unconditional overwrite behind `create({ replace: true })`
    (`resource-cas.ts:73`, `:220`) — so this is a constraint on new mutation work, not a claim
@@ -445,8 +446,8 @@ the epic PR — the PR closes when the epic wraps; this document outlives it.
   refuses unused public surface that cannot be taken back. **Decision 2 — defer, not drop:**
   later native deltas are an epic-theme rewrite next to FIX-992, not a silent abandonment.
   **Decision 3 — map as docs:** the write-up is the deliverable, not a delivery vehicle for
-  unused methods. Recorded here so no sibling reopens it: the epic's **objective is
-  unchanged**; its *this-cycle scope* is narrower.
+  unused methods. Recorded here so no sibling reopens it:
+  the epic's **objective is unchanged**; its *this-cycle scope* is narrower.
 - **~~Do resources grow a committed `boolean`, or is the `Promise<boolean>` vs
   `Promise<void>` split deliberate?~~** *Resolved: deliberate — and since D-6, nothing closes
   beside it either. The split stands, and the increment/append gap next to it is documented
