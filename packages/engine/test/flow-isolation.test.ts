@@ -549,6 +549,113 @@ describe("cross-flow resource schema validation", () => {
   });
 
   /**
+   * Two of ONE flow's declarations can resolve to the same durable cell —
+   * most reachably two collections sharing a `pattern`, which core's
+   * build-time check keys apart on an incidental `ref` and therefore admits.
+   * The accumulator must compare them rather than overwrite, or the earlier
+   * schema silently leaves the shared view.
+   */
+  describe("two declarations in one flow resolving to one cell", () => {
+    const coll = (schema: z.ZodTypeAny, ref: string) =>
+      defineResourceCollection({
+        scope: "user",
+        pattern: "files/*",
+        stateSchema: schema,
+        ref,
+      } as never);
+
+    it("rejects incompatible same-pattern collections in a single flow", () => {
+      const registry = createFlowRegistry();
+      const error = captureConflict(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-a",
+            rawResources: {
+              alpha: coll(z.object({ body: z.string() }), "alpha"),
+              beta: coll(z.object({ body: z.number() }), "beta"),
+            },
+          })
+        )
+      );
+      expect(error.field).toBe("resources.files/*");
+      // Both sides are the same flow, so isolation is no escape — isolating
+      // both still lands them in one flowKind bucket.
+      expect(error.message).toContain("distinct pattern");
+      expect(error.message).not.toContain("flowIsolation");
+    });
+
+    it("accepts compatible same-pattern collections in a single flow", () => {
+      const registry = createFlowRegistry();
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-a",
+            rawResources: {
+              alpha: coll(z.object({ body: z.string() }), "alpha"),
+              beta: coll(z.object({ body: z.string() }), "beta"),
+            },
+          })
+        )
+      ).not.toThrow();
+    });
+
+    it("leaves collections at differing patterns alone", () => {
+      const other = defineResourceCollection({
+        scope: "user",
+        pattern: "notes/*",
+        stateSchema: z.object({ body: z.number() }),
+      } as never);
+
+      const registry = createFlowRegistry();
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-a",
+            rawResources: { alpha: coll(z.object({ body: z.string() }), "alpha"), other },
+          })
+        )
+      ).not.toThrow();
+    });
+
+    it("does not treat aliases of one definition as a duplicate", () => {
+      // Two accessors, one definition — canonicalized to a single ref with the
+      // same schema object, so the comparison must be a no-op, not a conflict.
+      const shared = defineResource({
+        scope: "user",
+        stateSchema: z.object({ theme: z.string() }),
+      });
+      const registry = createFlowRegistry();
+      expect(() =>
+        registry.register(
+          makeFlow({ kind: "flow-a", rawResources: { foo: shared, preferences: shared } })
+        )
+      ).not.toThrow();
+    });
+
+    it("compares a later flow against the schema that would otherwise be dropped", () => {
+      // The reported consequence: with last-write-wins only `beta` survived,
+      // so a flow compatible with `beta` registered clean while sharing cells
+      // with the incompatible `alpha`. Now the flow is refused at declaration.
+      const registry = createFlowRegistry();
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-a",
+            rawResources: {
+              alpha: coll(z.object({ body: z.string() }), "alpha"),
+              beta: coll(z.object({ body: z.number() }), "beta"),
+            },
+          })
+        )
+      ).toThrow(CrossFlowSchemaConflictError);
+
+      // Registration is transactional — the refused flow left nothing behind.
+      expect(registry.list()).toEqual([]);
+      expect(registry.describeSharedSchemas().participants.user).toEqual([]);
+    });
+  });
+
+  /**
    * A collection's storage identity is its `pattern` and nothing else. Every
    * instance key is `resolveCollectionKey(config.pattern, key)`, and the engine
    * reads `ref` off a collection nowhere — `resourceStorageKeys` short-circuits
@@ -668,6 +775,58 @@ describe("cross-flow resource schema validation", () => {
       const registry = createFlowRegistry();
       registry.register(flow);
       expect(Object.keys(registry.describeSharedSchemas().user.resources)).toEqual([runtimeKey]);
+    });
+
+    it("resolves a __proto__ accessor to a real ref rather than a builtin", async () => {
+      // The accessor→scope map, the per-scope config maps and both handle maps
+      // are keyed by the same author-supplied name. On plain objects the
+      // resource never got a handle at all: `get()` handed back
+      // `Object.prototype` and `list()` omitted it.
+      //
+      // NOT yet end-to-end. This resource's state does not round-trip — the
+      // default is not seeded and `patchState` throws
+      // `expectedVersion ... received NaN`, because the normalizers and the
+      // version map are keyed the same way and are still plain objects. Those
+      // are FIX-1254's. Asserted here is only what this change fixes: lookup
+      // resolves the declaration instead of a builtin.
+      const resource = defineResource({
+        scope: "user",
+        stateSchema: z.object({ theme: z.string().default("dark") }),
+      });
+      const flow = makeFlow({ kind: "flow-proto", rawResources: { ["__proto__"]: resource } });
+      const stores = createInMemoryStores();
+
+      const ctx = await createExecutionContext({
+        flow, actionName: "run", requestId: "req_p", sessionId: "sess_p", userId: "user_1", stores,
+      });
+
+      const bag = ctx.resources as unknown as {
+        get(name: string): unknown;
+        list(): unknown[];
+      };
+      const ref = bag.get("__proto__");
+      expect(ref).not.toBe(Object.prototype);
+      expect(typeof (ref as { patchState?: unknown }).patchState).toBe("function");
+      expect(bag.list()).toHaveLength(1);
+    });
+
+    it("throws for an unregistered name that shadows an Object.prototype member", async () => {
+      // The read-side half: on a plain handle map `get("toString")` returned
+      // the builtin function instead of the honest "not registered" error.
+      const flow = makeFlow({
+        kind: "flow-plain",
+        resources: { preferences: { schema: z.object({ theme: z.string() }) } },
+      });
+      const stores = createInMemoryStores();
+
+      const ctx = await createExecutionContext({
+        flow, actionName: "run", requestId: "req_t", sessionId: "sess_t", userId: "user_1", stores,
+      });
+
+      const bag = ctx.resources as unknown as { get(name: string): unknown };
+      for (const name of ["toString", "constructor", "valueOf"]) {
+        expect(() => bag.get(name)).toThrow(`Resource "${name}" is not registered`);
+      }
     });
 
     it("reports a __proto__ resource in the shared schema description", () => {

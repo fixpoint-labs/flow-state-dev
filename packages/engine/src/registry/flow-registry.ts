@@ -401,10 +401,25 @@ function collectScopeDeclaration(
     if (resolveResourceIsolation(entry.flowIsolation, flow, scope)) continue;
     const schema = entry.stateSchema;
     if (schema === undefined) continue;
-    resourceSchemas[storageRef(entry, accessor, storageKeys)] = {
-      schema,
-      collection: isCollectionConfig(entry),
-    };
+
+    const ref = storageRef(entry, accessor, storageKeys);
+    const collection = isCollectionConfig(entry);
+    const prior = resourceSchemas[ref];
+    if (prior !== undefined) {
+      // Two of THIS flow's declarations resolve to one durable cell. Aliases
+      // of a single definition land here harmlessly (same schema object, so
+      // the comparison is identical), but genuinely distinct declarations do
+      // not — most reachably two collections sharing a `pattern` while core's
+      // build-time check keys them apart on an incidental `ref`.
+      //
+      // Comparing rather than overwriting is the point: last-write-wins drops
+      // the earlier schema from the shared view, so a third flow compatible
+      // with only the survivor would register clean while sharing cells with
+      // the one that was dropped.
+      checkPair(scope, `resources.${ref}`, flow.kind, flow.kind, prior.schema, schema, prior.collection || collection);
+      continue;
+    }
+    resourceSchemas[ref] = { schema, collection };
   }
 
   if (stateSchema === undefined && Object.keys(resourceSchemas).length === 0) {
@@ -437,7 +452,9 @@ function checkPair(
   }
   if (result.kind === "compatible" && result.warnings.length > 0) {
     console.warn(
-      `[flow-state] Flows "${flowA}" and "${flowB}" declare structurally compatible but non-identical ${scope}.${field} schemas: ${result.warnings.join("; ")}`
+      flowA === flowB
+        ? `[flow-state] Flow "${flowA}" declares two ${scope}.${field} schemas that are structurally compatible but non-identical: ${result.warnings.join("; ")}`
+        : `[flow-state] Flows "${flowA}" and "${flowB}" declare structurally compatible but non-identical ${scope}.${field} schemas: ${result.warnings.join("; ")}`
     );
   }
 }
