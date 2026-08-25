@@ -162,8 +162,10 @@ owns what a coordinator may answer with its own hands and what it must dispatch.
 
 **An epic opens one for itself at setup.** That is the normal case: publishing an address up
 front beats making peers discover you, and it is the only way Grok or Cursor can reach a
-specific epic without knowing a session id. Ad-hoc handles are the exception — work that
-already has a spec or epic PR on `flow-state-dev` uses that PR, not a second inbox.
+specific epic without knowing a session id. **Ad-hoc handles are the exception** — work that
+isn't an epic, and so has no `fsd/epic/…` handle of its own. Either way the two limits are the
+same: never a second *mailbox* handle for one body of work, and never move review off the spec
+or epic PR.
 
 **Discover before you create.** An epic that resumes in a new session already has a handle:
 list the open PRs and reuse the one titled with your slug. Creating a second inbox for one
