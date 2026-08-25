@@ -1123,8 +1123,9 @@ unattended.
 Some work needs an agent this session cannot dispatch — Grok, Cursor, Codex, a Claude running
 out of `orb-harness`. None of them can be addressed inside a running session and none can
 receive a webhook, but all of them can read and write GitHub PR comments. So the channel is a
-board of never-merged PRs in [`fixpoint-labs/agent-mailbox`](https://github.com/fixpoint-labs/agent-mailbox),
-one PR per handle, its conversation comments the messages. The **operating procedure** — attach
+board of PRs in [`fixpoint-labs/agent-mailbox`](https://github.com/fixpoint-labs/agent-mailbox),
+one open PR per handle, its conversation comments the messages, and `handles/<slug>.md` the living
+brief an attaching agent reads first. The **operating procedure** — attach
 with push access, list open handles, the identity header, what to subscribe to — is
 [`agent-mailbox`](../../.agents/skills/agent-mailbox/SKILL.md). What follows is only what the
 *coordinator* owns.
@@ -1135,7 +1136,8 @@ mailbox events land here for the same structural reason epic-PR feedback does.
 **An epic registers its own handle at setup and subscribes to it**, rather than waiting to be
 found: an address published up front is what lets a peer reach *this* epic without knowing a
 session id, and it removes the reason to poll the board on every wake. Discover before
-creating — a resumed epic already has one — and close it at wrap, or the directory fills with
+creating — a resumed epic already has one — keep its brief current as the handoff surface, and
+retire it at wrap (merged if it holds decisions, closed if not), or the directory fills with
 inboxes whose work ended.
 
 **Subscribe narrowly.** Every comment on a handle wakes *every* session attached to it. Take the

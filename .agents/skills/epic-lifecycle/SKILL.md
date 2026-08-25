@@ -36,7 +36,7 @@ ends the turn:
 | **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold before their first action. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
-| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); **close the epic's mailbox handle** (never merge it — an inbox left open outlives its work and the board's directory is its open PRs); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
+| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); **retire the epic's mailbox handle** — *merge* it if it carries decisions, so the handle file lands on `main` as the audit log, else close it unmerged (the mailbox inverts our usual rule; the board's directory is its open PRs, so a handle that outlives its work reads as live); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
 ## How it stays safe and cheap
 
@@ -665,7 +665,12 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   above**: a resumed epic already has a handle — list the open PRs, reuse the one titled with
   your slug, and give the new session a fresh `session:` label. While you have that listing,
   subscribe to any other handle whose slug names this epic, note the rest in a line, and join
-  nothing you weren't asked to. Procedure, identity, and the API path (no clone):
+  nothing you weren't asked to. **Write the epic's brief into `handles/<slug>.md` and keep it
+  current as state changes** — objective and gate state, the per-issue rows with phase and PR,
+  open blockers, what's next. That file is what the board tells an attaching agent to read
+  first, so it is how another EM or a cold-resumed session picks this epic up; it is the status
+  table you already hold, and the only thing you may push to a mailbox branch. Procedure,
+  identity, and the API path (no clone):
   [`agent-mailbox`](../agent-mailbox/SKILL.md); what you may answer with your own hands:
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The agent mailbox".
 - **An approved spec PR held by the cross-spec pass stays open, and that is correct** — don't
