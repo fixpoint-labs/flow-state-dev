@@ -1130,8 +1130,13 @@ with push access, list open handles, the identity header, what to subscribe to �
 *coordinator* owns.
 
 **The subscription is the coordinator's, like every other one.** A sub-agent can't hold one, so
-mailbox events land here for the same structural reason epic-PR feedback does. Check the board
-at **epic setup** and whenever asked — not every wake; once attached, push delivers.
+mailbox events land here for the same structural reason epic-PR feedback does.
+
+**An epic registers its own handle at setup and subscribes to it**, rather than waiting to be
+found: an address published up front is what lets a peer reach *this* epic without knowing a
+session id, and it removes the reason to poll the board on every wake. Discover before
+creating — a resumed epic already has one — and close it at wrap, or the directory fills with
+inboxes whose work ended.
 
 **Subscribe narrowly.** Every comment on a handle wakes *every* session attached to it. Take the
 handles whose slug names the work you're running, plus anything you're asked to join, and leave
