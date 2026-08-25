@@ -475,9 +475,8 @@ The epic-specific delta:
    whether you're in a cloud session before relying on either; if local, arm a **`Monitor`
    poll loop (the `watch-pr` skill)** per live PR as the primary wake signal — it wakes only
    on real activity and covers comments, reviews (incl. approvals), CI, and PR-meta.
-   **`watch-pr` is for spec / epic / impl PRs only.** A mailbox handle has no CI, no reviews and
-   no diff, and `watch-pr` would wake you on every comment including your own — use
-   `agent-mailbox/mailbox-poll.sh`, which filters on the identity header, for those.
+   **`watch-pr` is for spec / epic / impl PRs only** — never a mailbox handle, which has no CI,
+   no reviews and no diff. The mailbox is cloud-only: a local epic simply runs without it.
    **Arming a Monitor is *not* idempotent** (unlike `subscribe_pr_activity`) — re-arming one
    every wake would stack duplicate pollers, notifications, and API traffic. So **store each
    PR's Monitor handle in the `.orchestration` cache and re-arm only when it's missing or

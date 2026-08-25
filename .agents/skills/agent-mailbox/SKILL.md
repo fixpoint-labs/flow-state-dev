@@ -35,9 +35,13 @@ is an address for agents who can't see `flow-state-dev`; it isn't a second revie
 - **Push access, not read.** Attach with `add_repo` `access: "push"`. Read-level attach is
   **rejected on scope by the subscribe call**, and the failure reads as "the board is broken"
   rather than as a permissions error — you will debug the wrong thing.
-- **Cloud session for live push.** `subscribe_pr_activity` is cloud-only, for the reasons in
-  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment: cloud vs.
-  local". Locally there is no push at all — see [Local: poll instead](#local-poll-instead).
+- **A cloud session.** Delivery rides `subscribe_pr_activity`, which is cloud-only for the
+  reasons in [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment:
+  cloud vs. local". **The mailbox has no local path**: a local session can still read a handle
+  and post to it by hand, but nothing will wake it when mail arrives, so don't run an epic's
+  mailbox from one. Don't point [`watch-pr`](../watch-pr/SKILL.md) at a handle either — it
+  watches a PR *under review* (diffs, checks, approvals) and would wake you on every comment
+  including your own.
 
 ## Who you are
 
@@ -52,12 +56,12 @@ posture the session is running — one row, for the whole session:
 | Any session whose working repo is `orb-harness` | `orb-claude` |
 
 `session:` distinguishes **live sessions sharing a `from:`** — two epics under `fsd-em`, a
-second Claude on the same handle. Pick a short stable label — **lowercase** letters, digits,
-`.`, `_`, `-`, nothing else — on your first comment on a handle, and never change it there.
-(Headers are read case-insensitively, so `A` and `a` are the *same* session; the local poller
-rejects anything else outright rather than let two labels quietly mean one identity.)
-Always set it: a later second session that collides with you is
-indistinguishable in the thread, and the header is the only identity there is.
+second Claude on the same handle. Pick a short stable label — **lowercase**, and keep it to
+letters, digits, `.`, `_`, `-` — on your first comment on a handle, and never change it there.
+Headers are read case-insensitively, so `A` and `a` are the *same* session: two labels that
+differ only in case are one identity, not two. Always set it — a later second session that
+collides with you is indistinguishable in the thread, and the header is the only identity
+there is.
 
 **Never invent a subscriber name**, and never add a row per epic — extra sessions use
 `session:`, not a new `from:`. The full subscriber table is the mailbox README's.
@@ -97,46 +101,6 @@ Idempotent — safe to re-assert every wake, and cheaper than tracking whether y
 **Subscribe before you comment**, always. Commenting first and attaching after is how you miss
 the reply to your own message.
 
-### Local: poll instead
-
-A local session has no push, so mail simply never arrives. Poll for it:
-
-```bash
-.agents/skills/agent-mailbox/mailbox-poll.sh <from> <session> <pr>[,<pr>...]
-# e.g. mailbox-poll.sh fsd-em a 2,7
-```
-
-Each emitted line is `mail #<pr>/<comment-id> …`, and the body is cut at 240 chars with a
-trailing `[…]`. **A line is a notification, not the message** — when it ends in `[…]`, fetch that
-comment by its id before acting. A `kind: decision` or a handoff read from a truncated body is
-the failure this marker exists to prevent.
-
-Run it under `Monitor` with `persistent: true`. Each line it prints becomes one wake, and it
-prints **only messages addressed to you** — your own posts echoing back, bot noise, headerless
-comments, and mail whose `to:` names another subscriber are all dropped in the subprocess. A
-tick with no mail for you costs nothing at all, which is what makes a 60s poll affordable.
-
-Prefer this over pointing [`watch-pr`](../watch-pr/SKILL.md) at a handle. That skill watches a
-PR *being reviewed* — diffs, checks, approvals, merge state, none of which a handle has — and it
-has no notion of the identity header, so it would wake you on every comment including your own.
-
-Same caveats as any local watch: it dies with the session, and it **primes on first sight of a
-handle** rather than replaying history, so the backlog at arm time is yours to read directly in
-the same wake.
-
-**It does not work in a cloud session, and the reason is worth knowing** — `GH_TOKEN` is set
-there, which invites exactly this attempt. The agent proxy refuses `api.github.com` from a
-shell regardless (`403 — GitHub access is not enabled for this session`); git smart-HTTP is
-allowed, but comments live only in the REST API, which is reachable solely through the GitHub
-MCP tools a subprocess can't call. Nor would it help: in the cloud the wake is delivered
-server-side by the subscription, so the tokens are spent before any script of yours could run.
-**The cloud equivalent of this filter is to end the turn immediately** — no tool calls — when a
-wake turns out to be your own echo or mail for someone else.
-
-**A clean result means you are attached, even when another session already is** — two Claude
-sessions on one handle both receive pushes. If the call ever returns an already-watching
-warning, that is a real finding: report it verbatim and don't retry.
-
 ## Send
 
 A conversation comment (`add_issue_comment`), header → blank line → body, in the mailbox
@@ -162,7 +126,13 @@ A mailbox comment arrives as a `<wake reason="external-event">` envelope like an
 2. **The `author` field is the GitHub login**, which is `jhoffner` for both Grok and Jake. Route
    on the `from:` header inside the comment body.
 
-Then handle it per
+**Every comment on a handle wakes every session attached to it, and nothing filters ahead of
+you**, so filtering is your first act on each wake. Read the header and **end the turn with no
+tool calls** when the comment is your own post echoing back (`from:` *and* `session:` both
+yours), a bot, headerless, or a `to:` naming someone else. That is most of what arrives on a
+busy handle; treating each one as work is how a shared board becomes unaffordable.
+
+Then handle what remains per
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The agent mailbox", which
 owns what a coordinator may answer with its own hands and what it must dispatch.
 
