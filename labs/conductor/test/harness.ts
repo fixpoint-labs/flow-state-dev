@@ -118,7 +118,12 @@ export interface ConductorHarness {
   sourceRepo: string;
   sessionId: string;
   /** `asSession` drives the action from a DIFFERENT coordinator session. */
-  call<T = unknown>(action: string, input: unknown, asSession?: string): Promise<T>;
+  call<T = unknown>(
+    action: string,
+    input: unknown,
+    asSession?: string,
+    asTenant?: string,
+  ): Promise<T>;
   dispose(): void;
 }
 
@@ -132,6 +137,8 @@ export interface HarnessOptions {
   tenant?: string;
   ownership?: { waitMs?: number; pollMs?: number; staleAfterMs?: number };
   runTimeoutMs?: number;
+  /** The per-git-call bound, which the stale window must clear. */
+  gitTimeoutMs?: number;
 }
 
 /** A real git repository with one commit, so `worktree add` has something to cut. */
@@ -163,7 +170,13 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   // nothing to do with what it was testing. Deriving keeps every harness
   // instance valid by construction, whichever knob a test turns.
   const runTimeoutMs = options.runTimeoutMs ?? 30_000;
-  const staleAfterMs = options.ownership?.staleAfterMs ?? runTimeoutMs + 1_000;
+  // The manager's own arithmetic, not a guess at it: the lock is held across
+  // provisioning AND the run, so the stale window must clear both. Shrinking
+  // the git budget is what keeps the suite's numbers small while the inequality
+  // stays the real one.
+  const gitTimeoutMs = options.gitTimeoutMs ?? 10_000;
+  const staleAfterMs =
+    options.ownership?.staleAfterMs ?? runTimeoutMs + gitTimeoutMs + 1_000;
   const ownership = {
     waitMs: options.ownership?.waitMs ?? staleAfterMs,
     pollMs: options.ownership?.pollMs ?? 25,
@@ -173,7 +186,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   const built = conductorFlow({
     epic: options.epic ?? "harness-manager",
     ...(options.tenant !== undefined ? { tenant: options.tenant } : {}),
-    workspace: { root: workspaceRoot, sourceRepo, baseRef: "main" },
+    workspace: { root: workspaceRoot, sourceRepo, baseRef: "main", gitTimeoutMs },
     maxAttempts: options.maxAttempts ?? 3,
     runTimeoutMs,
     phase,
@@ -205,7 +218,22 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
     workspaceRoot,
     sourceRepo,
     sessionId,
-    async call<T>(action: string, input: unknown, asSession?: string): Promise<T> {
+    /**
+     * Run one action.
+     *
+     * `asTenant` is the request's RESOLVED tenant — it goes to `runAction`,
+     * which puts it on `ctx.user.identity`, exactly where a real deployment's
+     * authentication would. Never passed in the input body: the whole point of
+     * the guard under test is that it reads a trusted source (BP-031), so a
+     * test that supplied the tenant through the payload would be exercising the
+     * wrong path.
+     */
+    async call<T>(
+      action: string,
+      input: unknown,
+      asSession?: string,
+      asTenant?: string,
+    ): Promise<T> {
       // The RESOLVED runtime, not the FlowState handle: `stores` on the handle
       // is the unresolved slot config, and `runAction` reaches straight for
       // `stores.activeRequests`.
@@ -219,6 +247,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
         input: input as never,
         userId: USER_ID,
         sessionId: asSession ?? sessionId,
+        ...(asTenant !== undefined ? { tenantId: asTenant } : {}),
         stores: runtime.stores as never,
         // Spread, as `fsdev run` does: the detached start operation reaches a
         // request only because a spread copies the `requestHost` REFERENCE.

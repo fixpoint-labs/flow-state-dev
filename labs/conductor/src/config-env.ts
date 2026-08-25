@@ -9,6 +9,7 @@
  */
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 
 /**
  * The repository this process itself lives in, or `undefined` outside a
@@ -27,9 +28,57 @@ export function repositoryIdentity(dir: string): string | undefined {
       stdio: ["ignore", "pipe", "ignore"],
       encoding: "utf8",
     }).trim();
-    return path.resolve(dir, out);
+    // `realpathSync`, not `path.resolve`. Resolving lexically canonicalises the
+    // SPELLING and not the location: `git rev-parse --git-common-dir` answers
+    // `.git` for both a repository and a symlink to it, and a lexical resolve
+    // then produces two different strings for one directory — so a symlinked
+    // `CONDUCTOR_REPO` walked straight past the guard and the agent could edit
+    // the dispatcher after all. Comparing identity means comparing the physical
+    // path.
+    return realpathSync(path.resolve(dir, out));
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Refuse a repository that is the one this process is running from.
+ *
+ * **One function, because there are two callers and they drifted.** The
+ * dispatcher's config gained repository-identity comparison while the goal
+ * runner kept path equality — and the goal runner is the one that launches a
+ * real coding agent, so the site that kept the weaker rule had the larger blast
+ * radius. Adopting a rule means moving every site that speaks the old
+ * vocabulary (BP-034), and a rule that lives in one function cannot be adopted
+ * halfway.
+ */
+export function assertDistinctRepository(
+  variable: string,
+  repo: string,
+  from: string = process.cwd(),
+): void {
+  const theirs = repositoryIdentity(repo);
+  if (theirs === undefined) {
+    // **An unusable target is refused here, not discovered later.** Provisioning
+    // is what would find it — after a row is claimed — so every retry would be
+    // spent on a permanent startup error the run cannot fix.
+    throw new Error(
+      `[conductor] ${variable} (${repo}) is not a git repository — it does not exist, or ` +
+        "it is an ordinary directory. Checkouts are cut from it with `git worktree add`, " +
+        "so this fails on every attempt and no retry can fix it.",
+    );
+  }
+
+  // `mine` may legitimately be undefined: a dispatcher run from outside any
+  // repository has nothing to collide with. Only a MATCH is a refusal.
+  const mine = repositoryIdentity(from);
+  if (mine !== undefined && mine === theirs) {
+    throw new Error(
+      `[conductor] ${variable} (${repo}) is the repository this process is itself running ` +
+        "from — a different path inside it, another of its worktrees, or a symlink to it " +
+        "is still the same repository. The point is a run driving ANOTHER repository " +
+        "rather than editing the thing that dispatched it.",
+    );
   }
 }
 
@@ -61,16 +110,7 @@ export function requireSourceRepo(): string {
     );
   }
 
-  const mine = repositoryIdentity(process.cwd());
-  const theirs = repositoryIdentity(repo);
-  if (mine !== undefined && mine === theirs) {
-    throw new Error(
-      `[conductor] CONDUCTOR_REPO (${repo}) is the repository this dispatcher is itself ` +
-        "running from — a different path inside it, or another of its worktrees, is still " +
-        "the same repository. The point is a run driving ANOTHER repository rather than " +
-        "editing the thing that dispatched it.",
-    );
-  }
+  assertDistinctRepository("CONDUCTOR_REPO", repo);
   return repo;
 }
 
@@ -86,19 +126,39 @@ export function requireSourceRepo(): string {
  * task as a failed attempt, once per retry, and the row settles errored for a
  * typo in a shell.
  *
- * Negative and fractional values throw the same `RangeError`. Refusing all
- * three at startup turns a run-time charge into a message before anything is
- * claimed.
+ * Negative and fractional values throw the same `RangeError`. So does anything
+ * past the platform timer ceiling — which is the state validating the OTHERS
+ * introduced: "a positive safe integer" admits `2**32`, and
+ * `AbortSignal.timeout` rejects it exactly as it rejects `NaN`, while a plain
+ * `setTimeout` silently clamps to 1ms and fires immediately. Both are the same
+ * defect wearing different clothes, so the bound is checked here too.
+ *
+ * Refusing all of them at startup turns a run-time charge into a message before
+ * anything is claimed.
  */
+/**
+ * The largest delay the timer paths actually honour. **Measured, and the
+ * measurement moved the number.**
+ *
+ * `AbortSignal.timeout` throws `RangeError` only above `2**32 - 1`, so that
+ * looked like the ceiling. It is not: Node's timers are 32-bit *signed*, and
+ * anything above `2**31 - 1` is silently clamped to 1ms with a warning — so a
+ * deadline of 2^32-1 does not throw, it fires immediately and settles every row
+ * errored. The louder failure was the safer one, which is why the bound is the
+ * quieter limit.
+ */
+export const MAX_TIMER_MS = 2_147_483_647;
+
 export function positiveIntFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
   const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_TIMER_MS) {
     throw new Error(
-      `[conductor] ${name}="${raw}" is not a positive whole number of milliseconds. ` +
-        "Left unchecked this is not caught until a claimed attempt hands it to a timer " +
-        "and throws, charging a config error to the task once per retry.",
+      `[conductor] ${name}="${raw}" is not a positive whole number of milliseconds ` +
+        `no greater than ${MAX_TIMER_MS}. Left unchecked this is not caught until a ` +
+        "claimed attempt hands it to a timer and throws, charging a config error to the " +
+        "task once per retry.",
     );
   }
   return value;

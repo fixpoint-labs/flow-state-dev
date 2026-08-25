@@ -38,7 +38,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../../../labs/conductor/src/flow.ts";
 import { implementPhase } from "../../../labs/conductor/src/implement.ts";
+import { assertDistinctRepository } from "../../../labs/conductor/src/config-env.ts";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
+
 
 interface Fixture {
   issue: string;
@@ -86,12 +88,19 @@ await runGoal(async () => {
       evidence: "",
     };
   }
-  if (resolve(sourceRepo) === resolve(process.cwd())) {
+  // **The dispatcher's guard, not a second copy of it.** This runner kept path
+  // equality after `fsdev.config.ts` moved to repository identity, so a
+  // subdirectory, a sibling worktree or a symlinked spelling walked past it —
+  // and this is the site that launches a REAL coding agent, so the one left on
+  // the weaker rule had the larger blast radius. Importing the function is what
+  // makes "adopt the rule" mean every site (BP-034).
+  try {
+    assertDistinctRepository("GOAL_CONDUCTOR_REPO", sourceRepo);
+  } catch (err) {
     return {
       failures: [
-        `GOAL_CONDUCTOR_REPO is the process's own directory (${sourceRepo}). The run ` +
-          "would edit the thing that dispatched it, and the working directory this " +
-          "issue adds would go untested while this check still passed.",
+        `${err instanceof Error ? err.message : String(err)} The working directory this ` +
+          "issue adds would also go untested while this check still passed.",
       ],
       evidence: "",
     };

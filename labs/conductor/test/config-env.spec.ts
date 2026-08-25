@@ -8,10 +8,15 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { positiveIntFromEnv, repositoryIdentity, requireSourceRepo } from "../src/config-env";
+import { dirname, join } from "node:path";
+import {
+  MAX_TIMER_MS,
+  positiveIntFromEnv,
+  repositoryIdentity,
+  requireSourceRepo,
+} from "../src/config-env";
 import { seedRepo } from "./harness";
 
 const dirs: string[] = [];
@@ -58,6 +63,35 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     expect(() => requireSourceRepo()).toThrow(/same repository/);
   });
 
+  it("refuses a SYMLINK to the dispatcher's repository", () => {
+    // The state the identity fix introduced. `git rev-parse --git-common-dir`
+    // answers `.git` for both spellings, and resolving that LEXICALLY
+    // canonicalises the string rather than the location — so two different
+    // paths came back for one directory and the symlink walked past the guard.
+    const dir = repo();
+    const link = join(dirname(dir), `link-${Date.now()}`);
+    symlinkSync(dir, link);
+    dirs.push(link);
+    process.chdir(dir);
+    process.env.CONDUCTOR_REPO = link;
+
+    expect(() => requireSourceRepo()).toThrow(/same repository/);
+  });
+
+  it("refuses a target that is not a repository at all", () => {
+    // Otherwise the failure surfaces from `worktree add` — after a claim — and
+    // every retry is spent on a permanent startup error.
+    const plain = mkdtempSync(join(tmpdir(), "conductor-plain-"));
+    dirs.push(plain);
+    process.chdir(repo());
+
+    process.env.CONDUCTOR_REPO = plain;
+    expect(() => requireSourceRepo()).toThrow(/not a git repository/);
+
+    process.env.CONDUCTOR_REPO = join(plain, "nope");
+    expect(() => requireSourceRepo()).toThrow(/not a git repository/);
+  });
+
   it("accepts a genuinely different repository", () => {
     // The guard has to still permit the thing the lab exists to do, or it is
     // just an outage.
@@ -94,7 +128,15 @@ describe("numeric settings — refused at startup, not charged to a task", () =>
     // it, so the config error is charged as a failed attempt once per retry.
     // Zero is refused too: a deadline that fires immediately settles every row
     // errored without running anything.
-    for (const raw of ["abc", "-5", "1.5", "0", "1e400", "Infinity", " "]) {
+    //
+    // `2**31` is the state validating the others introduced: it is a positive
+    // safe integer, so "positive whole number" admitted it — and Node's timers
+    // are 32-bit SIGNED, so it does not throw, it clamps to 1ms and fires
+    // immediately, settling every row errored. Measured, and the measurement
+    // moved the bound: `AbortSignal.timeout` only throws above 2**32-1, but the
+    // silent clamp starts a full power of two earlier, and the quiet failure is
+    // the one worth refusing.
+    for (const raw of ["abc", "-5", "1.5", "0", "1e400", "Infinity", " ", "2147483648"]) {
       process.env.CONDUCTOR_TEST_MS = raw;
       expect(() => positiveIntFromEnv("CONDUCTOR_TEST_MS", 1_000), raw).toThrow(
         /positive whole number/,
@@ -105,6 +147,11 @@ describe("numeric settings — refused at startup, not charged to a task", () =>
   it("takes a valid value, and the fallback when unset", () => {
     process.env.CONDUCTOR_TEST_MS = "60000";
     expect(positiveIntFromEnv("CONDUCTOR_TEST_MS", 1_000)).toBe(60_000);
+
+    // The ceiling itself is accepted — a bound that rejects its own limit is an
+    // off-by-one nobody notices until a legitimate config is refused.
+    process.env.CONDUCTOR_TEST_MS = String(MAX_TIMER_MS);
+    expect(positiveIntFromEnv("CONDUCTOR_TEST_MS", 1_000)).toBe(MAX_TIMER_MS);
 
     delete process.env.CONDUCTOR_TEST_MS;
     expect(positiveIntFromEnv("CONDUCTOR_TEST_MS", 1_000)).toBe(1_000);

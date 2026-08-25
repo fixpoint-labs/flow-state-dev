@@ -15,6 +15,7 @@ import {
   type RunLocation,
   type RunPrincipal,
   type WorkspaceConfig,
+  encodeSegment,
 } from "../src/workspace";
 import { seedRepo } from "./harness";
 
@@ -104,7 +105,11 @@ describe("provisioning", () => {
       encoding: "utf8",
     }).trim();
     expect(head).toBe(
-      "conductor/t0/h616c696365/conductor-tasks-test-epic/FIX-1219--implement",
+      // The principal segment is DERIVED, not spelled: it is a digest, and a
+      // literal here would only pin how the digest happens to be computed
+      // today. What this asserts is the SHAPE — untenanted tag, principal,
+      // board identity, framed leaf.
+      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/FIX-1219--implement`,
     );
   });
 
@@ -333,6 +338,32 @@ describe("one job's state is isolated per principal", () => {
         checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: id } })),
       ).not.toThrow();
     }
+  });
+
+  it("bounds every derived component below the filesystem limit", () => {
+    // The state the DIGEST fix had to close, and the one it would have left
+    // open. Measured: a filesystem name is refused at 256 bytes, and the old
+    // hex encoding turned a 128-character id into a 257-character component —
+    // `ENAMETOOLONG` from inside `worktree add`, after the row was claimed,
+    // once per retry.
+    //
+    // Asserted over BOTH halves: the digested principal and our own validated
+    // segments. Fixing only the half that was reported would have left a long
+    // epic or phase name failing in exactly the same place.
+    const huge = "a".repeat(4_000);
+    for (const segment of checkoutPathFor(
+      { root: "/w", sourceRepo: "/r", baseRef: "main" },
+      at("FIX-1219", "implement", { principal: { userId: huge, tenantId: huge } }),
+    ).split("/")) {
+      expect(Buffer.byteLength(segment, "utf8")).toBeLessThanOrEqual(255);
+    }
+
+    // And the validated half is refused rather than silently truncated — a
+    // truncation would map two distinct epics onto one directory, which is the
+    // injectivity rule broken to fix a length.
+    expect(() => conductorTaskId("FIX-1", "a".repeat(65))).toThrow(
+      /not a usable identity segment/,
+    );
   });
 
   it("keeps an untenanted request apart from a tenant named like the default", () => {

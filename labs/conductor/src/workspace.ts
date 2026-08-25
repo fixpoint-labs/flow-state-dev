@@ -43,6 +43,7 @@
  * future caller that skips the schema still cannot escape the root.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 
@@ -54,6 +55,16 @@ export interface WorkspaceConfig {
   sourceRepo: string;
   /** The ref a fresh checkout branches from. */
   baseRef: string;
+  /**
+   * How long a single git call may take, in milliseconds.
+   *
+   * Configurable rather than constant because it is **part of the ownership
+   * arithmetic**, not just a safety net: the lock is taken before provisioning,
+   * so the longest a live attempt can legitimately hold it is this plus the
+   * run's own deadline. The stale window has to exceed that sum, and a suite
+   * that wants small bounds has to be able to shrink both halves.
+   */
+  gitTimeoutMs?: number;
 }
 
 /** One provisioned checkout. */
@@ -104,6 +115,18 @@ export interface Checkout {
 const OWNED_SEGMENT = /^[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*$/;
 
 /**
+ * How long one of our own segments may be.
+ *
+ * Bounding the *encoded* half and not this one would have left the same defect
+ * standing: a 300-character epic or phase name overflows a filesystem
+ * component exactly as a long user id did, and fails the same way — from inside
+ * git, after the row is claimed, once per retry. Measured: a name is refused at
+ * 256 bytes. 64 leaves room for the frame and keeps a segment readable, which
+ * is the whole reason these are validated rather than digested.
+ */
+const MAX_OWNED_SEGMENT = 64;
+
+/**
  * The frame. Never a single `-`: our own issue keys contain those.
  *
  * `git check-ref-format` accepts `--` inside a ref, and so does every
@@ -112,12 +135,13 @@ const OWNED_SEGMENT = /^[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*$/;
 const IDENTITY_DELIMITER = "--";
 
 export function assertSafeSegment(label: string, value: string): string {
-  if (!OWNED_SEGMENT.test(value)) {
+  if (!OWNED_SEGMENT.test(value) || value.length > MAX_OWNED_SEGMENT) {
     throw new Error(
       `[conductor] ${label} "${value}" is not a usable identity segment — ` +
-        `letters and digits, separated by single \`-\` or \`_\`. No dots (a git ref ` +
-        `may not end in "." or ".lock"), no "${IDENTITY_DELIMITER}" (it is the ` +
-        `component frame), and nothing that could climb out of a directory.`,
+        `at most ${MAX_OWNED_SEGMENT} letters and digits, separated by single \`-\` or ` +
+        `\`_\`. No dots (a git ref may not end in "." or ".lock"), no ` +
+        `"${IDENTITY_DELIMITER}" (it is the component frame), nothing that could climb out ` +
+        `of a directory, and nothing long enough to overflow a filesystem component.`,
     );
   }
   return value;
@@ -190,13 +214,30 @@ export interface RunPrincipal {
  * over every store that job touches: collections, the filesystem, and git.
  */
 function principalSegments(principal: RunPrincipal): string[] {
-  return [
-    // Tenant PRESENCE is tagged separately from tenant VALUE, so an untenanted
-    // request and a tenant that happens to be named like the placeholder can
-    // never land in one directory.
-    principal.tenantId === undefined ? "t0" : `t1${encodeSegment(principal.tenantId)}`,
-    encodeSegment(principal.userId),
-  ];
+  return [tenantSegment(principal.tenantId), encodeSegment(principal.userId)];
+}
+
+/**
+ * One tenant, as one identity component. **Presence is tagged, never
+ * defaulted.**
+ *
+ * `t0` for an untenanted request, `t1<digest>` for a tenanted one — so an
+ * absent tenant and a tenant *named* like whatever placeholder someone picks
+ * can never produce the same component.
+ *
+ * This exists as a shared function because collapsing absence into a value is a
+ * bug that was fixed here and then reintroduced one file away: the board's
+ * identity used `?? "single-tenant"`, which made a real tenant called
+ * `single-tenant` indistinguishable from no tenant at all. Same user id, same
+ * user-scoped board, each able to claim the other's rows — while THIS function
+ * kept them in different checkouts, so a task could execute and report against
+ * a tree that was not its own.
+ *
+ * Absent and `"single-tenant"` are different facts. The type carries that
+ * (`string | undefined`), and every derivation reads it through here.
+ */
+export function tenantSegment(tenantId: string | undefined): string {
+  return tenantId === undefined ? "t0" : `t1${encodeSegment(tenantId)}`;
 }
 
 /**
@@ -214,23 +255,34 @@ function principalSegments(principal: RunPrincipal): string[] {
  * injective, so two distinct ids can never share a directory, and its alphabet
  * contains nothing any filesystem treats specially.
  *
- * Hex of the UTF-8 bytes behind a literal `h`: `h[0-9a-f]*`, which cannot spell
- * a reserved device name, cannot end in a dot, and cannot contain a separator
- * or the identity frame.
+ * A SHA-256 digest in hex, behind a literal `h`: `h[0-9a-f]{64}`, which cannot
+ * spell a reserved device name, cannot end in a dot, and cannot contain a
+ * separator or the identity frame.
  *
- * **The prefix is load-bearing, not decoration.** Bare hex of an empty id is
- * the empty string, and an empty segment is silently dropped by `join` and
- * outright rejected by `git check-ref-format` — so an empty user id produced a
- * branch that could never be created. That was a note in this comment telling
- * callers to compensate; it is now a property of the output, because a rule
- * every caller must remember is a rule one caller will forget.
+ * **A digest and not a reversible encoding, because the output has to be
+ * bounded.** Hex of the input doubles it, so a 128-character id — an ordinary
+ * length for an opaque subject claim — produced a 257-character component.
+ * Measured: a filesystem name is refused at 256, and `ENAMETOOLONG` arrives
+ * from `worktree add`, which is to say *after* the row is claimed. Every retry
+ * would then be spent on a length no retry can change. A fixed 65 characters
+ * cannot do that.
+ *
+ * The cost is honest: the path no longer says which user it belongs to. What it
+ * keeps is the property the derivation actually needs — distinct ids give
+ * distinct components — since a SHA-256 collision is not a failure mode this
+ * system will meet.
+ *
+ * **The prefix is load-bearing, not decoration.** A bare digest of an empty id
+ * is still a digest, but the prefix keeps the alphabet closed under `h[0-9a-f]`
+ * for every input including the empty one, and it is what a reader recognises
+ * as "this segment is derived, not typed".
  *
  * **The issue and phase segments stay validated.** Those identifiers are ours,
  * the grammar is one we set, and rejecting a malformed issue key is a real
  * signal rather than an imposition.
  */
 export function encodeSegment(value: string): string {
-  return `h${Buffer.from(value, "utf8").toString("hex")}`;
+  return `h${createHash("sha256").update(value, "utf8").digest("hex")}`;
 }
 
 /**
@@ -323,10 +375,10 @@ function lockPathFor(checkoutPath: string): string {
   return `${checkoutPath}.lock`;
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
+async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Promise<string> {
   const { stdout } = await run("git", args, {
     cwd,
-    timeoutMs: GIT_TIMEOUT_MS,
+    timeoutMs,
     maxBuffer: 8 * 1024 * 1024,
   });
   return stdout.trim();
@@ -338,14 +390,21 @@ async function git(cwd: string, args: string[]): Promise<string> {
  * A detached HEAD is a mismatch like any other — the run would commit to no
  * branch at all — so it is reported rather than tolerated.
  */
-async function currentBranch(checkoutPath: string): Promise<string | null> {
-  const head = await git(checkoutPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
+async function currentBranch(
+  checkoutPath: string,
+  timeoutMs?: number,
+): Promise<string | null> {
+  const head = await git(checkoutPath, ["rev-parse", "--abbrev-ref", "HEAD"], timeoutMs);
   return head === "HEAD" ? null : head;
 }
 
 async function branchExists(config: WorkspaceConfig, branch: string): Promise<boolean> {
   try {
-    await git(config.sourceRepo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+    await git(
+      config.sourceRepo,
+      ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
+      config.gitTimeoutMs,
+    );
     return true;
   } catch {
     return false;
@@ -396,7 +455,7 @@ export async function provisionCheckout(
     // Fail loudly rather than resetting. A reset would discard whatever the tree
     // holds, and this module never resets (decision 2's carry-forward is exactly
     // that work).
-    const head = await currentBranch(path);
+    const head = await currentBranch(path, config.gitTimeoutMs);
     if (head !== branch) {
       throw new Error(
         `[conductor] the checkout at ${path} is on branch "${head}", not the expected ` +
@@ -412,12 +471,12 @@ export async function provisionCheckout(
   // A worktree whose directory was removed leaves an administrative entry
   // behind, and `worktree add` then refuses the path by name. Pruning is not a
   // reset: it touches bookkeeping, never a tree.
-  await git(config.sourceRepo, ["worktree", "prune"]);
+  await git(config.sourceRepo, ["worktree", "prune"], config.gitTimeoutMs);
 
   const args = (await branchExists(config, branch))
     ? ["worktree", "add", path, branch]
     : ["worktree", "add", "-b", branch, path, config.baseRef];
-  await git(config.sourceRepo, args);
+  await git(config.sourceRepo, args, config.gitTimeoutMs);
   return { path, branch, created: true };
 }
 

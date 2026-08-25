@@ -40,6 +40,7 @@ import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
+import { GIT_TIMEOUT_MS } from "./exec";
 import {
   RUNS,
   openRunRow,
@@ -111,7 +112,7 @@ export interface ManagerOptions {
    * The tenant this conductor serves — the same value that partitions the
    * board's collection identity. Every request must resolve to it.
    */
-  tenant: string;
+  tenant: string | undefined;
   phase: PhaseSpec;
   workspace: WorkspaceConfig;
   /** Wall-clock budget for the harness run itself. */
@@ -176,7 +177,22 @@ export class ConductorAttemptFailed extends Error {
  * put every unauthenticated run in one shared checkout, which is the exact
  * collision the principal is here to prevent.
  */
-function runPrincipal(ctx: BlockContext): RunPrincipal {
+/**
+ * What the principal is read from — the request's authenticated identity, and
+ * nothing else.
+ *
+ * Typed by what it READS rather than as a whole `BlockContext`, so any caller
+ * can pass its own narrower context without a cast. The casts were not free:
+ * `as BlockContext` on a handler whose resources are typed fails to compile,
+ * and the escape hatch that fixes it (`as unknown as`) would silently accept a
+ * context that has no identity at all — on the one derivation where a missing
+ * identity means two principals sharing a checkout.
+ */
+export interface RequestIdentityContext {
+  user?: { identity?: unknown } | undefined;
+}
+
+function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
   const identity = ctx.user?.identity as
     | { id?: unknown; tenantId?: unknown }
     | undefined;
@@ -235,6 +251,29 @@ async function fenced(
   if ((await write) === "refused") throw new ConductorAttemptSuperseded(where);
 }
 
+/**
+ * The tenant a request resolved to.
+ *
+ * **One derivation, exported, because two places enforce it.** The flow's
+ * per-action gate refuses before the board is touched; the manager refuses
+ * before the work executes. If they computed the tenant differently — one
+ * defaulting, the other not — the gate would pass a request the manager then
+ * rejects mid-run, which is the charged-attempt failure the gate exists to
+ * remove, reintroduced by a second copy of one rule.
+ *
+ * `DEFAULT_TENANT` is a literal rather than `undefined` for the same reason
+ * `principalSegments` tags tenant presence: an untenanted deployment must have
+ * a *value* to compare, not an absence that every comparison silently passes.
+ */
+export function requestTenant(ctx: RequestIdentityContext): string | undefined {
+  return runPrincipal(ctx).tenantId;
+}
+
+/** How a tenant reads in a message. Absence is a fact, so it gets words. */
+export function describeTenant(tenantId: string | undefined): string {
+  return tenantId === undefined ? "no tenant" : `"${tenantId}"`;
+}
+
 /** Read the typed payload off the worker input, refusing an unusable one loudly. */
 function taskPayload(input: { input?: unknown; taskId: string }): {
   issue: string;
@@ -289,6 +328,21 @@ export function harnessManager(options: ManagerOptions) {
     name = "harness-manager",
   } = options;
 
+  // **How long a live attempt can legitimately hold the lock.**
+  //
+  // Not `runTimeoutMs`. The lock is acquired BEFORE the checkout is provisioned
+  // — deliberately, so a displaced attempt cannot switch branches under its
+  // replacement — and provisioning is git, which on a large repository takes
+  // minutes. The run's own deadline only starts at the agent step, so a stale
+  // window sized against it alone can elapse while the holder is still inside
+  // `worktree add`: the replacement declares the lock stale, clears it, and two
+  // agents mutate one checkout. Obligation B, defeated by arithmetic.
+  //
+  // `provisionBudget` is a bound and not an estimate — it is the same number
+  // the git calls are actually given, so the two cannot drift.
+  const provisionBudget = workspace.gitTimeoutMs ?? GIT_TIMEOUT_MS;
+  const maxLockHeldMs = runTimeoutMs + provisionBudget;
+
   const ownership: OwnershipBounds = {
     // Sized against the lease-renewal lag that produces overlap, and well
     // inside the run's own deadline: an ordinary reclaim resolves in seconds.
@@ -302,12 +356,13 @@ export function harnessManager(options: ManagerOptions) {
     // exit that neither completes nor fails the row, and that third outcome is
     // exactly what this spec defers to LAB-139. So the bound moves instead: it
     // costs latency on a genuinely wedged tree and no design change.
-    waitMs: options.ownership?.waitMs ?? runTimeoutMs + 300_000,
+    waitMs: options.ownership?.waitMs ?? maxLockHeldMs + 300_000,
     pollMs: options.ownership?.pollMs ?? 1_000,
-    // Past the run's deadline, so a lock is declared stale only once no live
-    // attempt could still hold it. That is what removes the need for a
+    // Past the longest legitimate hold — the run's deadline AND the
+    // provisioning that precedes it — so a lock is declared stale only once no
+    // live attempt could still hold it. That is what removes the need for a
     // heartbeat.
-    staleAfterMs: options.ownership?.staleAfterMs ?? runTimeoutMs + 300_000,
+    staleAfterMs: options.ownership?.staleAfterMs ?? maxLockHeldMs + 300_000,
   };
 
   // The default satisfies this by construction; an override can break it, and
@@ -325,12 +380,14 @@ export function harnessManager(options: ManagerOptions) {
     );
   }
 
-  if (ownership.staleAfterMs <= runTimeoutMs) {
+  if (ownership.staleAfterMs <= maxLockHeldMs) {
     throw new Error(
-      `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed ` +
-        `runTimeoutMs (${runTimeoutMs}ms): a lock may only be declared stale once no ` +
-        `live attempt could still be holding it. Raise the stale window above the run's ` +
-        `own deadline, or lower the deadline.`,
+      `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed the ` +
+        `longest a live attempt can hold the lock (${maxLockHeldMs}ms = runTimeoutMs ` +
+        `${runTimeoutMs}ms + the provisioning budget ${provisionBudget}ms): the lock is ` +
+        `taken before the checkout is provisioned, so a window sized against the run's ` +
+        `deadline alone can elapse while the holder is still inside git. Raise the stale ` +
+        `window, lower the deadline, or lower workspace.gitTimeoutMs.`,
     );
   }
 
@@ -412,12 +469,12 @@ export function harnessManager(options: ManagerOptions) {
       // reading and claiming rows that are not its own — the ledger half of the
       // isolation the checkout and branch already have. Refused here for the
       // same reason the phase is: this is where the wrong work would execute.
-      const resolvedTenant = runPrincipal(ctx as BlockContext).tenantId ?? "single-tenant";
+      const resolvedTenant = requestTenant(ctx as BlockContext);
       if (resolvedTenant !== tenant) {
         throw new ConductorAttemptFailed(
-          `[conductor] this conductor serves tenant "${tenant}"; the request resolved to ` +
-            `"${resolvedTenant}". Refusing rather than running one tenant's task in another's ` +
-            `workspace.`,
+          `[conductor] this conductor serves ${describeTenant(tenant)}; the request resolved ` +
+            `to ${describeTenant(resolvedTenant)}. Refusing rather than running one tenant's ` +
+            `task in another's workspace.`,
         );
       }
 

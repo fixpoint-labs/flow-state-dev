@@ -52,7 +52,7 @@ type StatusRow = {
 const ISSUE = "FIX-1219";
 const PHASE = "implement";
 /** The harness's default epic, so the ledger can be addressed by accessor key. */
-const COLLECTION_ID = "conductor-tasks--h73696e676c652d74656e616e74--harness-manager";
+const COLLECTION_ID = "conductor-tasks--t0--harness-manager";
 
 let live: ConductorHarness | undefined;
 afterEach(() => {
@@ -365,7 +365,8 @@ describe("the manager — contention, and what it must not cost", () => {
       // Every bound is explicit here because the ordering IS the subject:
       // the waiter must outlast the 250ms hold without ever becoming eligible
       // to steal the tree as stale.
-      runTimeoutMs: 3_000,
+      runTimeoutMs: 1_000,
+      gitTimeoutMs: 2_000,
       ownership: { waitMs: 5_000, pollMs: 20, staleAfterMs: 4_000 },
     });
 
@@ -448,10 +449,10 @@ describe("the manager — the phase surface", () => {
       runTimeoutMs: 5_000,
     });
 
-    expect(built.boardId).toBe("conductor--h73696e676c652d74656e616e74--second-phase");
+    expect(built.boardId).toBe("conductor--t0--second-phase");
     // A distinct STORAGE identity, not just a distinct routing id: two epic
     // boards sharing a collection would operate on the same rows.
-    expect(built.collectionId).toBe("conductor-tasks--h73696e676c652d74656e616e74--second-phase");
+    expect(built.collectionId).toBe("conductor-tasks--t0--second-phase");
     expect(built.collectionId).not.toBe(h.built.collectionId);
   });
 
@@ -601,16 +602,38 @@ describe("the manager — the stale window is refused at construction", () => {
       createConductorHarness({
         resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
         runTimeoutMs: 60_000,
+        gitTimeoutMs: 1_000,
         ownership: { waitMs: 90_000, staleAfterMs: 30_000 },
       }),
     ).toThrow(/must exceed/);
   });
 
-  it("accepts a stale window past the deadline", () => {
+  it("refuses a stale window that clears the run but not the provisioning", async () => {
+    // The gap the reordering opened. The lock is taken BEFORE the checkout is
+    // provisioned, so the longest a live attempt can legitimately hold it is the
+    // run's deadline PLUS the git budget. A window sized against the deadline
+    // alone can elapse while the holder is still inside `worktree add` — the
+    // replacement clears the lock and two agents mutate one checkout.
+    //
+    // 40s clears the 30s run and not the 30s+20s hold, so this passes the OLD
+    // inequality and fails the real one. A test using a window inside the run's
+    // deadline would have passed either way.
+    expect(() =>
+      createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+        runTimeoutMs: 30_000,
+        gitTimeoutMs: 20_000,
+        ownership: { waitMs: 90_000, staleAfterMs: 40_000 },
+      }),
+    ).toThrow(/longest a live attempt can hold the lock/);
+  });
+
+  it("accepts a stale window past the deadline", async () => {
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     const h = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
       runTimeoutMs: 30_000,
+      gitTimeoutMs: 1_000,
       ownership: { waitMs: 90_000, staleAfterMs: 90_000 },
     });
     h.dispose();
@@ -837,22 +860,171 @@ describe("the ledger is partitioned by tenant", () => {
     expect(separated.boardId).not.toBe(implement.boardId);
   });
 
-  it("refuses a request resolved to a different tenant", async () => {
-    // The ledger id is construction-time, so a conductor serves one tenant. A
-    // request resolved to another would be reading and claiming rows that are
-    // not its own — refused where the wrong work would execute.
-    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
-    live = createConductorHarness({
-      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
-      isDone: () => true,
-      tenant: "acme",
+  describe("every action refuses another tenant BEFORE touching the board", () => {
+    // The guarantee this file documents used to hold for exactly one of the
+    // three actions. The tenant check lived only in the manager, which runs
+    // when the drain DISPATCHES a claimed row — so `seed` wrote with no check
+    // at all, `status` read with no check at all, and `wake` claimed first and
+    // refused after.
+    //
+    // Each test below therefore asserts the *timing*, not just the refusal: a
+    // check that only asserted "it threw" passes on every one of those bugs.
+    const OTHER = "acme";
+
+    function conductorFor(tenant: string): ConductorHarness {
+      const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+      return Object.assign(
+        createConductorHarness({
+          resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+          isDone: () => true,
+          tenant,
+        }),
+        { seen },
+      );
+    }
+
+    it("refuses a foreign SEED before the row is written", async () => {
+      // Cross-tenant task INJECTION. Refusing after the write would leave the
+      // row filed on someone else's board and report a failure — the worst of
+      // both.
+      live = conductorFor(OTHER);
+
+      await expect(
+        live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, "globex"),
+      ).rejects.toThrow(/serves "acme"/);
+
+      // Nothing was filed. Read as the RIGHT tenant, or the read would be
+      // refused too and this would pass because it saw nothing either way.
+      const { rows } = await live.call<{ rows: StatusRow[] }>("status", {}, undefined, OTHER);
+      expect(rows).toHaveLength(0);
     });
 
-    const row = await seedAndDrain(live);
+    it("refuses a foreign STATUS before the ledger is read", async () => {
+      // Cross-tenant DISCLOSURE. A refusal that has already listed the rows has
+      // already read them; the only way to know it refused first is that no row
+      // comes back with the error.
+      live = conductorFor(OTHER);
+      await live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, OTHER);
 
-    // The harness authenticates with no tenant, so it resolves "single-tenant".
-    expect(row.status).not.toBe("completed");
-    expect(row.feedback).toMatch(/serves tenant "acme"/);
-    expect(seen.prompts).toHaveLength(0);
+      await expect(
+        live.call("status", { issue: ISSUE }, undefined, "globex"),
+      ).rejects.toThrow(/serves "acme"/);
+    });
+
+    it("refuses a foreign WAKE without charging the row an attempt", async () => {
+      // The one that needed the gate rather than a message. `applyClaimToTask`
+      // sets `in_progress` and increments `attempts` in the SAME write, so a
+      // refusal from inside the manager arrives one charged attempt too late —
+      // on a valid task belonging to someone else. Repeated foreign wakes would
+      // exhaust its retry budget without ever running it.
+      //
+      // Asserting only that `wake` threw would pass with the attempt still
+      // burnt, which is precisely the bug.
+      live = conductorFor(OTHER);
+      await live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, OTHER);
+
+      const before = await live.call<{ rows: StatusRow[] }>(
+        "status",
+        { issue: ISSUE },
+        undefined,
+        OTHER,
+      );
+
+      await expect(live.call("wake", {}, undefined, "globex")).rejects.toThrow(
+        /serves "acme"/,
+      );
+
+      const after = await live.call<{ rows: StatusRow[] }>(
+        "status",
+        { issue: ISSUE },
+        undefined,
+        OTHER,
+      );
+      expect(after.rows[0].attempts).toBe(before.rows[0].attempts);
+      expect(after.rows[0].status).toBe(before.rows[0].status);
+    });
+
+    it("does not let a tenant NAMED like the default alias an untenanted one", async () => {
+      // The state the tenant check itself introduced. `?? "single-tenant"`
+      // collapsed absence into a value, so a real tenant called `single-tenant`
+      // and a request with no tenant resolved identically — same user id, same
+      // user-scoped board, each able to claim the other's rows — while the
+      // WORKSPACE kept them apart (`t0` vs `t1...`). A task could then execute
+      // and report against a checkout that was not its own.
+      //
+      // Absence and a name are different facts, and this asserts the board
+      // agrees with the checkout about that.
+      const { conductorFlow } = await import("../src/flow");
+      const untenanted = conductorFlow({ ...base });
+      const named = conductorFlow({ ...base, tenant: "single-tenant" });
+
+      expect(named.collectionId).not.toBe(untenanted.collectionId);
+      expect(named.boardId).not.toBe(untenanted.boardId);
+    });
+
+    it("refuses an untenanted request on a tenanted conductor, and the reverse", async () => {
+      // Both directions, because the comparison is now between two values that
+      // can each be undefined — a check written as `a !== b` passes vacuously if
+      // one side silently defaults.
+      live = conductorFor(OTHER);
+      await expect(
+        live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, undefined),
+      ).rejects.toThrow(/serves "acme"; the request resolved to no tenant/);
+
+      live.dispose();
+      live = createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], {
+          prompts: [],
+          cwds: [],
+        }),
+        isDone: () => true,
+      });
+      await expect(
+        live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, "acme"),
+      ).rejects.toThrow(/serves no tenant; the request resolved to "acme"/);
+    });
+
+    it("does not let a REQUEST named like the default pass as untenanted", async () => {
+      // The other half of the sentinel. The identity test above covers the
+      // conductor's own derivation; this covers the comparison — `requestTenant`
+      // used to answer `"single-tenant"` for a request that carried no tenant at
+      // all, so a request genuinely resolved to a tenant of that name was
+      // indistinguishable from one resolved to nothing, and the untenanted
+      // conductor accepted both.
+      live = createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+        isDone: () => true,
+      });
+
+      await expect(
+        live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, "single-tenant"),
+      ).rejects.toThrow(/serves no tenant; the request resolved to "single-tenant"/);
+
+      // And the direction that actually aliased: a conductor built FOR a tenant
+      // of that name must not accept a request carrying no tenant. With the old
+      // `?? "single-tenant"` it did — the untenanted caller resolved to exactly
+      // this conductor's tenant and was let straight through to its board.
+      live.dispose();
+      live = createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+        isDone: () => true,
+        tenant: "single-tenant",
+      });
+      await expect(
+        live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, undefined),
+      ).rejects.toThrow(/serves "single-tenant"; the request resolved to no tenant/);
+    });
+
+    it("still serves the tenant it was built for", async () => {
+      // The guard has to leave the product working, or it is just an outage.
+      live = conductorFor(OTHER);
+      const { taskId } = await live.call<{ taskId: string }>(
+        "seed",
+        { issue: ISSUE, phase: PHASE },
+        undefined,
+        OTHER,
+      );
+      expect(taskId).toBe(`${ISSUE}--${PHASE}`);
+    });
   });
 });
