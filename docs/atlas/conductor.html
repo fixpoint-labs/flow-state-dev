@@ -696,26 +696,28 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </figure>
 
   <pre class="code"><i>// PROPOSED &#8212; this flow does not exist. Every API it calls does.</i>
-const board = <em>taskBoard</em>({
+const epicBoard = (epicId: string) => <em>taskBoard</em>({
   name: "epic",
-  boardId: "conductor",              <i>// required once any worker is detached</i>
-  collection: epicTasks,             <i>// defineTaskCollection({ id, scope: "user" })</i>
+  boardId: `epic:${epicId}`,         <i>// ONE BOARD PER EPIC &#8212; required once any worker is detached</i>
+  collection: epicTasks(epicId),     <i>// defineTaskCollection({ id: `tasks:${epicId}`, scope: "user" })</i>
   dispatcher: "topological",         <i>// deps = the issue graph + phase order</i>
   concurrency: 2,                    <i>// human attention, not machine capacity</i>
   onIdle: "complete-or-blocked",
-  workers: {
+  workers: {                         <i>// each worker declares uses: [conductorConfig] itself</i>
     spec:      { worker: <b>harnessPhase</b>(specLogic),      dispatch: { mode: "detached" } },
     implement: { worker: <b>harnessPhase</b>(implementLogic), dispatch: { mode: "detached" } },
     review:    { worker: <b>harnessPhase</b>(reviewLogic),    dispatch: { mode: "detached" } },
   },
 });
 
+<i>// One coordinator session holds one epic; how that id reaches a static flow</i>
+<i>// definition is the one piece this partitioning costs, and it is undesigned.</i>
+const board   = epicBoard(epicId);
 const conduct = <em>sequencer</em>({ id: "conduct" }).step(board.drain);
 
 export const conductor = <em>defineFlow</em>({
   kind: "conductor",
-  resources: [epics, issues, specs, runs, <b>inbox</b>, decisions],
-  uses: [conductorConfig],
+  resources: { epics, issues, specs, runs, <b>inbox</b>, decisions },
   request: { concurrency: "queue" },            <i>// a steer queues behind the turn in flight</i>
   actions: {
     startEpic: { block: seedEpic },             <i>// objective -&gt; epic + (issue x phase) tasks</i>
@@ -737,8 +739,9 @@ export const conductor = <em>defineFlow</em>({
         <tr><td><code>request: { concurrency }</code></td><td><span class="tag t-real">exists</span></td><td><code>"allow"</code> (default) | <code>"queue"</code> | <code>"reject"</code>, keyed on <code>session</code> by default. <code>queue</code> serializes same-key requests FIFO &#8212; the property section 6 relies on. <code>debounce</code> and <code>restart</code> parse but are rejected today</td></tr>
         <tr><td>The five actions</td><td><span class="tag t-prop">proposed</span></td><td><code>startEpic</code>, <code>wake</code>, <code>approve</code>, <code>steer</code>, <code>status</code>. None of them suspends: <code>approve</code> releases a parked task row, the same way <code>steer</code> answers one</td></tr>
         <tr><td><code>taskBoard(...)</code></td><td><span class="tag t-real">exists</span></td><td>Returns <code>{ drain, collectionId, capability, backing, boardId, detachedWorkers, caps }</code>. <code>drain</code> is a plain <code>SequencerDefinition</code>, used as a step. The capability lands at <code>ctx.cap.&lt;name&gt;.addTask / listTasks / tasks()</code></td></tr>
+        <tr><td><code>collection: epicTasks(epicId)</code></td><td><span class="tag t-real">exists</span></td><td><code>defineTaskCollection({ id, scope: "user" })</code>. User scope is deliberate: a parked row is the resume point for a question answered tomorrow morning, so the ledger has to outlive the session that opened it. The <strong>id</strong> is the partition, not the scope. One collection id is one claim pool, the claim predicate tests status and deps only, and nothing narrows a claim to an epic &#8212; so two epics sharing an id can claim and settle each other's rows. Deriving the collection id and the <code>boardId</code> from the epic is what makes &#8220;one board per epic&#8221; true in the code and not only in the prose</td></tr>
         <tr><td>Tasks as (issue &#215; phase)</td><td><span class="tag t-prop">proposed</span></td><td>The shape exists &#8212; <code>TaskInit { id, goal, deps?, assignee?, priority?, maxAttempts? }</code>. This use of it does not. Both the issue graph and the phase order inside an issue are just <code>deps</code></td></tr>
-        <tr><td><code>dispatcher: "topological"</code></td><td><span class="tag t-real">exists</span></td><td>Enforces <code>deps</code>. Alternatives are <code>fifo</code> and <code>priority</code>, neither of which respects ordering</td></tr>
+        <tr><td><code>dispatcher: "topological"</code></td><td><span class="tag t-real">exists</span></td><td>All three dispatchers respect <code>deps</code>: the collection's admission predicate enforces it, not the dispatcher. <code>fifo</code> and <code>topological</code> are byte-identical today, and <code>priority</code> adds only an <code>order</code> comparator. They differ in ordering among eligible tasks, and <code>topological</code> is chosen because it names the intent</td></tr>
         <tr><td>Routing by <code>assignee</code></td><td><span class="tag t-real">exists</span></td><td>A router. Worker input is <code>{ taskId, goal, title?, context?, input?, attempts, feedback?, metadata?, deps? }</code></td></tr>
         <tr><td>The harness manager</td><td><span class="tag t-prop">proposed</span></td><td>The one block of substance this design adds. Its nearest precedent is real: <code>packages/orchestration/src/skills/worker-materializer.ts</code> already adapts non-worker-shaped blocks into board workers by wrapping them compositionally</td></tr>
         <tr><td><code>claudeCodeAgent(options)</code></td><td><span class="tag t-real">exists</span></td><td>A factory returning a handler with <code>inputSchema: z.object({ prompt: z.string() })</code> &#8212; <em>not</em> <code>taskWorkerInputSchema</code>, so it is never a board worker directly. Options include <code>model, systemPrompt, allowedTools, permissionMode, maxTurns, onToolApproval</code></td></tr>
@@ -1288,7 +1291,7 @@ export const inbox = <em>defineResourceCollection</em>({
         <tr><td>Starts the run and lets the turn finish</td><td><span class="tag t-real">exists</span></td><td><code>claudeCodeAgent</code> runs the SDK's own agentic loop to completion and returns a handle carrying status, usage and cost. <code>maxTurns</code> bounds it</td></tr>
         <tr><td>Reads the outcome</td><td><span class="tag t-real">exists</span></td><td>A terminal SDK subtype other than <code>"success"</code> is an <em>outcome</em>, not a throw &#8212; a handle with <code>status: "errored"</code> plus an error item. An SDK throw mid-stream is wrapped and rethrown</td></tr>
         <tr><td>Decides: settle, retry, wait, or ask</td><td><span class="tag t-prop">proposed</span></td><td>The one genuinely new piece of logic. Its inputs are the handle, the done-condition, and the attempt count</td></tr>
-        <tr><td>Posts a row to the inbox when it must ask</td><td><span class="tag t-prop">proposed</span></td><td><code>inbox.create(key, {&#8230;})</code>, and then <strong>parks the task and ends its request</strong>, so nothing is held open while the question waits and the row is the resume point. The exit that lets the request go is merged; the verb that brings an answer back to the row is not (the note above). Blocking in <code>awaiting_review</code> instead keeps the request open. That is the short-horizon option for a question being answered right now, and <strong>it is not what the first real run ships on</strong> (section 11)</td></tr>
+        <tr><td>Posts a row to the inbox when it must ask</td><td><span class="tag t-prop">proposed</span></td><td><code>ctx.resources.inbox.create(key, {&#8230;})</code>, and then <strong>parks the task and ends its request</strong>, so nothing is held open while the question waits and the row is the resume point. The exit that lets the request go is merged; the verb that brings an answer back to the row is not (the note above). Blocking in <code>awaiting_review</code> instead keeps the request open. That is the short-horizon option for a question being answered right now, and <strong>it is not what the first real run ships on</strong> (section 11)</td></tr>
         <tr><td>Records the run's session handle</td><td><span class="tag t-real">exists</span></td><td>The block returns an <code>SdkAgentHandle</code> carrying <code>sessionId</code> even when detached &#8212; the detached guard skips the <em>write to session state</em>, not the return. The manager takes it off the output, writes it back onto the task, and copies it to the <code>runs/**</code> row for whoever is reading</td></tr>
         <tr><td>Continues the conversation on a steer</td><td><span class="tag t-prop">proposed</span></td><td>Continuity is not automatic: nothing hands a prior handle to a detached run today. The manager reads the handle off the claimed task and passes it in as the next run's resume id &#8212; the one input <code>claudeCodeAgent</code> does not yet accept on the detached path (section 12)</td></tr>
         <tr><td>Settles the row</td><td><span class="tag t-real">exists</span></td><td>The detached runner's ticket-fenced recorders &#8212; the same ones the inline drain uses, not a second settlement path. Fenced: a displaced child's settle comes back <code>"fence-rejected"</code>. The note below is why the distinction is worth holding</td></tr>
@@ -1460,6 +1463,9 @@ type PhaseLogic = {
 };
 
 <b>harnessPhase</b>(logic: PhaseLogic): <em>TaskWorker</em>
+<i>// The manager sequencer inside it declares uses: [conductorConfig] &#8212; there is</i>
+<i>// no flow-level uses, and the same worker definition runs on both dispatch</i>
+<i>// paths, which is what puts the phase table on ctx.cap inside a workstream.</i>
 <i>// connectInput unwraps the board's { taskId, goal, attempts, feedback, ... }</i>
 <i>// envelope; the shared manager sequencer does everything after that. The</i>
 <i>// nearest precedent is real: packages/orchestration/src/skills/</i>
@@ -1642,9 +1648,9 @@ type PhaseLogic = {
       <tbody>
         <tr><td><code>concurrency</code></td><td>4</td><td>We run 2, on a human-attention argument rather than a machine one</td></tr>
         <tr><td><code>maxEnqueuedTasks</code> / <code>maxTotalTasks</code> / <code>maxTotalRetries</code></td><td>100 / 500 / 50</td><td>An epic of 8 issues &#215; 3 phases is 24 tasks. The caps are not the binding constraint</td></tr>
-        <tr><td><code>dispatcher</code></td><td><code>topological</code></td><td><code>fifo</code> and <code>priority</code> ignore <code>deps</code>, so neither can express phase order</td></tr>
+        <tr><td><code>dispatcher</code></td><td><code>topological</code></td><td>All three respect <code>deps</code>: the admission predicate enforces it, not the dispatcher. They differ in ordering among eligible tasks, and <code>topological</code> names the intent</td></tr>
         <tr><td><code>onIdle</code></td><td><code>complete-or-blocked</code></td><td>Decides what a wake returns when everything is waiting. <code>awaiting_review</code> keeps the loop alive in every mode, which is useful for a short wait and deliberately not what the question channel rests on (section 6)</td></tr>
-        <tr><td><code>boardId</code></td><td>&#8212;</td><td>Required, not optional, once any worker is detached</td></tr>
+        <tr><td><code>boardId</code></td><td>&#8212;</td><td>Required, not optional, once any worker is detached. Derived from the epic rather than a literal, so one board is one epic (section 4)</td></tr>
         <tr><td><code>maxIterations</code> / <code>idlePollMs</code> / <code>shouldExit</code></td><td>10000 / 50ms / &#8212;</td><td>Loop safety. <code>shouldExit</code> is where "stop this epic" would live</td></tr>
         <tr><td><code>request.concurrency</code></td><td><code>allow</code></td><td>Flow-level, not board-level. Set it to <code>queue</code>, or a steer races the turn it is steering</td></tr>
       </tbody>
@@ -1662,11 +1668,11 @@ export const conductorConfig = <b>createConductorCapability</b>({
   inbox: { serialize: true },        <i>// the coordinator asks one row at a time</i>
 });
 
-<i>// consumed by the flow as   uses: [conductorConfig]</i>
+<i>// the manager declares     uses: [conductorConfig]</i>
 <i>// narrowed per epic with    conductorConfig.with({ &#8230; })</i>
 <i>// open values via           conductorConfig.config(value)</i></pre>
 
-  <p>The primitive is <code>defineCapability({ name, resources?, sessionStateSchema?, requestStateSchema?, userStateSchema?, orgStateSchema?, presets?, config?: { schema?, resolve } })</code>, and it exists. What is proposed is one capability that owns the phase table, so the harness manager asks <code>ctx.cap</code> for its policy instead of having it compiled in. A capability declared on the flow is inherited by every workstream of that flow, which for a phase table is mostly what you want &#8212; a manager running inside a workstream should read the same phases as the one that dispatched it. Open thread 13.</p>
+  <p>The primitive is <code>defineCapability({ name, resources?, sessionStateSchema?, requestStateSchema?, userStateSchema?, orgStateSchema?, presets?, config?: { schema?, resolve } })</code>, and it exists. What is proposed is one capability that owns the phase table, so the harness manager asks <code>ctx.cap</code> for its policy instead of having it compiled in. It is declared on a <strong>block</strong>, not on the flow: <code>uses</code> is a slot on blocks and capabilities, and <code>FlowDefinition</code> has none. Inside one request the inheritance is free &#8212; <em>&#8220;accessors provided by an ancestor are inherited untouched&#8230; a block only constructs the caps it adds&#8221;</em> &#8212; so everything nested under the manager sees the table. Across a workstream boundary nothing is inherited at all: a detached dispatch is a separate request in a separate session with a fresh context, and no <code>ctx</code> crosses. What makes the table uniform there is plainer. The worker block declares the capability itself, and the same definition runs on the inline-drain path and the detached one, so a manager inside a workstream reads the phases its dispatcher read because it is the same block. Open thread 13.</p>
 
   <div class="note">
     <span class="lbl">Workforce &#8212; a harness to drive, and a layer to choose</span>
