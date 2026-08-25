@@ -233,6 +233,38 @@ describe("claudeCodeAgent", () => {
     expect(spy.mock.calls[0][0].options?.resume).toBe("sess_prior");
   });
 
+  it("gives the run its own working directory, resolved per invocation", async () => {
+    const spy = vi.fn();
+    const seen: string[] = [];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      // A resolver rather than a constant is the shape that matters: one flow
+      // build serves every row, so the directory has to be derivable per run.
+      cwd: (input) => {
+        seen.push(input.prompt);
+        return `/work/checkouts/${input.prompt}`;
+      },
+    });
+
+    await testBlock(block, { input: { prompt: "FIX-1219" } });
+
+    expect(spy.mock.calls[0][0].options?.cwd).toBe("/work/checkouts/FIX-1219");
+    // Called once per invocation, with the block's own input — not once at
+    // build time, which would make one directory serve every run.
+    expect(seen).toEqual(["FIX-1219"]);
+  });
+
+  it("forwards no working directory when none is configured", async () => {
+    // BP-030 / §9's first row. Asserted as ABSENT rather than as a default
+    // value: handing the SDK an explicit `process.cwd()` would look identical
+    // in a passing run and is a different call.
+    const spy = vi.fn();
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy) });
+    await testBlock(block, { input: { prompt: "go" } });
+
+    expect(spy.mock.calls[0][0].options).not.toHaveProperty("cwd");
+  });
+
   it("forwards an AbortController to query so the SDK run is cancellable", async () => {
     const spy = vi.fn();
     const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy) });

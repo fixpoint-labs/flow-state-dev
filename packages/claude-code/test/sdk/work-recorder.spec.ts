@@ -406,6 +406,122 @@ describe("canonicalFilePathKey", () => {
   });
 });
 
+/**
+ * The recording half of a run's own working directory (§10 behaviour 7).
+ *
+ * **Written against LITERAL keys, deliberately.** The sibling assertion above
+ * — *resolves a relative path against the run's working directory* — computes
+ * its expectation with the same `resolvePath` call the implementation uses, so
+ * it agrees with the implementation whatever the implementation does and cannot
+ * catch a working directory that never reached the key. Everything here names
+ * the key it expects as a string, against a literal directory that is not this
+ * process's. Removing the threading turns these red; that was checked by doing
+ * it, not assumed.
+ */
+describe("canonicalFilePathKey — the run's own working directory", () => {
+  const CHECKOUT = "/work/checkout-a";
+
+  it("keys a relative path the run addressed inside the directory it was given", () => {
+    expect(canonicalFilePathKey("src/a.ts", CHECKOUT)).toBe("work/checkout-a/src/a.ts");
+  });
+
+  it("gives two runs in two checkouts two keys for the same relative path", () => {
+    // The defect this exists to stop is not an exception — it is one file index
+    // describing a checkout the run never touched. Two runs agreeing on a key
+    // is what that looks like from outside.
+    expect(canonicalFilePathKey("src/a.ts", CHECKOUT)).not.toBe(
+      canonicalFilePathKey("src/a.ts", "/work/checkout-b"),
+    );
+  });
+
+  it("still collapses traversal, so the normalizer never sees a `..`", () => {
+    // `resolve(cwd, raw)` keeps this property; a manual `${cwd}/${raw}` prefix
+    // does not, and every such entry would vanish silently on a good write.
+    expect(canonicalFilePathKey("../sibling/a.ts", CHECKOUT).split("/")).not.toContain("..");
+    expect(canonicalFilePathKey("../sibling/a.ts", CHECKOUT)).toBe("work/sibling/a.ts");
+  });
+
+  it("lets an absolute path the run addressed win over the directory", () => {
+    // The record is a log, not a sandbox (§9): a run that reaches outside its
+    // checkout is still recorded, at the path it actually reached.
+    expect(canonicalFilePathKey("/tmp/scratch/notes.txt", CHECKOUT)).toBe(
+      "tmp/scratch/notes.txt",
+    );
+  });
+
+  it("behaves exactly as before when no directory is configured", () => {
+    // BP-030, and §9's first row: the off state is the common case for every
+    // existing caller. The empty string is included because a resolver that
+    // returns one must not become `resolve("", raw)` by accident.
+    for (const raw of ["src/a.ts", "/work/repo/src/a.ts", "../up/a.ts"]) {
+      const before = canonicalFilePathKey(raw);
+      expect(canonicalFilePathKey(raw, undefined)).toBe(before);
+      expect(canonicalFilePathKey(raw, "")).toBe(before);
+    }
+  });
+});
+
+describe("createWorkRecorder — the run's own working directory", () => {
+  const CHECKOUT = "/work/checkout-a";
+
+  /** A recorder whose run was given `cwd`, over a fresh fake. */
+  function checkoutHarness(cwd?: string) {
+    const files = fakeCollection();
+    const recorder = createWorkRecorder({
+      runId: RUN,
+      files,
+      plan: fakeCollection(),
+      gaps: fakeCollection(),
+      ...(cwd !== undefined ? { cwd } : {}),
+      now: () => 1_700_000_000_000,
+    });
+    return { files, recorder };
+  }
+
+  it("keys the row inside the run's checkout, not the server's directory", async () => {
+    const { files, recorder } = checkoutHarness(CHECKOUT);
+    recorder.observe(fileCall("src/a.ts"));
+    recorder.observe(fileSettled("src/a.ts", "applied"));
+    await recorder.flush();
+
+    expect([...files.rows.keys()]).toEqual([`${RUN}/work/checkout-a/src/a.ts`]);
+  });
+
+  it("records nothing differently when no directory is configured", async () => {
+    // §10 behaviour 8, asserted on the WRITE rather than on a flag: the row
+    // lands under the process-relative key it always has, payload untouched.
+    const { files, recorder } = checkoutHarness();
+    recorder.observe(fileCall("src/a.ts"));
+    recorder.observe(fileSettled("src/a.ts", "applied"));
+    await recorder.flush();
+
+    const expected = `${RUN}/${canonicalFilePathKey("src/a.ts")}`;
+    expect([...files.rows.keys()]).toEqual([expected]);
+    expect(files.rows.get(expected)).toMatchObject({ outcome: "applied" });
+  });
+
+  it("reconciles the harness's reported path against the same directory", async () => {
+    // The divergence check canonicalizes BOTH paths. Thread the directory into
+    // only one of them and every relative settlement becomes a phantom "the
+    // harness wrote somewhere else" gap, leaving the file row unsettled.
+    const { files, recorder } = checkoutHarness(CHECKOUT);
+    recorder.observe(fileCall("src/a.ts"));
+    recorder.observe({
+      kind: "file_op_observed",
+      callId: "call:src/a.ts",
+      path: "src/a.ts",
+      resolvedPath: `${CHECKOUT}/src/a.ts`,
+      op: "created",
+      outcome: "applied",
+    });
+    await recorder.flush();
+
+    expect(files.rows.get(`${RUN}/work/checkout-a/src/a.ts`)).toMatchObject({
+      outcome: "applied",
+    });
+  });
+});
+
 describe("createWorkRecorder — plan items", () => {
   const created = (itemId: string, title: string): TranslatedEvent => ({
     kind: "plan_item_observed",

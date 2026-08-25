@@ -118,6 +118,34 @@ the result.
 passing it is required rather than tidy: a capability declares the schema through
 a channel the board's refusal cannot see.
 
+### Giving a run its own working directory (`/sdk`)
+
+By default a run works in whatever directory the server process is running in.
+Pass `cwd` to point it somewhere else:
+
+```ts
+claudeCodeAgent({
+  cwd: async (_input, ctx) => (await currentRun(ctx)).workspacePath,
+});
+```
+
+It is a function, not a string, because one flow is built once and serves many
+runs — it resolves per invocation, just before the run starts.
+
+The run's file tools now address relative paths inside that directory. So does
+the record of what the run touched, if you have `recordWork` on: a file the run
+wrote as `src/a.ts` is keyed under the directory it was given, not under the
+server's. Two runs in two checkouts therefore keep two separate records of the
+same relative path.
+
+This is a working directory, not a boundary. A run can still address an absolute
+path outside it, and that operation is recorded at the path it actually reached
+— the file record is a log of what the run's tools did, not a fence around where
+they may go.
+
+Leave `cwd` unset and nothing changes: the run and its record both use the
+server's directory, exactly as before.
+
 ### Recording what a run did (`/sdk`)
 
 `recordWork: true` records the run's file operations and its own to-do list as

@@ -172,6 +172,45 @@ export interface ClaudeCodeAgentOptions {
    * renders into a latest-wins slot, so two identical skips collapse to one.
    */
   recordWork?: boolean;
+  /**
+   * The directory this run works in. Default: unset, which is the directory the
+   * server process itself is running in — byte for byte what every existing
+   * caller has today (BP-030).
+   *
+   * **This is the canonical explanation; everywhere else links here.**
+   *
+   * Set it and the run's file tools address paths inside that directory, and
+   * `recordWork`'s index of what the run touched is keyed there too. Those are
+   * **two halves of one thing, and doing only the first is the trap**: forward
+   * the directory to the SDK without threading it into the record and the index
+   * describes a checkout the run never touched — nothing throws, nothing is
+   * empty, the rows are simply keyed somewhere else. See
+   * `canonicalFilePathKey`, which is where the second half lands.
+   *
+   * **A resolver, not a constant**, because one flow build serves many runs:
+   * the same shape {@link ClaudeCodeAgentOptions.prompt} already has. It is
+   * called once per invocation, before `query`.
+   *
+   * ```ts
+   * claudeCodeAgent({
+   *   cwd: async (_input, ctx) => (await currentRun(ctx)).workspacePath,
+   * })
+   * ```
+   *
+   * **An option, never a field on the block's input** — a correctness
+   * constraint rather than a style preference. The same block is exposed as a
+   * model-facing tool through the agent capability, so a working directory
+   * reachable from the input is one the model can choose (BP-031). The block's
+   * input stays the prompt.
+   *
+   * It is a working directory, not a boundary: the run can still address paths
+   * outside it, and the file record is a log of what its tools did rather than
+   * a fence around where they may go.
+   */
+  cwd?: (
+    input: { prompt: string },
+    ctx: BlockContext,
+  ) => string | Promise<string>;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -321,7 +360,7 @@ export function runNamespace(ctx: BlockContext): string {
   return `${encodePathSegment(ctx.request.identity.id)}/${step}#${attempt}`;
 }
 
-function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
+function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const upsertable = (accessor: string): UpsertableCollection | undefined => {
     const ref = resources?.[accessor] as UpsertableCollection | undefined;
@@ -343,6 +382,9 @@ function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
     files,
     plan,
     ...(gaps !== undefined ? { gaps } : {}),
+    // The second half of the working directory. Absent when no resolver is
+    // configured, which keys against this process's directory exactly as before.
+    ...(cwd !== undefined ? { cwd } : {}),
     // Non-transient so the note survives into the request record. It is still
     // only a note: `emit.status` dedupes on the message and renders into a
     // latest-wins slot, so the durable record of a skip is the gap ROW.
@@ -379,6 +421,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onToolApproval,
     detached = false,
     recordWork = false,
+    cwd: resolveCwd,
     name = "claude-code-agent",
   } = options;
 
@@ -429,6 +472,14 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         );
       }
 
+      // Resolved ONCE per invocation, before the query and before the recorder
+      // is opened, so the directory the SDK is handed and the directory the
+      // record is keyed against cannot be two different answers from one
+      // resolver (§7's invariant is about them staying the same value, not
+      // merely about both being threaded).
+      const workingDirectory =
+        resolveCwd === undefined ? undefined : await resolveCwd(input, ctx);
+
       const resolved = await resolveClaudeAgent(ctx);
       const dispatchedAt = Date.now();
       const abortController = forwardSignalToController(ctx.signal);
@@ -443,6 +494,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         maxTurns,
         includePartialMessages,
         abortController,
+        ...(workingDirectory !== undefined ? { cwd: workingDirectory } : {}),
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(onToolApproval
           ? { canUseTool: buildCanUseTool(onToolApproval, ctx) }
@@ -457,7 +509,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         inputsMayBeRevised: onToolApproval !== undefined,
       });
       const emitState = createEmitState();
-      const recorder = recordWork ? openWorkRecorder(ctx) : null;
+      const recorder = recordWork ? openWorkRecorder(ctx, workingDirectory) : null;
 
       let resultSubtype: SdkResultSubtype | null = null;
       let finalMessage: string | null = null;

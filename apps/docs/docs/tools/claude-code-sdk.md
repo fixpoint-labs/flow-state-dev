@@ -146,10 +146,46 @@ createClaudeCodeAgentCapability({ detached: true });
 See [Background work](../server/background-work.md) for how a workstream is set
 up and read back.
 
+## Where the run works
+
+By default the agent runs in whatever directory your server process is running
+in. That is fine when the run is editing scratch files. It stops being fine the
+moment two runs need to work on different copies of something, or a run needs to
+work on a checkout that is not the one the server lives in.
+
+`cwd` gives a run its own directory:
+
+```ts
+const agent = claudeCodeAgent({
+  cwd: async (_input, ctx) => (await currentRun(ctx)).workspacePath,
+});
+```
+
+It is a function rather than a string on purpose. A flow is built once and then
+serves many runs, so a fixed directory would be the wrong shape — this resolves
+per run, just before the agent starts.
+
+Two things follow the directory. The run's file tools address relative paths
+inside it. And the record of what the run touched, if you have `recordWork` on
+(below), is keyed there as well — so `src/a.ts` written by a run in one checkout
+and `src/a.ts` written by a run in another are two entries, not one.
+
+A working directory is not a sandbox. The run can still address an absolute path
+outside it, and that operation is recorded at the path it actually reached. The
+file record is a log of what the run's tools did, not a fence around where they
+may go.
+
+Leave `cwd` out and nothing changes — the run and its record both use the
+server's directory.
+
 ## Recording what the run did
 
 The item stream tells you what the agent said. `recordWork: true` also records
 what it did, as ordinary state you can query afterwards.
+
+Entries follow the run's [working directory](#where-the-run-works) when you set
+one, so the paths you read back describe the checkout the run was actually
+given.
 
 ```ts
 const agent = claudeCodeAgent({

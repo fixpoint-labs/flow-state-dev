@@ -85,6 +85,19 @@ export interface WorkRecorderOptions {
    * produces the wrong design.
    */
   flushIntervalMs?: number;
+  /**
+   * The directory the run was given, when the block forwarded one to the SDK.
+   *
+   * Relative paths the run addressed are keyed inside it. Omit it and keys
+   * resolve against this process's directory, which is what every caller that
+   * configures no working directory gets — byte for byte the previous
+   * behaviour (BP-030).
+   *
+   * See {@link canonicalFilePathKey}: forwarding the directory to the SDK and
+   * threading it here are two halves of one change, and doing only the first
+   * indexes the run's files under a checkout it never touched.
+   */
+  cwd?: string;
   /** Called with a human-readable note when an entry could not be recorded. */
   onSkipped?: (note: string) => void;
   /** Clock seam for tests. */
@@ -108,18 +121,30 @@ const DEFAULT_FLUSH_INTERVAL_MS = 1_000;
  *
  * Two things have to hold at once. The same file reached as `/work/repo/a.ts`
  * and as `a.ts` must land on ONE entry, so a relative path is resolved against
- * the run's working directory — which is this process's, because the block
- * forwards no `cwd` to the SDK. And the result must never contain a `..`
+ * **the directory the run was given** — `cwd` when the block forwarded one to
+ * the SDK, this process's otherwise. And the result must never contain a `..`
  * segment, because the collection key normalizer rejects those; `resolve`
  * guarantees that by collapsing them, which a relative-to-a-root encoding
  * emphatically does not (a run writing outside the root produces nothing but
  * `..`, and the entry would be silently dropped on every successful write).
  *
+ * **The two halves of the working directory are one change.** Forwarding `cwd`
+ * to the SDK without threading it here leaves the file index describing a
+ * checkout the run never touched: no throw, nothing empty, just wrong. The
+ * canonical statement of that invariant is `ClaudeCodeAgentOptions.cwd`.
+ *
+ * `cwd` is joined by `resolve`, never by a manual prefix, so the `..`-collapsing
+ * property above survives the addition and an absolute path the run addressed
+ * still wins over the base — which is what keeps a run that reaches outside its
+ * checkout recorded rather than silently dropped.
+ *
  * The leading separator is dropped because the normalizer strips it anyway, so
  * keeping it would make one path two spellings of one key.
  */
-export function canonicalFilePathKey(rawPath: string): string {
-  return resolvePath(rawPath).replace(/\\/g, "/").replace(/^\/+/, "");
+export function canonicalFilePathKey(rawPath: string, cwd?: string): string {
+  const absolute =
+    cwd === undefined || cwd === "" ? resolvePath(rawPath) : resolvePath(cwd, rawPath);
+  return absolute.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
 /** One buffered file row, merged across every touch inside a flush window. */
@@ -157,6 +182,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     files,
     plan,
     gaps,
+    cwd,
     flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS,
     onSkipped,
     now = Date.now,
@@ -335,14 +361,17 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   };
 
   const observeFileOp = (event: Extract<TranslatedEvent, { kind: "file_op_observed" }>): void => {
-    const canonical = canonicalFilePathKey(event.path);
+    const canonical = canonicalFilePathKey(event.path, cwd);
     // The harness named a different path, and canonicalization did not
     // reconcile them — so the row about to be written is keyed under a path the
     // harness says it did not touch. Recording the operation is still right (it
     // happened), but a reader must be able to see that the key is contested,
     // or a later comparison against the run's tool activity reads this as the
     // record having lost a write.
-    if (event.resolvedPath !== undefined && canonicalFilePathKey(event.resolvedPath) !== canonical) {
+    if (
+      event.resolvedPath !== undefined &&
+      canonicalFilePathKey(event.resolvedPath, cwd) !== canonical
+    ) {
       // THE GAP IS THE WHOLE RECORD, the same as a plan update the harness
       // applied to a different item. The settling event's other fields — the
       // kind the harness reported, its outcome — describe the write it actually
