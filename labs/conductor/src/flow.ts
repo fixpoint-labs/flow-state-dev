@@ -171,21 +171,41 @@ export function conductorFlow(options: ConductorFlowOptions) {
         return { taskId: existing.id };
       }
 
-      const task = await ctx.cap[boardId].addTask({
-        id: taskId,
-        goal: `Drive ${input.issue} through its ${input.phase} phase.`,
-        assignee: ASSIGNEE,
-        // The typed payload. NEVER `metadata`: that is model-patchable through
-        // `updateTask`, and the checkout path is derived from these two fields.
-        input: { issue: input.issue, phase: input.phase },
-        // Without this the substrate is single-attempt and a reported failure
-        // costs nothing and delivers nothing — the defect this lab exists to fix.
-        maxAttempts,
-        // The workstream routing identity the detached spawn seeds. Routing
-        // only; nothing derives a path or a permission from it.
-        metadata: { topic: `${input.issue}/${input.phase}` },
-      });
-      return { taskId: task.id };
+      // **The read above does not make this safe on its own.** Two concurrent
+      // seeds can both find the row absent before either creates it; the loser's
+      // create then fails on the id that already exists. Losing that race is the
+      // correct outcome — one row was filed — so the loser re-reads and returns
+      // the winner's row rather than surfacing a conflict the caller cannot act
+      // on.
+      //
+      // Read-then-create is not atomic and cannot be made so through this
+      // surface; the stable id is what turns the race into a *detectable*
+      // conflict rather than two rows, and this turns the detection into the
+      // idempotent answer.
+      try {
+        const task = await ctx.cap[boardId].addTask({
+          id: taskId,
+          goal: `Drive ${input.issue} through its ${input.phase} phase.`,
+          assignee: ASSIGNEE,
+          // The typed payload. NEVER `metadata`: that is model-patchable through
+          // `updateTask`, and the checkout path is derived from these two fields.
+          input: { issue: input.issue, phase: input.phase },
+          // Without this the substrate is single-attempt and a reported failure
+          // costs nothing and delivers nothing — the defect this lab exists to fix.
+          maxAttempts,
+          // The workstream routing identity the detached spawn seeds. Routing
+          // only; nothing derives a path or a permission from it.
+          metadata: { topic: `${input.issue}/${input.phase}` },
+        });
+        return { taskId: task.id };
+      } catch (err) {
+        // Only a lost race is absorbed. Anything else — a malformed task, a
+        // store outage — is a real failure and must not be reported as a
+        // successful seed.
+        const raced = await ctx.cap[boardId].getTask(taskId);
+        if (raced === undefined) throw err;
+        return { taskId: raced.id };
+      }
     },
   });
 
@@ -235,7 +255,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
 
         const record =
           issue !== null && phaseName !== null
-            ? await readRunRow(ctx as never, runTopic(issue, phaseName))
+            ? await readRunRow(ctx as never, runTopic(collectionId, issue, phaseName))
             : undefined;
 
         rows.push({

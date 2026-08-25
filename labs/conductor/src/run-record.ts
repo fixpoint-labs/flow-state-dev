@@ -147,14 +147,30 @@ export const runRecordCollection = defineResourceCollection({
   stateSchema: runRecordStateSchema,
 });
 
-/** The bare topic for one issue-phase. Never carries the `runs/` prefix. */
-export function runTopic(issue: string, phase: string): string {
-  return `${issue}/${phase}`;
+/**
+ * The bare topic for one run. Never carries the `runs/` prefix.
+ *
+ * **Led by the epic**, for the reason D-4 partitions the board: `runs/**` is one
+ * collection every epic writes, and a later coordinator session of *this* epic
+ * must read *this* epic's row. Without the discriminator, two epics driving one
+ * issue-phase resolve the same topic and either manager overwrites the other's
+ * checkout, session, cost and outcome — `run:` present and belonging to someone
+ * else, which is a silent WRONG answer rather than the missing one the scope
+ * fold closed.
+ *
+ * The rule this applies: a key two boards write, whose reader is a JOB, needs
+ * the board's discriminator. A key whose reader is a PERSON does not — which is
+ * why the inbox's key does not move.
+ *
+ * Three segments, which `runs/**` matches and `runs/*` would not.
+ */
+export function runTopic(epic: string, issue: string, phase: string): string {
+  return `${epic}/${issue}/${phase}`;
 }
 
-/** The bare prefix listing every phase of one issue. */
-export function runTopicPrefix(issue: string): string {
-  return `${issue}/`;
+/** The bare prefix listing every phase of one issue, within one epic. */
+export function runTopicPrefix(epic: string, issue: string): string {
+  return `${epic}/${issue}/`;
 }
 
 /**

@@ -53,6 +53,8 @@ import {
   branchFor,
   checkoutPathFor,
   provisionCheckout,
+  type RunLocation,
+  type RunPrincipal,
   type CheckoutLease,
   type OwnershipBounds,
   type WorkspaceConfig,
@@ -60,6 +62,8 @@ import {
 
 /** What a phase's prompt builder and done-condition are handed. */
 export interface PhaseRunContext {
+  /** The board's discriminator — see `RunLocation.epic`. */
+  epic: string;
   issue: string;
   phase: string;
   /** Which attempt this is, as the board counted it. */
@@ -155,6 +159,34 @@ export class ConductorAttemptFailed extends Error {
     super(message);
     this.name = "ConductorAttemptFailed";
   }
+}
+
+/**
+ * Who this run belongs to, from the request's RESOLVED identity.
+ *
+ * `ctx.user.identity` is what the principal resolver produced, not anything a
+ * caller put in a body — which is what makes it usable as an isolation boundary
+ * (BP-031). A missing user id is refused rather than defaulted: a default would
+ * put every unauthenticated run in one shared checkout, which is the exact
+ * collision the principal is here to prevent.
+ */
+function runPrincipal(ctx: BlockContext): RunPrincipal {
+  const identity = ctx.user?.identity as
+    | { id?: unknown; tenantId?: unknown }
+    | undefined;
+  const userId = identity?.id;
+  if (typeof userId !== "string" || userId === "") {
+    throw new Error(
+      "[conductor] this request has no resolved user identity, so a run cannot be " +
+        "isolated to one. Refusing rather than sharing a checkout across principals.",
+    );
+  }
+  return {
+    userId,
+    ...(typeof identity?.tenantId === "string" && identity.tenantId !== ""
+      ? { tenantId: identity.tenantId }
+      : {}),
+  };
 }
 
 /** Read the typed payload off the worker input, refusing an unusable one loudly. */
@@ -308,9 +340,21 @@ export function harnessManager(options: ManagerOptions) {
         );
       }
 
-      const workspacePath = checkoutPathFor(workspace, issue, phaseName);
-      const branch = branchFor(issue, phaseName);
-      const topic = runTopic(issue, phaseName);
+      // **One location, three derivations.** The checkout, the branch and the run
+      // topic all partition on the same thing — the principal so two users never
+      // share a tree or a ref, and the epic so two boards never do either.
+      // Building them from one object is what stops a discriminator reaching one
+      // and missing another, which would leave the report partitioned and the
+      // overwrite on disk.
+      const location: RunLocation = {
+        principal: runPrincipal(ctx as BlockContext),
+        epic: boardCollectionId,
+        issue,
+        phase: phaseName,
+      };
+      const workspacePath = checkoutPathFor(workspace, location);
+      const branch = branchFor(location);
+      const topic = runTopic(boardCollectionId, issue, phaseName);
 
       await ctx.sequencer!.patchState({
         issue,
@@ -353,6 +397,7 @@ export function harnessManager(options: ManagerOptions) {
     execute: async (input, ctx) => {
       const state = managerState(ctx as BlockContext);
       const run: PhaseRunContext = {
+        epic: boardCollectionId,
         issue: state.issue!,
         phase: state.phase!,
         attempt: input.attempts,
@@ -363,7 +408,12 @@ export function harnessManager(options: ManagerOptions) {
       };
 
       const prompt = await phase.buildPrompt(run);
-      await provisionCheckout(workspace, state.issue!, state.phase!);
+      await provisionCheckout(workspace, {
+        principal: runPrincipal(ctx as BlockContext),
+        epic: boardCollectionId,
+        issue: state.issue!,
+        phase: state.phase!,
+      });
       leases.set(leaseKey(ctx as BlockContext), await acquireCheckout(
         state.workspacePath!,
         `${input.taskId}#${input.attempts}`,
@@ -425,6 +475,7 @@ export function harnessManager(options: ManagerOptions) {
       }
 
       const done = await phase.isDone({
+        epic: boardCollectionId,
         issue: state.issue!,
         phase: state.phase!,
         attempt: identity.attempt,

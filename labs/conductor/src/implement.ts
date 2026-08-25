@@ -95,7 +95,7 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
     readable: {},
 
     async buildPrompt(ctx: PhaseRunContext): Promise<string> {
-      const previous = await readRunRow(ctx.ctx, runTopic(ctx.issue, ctx.phase));
+      const previous = await readRunRow(ctx.ctx, runTopic(ctx.epic, ctx.issue, ctx.phase));
       const lines = [
         `Implement Linear issue ${ctx.issue}.`,
         "",
