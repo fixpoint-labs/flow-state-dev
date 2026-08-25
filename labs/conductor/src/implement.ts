@@ -137,10 +137,21 @@ export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
   // different server, quietly, which is the one outcome this function's own
   // doc says must never happen. It was matched only so it could not be mistaken
   // for the first path segment; dropping it was the bug.
-  const viaUrl = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+(?::\d+)?)\/(.+)$/.exec(trimmed);
+  // A bracketed IPv6 literal is ONE host, colons and all. Without the first
+  // alternative the host class stops at the literal's first colon and the whole
+  // URL fails to parse — which since the startup preflight consumes this parser
+  // is no longer a probe that returns false, it is a conductor that refuses to
+  // build on a remote `gh` can query perfectly well.
+  const viaUrl =
+    /^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:[^@/]+@)?(\[[^\]/]+\](?::\d+)?|[^/:]+(?::\d+)?)\/(.+)$/.exec(
+      trimmed,
+    );
   // `[user@]host:owner/name` — scp-like, and NOT a path (`/tmp/x:y` has a slash
   // before the colon, so it is excluded by the host pattern).
-  const viaScp = /^(?:[^@/]+@)?([A-Za-z0-9._-]+):(?!\/)(.+)$/.exec(trimmed);
+  // Bracketed here too: `git@[2001:db8::1]:owner/repo` is how scp-like syntax
+  // spells an IPv6 host, and it was refused for the same reason. The bracket
+  // class excludes `/`, so a local path still cannot reach this branch.
+  const viaScp = /^(?:[^@/]+@)?(\[[^\]/]+\]|[A-Za-z0-9._-]+):(?!\/)(.+)$/.exec(trimmed);
   const parsed = viaUrl ?? viaScp;
   if (parsed === null) return undefined;
   const [, host, rest] = parsed;

@@ -107,6 +107,38 @@ describe("the done-condition — which pull requests count", () => {
     );
   });
 
+  it("keeps a bracketed IPv6 host whole", () => {
+    // **Fifth spelling, and the first whose cost the startup preflight raised.**
+    // An unparseable remote used to make the completion probe answer false — a
+    // finished run reported unfinished. Now that construction refuses a remote it
+    // cannot name, the same gap refuses to build a conductor whose remote `gh`
+    // can query: `-R '[2001:db8::1]/owner/repo'` reaches that host's API.
+    //
+    // The host class stopped at the literal's first colon, so all three
+    // spellings returned undefined. IPv4 parsed fine, which is why nothing here
+    // noticed.
+    expect(repoSlugFromRemote("https://[2001:db8::1]/owner/repo.git")?.selector).toBe(
+      "[2001:db8::1]/owner/repo",
+    );
+    expect(repoSlugFromRemote("https://[2001:db8::1]/owner/repo.git")?.ownerRepo).toBe(
+      "owner/repo",
+    );
+    // The port stays attached to the bracketed host, as it does for a name.
+    expect(repoSlugFromRemote("https://[2001:db8::1]:8443/owner/repo")?.selector).toBe(
+      "[2001:db8::1]:8443/owner/repo",
+    );
+    // And the scp-like spelling, which the report did not reach and which failed
+    // for the same reason.
+    expect(repoSlugFromRemote("git@[2001:db8::1]:owner/repo.git")?.selector).toBe(
+      "[2001:db8::1]/owner/repo",
+    );
+
+    // **The bracket class must not open a door for a local path.** It excludes
+    // `/`, so these stay refused exactly as they were.
+    expect(repoSlugFromRemote("/srv/git/[repo]:x")).toBeUndefined();
+    expect(repoSlugFromRemote("[not-a-host]")).toBeUndefined();
+  });
+
   it("hands the selector and the attribution to their own callers", () => {
     // These are NOT interchangeable, and shipping them as one string made
     // passing the wrong one a typo rather than a type error — which is exactly
