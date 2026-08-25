@@ -23,26 +23,32 @@ if [ -z "$ME" ] || [ -z "$MYSESSION" ] || [ -z "$PRS" ]; then
 fi
 command -v gh  >/dev/null || { echo "mailbox-poll: needs gh (local sessions only)" >&2; exit 2; }
 command -v jq  >/dev/null || { echo "mailbox-poll: needs jq" >&2; exit 2; }
-# Fail at arm time rather than polling forever against an expired token: a dead poll
-# and a quiet mailbox are indistinguishable from the outside.
-gh auth status >/dev/null 2>&1 || { echo "mailbox-poll: gh is not authenticated" >&2; exit 2; }
-# Reject identities the watermark path can't represent, rather than folding them into it.
-# Sanitising instead would alias distinct labels (`lane/a` and `lane_a` collapse to one
-# file), and two sessions sharing a watermark lose each other's mail silently.
+# Validate our own arguments before touching the network, so a bad label reads as a usage
+# error rather than an auth failure.
+#
+# Lowercase, and only [a-z0-9._-]. Two constraints meet here: header values are compared
+# case-insensitively, so `A` and `a` are one identity and two sessions choosing them would
+# each discard the other's mail as its own echo; and the watermark path is keyed on these,
+# so sanitising instead of rejecting would alias `lane/a` and `lane_a` onto one file.
 for arg in "$ME" "$MYSESSION"; do
   case $arg in
-    *[!A-Za-z0-9._-]*|'') echo "mailbox-poll: from/session must match [A-Za-z0-9._-]+ (got '$arg')" >&2; exit 2 ;;
+    *[!a-z0-9._-]*|'') echo "mailbox-poll: from/session must match [a-z0-9._-]+ (got '$arg')" >&2; exit 2 ;;
   esac
 done
+# Fail at arm time rather than polling forever against an expired token: a dead poll and a
+# quiet mailbox are indistinguishable from the outside.
+gh auth status >/dev/null 2>&1 || { echo "mailbox-poll: gh is not authenticated" >&2; exit 2; }
 
 REPO=${MAILBOX_REPO:-fixpoint-labs/agent-mailbox}
 INTERVAL=${MAILBOX_INTERVAL:-60}
 STATE=${MAILBOX_STATE:-.orchestration/mailbox}
 FILTER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mailbox-filter.jq"
 [ -r "$FILTER" ] || { echo "mailbox-poll: missing $FILTER" >&2; exit 2; }
-mkdir -p "$STATE"
+mkdir -p "$STATE" 2>/dev/null || { echo "mailbox-poll: cannot create MAILBOX_STATE=$STATE" >&2; exit 2; }
+[ -w "$STATE" ] || { echo "mailbox-poll: MAILBOX_STATE=$STATE is not writable" >&2; exit 2; }
 declare -A fails            # consecutive fetch failures, per handle
 FAIL_ALERT=${MAILBOX_FAIL_ALERT:-5}
+OVERLAP=${MAILBOX_OVERLAP:-5}   # seconds of `since` back-off; see the url build below
 
 # Watermarks are per (repo, identity, handle), never per handle alone: two sessions
 # can share one checkout and one handle under different from/session pairs, and a
@@ -58,12 +64,19 @@ while true; do
     since_id=0; since_ts=
     [ -f "$wm" ] && read -r since_id since_ts < "$wm"
 
-    # Window the fetch by server-side updated_at so a long-lived handle costs one
-    # page, not its whole history. The id watermark below is still what decides
-    # what is new — `since` only bounds what we ask for, and its boundary comment
-    # comes back inclusively and is filtered out by id.
+    # Window the fetch by server-side updated_at so a long-lived handle costs one page,
+    # not its whole history. The id watermark is what decides what is NEW; `since` only
+    # bounds what we ask for. Back it off by OVERLAP seconds: GitHub documents `since`
+    # as strictly *after*, and its timestamps are second-precision, so a comment landing
+    # in the same second as the watermark would otherwise be excluded from every later
+    # request — silently and forever. The overlap re-fetches a little; the id filter
+    # drops it. jq does the arithmetic so this needs no GNU `date`.
     url="repos/$REPO/issues/$pr/comments?per_page=100"
-    [ -n "$since_ts" ] && url="$url&since=$since_ts"
+    if [ -n "$since_ts" ]; then
+      from_ts=$(jq -rn --arg t "$since_ts" --argjson o "$OVERLAP" \
+        '($t | fromdateiso8601) - $o | todateiso8601' 2>/dev/null) || from_ts=
+      [ -n "$from_ts" ] && url="$url&since=$from_ts"
+    fi
 
     if ! json=$(gh api --paginate "$url" 2>/dev/null | jq -s 'add // []' 2>/dev/null) \
        || [ -z "$json" ]; then

@@ -52,9 +52,11 @@ posture the session is running — one row, for the whole session:
 | Any session whose working repo is `orb-harness` | `orb-claude` |
 
 `session:` distinguishes **live sessions sharing a `from:`** — two epics under `fsd-em`, a
-second Claude on the same handle. Pick a short stable label — letters, digits, `.`, `_`, `-`,
-nothing else, since the local poller keys its per-session state on it — on your first comment
-on a handle, and never change it there. Always set it: a later second session that collides with you is
+second Claude on the same handle. Pick a short stable label — **lowercase** letters, digits,
+`.`, `_`, `-`, nothing else — on your first comment on a handle, and never change it there.
+(Headers are read case-insensitively, so `A` and `a` are the *same* session; the local poller
+rejects anything else outright rather than let two labels quietly mean one identity.)
+Always set it: a later second session that collides with you is
 indistinguishable in the thread, and the header is the only identity there is.
 
 **Never invent a subscriber name**, and never add a row per epic — extra sessions use
@@ -180,6 +182,12 @@ epic splits the conversation, and neither half knows about the other.
 Then, if there really isn't one:
 
 1. Branch named exactly the slug, off `main` — `fsd/epic/<epic-name>` for an epic.
+   **A slug and a lane under it cannot both exist**: git refuses a ref beneath an existing
+   ref (`refs/heads/fsd/epic/foo` blocks `refs/heads/fsd/epic/foo/coherence`, and the reverse
+   order blocks the epic's own registration). So an epic uses the bare slug *or* lane slugs,
+   never both — if you need lanes, open them as lanes from the start and register no bare
+   handle. Discovery still matches either form, because the handle you are joining may be
+   someone else's.
 2. `handles/<slug>.md` (path mirrors the slug): team, purpose, links to the epic issue and epic PR.
 3. PR into `main`, title = the slug, body = who should talk here. **Leave it open.**
 4. **Subscribe to it immediately** — a handle you opened and didn't attach to is an address
