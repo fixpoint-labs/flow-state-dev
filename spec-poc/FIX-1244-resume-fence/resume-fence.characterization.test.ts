@@ -11,11 +11,11 @@
  *
  * Run it from the repo root:
  *
- *   pnpm --filter @flow-state-dev/orchestration exec vitest run \
- *     --root . ../../spec-poc/FIX-1244-resume-fence/resume-fence.characterization.test.ts
+ *   pnpm exec vitest run spec-poc/FIX-1244-resume-fence/resume-fence.characterization.test.ts
  *
- * (or copy the file under `packages/orchestration/test/collection/` and run the
- * package's own suite — the imports are written relative to that location.)
+ * (The package-filtered form does NOT work: `@flow-state-dev/orchestration`'s vitest
+ * include globs stay inside the package, so the file is never collected and the run
+ * reports no tests rather than failing. Use the root form above.)
  *
  * Result when this spec was written, on `main` @ 1d818af22: all four
  * expectations below pass, i.e. the defect is present exactly as described.
@@ -68,14 +68,28 @@ describe("FIX-1244 — how resumeFromReview behaves today", () => {
     expect(collection.get("t2")?.status).toBe("pending");
   });
 
-  it("also re-pends an already-pending row, so a duplicate answer is invisible", async () => {
+  it("takes a SECOND answer to an already-answered question, silently", async () => {
+    // The §9 duplicate-answer case, on the real path: park the row, answer it,
+    // then answer it again. An earlier draft of this test skipped the park and
+    // so proved only overwrite-on-the-wrong-state, which is a different fact.
     const { collection } = await board();
     await collection.addTask({ id: "t3", goal: "g" });
+    await collection.claim("worker-1");
+    await collection.awaitReview("t3", "which option?");
+    expect(collection.get("t3")?.status).toBe("awaiting_review");
 
-    const outcome = await collection.resumeFromReview("t3", "second answer", { ifAllowed: true });
-    expect(outcome).toEqual({ outcome: "recorded" });
-    // The second answer overwrote the first's feedback with nothing to say so.
-    expect(collection.get("t3")?.feedback).toBe("second answer");
+    const first = await collection.resumeFromReview("t3", "option A", { ifAllowed: true });
+    expect(first).toEqual({ outcome: "recorded" });
+    expect(collection.get("t3")?.status).toBe("pending");
+
+    // The row is no longer parked, so nothing is waiting on this answer — and
+    // the verb takes it anyway, overwriting the answer that already landed.
+    const second = await collection.resumeFromReview("t3", "option B", { ifAllowed: true });
+    expect(second).toEqual({ outcome: "recorded" });
+    expect(collection.get("t3")?.feedback).toBe("option B");
+
+    // After the fence: `second` is `{ outcome: "declined", reason: "disallowed",
+    // status: "pending" }` and `feedback` still reads "option A".
   });
 
   it("a parked row cannot be claimed, so the resume MUST go via `pending`", async () => {
