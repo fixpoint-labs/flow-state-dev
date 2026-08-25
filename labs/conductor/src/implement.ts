@@ -230,21 +230,28 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
 }
 
 /**
- * Refuse a source repository the completion probe cannot read a remote from.
+ * Refuse a configuration the completion probe cannot run under.
  *
- * **The probe's one unstated precondition, moved to startup.** `prExistsViaGh`
- * runs `git remote get-url origin`, and git exits non-zero when no remote by
- * that name exists — a repository cloned with its GitHub remote called
- * `upstream` is perfectly valid and fails here. That failure lands AFTER the
- * paid agent run: the rescue re-pends the row, the next attempt runs the agent
- * again, and it fails identically, until the retry budget is gone. A permanent
- * configuration error charged once per retry is exactly what the guards beside
- * this one exist to stop.
+ * **The probe's unstated preconditions, moved to startup.** `prExistsViaGh`
+ * needs two things the rest of the conductor never touches: an `origin` remote
+ * it can name a repository from, and a runnable `gh`. Neither is checked
+ * anywhere else, and both fail AFTER the paid agent run — the rescue re-pends
+ * the row, the next attempt runs the agent again, and it fails identically,
+ * until the retry budget is gone. A permanent configuration error charged once
+ * per retry is exactly what the guards beside this one exist to stop.
  *
- * Checks that the URL is one this module can name too, since a remote it cannot
- * parse fails the probe just as completely, only later and more confusingly.
+ * Order matters: the remote is checked first, because "no origin" is the more
+ * specific diagnosis and a host missing `gh` usually knows it.
+ *
+ * **What this deliberately does NOT check is authentication.** `gh auth status
+ * --hostname H` would catch a host with no usable credentials, and that failure
+ * has the same shape as these. It is left out because it makes flow
+ * construction depend on a live API call: a network hiccup at startup would
+ * become a permanent refusal to build the conductor at all, which is a worse
+ * failure than the one being prevented. It could not promise much anyway —
+ * credentials valid at construction can expire before the probe runs.
  */
-function assertCompletionRemote(workspace: WorkspaceConfig): void {
+function assertCompletionProbeUsable(workspace: WorkspaceConfig): void {
   let url: string;
   try {
     url = execFileSync("git", ["remote", "get-url", "origin"], {
@@ -268,6 +275,20 @@ function assertCompletionRemote(workspace: WorkspaceConfig): void {
         `missing remote: a paid run per attempt, then a permanent failure.`,
     );
   }
+  try {
+    // Availability only. `--version` neither authenticates nor reaches the
+    // network, so this answers "can the probe's binary be executed here" and
+    // nothing else — which is the half of the precondition that is permanent
+    // and knowable at startup.
+    execFileSync("gh", ["--version"], { stdio: "ignore", timeout: GIT_TIMEOUT_MS });
+  } catch {
+    throw new Error(
+      `[conductor] the \`gh\` CLI could not be run. The implement phase's completion ` +
+        `check shells out to it to find this branch's pull request, and it runs after the ` +
+        `agent — so on a host without \`gh\` every attempt pays for a full coding run and ` +
+        `then fails permanently. Install \`gh\`, or supply your own \`prExists\`.`,
+    );
+  }
 }
 
 /** Build the implement phase. */
@@ -281,7 +302,7 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
     // demanding one would refuse a configuration that works — and the tests,
     // which stub the probe against repositories that have no remote at all, are
     // the proof that this distinction is load-bearing rather than theoretical.
-    ...(options.prExists === undefined ? { validate: assertCompletionRemote } : {}),
+    ...(options.prExists === undefined ? { validate: assertCompletionProbeUsable } : {}),
     // Empty, and that is not an oversight: this phase reads no collection of its
     // own. It does not read the run record either — everything it needs about
     // the previous attempt arrives on `PhaseRunContext`, because that row

@@ -11,7 +11,14 @@
  * trusted either would certify nothing.
  */
 import { describe, expect, it, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1734,6 +1741,74 @@ describe("the phase's own precondition is refused at the same door", () => {
         phase: implementPhase(),
       }),
     ).toThrow(/does not name a host and repository/);
+  });
+
+  it("refuses a host where `gh` cannot be run", async () => {
+    // The probe's OTHER unstated precondition. A valid `origin` gets the
+    // conductor all the way to a paid coding run on a host with no `gh`, and
+    // only the completion listing afterwards discovers it — so the rescue
+    // re-pends and the next attempt buys the same failure again, until the
+    // retry budget is spent. Same shape as the missing remote, same door.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+
+    const repo = mkdtempSync(join(tmpdir(), "conductor-no-gh-"));
+    seedRepo(repo);
+
+    // **`PATH` is set in BOTH directions rather than read.** A test that just
+    // asserted the throw would pass here (this sandbox has no `gh`) and fail on
+    // a developer machine that does — a fixture whose answer depends on the host
+    // is not a fixture. A directory holding `git` and nothing else makes "no
+    // `gh`" true everywhere, and the suite-wide shim in `test/setup.ts` makes
+    // the opposite true everywhere.
+    //
+    // `git` has to stay reachable: the guards ahead of this one shell out to it
+    // to check the repository and the base ref, so a genuinely empty `PATH`
+    // fails earlier and the assertion below would be reading the wrong refusal.
+    const gitOnly = mkdtempSync(join(tmpdir(), "conductor-git-only-path-"));
+    symlinkSync(
+      execFileSync("which", ["git"], { encoding: "utf8" }).trim(),
+      join(gitOnly, "git"),
+    );
+    const realPath = process.env["PATH"];
+    process.env["PATH"] = gitOnly;
+    try {
+      expect(() =>
+        conductorFlow({
+          epic: "gh-epic",
+          workspace: { root: "/tmp/gh-epic", sourceRepo: repo, baseRef: "main" },
+          phase: implementPhase(),
+        }),
+      ).toThrow(/`gh` CLI could not be run/);
+    } finally {
+      process.env["PATH"] = realPath;
+    }
+
+    // And the positive arm, on the same repository, so the refusal above is
+    // attributable to `gh` and not to anything else about this configuration.
+    expect(() =>
+      conductorFlow({
+        epic: "gh-epic",
+        workspace: { root: "/tmp/gh-epic", sourceRepo: repo, baseRef: "main" },
+        phase: implementPhase(),
+      }),
+    ).not.toThrow();
+
+    // **And the guard is scoped to the probe that needs it**, as the remote
+    // guard beside it is: a caller who supplies `prExists` never shells out to
+    // `gh`, so demanding it would refuse a configuration that works.
+    process.env["PATH"] = gitOnly;
+    try {
+      expect(() =>
+        conductorFlow({
+          epic: "gh-epic",
+          workspace: { root: "/tmp/gh-epic", sourceRepo: repo, baseRef: "main" },
+          phase: implementPhase({ prExists: () => true }),
+        }),
+      ).not.toThrow();
+    } finally {
+      process.env["PATH"] = realPath;
+    }
   });
 });
 
