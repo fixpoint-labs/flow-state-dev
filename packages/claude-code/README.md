@@ -129,22 +129,17 @@ claudeCodeAgent({
 });
 ```
 
-It is a function, not a string, because one flow is built once and serves many
-runs — it resolves per invocation, just before the run starts.
+A function, not a string: one flow build serves many runs, so it resolves per
+invocation.
 
-The run's file tools now address relative paths inside that directory. So does
-the record of what the run touched, if you have `recordWork` on: a file the run
-wrote as `src/a.ts` is keyed under the directory it was given, not under the
-server's. Two runs in two checkouts therefore keep two separate records of the
-same relative path.
+The run's file tools address relative paths inside that directory, and so does
+`recordWork`'s record of what the run touched. It is a working directory, not a
+boundary — a run can still reach an absolute path outside it, and that operation
+is recorded at the path it reached.
 
-This is a working directory, not a boundary. A run can still address an absolute
-path outside it, and that operation is recorded at the path it actually reached
-— the file record is a log of what the run's tools did, not a fence around where
-they may go.
-
-Leave `cwd` unset and nothing changes: the run and its record both use the
-server's directory, exactly as before.
+Full behaviour, including what an empty or symlinked directory does, is on the
+`cwd` option's own docs in `src/sdk/agent.ts` and in the
+[SDK agent guide](https://flow-state.dev/docs/tools/claude-code-sdk#where-the-run-works).
 
 ### Recording what a run did (`/sdk`)
 
