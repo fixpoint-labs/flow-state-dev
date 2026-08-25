@@ -692,12 +692,10 @@ describe("claudeCodeAgent — detached", () => {
 /**
  * `recordWork` — the option that turns "what the run did" into ordinary state.
  *
- * The end-to-end readback runs the block against a real test context rather than
- * through `testBlock`, because the artifact under test is the CONTENT of two
- * resource collections and `testBlock` returns items and scope state, not
- * resource rows.
- */
-/**
+ * The artifact under test here is the CONTENT of two resource collections, not
+ * the items or the scope state, so these tests need a handle on the resources
+ * the run wrote through. See the note below on how they get one.
+ *
  * **Why most of this block still drives `block.config.execute`.**
  *
  * The rule everywhere else is that a test dispatches a block the way consumers
