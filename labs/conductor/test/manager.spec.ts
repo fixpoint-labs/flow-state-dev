@@ -1919,3 +1919,54 @@ describe("the phase name is an identity segment, refused at construction", () =>
     ).not.toThrow();
   });
 });
+
+describe("a reused row must be one a drain can actually claim", () => {
+  it("refuses an existing row carrying an unresolved dependency", async () => {
+    // The row is correct in every field `seed` SETS — id, payload, assignee,
+    // retry budget — and carries a `deps` entry `seed` never sets at all.
+    // `depsSatisfied` then keeps it permanently unclaimable, so `seed` reports
+    // filed and the coding run simply never happens: no error, no attempt, no
+    // work, and nothing on the board says why.
+    //
+    // This is the field that showed the previous framing was wrong. Checking
+    // against "the `addTask` call this mirrors" can only ever see fields seed
+    // writes, and is blind by construction to ones it leaves at their default
+    // for a foreign writer to fill in.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-BLOCKED", PHASE), {
+            id: conductorTaskId("FIX-BLOCKED", PHASE),
+            goal: "filed with a dependency this conductor never sets",
+            input: { issue: "FIX-BLOCKED", phase: PHASE },
+            status: "pending",
+            attempts: 0,
+            assignee: "harness",
+            maxAttempts: 3,
+            deps: ["something-that-was-never-filed"],
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    await expect(
+      live.call("seed", { issue: "FIX-BLOCKED", phase: PHASE }),
+    ).rejects.toThrow(/dependencies that would keep it unclaimable/);
+  }, 20_000);
+});

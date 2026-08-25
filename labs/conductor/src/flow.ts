@@ -172,22 +172,51 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
 /**
  * May `seed` treat this existing row as the one it was asked to file?
  *
- * **Identity plus the policy a drain would run it under.** Attribution is not
- * enough here: `seed` reports success and the row is then DRAINED, so a row
- * whose routing or retry budget differs from this conductor's runs real work
- * under a policy nobody configured.
+ * **Identity plus everything that decides whether this row drains the way the
+ * seed promises.** Attribution is not enough here: `seed` reports success and
+ * the row is then DRAINED, so a row that runs under a policy nobody configured —
+ * or that can never be claimed at all — makes that report a lie.
  *
- * See `rowOwnsItsIdentity` for why the two questions are separate — and note
- * that `assignee` is model-patchable through `updateTask` while `maxAttempts` is
- * not, so this is a statement about the row as filed, not a guarantee about it
- * afterwards.
+ * **The frame, corrected.** One commit ago this said it was "written against
+ * the `addTask` call it mirrors", and that frame is structurally blind: it can
+ * only see fields `seed` SETS, and says nothing about fields `seed` leaves at
+ * their default which a foreign writer can set to something harmful. `deps` is
+ * exactly that, and it is how the fourth field in a row slipped past a check
+ * that had just claimed to be complete. The question is not "does this match
+ * what we would have written" but "can this be drained as promised".
+ *
+ * - `assignee` — which worker a drain routes to. Wrong, and the claim charges an
+ *   attempt and then finds no worker declared.
+ * - `maxAttempts` — the retry budget, and **absent means single-attempt**, not
+ *   "the default". A row filed without it turns the first failed coding run
+ *   terminal on a conductor configured for retries.
+ * - `deps` — a dependency that is missing or not `completed` makes the row
+ *   permanently unclaimable (`depsSatisfied`). `seed` reports filed and the run
+ *   simply never happens: no error, no attempt, no work.
+ *
+ * `status` is deliberately NOT checked: a completed row is the ordinary
+ * idempotent case, and refusing it would turn re-seeding a finished task into an
+ * error. `priority` and `labels` decide order and nothing else, and are
+ * model-patchable besides.
+ *
+ * `assignee` is model-patchable through `updateTask` while `maxAttempts` and
+ * `deps` are not — so this is a statement about the row as filed, and only the
+ * latter two are guarantees about it afterwards.
  */
 function seedMayReuse(
-  task: { id: string; input?: unknown; assignee?: unknown; maxAttempts?: unknown },
+  task: {
+    id: string;
+    input?: unknown;
+    assignee?: unknown;
+    maxAttempts?: unknown;
+    deps?: unknown;
+  },
   maxAttempts: number,
 ): boolean {
   if (task.assignee !== ASSIGNEE) return false;
   if (task.maxAttempts !== maxAttempts) return false;
+  // Absent or empty is what this conductor files; anything else gates the claim.
+  if (Array.isArray(task.deps) ? task.deps.length > 0 : task.deps !== undefined) return false;
   return rowOwnsItsIdentity(task);
 }
 
@@ -451,8 +480,9 @@ export function conductorFlow(options: ConductorFlowOptions) {
           throw new Error(
             `[conductor] a row already exists at "${taskId}" and it is not one this ` +
               `conductor filed — its payload does not describe ${input.issue}/${input.phase}, ` +
-              `it is routed to an assignee other than "${ASSIGNEE}", or its retry budget ` +
-              `is not the ${maxAttempts} this conductor configures. Refusing to report ` +
+              `it is routed to an assignee other than "${ASSIGNEE}", its retry budget is ` +
+              `not the ${maxAttempts} this conductor configures, or it carries dependencies ` +
+              `that would keep it unclaimable. Refusing to report ` +
               `this seed as filed: draining that row charges it an attempt and then finds ` +
               `nothing to run it, and the task asked for here would never exist.`,
           );
@@ -509,7 +539,8 @@ export function conductorFlow(options: ConductorFlowOptions) {
           throw new Error(
             `[conductor] the create at "${taskId}" lost to a row this conductor did not ` +
               `file — wrong payload for ${input.issue}/${input.phase}, an assignee other ` +
-              `than "${ASSIGNEE}", or a retry budget that is not ${maxAttempts}. Refusing ` +
+              `than "${ASSIGNEE}", a retry budget that is not ${maxAttempts}, or dependencies ` +
+              `that would keep it unclaimable. Refusing ` +
               `to report this seed as filed: the task asked ` +
               `for here would never exist.`,
           );
