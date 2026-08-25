@@ -137,7 +137,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
    *
    * **Idempotent per issue-phase**, because everything downstream already is.
    * Two rows for one issue-phase derive the same checkout, the same branch and
-   * the same `runs/<issue>/<phase>` record — so a duplicated `seed` charges two
+   * the same `runs/<epic>/<issue>/<phase>` record — so a duplicated `seed` charges two
    * full coding runs whose independently valid claims overwrite one shared run
    * record, and `status` then answers with two board rows carrying the last
    * writer's metadata. The task id is therefore the issue-phase itself rather

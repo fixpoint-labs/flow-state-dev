@@ -11,12 +11,12 @@
  * The collection's pattern prefix is prepended for you, so a call that already
  * spells `runs/` writes `runs/runs/…` that no prefix filter then matches.
  *
- * - **Bare topic** — `<issue>/<phase>`. Every collection call takes this.
- * - **Storage key** — `runs/<issue>/<phase>`. What the collection produces, what
- *   `ref.path` returns, what a route's `topicPrefix=` carries.
+ * - **Bare topic** — `<epic>/<issue>/<phase>`. Every collection call takes this.
+ * - **Storage key** — `runs/<epic>/<issue>/<phase>`. What the collection
+ *   produces, what `ref.path` returns, what a route's `topicPrefix=` carries.
  *
  * `**` and not `*`: a single wildcard matches exactly one segment, so a
- * two-segment topic would resolve nothing on every read and every write.
+ * multi-segment topic would resolve nothing on every read and every write.
  *
  * ## `user`-scoped, same principal as the board
  *
@@ -210,7 +210,7 @@ export interface AttemptIdentity {
   taskId: string;
   /** `attempts` as the board packed it into this worker's input at claim time. */
   attempt: number;
-  /** The bare topic — `<issue>/<phase>`. */
+  /** The bare topic — `<epic>/<issue>/<phase>`. See {@link runTopic}. */
   topic: string;
   /** The board's ledger collection id, resolved from `ctx.resources`. */
   boardCollectionId: string;
