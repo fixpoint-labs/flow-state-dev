@@ -120,6 +120,32 @@ const drifting = defineResource({
   default: { n: 0 }
 });
 
+// Two type-changing transforms that differ ONLY in whether the schema's input
+// side accepts the schema's own output. Both expose `n: number`, so both offer
+// the verbs. `refusing` rejects the candidate a verb builds; `overlapping`
+// takes it back. This pair is why the spec states the refusal as a CONDITION
+// ("output re-parses as input") and not as the universal "every call on a
+// transforming schema refuses" — see §7's transform table and §10 17b/17c.
+const refusing = defineResource({
+  scope: "session",
+  ref: "refusing",
+  stateSchema: z.object({
+    n: z.string().default("0").transform(Number),
+    keep: z.string().default("schema-default")
+  }),
+  default: { n: "0", keep: "schema-default" } as never
+});
+
+const overlapping = defineResource({
+  scope: "session",
+  ref: "overlapping",
+  stateSchema: z.object({
+    n: z.union([z.number(), z.string()]).default("0").transform(Number),
+    keep: z.string().default("schema-default")
+  }),
+  default: { n: "0", keep: "schema-default" } as never
+});
+
 function makeFlow() {
   return defineFlow({
     kind: "fix1154-poc",
@@ -128,7 +154,7 @@ function makeFlow() {
         inputSchema: z.string(),
         block: handler({
           name: "noop",
-          resources: { counter, tasks, drifting, bag },
+          resources: { counter, tasks, drifting, bag, refusing, overlapping },
           execute: () => "ok"
         })
       }
@@ -463,6 +489,50 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     await incState(ref, { n: 1 });
     const after = (await readRow(stores, "drifting"))?.state as { n: number };
     expect(after.n).toBe(before.n + 2);
+  });
+
+  it("row: a transform REFUSES only when its input side rejects its own output", async () => {
+    // The row that separates the CONDITION from the UNIVERSAL. An earlier draft
+    // of the spec said the verbs "are offered on a type-changing transform, and
+    // every call refuses non-retryably". The second half is false, and it had
+    // propagated into the published docs brief before anyone read it against
+    // the very heading it sat under ("output re-parses as input").
+    //
+    // Both schemas below are type-changing and both expose `n: number`, so the
+    // handles are indistinguishable and both offer the verbs. What differs is
+    // whether the candidate the verb builds survives a trip back through the
+    // schema's INPUT side.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+
+    // 1. Input wants a string. The candidate `{n: 1}` does not re-parse.
+    //    This is the case §10 17b tests: the write path's response to an
+    //    invalid candidate is to replace the whole state with the schema
+    //    default — which is why 17b asserts the STATE, not just the throw.
+    const refusingRef = ctx.resources.refusing as unknown as MutableRef;
+    await refusingRef.updateState((s) => ({ ...s, keep: "DO-NOT-LOSE" }));
+    await incState(refusingRef, { n: 1 });
+    const afterRefusing = (await readRow(stores, "refusing"))?.state as {
+      n: number;
+      keep: string;
+    };
+    // No guard exists yet, so `main` does the destructive thing rather than
+    // refusing. The shipped verb has to turn this into a typed, non-retryable
+    // ValidationError that leaves the row alone.
+    expect(afterRefusing.keep).toBe("schema-default");
+
+    // 2. Input accepts a number OR a string. The same candidate re-parses, so
+    //    the call SUCCEEDS and the row is intact. An implementation that
+    //    refuses whenever it detects a transform breaks this row (§10 17c).
+    const overlappingRef = ctx.resources.overlapping as unknown as MutableRef;
+    await overlappingRef.updateState((s) => ({ ...s, keep: "DO-NOT-LOSE" }));
+    await incState(overlappingRef, { n: 1 });
+    const afterOverlapping = (await readRow(stores, "overlapping"))?.state as {
+      n: number;
+      keep: string;
+    };
+    expect(afterOverlapping.n).toBe(1);
+    expect(afterOverlapping.keep).toBe("DO-NOT-LOSE");
   });
 
   // -------------------------------------------------------------------------
