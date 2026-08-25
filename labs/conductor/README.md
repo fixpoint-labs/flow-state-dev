@@ -125,9 +125,17 @@ commits land on another is the kind of agreement where every layer is wrong toge
 
 ## What it does not do yet
 
-- **One phase.** Spec and review phases are not built. The phase surface is three values passed to
-  the manager (a prompt builder, a done-condition, a readable set), so a second phase needs no
-  change to the manager — but a record type or a registry deliberately does not exist yet.
+- **One phase per conductor, and a second phase needs its own `epic`.** Spec and review phases are
+  not built. The phase surface is three values passed to the manager (a prompt builder, a
+  done-condition, a readable set), so a second phase needs no change to the manager — but a record
+  type or a registry deliberately does not exist yet.
+
+  Until one does, **the board identity is `(tenant, epic)` and the phase is deliberately not part
+  of it.** So two conductors built for two phases of the *same* epic share one board and one task
+  collection: either one's `wake` claims the other's rows, the manager's phase guard refuses them,
+  and the refusal costs a valid task an attempt — `attempts` is incremented inside the claim write,
+  so it is spent before any guard can run. Give the second phase its own `epic` value. The seed
+  error says so, and a test pins both halves.
 - **No third outcome.** "Made progress but is not finished" would have to settle the row either
   done (dishonest) or waiting (a status nothing here has a use for). A run that asks a person for a
   decision, and the inbox it waits in, are LAB-139's.

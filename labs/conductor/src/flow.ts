@@ -197,7 +197,11 @@ export function conductorFlow(options: ConductorFlowOptions) {
       if (input.phase !== phase.phase) {
         throw new Error(
           `[conductor] this board runs the "${phase.phase}" phase; refusing to file a ` +
-            `"${input.phase}" row. One board per phase — build a second conductor for it.`,
+            `"${input.phase}" row. A conductor runs one phase, and the board identity is ` +
+            `(tenant, epic) — so a second phase needs its own \`epic\`, NOT a second ` +
+            `conductor on this one. Two conductors sharing an epic share this board: the ` +
+            `other one's \`wake\` claims these rows, refuses them on phase, and charges a ` +
+            `valid task an attempt for the mistake.`,
         );
       }
 
