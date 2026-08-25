@@ -2,7 +2,14 @@
  * The run's checkout — where it is, how it is made, and who holds it.
  */
 import { describe, expect, it, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -109,7 +116,7 @@ describe("provisioning", () => {
       // literal here would only pin how the digest happens to be computed
       // today. What this asserts is the SHAPE — untenanted tag, principal,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/FIX-1219--implement`,
+      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${conductorTaskId("FIX-1219", "implement")}`,
     );
   });
 
@@ -237,6 +244,86 @@ describe("a relative workspace root still lands in one place", () => {
     } finally {
       process.chdir(previous);
     }
+  });
+});
+
+describe("a half-created checkout does not brick every retry", () => {
+  // Measured with a real `SIGTERM` to `git worktree add`, which is exactly how
+  // the provisioning budget ends it: the target is left present, partly
+  // populated, and WITHOUT `.git`. The next attempt then took the create arm
+  // again and git refused with `fatal: '<path>' already exists` — on both arms,
+  // since the killed run also leaves the branch behind — and `worktree prune`
+  // did not clear it, because the leftover is a tree rather than bookkeeping.
+  // So the whole remaining retry budget went on a leftover no retry could fix.
+
+  it("recreates a checkout whose creation was interrupted", async () => {
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const path = checkoutPathFor(config, location);
+
+    // The exact leftover shape: the directory, some content, and no `.git`.
+    mkdirSync(join(path, "src"), { recursive: true });
+    writeFileSync(join(path, "src", "partial.ts"), "half written");
+    expect(existsSync(join(path, ".git"))).toBe(false);
+
+    const checkout = await provisionCheckout(config, location);
+
+    expect(checkout.created).toBe(true);
+    expect(existsSync(join(checkout.path, ".git"))).toBe(true);
+    // The leftover is gone rather than merged into the new tree.
+    expect(existsSync(join(checkout.path, "src", "partial.ts"))).toBe(false);
+  });
+
+  it("recreates it even when the interrupted run left the branch behind", () => {
+    // The arm the retry actually takes. A killed `worktree add -b` still
+    // creates the ref, so the next attempt goes down the "branch exists" path —
+    // which failed on the leftover directory in exactly the same way.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const path = checkoutPathFor(config, location);
+    const branch = branchFor(location);
+
+    execFileSync("git", ["branch", branch, "main"], { cwd: config.sourceRepo, stdio: "pipe" });
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, "leftover"), "x");
+
+    return expect(provisionCheckout(config, location)).resolves.toMatchObject({
+      created: true,
+      branch,
+    });
+  });
+
+  it("still refuses to clear a real checkout", async () => {
+    // The guard rail on the rule. `.git` is the witness that git finished
+    // setup, so a tree that HAS it is a usable checkout holding the last
+    // attempt's work — and this module never resets one. Provisioning it again
+    // must return it untouched.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+
+    const second = await provisionCheckout(config, location);
+
+    expect(second.created).toBe(false);
+    expect(readFileSync(join(second.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+  });
+
+  it("refuses to clear anything outside the workspace root", async () => {
+    // A guard on a destructive call. The path is derived under `config.root`,
+    // and this keeps that true for a future caller that arrives another way.
+    const config = workspace();
+    const outside = mkdtempSync(join(tmpdir(), "conductor-outside-"));
+    dirs.push(outside);
+    mkdirSync(join(outside, "t0"), { recursive: true });
+
+    await expect(
+      provisionCheckout({ ...config, root: join(config.root, "..", "elsewhere") }, {
+        ...at("FIX-1219", "implement"),
+      }),
+    ).resolves.toBeDefined();
   });
 });
 
@@ -648,6 +735,100 @@ describe("two epics on one issue-phase are isolated too", () => {
         /not a usable identity segment/,
       );
     }
+  });
+});
+
+describe("the identity rule — the digest cannot be made to collide on purpose", () => {
+  // **A width assertion passes happily while four inputs share one output**, so
+  // this asserts DISTINCTNESS over inputs chosen to break the transcoding step.
+  //
+  // `encodeSegment` hashed through UTF-8, which has no representation for a
+  // lone surrogate — so `Buffer.from`/`update` substituted U+FFFD BEFORE the
+  // hash ran. Measured: `\ud800`, `\ud801`, `\udfff` and a literal `\ufffd`
+  // produced ONE digest, hence one checkout and one lock for four distinct
+  // caller-supplied identifiers.
+  //
+  // Not the collision the digest's safety argument covers. That argument is
+  // about SHA-256 and it holds; this was a collision upstream of the hash,
+  // deliberate and trivially reproducible by anyone who can supply an id.
+  const HOSTILE = ["\ud800", "\ud801", "\udfff", "\ufffd", "😀"];
+
+  it("gives distinct digests to inputs UTF-8 cannot tell apart", () => {
+    const digests = HOSTILE.map((v) => encodeSegment(v));
+    expect(new Set(digests).size).toBe(HOSTILE.length);
+  });
+
+  it("keeps a valid astral pair distinct from the surrogates it is made of", () => {
+    // The guard on the fix: distinctness must not be bought by mangling valid
+    // input. `😀` is exactly `\ud83d\ude00`, so an encoder that mishandled
+    // pairs could make this collide with its own halves.
+    expect(encodeSegment("😀")).not.toBe(encodeSegment("\ud83d"));
+    expect(encodeSegment("😀")).not.toBe(encodeSegment("\ude00"));
+    expect(encodeSegment("😀")).toBe(encodeSegment("\ud83d\ude00"));
+  });
+
+  it("separates the whole derivation, not just the digest", () => {
+    // The digest is one component; what matters is that two hostile principals
+    // do not land on one tree, one branch, or one lock.
+    const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
+    const paths = HOSTILE.map((userId) =>
+      checkoutPathFor(config, at("FIX-1", "implement", { principal: { userId } })),
+    );
+    const branches = HOSTILE.map((userId) =>
+      branchFor(at("FIX-1", "implement", { principal: { userId } })),
+    );
+    expect(new Set(paths).size).toBe(HOSTILE.length);
+    expect(new Set(branches).size).toBe(HOSTILE.length);
+  });
+});
+
+describe("the identity rule — case cannot split one tree in two", () => {
+  const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
+
+  it("resolves one checkout for ids that differ only in case", () => {
+    // On a case-INSENSITIVE filesystem (macOS, Windows) `FIX-1` and `fix-1` are
+    // the same directory, while the grammar accepted both and used them
+    // verbatim — so the board held two distinct task ids whose checkouts and
+    // locks were one tree. The second task inherits the first's work, or fails
+    // the strict branch comparison over and over and spends its attempts.
+    //
+    // Folded rather than refused, and that is NOT the truncation call inverted.
+    // Truncation maps two LEGITIMATELY distinct values onto one, creating a
+    // collision that did not exist. Folding maps two values the filesystem
+    // ALREADY treats as identical onto one — it does not create the collision,
+    // it makes the identity agree with the storage that has to hold it. And no
+    // single canonical case could be required instead: real issue keys are
+    // upper (`FIX-1219`) and phases are lower (`implement`).
+    expect(conductorTaskId("FIX-1", "implement")).toBe(conductorTaskId("fix-1", "IMPLEMENT"));
+    expect(checkoutPathFor(config, at("FIX-1", "implement"))).toBe(
+      checkoutPathFor(config, at("fix-1", "IMPLEMENT")),
+    );
+    expect(branchFor(at("FIX-1", "implement"))).toBe(branchFor(at("fix-1", "IMPLEMENT")));
+  });
+
+  it("leaves no derived identity carrying upper case at all", () => {
+    // The property, over every derivation rather than the three spelled above:
+    // a case-folding filesystem cannot split what it cannot see a difference
+    // in, so nothing we derive may depend on case.
+    const location = at("FIX-1219", "Implement", { epic: "Conductor-Tasks-Alpha" });
+    for (const derived of [
+      conductorTaskId("FIX-1219", "Implement"),
+      checkoutPathFor(config, location),
+      branchFor(location),
+    ]) {
+      expect(derived).toBe(derived.toLowerCase());
+    }
+  });
+
+  it("keeps distinct ids distinct once folded", () => {
+    // Folding must not become the collision it prevents: values that differ by
+    // more than case still have to separate.
+    expect(conductorTaskId("FIX-1", "implement")).not.toBe(
+      conductorTaskId("FIX-2", "implement"),
+    );
+    expect(checkoutPathFor(config, at("FIX-1", "implement"))).not.toBe(
+      checkoutPathFor(config, at("FIX-11", "implement")),
+    );
   });
 });
 

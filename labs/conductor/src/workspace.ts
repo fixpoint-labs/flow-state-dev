@@ -142,6 +142,24 @@ const MAX_OWNED_SEGMENT = 64;
 const IDENTITY_DELIMITER = "--";
 
 export function assertSafeSegment(label: string, value: string): string {
+  // **Returns the CANONICAL form, and every derivation uses the return value.**
+  //
+  // Case is the third way this rule can be broken, after redistribution and
+  // length. On a case-insensitive filesystem `FIX-1` and `fix-1` are one
+  // directory, so two distinct board task ids resolved to one checkout and one
+  // lock: the second task inherits the first's tree, or fails the strict branch
+  // comparison repeatedly and spends its attempts on it.
+  //
+  // Folded rather than refused, and that is not the length call inverted.
+  // Truncation maps two LEGITIMATELY distinct values onto one — a collision
+  // that did not exist before. Folding maps two values the filesystem ALREADY
+  // cannot tell apart onto one: it does not create the collision, it stops the
+  // identity from disagreeing with the storage that has to hold it. Refusing
+  // was not available either — no single canonical case fits, since real issue
+  // keys are upper (`FIX-1219`) and phase names are lower (`implement`).
+  //
+  // Only the DERIVED identity folds. The issue key a prompt shows the agent
+  // comes from the task payload and keeps its own case.
   if (!OWNED_SEGMENT.test(value) || value.length > MAX_OWNED_SEGMENT) {
     throw new Error(
       `[conductor] ${label} "${value}" is not a usable identity segment — ` +
@@ -151,7 +169,7 @@ export function assertSafeSegment(label: string, value: string): string {
         `of a directory, and nothing long enough to overflow a filesystem component.`,
     );
   }
-  return value;
+  return value.toLowerCase();
 }
 
 /**
@@ -183,6 +201,9 @@ export function joinIdentity(...parts: string[]): string {
 const DERIVED_IDENTITY = /^[A-Za-z0-9]+(?:[_-]+[A-Za-z0-9]+)*$/;
 
 export function assertDerivedIdentity(label: string, value: string): string {
+  // Folded for the same reason `assertSafeSegment` is: this value becomes a
+  // path component too, and an identity built elsewhere must not be the one
+  // that reintroduces case into the derivation.
   if (!DERIVED_IDENTITY.test(value)) {
     throw new Error(
       `[conductor] ${label} "${value}" is not a usable identity segment — ` +
@@ -190,7 +211,7 @@ export function assertDerivedIdentity(label: string, value: string): string {
         `end in "." or ".lock"), and nothing that could climb out of a directory.`,
     );
   }
-  return value;
+  return value.toLowerCase();
 }
 
 /**
@@ -289,7 +310,26 @@ export function tenantSegment(tenantId: string | undefined): string {
  * signal rather than an imposition.
  */
 export function encodeSegment(value: string): string {
-  return `h${createHash("sha256").update(value, "utf8").digest("hex")}`;
+  // **`utf16le`, and the encoding is the load-bearing part.**
+  //
+  // A JavaScript string is a sequence of UTF-16 code units, lone surrogates
+  // included. UTF-8 has no representation for a lone surrogate, so encoding
+  // through it substitutes U+FFFD BEFORE the hash runs — measured:
+  // `"\ud800"`, `"\ud801"`, `"\udfff"` and a literal `"\ufffd"` produce ONE
+  // digest, so four distinct caller-supplied identifiers share one checkout and
+  // one lock.
+  //
+  // This is not the collision the digest's safety argument covers. That
+  // argument is about SHA-256, and it holds. This is a collision in the
+  // TRANSCODING STEP UPSTREAM of the hash — deliberate, trivial to reproduce,
+  // and available to anyone who can supply an identifier. Collision resistance
+  // is simply not the property that was broken.
+  //
+  // `utf16le` is total over the domain: every JavaScript string has an exact
+  // representation, so there is no substitution left to collapse anything. The
+  // general rule, and the one worth carrying: **never transcode an identifier
+  // through an encoding that cannot represent it.**
+  return `h${createHash("sha256").update(Buffer.from(value, "utf16le")).digest("hex")}`;
 }
 
 /**
@@ -518,6 +558,41 @@ export async function provisionCheckout(
     }
 
     return { path, branch, created: false };
+  }
+
+  // **A directory with no `.git` is a creation that never finished — remove it.**
+  //
+  // Measured, not reasoned about: `SIGTERM` to `git worktree add` (which is
+  // exactly how the provisioning budget ends it) leaves the target present,
+  // partly populated, and without `.git`. The next attempt then takes this same
+  // branch, and `worktree add` refuses with `fatal: '<path>' already exists` —
+  // on BOTH arms, since the killed run also leaves the branch behind. `worktree
+  // prune` does not help; it touches bookkeeping, and the leftover is a tree.
+  // So every remaining attempt failed on a leftover no retry could clear.
+  //
+  // **This does not weaken "never reset".** That rule protects the previous
+  // attempt's work, and the whole point of `.git` as the witness is that git
+  // writes it as part of setup — so a tree without it was never a usable
+  // checkout, no agent ever ran in it, and it holds nothing to carry forward.
+  // Reuse is still decided by `.git`; what changed is the disposition when the
+  // witness is absent, from "try anyway and fail" to "clear and recreate".
+  //
+  // Cleaning here rather than in a `catch` around the failed `add` is
+  // deliberate: a catch cannot run when the whole process is killed, and this
+  // covers that case too.
+  if (existsSync(path)) {
+    // A guard on a destructive call. The path is derived under `config.root` by
+    // `checkoutPathFor`, and this keeps that true for any future caller that
+    // reaches this function another way.
+    const root = resolve(config.root);
+    if (path !== root && !path.startsWith(`${root}/`)) {
+      throw new Error(
+        `[conductor] refusing to clear ${path}: it is not inside the workspace root ` +
+          `${root}. A half-created checkout is only ever removed from the directory this ` +
+          `lab owns.`,
+      );
+    }
+    rmSync(path, { recursive: true, force: true });
   }
 
   // A worktree whose directory was removed leaves an administrative entry

@@ -64,6 +64,7 @@ import {
   type PhaseSpec,
 } from "./manager";
 import { implementPhase } from "./implement";
+import { assertPositiveInt } from "./config-env";
 import {
   assertSafeSegment,
   conductorTaskId,
@@ -129,6 +130,22 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // partitions routing (it is hashed into the derived workstream session id),
   // the collection identity partitions storage, and neither substitutes for the
   // other.
+  // **Every numeric option is validated at THIS door too.**
+  //
+  // `conductorFlow` is exported, so a host reaches these values without passing
+  // through `positiveIntFromEnv`. Unvalidated, a `NaN` survives the ownership
+  // comparisons silently and only surfaces at `AbortSignal.timeout` — after the
+  // row is claimed and the checkout provisioned, once per retry. Same rule as
+  // the env door, same predicate, applied where the value actually enters.
+  assertPositiveInt("runTimeoutMs", runTimeoutMs);
+  assertPositiveInt("maxAttempts", maxAttempts);
+  if (workspace.provisionTimeoutMs !== undefined) {
+    assertPositiveInt("workspace.provisionTimeoutMs", workspace.provisionTimeoutMs);
+  }
+  for (const [key, value] of Object.entries(ownership ?? {})) {
+    if (value !== undefined) assertPositiveInt(`ownership.${key}`, value as number);
+  }
+
   // `tenantSegment`, not `encodeSegment(tenant ?? something)`. The board and
   // the checkout MUST agree on what a tenant is, and the way they stopped
   // agreeing was a default here that the checkout did not share.

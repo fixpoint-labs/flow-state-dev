@@ -45,6 +45,7 @@ import { MAX_TIMER_MS } from "./config-env";
 import {
   RUNS,
   openRunRow,
+  readRunRow,
   runRecordCollection,
   runTopic,
   writeRunRow,
@@ -74,6 +75,15 @@ export interface PhaseRunContext {
   /** The run's own checkout. */
   workspacePath: string;
   branch: string;
+  /**
+   * The harness session the LAST attempt used, or `undefined` on attempt 1.
+   *
+   * Supplied by the manager, captured before this attempt's opening write
+   * cleared it. A phase must not read it off the run record: that row describes
+   * the attempt now running, and the clear has already been applied by the time
+   * a phase builds its prompt.
+   */
+  previousSessionId?: string;
   /**
    * Why the LAST attempt stopped, as the board captured it when `fail()`
    * re-pended the row. This — not the run record — is the carry-forward:
@@ -153,6 +163,11 @@ const managerStateSchema = z.object({
   attempt: z.number().nullable().default(null),
   workspacePath: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
+  /**
+   * The harness session the LAST attempt used, captured before this attempt's
+   * opening write clears it. See `openRun`.
+   */
+  previousSessionId: z.string().nullable().default(null),
 });
 
 /** The manager's own result. Two outcomes; there is deliberately no third. */
@@ -598,6 +613,24 @@ export function harnessManager(options: ManagerOptions) {
         branch,
       });
 
+      // **Read the previous attempt's session BEFORE opening clears it.**
+      //
+      // `openRunRow` applies the attempt-scoped clear, which sets `sessionId`
+      // to null — correctly, since the field describes the attempt now running
+      // and this one has not reported yet. But the next attempt's prompt wants
+      // to name the session the last one used, and reading the row after the
+      // clear always saw `null`. A rule and a reader that were each right on
+      // their own.
+      //
+      // Captured here and carried on the manager's own state, so the phase is
+      // handed the value rather than reaching into a record whose lifetime it
+      // would have to know about. That is why `PhaseRunContext` gained a field
+      // instead of `implement.ts` moving its read earlier: the same collision
+      // is unavailable to the next phase that wants carry-forward.
+      const previousSessionId =
+        (await readRunRow(ctx as BlockContext, topic))?.sessionId ?? null;
+      await ctx.sequencer!.patchState({ previousSessionId });
+
       // **Refusal stops the attempt.** The row can be reclaimed between the
       // runner's start gate and this call, and a discarded refusal let the
       // known-stale worker walk on into checkout preparation and paid agent
@@ -641,6 +674,9 @@ export function harnessManager(options: ManagerOptions) {
         workspacePath: state.workspacePath!,
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
+        ...(state.previousSessionId != null
+          ? { previousSessionId: state.previousSessionId }
+          : {}),
         ctx: ctx as BlockContext,
       };
 

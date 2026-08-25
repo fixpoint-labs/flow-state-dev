@@ -14,7 +14,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { acquireCheckout, encodeSegment } from "../src/workspace";
+import { acquireCheckout, conductorTaskId, encodeSegment } from "../src/workspace";
 import {
   createConductorHarness,
   USER_ID,
@@ -136,10 +136,10 @@ describe("the manager — the verdict at each exit", () => {
     // The run was given a checkout that is not the server's directory, and the
     // row records the one it was given.
     expect(seen.cwds[0]).toBe(row.run?.workspacePath);
-    expect(row.run?.workspacePath).toContain(`${ISSUE}--${PHASE}`);
+    expect(row.run?.workspacePath).toContain(conductorTaskId(ISSUE, PHASE));
     // Principal- and epic-namespaced: two users, or two epics, never share a ref.
     expect(row.run?.branch).toBe(
-      `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${ISSUE}--${PHASE}`,
+      `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${conductorTaskId(ISSUE, PHASE)}`,
     );
   });
 
@@ -324,6 +324,35 @@ describe("the manager — what carries across an attempt", () => {
   });
 });
 
+describe("what the retry is told about the last attempt", () => {
+  it("names the previous harness session in attempt 2's prompt", async () => {
+    // The collision: `openRunRow` applies the attempt-scoped clear, which nulls
+    // `sessionId` — correctly, since it describes the attempt now running. But
+    // the prompt read that same field to name the LAST attempt's session, and
+    // the clear runs first, so it always saw `null` and the line was silently
+    // never emitted. A rule and a reader that were each right alone.
+    //
+    // Asserted on the PROMPT the agent actually received, not on the row: the
+    // row is exactly the thing that was misleading here.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => false,
+      maxAttempts: 3,
+    });
+
+    await seedAndDrain(live);
+    expect(seen.prompts).toHaveLength(1);
+    // Attempt 1 has nothing to carry, so it must NOT invent a session line.
+    expect(seen.prompts[0]).not.toMatch(/previous run's harness session/);
+
+    await wakeAndSettle(live);
+
+    expect(seen.prompts).toHaveLength(2);
+    expect(seen.prompts[1]).toMatch(/The previous run's harness session was sess_stub\./);
+  });
+});
+
 describe("the manager — the deadline", () => {
   it("aborts the run and re-pends the row when the wall clock runs out", async () => {
     // The fourth exit, and the one a three-exit suite quietly omits. The
@@ -371,7 +400,7 @@ describe("the manager — contention, and what it must not cost", () => {
       ownership: { waitMs: 5_000, pollMs: 20, staleAfterMs: 4_000 },
     });
 
-    const checkout = join(live.workspaceRoot, `${ISSUE}--${PHASE}`);
+    const checkout = join(live.workspaceRoot, conductorTaskId(ISSUE, PHASE));
     const held = await acquireCheckout(checkout, "a displaced attempt", {
       waitMs: 1_000,
       pollMs: 20,
@@ -492,7 +521,7 @@ describe("the flow — seeding twice", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Named, not merely equal — see the concurrent case below.
-    expect(first.taskId).toBe(`${ISSUE}--${PHASE}`);
+    expect(first.taskId).toBe(conductorTaskId(ISSUE, PHASE));
     expect(second.taskId).toBe(first.taskId);
 
     const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
@@ -538,7 +567,7 @@ describe("the flow — seeding twice", () => {
     // the id exists and equals the derived identity before asserting agreement —
     // a check that cannot tell one row from no rows is not a check.
     for (const id of ids) {
-      expect(id).toBe(`${ISSUE}--${PHASE}`);
+      expect(id).toBe(conductorTaskId(ISSUE, PHASE));
     }
     expect(new Set(ids).size).toBe(1);
 
@@ -637,6 +666,58 @@ describe("a failed attempt releases the tree", () => {
     const lock = `${first.run?.workspacePath}.lock`;
     expect(existsSync(lock), `${lock} was left behind`).toBe(false);
     void checkout;
+  });
+});
+
+describe("numeric options are validated at the programmatic door too", () => {
+  // The env door got this two rounds ago. `conductorFlow` is EXPORTED, so a
+  // host reaches the same values without passing through `positiveIntFromEnv` —
+  // and `NaN` fails every downstream comparison silently, surviving
+  // `resolveOwnership` and surfacing at `AbortSignal.timeout` only after the row
+  // is claimed and the checkout provisioned. One attempt charged per retry for a
+  // permanent misconfiguration.
+  //
+  // Fixing the door that was reported and not the other door onto the same rule
+  // is the class this branch kept repeating; this pins both shut.
+  const base = {
+    epic: "numeric-epic",
+    workspace: { root: "/tmp/n", sourceRepo: "/tmp/n-repo", baseRef: "main" },
+  };
+
+  it("refuses every numeric option a timer would reject later", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    for (const bad of [Number.NaN, -1, 1.5, 0, 2_147_483_648]) {
+      expect(() => conductorFlow({ ...base, runTimeoutMs: bad }), `runTimeoutMs ${bad}`)
+        .toThrow(/positive whole number/);
+      expect(() => conductorFlow({ ...base, maxAttempts: bad }), `maxAttempts ${bad}`)
+        .toThrow(/positive whole number/);
+      expect(
+        () =>
+          conductorFlow({
+            ...base,
+            workspace: { ...base.workspace, provisionTimeoutMs: bad },
+          }),
+        `provisionTimeoutMs ${bad}`,
+      ).toThrow(/positive whole number/);
+    }
+  });
+
+  it("refuses a bad ownership bound, which reaches the same timers", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({
+        ...base,
+        ownership: { waitMs: Number.NaN, pollMs: 10, staleAfterMs: 5_000_000 },
+      }),
+    ).toThrow(/ownership\.waitMs/);
+  });
+
+  it("still builds on the values a host legitimately passes", async () => {
+    // The guard must leave the product working.
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({ ...base, runTimeoutMs: 60_000, maxAttempts: 2 }),
+    ).not.toThrow();
   });
 });
 
@@ -796,7 +877,7 @@ describe("the flow — one board, one phase", () => {
             >;
           }
         ).resources[COLLECTION_ID];
-        const taskId = `${ISSUE}--${PHASE}`;
+        const taskId = conductorTaskId(ISSUE, PHASE);
         const row = (await ledger.getOptional(taskId))?.state as { input?: unknown };
         await ledger.upsert(taskId, {
           ...row,
@@ -1133,7 +1214,7 @@ describe("the ledger is partitioned by tenant", () => {
         undefined,
         OTHER,
       );
-      expect(taskId).toBe(`${ISSUE}--${PHASE}`);
+      expect(taskId).toBe(conductorTaskId(ISSUE, PHASE));
     });
   });
 });

@@ -4,11 +4,11 @@
 import { describe, expect, it } from "vitest";
 import { hasCompletingPr } from "../src/implement";
 import {
-  conductorTaskId,
   branchFor,
   checkoutPathFor,
   type RunLocation,
   type RunPrincipal,
+  conductorTaskId,
   encodeSegment,
 } from "../src/workspace";
 
@@ -95,7 +95,7 @@ describe("the board task's identity", () => {
       // literal here would only pin how the digest happens to be computed
       // today. What this asserts is the SHAPE — untenanted tag, principal,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/FIX-1219--implement`,
+      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${conductorTaskId("FIX-1219", "implement")}`,
     );
   });
 });

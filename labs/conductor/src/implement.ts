@@ -11,7 +11,6 @@
  * after a successful verdict, because a run can open the pull request and then
  * exhaust its turn budget.
  */
-import { readRunRow, runTopic } from "./run-record";
 import type { PhaseRunContext, PhaseSpec } from "./manager";
 import { NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
 
@@ -92,15 +91,19 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
 
   return {
     phase: "implement",
-    // Empty, and that is not an oversight. The prompt below reads this issue's
-    // run row, but `runs` is the MANAGER's collection — always declared, and
+    // Empty, and that is not an oversight: this phase reads no collection of its
+    // own. It does not read the run record either — everything it needs about
+    // the previous attempt arrives on `PhaseRunContext`, because that row
+    // describes the attempt now running and has already been cleared by the
+    // time a prompt is built.
+    //
+    // `runs` is the MANAGER's collection regardless — always declared, and
     // reserved, because a phase re-declaring it would replace the manager's own
     // and send its bookkeeping somewhere `status` never reads. `readable` is for
     // collections a phase brings of its own.
     readable: {},
 
-    async buildPrompt(ctx: PhaseRunContext): Promise<string> {
-      const previous = await readRunRow(ctx.ctx, runTopic(ctx.epic, ctx.issue, ctx.phase));
+    buildPrompt(ctx: PhaseRunContext): string {
       const lines = [
         `Implement Linear issue ${ctx.issue}.`,
         "",
@@ -125,8 +128,13 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
         lines.push("", "The last attempt stopped for this reason:", ctx.feedback);
       }
 
-      if (previous?.sessionId != null) {
-        lines.push("", `The previous run's harness session was ${previous.sessionId}.`);
+      // From the MANAGER, not from the run record. The record's `sessionId`
+      // describes the attempt now running, and this attempt's opening write
+      // cleared it before a prompt could be built — so reading it here always
+      // saw `null` and the previous session was silently never named. The
+      // manager captures it before the clear and hands it over.
+      if (ctx.previousSessionId !== undefined) {
+        lines.push("", `The previous run's harness session was ${ctx.previousSessionId}.`);
       }
 
       return lines.join("\n");

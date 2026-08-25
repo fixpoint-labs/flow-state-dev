@@ -183,11 +183,32 @@ export const MAX_TIMER_MS = 2_147_483_647;
 export function positiveIntFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
-  const value = Number(raw);
+  // `Number()` first, then the shared predicate: the env door's only extra job
+  // is turning a string into a number, and the RULE about which numbers are
+  // usable belongs to every door, not this one.
+  return assertPositiveInt(name, Number(raw));
+}
+
+/**
+ * The numeric rule itself, for a value that is already a number.
+ *
+ * **The programmatic door onto the same rule the env door has.** `conductorFlow`
+ * is exported, so a host can pass `runTimeoutMs: NaN`, a negative, or a
+ * fraction directly — bypassing `positiveIntFromEnv` entirely. Unchecked, that
+ * survives `resolveOwnership`'s comparisons (`NaN` fails all of them silently)
+ * and reaches `AbortSignal.timeout` only after the row is claimed and the
+ * checkout provisioned, charging an attempt for a permanent misconfiguration
+ * once per retry.
+ *
+ * Fixing the env door and not this one was the sixth instance of the same
+ * class on this branch: a rule enforced at the door someone reported rather
+ * than at every door onto it.
+ */
+export function assertPositiveInt(label: string, value: number): number {
   if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_TIMER_MS) {
     throw new Error(
-      `[conductor] ${name}="${raw}" is not a positive whole number of milliseconds ` +
-        `no greater than ${MAX_TIMER_MS}. Left unchecked this is not caught until a ` +
+      `[conductor] ${label} must be a positive whole number no greater than ` +
+        `${MAX_TIMER_MS}; got ${String(value)}. Left unchecked this is not caught until a ` +
         "claimed attempt hands it to a timer and throws, charging a config error to the " +
         "task once per retry.",
     );

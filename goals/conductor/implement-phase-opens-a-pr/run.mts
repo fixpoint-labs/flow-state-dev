@@ -37,7 +37,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../../../labs/conductor/src/flow.ts";
-import { implementPhase } from "../../../labs/conductor/src/implement.ts";
+import {
+  hasCompletingPr,
+  implementPhase,
+} from "../../../labs/conductor/src/implement.ts";
 import {
   positiveIntFromEnv,
   requireSourceRepo,
@@ -304,13 +307,32 @@ await runGoal(async () => {
           // a hanging credential helper never returns — so `finally` is never
           // reached, the runtime is never disposed, and the scratch checkout is
           // never removed.
+          //
+          // **The manager's own state rule, imported.** `--state all` returns
+          // closed-unmerged rows too, and counting any nonempty result certified
+          // a task whose pull request had been closed without merging — the
+          // silent success this lab exists to close, re-entering through the
+          // check that is supposed to catch it. `state` has to be REQUESTED for
+          // the rule to have anything to read, which is why asking for `number`
+          // alone made the goal structurally unable to apply it.
           const prs = execFileSync(
             "gh",
-            ["pr", "list", "--head", row.run.branch, "--state", "all", "--json", "number"],
+            [
+              "pr",
+              "list",
+              "--head",
+              row.run.branch,
+              "--state",
+              "all",
+              "--json",
+              "number,state",
+            ],
             { cwd: checkout, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
           );
-          if ((JSON.parse(prs || "[]") as unknown[]).length === 0) {
-            failures.push(`no pull request exists for branch "${row.run.branch}"`);
+          if (!hasCompletingPr(prs)) {
+            failures.push(
+              `no open or merged pull request exists for branch "${row.run.branch}"`,
+            );
           }
         }
       }
