@@ -172,6 +172,36 @@ export function conductorFlow(options: ConductorFlowOptions) {
   assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
 
+  if (tenant === "") {
+    throw new Error(
+      "[conductor] tenant is an empty string. Omit it for an untenanted conductor, or " +
+        "pass the tenant id — an empty one derives a tenanted identity that every " +
+        "request, resolving an empty tenant as untenanted, is then refused against.",
+    );
+  }
+
+  // **An empty tenant is a mistake, and refusing it is not the same as
+  // normalizing it.**
+  //
+  // `tenantSegment` reads `undefined` as untenanted and anything else as a
+  // present tenant, so `""` derives a TENANTED board and run identity. Every
+  // request resolves the other way — `runPrincipal` and the HTTP extractor both
+  // read an empty tenant as untenanted — so the gate refuses every `seed`,
+  // `wake` and `status` against a conductor that built without complaint. A
+  // configuration that constructs and then fails at every door is the silent
+  // wrong answer this lab exists to remove.
+  //
+  // Refused rather than normalized to `undefined`, which was the other option.
+  // Normalizing would make `tenant: ""` and an omitted tenant the same
+  // conductor — collapsing a config that SAYS it is tenanted onto the
+  // untenanted identity, which is the aliasing the tenant partition exists to
+  // prevent. The host meant one of the two; it should say which.
+  //
+  // Not a grammar. Tenant ids are unrestricted strings and are encoded rather
+  // than validated for the reasons in `encodeSegment`. This is the one case the
+  // encoding cannot express: present-but-empty, where `tenantSegment` already
+  // spends `undefined` on absent.
+
   // `tenantSegment`, not `encodeSegment(tenant ?? something)`. The board and
   // the checkout MUST agree on what a tenant is, and the way they stopped
   // agreeing was a default here that the checkout did not share.

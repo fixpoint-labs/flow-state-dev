@@ -735,6 +735,31 @@ describe("the git inputs are validated at the programmatic door too", () => {
     ).toThrow(/workspace\.baseRef "no-such-ref" does not resolve/);
   });
 
+  it("refuses an empty tenant rather than deriving one every request is refused against", async () => {
+    // `tenantSegment` spends `undefined` on untenanted, so `""` derives a
+    // TENANTED identity — while `runPrincipal` and the HTTP extractor both read
+    // an empty tenant as untenanted. The conductor builds, and then the gate
+    // refuses every seed, wake and status against it.
+    //
+    // Refused rather than normalized to `undefined`: normalizing would collapse
+    // a config that says it is tenanted onto the untenanted identity, which is
+    // the aliasing the partition exists to prevent.
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({
+        ...base,
+        tenant: "",
+        workspace: { ...base.workspace, sourceRepo: sharedRepo() },
+      }),
+    ).toThrow(/tenant is an empty string/);
+
+    // An OMITTED tenant is the untenanted conductor and stays legal — the point
+    // is that the two are different, not that tenancy is now mandatory.
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: sharedRepo() } }),
+    ).not.toThrow();
+  });
+
   it("still builds on a repository and ref that are real", async () => {
     const { conductorFlow } = await import("../src/flow");
     expect(() =>
@@ -1081,7 +1106,12 @@ describe("the ledger is partitioned by tenant", () => {
 
   it("accepts any tenant id and keeps distinct ones distinct", async () => {
     const { conductorFlow } = await import("../src/flow");
-    for (const bad of ["../escape", "a/b", "..", "", "with space"]) {
+    // `""` is deliberately NOT in this list. It is refused a few describes up,
+    // and for a reason that has nothing to do with encoding: `tenantSegment`
+    // already spends `undefined` on untenanted, so an empty tenant is the one
+    // value the encoding cannot express. The ENCODER still handles it, and
+    // `workspace.spec.ts` asserts that where it belongs.
+    for (const bad of ["../escape", "a/b", "..", "with space"]) {
       // Encoded, not validated — every tenant id is usable, and distinct ones
       // stay distinct. That is the property; a grammar was the old answer.
       expect(conductorFlow({ ...base, tenant: bad }).collectionId).not.toBe(

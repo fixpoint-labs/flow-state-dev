@@ -912,6 +912,15 @@ describe("the identity rule — the digest cannot be made to collide on purpose"
     expect(new Set(digests).size).toBe(HOSTILE.length);
   });
 
+  it("encodes the empty string like any other input", () => {
+    // `conductorFlow` refuses an empty TENANT, but that is a config rule about
+    // present-versus-absent, not a limit of the encoder. Asserted here so the
+    // encoder keeps its empty-string case when the config door takes the value
+    // away from the other test.
+    expect(encodeSegment("")).toMatch(/^h[0-9a-f]{64}$/);
+    expect(encodeSegment("")).not.toBe(encodeSegment("x"));
+  });
+
   it("keeps a valid astral pair distinct from the surrogates it is made of", () => {
     // The guard on the fix: distinctness must not be bought by mangling valid
     // input. `😀` is exactly `\ud83d\ude00`, so an encoder that mishandled
