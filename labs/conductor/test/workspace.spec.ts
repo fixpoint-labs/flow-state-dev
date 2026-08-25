@@ -204,6 +204,44 @@ describe("a cancelled attempt stops waiting for the tree", () => {
 
     expect(existsSync(`${checkout}.lock`)).toBe(false);
   });
+
+  it("observes the signal without waiting out the poll interval", async () => {
+    // The two tests above both run at `pollMs: 10`, so they pass whether or not
+    // the sleep itself is abortable — ten milliseconds of lag is invisible. That
+    // makes the responsiveness of the wait a function of `pollMs`, which is a
+    // caller-set public option: at a large but perfectly valid interval, a
+    // cancelled attempt keeps a replacement waiting for the whole interval.
+    //
+    // So this one sets `pollMs` far past any tolerable delay. The waiter reaches
+    // the sleep, and from there the ONLY thing that can end the call inside the
+    // assertion is `abort` waking the sleep — the poll interval and the deadline
+    // are both ten minutes out.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-cancel3-"));
+    dirs.push(dir);
+    const checkout = join(dir, "tree");
+    const held = await acquireCheckout(checkout, "the holder", {
+      waitMs: 1_000,
+      pollMs: 10,
+      staleAfterMs: 600_000,
+    });
+
+    const controller = new AbortController();
+    const startedAt = Date.now();
+    const waiting = acquireCheckout(
+      checkout,
+      "the waiter",
+      { waitMs: 600_000, pollMs: 600_000, staleAfterMs: 600_000 },
+      Date.now,
+      controller.signal,
+    );
+
+    setTimeout(() => controller.abort(), 50);
+    await expect(waiting).rejects.toThrow(/was cancelled/);
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+
+    expect(existsSync(`${checkout}.lock`)).toBe(true);
+    held.release();
+  });
 });
 
 describe("a relative workspace root still lands in one place", () => {

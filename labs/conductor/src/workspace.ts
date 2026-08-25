@@ -628,7 +628,31 @@ export interface OwnershipBounds {
   staleAfterMs: number;
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Wait, but stop waiting the moment the attempt is cancelled.
+ *
+ * A plain `setTimeout` promise makes the wait's responsiveness a function of
+ * `pollMs`, which is a caller-set public option: at a large but perfectly valid
+ * interval, a shutdown or a lost claim is not observed until the whole interval
+ * elapses, and the replacement worker waits out an attempt that has already
+ * been told to stop. Resolving on `abort` removes the dependency instead of
+ * bounding it — the wait is as responsive as the signal regardless of how
+ * `pollMs` is configured.
+ *
+ * It resolves rather than rejects: the caller checks the signal on the next
+ * line, so cancellation keeps ONE exit and one message rather than growing a
+ * second throw site here.
+ */
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise<void>((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done);
+  });
 
 /**
  * Take exclusive ownership of a checkout — **waiting** for it, not failing on it
@@ -689,11 +713,15 @@ export async function acquireCheckout(
    *
    * **Checked in the WAIT, never during an in-flight git command.** Shutdown, or
    * a lease renewal reporting that this attempt lost its claim, propagates
-   * through `ctx.signal` — and an ordinary sleep ignores it, so a stale attempt
-   * kept polling for the whole ownership window and could still go on to acquire
-   * and provision a checkout it can no longer record a result for. That window
-   * is now the run's deadline plus provisioning plus slack, so ignoring the
-   * signal costs the better part of an hour of a replacement's time.
+   * through `ctx.signal`. Left unobserved, a stale attempt keeps polling for the
+   * whole ownership window and can still go on to acquire and provision a
+   * checkout it can no longer record a result for. That window is the run's
+   * deadline plus provisioning plus slack, so ignoring the signal costs the
+   * better part of an hour of a replacement's time.
+   *
+   * Observed here AND in the wait itself — `sleep` resolves on `abort`, so this
+   * runs when the signal arrives rather than when `pollMs` next elapses. The
+   * check alone would have made the delay a function of a caller-set option.
    *
    * Interrupting the wait is safe in a way interrupting provisioning is not:
    * nothing has been created yet, so there is nothing half-made to leave behind.
@@ -791,7 +819,7 @@ export async function acquireCheckout(
           `ordinary reclaim resolves well inside this bound.`,
       );
     }
-    await sleep(bounds.pollMs);
+    await sleep(bounds.pollMs, signal);
     stopIfCancelled();
   }
 }
