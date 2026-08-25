@@ -77,6 +77,21 @@ export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
 }
 
 /**
+ * `owner/name` from a git remote URL, or `undefined` if it is not GitHub-shaped.
+ *
+ * Handles the two spellings a checkout can carry — `https://host/owner/name.git`
+ * and `git@host:owner/name.git`. **Undefined is a refusal, not a fallback**: a
+ * remote we cannot name is a repository we cannot pin the listing to, and the
+ * whole point of reading it here is to stop the comparison drifting.
+ */
+export function repoSlugFromRemote(url: string): string | undefined {
+  const trimmed = url.trim().replace(/\.git$/, "");
+  const match = /(?:[:/])([^/:]+)\/([^/]+)$/.exec(trimmed);
+  if (match === null) return undefined;
+  return `${match[1]}/${match[2]}`;
+}
+
+/**
  * Ask GitHub whether this branch has a pull request that counts.
  *
  * Run from inside the run's own checkout, so `gh` resolves the repository from
@@ -94,18 +109,28 @@ export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
  * done, which is the silent wrong success this phase exists to detect. So the
  * head repository is requested and checked: only a pull request whose head is
  * in the repository the run worked in counts.
+ *
+ * **The repository is taken from git, not from `gh`, and then pinned with
+ * `-R`.** `GH_REPO` in the host's environment redirects every `gh` command that
+ * would otherwise work from the local checkout — so asking `gh` which
+ * repository this is and then asking `gh` for its pull requests lets ONE
+ * process-level override redirect both halves of the comparison, which then
+ * agree with each other about the wrong repository. Reading the remote with
+ * `git` puts the answer outside `gh`'s environment, and passing it back as `-R`
+ * stops the listing drifting to another one.
  */
 async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
   const { stdout: originStdout } = await run(
-    "gh",
-    ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+    "git",
+    ["remote", "get-url", "origin"],
     {
       cwd: ctx.workspacePath,
       timeoutMs: NETWORK_CALL_TIMEOUT_MS,
       signal: ctx.ctx.signal,
     },
   );
-  const thisRepo = originStdout.trim();
+  const thisRepo = repoSlugFromRemote(originStdout.trim());
+  if (thisRepo === undefined) return false;
 
   const { stdout } = await run(
     "gh",
@@ -118,6 +143,8 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       "all",
       "--json",
       "number,state,headRepository,headRepositoryOwner",
+      "-R",
+      thisRepo,
     ],
     {
       cwd: ctx.workspacePath,

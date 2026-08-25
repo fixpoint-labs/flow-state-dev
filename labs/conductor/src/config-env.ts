@@ -10,6 +10,7 @@
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * How long a startup git query may take.
@@ -59,6 +60,36 @@ export function repositoryIdentity(dir: string): string | undefined {
 }
 
 /**
+ * Where the dispatcher's OWN code lives, as a repository identity.
+ *
+ * **`process.cwd()` is not the dispatcher.** It was the only source of "my
+ * repository" here, and a host started from anywhere outside its checkout — a
+ * service unit, a container whose `WORKDIR` is not the source tree, a process
+ * launched from `/` — made `repositoryIdentity` return `undefined`. This guard
+ * only refuses on a MATCH, so an undefined identity is not a near miss: it is
+ * the guard silently doing nothing, in a deployment shape that is ordinary
+ * rather than exotic. Obligation A was then unenforced exactly where nobody
+ * would look.
+ *
+ * This module's own file is a fact about the running code and does not move
+ * when the process's directory does. Neither source is authoritative on its
+ * own — a bundler can rewrite `import.meta.url`, and a host can legitimately run
+ * from its checkout — so both are consulted and a match with EITHER refuses.
+ */
+function dispatcherIdentities(from: string): string[] {
+  const here = (() => {
+    try {
+      return path.dirname(fileURLToPath(import.meta.url));
+    } catch {
+      return undefined;
+    }
+  })();
+  return [from, ...(here === undefined ? [] : [here])]
+    .map(repositoryIdentity)
+    .filter((id): id is string => id !== undefined);
+}
+
+/**
  * Refuse a repository that is the one this process is running from.
  *
  * **One function, because there are two callers and they drifted.** The
@@ -86,10 +117,12 @@ export function assertDistinctRepository(
     );
   }
 
-  // `mine` may legitimately be undefined: a dispatcher run from outside any
-  // repository has nothing to collide with. Only a MATCH is a refusal.
-  const mine = repositoryIdentity(from);
-  if (mine !== undefined && mine === theirs) {
+  // Both the process's directory AND this module's own location, because a
+  // dispatcher started outside its checkout has a cwd that collides with
+  // nothing while its code sits squarely in the repository being pointed at.
+  // Only a MATCH is a refusal; a host genuinely unrelated to the target still
+  // matches neither.
+  if (dispatcherIdentities(from).includes(theirs)) {
     throw new Error(
       `[conductor] ${variable} (${repo}) is the repository this process is itself running ` +
         "from — a different path inside it, another of its worktrees, or a symlink to it " +

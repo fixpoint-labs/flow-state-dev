@@ -2,7 +2,7 @@
  * The completion check's state rule, and the seed's identity.
  */
 import { describe, expect, it } from "vitest";
-import { hasCompletingPr } from "../src/implement";
+import { hasCompletingPr, repoSlugFromRemote } from "../src/implement";
 import {
   branchFor,
   checkoutPathFor,
@@ -65,6 +65,32 @@ describe("the done-condition — which pull requests count", () => {
       },
     ]);
     expect(hasCompletingPr(fromMine, mine)).toBe(true);
+  });
+
+  it("names the repository from the checkout's own remote, in either spelling", () => {
+    // Taken from `git`, not from `gh`, and then passed back as `-R`. `GH_REPO`
+    // in the host's environment redirects every `gh` command that would
+    // otherwise work from the local checkout — so asking `gh` which repository
+    // this is and then asking `gh` for its pull requests lets one override
+    // redirect both halves of the comparison, which then agree with each other
+    // about the wrong repository.
+    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git")).toBe(
+      "fixpoint-labs/flow-state-dev",
+    );
+    expect(repoSlugFromRemote("git@github.com:fixpoint-labs/flow-state-dev.git")).toBe(
+      "fixpoint-labs/flow-state-dev",
+    );
+    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev")).toBe(
+      "fixpoint-labs/flow-state-dev",
+    );
+  });
+
+  it("refuses to name a remote it cannot parse", () => {
+    // Undefined is a refusal, not a fallback: a remote we cannot name is a
+    // repository we cannot pin the listing to, and an unpinned listing is the
+    // thing this reading exists to prevent.
+    expect(repoSlugFromRemote("")).toBeUndefined();
+    expect(repoSlugFromRemote("not-a-url")).toBeUndefined();
   });
 
   it("refuses a row it cannot attribute to a repository", () => {
