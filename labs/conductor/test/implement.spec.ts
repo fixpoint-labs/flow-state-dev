@@ -3,7 +3,22 @@
  */
 import { describe, expect, it } from "vitest";
 import { hasCompletingPr } from "../src/implement";
-import { conductorTaskId, branchFor, checkoutPathFor } from "../src/workspace";
+import {
+  conductorTaskId,
+  branchFor,
+  checkoutPathFor,
+  type RunLocation,
+  type RunPrincipal,
+} from "../src/workspace";
+
+const ALICE: RunPrincipal = { userId: "alice" };
+const EPIC = "conductor-tasks-test-epic";
+const at = (issue: string, phase: string): RunLocation => ({
+  principal: ALICE,
+  epic: EPIC,
+  issue,
+  phase,
+});
 
 describe("the done-condition — which pull requests count", () => {
   it("does NOT complete on a pull request that was closed without merging", async () => {
@@ -71,9 +86,11 @@ describe("the board task's identity", () => {
     // One issue-phase, one identity everywhere — the property that makes a
     // duplicate seed a duplicate of something rather than a second run.
     const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
-    expect(checkoutPathFor(config, "FIX-1219", "implement")).toContain(
+    expect(checkoutPathFor(config, at("FIX-1219", "implement"))).toContain(
       conductorTaskId("FIX-1219", "implement"),
     );
-    expect(branchFor("FIX-1219", "implement")).toBe("conductor/FIX-1219-implement");
+    expect(branchFor(at("FIX-1219", "implement"))).toBe(
+      "conductor/single-tenant/alice/conductor-tasks-test-epic/FIX-1219-implement",
+    );
   });
 });

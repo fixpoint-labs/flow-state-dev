@@ -23,7 +23,8 @@ import {
 const BOARD = "conductor-tasks-test";
 const ISSUE = "FIX-1219";
 const PHASE = "implement";
-const TOPIC = runTopic(ISSUE, PHASE);
+const EPIC = "conductor-tasks-test-epic";
+const TOPIC = runTopic(EPIC, ISSUE, PHASE);
 const TASK = "task_1";
 
 /**
@@ -82,16 +83,16 @@ describe("the run record — the two key vocabularies", () => {
     // Written and read by the BARE topic.
     expect(await runs.getOptional(TOPIC)).toBeDefined();
     // A prefix listing of one issue's phases takes the bare prefix too.
-    expect(await runs.list(runTopicPrefix(ISSUE))).toHaveLength(1);
+    expect(await runs.list(runTopicPrefix(EPIC, ISSUE))).toHaveLength(1);
 
     // And the STORAGE key it produced carries the prefix exactly once. A
     // doubled `runs/runs/…` is the failure this pins, and every read written
     // the same wrong way would agree with it — which is why the literal is
     // asserted rather than a round trip.
     const stored = (await runs.getOptional(TOPIC))!.path;
-    expect(stored).toBe(`runs/${ISSUE}/${PHASE}`);
+    expect(stored).toBe(`runs/${EPIC}/${ISSUE}/${PHASE}`);
     // Which is what a route's `topicPrefix=runs/<issue>/` then matches.
-    expect(stored.startsWith(`runs/${runTopicPrefix(ISSUE)}`)).toBe(true);
+    expect(stored.startsWith(`runs/${runTopicPrefix(EPIC, ISSUE)}`)).toBe(true);
   });
 });
 
@@ -267,5 +268,55 @@ describe("the manager — a phase cannot claim the manager's own collections", (
 
   it("accepts a phase that declares a collection of its own", () => {
     expect(withReadable({ "phase-notes": runRecordCollection })).not.toThrow();
+  });
+});
+
+describe("two epics on one issue-phase get different run rows", () => {
+  // The half that made this a WRONG answer rather than a missing one: without
+  // the discriminator, either epic's manager overwrites the other's checkout,
+  // session, cost and outcome, and `status` returns `run:` present and
+  // belonging to someone else.
+  it("resolves distinct topics and distinct storage keys", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, claimed(1));
+
+    const alpha = runTopic("conductor-tasks-alpha", ISSUE, PHASE);
+    const beta = runTopic("conductor-tasks-beta", ISSUE, PHASE);
+    expect(alpha).not.toBe(beta);
+
+    await writeRunRow(ctx, { ...identity(1), topic: alpha }, { sessionId: "sess_alpha" });
+    await writeRunRow(ctx, { ...identity(1), topic: beta }, { sessionId: "sess_beta" });
+
+    // Neither overwrote the other.
+    expect(((await runs.getOptional(alpha))!.state as RunRecordState).sessionId).toBe(
+      "sess_alpha",
+    );
+    expect(((await runs.getOptional(beta))!.state as RunRecordState).sessionId).toBe(
+      "sess_beta",
+    );
+    // And each key stays under `runs/`, exactly once.
+    expect((await runs.getOptional(alpha))!.path).toBe(`runs/${alpha}`);
+  });
+
+  it("still lists one epic's phases without seeing the other's", async () => {
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+    await board.upsert(TASK, claimed(1));
+
+    await writeRunRow(
+      ctx,
+      { ...identity(1), topic: runTopic("conductor-tasks-alpha", ISSUE, PHASE) },
+      { sessionId: "a" },
+    );
+    await writeRunRow(
+      ctx,
+      { ...identity(1), topic: runTopic("conductor-tasks-beta", ISSUE, PHASE) },
+      { sessionId: "b" },
+    );
+
+    expect(await runs.list(runTopicPrefix("conductor-tasks-alpha", ISSUE))).toHaveLength(1);
   });
 });

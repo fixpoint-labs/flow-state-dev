@@ -87,12 +87,93 @@ function assertSafeSegment(label: string, value: string): string {
   return value;
 }
 
-/** This issue-phase's checkout directory. A pure function of the task. */
-export function checkoutPathFor(config: WorkspaceConfig, issue: string, phase: string): string {
-  return join(
-    config.root,
-    `${assertSafeSegment("issue", issue)}--${assertSafeSegment("phase", phase)}`,
-  );
+/**
+ * Who a run belongs to. Both halves come from the request's resolved identity,
+ * never from anything a caller supplies in a body.
+ */
+export interface RunPrincipal {
+  /** The authenticated user. */
+  userId: string;
+  /** The tenant, on a multi-tenant deployment. */
+  tenantId?: string;
+}
+
+/**
+ * The principal's segments, validated, in the order they appear in a path.
+ *
+ * **One place, because this is an isolation boundary and not a formatting
+ * choice.** The board and the run record are `user`-scoped, so the framework
+ * partitions them by principal for us. The filesystem and git partition nothing
+ * — so unless the principal is in the path and in the branch, two users on one
+ * host seeding the same issue-phase derive the *same* directory and the *same*
+ * branch. The lock then serializes them rather than separating them: the second
+ * user's agent opens a tree holding the first user's commits and uncommitted
+ * work, and a pull request on the shared branch can satisfy the second user's
+ * completion check. One user's run reports success on another's work.
+ *
+ * The invariant is **one job's state is isolated per principal**, and it ranges
+ * over every store that job touches: collections, the filesystem, and git.
+ */
+function principalSegments(principal: RunPrincipal): string[] {
+  return [
+    // A literal rather than an empty segment on a single-tenant deployment, so
+    // the depth of the tree never depends on configuration.
+    assertSafeSegment("tenant", principal.tenantId ?? "single-tenant"),
+    assertSafeSegment("user", principal.userId),
+  ];
+}
+
+/**
+ * Everything that makes one run's state distinct from another's.
+ *
+ * **One object rather than four positional strings, deliberately.** Every field
+ * here is an isolation boundary, and adjacent string parameters are exactly the
+ * shape that lets a transposed call compile and silently resolve the wrong
+ * tree — which is the failure this type exists to make impossible.
+ */
+export interface RunLocation {
+  principal: RunPrincipal;
+  /**
+   * The board's own discriminator — one epic's collection identity.
+   *
+   * D-4 partitions the board by it because the board is a claim pool. It has to
+   * reach here too: `runs/**` is one collection EVERY epic writes, so without it
+   * two epics driving the same issue-phase resolve one run topic, one checkout
+   * and one branch. That is obligation B across boards — two live attempts, one
+   * tree — and partitioning the topic while leaving the path shared would fix
+   * the report and keep the overwrite.
+   */
+  epic: string;
+  issue: string;
+  phase: string;
+}
+
+/**
+ * The segments that partition one run's state from every other run's.
+ *
+ * Principal first, then epic, then the issue-phase. **All three derivations use
+ * this**, so a discriminator can never reach one and miss another.
+ */
+function locationSegments(location: RunLocation): string[] {
+  return [
+    ...principalSegments(location.principal),
+    assertSafeSegment("epic", location.epic),
+  ];
+}
+
+/** The issue-phase leaf, shared by the path and the branch. */
+function issuePhaseSegment(location: RunLocation): string {
+  return `${assertSafeSegment("issue", location.issue)}--${assertSafeSegment("phase", location.phase)}`;
+}
+
+/**
+ * This run's checkout directory.
+ *
+ * A pure function of the durable task, the authenticated identity, and the
+ * epic whose board filed it.
+ */
+export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation): string {
+  return join(config.root, ...locationSegments(location), issuePhaseSegment(location));
 }
 
 /**
@@ -106,9 +187,18 @@ export function conductorTaskId(issue: string, phase: string): string {
   return `${assertSafeSegment("issue", issue)}--${assertSafeSegment("phase", phase)}`;
 }
 
-/** This issue-phase's branch. Derived alongside the path, from the same inputs. */
-export function branchFor(issue: string, phase: string): string {
-  return `conductor/${assertSafeSegment("issue", issue)}-${assertSafeSegment("phase", phase)}`;
+/**
+ * This issue-phase's branch, for this principal.
+ *
+ * Carries the principal for the same reason the path does, and it is the half
+ * that is easier to miss: two users could be given separate directories and
+ * still share a branch, at which point one user's commits land on the other's
+ * branch and a pull request opened by either can satisfy the other's completion
+ * check. Separate trees pushing one ref is not isolation.
+ */
+export function branchFor(location: RunLocation): string {
+  const scope = locationSegments(location).join("/");
+  return `conductor/${scope}/${assertSafeSegment("issue", location.issue)}-${assertSafeSegment("phase", location.phase)}`;
 }
 
 /** The lock file guarding one checkout. Beside it, not inside — see `acquire`. */
@@ -119,6 +209,17 @@ function lockPathFor(checkoutPath: string): string {
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await run("git", args, { cwd, maxBuffer: 8 * 1024 * 1024 });
   return stdout.trim();
+}
+
+/**
+ * The branch a worktree is actually on, or `null` on a detached HEAD.
+ *
+ * A detached HEAD is a mismatch like any other — the run would commit to no
+ * branch at all — so it is reported rather than tolerated.
+ */
+async function currentBranch(checkoutPath: string): Promise<string | null> {
+  const head = await git(checkoutPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  return head === "HEAD" ? null : head;
 }
 
 async function branchExists(config: WorkspaceConfig, branch: string): Promise<boolean> {
@@ -144,11 +245,10 @@ async function branchExists(config: WorkspaceConfig, branch: string): Promise<bo
  */
 export async function provisionCheckout(
   config: WorkspaceConfig,
-  issue: string,
-  phase: string,
+  location: RunLocation,
 ): Promise<Checkout> {
-  const path = checkoutPathFor(config, issue, phase);
-  const branch = branchFor(issue, phase);
+  const path = checkoutPathFor(config, location);
+  const branch = branchFor(location);
   mkdirSync(config.root, { recursive: true });
 
   if (existsSync(join(path, ".git"))) {
@@ -160,6 +260,31 @@ export async function provisionCheckout(
           `whatever the deleted one pointed at.`,
       );
     }
+
+    // **The branch existing is not the branch being checked out.** A worktree
+    // that was switched — by hand, by a tool, by a run that ran `git checkout` —
+    // still satisfies the check above, because the expected branch is still in
+    // the source repo; it is simply not the one this tree is on.
+    //
+    // Returning it anyway is a silent wrong answer of the worst kind here: the
+    // prompt tells the run it is on the expected branch, the run record says so,
+    // the commits land somewhere else entirely, and a pre-existing pull request
+    // for the expected branch can make the attempt look done. Every layer agrees
+    // and all of them are wrong.
+    //
+    // Fail loudly rather than resetting. A reset would discard whatever the tree
+    // holds, and this module never resets (decision 2's carry-forward is exactly
+    // that work).
+    const head = await currentBranch(path);
+    if (head !== branch) {
+      throw new Error(
+        `[conductor] the checkout at ${path} is on branch "${head}", not the expected ` +
+          `"${branch}". Refusing to use it: a run told it is on "${branch}" would commit ` +
+          `to "${head}" while the record says otherwise. Restore the branch or remove the ` +
+          `checkout by hand — nothing here resets a tree.`,
+      );
+    }
+
     return { path, branch, created: false };
   }
 

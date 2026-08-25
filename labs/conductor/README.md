@@ -81,13 +81,28 @@ long-lived board over many issues needs a retention policy, which is not built.
 
 ### Where the checkout lives
 
-Derived from the durable task — `<root>/<issue>--<phase>`, on `conductor/<issue>-<phase>` — never
-read back from anywhere. That matters because the board outlives the session that filed a row: a
-task woken in a new coordinator session must resolve the same directory, or the retry silently
-starts from nothing.
+Derived, never read back from anywhere:
 
-Provisioning is idempotent and never resets, forces, or discards uncommitted work. A checkout whose
-branch was deleted underneath fails loudly rather than creating a divergent one.
+```
+<root>/<tenant>/<user>/<epic>/<issue>--<phase>
+conductor/<tenant>/<user>/<epic>/<issue>-<phase>
+```
+
+Derived because the board outlives the session that filed a row — a task woken in a new
+coordinator session must resolve the same directory, or the retry silently starts from nothing.
+
+**Namespaced because one job's state is isolated per principal and per epic**, and the
+collections get that from the framework while the filesystem and git get it from nobody. Two
+users, or two epics, driving the same issue-phase on one host would otherwise share a directory
+*and a branch*: the second agent opens a tree holding the first's commits and uncommitted work,
+and a pull request on the shared branch can satisfy the second's completion check — one run
+reporting success on another's work. The run record carries the same discriminators for the same
+reason.
+
+Provisioning is idempotent and never resets, forces, or discards uncommitted work. Two things
+fail loudly rather than being papered over: a checkout whose branch was deleted underneath, and a
+checkout that is on a *different* branch than expected — a run told it is on one branch while its
+commits land on another is the kind of agreement where every layer is wrong together.
 
 ## What it does not do yet
 

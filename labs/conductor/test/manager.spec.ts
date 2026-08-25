@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { acquireCheckout } from "../src/workspace";
 import {
   createConductorHarness,
+  USER_ID,
   hangingAgent,
   scriptedAgent,
   sdkResult,
@@ -135,7 +136,10 @@ describe("the manager — the verdict at each exit", () => {
     // row records the one it was given.
     expect(seen.cwds[0]).toBe(row.run?.workspacePath);
     expect(row.run?.workspacePath).toContain(`${ISSUE}--${PHASE}`);
-    expect(row.run?.branch).toBe(`conductor/${ISSUE}-${PHASE}`);
+    // Principal- and epic-namespaced: two users, or two epics, never share a ref.
+    expect(row.run?.branch).toBe(
+      `conductor/single-tenant/${USER_ID}/${COLLECTION_ID}/${ISSUE}-${PHASE}`,
+    );
   });
 
   it("re-pends the row with the reason when the run REPORTED failure", async () => {
@@ -460,11 +464,10 @@ describe("the manager — the phase surface", () => {
 });
 
 describe("the flow — seeding twice", () => {
-  it("returns the existing row rather than minting a second run", async () => {
+  it("returns the existing row when the seeds are sequential", async () => {
     // Two rows for one issue-phase derive the same checkout, the same branch and
     // the same run record — so a duplicated seed charges two full coding runs
-    // whose independently valid claims overwrite one shared record, and `status`
-    // answers with two rows carrying the last writer's metadata.
+    // whose independently valid claims overwrite one shared record.
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     live = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
@@ -476,12 +479,47 @@ describe("the flow — seeding twice", () => {
     await live.call("seed", { issue: ISSUE, phase: PHASE });
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    // Asserted on the BOARD and on the harness, never on a return value: one
-    // row and one run are the properties that matter, and `status` answering
-    // with two rows carrying the last writer's metadata is the observable harm.
     const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
     expect(rows).toHaveLength(1);
     expect(seen.prompts).toHaveLength(1);
+  });
+
+  it("returns one row when the seeds are CONCURRENT", async () => {
+    // **The interleaving the sequential test cannot reach.** That one awaits the
+    // first seed's settlement before starting the second, so both calls see the
+    // row already present and the create path never runs twice — it exercises
+    // the early return and reports on the race. A check that cannot observe the
+    // ordering it is meant to cover is not a check (tenet 7).
+    //
+    // Here both seeds are in flight together, so both can find the row absent
+    // before either creates it and the loser's create hits the id that now
+    // exists. Losing is the correct outcome — one row was filed — so the loser
+    // must re-read and answer with the winner's row rather than surfacing a
+    // conflict the caller cannot act on.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => true,
+    });
+
+    const results = await Promise.allSettled([
+      live.call<{ taskId: string }>("seed", { issue: ISSUE, phase: PHASE }),
+      live.call<{ taskId: string }>("seed", { issue: ISSUE, phase: PHASE }),
+    ]);
+
+    // Neither call fails: a lost race is an idempotent success, not an error.
+    for (const result of results) {
+      expect(result.status).toBe("fulfilled");
+    }
+    // And both name the same row.
+    const ids = results.map((r) =>
+      r.status === "fulfilled" ? r.value.taskId : "rejected",
+    );
+    expect(new Set(ids).size).toBe(1);
+
+    await settle(live);
+    const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
+    expect(rows).toHaveLength(1);
   });
 });
 
