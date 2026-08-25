@@ -44,7 +44,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
@@ -345,7 +345,20 @@ function issuePhaseSegment(location: RunLocation): string {
  * epic whose board filed it.
  */
 export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation): string {
-  return join(config.root, ...locationSegments(location), issuePhaseSegment(location));
+  // **Absolute, always.** The derived path is consumed from two different
+  // working directories: the lock, the existence checks, the recorded path and
+  // the agent's `cwd` all resolve it against the dispatcher's directory, while
+  // `git worktree add` runs with `cwd: config.sourceRepo`. A relative
+  // `workspace.root` therefore split in two — reproduced: the worktree lands
+  // under the SOURCE REPO while everything else looks for it under the
+  // dispatcher, so the agent is handed a directory that does not exist and no
+  // retry recovers, because the derivation is stable and stably wrong.
+  //
+  // Resolved here rather than at each call because this is the one derivation
+  // every consumer goes through. A host should still pass an absolute root:
+  // `resolve` reads `process.cwd()`, so a process that changes directory
+  // mid-flight would move the checkout, and that is not a case this guards.
+  return resolve(config.root, ...locationSegments(location), issuePhaseSegment(location));
 }
 
 /**
@@ -461,7 +474,7 @@ export async function provisionCheckout(
 ): Promise<Checkout> {
   const path = checkoutPathFor(config, location);
   const branch = branchFor(location);
-  mkdirSync(config.root, { recursive: true });
+  mkdirSync(resolve(config.root), { recursive: true });
 
   // **One deadline for the whole operation.** Every git call below draws from
   // it, so the lock is held for at most this long no matter how many commands
@@ -593,8 +606,32 @@ export async function acquireCheckout(
   owner: string,
   bounds: OwnershipBounds,
   now: () => number = Date.now,
+  signal?: AbortSignal,
 ): Promise<CheckoutLease> {
   const lock = lockPathFor(checkoutPath);
+  /**
+   * Stop waiting once this attempt has been cancelled.
+   *
+   * **Checked in the WAIT, never during an in-flight git command.** Shutdown, or
+   * a lease renewal reporting that this attempt lost its claim, propagates
+   * through `ctx.signal` — and an ordinary sleep ignores it, so a stale attempt
+   * kept polling for the whole ownership window and could still go on to acquire
+   * and provision a checkout it can no longer record a result for. That window
+   * is now the run's deadline plus provisioning plus slack, so ignoring the
+   * signal costs the better part of an hour of a replacement's time.
+   *
+   * Interrupting the wait is safe in a way interrupting provisioning is not:
+   * nothing has been created yet, so there is nothing half-made to leave behind.
+   */
+  const stopIfCancelled = (): void => {
+    if (signal?.aborted !== true) return;
+    throw new Error(
+      `[conductor] the attempt waiting for the checkout at ${checkoutPath} was cancelled ` +
+        "before it acquired the lock. Stopping rather than taking a tree whose result " +
+        "this attempt can no longer record.",
+    );
+  };
+  stopIfCancelled();
   mkdirSync(join(checkoutPath, ".."), { recursive: true });
   const deadline = now() + bounds.waitMs;
 
@@ -680,5 +717,6 @@ export async function acquireCheckout(
       );
     }
     await sleep(bounds.pollMs);
+    stopIfCancelled();
   }
 }

@@ -657,11 +657,20 @@ export function harnessManager(options: ManagerOptions) {
       // Safe in this order because `acquireCheckout` needs only the path, not a
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
-      leases.set(leaseKey(ctx as BlockContext), await acquireCheckout(
-        state.workspacePath!,
-        `${input.taskId}#${input.attempts}`,
-        ownership,
-      ));
+      leases.set(
+        leaseKey(ctx as BlockContext),
+        await acquireCheckout(
+          state.workspacePath!,
+          `${input.taskId}#${input.attempts}`,
+          ownership,
+          Date.now,
+          // Cancellation stops the WAIT. A cancelled attempt that kept polling
+          // could still acquire and provision a tree whose result it can no
+          // longer record — and the wait is now long enough for that to cost a
+          // replacement most of an hour.
+          (ctx as BlockContext).signal,
+        ),
+      );
       await provisionCheckout(workspace, {
         principal: runPrincipal(ctx as BlockContext),
         epic: boardCollectionId,

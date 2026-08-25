@@ -172,7 +172,7 @@ await runGoal(async () => {
     // The finding, not a workaround: the default is tuned to a serverless
     // SIGTERM grace period rather than to a coding run, so an in-process host
     // must raise it past its longest expected run or a shutdown kills one.
-    detachedDrainTimeoutMs: RUN_TIMEOUT_MS,
+    detachedDrainTimeoutMs: built.drainBudgetMs,
     logger: silentLogger,
   } as never);
 
@@ -210,7 +210,16 @@ await runGoal(async () => {
     // Poll the BOARD ROW. `in_progress` means the run is still alive; anything
     // else is a settlement the board's own fenced recorder made. `pending`
     // means a retry is waiting, so wake it.
-    const deadline = Date.now() + RUN_TIMEOUT_MS;
+    // **The whole worker's budget, not the agent step's.** A worker waits for
+    // the checkout lock, provisions, runs the agent, and then probes for the
+    // pull request. Deadlining on `RUN_TIMEOUT_MS` records a permanent failure
+    // for a run that was still legitimately working — and would then delete the
+    // checkout out from under it.
+    //
+    // This is the third site to need the same number, and the second to be
+    // missed after `fsdev.config.ts` was fixed. Hence the derived value rather
+    // than another local sum.
+    const deadline = Date.now() + built.drainBudgetMs;
     for (;;) {
       row = await readRow();
       if (row === undefined) {
@@ -221,7 +230,7 @@ await runGoal(async () => {
       if (row.status === "pending") await call("wake", {});
       if (Date.now() >= deadline) {
         failures.push(
-          `the row was still ${row.status} after ${RUN_TIMEOUT_MS}ms — last reason: ` +
+          `the row was still ${row.status} after ${built.drainBudgetMs}ms — last reason: ` +
             `${row.run?.reason ?? row.feedback ?? "none recorded"}`,
         );
         break;
