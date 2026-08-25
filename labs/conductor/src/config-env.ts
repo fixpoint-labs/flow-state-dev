@@ -33,6 +33,30 @@ const STARTUP_GIT_TIMEOUT_MS = 30_000;
  * sibling worktree of Flow State a different repo, which is exactly the case
  * the guard exists to catch.
  */
+/**
+ * Turn a `--git-common-dir` answer into the identity two callers compare.
+ *
+ * Exported because the provisioning path needs the SAME notion of identity while
+ * obtaining the raw answer differently — it runs git through the async, budgeted
+ * helper rather than a synchronous startup call. Two copies of this rule would
+ * be two definitions of "the same repository", and the guards that depend on it
+ * would silently stop agreeing.
+ *
+ * `realpathSync`, not `path.resolve`. Resolving lexically canonicalises the
+ * SPELLING and not the location: `git rev-parse --git-common-dir` answers `.git`
+ * for both a repository and a symlink to it, and a lexical resolve then produces
+ * two different strings for one directory — so a symlinked `CONDUCTOR_REPO`
+ * walked straight past the guard and the agent could edit the dispatcher after
+ * all. Comparing identity means comparing the physical path.
+ */
+export function identityFromCommonDir(dir: string, commonDir: string): string | undefined {
+  try {
+    return realpathSync(path.resolve(dir, commonDir.trim()));
+  } catch {
+    return undefined;
+  }
+}
+
 export function repositoryIdentity(dir: string): string | undefined {
   try {
     const out = execFileSync("git", ["rev-parse", "--git-common-dir"], {
@@ -46,14 +70,7 @@ export function repositoryIdentity(dir: string): string | undefined {
       // it can serve anything is still a dispatcher nobody can diagnose.
       timeout: STARTUP_GIT_TIMEOUT_MS,
     }).trim();
-    // `realpathSync`, not `path.resolve`. Resolving lexically canonicalises the
-    // SPELLING and not the location: `git rev-parse --git-common-dir` answers
-    // `.git` for both a repository and a symlink to it, and a lexical resolve
-    // then produces two different strings for one directory — so a symlinked
-    // `CONDUCTOR_REPO` walked straight past the guard and the agent could edit
-    // the dispatcher after all. Comparing identity means comparing the physical
-    // path.
-    return realpathSync(path.resolve(dir, out));
+    return identityFromCommonDir(dir, out);
   } catch {
     return undefined;
   }

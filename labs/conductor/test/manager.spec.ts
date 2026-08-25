@@ -1546,3 +1546,60 @@ describe("status attributes a run record to the row that owns it", () => {
     );
   }, 20_000);
 });
+
+describe("status survives a row whose identity cannot be derived at all", () => {
+  it("returns the listing instead of throwing on one malformed neighbour", async () => {
+    // `conductorTaskId` VALIDATES the owned-segment grammar and raises on a
+    // violation. The identity predicate checked the field types and stopped
+    // there — so a persisted row carrying `{ issue: "FIX.1" }` did not fail the
+    // predicate, it failed the whole `status` call, hiding every valid row
+    // behind one bad neighbour on the surface whose job is to say what is on the
+    // board.
+    //
+    // Enumerating one way the derivation can fail and missing the other is the
+    // same shape as the defects this predicate was extracted to prevent.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert("malformed-identity-row", {
+            id: "malformed-identity-row",
+            goal: "a row whose payload violates the owned-segment grammar",
+            // A dot is legal in the schema (it is just a string) and illegal in
+            // the grammar, which is precisely the gap.
+            input: { issue: ISSUE, phase: "imp.lement" },
+            status: "pending",
+            attempts: 0,
+            assignee: "harness",
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const canonical = conductorTaskId(ISSUE, PHASE);
+    const deadline = Date.now() + 10_000;
+    let rows: StatusRow[] = [];
+    for (;;) {
+      // The unfiltered read is the one that broke: it visits every row, so the
+      // malformed one is reached whatever the caller asked about.
+      ({ rows } = await live.call<{ rows: StatusRow[] }>("status", {}));
+      if (rows.find((r) => r.taskId === canonical)?.status === "completed") break;
+      if (Date.now() >= deadline) throw new Error(`never settled: ${JSON.stringify(rows)}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    // The malformed row is listed, with nothing claimed about a run it cannot
+    // be shown to own — and the valid row beside it is unaffected.
+    expect(rows.find((r) => r.taskId === "malformed-identity-row")?.run).toBeNull();
+    expect(rows.find((r) => r.taskId === canonical)?.run?.sessionId).toBe("sess_stub");
+  }, 20_000);
+});

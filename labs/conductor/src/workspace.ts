@@ -46,6 +46,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
+import { identityFromCommonDir } from "./config-env";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {
@@ -515,6 +516,26 @@ async function currentBranch(
   return head === "HEAD" ? null : head;
 }
 
+/**
+ * Which REPOSITORY a directory belongs to, or `undefined` if it is not in one.
+ *
+ * The async twin of `repositoryIdentity`: same answer, obtained through the
+ * budgeted git helper so it draws from the provisioning deadline rather than
+ * blocking outside it. The rule that turns a `--git-common-dir` answer into an
+ * identity lives in ONE place, `identityFromCommonDir`, so the startup guard and
+ * this one cannot drift into two notions of "the same repository".
+ *
+ * The common dir and not the toplevel, for the reason the startup guard gives:
+ * it is the one directory every worktree of a repository shares.
+ */
+async function gitIdentity(dir: string, timeoutMs: number): Promise<string | undefined> {
+  try {
+    return identityFromCommonDir(dir, await git(dir, ["rev-parse", "--git-common-dir"], timeoutMs));
+  } catch {
+    return undefined;
+  }
+}
+
 async function branchExists(
   config: WorkspaceConfig,
   branch: string,
@@ -649,6 +670,45 @@ export async function provisionCheckout(
           `"${branch}". Refusing to use it: a run told it is on "${branch}" would commit ` +
           `to "${head}" while the record says otherwise. Restore the branch or remove the ` +
           `checkout by hand — nothing here resets a tree.`,
+      );
+    }
+
+    // **The checkout has to belong to the repository this config names.** The
+    // checks below verify the BRANCH — that it still exists, and that the tree
+    // is on it — and a branch name says nothing about which repository it lives
+    // in. The derived path is a function of the epic, principal and task, not of
+    // `sourceRepo`, so a persistent workspace root outlives a change to it: the
+    // old checkout still sits at the same path carrying the same deterministic
+    // branch name, both checks pass, and the agent edits and opens a pull
+    // request in the repository the operator moved OFF.
+    //
+    // Compared on the git common dir, so a sibling worktree of the right
+    // repository is still the right repository, and through the same helper the
+    // startup guard uses — one definition of "the same repository", or the two
+    // guards eventually disagree about it.
+    //
+    // Run through the budgeted git helper rather than the startup one: this is
+    // inside the provisioning deadline, and a call that does not draw from the
+    // budget is a hole in the bound the ownership arithmetic is sized from.
+    //
+    // **Placed after the branch checks, and that ordering is deliberate.** Put
+    // first, this guard answered "does not belong to" for a `sourceRepo` that is
+    // not a repository at all — true, and the wrong diagnosis: the branch probe
+    // above says exactly that, and a message naming the wrong cause is what the
+    // probe's own error was written to avoid. Both orders refuse before the agent
+    // runs, which is the property that matters, so the one with the better
+    // failure message wins.
+    const [mine, theirs] = await Promise.all([
+      gitIdentity(path, left()),
+      gitIdentity(config.sourceRepo, left()),
+    ]);
+    if (mine === undefined || theirs === undefined || mine !== theirs) {
+      throw new Error(
+        `[conductor] the checkout at ${path} does not belong to ${config.sourceRepo}. ` +
+          `Refusing to reuse it: the branch name matches, but a run given this tree would ` +
+          `commit and open a pull request in another repository. It may hold uncommitted ` +
+          `work, so nothing here removes it — move or delete it by hand, or point ` +
+          `workspace.root somewhere this repository owns.`,
       );
     }
 
@@ -800,6 +860,19 @@ export interface OwnershipBounds {
  */
 const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise<void>((resolve) => {
+    // **An already-aborted signal is checked, not just listened for.** `abort`
+    // fires once; a signal that aborted before this listener existed never
+    // replays it, so arming the listener alone sleeps the full interval on a
+    // cancellation that had already happened. The window is real: the caller
+    // checks cancellation, then computes a bound, then arrives here — and the
+    // abort can land in between. What it costs is the whole poll interval, which
+    // is caller-configured and can be large, spent after the run was told to
+    // stop: a shutdown that waits, and a lost claim whose recovery is delayed
+    // past the point the advertised behaviour promised.
+    if (signal?.aborted === true) {
+      resolve();
+      return;
+    }
     const done = (): void => {
       clearTimeout(timer);
       signal?.removeEventListener("abort", done);

@@ -137,14 +137,27 @@ export const CONDUCTOR_FLOW_KIND = "conductor" as const;
  * fields: `conductorTaskId` folds case, so two spellings of one task are not a
  * conflict, and no caller has to remember that.
  *
- * Missing or non-string fields answer `false`. A payload we cannot read is one
- * we cannot attribute, and this file's rule for an answer it cannot classify is
- * to refuse it rather than assume the benign reading.
+ * **Every way the derivation can fail answers `false`, including a throw.** The
+ * first version checked the field TYPES and stopped there — but
+ * `conductorTaskId` validates the owned-segment grammar and RAISES on a
+ * violation, so a persisted row carrying `{ issue: "FIX.1" }` did not fail this
+ * predicate, it failed the whole call. On the `status` path that turned one
+ * malformed row into an error for the entire listing: every valid row hidden by
+ * one bad neighbour, on a read surface whose job is to say what is on the board.
+ *
+ * Enumerating one failure mode of "cannot derive" and missing the other is the
+ * same shape as the defects this predicate was extracted to prevent, so it is
+ * written as "anything other than a clean match is not a match" rather than as a
+ * list of the ways it can go wrong.
  */
 function payloadDerivesId(task: { id: string; input?: unknown }): boolean {
   const found = task.input as { issue?: unknown; phase?: unknown } | undefined;
   if (typeof found?.issue !== "string" || typeof found?.phase !== "string") return false;
-  return conductorTaskId(found.issue, found.phase) === task.id;
+  try {
+    return conductorTaskId(found.issue, found.phase) === task.id;
+  } catch {
+    return false;
+  }
 }
 
 /** Build the conductor flow for one epic. */

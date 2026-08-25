@@ -1200,3 +1200,79 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     }
   });
 });
+
+describe("a reused checkout has to belong to the repository the config names", () => {
+  it("refuses a tree cut from another repository, however right the branch looks", async () => {
+    // The path is derived from the epic, principal and task — NOT from
+    // `sourceRepo`. So a persistent workspace root outlives a change to it: the
+    // old checkout sits at the same path, carrying the same deterministic branch
+    // name, and both branch checks pass. The run is then handed a tree belonging
+    // to the repository the operator moved off, and commits and opens its pull
+    // request there.
+    const first = workspace();
+    const location = at("FIX-1219", "implement");
+    const made = await provisionCheckout(first, location);
+    expect(made.created).toBe(true);
+
+    // Same root, same task, different source repository — and the branch name is
+    // deterministic, so it exists in both.
+    const second = workspace();
+    const moved: WorkspaceConfig = { ...second, root: first.root };
+    execFileSync("git", ["branch", branchFor(location)], { cwd: moved.sourceRepo, stdio: "pipe" });
+
+    await expect(provisionCheckout(moved, location)).rejects.toThrow(/does not belong to/);
+
+    // And it is REFUSED, not cleared: the tree may hold the previous
+    // configuration's uncommitted work, and nothing in this module resets.
+    expect(existsSync(join(made.path, ".git"))).toBe(true);
+  });
+
+  it("still accepts a sibling worktree of the right repository", async () => {
+    // Compared on the git common dir, so the guard must not fire on a checkout
+    // that IS this repository reached another way — which is the shape every
+    // provisioned checkout has, since `worktree add` makes exactly that.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const made = await provisionCheckout(config, location);
+    const again = await provisionCheckout(config, location);
+    expect(again.created).toBe(false);
+    expect(again.path).toBe(made.path);
+  });
+});
+
+describe("the poll sleep observes a signal that already aborted", () => {
+  it("returns immediately rather than waiting out the interval", async () => {
+    // `abort` fires once. A signal aborted before the listener existed never
+    // replays it, so arming the listener alone sleeps the whole poll interval on
+    // a cancellation that had already happened — a shutdown that waits, and a
+    // lost claim whose recovery is delayed past what the loop advertises.
+    //
+    // Staged through `acquireCheckout`, not on the helper: the window is between
+    // the loop's own cancellation check and the sleep it then arms.
+    const config = workspace();
+    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const held = await acquireCheckout(path, "the holder", bounds);
+    const control = new AbortController();
+
+    // A poll interval far longer than the test's patience, so waiting it out is
+    // distinguishable from returning on the abort.
+    const waiting = acquireCheckout(
+      path,
+      "the waiter",
+      { waitMs: 60_000, pollMs: 30_000, staleAfterMs: 60_000 },
+      Date.now,
+      control.signal,
+    ).catch((err: Error) => err);
+
+    // Let the waiter reach its first sleep, then abort.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    control.abort();
+
+    const started = Date.now();
+    const outcome = await waiting;
+    expect(outcome).toBeInstanceOf(Error);
+    // Well under one poll interval. Without the check this waits 30s.
+    expect(Date.now() - started).toBeLessThan(5_000);
+    held.release();
+  }, 20_000);
+});
