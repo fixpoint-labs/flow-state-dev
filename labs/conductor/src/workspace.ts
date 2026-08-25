@@ -556,13 +556,52 @@ async function gitIdentity(dir: string, timeoutMs: number): Promise<string | und
 }
 
 /**
- * Does this tree look like a `worktree add` that was killed part-way?
+ * Is every change in this tree a deletion?
  *
- * `git ls-files --deleted` lists tracked files that the index expects and the
- * working tree does not have — which is precisely what a half-populated checkout
- * is, and precisely what a checkout an agent has worked in is not. Used to
- * corroborate the provisioning marker before acting on it, because the marker
- * itself is writable by anything with access to the workspace root.
+ * Porcelain status codes are two columns, index and working tree. A tree whose
+ * every entry draws from `{" ", "D"}` has had files removed and nothing else
+ * added, edited, renamed or staged.
+ *
+ * Paths are read only two characters deep, and git quotes anything exotic, so a
+ * filename cannot forge an extra entry. If one somehow did, it would introduce a
+ * code this rejects — pushing the caller toward refusing the tree, which is the
+ * safe direction.
+ */
+function everyChangeIsADeletion(porcelain: string): boolean {
+  for (const line of porcelain.split("\n")) {
+    if (line.length === 0) continue;
+    const index = line[0];
+    const worktree = line[1];
+    if (index !== " " && index !== "D") return false;
+    if (worktree !== " " && worktree !== "D") return false;
+  }
+  return true;
+}
+
+/**
+ * Does this tree look like a `worktree add` that was killed part-way, in a
+ * checkout nothing has since worked in?
+ *
+ * Two conditions, and the second is the one that matters.
+ *
+ * `git ls-files --deleted` lists tracked files the index expects and the working
+ * tree does not have, which is what a half-populated checkout is. **It is not
+ * unique to one**: an agent that deletes or renames a tracked file produces
+ * exactly the same reading, so this alone hands a forged marker the authority to
+ * delete a checkout during ordinary implementation work.
+ *
+ * So the tree must ALSO contain nothing an agent could have produced. A killed
+ * `worktree add` writes tracked files and stops; it never leaves an edit, an
+ * addition, a rename or a staged change. One `M` or `??` entry means content,
+ * and content is never deleted here.
+ *
+ * **This narrows the marker's authority; it does not remove it.** A tree whose
+ * only change is a deletion still qualifies, so an agent that deletes a tracked
+ * file and nothing else can still be taken for a half-built checkout. What that
+ * now costs is bounded: the deletion itself, which the retry re-derives.
+ * Committed work is not at stake in any case — `worktree add -b` creates a real
+ * branch in the source repository, and removing a checkout does not remove it,
+ * which is why the reuse path below looks the branch up rather than the tree.
  *
  * **A tree we cannot interrogate does not look half-built.** If git cannot
  * answer — no `.git`, an unreadable repository, a timeout — the honest answer is
@@ -572,7 +611,13 @@ async function gitIdentity(dir: string, timeoutMs: number): Promise<string | und
 async function looksHalfBuilt(path: string, timeoutMs: number): Promise<boolean> {
   if (!existsSync(join(path, ".git"))) return true;
   try {
-    return (await git(path, ["ls-files", "--deleted"], timeoutMs)).length > 0;
+    if ((await git(path, ["ls-files", "--deleted"], timeoutMs)).length === 0) return false;
+    const porcelain = await git(
+      path,
+      ["status", "--porcelain", "--untracked-files=all"],
+      timeoutMs,
+    );
+    return everyChangeIsADeletion(porcelain);
   } catch {
     return false;
   }
@@ -682,12 +727,18 @@ export async function provisionCheckout(
   // caused by the guard against it.
   //
   // There is no filesystem location an unrestricted agent cannot reach, so
-  // "store the marker out of its scope" is not available. What IS available is a
-  // second opinion: a killed `worktree add` leaves tracked files MISSING from
-  // the working tree (the 241-of-400 measurement above; the rest are listed by
-  // `git ls-files --deleted`), while a checkout an agent has worked in does not.
-  // So the marker is acted on only when the tree independently agrees it is
-  // half-built.
+  // "store the marker out of its scope" is not available *on the filesystem*.
+  // What IS available is a second opinion from git: a killed `worktree add`
+  // leaves tracked files MISSING from the working tree (the 241-of-400
+  // measurement above) and leaves nothing else at all. So the marker is acted on
+  // only when the tree independently agrees — see `looksHalfBuilt`, which is
+  // where the two conditions and their limits are written down.
+  //
+  // **That narrows the marker's authority rather than removing it**, and the
+  // honest statement of what is left is in `looksHalfBuilt` too. Removing it
+  // needs provisioning state the agent has no access to at all — the durable
+  // row, not a file — which is a change across the manager boundary rather than
+  // a third corroborator here.
   //
   // When they disagree — marker present, `.git` valid, nothing missing — the
   // tree is REFUSED rather than reused or deleted. Reusing it would ignore a

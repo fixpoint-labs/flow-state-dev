@@ -482,15 +482,22 @@ describe("a half-created checkout does not brick every retry", () => {
     // --deleted` reports. The marker alone is no longer enough — it is writable
     // by anything with access to the workspace root, the coding agent included —
     // so the tree has to agree that it is half-built.
+    //
+    // **Only a deletion.** An earlier version of this fixture also wrote an
+    // untracked file, which a killed `worktree add` cannot leave — it writes
+    // tracked files and stops. Staging content here made the fixture describe a
+    // tree that does not occur, and it now disqualifies itself, which is the
+    // point of the second condition.
     rmSync(join(first.path, "tracked.txt"));
-    writeFileSync(join(first.path, "half-populated.txt"), "partial");
     writeFileSync(`${first.path}.provisioning`, "");
 
     const second = await provisionCheckout(config, location);
     expect(second.created).toBe(true);
     expect(existsSync(`${first.path}.provisioning`)).toBe(false);
-    // The corrupt contents are gone rather than handed on.
-    expect(existsSync(join(first.path, "half-populated.txt"))).toBe(false);
+    // The tree was rebuilt rather than handed on with a file missing.
+    expect(readFileSync(join(second.path, "tracked.txt"), "utf8")).toBe(
+      "content the checkout should carry\n",
+    );
 
     // And what the old test was protecting still holds, by a better route: the
     // marker cannot survive to re-arm a later deletion, because this provision
@@ -501,6 +508,34 @@ describe("a half-created checkout does not brick every retry", () => {
       /no record of an interrupted provision/,
     );
     expect(readFileSync(join(second.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+  });
+
+  it("refuses a marked checkout holding work, even with a tracked file deleted", async () => {
+    // **The corroborator on its own is not enough, and this is the case that
+    // shows it.** `git ls-files --deleted` reports index-present, worktree-absent
+    // files — and an agent that deletes or renames a tracked file during ordinary
+    // implementation work produces exactly that reading. Pair it with a marker
+    // the agent can write and the guard against losing carry-forward work becomes
+    // a way to lose it.
+    //
+    // So a deletion is believed only in a tree that holds nothing else. Here the
+    // tree has both: a deleted tracked file AND an agent's uncommitted work, which
+    // is a shape a killed `worktree add` cannot produce.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+
+    rmSync(join(first.path, "tracked.txt"));
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+    writeFileSync(`${first.path}.provisioning`, "");
+
+    await expect(provisionCheckout(config, location)).rejects.toThrow(
+      /says a provision was interrupted, but the checkout/,
+    );
+    // The load-bearing assertion: the work is still there.
+    expect(readFileSync(join(first.path, "uncommitted.txt"), "utf8")).toBe(
       "the last attempt's work",
     );
   });
