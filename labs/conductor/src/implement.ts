@@ -11,12 +11,9 @@
  * after a successful verdict, because a run can open the pull request and then
  * exhaust its turn budget.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { readRunRow, runTopic } from "./run-record";
 import type { PhaseRunContext, PhaseSpec } from "./manager";
-
-const run = promisify(execFile);
+import { NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
 
 export interface ImplementPhaseOptions {
   /**
@@ -76,7 +73,15 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
   const { stdout } = await run(
     "gh",
     ["pr", "list", "--head", ctx.branch, "--state", "all", "--json", "number,state"],
-    { cwd: ctx.workspacePath, maxBuffer: 4 * 1024 * 1024 },
+    {
+      cwd: ctx.workspacePath,
+      // Bounded twice. Without either, a listing that never answers holds the
+      // row `in_progress` past the paid agent it was reporting on — the worker
+      // does not return, so nothing settles and the attempt is charged anyway.
+      timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+      signal: ctx.ctx.signal,
+      maxBuffer: 4 * 1024 * 1024,
+    },
   );
   return hasCompletingPr(stdout);
 }

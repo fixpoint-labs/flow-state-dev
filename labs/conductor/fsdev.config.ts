@@ -15,8 +15,10 @@
  * run's session, checkout, outcome and cost whichever session asks.
  *
  * `CONDUCTOR_REPO` names the repository checkouts are cut from. **Required** —
- * absent or equal to this process's directory is refused at startup, because
- * either one silently aims the coding agent at the dispatcher's own repository.
+ * absent, or resolving to the repository this dispatcher itself runs from, is
+ * refused at startup, because either one silently aims the coding agent at the
+ * dispatcher's own code. Numeric settings are validated there too; see
+ * `positiveIntFromEnv` for why an unchecked one is charged to a task.
  *
  * **`detachedDrainTimeoutMs` is raised deliberately.** Its default is tuned to a
  * serverless SIGTERM grace period, far shorter than a coding run, so an
@@ -28,6 +30,7 @@ import path from "node:path";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
+import { positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
 function neverResolvesAModel(): never {
   throw new Error(
@@ -35,39 +38,7 @@ function neverResolvesAModel(): never {
   );
 }
 
-/**
- * The repository checkouts are cut from. **Absent is a configuration error, not
- * a default.**
- *
- * Falling back to `process.cwd()` aims the coding agent at whatever directory
- * the dispatcher happens to run in — which, run from this package, is Flow State
- * itself. The agent would then get a worktree of the dispatcher's own repository
- * and could commit and open a pull request against the wrong project, and the
- * first symptom would be a PR nobody asked for.
- *
- * The same directory is also refused explicitly: a host that sets
- * `CONDUCTOR_REPO` to the process's own directory has made the same mistake
- * deliberately rather than by omission, and it is the same harm.
- */
-function requireSourceRepo(): string {
-  const repo = process.env.CONDUCTOR_REPO;
-  if (repo === undefined || repo === "") {
-    throw new Error(
-      "[conductor] CONDUCTOR_REPO is not set. It names the repository the coding agent " +
-        "works on, and there is no safe default: falling back to this process's directory " +
-        "would point the agent at the dispatcher's own repository.",
-    );
-  }
-  if (path.resolve(repo) === path.resolve(process.cwd())) {
-    throw new Error(
-      `[conductor] CONDUCTOR_REPO is this process's own directory (${repo}). The point is a ` +
-        "run driving THAT repository rather than editing the thing that dispatched it.",
-    );
-  }
-  return repo;
-}
-
-const RUN_TIMEOUT_MS = Number(process.env.CONDUCTOR_RUN_TIMEOUT_MS ?? 1_800_000);
+const RUN_TIMEOUT_MS = positiveIntFromEnv("CONDUCTOR_RUN_TIMEOUT_MS", 1_800_000);
 const root = path.join(process.cwd(), ".fsdev");
 
 const { flow } = conductorFlow({
@@ -77,7 +48,7 @@ const { flow } = conductorFlow({
     sourceRepo: requireSourceRepo(),
     baseRef: process.env.CONDUCTOR_BASE_REF ?? "main",
   },
-  maxAttempts: Number(process.env.CONDUCTOR_MAX_ATTEMPTS ?? 3),
+  maxAttempts: positiveIntFromEnv("CONDUCTOR_MAX_ATTEMPTS", 3),
   runTimeoutMs: RUN_TIMEOUT_MS,
 });
 

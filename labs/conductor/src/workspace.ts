@@ -42,12 +42,9 @@
  * against a strict grammar before they reach a path, so a task filed by some
  * future caller that skips the schema still cannot escape the root.
  */
-import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
-
-const run = promisify(execFile);
+import { GIT_TIMEOUT_MS, run } from "./exec";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {
@@ -327,7 +324,11 @@ function lockPathFor(checkoutPath: string): string {
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await run("git", args, { cwd, maxBuffer: 8 * 1024 * 1024 });
+  const { stdout } = await run("git", args, {
+    cwd,
+    timeoutMs: GIT_TIMEOUT_MS,
+    maxBuffer: 8 * 1024 * 1024,
+  });
   return stdout.trim();
 }
 
