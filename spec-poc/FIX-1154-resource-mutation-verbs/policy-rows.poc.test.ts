@@ -289,6 +289,26 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect(changes().length).toBe(afterCreate + 1); // no-op stayed silent
   });
 
+  it("row: a NO-OP against a row we held and lost is TERMINAL, not a quiet no-op", async () => {
+    // The combined case: a stale POSITIVE version + a deleted row + a mutation
+    // that changes nothing. The no-op branch re-reads, finds no live row, and
+    // because the held version is not 0 it reports the deletion rather than
+    // returning committed:false. This is the boundary of the "a no-op is never
+    // reported as a deletion" guarantee — that only holds for a live row or a
+    // never-stored one.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.tasks as any).create("t1", { n: 5 });
+
+    const ctxB = await makeCtx(stores, "req_b");
+    const instance = await (ctxB.resources.tasks as any).get("t1");
+    await (ctxA.resources.tasks as any).delete("t1");
+
+    // B's increment computes {n:5} — identical to what B holds — so it takes
+    // the no-op path, not the persist path.
+    await expect(incState(instance, { n: 0 })).rejects.toBeInstanceOf(ResourceDeletedError);
+  });
+
   it("row: never-persisted key — a real increment creates it at create-if-absent", async () => {
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
