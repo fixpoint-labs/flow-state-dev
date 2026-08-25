@@ -7,7 +7,7 @@
 | **Branch / doc** | `epic/durable-storage-symmetry` · `spec/_epics/durable-storage-symmetry.md` |
 | **PR** | [#1365](https://github.com/fixpoint-labs/flow-state-dev/pull/1365) — never merged, never deleted; open for the life of the epic |
 | **Gate** | An approving human comment or review on the epic PR, or the owner's `epic approved` label, signs off §1 only |
-| **Status** | **Converged** — objective and themes are settled. Further feedback routes to the children as implementer notes, not into this document |
+| **Status** | **Converged** — objective and themes are settled, so **below-the-bar, child-local** feedback routes to the children as implementer notes rather than into this document. **Two things are still recorded here:** an owner's resolution of a §5 fork, and a post-convergence epic-level correction — an uncontested factual fix, or a cross-cutting decision no single child can own. Convergence bounds *folding*, not the epic's durable record |
 
 ---
 
@@ -88,13 +88,36 @@ two that have nowhere else to live are recorded below the themes, and labelled a
 
 1. **The two CAS drivers cannot be shared, only eliminated — and this epic eliminates
    nothing.** `stores/cas.ts` and `stores/resource-cas.ts` drive the same load → mutate →
-   persist shape, but resource state has three semantics scope state does not: deletion,
-   create-if-absent, and cancellation. `resource-cas.ts`'s module header carries an eight-row
-   policy table naming the failure a shared driver would produce in each case — resurrecting
-   a tombstoned resource, overwriting a create-if-absent winner, persisting after
-   cancellation, silently dropping a deliberate write as a no-op. Every row traces to one
-   root: **resources have a lifecycle, scope records do not.** A session always exists, so
-   absent-vs-deleted never arises there.
+   persist shape, but their conflict *policy* differs on three counts, and `cas.ts`'s own
+   header states them: a conflict against a deleted resource and a losing create-if-absent are
+   **terminal** on the resource driver where the scope driver retries every conflict; the
+   resource driver suppresses a no-op against a **re-read** version where the scope one decides
+   before `persist`; and only the resource driver takes an `AbortSignal`. `resource-cas.ts`'s
+   module header carries an eight-row policy table naming the failure a shared driver would
+   produce in each case — resurrecting a tombstoned resource, overwriting a create-if-absent
+   winner, persisting after cancellation, silently dropping a deliberate write as a no-op.
+
+   **The root is that the two stores model *deletion* differently — not that only one of them
+   has a lifecycle.** Both delete, and both have create-if-absent: resources encode it as
+   version `0`, scope stores as the `"absent"` sentinel (`session-routes.ts:194` wins the
+   create race with it). What differs is whether a delete stays **visible to a version check**.
+   Resource state tombstones, so a stale writer holding a live version is refused.
+   `SessionStore.delete` is a **hard delete with no tombstone**: a recreated id may reuse
+   versions, and an observer holding a pre-delete version can match the record that replaced
+   it. `stores/types.ts:537-540` states exactly that and declines to defend it — *"this store's
+   versions are not a substitute for identity"* — and `handleDeleteSession` is a live caller
+   (`routes/session-routes.ts:231`). Scope identity lives in the per-record `lineageId`, minted
+   fresh on recreate (`session-routes.ts:181-184`), not in the version. So the divergence is
+   **tombstoned generations versus hard-deleted, recreatable records.**
+
+   **What that correction moved.** The *conclusion* is unchanged and slightly stronger: the
+   drivers stay separate, and no issue in this set may propose unifying them. It gets stronger
+   because a shared driver would now have to serve two stores that **both** delete and
+   **disagree about whether a delete is visible to a version check** — a sharper conflict than
+   one store having a lifecycle the other lacks. What was resting on the wrong reason is the
+   justification alone: *"resources have a lifecycle, scope records do not; a session always
+   exists, so absent-vs-deleted never arises there"* was false on both clauses, and it is the
+   wording that must not be copied anywhere (see **Constrains**).
 
    **The tombstone row is incomplete for version `0` — a known hole in this rule, not a second
    rule.** The row is true for a writer holding a live version, and that writer is already
@@ -116,6 +139,15 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    people actually autocomplete) and a weaker one on `createScopePersist` (internal to
    `createExecutionContext`), and re-cites the header's stale `cas.ts` references by **symbol
    rather than line number**. The evidence behind the reversal is FIX-1154's spec's to carry.
+
+   **The guard comment states the divergence as tombstoned generations vs hard-deleted,
+   recreatable records — never as "scope records have no lifecycle".** That wording is false
+   (`stores/types.ts:537-540`), and this directive is the one place in the epic where a
+   sentence gets *copied into shipped API documentation*: a guard comment on an exported symbol
+   reads as a published concurrency invariant, and a wrong one there is worse than no guard at
+   all, because the next reader trusts it. Two clauses are safe to carry: resource state
+   tombstones so a delete stays visible to the version check, and scope state hard-deletes so
+   its versions are not identity — the store's own contract says both.
 
 2. **Delta verbs generalize to resources through a held `expectedVersion`, never through the
    commutative downgrade.** `DeltaStoreOps` (`stores/types.ts`) already takes
@@ -219,7 +251,7 @@ asymmetries remain deliberate and where each one is written down.**
 | Asymmetry between the two primitives | After the set lands | Where its reason lives |
 |---|---|---|
 | Two CAS drivers — `cas.ts` vs `resource-cas.ts` | **Survives — deliberate** (theme 1) | The eight-row policy table, staying in `resource-cas.ts`'s header; **FIX-1154** adds the missing guard on `createScopeStateOps` / `createScopePersist` |
-| `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, same lifecycle root. **FIX-1258** narrows *which* absent states a version-`0` write may create into — a tombstone is one of them today, which is the hole in theme 1's tombstone row. It sits **outside the active set**, so that hole is **still open at wrap** | Already in `state-and-scopes.md` → "CAS and Concurrency"; the hole itself in theme 1 |
+| `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, and it is the same root as the row above: the two stores model deletion differently (tombstoned vs hard-deleted and recreatable), so `0` cannot mean the same thing on both sides. **FIX-1258** narrows *which* absent states a version-`0` write may create into — a tombstone is one of them today, which is the hole in theme 1's tombstone row. It sits **outside the active set**, so that hole is **still open at wrap** | Already in `state-and-scopes.md` → "CAS and Concurrency"; the hole itself in theme 1 |
 | Resource-only surface — content, `client`, `reactTo`, `edges`, collections | **Survives — not an asymmetry.** No state analogue exists to be symmetric with | FIX-1154's scope boundaries |
 | Mutation surfaces differ in several ways — verbs one primitive lacks, and differences in shape among the verbs they nominally share | **Increment and append close** (**FIX-1154**, Tier 1). The remainder is **mapped, not closed** — each difference recorded as closed, as deliberate asymmetry with a reason, or as deferred | **FIX-1154's spec.** The epic states the shape of the answer; the inventory is the child's deliverable |
 | Return contract — `Promise<boolean>` vs `Promise<void>` | **Survives — deliberate.** Scope state's `boolean` exists because its `state_change` notification gate needs it; resources gate `resource_change` on an internally verified no-op. FIX-1154 closes the **increment/append** gap only | Settled at epic altitude — §5, resolved |
@@ -350,6 +382,8 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   abandoned; FIX-1153 cancelled and PR #1291 closed unmerged. Objective became *symmetry
   where safe, asymmetry stated once where not*, because the two CAS drivers turned out to be
   load-bearing rather than accidental: resources have a lifecycle and scope records do not.
+  *(That reason was itself falsified — scope records are hard-deleted and recreatable. The
+  conclusion held; see the last entry below.)*
 - **Theme reversed (2026-08-22)** — the epic-spec had settled on relocating the eight-row CAS
   policy table into `state-and-scopes.md`. Checking the evidence reversed it: the doc already
   banks the discoverability gain, the staleness rationale is void on both sides, and what is
@@ -372,7 +406,8 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   shared blob; `atomicState` and `ResourceRef.updateState` run one mechanism under two names;
   `getOrPatchState` cuts the other way). **The claim narrowed; the work did not** — expanding
   FIX-1154 to map every verb would undo exactly the thinning round 1 folded. **Epic-spec
-  converged** at two rounds; anything further routes to the children as implementer notes.
+  converged** at two rounds; further **child-local** feedback routes to the children as
+  implementer notes (the header row states what still gets recorded here).
   *(The replacement claim was itself falsified — superseded by the entry below.)*
 - **Parity claim withdrawn to the child spec (2026-08-22)** — an uncontested factual correction
   to an already-converged document, which is why it sits outside the two-round budget rather
@@ -404,3 +439,26 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   than re-derived, so the two surfaces cannot drift apart: the reasoning was never missing,
   only the durable restatement of it was thin — and the doc is the surface that outlives the
   PR.
+- **Theme 1's root reason corrected; convergence rule narrowed (2026-08-25)** — theme 1 had
+  justified the two drivers with *"resources have a lifecycle, scope records do not; a session
+  always exists."* **Both clauses are false.** `SessionStore.delete` is a hard delete with no
+  tombstone, and the store's own contract says a recreated id may reuse versions so an observer
+  holding a pre-delete version can match its replacement — *"this store's versions are not a
+  substitute for identity"* (`stores/types.ts:537-540`), with `handleDeleteSession` a live
+  caller (`routes/session-routes.ts:231`). The root is now **tombstoned generations vs
+  hard-deleted, recreatable records**, which is a *stronger* reason for the same conclusion:
+  both stores delete and disagree about whether a delete is visible to a version check. The
+  **conclusion did not move** — the drivers stay separate. The FIX-1154 directive was corrected
+  too, because that is where this sentence would have been copied into a guard comment on an
+  exported symbol and shipped as a published concurrency invariant. **The lesson repeats the
+  one FIX-1154's worker distilled: the dominant source of falsified claims in this epic is the
+  scope side — the subsystem the set is not changing.** Four now: the "7 vs 4" mutator count,
+  the "only genuinely missing capability" narrowing, FIX-1155's FIFO-mutex framing, and this
+  one. A claim about code the set will not touch gets no implementation pass to catch it, so
+  this document is the only place it can be checked.
+- **Convergence rule narrowed, same date** — "further feedback routes to the children as
+  implementer notes" was too blanket: an owner's fork resolution or a post-convergence
+  epic-level correction would have been routed downward and lost, on a page that now says it
+  outlives the PR. The rule was also contradicted by practice — the last three epic-level
+  changes were all correctly recorded here. Convergence bounds **folding**, not the durable
+  record.
