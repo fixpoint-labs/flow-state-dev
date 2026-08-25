@@ -870,7 +870,7 @@ export const conductor = <em>defineFlow</em>({
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 400" role="img" aria-label="The question channel as a cycle. A harness manager wraps each workstream, runs the turn, reads the outcome, and posts what it cannot answer to the inbox. The inbox is a user-scoped collection holding one row per open question, moving from open to asked to answered. The coordinator, which is the main session, reads the inbox, asks one open row at a time, and classifies your reply. Your answer becomes a steer carrying an answer, an instruction, a tangent or a cancel, and the steer travels back into the running workstream.">
+      <svg viewBox="0 0 940 400" role="img" aria-label="The question channel as a cycle. A harness manager wraps each workstream, runs the turn, reads the outcome, and posts what it cannot answer to the inbox. The inbox is a user-scoped collection holding one row per open question, moving from open to asked to answered. The coordinator, which is the main session, reads the inbox, asks one open row at a time, and classifies your reply. Your answer becomes a steer, which carries the one kind there is, answer, and travels back into the running workstream.">
         <rect class="n-prop" x="16" y="46" width="268" height="104" rx="4"/>
         <text class="t-b f-accent" x="34" y="72">harness manager</text>
         <text class="t-xs" x="34" y="90">PROPOSED &middot; ONE PER RUN</text>
@@ -905,7 +905,7 @@ export const conductor = <em>defineFlow</em>({
 
         <rect class="n-prop" x="330" y="274" width="280" height="52" rx="4"/>
         <text class="t-b f-accent" x="470" y="296" text-anchor="middle">steer</text>
-        <text class="t-xs" x="470" y="314" text-anchor="middle">ANSWER &middot; INSTRUCT &middot; TANGENT &middot; CANCEL</text>
+        <text class="t-xs" x="470" y="314" text-anchor="middle">ONE KIND &middot; ANSWER</text>
 
         <path class="ln" d="M330,300 L150,300 L150,150"/>
         <text class="t-lbl" x="196" y="292">IN</text>
@@ -1277,7 +1277,7 @@ export const inbox = <em>defineResourceCollection</em>({
   <p><strong>The honest hard case.</strong> A reply that answers one row cleanly is easy. Three cases are not, and the design has to say what happens rather than hope:</p>
   <ul>
     <li><strong>Ambiguous across two rows.</strong> Two open rows about the same file, one reply that fits both. The classifier returns two candidates at similar confidence; below a threshold the coordinator does not guess &#8212; it asks back, naming both rows. Guessing routes a decision into the wrong worktree, which is expensive and silent.</li>
-    <li><strong>Answers one row and opens a new topic.</strong> "Use the second option &#8212; and while you're there, drop the retry wrapper." That is one answer plus one instruction. The answer settles a row; the instruction becomes a steer of kind <code>instruct</code> against the same workstream. Both are dispatched; neither is dropped.</li>
+    <li><strong>Answers one row and opens a new topic.</strong> "Use the second option &#8212; and while you're there, drop the retry wrapper." That is one answer plus one new topic. The answer settles a row and rides the steer back. The new topic does not: no verb redirects a live run any more, so it lands on the board as work and waits for the turn to end. Neither is dropped. Only one of them is immediate.</li>
     <li><strong>Answers nothing.</strong> A question back at the coordinator. It answers from the collections if it can, and otherwise opens nothing and settles nothing &#8212; the rows stay open, which is the correct outcome and the one an eager classifier gets wrong.</li>
   </ul>
 
@@ -1312,20 +1312,14 @@ export const inbox = <em>defineResourceCollection</em>({
 
   <h3>In &#8212; the steer action</h3>
 
-  <p>A steer is the reverse channel. Four kinds, one shape, and they are not variations on "reply" &#8212; a cancel and a tangent do genuinely different things to a running agent.</p>
+  <p>A steer is the reverse channel, and it carries one verb: <code>answer</code>. Redirecting a run mid-flight and sending it on a side errand were scoped in here and then cut. The only thing a person does to a live workstream is answer what it asked; anything else waits for the run to end. Stopping a run is not a steer at all. It is the board's.</p>
 
   <pre class="code"><i>// PROPOSED &#8212; the input schema. The transports below are mostly real.</i>
 const steerInput = z.object({
   workstream: z.string(),            <i>// the topic; which run this is aimed at</i>
-  kind: z.enum([
-    <b>"answer"</b>,                        <i>// resolves an inbox row</i>
-    <b>"instruct"</b>,                      <i>// new instructions, same job</i>
-    <b>"tangent"</b>,                       <i>// a side errand, then back to the job</i>
-    <b>"cancel"</b>,                        <i>// stop, and say why</i>
-  ]),
-  inboxRow: z.string().<b>nullable</b>().<b>default</b>(null),   <i>// set when kind === "answer"</i>
+  kind: z.enum([<b>"answer"</b>]),          <i>// the one verb; it resolves an open inbox row</i>
+  inboxRow: z.string(),              <i>// which row. Always set, now that there is one kind</i>
   body: z.string(),
-  urgency: z.enum(["next-turn", "interrupt"]).default("next-turn"),
 });</pre>
 
   <p><strong>How it reaches a detached run.</strong> Not as an arbitrary message. The workstream dispatch envelope is fixed and server-derived &#8212; <code>{ boardId, coordinateKey, taskId, attempt, createdAt, incarnationId?, payload }</code> &#8212; and the runner re-reads the durable row and routes on the row's own <code>assignee</code>, never on the envelope. That is deliberate: a forged envelope can at most name a different board. So a steer rides a <strong>task row</strong>, exactly like the work does.</p>
@@ -1395,13 +1389,15 @@ await runs.<b>upsert</b>(key, {
 
   <p>It is <strong>on the Proof's critical path, not beside it</strong>. A second turn that re-reads a diff the agent had already read is not the loop this design claims; proving the loop means resuming. What is still open is what that work leaves behind &#8212; a path the workstreams epic can call, or a harness that proves it and goes away. Thread 14.</p>
 
+  <p><strong>Three ways into a live run, and only the first is a steer.</strong> Stopping one belongs to the board: it cancels the job, and the conductor moves whatever row that run left open to <code>withdrawn</code>. Both cancel transports below are real. The withdrawal on top of them is the small piece that is not. <span class="tag t-prop">proposed</span></p>
+
   <div class="tw">
     <table>
-      <thead><tr><th>Steer kind</th><th>Transport</th><th>Status</th></tr></thead>
+      <thead><tr><th>What reaches the run</th><th>Transport</th><th>Status</th></tr></thead>
       <tbody>
-        <tr><td><code>answer</code> / <code>instruct</code> / <code>tangent</code></td><td>A steer task row on the run's topic &#8594; the same derived child session &#8594; an agent run handed the resume handle read back off the claimed task</td><td><span class="tag t-prop">proposed</span> &#8212; every part exists except the resume input</td></tr>
-        <tr><td><code>cancel</code>, <code>urgency: "interrupt"</code></td><td><code>POST /api/flows/:flowKind/requests/:requestId/abort</code>. Fires the in-process abort controller here, or records the intent for the owning process to pick up on its next heartbeat. <code>claudeCodeAgent</code> forwards <code>ctx.signal</code> into the SDK's own abort controller</td><td><span class="tag t-real">exists</span></td></tr>
-        <tr><td><code>cancel</code>, before the next turn</td><td>Cancel the task row. The detached runner's start gate re-reads the row and aborts unless the claim is still current and the status is still <code>in_progress</code></td><td><span class="tag t-real">exists</span></td></tr>
+        <tr><td><code>answer</code> &#8212; the steer</td><td>A steer task row on the run's topic &#8594; the same derived child session &#8594; an agent run handed the resume handle read back off the claimed task</td><td><span class="tag t-prop">proposed</span> &#8212; every part exists except the resume input</td></tr>
+        <tr><td>Cancel, mid-turn &#8212; the board</td><td><code>POST /api/flows/:flowKind/requests/:requestId/abort</code>. Fires the in-process abort controller here, or records the intent for the owning process to pick up on its next heartbeat. <code>claudeCodeAgent</code> forwards <code>ctx.signal</code> into the SDK's own abort controller</td><td><span class="tag t-real">exists</span></td></tr>
+        <tr><td>Cancel, before the next turn &#8212; the board</td><td>Cancel the task row. The detached runner's start gate re-reads the row and aborts unless the claim is still current and the status is still <code>in_progress</code></td><td><span class="tag t-real">exists</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -1416,7 +1412,7 @@ await runs.<b>upsert</b>(key, {
       <tbody>
         <tr><td>A steer arrives mid-turn. What happens?</td><td>With <code>request: { concurrency: "queue" }</code> it serializes on the session key and runs when the turn finishes. That is the intended behaviour: <em>let the agent take its turn, then decide</em>. Under the default <code>"allow"</code> it would run concurrently against the same session state, which is not what anyone means</td></tr>
         <tr><td>Two steers for one run, in order?</td><td>Yes, under <code>queue</code> &#8212; FIFO on the key. Under <code>allow</code>, no ordering is promised</td></tr>
-        <tr><td>An urgent cancel behind a queued steer?</td><td>It does not queue. The abort route is a separate path that fires the controller directly, which is why <code>urgency: "interrupt"</code> is its own field rather than a priority number</td></tr>
+        <tr><td>An urgent cancel behind a queued steer?</td><td>It does not queue, and it is not a steer. The abort route is the board's, a separate path that fires the controller directly &#8212; which is why cancelling never became an urgency field on the steer</td></tr>
         <tr><td>Does a steer wait for a free worker slot?</td><td>Yes, if it rides a task row and the board is at <code>concurrency</code>. On the cold path that is the ordinary case: the run ended when it asked and its task is parked, so the answer arrives as fresh work, picks the parked task back up, and queues like any other &#8212; through the unblock verb that is filed rather than built. A steer aimed at a run still waiting in <code>awaiting_review</code> does not contend &#8212; but that is the short-horizon path, not the one to size for</td></tr>
         <tr><td>The agent answers its own question before the steer lands?</td><td>Possible. The row moves to <code>withdrawn</code> rather than being deleted, and a late answer against a withdrawn row is reported back, not applied</td></tr>
         <tr><td>The run died while the question was open?</td><td><code>livenessOf</code> is the hint, never the proof. Corroborate against the durable row before re-dispatching &#8212; re-dispatching on a <code>false</code> answer alone is how double execution ships</td></tr>
@@ -1983,7 +1979,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
 
   <div class="tension">
     <h5>8 &middot; Steer delivery is bounded, not instant</h5>
-    <p>Under <code>queue</code>, a steer lands at the next turn boundary. A long turn means a long wait, and the only true interrupt is a cancel &#8212; there is no "stop what you are doing and read this" that preserves the run. That is probably right, since interrupting mid-tool-call is how state gets corrupted, but it is a constraint the UX has to be honest about rather than hide.</p>
+    <p>Under <code>queue</code>, a steer lands at the next turn boundary. A long turn means a long wait, and the only true interrupt is the board's cancel &#8212; there is no "stop what you are doing and read this" that preserves the run. That is probably right, since interrupting mid-tool-call is how state gets corrupted, but it is a constraint the UX has to be honest about rather than hide.</p>
     <span class="ask">Do we show that a steer is queued behind an in-flight turn, or let it look instant and absorb the delay? Showing it is more honest and slightly noisier.</span>
   </div>
 
