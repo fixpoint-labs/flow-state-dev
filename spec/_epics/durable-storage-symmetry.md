@@ -16,14 +16,24 @@
 **Objective.** FSD stores durable data two ways at session scope and above — the scope-state
 bag (`ctx.session.state`) and resources (`ctx.resources.<name>`). Today a developer picks
 between them by **which API happens to carry the verb they need**, not by where the data
-belongs: an atomic increment or an array append means scope state, per-key versioning and
-collision detection means resources. When this epic lands, the verb list stops driving that
-choice wherever it safely can — and where a difference remains, it is recorded with its reason
-rather than left for a developer to discover. The operating rule is **symmetry where it is
+belongs: an atomic increment or an array append means scope state (`incState` / `pushState` on
+`ScopeStateHandle`, `core/src/types/state.ts`), per-key versioning and collision detection
+means resources — `ResourceRef` carries no delta verb at all
+(`core/src/types/resource.ts`). The operating rule is **symmetry where it is
 safe, and the asymmetry stated once where it is not**: one mutation contract wherever the two
 primitives can share one without
 importing each other's semantics, and where they cannot, the reason written down in a single
 place a reader hits *before* reaching for the wrong import rather than after.
+
+**This cycle delivers the second half of that rule and none of the first** — decided by the
+owner in [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446), Ask 1 = **B**. No
+resource delta verb ships: `ResourceRef.incState` / `pushState` are **cut from this cycle**,
+because no consumer driving the release needs them, every current use is compound,
+`updateState` is the working substitute, and unused public surface cannot be taken back once
+shipped. What lands instead is the **gap write-up** — every difference between the two mutation
+surfaces recorded with its reason. So the verb list still drives the choice when this epic
+wraps; what changes is that a developer meets the reason *before* the wrong import instead of
+after. Narrower outcome, same rule.
 
 *Code citations are against `origin/main` at `6aa1bea`.*
 
@@ -38,8 +48,9 @@ FIX-1153 was cancelled. The divergence turned out to be load-bearing rather than
 **Holistic necessity — one substantive issue and one lodger. The set is thin, and that is
 the honest description of it.**
 
-- **FIX-1154** (the mutation surface — increment and append on resources; the remaining
-  differences mapped in its own spec) *is* the epic. Without it nothing here delivers.
+- **FIX-1154** (the mutation surface — **the gap write-up**: every difference between the two
+  mutation surfaces mapped in its own spec, each one deliberate-with-a-reason or deferred, and
+  **no verb closed**) *is* the epic. Without it nothing here delivers.
 - **FIX-1158** (cross-flow resource validation never runs) is a **same-subsystem
   unintended-asymmetry lodger** — the epic's own thesis pointed at itself, where the
   architecture doc already promises the two primitives behave alike and the code silently
@@ -74,9 +85,13 @@ An engineering call, not the owner's, because both outcomes are cheap and revers
 **Not doing:** merging the two primitives; deleting or deprecating either one at any scope;
 re-attempting the org-state removal; cross-record atomicity (FIX-854); and resource-specific
 surface with no state analogue at all — content, `client`, `reactTo`, `edges`, collections.
-**Nor is any verb reconciled beyond increment and append.** Every other difference — a verb one
-primitive lacks, or a verb they nominally share whose shape differs — is **mapped by FIX-1154,
-not closed by it**. Out of scope by construction, not deferred. **No child deprecates, removes, or
+**Nor is any verb reconciled at all — increment and append included** (D-6). Every difference —
+a verb one primitive lacks, or a verb they nominally share whose shape differs — is **mapped by
+FIX-1154, not closed by it**. Two different reasons sit behind that one word, and collapsing
+them is how a reader concludes the wrong thing: most of these differences are out of scope **by
+construction** and are not coming back, while **increment and append are deferred** — the one
+pair that was going to close, now cut from this cycle and explicitly not dropped (theme 2,
+Decision 2). **No child deprecates, removes, or
 migrates a primitive** — every one of them fixes, generalizes, or documents. A child that
 finds itself proposing a removal has hit the rejected framings in §2 and comments up on this
 PR rather than deciding locally.
@@ -165,18 +180,17 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    **never observed** the resource revives it after a delete. The product bet is unchanged —
    deleted stays deleted — it is simply not enforced on that one path.
 
-   **FIX-1154's new verbs inherit the hole; they do not introduce it, and they are not blocked
-   on it.** Both halves matter. They don't introduce it: `updateState` does exactly this on
-   `main` today, with no new verb involved. But `incState` and `pushState` route through the
-   same `runResourceCAS` read-modify-write at held version `0`, so they **are new entry points
-   to it** — the epic previously said the verbs don't cause the hole, which read as if they
-   were unaffected. FIX-1258 is **not a prerequisite**: the verbs add no capability
-   `updateState` lacks, and the limitation is *pinned at the child* rather than left implicit —
-   FIX-1154's characterization POC carries a row named *"CURRENT BEHAVIOUR (defect, FIX-1258):
-   a version-0 context REVIVES a tombstone"*
+   **No new entry point to the hole is added this cycle, and the hole is still open.** The two
+   facts are independent and both survive D-6. `updateState` does exactly this on `main` today,
+   with no new verb involved — so the hole exists whatever this epic ships. What *would* have
+   added fresh entry points to it, `incState` and `pushState` routing through the same
+   `runResourceCAS` read-modify-write at held version `0`, is now **cut** (theme 2), so the
+   count of ways in is unchanged rather than raised. The limitation is still *pinned at the
+   child* rather than left implicit — FIX-1154's characterization POC carries a row named
+   *"CURRENT BEHAVIOUR (defect D5): a version-0 context REVIVES a tombstone"*
    (`spec-poc/FIX-1154-resource-mutation-verbs/policy-rows.poc.test.ts`, PR
    [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445)) that asserts today's
-   wrong behaviour and **fails when the fix lands** — which is the intended signal.
+   wrong behaviour and **fails when the fix lands**, which is the intended signal.
    **FIX-1258** owns closing it, and is carried **outside the active set** (§1), so this epic
    can wrap before it lands.
 
@@ -206,30 +220,44 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    for scope state only because the blob is a bag of independent keys. Resources pass **their
    held version** instead.
 
-   **Unproven — do not treat this as settled.** That *every row of the resource policy table
-   survives* under a held version is a **type-level read no code has exercised**. FIX-1154
-   proves it on the real resource path — a characterization test or a `settle-claim` covering
-   tombstone, lost create-if-absent, and verified no-op — **before** locking it. If it fails,
-   this theme changes, not just FIX-1154's design. It is the epic's most load-bearing
-   technical claim and the least evidenced.
+   **Unproven, and now unproven for longer.** That *every row of the resource policy table
+   survives* under a held version is a **type-level read no code has exercised**, and it stays
+   that way. With the verbs cut (D-6) there is nothing left this cycle for a proof to gate, so
+   **FIX-1154 carries no proof obligation** — an obligation attached to a deliverable that is
+   not shipping costs a child real work and proves nothing. The proof rides **Decision 2's
+   deferred native deltas** instead, as the epic-theme rewrite next to FIX-992, and it is that
+   rewrite's first task: a characterization test or a `settle-claim` on the real resource path
+   covering tombstone, lost create-if-absent and verified no-op, **before** any delta verb is
+   locked. If it fails, this theme changes rather than one issue's design. It remains the
+   least-evidenced claim in this document — it is simply no longer *this cycle's* risk,
+   because this cycle writes no code against it.
 
-   **Constrains:** no issue in this set may reach for `"any"` on the resource path.
-   `"absent"` throws on the delta verbs by contract, so create-if-absent stays a separate op
-   — which is how resources already model it. **Extend the seams that exist; do not invent a
-   new core `MutationContract` type until a second consumer appears.** *Tier 1* — caller-visible
-   **increment and append**, `ResourceRef.incState` / `pushState` via `runResourceCAS` read-modify-write on
-   the existing `set` path — is the deliverable. *Tier 2* — store-native `incField` /
-   `pushToArray` on `ResourceStateStore` across every adapter plus conformance — is
-   **deferred and explicitly not required for epic wrap**. If Tier 2 ever lands it must **not**
-   reuse `createScopePersist` or commutative hints: that is precisely how `"any"` re-enters
-   the resource path.
+   **Constrains:** no issue in this set may reach for `"any"` on a resource **delta or
+   read-modify-write** path. That qualifier is load-bearing and was missing: `"any"` already
+   travels the resource path on one intent by design — `runResourceCAS` passes it for
+   `replace`, the deliberate unconditional overwrite behind `create({ replace: true })`
+   (`resource-cas.ts:73`, `:220`) — so this is a constraint on new mutation work, not a claim
+   that `"any"` is absent. `"absent"` throws on the delta verbs by contract, so create-if-absent
+   stays a separate op — which is how resources already model it. **Extend the seams that
+   exist; do not invent a new core `MutationContract` type until a second consumer appears.**
 
-   That deferral is what leaves the **adapter delta-verb asymmetry standing when the epic wraps**
-   — Tier 1 writes through `runResourceCAS` → `ResourceStateStore.set` and never reaches those
-   verbs, so what closes is caller-visible parity, not the adapter surface. `patchField` and
-   `deleteField` are scoped out of Tier 2 as well, with a reason: resources already have depth-1
-   `patchState` (`types/resource.ts:270`), so `patchField` would only earn its place for nested
-   paths, and removing a record is a lifecycle op rather than a state mutation.
+   **Neither tier ships this cycle, and the two are stopped in different ways (D-6).** *Tier 1*
+   — caller-visible **increment and append**, `ResourceRef.incState` / `pushState` via a
+   `runResourceCAS` read-modify-write on the existing `set` path — **was** the deliverable and
+   is **cut**: not built, not shipped, not required for wrap. *Tier 2* — store-native
+   `incField` / `pushToArray` on `ResourceStateStore` across every adapter plus conformance —
+   remains **deferred and explicitly not dropped** (Decision 2). Both return, if they return,
+   through the same door: the epic-theme rewrite next to FIX-992, where the deferred native
+   deltas are scoped as one body of work rather than two tiers of one issue. If a delta verb
+   ever lands it must **not** reuse `createScopePersist` or commutative hints: that is
+   precisely how `"any"` re-enters the resource path.
+
+   **With Tier 1 cut, the whole mutation-surface asymmetry stands when the epic wraps** — the
+   caller-visible half as well as the adapter half. Nothing closes; what ships is the map.
+   `patchField` and `deleteField` stay scoped out of the deferred work as well, with a reason:
+   resources already have depth-1 `patchState` (`types/resource.ts:270`), so `patchField` would
+   only earn its place for nested paths, and removing a record is a lifecycle op rather than a
+   state mutation.
 
 3. **`docs/architecture/state-and-scopes.md` is a shared surface, and each child names the
    paragraph it owns.** FIX-1154 rewrites what the doc says about the two primitives' mutation
@@ -305,7 +333,7 @@ expensive thing this epic has already paid for.
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — increment and append close on the resource path (`ResourceRef.incState` / `pushState`, Tier 1), and the **remaining differences are mapped in its spec**: each one closed, deliberate with a reason, or deferred | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review |
+| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the mutation-surface gap write-up** (D-6): every difference mapped in its spec as deliberate-with-a-reason or deferred. **No verb closes this cycle** — `ResourceRef.incState` / `pushState` are cut, so increment and append are mapped like the rest | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) | In Review |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo *(not in the active set; wrap does not wait for it)* |
 | [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) | Cross-flow validation compares exact refs, so overlapping collection keyspaces slip through — the scope excluded from FIX-1158, filed separately | **bug** | — | — | Backlog *(blocked by FIX-1158; not in the active set)* |
@@ -319,6 +347,29 @@ An empty Spec PR cell on a `bug` row is correct, not a gap.*
 *FIX-1153 is kept in the index rather than dropped. Its cancellation and the closed PR are the
 epic's most expensive finding — see* Rejected framings *in §2 — and a reader who cannot see it
 here has no way to know the framing was tried.*
+
+**Surfaced by this epic, owned elsewhere — two live defects on `main`, neither fixed here.**
+FIX-1154's spec review promoted two findings from *gaps in a proposed guard* to *defects
+already shipped*, and both are being filed separately:
+
+- A **`.catch()`-wrapped state schema stores its fallback and erases untouched fields.** An
+  inner refinement violation never makes `safeParse` fail, so the fallback is what gets
+  stored: the write succeeds, the version advances, and a field the caller never touched comes
+  back as the schema default. Nothing throws.
+- A **schema transform can produce a value the adapters store differently.** The memory store
+  keeps `Infinity` (it clones with `structuredClone`); every JSON-backed adapter flattens it to
+  `null`, which then fails the schema on the next durable read. Two deployments hold different
+  data from the same call, and neither raises.
+
+Both share **FIX-1260's root**: `normalizeResourceState` stores the **output** of `safeParse`
+rather than validating the candidate and storing the candidate, so any schema that rewrites its
+input on parse changes what lands. **The root has two copies, not one** — the same function
+exists independently in `routes/route-utils.ts` and in `context/resource-registry.ts`, and it is
+the registry copy that runs on both ends of every read-modify-write. A fix that lands in one
+place leaves the other standing. *These are **not** members of this set and wrap does not wait
+on them: the epic found them, it does not own them. They are recorded here because a reader who
+sees the epic's characterization rows asserting today's wrong behaviour needs to know those rows
+are tracked work, not an epic deliverable.*
 
 ## 5. Open cross-cutting questions
 
@@ -372,9 +423,20 @@ the epic PR — the PR closes when the epic wraps; this document outlives it.
   exactly what gets re-derived expensively, and this epic has already paid once for re-deriving
   one (#1291, closed unmerged). An epic's real cost here is a coordination doc somebody
   maintains; its return is that those calls have one home a future third consumer can find.
+- **~~Does this cycle add public resource verbs, or document the gap?~~** *Resolved by the
+  owner in [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) — closed
+  completed, `Decision`: **document the gap.*** `ResourceRef.incState` / `pushState` do not
+  ship this cycle (Ask 1 = **B**): no consumer driving the release needs them, every current
+  use is compound, `updateState` is the working substitute, and the foundation-honesty rule
+  refuses unused public surface that cannot be taken back. **Decision 2 — defer, not drop:**
+  later native deltas are an epic-theme rewrite next to FIX-992, not a silent abandonment.
+  **Decision 3 — map as docs:** the write-up is the deliverable, not a delivery vehicle for
+  unused methods. Recorded here so no sibling reopens it: the epic's **objective is
+  unchanged**; its *this-cycle scope* is narrower.
 - **~~Do resources grow a committed `boolean`, or is the `Promise<boolean>` vs
-  `Promise<void>` split deliberate?~~** *Resolved: deliberate, and only the increment/append gap
-  closes.*
+  `Promise<void>` split deliberate?~~** *Resolved: deliberate — and since D-6, nothing closes
+  beside it either. The split stands, and the increment/append gap next to it is documented
+  rather than closed.*
   Scope state returns `boolean` because callers branch on it to suppress a redundant
   `state_change`; resources verify the no-op internally and gate `resource_change` on that,
   so the value has no caller to serve. Forcing them to match would be symmetry for its own
@@ -439,4 +501,19 @@ the epic PR — the PR closes when the epic wraps; this document outlives it.
   this next: every claim this epic has had to retract was a *mechanism* description — how the code
   behaves — and the **decision** wrapped around it survived each time intact. Trust this document's
   decisions; re-derive its descriptions of the code from the code.
+- **D-6 folded — this cycle ships no verbs (2026-08-25)** — the owner decided Ask 1 as **B**:
+  `ResourceRef.incState` / `pushState` are cut, FIX-1154 delivers the mutation-surface gap
+  write-up, Tier 2 stays deferred rather than dropped, and theme 2's proof obligation moves off
+  FIX-1154 onto the deferred work, because an obligation attached to a deliverable that is not
+  shipping costs a child real work and proves nothing. Five surfaces carried the superseded
+  answer and were reconciled in one pass (§1's objective, necessity bullet and *Not doing*;
+  theme 1's entry-point paragraph; theme 2; the §4 row; §5) together with the epic PR's diagram
+  and engineering calls — and the count is the point: this is the failure this document was
+  warned about, arriving through a decision rather than a stale description.
+- **Theme 2's `"any"` constraint tightened; two citations corrected (2026-08-25)** — the
+  constraint now binds the **delta / read-modify-write** path rather than "the resource path",
+  because `runResourceCAS` already passes `"any"` for the `replace` intent by design, which
+  made the old wording read as a false claim about the code. The FIX-1258 POC row was re-cited
+  under its real name (`defect D5`). **Which makes five** — and both were caught by the rule
+  the line above states, applied to sentences this fold happened to touch.
 
