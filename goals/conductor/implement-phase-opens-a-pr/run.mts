@@ -84,6 +84,23 @@ const USER_ID = "conductor-goal-user";
 const RUN_TIMEOUT_MS = positiveIntFromEnv("GOAL_RUN_TIMEOUT_MS", 1_800_000);
 const POLL_INTERVAL_MS = 5_000;
 
+/**
+ * How many attempts the board gives this row — and, because of that, how many
+ * worker budgets the poll loop below has to wait through.
+ *
+ * **Named, because the wait was sized for one attempt while the board was
+ * configured for two.** `drainBudgetMs` is the budget for ONE drain: an
+ * ownership wait, provisioning, the agent, and the pull-request probe. The loop
+ * wakes a `pending` row, so a first attempt that legitimately spends most of its
+ * run timeout and then fails leaves the retry running against a wall clock that
+ * has already nearly expired — and the goal reports a timeout against a run that
+ * never exceeded any limit it was given. A flaky check that fails honest work is
+ * worse than no check.
+ *
+ * One constant rather than two, so the two numbers cannot drift apart again.
+ */
+const MAX_ATTEMPTS = 2;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 await runGoal(async () => {
@@ -134,7 +151,7 @@ await runGoal(async () => {
   const built = conductorFlow({
     epic: fixture.epic,
     workspace: { root: workspaceRoot, sourceRepo, baseRef },
-    maxAttempts: 2,
+    maxAttempts: MAX_ATTEMPTS,
     runTimeoutMs: RUN_TIMEOUT_MS,
     // The real implement phase, with its real `gh`-backed done-condition. Only
     // the prompt's job text comes from the held-out fixture.
@@ -231,7 +248,14 @@ await runGoal(async () => {
     // This is the third site to need the same number, and the second to be
     // missed after `fsdev.config.ts` was fixed. Hence the derived value rather
     // than another local sum.
-    const deadline = Date.now() + built.drainBudgetMs;
+    //
+    // **Times the attempts, because this loop waits through all of them.**
+    // `drainBudgetMs` bounds ONE drain, which is exactly right where it is used
+    // as a host's shutdown budget — `fsdev.config.ts` passes it to
+    // `detachedDrainTimeoutMs` and must NOT scale it. This site is the one that
+    // waits across retries: it wakes a `pending` row, so the wall clock has to
+    // cover every attempt the board is allowed to run, not just the first.
+    const deadline = Date.now() + built.drainBudgetMs * MAX_ATTEMPTS;
     for (;;) {
       row = await readRow();
       if (row === undefined) {
@@ -242,7 +266,11 @@ await runGoal(async () => {
       if (row.status === "pending") await call("wake", {});
       if (Date.now() >= deadline) {
         failures.push(
-          `the row was still ${row.status} after ${built.drainBudgetMs}ms — last reason: ` +
+          // The number reported is the one actually waited, not the per-drain
+          // term it is derived from — a message naming a bound the loop did not
+          // enforce sends the next reader looking for the wrong overrun.
+          `the row was still ${row.status} after ${built.drainBudgetMs * MAX_ATTEMPTS}ms ` +
+            `(${MAX_ATTEMPTS} × the ${built.drainBudgetMs}ms drain budget) — last reason: ` +
             `${row.run?.reason ?? row.feedback ?? "none recorded"}`,
         );
         break;

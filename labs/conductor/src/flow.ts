@@ -171,29 +171,37 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // `baseRef` and the repository's existence are the cheaper half: permanent
   // configuration errors that `provisionCheckout` would otherwise discover after
   // the row is claimed, once per retry, until the budget is gone.
+  // **Every path in the config is absolute, and the check is written over the
+  // SET rather than over one field.** A relative path is resolved against
+  // `process.cwd()` at the moment it is used, so a long-lived host that changes
+  // directory turns one durable task into two different answers: a relative
+  // `root` sends a retry to a different, empty checkout while the uncommitted
+  // work its own prompt tells it to continue from sits in the first, and a
+  // relative `sourceRepo` is validated here against one repository and handed to
+  // `git` against another — possibly the dispatcher's own, which is precisely
+  // what the next line refuses. Both are silent, and both are stable per
+  // directory and stably wrong across two.
+  //
+  // Written as a loop because the first version of this guard covered `root` and
+  // not `sourceRepo` — the same rule-versus-instance failure named three
+  // paragraphs down, committed *while adding a guard against it*. A third path
+  // field would have been missed the same way; now it cannot be.
+  //
+  // Refused rather than resolved-and-retained: `checkoutPathFor` is exported and
+  // the goal runner and tests call it directly, so a value normalised inside this
+  // builder would leave every other caller reading `cwd` exactly as before.
+  for (const field of ["root", "sourceRepo"] as const) {
+    if (!isAbsolute(workspace[field])) {
+      throw new Error(
+        `[conductor] workspace.${field} is relative (${workspace[field]}). Pass an absolute ` +
+          `path: a relative one is resolved against the process's working directory each time ` +
+          `it is used, so one durable task can resolve to two different locations.`,
+      );
+    }
+  }
+
   assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
-
-  // **A convention this file relied on, now a guarantee.** `checkoutPathFor`
-  // resolves the root, and said in a comment that a host "should still pass an
-  // absolute" one — an unenforced rule, which is the shape every other guard at
-  // this door exists to replace. A relative root is resolved against
-  // `process.cwd()` on EVERY attempt, so a long-lived host that changes
-  // directory between attempts derives a different checkout for the same durable
-  // task: the retry lands in an empty tree, and the uncommitted work its own
-  // prompt tells it to continue from is in the old one. Silent, and the retry
-  // budget is spent re-deriving the same wrong answer.
-  //
-  // Refused rather than snapshotted here, because `checkoutPathFor` is exported
-  // and the goal runner and tests call it directly — a value captured inside
-  // this builder would leave every other caller reading `cwd` exactly as before.
-  if (!isAbsolute(workspace.root)) {
-    throw new Error(
-      `[conductor] workspace.root is relative (${workspace.root}). Pass an absolute path: a ` +
-        `relative one is resolved against the process's working directory on every attempt, so ` +
-        `one durable task can derive two different checkouts.`,
-    );
-  }
 
   if (tenant === "") {
     throw new Error(

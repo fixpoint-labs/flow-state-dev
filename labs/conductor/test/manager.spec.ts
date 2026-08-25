@@ -789,6 +789,30 @@ describe("the git inputs are validated at the programmatic door too", () => {
     ).toThrow(/workspace\.root is relative/);
   });
 
+  it("refuses a relative source repo, which the identity check cannot pin either", async () => {
+    // The guard above shipped covering `root` and not its sibling — the same
+    // rule-versus-instance failure this describe block is named for, committed
+    // while adding a guard against it. Both fields are paths, both are used
+    // later, and only one was carried through.
+    //
+    // The harm here is worse than a lost checkout. `assertDistinctRepository`
+    // resolves a relative `sourceRepo` against the working directory it is
+    // called in, so it can clear a path that later resolves — from a different
+    // directory — to the dispatcher's OWN repository. The guard says yes about
+    // one repository and `git worktree add` runs against another, which is the
+    // exact outcome that check exists to make impossible.
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: "../somewhere" } }),
+    ).toThrow(/workspace\.sourceRepo is relative/);
+
+    // And the refusal comes BEFORE the identity check, so the message names the
+    // real problem rather than reporting on a path it resolved by accident.
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: "." } }),
+    ).toThrow(/workspace\.sourceRepo is relative/);
+  });
+
   it("still builds on a repository and ref that are real", async () => {
     const { conductorFlow } = await import("../src/flow");
     expect(() =>
