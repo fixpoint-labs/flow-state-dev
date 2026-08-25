@@ -30,6 +30,7 @@ import {
 } from "./translate";
 import {
   createWorkRecorder,
+  normalizeWorkingDirectory,
   type UpsertableCollection,
   type WorkRecorder,
 } from "./work-recorder";
@@ -172,6 +173,138 @@ export interface ClaudeCodeAgentOptions {
    * renders into a latest-wins slot, so two identical skips collapse to one.
    */
   recordWork?: boolean;
+  /**
+   * The directory this run works in. Default: unset, which is the directory the
+   * server process itself is running in — byte for byte what every existing
+   * caller has today (BP-030).
+   *
+   * **This is the canonical explanation; everywhere else links here.**
+   *
+   * Set it and the run's file tools address paths inside that directory, and
+   * `recordWork`'s index of what the run touched is keyed there too. Those are
+   * **two halves of one thing, and doing only the first is the trap**: forward
+   * the directory to the SDK without threading it into the record and the index
+   * describes a checkout the run never touched — nothing throws, nothing is
+   * empty, the rows are simply keyed somewhere else. See
+   * `canonicalFilePathKey`, which is where the second half lands.
+   *
+   * **A resolver, not a constant**, because one flow build serves many runs:
+   * the same shape {@link ClaudeCodeAgentOptions.prompt} already has. It is
+   * called once per invocation, before `query`.
+   *
+   * ```ts
+   * import { mkdir, mkdtemp } from "node:fs/promises";
+   * import { join } from "node:path";
+   *
+   * const CHECKOUT_ROOT = "/var/agent-checkouts";
+   *
+   * claudeCodeAgent({
+   *   // A fresh directory per run, created by the server. No caller input
+   *   // reaches the path.
+   *   cwd: async () => {
+   *     // `mkdtemp` creates the leaf, not the parent, and fails ENOENT if the
+   *     // root is missing — which on a fresh machine it is.
+   *     await mkdir(CHECKOUT_ROOT, { recursive: true });
+   *     return mkdtemp(join(CHECKOUT_ROOT, "run-"));
+   *   },
+   *   // A per-run directory needs a per-run conversation: by default the SDK
+   *   // is handed a `resume` handle from the last run in this session, which
+   *   // would resume it inside a tree that has nothing to do with it.
+   *   detached: true,
+   * })
+   * ```
+   *
+   * **Reusing a directory across runs is the harder case**, and it is where the
+   * sharp edges are. This is the example to copy — the guard is part of it
+   * rather than a footnote, because a snippet is what actually gets pasted:
+   *
+   * ```ts
+   * import { createHash } from "node:crypto";
+   * import { mkdir } from "node:fs/promises";
+   * import { isAbsolute, join, relative } from "node:path";
+   *
+   * function segment(value: string | undefined): string {
+   *   return value === undefined
+   *     ? "0"
+   *     : `1${createHash("sha256")
+   *         .update(Buffer.from(value, "utf16le"))
+   *         .digest("hex")}`;
+   * }
+   *
+   * function checkoutFor(tenantId: string | undefined, key: string): string {
+   *   const dir = join(CHECKOUT_ROOT, segment(tenantId), segment(key));
+   *   const rel = relative(CHECKOUT_ROOT, dir);
+   *   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+   *     throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
+   *   }
+   *   return dir;
+   * }
+   *
+   * claudeCodeAgent({
+   *   cwd: async (_input, ctx) => {
+   *     const dir = checkoutFor(
+   *       ctx.session.identity.tenantId,
+   *       ctx.session.identity.id,
+   *     );
+   *     await mkdir(dir, { recursive: true });
+   *     return dir;
+   *   },
+   * })
+   * ```
+   *
+   * Five rules, one line each; the **guide carries the derivation** so it lives
+   * in one place and three copies cannot drift into contradicting each other:
+   *
+   * - **Derive, never validate.** A grammar of forbidden shapes is a list
+   *   nobody finishes — separators, `..`, Windows' stripped trailing dots,
+   *   reserved device names, case folding.
+   * - **Bound the output; never truncate to bound it.** Filenames stop at 255
+   *   characters and a reversible encoding grows with its input, so a digest is
+   *   fixed-width where hex is not. Trimming a reversible encoding instead
+   *   would map two long ids onto one directory — the collision the derivation
+   *   exists to prevent. The honest cost: distinctness rests on SHA-256 rather
+   *   than on arithmetic, and the path stops being readable.
+   * - **Hash UTF-16 code units, not UTF-8 bytes.** UTF-8 cannot represent a
+   *   lone surrogate, so transcoding through it maps every one of them onto the
+   *   replacement character and distinct session ids would share a tree.
+   * - **Tag presence; never substitute a stand-in.** A `?? "default"` fallback
+   *   merges an un-tenanted host with a tenant named `default`. The tag also
+   *   keeps each segment non-empty, since `join` discards an empty one.
+   * - **One segment per value, and confirm containment** with `path.relative`
+   *   rather than a string prefix, which rejects every valid value on Windows.
+   * - **Serialize runs that share a checkout.** Deriving the same directory
+   *   twice is the point; two live runs in it is not. Actions run concurrently
+   *   by default, so declare `concurrency: "queue"` (or `"reject"`) on the
+   *   action — it arbitrates on the session, the same value the checkout is
+   *   derived from. It arbitrates DISPATCHES, so it does not cover two
+   *   invocations in one dispatch (a model calling this tool twice in one step)
+   *   or two external workers. Reuse a checkout for one agent step per run on a
+   *   single-instance host; derive a fresh directory otherwise.
+   *
+   * The authenticated tenant is `ctx.session.identity.tenantId`;
+   * `ctx.session.identity.id` is deliberately bare, because two tenants can
+   * hold one session id. Prefer a key the server assigned over one that
+   * arrived with the request — both reach the server from the caller, so the
+   * encoding is what makes an untrusted one safe to build a path from
+   * (BP-031).
+   *
+   * The resolver may be async, for a directory that has to be looked up or
+   * provisioned first.
+   *
+   * **An option, never a field on the block's input** — a correctness
+   * constraint rather than a style preference. The same block is exposed as a
+   * model-facing tool through the agent capability, so a working directory
+   * reachable from the input is one the model can choose (BP-031). The block's
+   * input stays the prompt.
+   *
+   * It is a working directory, not a boundary: the run can still address paths
+   * outside it, and the file record is a log of what its tools did rather than
+   * a fence around where they may go.
+   */
+  cwd?: (
+    input: { prompt: string },
+    ctx: BlockContext,
+  ) => string | Promise<string>;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -321,7 +454,7 @@ export function runNamespace(ctx: BlockContext): string {
   return `${encodePathSegment(ctx.request.identity.id)}/${step}#${attempt}`;
 }
 
-function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
+function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const upsertable = (accessor: string): UpsertableCollection | undefined => {
     const ref = resources?.[accessor] as UpsertableCollection | undefined;
@@ -343,6 +476,9 @@ function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
     files,
     plan,
     ...(gaps !== undefined ? { gaps } : {}),
+    // The second half of the working directory. Absent when no resolver is
+    // configured, which keys against this process's directory exactly as before.
+    ...(cwd !== undefined ? { cwd } : {}),
     // Non-transient so the note survives into the request record. It is still
     // only a note: `emit.status` dedupes on the message and renders into a
     // latest-wins slot, so the durable record of a skip is the gap ROW.
@@ -379,6 +515,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onToolApproval,
     detached = false,
     recordWork = false,
+    cwd: resolveCwd,
     name = "claude-code-agent",
   } = options;
 
@@ -429,6 +566,15 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         );
       }
 
+      // Resolved ONCE per invocation, before the query and before the recorder
+      // is opened, so the directory the SDK is handed and the directory the
+      // record is keyed against cannot be two different answers from one
+      // resolver (§7's invariant is about them staying the same value, not
+      // merely about both being threaded).
+      const workingDirectory = normalizeWorkingDirectory(
+        resolveCwd === undefined ? undefined : await resolveCwd(input, ctx),
+      );
+
       const resolved = await resolveClaudeAgent(ctx);
       const dispatchedAt = Date.now();
       const abortController = forwardSignalToController(ctx.signal);
@@ -443,6 +589,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         maxTurns,
         includePartialMessages,
         abortController,
+        ...(workingDirectory !== undefined ? { cwd: workingDirectory } : {}),
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(onToolApproval
           ? { canUseTool: buildCanUseTool(onToolApproval, ctx) }
@@ -457,7 +604,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         inputsMayBeRevised: onToolApproval !== undefined,
       });
       const emitState = createEmitState();
-      const recorder = recordWork ? openWorkRecorder(ctx) : null;
+      const recorder = recordWork ? openWorkRecorder(ctx, workingDirectory) : null;
 
       let resultSubtype: SdkResultSubtype | null = null;
       let finalMessage: string | null = null;

@@ -25,6 +25,7 @@
  * is never fed at all leaves nothing, and only a check outside it can tell that
  * from a run that did nothing.
  */
+import { realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import type {
@@ -85,6 +86,19 @@ export interface WorkRecorderOptions {
    * produces the wrong design.
    */
   flushIntervalMs?: number;
+  /**
+   * The directory the run was given, when the block forwarded one to the SDK.
+   *
+   * Relative paths the run addressed are keyed inside it. Omit it and keys
+   * resolve against this process's directory, which is what every caller that
+   * configures no working directory gets — byte for byte the previous
+   * behaviour (BP-030).
+   *
+   * See {@link canonicalFilePathKey}: forwarding the directory to the SDK and
+   * threading it here are two halves of one change, and doing only the first
+   * indexes the run's files under a checkout it never touched.
+   */
+  cwd?: string;
   /** Called with a human-readable note when an entry could not be recorded. */
   onSkipped?: (note: string) => void;
   /** Clock seam for tests. */
@@ -106,20 +120,32 @@ const DEFAULT_FLUSH_INTERVAL_MS = 1_000;
 /**
  * Canonicalize a path the run addressed into a collection key segment.
  *
- * Two things have to hold at once. The same file reached as `/work/repo/a.ts`
- * and as `a.ts` must land on ONE entry, so a relative path is resolved against
- * the run's working directory — which is this process's, because the block
- * forwards no `cwd` to the SDK. And the result must never contain a `..`
- * segment, because the collection key normalizer rejects those; `resolve`
- * guarantees that by collapsing them, which a relative-to-a-root encoding
- * emphatically does not (a run writing outside the root produces nothing but
- * `..`, and the entry would be silently dropped on every successful write).
+ * The mechanics, and why each is what it is:
  *
- * The leading separator is dropped because the normalizer strips it anyway, so
- * keeping it would make one path two spellings of one key.
+ * - **`resolve`, never a manual prefix.** The key must never contain a `..`
+ *   segment, because the collection key normalizer rejects those and the
+ *   recorder swallows the rejection — so a prefix-joined key would drop entries
+ *   silently on every successful write. `resolve` collapses them.
+ * - **An absolute path wins over `cwd`**, which is what keeps a run reaching
+ *   outside its checkout recorded rather than dropped. This is a log, not a
+ *   fence.
+ * - **The leading separator is dropped**, because the normalizer strips it
+ *   anyway and keeping it would make one path two spellings of one key.
+ *
+ * `cwd` is expected already normalized — non-empty and symlink-resolved, which
+ * both public doors now guarantee by construction:
+ * {@link normalizeWorkingDirectory} runs at {@link createWorkRecorder} and at
+ * {@link ClaudeCodeAgentOptions.cwd}. The empty-string branch below stays as
+ * defence-in-depth for a direct call to this exported helper, which is a third
+ * door and the only one that cannot normalize — it is called per file event,
+ * so a `realpathSync` here would be filesystem IO on the hot path.
+ * {@link ClaudeCodeAgentOptions.cwd} remains canonical for why the SDK forward
+ * and this key must be one value.
  */
-export function canonicalFilePathKey(rawPath: string): string {
-  return resolvePath(rawPath).replace(/\\/g, "/").replace(/^\/+/, "");
+export function canonicalFilePathKey(rawPath: string, cwd?: string): string {
+  const absolute =
+    cwd === undefined || cwd === "" ? resolvePath(rawPath) : resolvePath(cwd, rawPath);
+  return absolute.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
 /** One buffered file row, merged across every touch inside a flush window. */
@@ -151,16 +177,68 @@ interface PendingPlanEntry {
  * Writes are buffered per key and flushed on an interval, so a path touched
  * repeatedly costs one write per window rather than one per event.
  */
+/**
+ * Reduce a working directory to the ONE value every consumer uses, or
+ * `undefined`. Two normalizations, each closing a way two consumers could
+ * disagree while both looked correct.
+ *
+ * **Empty string means unset.** `""` is not nullish, so it survives the SDK's
+ * own `cwd ?? default` and reaches the child-process spawner — where Node
+ * silently falls back to the process directory rather than failing. The key
+ * helper already read `""` as unset, so the two agreed by a coincidence of two
+ * different fallbacks rather than by construction, and anything consuming `cwd`
+ * without spawning (a session key, a project root) has no such coincidence to
+ * lean on.
+ *
+ * **Symlinks resolve to the physical path.** `path.resolve` is purely lexical,
+ * so the recorder would key `/link/src/a.ts` while the spawned SDK process —
+ * whose `process.cwd()` is the physical directory — reports `/real/src/a.ts`.
+ * The divergence check compares the two, sees a mismatch, and writes a gap
+ * instead of settling the row, leaving an ordinary write permanently `pending`.
+ * Measured against a real symlinked directory, not assumed.
+ *
+ * A path that cannot be resolved is handed back as written: the invariant still
+ * holds (every consumer sees one value), and an unusable directory is left to
+ * fail where it should, in the SDK.
+ *
+ * **It lives here, beside the recorder, because this is the lower of the two
+ * public doors.** {@link ClaudeCodeAgentOptions.cwd} normalizes what a resolver
+ * returns, but {@link createWorkRecorder} is exported too — so a caller
+ * building a recorder directly reached the symlink bug without ever passing
+ * through the agent. Normalizing at both entry points makes the precondition
+ * {@link canonicalFilePathKey} documents true by construction rather than by
+ * the caller having read the docs.
+ */
+export function normalizeWorkingDirectory(
+  cwd: string | undefined,
+): string | undefined {
+  if (cwd === undefined || cwd === "") return undefined;
+  try {
+    return realpathSync(cwd);
+  } catch {
+    return cwd;
+  }
+}
+
 export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   const {
     runId,
     files,
     plan,
     gaps,
+    cwd: rawCwd,
     flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS,
     onSkipped,
     now = Date.now,
   } = options;
+
+  // Normalized here as well as at the agent's resolver, because this function
+  // is exported: a direct caller passing a symlinked checkout would otherwise
+  // key every row against the link spelling while the spawned process reports
+  // the physical path, and every ordinary write would sit permanently
+  // `pending` behind a false divergence. Idempotent on an already-normalized
+  // value, so the agent path pays one extra `realpathSync` per run.
+  const cwd = normalizeWorkingDirectory(rawCwd);
 
   const pendingFiles = new Map<string, PendingFileEntry>();
   const pendingPlan = new Map<string, PendingPlanEntry>();
@@ -335,14 +413,17 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   };
 
   const observeFileOp = (event: Extract<TranslatedEvent, { kind: "file_op_observed" }>): void => {
-    const canonical = canonicalFilePathKey(event.path);
+    const canonical = canonicalFilePathKey(event.path, cwd);
     // The harness named a different path, and canonicalization did not
     // reconcile them — so the row about to be written is keyed under a path the
     // harness says it did not touch. Recording the operation is still right (it
     // happened), but a reader must be able to see that the key is contested,
     // or a later comparison against the run's tool activity reads this as the
     // record having lost a write.
-    if (event.resolvedPath !== undefined && canonicalFilePathKey(event.resolvedPath) !== canonical) {
+    if (
+      event.resolvedPath !== undefined &&
+      canonicalFilePathKey(event.resolvedPath, cwd) !== canonical
+    ) {
       // THE GAP IS THE WHOLE RECORD, the same as a plan update the harness
       // applied to a different item. The settling event's other fields — the
       // kind the harness reported, its outcome — describe the write it actually
