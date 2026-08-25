@@ -771,6 +771,27 @@ describe("the ledger is partitioned by tenant", () => {
     );
   });
 
+  it("keeps the tenant and the epic apart when the delimiter is redistributed", async () => {
+    // The measured defect, at the three sites that carry it. With a bare `-`
+    // join, `(tenant "a-b", epic "c")` and `(tenant "a", epic "b-c")` BOTH
+    // spelled `conductor-tasks-a-b-c` — two tenants sharing one claim pool and
+    // one run topic. A test over two obviously-different tenants cannot fail on
+    // that, which is why this one redistributes the delimiter instead.
+    const { conductorFlow } = await import("../src/flow");
+    const { runTopic } = await import("../src/run-record");
+    const left = conductorFlow({ ...base, tenant: "a-b", epic: "c" });
+    const right = conductorFlow({ ...base, tenant: "a", epic: "b-c" });
+
+    // Storage — who can claim whose row.
+    expect(left.collectionId).not.toBe(right.collectionId);
+    // Routing — hashed into the derived workstream session id.
+    expect(left.boardId).not.toBe(right.boardId);
+    // The run record, which leads with the collection identity.
+    expect(runTopic(left.collectionId, ISSUE, PHASE)).not.toBe(
+      runTopic(right.collectionId, ISSUE, PHASE),
+    );
+  });
+
   it("accepts any tenant id and keeps distinct ones distinct", async () => {
     const { conductorFlow } = await import("../src/flow");
     for (const bad of ["../escape", "a/b", "..", "", "with space"]) {
