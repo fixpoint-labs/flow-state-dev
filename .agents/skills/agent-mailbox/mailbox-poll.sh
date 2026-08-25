@@ -35,9 +35,6 @@ for arg in "$ME" "$MYSESSION"; do
     *[!a-z0-9._-]*|'') echo "mailbox-poll: from/session must match [a-z0-9._-]+ (got '$arg')" >&2; exit 2 ;;
   esac
 done
-# Fail at arm time rather than polling forever against an expired token: a dead poll and a
-# quiet mailbox are indistinguishable from the outside.
-gh auth status >/dev/null 2>&1 || { echo "mailbox-poll: gh is not authenticated" >&2; exit 2; }
 
 REPO=${MAILBOX_REPO:-fixpoint-labs/agent-mailbox}
 INTERVAL=${MAILBOX_INTERVAL:-60}
@@ -46,6 +43,13 @@ FILTER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mailbox-filter.jq"
 [ -r "$FILTER" ] || { echo "mailbox-poll: missing $FILTER" >&2; exit 2; }
 mkdir -p "$STATE" 2>/dev/null || { echo "mailbox-poll: cannot create MAILBOX_STATE=$STATE" >&2; exit 2; }
 [ -w "$STATE" ] || { echo "mailbox-poll: MAILBOX_STATE=$STATE is not writable" >&2; exit 2; }
+# Fail at arm time rather than polling forever against an expired token: a dead poll and a
+# quiet mailbox are indistinguishable from the outside. Probe the actual repo rather than
+# `gh auth status`, which without a hostname reports on EVERY known host and fails on a
+# stale enterprise login that has nothing to do with this board. This checks the one thing
+# that matters: can we read this handle's comments.
+gh api "repos/$REPO" --silent >/dev/null 2>&1 \
+  || { echo "mailbox-poll: cannot read $REPO — check gh auth and repo access" >&2; exit 2; }
 declare -A fails            # consecutive fetch failures, per handle
 FAIL_ALERT=${MAILBOX_FAIL_ALERT:-5}
 OVERLAP=${MAILBOX_OVERLAP:-5}   # seconds of `since` back-off; see the url build below
