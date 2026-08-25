@@ -75,7 +75,7 @@ filesystem. So the division is fixed:
 | Scanning the epic PR for its objective sign-off, and holding every sub-issue if it's unmet (the epic-spec's own review still folds) | **Surfacing every gate** to you (epic objective, per-issue spec approval, merge) |
 | Per-issue refresh via `scout` (Linear parent→children in one query; PR comments/reviews/checks/meta) | **Resolving the set** and confirming it with you (loop step 1) |
 | Deciding each issue's pending action, and the **review round budget** for issue specs *and* the epic PR | **`.orchestration/` reads and writes** — the script gets the table via `args`, returns the new one |
-| Dispatching `issue-worker` / `epic-agent` / `poc-agent`, capped and prioritized | **PR subscriptions** (`subscribe_pr_activity` / local `Monitor`) — a sub-agent can't hold one |
+| Dispatching `issue-worker` / `epic-agent` / `poc-agent`, capped and prioritized | **PR and mailbox subscriptions** (`subscribe_pr_activity` / local `Monitor`) — a sub-agent can't hold one |
 | **Deduping claims** so one claim argued on two issues is one settlement fanned to both | **The Linear status mirror** (the approval labels are the owner's — never written here) |
 | Routing a POC verdict to its issues the moment that POC finishes | **Ending the turn**, the heartbeat, and re-entry |
 
@@ -658,6 +658,13 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   every surface of the epic-spec restating that decision moves with it — and `epic-agent` owns
   that check at edit time, so don't re-derive it here.
   Nothing here pulls epic-comment *content* into the coordinator's context.
+- **Check the mailbox for handles addressed to this epic.** Agents this session can't dispatch —
+  Grok, Cursor, Codex, a Claude in another repo — reach you through open PRs on
+  `fixpoint-labs/agent-mailbox`, and nothing announces a new one. List them once here, subscribe
+  to the handles whose slug names this epic, report the rest in a line, and don't subscribe to
+  what you weren't asked to join. Procedure and identity:
+  [`agent-mailbox`](../agent-mailbox/SKILL.md); what you may answer with your own hands:
+  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The agent mailbox".
 - **An approved spec PR held by the cross-spec pass stays open, and that is correct** — don't
   "fix" it. Step 5 below may hand that spec an alignment edit needing a fresh review round, so
   the close waits for `crossSpecCleared` and the `issue-worker` does it on the dispatch that
