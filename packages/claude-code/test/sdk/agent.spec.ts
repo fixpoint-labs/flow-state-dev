@@ -698,20 +698,27 @@ describe("claudeCodeAgent — detached", () => {
  * resource rows.
  */
 /**
- * **Why this block drives `block.config.execute` rather than `testBlock`.**
+ * **Why most of this block still drives `block.config.execute`.**
  *
  * The rule everywhere else is that a test dispatches a block the way consumers
  * do — `testBlock` — so a public-composition regression cannot pass while the
- * test stays green. These tests are the exception, and the reason is a gap
- * rather than a preference: they assert on the ROWS the recorder wrote, which
- * means they need a handle on `ctx.resources` after the run, and
- * `TestBlockResult` exposes `output`, `items`, `state` and `stateChanges` — no
- * resources. `createTestContext({ declaredResources })` is the only way to hold
- * the collections the assertions read.
+ * test stays green. These tests assert on the ROWS the recorder wrote, which
+ * needs a handle on `ctx.resources` after the run, and for a long time
+ * `TestBlockResult` had no such field: `createTestContext({ declaredResources })`
+ * was the only way to hold the collections the assertions read.
  *
- * If `testBlock` ever surfaces the resolved resources, every test in this block
- * should move. Until then this is the honest trade, stated once here instead of
- * being re-derived at each call site.
+ * **That gap is now closed** — `testBlock` returns `resources`, and the
+ * empty-cwd test below uses it. The remaining call sites here are pre-existing
+ * and have not been moved yet, because several pin a namespace literal built
+ * from `runNamespace(ctx)`, and the value legitimately changes when the
+ * executor supplies `_blockIdentity` (see below). Moving them is a mechanical
+ * follow-up, not a judgement call, and it should happen.
+ *
+ * **The cost of the old route, concretely**, since "couples to internals" reads
+ * as style until you price it: `runNamespace` reads `ctx._blockIdentity`, which
+ * only the executor sets. A hand-dispatched run therefore takes the `"0"`
+ * fallback branch, so these tests pin a namespace shape production never
+ * produces. That is the reason to move them, not tidiness.
  */
 describe("claudeCodeAgent — recordWork", () => {
   /** A real run's shapes, trimmed to what the recorder consumes. */
@@ -868,23 +875,27 @@ describe("claudeCodeAgent — recordWork", () => {
       includePartialMessages: false,
       cwd: () => "",
     });
-    const runtime = await createTestContext({ declaredResources: block.declaredResources });
-    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+    // Dispatched through `testBlock`, not `block.config.execute`. That is not
+    // housekeeping here: `runNamespace` reads `ctx._blockIdentity`, which only
+    // the executor sets, so a hand-dispatched run takes the `"0"` fallback
+    // branch and this test would have pinned a namespace production never
+    // produces. `resources` gives the written rows without giving that up.
+    const { error, resources } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
 
     // The SDK is handed nothing — not an explicit `""`, which is a different
     // call from forwarding no directory at all.
     expect(spy.mock.calls[0][0].options).not.toHaveProperty("cwd");
 
-    // And the record is keyed against the process directory, unchanged.
-    const runId = runNamespace(runtime.ctx as never);
-    const resources = runtime.ctx.resources as unknown as Record<
-      string,
-      { list(): Promise<Array<{ path: string }>> }
-    >;
-    const fileRows = await resources["observed-file-ops"].list();
-    expect(fileRows.map((r) => r.path)).toEqual([
-      `observed-file-ops/${runId}/work/notes.txt`,
-    ]);
+    // And the record is keyed against the process directory, unchanged: the
+    // path the recorder saw, with no resolved-directory prefix in front of it.
+    const fileOps = resources["observed-file-ops"] as {
+      list(): Promise<Array<{ path: string }>>;
+    };
+    const fileRows = await fileOps.list();
+    expect(fileRows).toHaveLength(1);
+    expect(fileRows[0].path.endsWith("/work/notes.txt")).toBe(true);
   });
 
   it("records the run's file operations and plan into the two collections", async () => {
@@ -1401,12 +1412,14 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
   // ── the "reusing a directory across runs" helper, verbatim ─────────────────
   const CHECKOUT_ROOT = "/var/agent-checkouts";
 
-  function segment(value: string): string {
-    return Buffer.from(value, "utf8").toString("hex");
+  function segment(value: string | undefined): string {
+    return value === undefined
+      ? "0"
+      : `1${Buffer.from(value, "utf8").toString("hex")}`;
   }
 
   function checkoutFor(tenantId: string | undefined, key: string): string {
-    const dir = join(CHECKOUT_ROOT, segment(tenantId ?? "default"), segment(key));
+    const dir = join(CHECKOUT_ROOT, segment(tenantId), segment(key));
     const rel = relative(CHECKOUT_ROOT, dir);
     if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
       throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
@@ -1461,18 +1474,50 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
   it("reaches a run through the documented derivation", async () => {
     const spy = vi.fn();
     const agent = claudeCodeAgent({
-      cwd: (_input, ctx) => checkoutFor(undefined, ctx.session.identity.id),
+      // Verbatim from the docs: both halves of the identity, each encoded.
+      cwd: (_input, ctx) =>
+        checkoutFor(ctx.session.identity.tenantId, ctx.session.identity.id),
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
     });
 
-    // `testBlock` pins the session to "test-session", so the expectation is a
-    // LITERAL — an expectation derived from the implementation agrees with it
-    // whatever it does.
+    // `testBlock` pins the session to "test-session" and sets no tenant, so the
+    // expectation is a LITERAL — an expectation derived from the implementation
+    // agrees with it whatever it does. `0` is the absent-tenant tag.
     const { error } = await testBlock(agent, { input: { prompt: "go" } });
 
     expect(error).toBeNull();
     expect(spy.mock.calls[0][0].options?.cwd).toBe(
-      "/var/agent-checkouts/64656661756c74/746573742d73657373696f6e",
+      "/var/agent-checkouts/0/1746573742d73657373696f6e",
+    );
+  });
+
+  it("keeps an absent tenant apart from one named like the old fallback", () => {
+    // The example used to fill an absent tenant in with `?? "default"`. A
+    // stand-in is a value a tenant may legitimately hold, so an un-tenanted
+    // host and that tenant landed in one directory and could edit each other's
+    // tree. Presence is tagged now, so no present value can forge absence.
+    expect(checkoutFor(undefined, "s")).not.toBe(checkoutFor("default", "s"));
+
+    // The general property, not just the one value that happened to be chosen:
+    // nothing a tenant can be named collides with absence.
+    for (const value of [...HOSTILE, "default", "0", "1", "none", "null"]) {
+      expect(checkoutFor(value, "s")).not.toBe(checkoutFor(undefined, "s"));
+    }
+  });
+
+  it("gives every component a segment `join` will keep", () => {
+    // Hex of "" is "", and `join` discards an empty segment — so an empty id
+    // silently shortened the path by a level, landing the run in the tenant's
+    // own directory and merging distinct tuples. Every encoded component is
+    // non-empty by construction now.
+    expect(segment("")).not.toBe("");
+    expect(segment(undefined)).not.toBe("");
+
+    // The consequence that made it worth fixing: an empty half no longer
+    // collapses the tuple onto a shorter path.
+    expect(checkoutFor("", "x")).not.toBe(checkoutFor("x", ""));
+    expect(checkoutFor("", "x").split("/")).toHaveLength(
+      checkoutFor("a", "x").split("/").length,
     );
   });
 
@@ -1531,7 +1576,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     // separator, so a literal "/" comparison rejected every valid value on
     // Windows — a guard failing closed on the happy path.
     const winContains = (id: string): boolean => {
-      const dir = win32.join(CHECKOUT_ROOT, "default", segment(id));
+      const dir = win32.join(CHECKOUT_ROOT, segment(undefined), segment(id));
       const rel = win32.relative(CHECKOUT_ROOT, dir);
       return !(rel === "" || rel.startsWith("..") || win32.isAbsolute(rel));
     };

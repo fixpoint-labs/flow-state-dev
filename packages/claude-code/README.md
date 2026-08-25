@@ -154,16 +154,23 @@ edges are**:
 ```ts
 import { isAbsolute, join, relative } from "node:path";
 
-function segment(value: string): string {
+function segment(value: string | undefined): string {
   // Encode, don't validate. A grammar is a list of things to remember —
   // separators, `..`, trailing dots, reserved device names, case folding — and
   // the list is never finished. Hex is one segment, injective, and contains
   // nothing any filesystem treats specially.
-  return Buffer.from(value, "utf8").toString("hex");
+  //
+  // The leading tag carries two things hex alone cannot. Absence is `0` and
+  // every present value is `1…`, so "no tenant" and a tenant named `default`
+  // stay different directories. And it keeps the segment non-empty — hex of
+  // `""` is `""`, which `join` drops.
+  return value === undefined
+    ? "0"
+    : `1${Buffer.from(value, "utf8").toString("hex")}`;
 }
 
 function checkoutFor(tenantId: string | undefined, key: string): string {
-  const dir = join(CHECKOUT_ROOT, segment(tenantId ?? "default"), segment(key));
+  const dir = join(CHECKOUT_ROOT, segment(tenantId), segment(key));
   // Belt and braces. Encoding already makes escape impossible; this costs a
   // line and fails loudly if the encoding is ever swapped for something weaker.
   const rel = relative(CHECKOUT_ROOT, dir);
@@ -172,6 +179,17 @@ function checkoutFor(tenantId: string | undefined, key: string): string {
   }
   return dir;
 }
+```
+
+Wire it to the option with both halves of the identity — the authenticated
+tenant is on `ctx.session.identity.tenantId`, and `ctx.session.identity.id`
+stays the bare session id two tenants can share:
+
+```ts
+const agent = claudeCodeAgent({
+  cwd: (_input, ctx) =>
+    checkoutFor(ctx.session.identity.tenantId, ctx.session.identity.id),
+});
 ```
 
 Encoding rather than validating is the whole point, and it is worth being
@@ -188,6 +206,13 @@ output alphabet contains nothing any filesystem treats specially.
 
 Give each value its own segment; concatenating them into one string brings back
 the ambiguity the tenant is there to remove.
+
+**Encode whether a value is there, not just what it is.** A missing tenant is
+tempting to fill in with a stand-in — `tenantId ?? "default"` — but a stand-in
+is a value some tenant may legitimately hold, and then an un-tenanted host and
+that tenant address one directory. The tag does the same job without the
+collision, and keeps every segment non-empty, which matters because `join`
+discards an empty one.
 
 If your key is already something you control and know to be safe — a numeric job
 id, a UUID — the encoding is close to a no-op and you can skip it. Encode by

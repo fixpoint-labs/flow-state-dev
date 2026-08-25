@@ -207,15 +207,49 @@ export interface ClaudeCodeAgentOptions {
    *
    * **Reusing a directory across runs is the harder case**, and it is where the
    * sharp edges are. Deriving the path from something stable means deriving it
-   * from a value, and three rules apply, each because of a way it goes wrong:
+   * from a value, and the rule is **encode, never validate**:
    *
-   * - **Validate every part as a single path segment**, rejecting rather than
-   *   stripping — stripping maps two values onto one directory. Session ids and
-   *   request ids both arrive from the caller, so an unvalidated one sends the
-   *   run wherever the caller likes (BP-031).
-   * - **Include the tenant when there is one.** Two tenants can hold the same
-   *   session id; the framework namespaces its own session storage by tenant for
-   *   exactly that reason. Separate segments, never concatenated into one.
+   * ```ts
+   * import { isAbsolute, join, relative } from "node:path";
+   *
+   * function segment(value: string | undefined): string {
+   *   return value === undefined
+   *     ? "0"
+   *     : `1${Buffer.from(value, "utf8").toString("hex")}`;
+   * }
+   *
+   * function checkoutFor(tenantId: string | undefined, key: string): string {
+   *   const dir = join(CHECKOUT_ROOT, segment(tenantId), segment(key));
+   *   const rel = relative(CHECKOUT_ROOT, dir);
+   *   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+   *     throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
+   *   }
+   *   return dir;
+   * }
+   * ```
+   *
+   * - **Encode each part rather than validating it.** A validating grammar has
+   *   to enumerate every way a string can misbehave as a path — separators and
+   *   `..` are the obvious two, but Windows also strips trailing dots (so
+   *   `acme` and `acme.` are one directory), reserves `CON`, `PRN`, `AUX`,
+   *   `NUL`, `COM1`…`LPT9` as device names that cannot be directories at all,
+   *   and folds case — and that list is never finished. Hex is **injective**,
+   *   so two distinct ids can never share a checkout, and its output alphabet
+   *   contains nothing any filesystem treats specially. Rejecting beats
+   *   stripping, but encoding beats both.
+   * - **Tag presence; never substitute a stand-in value.** `segment(undefined)`
+   *   is `0` and every present value encodes to `1…`, so an un-tenanted host
+   *   and a tenant whose id is literally `"default"` stay different
+   *   directories. A `?? "default"` fallback merges them, and the two then
+   *   share a working tree. The tag also keeps every segment non-empty: hex of
+   *   `""` is `""`, which `join` silently discards, shortening the path by a
+   *   level and collapsing distinct tuples onto one directory.
+   * - **Include the tenant when there is one**, in its own segment. Two tenants
+   *   can hold the same session id — the framework namespaces its own session
+   *   storage by tenant for exactly that reason, and deliberately leaves
+   *   `ctx.session.identity.id` bare. The authenticated tenant is on
+   *   `ctx.session.identity.tenantId`. Never concatenate the two into one
+   *   segment; that brings back the ambiguity the tenant is there to remove.
    * - **Confirm the result is inside the root** with `path.relative`, not a
    *   string prefix — `join` uses the platform separator, so a literal `"/"`
    *   comparison rejects every valid value on Windows.
