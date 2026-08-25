@@ -42,6 +42,7 @@ import {
   repoSlugFromRemote,
   implementPhase,
 } from "../../../labs/conductor/src/implement.ts";
+import { branchFor } from "../../../labs/conductor/src/workspace.ts";
 import {
   positiveIntFromEnv,
   requireSourceRepo,
@@ -102,6 +103,48 @@ const POLL_INTERVAL_MS = 5_000;
 const MAX_ATTEMPTS = 2;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Every pull-request number GitHub currently lists for this branch. */
+function prNumbersFor(repoDir: string, branch: string): Set<number> {
+  const url = execFileSync("git", ["remote", "get-url", "origin"], {
+    cwd: repoDir,
+    encoding: "utf8",
+    timeout: GIT_TIMEOUT_MS,
+  });
+  const repo = repoSlugFromRemote(url);
+  // `conductorFlow` has already refused a source repo whose `origin` cannot be
+  // named, so this cannot be reached with an unparseable remote — and an empty
+  // set is the conservative answer anyway: it makes the assertion below demand a
+  // pull request rather than excuse one.
+  if (repo === undefined) return new Set();
+  const listed = execFileSync(
+    "gh",
+    ["pr", "list", "--head", branch, "--state", "all", "--json", "number", "-R", repo.selector],
+    { cwd: repoDir, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
+  );
+  const rows = JSON.parse(listed || "[]") as Array<{ number?: unknown }>;
+  return new Set(
+    rows.map((r) => r.number).filter((n): n is number => typeof n === "number"),
+  );
+}
+
+/**
+ * Is there a completing pull request this run did not inherit?
+ *
+ * Deliberately NOT `hasCompletingPr` with a filter bolted on: that function is
+ * the product's rule about which STATES count, and it is shared with the phase.
+ * This is the goal check's own, stricter question — did *this* invocation
+ * produce one — and mixing them would let a change to either quietly weaken the
+ * other.
+ */
+function hasNewCompletingPr(stdout: string, inRepo: string, before: Set<number>): boolean {
+  const rows = JSON.parse(stdout || "[]") as Array<{ number?: unknown }>;
+  return rows.some((row) => {
+    const n = row.number;
+    if (typeof n !== "number" || before.has(n)) return false;
+    return hasCompletingPr(JSON.stringify([row]), inRepo);
+  });
+}
 
 await runGoal(async () => {
   const fixture = loadFixture<Fixture>(import.meta.url);
@@ -231,6 +274,29 @@ await runGoal(async () => {
     const { rows } = await call<{ rows: StatusRow[] }>("status", { issue: fixture.issue });
     return rows[0];
   };
+
+  // **What was already there before this run touched anything.**
+  //
+  // The branch is a pure function of the durable task, so a second invocation of
+  // this check against the same fixture derives the SAME branch — and the pull
+  // request the previous invocation opened is still OPEN in `sourceRepo`. The
+  // scratch database and checkout are fresh, so nothing else carries over, and a
+  // clean no-op agent then satisfies the completion check on somebody else's
+  // work. The goal would report its outcome proved without this run having
+  // proved it: precisely the silent wrong success the whole lab exists to
+  // remove, re-entering through the check that certifies its absence.
+  //
+  // So the pull requests that exist BEFORE the run are recorded, and the
+  // assertion at the end demands one that is not among them.
+  const preexistingPrs = prNumbersFor(
+    sourceRepo,
+    branchFor({
+      principal: { userId: USER_ID },
+      epic: fixture.epic,
+      issue: fixture.issue,
+      phase: fixture.phase,
+    }),
+  );
 
   let row: StatusRow | undefined;
   try {
@@ -383,6 +449,15 @@ await runGoal(async () => {
             if (!hasCompletingPr(prs, repo.ownerRepo)) {
               failures.push(
                 `no open or merged pull request exists for branch "${row.run.branch}"`,
+              );
+            } else if (!hasNewCompletingPr(prs, repo.ownerRepo, preexistingPrs)) {
+              // A completing pull request exists and every one of them was
+              // already there before this run started. The check would pass on
+              // the previous invocation's artifact.
+              failures.push(
+                `the only open or merged pull requests for branch "${row.run.branch}" ` +
+                  `(#${[...preexistingPrs].join(", #")}) already existed before this run ` +
+                  `started, so this run did not prove that it opened one`,
               );
             }
           }

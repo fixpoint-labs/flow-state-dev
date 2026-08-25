@@ -155,6 +155,15 @@ export function seedRepo(dir: string): void {
   git("config", "user.email", "conductor@example.test");
   git("config", "user.name", "Conductor Test");
   git("commit", "--allow-empty", "-m", "root");
+  // **A stand-in source repository has an `origin`, because a real one does.**
+  // The implement phase's completion probe reads it, and `conductorFlow` now
+  // refuses a source repo without one — a guard that exists because the failure
+  // otherwise lands after a paid agent run, once per retry. These fixtures had
+  // no remote at all, so every flow built here was one the probe could not have
+  // run against; the specs passed only because the probe is stubbed. Nothing
+  // resolves this URL: the phase's `gh` call is replaced in every test that
+  // reaches it.
+  git("remote", "add", "origin", "https://github.com/fixpoint-labs/conductor-fixture.git");
 }
 
 export function createConductorHarness(options: HarnessOptions): ConductorHarness {

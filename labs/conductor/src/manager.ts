@@ -123,6 +123,24 @@ export interface PhaseSpec {
    * reads them under. The manager declares them so `ctx.resources` resolves.
    */
   readable: Record<string, DeclaredResourceEntry>;
+  /**
+   * What this phase needs from the workspace, checked before anything is
+   * claimed. Throws to refuse; absent means the phase needs nothing.
+   *
+   * **A phase's own preconditions are configuration, and configuration is
+   * refused at startup.** The other guards at that door — the repository, the
+   * base ref, the numbers — protect a *task* from paying for a shell typo: the
+   * row is claimed, the attempt is charged, and the failure is permanent, so
+   * every retry spends itself on it. A precondition belonging to the phase has
+   * exactly that shape and could not use that door, because only the phase knows
+   * what it needs and only the flow holds the workspace.
+   *
+   * The implement phase's completion probe reads the source repository's
+   * `origin`; a checkout whose GitHub remote is called something else fails it
+   * AFTER the paid agent run, once per retry. That is the case this exists for,
+   * and it is why the hook takes the workspace rather than being a boolean.
+   */
+  validate?(workspace: WorkspaceConfig): void;
 }
 
 /** How the manager is wired to its board and its host. */

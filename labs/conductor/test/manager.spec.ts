@@ -1639,3 +1639,68 @@ describe("a phase spelled differently is the same phase", () => {
     expect(row.status).toBe("completed");
   }, 20_000);
 });
+
+describe("the phase's own precondition is refused at the same door", () => {
+  it("refuses a source repo the completion probe could not read a remote from", async () => {
+    // The implement phase's probe runs `git remote get-url origin` AFTER the
+    // paid agent run. A repository whose GitHub remote is called `upstream` is
+    // perfectly valid and fails it — and the rescue re-pends the row, so the
+    // next attempt runs the agent again and fails identically, until the retry
+    // budget is gone. A permanent configuration error charged once per retry is
+    // what every other guard at this door exists to stop; this one could not use
+    // that door, because only the phase knows what it needs.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+
+    const noOrigin = mkdtempSync(join(tmpdir(), "conductor-no-origin-"));
+    seedRepo(noOrigin);
+    execFileSync("git", ["remote", "remove", "origin"], { cwd: noOrigin, stdio: "pipe" });
+    execFileSync(
+      "git",
+      ["remote", "add", "upstream", "https://github.com/fixpoint-labs/x.git"],
+      { cwd: noOrigin, stdio: "pipe" },
+    );
+
+    expect(() =>
+      conductorFlow({
+        epic: "remote-epic",
+        workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
+        phase: implementPhase(),
+      }),
+    ).toThrow(/has no "origin" remote/);
+
+    // **And the guard is scoped to the probe that needs it.** A caller who
+    // supplies `prExists` has replaced the thing that reads `origin`, so
+    // demanding one would refuse a configuration that works.
+    expect(() =>
+      conductorFlow({
+        epic: "remote-epic",
+        workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
+        phase: implementPhase({ prExists: () => true }),
+      }),
+    ).not.toThrow();
+  });
+
+  it("refuses an origin it could not name a repository from", async () => {
+    // Same cost, later and more confusingly: a remote that parses to nothing is
+    // a listing the probe cannot pin, so it fails after the run just as a
+    // missing one does.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+
+    const localRemote = mkdtempSync(join(tmpdir(), "conductor-local-remote-"));
+    seedRepo(localRemote);
+    execFileSync("git", ["remote", "set-url", "origin", "/srv/git/mirror"], {
+      cwd: localRemote,
+      stdio: "pipe",
+    });
+
+    expect(() =>
+      conductorFlow({
+        epic: "remote-epic",
+        workspace: { root: "/tmp/remote-epic", sourceRepo: localRemote, baseRef: "main" },
+        phase: implementPhase(),
+      }),
+    ).toThrow(/does not name a host and repository/);
+  });
+});

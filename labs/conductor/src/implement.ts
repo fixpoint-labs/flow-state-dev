@@ -11,8 +11,10 @@
  * after a successful verdict, because a run can open the pull request and then
  * exhaust its turn budget.
  */
+import { execFileSync } from "node:child_process";
 import type { PhaseRunContext, PhaseSpec } from "./manager";
-import { NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
+import type { WorkspaceConfig } from "./workspace";
+import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
 
 export interface ImplementPhaseOptions {
   /**
@@ -222,12 +224,59 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
   return hasCompletingPr(stdout, repo.ownerRepo);
 }
 
+/**
+ * Refuse a source repository the completion probe cannot read a remote from.
+ *
+ * **The probe's one unstated precondition, moved to startup.** `prExistsViaGh`
+ * runs `git remote get-url origin`, and git exits non-zero when no remote by
+ * that name exists — a repository cloned with its GitHub remote called
+ * `upstream` is perfectly valid and fails here. That failure lands AFTER the
+ * paid agent run: the rescue re-pends the row, the next attempt runs the agent
+ * again, and it fails identically, until the retry budget is gone. A permanent
+ * configuration error charged once per retry is exactly what the guards beside
+ * this one exist to stop.
+ *
+ * Checks that the URL is one this module can name too, since a remote it cannot
+ * parse fails the probe just as completely, only later and more confusingly.
+ */
+function assertCompletionRemote(workspace: WorkspaceConfig): void {
+  let url: string;
+  try {
+    url = execFileSync("git", ["remote", "get-url", "origin"], {
+      cwd: workspace.sourceRepo,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+      timeout: GIT_TIMEOUT_MS,
+    }).trim();
+  } catch {
+    throw new Error(
+      `[conductor] ${workspace.sourceRepo} has no "origin" remote. The implement phase's ` +
+        `completion check reads it to find this branch's pull request, and it runs after ` +
+        `the agent — so without one every attempt pays for a full coding run and then ` +
+        `fails permanently. Add an "origin" remote, or supply your own \`prExists\`.`,
+    );
+  }
+  if (repoSlugFromRemote(url) === undefined) {
+    throw new Error(
+      `[conductor] the "origin" remote of ${workspace.sourceRepo} is "${url}", which does ` +
+        `not name a host and repository the completion check can query. Same cost as a ` +
+        `missing remote: a paid run per attempt, then a permanent failure.`,
+    );
+  }
+}
+
 /** Build the implement phase. */
 export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
   const prExists = options.prExists ?? prExistsViaGh;
 
   return {
     phase: "implement",
+    // **Only when the built-in probe is the one that will run.** A caller who
+    // supplies `prExists` has replaced the thing that reads `origin`, so
+    // demanding one would refuse a configuration that works — and the tests,
+    // which stub the probe against repositories that have no remote at all, are
+    // the proof that this distinction is load-bearing rather than theoretical.
+    ...(options.prExists === undefined ? { validate: assertCompletionRemote } : {}),
     // Empty, and that is not an oversight: this phase reads no collection of its
     // own. It does not read the run record either — everything it needs about
     // the previous attempt arrives on `PhaseRunContext`, because that row

@@ -246,6 +246,11 @@ export function conductorFlow(options: ConductorFlowOptions) {
   assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
 
+  // The phase's own preconditions, at the same door and for the same reason —
+  // see `PhaseSpec.validate`. Last, because a phase's requirements are stated in
+  // terms of a repository the checks above have already established is real.
+  phase.validate?.(workspace);
+
   if (tenant === "") {
     throw new Error(
       "[conductor] tenant is an empty string. Omit it for an untenanted conductor, or " +
