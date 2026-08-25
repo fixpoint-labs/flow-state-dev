@@ -54,8 +54,12 @@ the honest description of it.**
 - **FIX-1158** (cross-flow resource validation never runs) is a **same-subsystem
   unintended-asymmetry lodger** — the epic's own thesis pointed at itself, where the
   architecture doc already promises the two primitives behave alike and the code silently
-  doesn't. **It would ship independently and needs no epic parentage.** It is kept on that
-  footing and no other. The earlier membership argument — that all the children edit one
+  doesn't. **It would ship independently and needs no epic parentage — and it has: PR
+  [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) merged, the issue is
+  Done.** It is kept on that footing and no other. *That does not reopen the
+  epic-classification fork (§5, resolved): the condition stated there was FIX-1158 merging
+  before FIX-1154 was **specced**, and FIX-1154 has been in spec review since before this
+  merge.* The earlier membership argument — that all the children edit one
   markdown file — is **withdrawn**: doc paragraph ownership is cheap to rebase, which makes
   it process coupling, not product coupling. Shared-surface coordination is still real, but
   it is a convention for the children (theme 3), not proof that they are a set.
@@ -334,7 +338,7 @@ expensive thing this epic has already paid for.
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the mutation-surface gap write-up** (D-6): every difference mapped in its spec as deliberate-with-a-reason or deferred. **No verb closes this cycle** — `ResourceRef.incState` / `pushState` are cut, so increment and append are mapped like the rest | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review |
-| [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) | In Review |
+| [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo *(not in the active set; wrap does not wait for it)* |
 | [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) | Cross-flow validation compares exact refs, so overlapping collection keyspaces slip through — the scope excluded from FIX-1158, filed separately | **bug** | — | — | Backlog *(blocked by FIX-1158; not in the active set)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | — | Backlog *(not in the active set)* |
@@ -366,10 +370,20 @@ rather than validating the candidate and storing the candidate, so any schema th
 input on parse changes what lands. **The root has two copies, not one** — the same function
 exists independently in `routes/route-utils.ts` and in `context/resource-registry.ts`, and it is
 the registry copy that runs on both ends of every read-modify-write. A fix that lands in one
-place leaves the other standing. *These are **not** members of this set and wrap does not wait
-on them: the epic found them, it does not own them. They are recorded here because a reader who
-sees the epic's characterization rows asserting today's wrong behaviour needs to know those rows
-are tracked work, not an epic deliverable.*
+place leaves the other standing. *Wrap does not wait on them: the epic found them, it does not
+own the fix. They are recorded here because a reader who sees the epic's characterization rows
+asserting today's wrong behaviour needs to know those rows are tracked work, not an epic
+deliverable.*
+
+> **Flagged, not settled — the doc and Linear disagree about who is in this set.**
+> **FIX-1260** (the transforming-schema drift) and **FIX-1259** (a hard-deleted scope record
+> revived at version `0`, *Canceled*) are currently **parented under FIX-1157 in Linear**, which
+> is what makes an issue a member ([`orchestration.md`](../../docs/contributing/orchestration.md)
+> → the epic is the parent). This document does not carry either as a member. One of the two is
+> wrong and **this fold does not decide which**: re-parenting is destructive and Linear allows a
+> single parent, so it is the coordinator's call — either they join §4 as carried-but-inactive
+> rows like FIX-1258, or they are re-parented out. Recorded here so the next reader finds the
+> disagreement instead of trusting whichever surface they happened to open.
 
 ## 5. Open cross-cutting questions
 
