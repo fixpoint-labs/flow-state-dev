@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import {
@@ -252,6 +255,46 @@ describe("claudeCodeAgent", () => {
     // Called once per invocation, with the block's own input — not once at
     // build time, which would make one directory serve every run.
     expect(seen).toEqual(["FIX-1219"]);
+  });
+
+  it("resolves a symlinked directory to one physical path for both halves", async () => {
+    // `path.resolve` is lexical, so without this the recorder keys the symlink
+    // spelling while the spawned SDK process reports the physical path — and
+    // the recorder's own divergence check then reads an ordinary write as a
+    // contested key, writes a gap, and leaves the row permanently `pending`.
+    const base = mkdtempSync(join(tmpdir(), "cwd-symlink-"));
+    const real = join(base, "real");
+    const link = join(base, "link");
+    mkdirSync(real, { recursive: true });
+    symlinkSync(real, link);
+
+    const spy = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      cwd: () => link,
+    });
+    await testBlock(block, { input: { prompt: "go" } });
+
+    // The physical directory, which is what the child process will report as
+    // its own cwd — so the recorder's keys and the harness's paths agree.
+    expect(spy.mock.calls[0][0].options?.cwd).toBe(realpathSync(real));
+    expect(spy.mock.calls[0][0].options?.cwd).not.toBe(link);
+
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  it("hands back a directory it cannot resolve, rather than dropping it", async () => {
+    // Both halves still see ONE value, which is the invariant. An unusable
+    // directory is left to fail in the SDK, where the error belongs.
+    const spy = vi.fn();
+    const missing = join(tmpdir(), `cwd-missing-${Date.now()}`);
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      cwd: () => missing,
+    });
+    await testBlock(block, { input: { prompt: "go" } });
+
+    expect(spy.mock.calls[0][0].options?.cwd).toBe(missing);
   });
 
   it("forwards no working directory when none is configured", async () => {
@@ -795,6 +838,37 @@ describe("claudeCodeAgent — recordWork", () => {
     for (const config of Object.values(block.declaredResources ?? {})) {
       expect((config as { prefetchMode?: string }).prefetchMode).toBe("lazy");
     }
+  });
+
+  it("treats an empty resolved directory as unset, on BOTH halves", async () => {
+    // The bug this pins: `""` is not nullish, so it survived into the SDK's
+    // query options while the recorder read the same value as unset. Both
+    // halves are asserted in one test, because a test on either alone is what
+    // let it through — `canonicalFilePathKey(raw, "")` was already covered.
+    const spy = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT, spy),
+      recordWork: true,
+      includePartialMessages: false,
+      cwd: () => "",
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    // The SDK is handed nothing — not an explicit `""`, which is a different
+    // call from forwarding no directory at all.
+    expect(spy.mock.calls[0][0].options).not.toHaveProperty("cwd");
+
+    // And the record is keyed against the process directory, unchanged.
+    const runId = runNamespace(runtime.ctx as never);
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string }>> }
+    >;
+    const fileRows = await resources["observed-file-ops"].list();
+    expect(fileRows.map((r) => r.path)).toEqual([
+      `observed-file-ops/${runId}/work/notes.txt`,
+    ]);
   });
 
   it("records the run's file operations and plan into the two collections", async () => {

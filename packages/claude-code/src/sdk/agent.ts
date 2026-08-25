@@ -14,6 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
+import { realpathSync } from "node:fs";
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -223,6 +224,43 @@ export interface ClaudeCodeAgentOptions {
  */
 function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
   return subtype !== "success";
+}
+
+/**
+ * Reduce a resolver's answer to the ONE value both halves use, or `undefined`.
+ *
+ * Two normalizations, and each closes a way the two halves could disagree while
+ * both looked correct.
+ *
+ * **Empty string means unset.** `""` is not nullish, so it survives the SDK's
+ * own `cwd ?? default` and reaches the child-process spawner — where Node
+ * silently falls back to the process directory rather than failing. The
+ * recorder already read `""` as unset, so on that path the two agree by a
+ * coincidence of two different fallbacks rather than by construction, and
+ * anything consuming `cwd` without spawning (a session key, a project root) has
+ * no such coincidence to lean on. Collapsing it here makes the agreement
+ * structural.
+ *
+ * **Symlinks resolve to the physical path.** `path.resolve` is purely lexical,
+ * so the recorder would key `/link/src/a.ts` while the spawned SDK process —
+ * whose `process.cwd()` is the physical directory — reports `/real/src/a.ts`.
+ * The recorder's divergence check compares the two, sees a mismatch, and writes
+ * a gap instead of settling the row, leaving an ordinary write permanently
+ * `pending`. Measured against a real symlinked directory, not assumed.
+ *
+ * A path that cannot be resolved is handed back as written: the invariant still
+ * holds (both halves see one value), and an unusable directory is left to fail
+ * where it should, in the SDK.
+ */
+export function normalizeWorkingDirectory(
+  cwd: string | undefined,
+): string | undefined {
+  if (cwd === undefined || cwd === "") return undefined;
+  try {
+    return realpathSync(cwd);
+  } catch {
+    return cwd;
+  }
 }
 
 /**
@@ -477,8 +515,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // record is keyed against cannot be two different answers from one
       // resolver (§7's invariant is about them staying the same value, not
       // merely about both being threaded).
-      const workingDirectory =
-        resolveCwd === undefined ? undefined : await resolveCwd(input, ctx);
+      const workingDirectory = normalizeWorkingDirectory(
+        resolveCwd === undefined ? undefined : await resolveCwd(input, ctx),
+      );
 
       const resolved = await resolveClaudeAgent(ctx);
       const dispatchedAt = Date.now();

@@ -119,27 +119,22 @@ const DEFAULT_FLUSH_INTERVAL_MS = 1_000;
 /**
  * Canonicalize a path the run addressed into a collection key segment.
  *
- * Two things have to hold at once. The same file reached as `/work/repo/a.ts`
- * and as `a.ts` must land on ONE entry, so a relative path is resolved against
- * **the directory the run was given** — `cwd` when the block forwarded one to
- * the SDK, this process's otherwise. And the result must never contain a `..`
- * segment, because the collection key normalizer rejects those; `resolve`
- * guarantees that by collapsing them, which a relative-to-a-root encoding
- * emphatically does not (a run writing outside the root produces nothing but
- * `..`, and the entry would be silently dropped on every successful write).
+ * The mechanics, and why each is what it is:
  *
- * **The two halves of the working directory are one change.** Forwarding `cwd`
- * to the SDK without threading it here leaves the file index describing a
- * checkout the run never touched: no throw, nothing empty, just wrong. The
- * canonical statement of that invariant is `ClaudeCodeAgentOptions.cwd`.
+ * - **`resolve`, never a manual prefix.** The key must never contain a `..`
+ *   segment, because the collection key normalizer rejects those and the
+ *   recorder swallows the rejection — so a prefix-joined key would drop entries
+ *   silently on every successful write. `resolve` collapses them.
+ * - **An absolute path wins over `cwd`**, which is what keeps a run reaching
+ *   outside its checkout recorded rather than dropped. This is a log, not a
+ *   fence.
+ * - **The leading separator is dropped**, because the normalizer strips it
+ *   anyway and keeping it would make one path two spellings of one key.
  *
- * `cwd` is joined by `resolve`, never by a manual prefix, so the `..`-collapsing
- * property above survives the addition and an absolute path the run addressed
- * still wins over the base — which is what keeps a run that reaches outside its
- * checkout recorded rather than silently dropped.
- *
- * The leading separator is dropped because the normalizer strips it anyway, so
- * keeping it would make one path two spellings of one key.
+ * `cwd` is expected already normalized — non-empty and symlink-resolved. The
+ * empty-string branch is defence-in-depth for a direct caller; the single
+ * normalization point is {@link ClaudeCodeAgentOptions.cwd}, which is also
+ * canonical for why the SDK forward and this key must be one value.
  */
 export function canonicalFilePathKey(rawPath: string, cwd?: string): string {
   const absolute =

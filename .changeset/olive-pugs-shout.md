@@ -16,4 +16,6 @@ It is a working directory, not a boundary: a run can still address an absolute
 path outside it, and that operation is recorded at the path it reached.
 
 Unset, the run and its record both use the server process's directory, exactly
-as before.
+as before. An empty string counts as unset, and a symlinked directory resolves
+to its physical path — so the run and its record never disagree about where the
+run worked.

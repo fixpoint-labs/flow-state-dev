@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator } from "@flow-state-dev/core";
+import { createTestContext } from "@flow-state-dev/testing";
 import { createClaudeCodeAgentCapability } from "../../src/sdk/capability";
 import { claudeCodeAgent } from "../../src/sdk/agent";
 
@@ -139,5 +140,44 @@ describe("createClaudeCodeAgentCapability — recordWork", () => {
     expect(Object.keys(flow.resources ?? {})).not.toContain("observed-file-ops");
     expect(Object.keys(flow.resources ?? {})).not.toContain("observed-plan");
     expect(Object.keys(flow.resources ?? {})).not.toContain("observed-gaps");
+  });
+});
+
+describe("createClaudeCodeAgentCapability — cwd", () => {
+  it("forwards the working-directory resolver to the agent block it exposes", async () => {
+    // The capability forwards ALL agent options, so this holds by construction
+    // rather than by a line — which is exactly why it is worth pinning. The
+    // sibling `detached` / `recordWork` tests exist because forwarding one
+    // option and not another fails silently, and a working directory that never
+    // reached the query would fail the same way.
+    let seen: string | undefined;
+    const cap = createClaudeCodeAgentCapability({
+      cwd: () => "/work/checkout-a",
+      resolveClaudeAgent: () => ({
+        query: async function* (args) {
+          seen = args.options?.cwd;
+          yield {
+            type: "result",
+            subtype: "success",
+            result: "ok",
+            session_id: "s",
+          } as never;
+        },
+      }),
+    }) as unknown as {
+      __presetDefs: {
+        tools: {
+          tools: Array<{
+            config: { execute: (i: unknown, c: unknown) => Promise<unknown> };
+          }>;
+        };
+      };
+    };
+
+    const [tool] = cap.__presetDefs.tools.tools;
+    const runtime = await createTestContext({});
+    await tool.config.execute({ prompt: "go" }, runtime.ctx as never);
+
+    expect(seen).toBe("/work/checkout-a");
   });
 });
