@@ -131,6 +131,12 @@ export interface HarnessOptions {
   resolveClaudeAgent: ResolveClaudeAgent;
   /** Overrides the implement phase's done-condition. Default: satisfied. */
   isDone?: PhaseSpec["isDone"];
+  /**
+   * Overrides the configured phase NAME. Lets a test restart a conductor over
+   * durable rows with the phase spelled differently — which is how a casing
+   * mismatch between config and stored row actually arises.
+   */
+  phaseName?: string;
   maxAttempts?: number;
   epic?: string;
   /** Build the conductor for this tenant. The request still resolves untenanted. */
@@ -162,6 +168,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   const phase: PhaseSpec = {
     ...base,
     ...(options.isDone !== undefined ? { isDone: options.isDone } : {}),
+    ...(options.phaseName !== undefined ? { phase: options.phaseName } : {}),
   };
 
   // Derived, not spelled out. The manager enforces

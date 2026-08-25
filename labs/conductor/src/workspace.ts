@@ -233,6 +233,25 @@ export function canonicalSegment(value: string): string {
 }
 
 /**
+ * Do two spellings name the same owned segment?
+ *
+ * **The comparison, not the fold, is what call sites keep getting wrong.**
+ * `canonicalSegment` existed and the sites that needed it still wrote
+ * `a !== b` — because applying the fold is a step somebody has to remember,
+ * and remembering is what fails. So the comparison itself is the exported
+ * thing, and there is no correct-looking way to write it by hand.
+ *
+ * The cost of a raw comparison is not cosmetic. Identity derivation folds, so
+ * `implement` and `IMPLEMENT` are ONE task, one checkout and one branch — but a
+ * guard comparing raw strings calls them different. The two disagree only after
+ * a row has been claimed, so the row is charged an attempt for a mismatch its
+ * own identity says does not exist, once per wake, until the budget is gone.
+ */
+export function sameSegment(a: string, b: string): boolean {
+  return canonicalSegment(a) === canonicalSegment(b);
+}
+
+/**
  * Who a run belongs to. Both halves come from the request's resolved identity,
  * never from anything a caller supplies in a body.
  */

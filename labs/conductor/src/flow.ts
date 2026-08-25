@@ -72,6 +72,7 @@ import {
 } from "./config-env";
 import {
   canonicalSegment,
+  sameSegment,
   assertSafeSegment,
   conductorTaskId,
   joinIdentity,
@@ -366,7 +367,12 @@ export function conductorFlow(options: ConductorFlowOptions) {
       // that made it rather than as a row that runs the wrong phase's prompt —
       // the manager refuses it too, since a task can reach the board by any
       // route that can write a row.
-      if (input.phase !== phase.phase) {
+      // Canonically, for the reason the manager's copy of this guard gives —
+      // and this site was not reported. It is the sibling of the one that was,
+      // and the enumeration is what keeps coming up short: `sameSegment` is the
+      // comparison every identity guard on this board now uses, so a sixth door
+      // has something to call rather than a `!==` to write.
+      if (!sameSegment(input.phase, phase.phase)) {
         throw new Error(
           `[conductor] this board runs the "${phase.phase}" phase; refusing to file a ` +
             `"${input.phase}" row. A conductor runs one phase, and the board identity is ` +

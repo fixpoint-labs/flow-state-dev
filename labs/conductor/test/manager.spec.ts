@@ -1603,3 +1603,39 @@ describe("status survives a row whose identity cannot be derived at all", () => 
     expect(rows.find((r) => r.taskId === canonical)?.run?.sessionId).toBe("sess_stub");
   }, 20_000);
 });
+
+describe("a phase spelled differently is the same phase", () => {
+  it("does not charge a durable row for a casing change in the config", async () => {
+    // A row is durable and outlives the process that filed it. Restart the
+    // conductor with the phase spelled `IMPLEMENT` and it meets rows already on
+    // the board carrying `implement` — and `conductorTaskId` FOLDS case, so
+    // those are the same task, the same checkout and the same branch.
+    //
+    // A raw comparison in the guard called them different, and did so after
+    // `wake` had claimed the row: the attempt is charged, once per wake, until a
+    // valid task's budget is gone, for a mismatch its own identity says does not
+    // exist. That is the exact failure class this lab was built to remove,
+    // arriving through a guard.
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: () => true,
+    });
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    await settle(live);
+    live.dispose();
+
+    // The restart: same board, same durable rows, phase spelled in caps.
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: () => true,
+      phaseName: PHASE.toUpperCase(),
+    });
+
+    // Seeding the lower-case spelling is accepted, not refused as a foreign
+    // phase — the guard at the seed door is the sibling of the one reported,
+    // and it was raw too.
+    await expect(live.call("seed", { issue: ISSUE, phase: PHASE })).resolves.toBeDefined();
+    const row = await settle(live);
+    expect(row.status).toBe("completed");
+  }, 20_000);
+});

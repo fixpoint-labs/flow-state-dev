@@ -54,6 +54,7 @@ import {
 } from "./run-record";
 import {
   conductorTaskId,
+  sameSegment,
   acquireCheckout,
   branchFor,
   checkoutPathFor,
@@ -607,7 +608,15 @@ export function harnessManager(options: ManagerOptions) {
       // Refused here as well as at `seed`, because a task can reach this board
       // by any route that can write a row, and this is where the wrong
       // semantics would actually execute.
-      if (phaseName !== phase.phase) {
+      // **Compared canonically, because the identity it guards is.** A durable
+      // row outlives the process that filed it, so a restart with the phase
+      // spelled differently — `IMPLEMENT` for `implement` — meets rows already
+      // on the board. `conductorTaskId` folds case, so those are the SAME task,
+      // the same checkout and the same branch; a raw comparison here called them
+      // different and refused, after `wake` had claimed the row and charged it.
+      // Once per wake, until a valid task's budget was gone, for a mismatch its
+      // own identity says does not exist.
+      if (!sameSegment(phaseName, phase.phase)) {
         throw new ConductorAttemptFailed(
           `[conductor] task ${input.taskId} is a "${phaseName}" row on a manager ` +
             `configured for "${phase.phase}". Refusing rather than running ` +
