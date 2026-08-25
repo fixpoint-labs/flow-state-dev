@@ -193,7 +193,7 @@ export interface ClaudeCodeAgentOptions {
    * called once per invocation, before `query`.
    *
    * ```ts
-   * import { mkdtemp } from "node:fs/promises";
+   * import { mkdir, mkdtemp } from "node:fs/promises";
    * import { join } from "node:path";
    *
    * const CHECKOUT_ROOT = "/var/agent-checkouts";
@@ -201,7 +201,12 @@ export interface ClaudeCodeAgentOptions {
    * claudeCodeAgent({
    *   // A fresh directory per run, created by the server. No caller input
    *   // reaches the path.
-   *   cwd: () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
+   *   cwd: async () => {
+   *     // `mkdtemp` creates the leaf, not the parent, and fails ENOENT if the
+   *     // root is missing — which on a fresh machine it is.
+   *     await mkdir(CHECKOUT_ROOT, { recursive: true });
+   *     return mkdtemp(join(CHECKOUT_ROOT, "run-"));
+   *   },
    *   // A per-run directory needs a per-run conversation: by default the SDK
    *   // is handed a `resume` handle from the last run in this session, which
    *   // would resume it inside a tree that has nothing to do with it.
@@ -214,13 +219,16 @@ export interface ClaudeCodeAgentOptions {
    * rather than a footnote, because a snippet is what actually gets pasted:
    *
    * ```ts
+   * import { createHash } from "node:crypto";
    * import { mkdir } from "node:fs/promises";
    * import { isAbsolute, join, relative } from "node:path";
    *
    * function segment(value: string | undefined): string {
    *   return value === undefined
    *     ? "0"
-   *     : `1${Buffer.from(value, "utf16le").toString("hex")}`;
+   *     : `1${createHash("sha256")
+   *         .update(Buffer.from(value, "utf16le"))
+   *         .digest("hex")}`;
    * }
    *
    * function checkoutFor(tenantId: string | undefined, key: string): string {
@@ -244,15 +252,21 @@ export interface ClaudeCodeAgentOptions {
    * })
    * ```
    *
-   * Four rules, one line each; the **guide carries the derivation** so it lives
+   * Five rules, one line each; the **guide carries the derivation** so it lives
    * in one place and three copies cannot drift into contradicting each other:
    *
-   * - **Encode, never validate.** A grammar of forbidden shapes is a list
+   * - **Derive, never validate.** A grammar of forbidden shapes is a list
    *   nobody finishes — separators, `..`, Windows' stripped trailing dots,
    *   reserved device names, case folding.
-   * - **Encode UTF-16 code units, not UTF-8.** Only the former is injective
-   *   over arbitrary JS strings: UTF-8 maps every lone surrogate onto the
-   *   replacement character, so distinct session ids would share a tree.
+   * - **Bound the output; never truncate to bound it.** Filenames stop at 255
+   *   characters and a reversible encoding grows with its input, so a digest is
+   *   fixed-width where hex is not. Trimming a reversible encoding instead
+   *   would map two long ids onto one directory — the collision the derivation
+   *   exists to prevent. The honest cost: distinctness rests on SHA-256 rather
+   *   than on arithmetic, and the path stops being readable.
+   * - **Hash UTF-16 code units, not UTF-8 bytes.** UTF-8 cannot represent a
+   *   lone surrogate, so transcoding through it maps every one of them onto the
+   *   replacement character and distinct session ids would share a tree.
    * - **Tag presence; never substitute a stand-in.** A `?? "default"` fallback
    *   merges an un-tenanted host with a tenant named `default`. The tag also
    *   keeps each segment non-empty, since `join` discards an empty one.

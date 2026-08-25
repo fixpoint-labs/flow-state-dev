@@ -124,7 +124,7 @@ By default a run works in whatever directory the server process is running in.
 Pass `cwd` to point it somewhere else:
 
 ```ts
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 
 const CHECKOUT_ROOT = "/var/agent-checkouts";
@@ -132,7 +132,12 @@ const CHECKOUT_ROOT = "/var/agent-checkouts";
 claudeCodeAgent({
   // A fresh directory per run, created by the server. No caller input reaches
   // the path.
-  cwd: () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
+  cwd: async () => {
+    // `mkdtemp` creates the leaf, not the parent — ENOENT if the root is
+    // missing, which on a fresh machine it is.
+    await mkdir(CHECKOUT_ROOT, { recursive: true });
+    return mkdtemp(join(CHECKOUT_ROOT, "run-"));
+  },
   // A fresh directory per run needs a fresh conversation to match.
   detached: true,
 });
@@ -161,22 +166,21 @@ path has to be derived from something stable, and **that is where the sharp
 edges are**:
 
 ```ts
+import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 function segment(value: string | undefined): string {
-  // Encode, don't validate — and encode the string's OWN data model.
+  // Absence is `0`; a present value is `1` plus a SHA-256 digest of its UTF-16
+  // code units — a fixed 65 characters, so a long id cannot overflow the
+  // 255-character filename limit.
   //
-  // A JS string is a sequence of UTF-16 code units, so encoding those is a
-  // bijection. UTF-8 is not: it has no representation for a lone surrogate,
-  // so `Buffer.from("\ud800", "utf8")` yields the replacement character and
-  // "\ud800", "\ud801" and a literal "�" all collapse onto one segment.
-  //
-  // The leading tag keeps absence distinct from any value, and keeps every
-  // segment non-empty — hex of `""` is `""`, which `join` drops.
+  // Digest the CODE UNITS, not the UTF-8 bytes: UTF-8 cannot represent a lone
+  // surrogate, so hashing `value` directly maps "\ud800", "\ud801" and a
+  // literal "�" onto one digest.
   return value === undefined
     ? "0"
-    : `1${Buffer.from(value, "utf16le").toString("hex")}`;
+    : `1${createHash("sha256").update(Buffer.from(value, "utf16le")).digest("hex")}`;
 }
 
 function checkoutFor(tenantId: string | undefined, key: string): string {
@@ -220,9 +224,23 @@ are one directory), reserves `CON`, `PRN`, `AUX`, `NUL`, `COM1`…`LPT9` as devi
 names that cannot be directories at all, and folds case. Every one of those is a
 value two different tenants could hold.
 
-An encoded segment sidesteps the whole list. It is **injective** — two distinct
-ids never collide, which is what stops two runs sharing a checkout — and its
-output alphabet contains nothing any filesystem treats specially.
+A derived segment sidesteps the whole list: distinct ids give distinct
+directories, and the output alphabet contains nothing any filesystem treats
+specially.
+
+**A digest rather than a reversible encoding, because the output has to be
+bounded.** Filenames stop at 255 characters, and anything that preserves its
+input grows with it — hex of UTF-16 code units runs to four characters each, so
+a 64-character session id produced a 257-character component and `mkdir` failed
+`ENAMETOOLONG`. A digest is a fixed 65 characters for any input. The honest
+trade is that distinctness now rests on SHA-256 rather than on arithmetic, and
+the path no longer tells you whose checkout it is. **Do not truncate instead** —
+trimming a reversible encoding to fit maps two long ids onto one segment, which
+is the collision the derivation exists to prevent.
+
+**Hash the code units, not the UTF-8 bytes.** UTF-8 cannot represent a lone
+surrogate — a legal JS string that JSON will carry — so anything transcoding
+through it maps `"\ud800"`, `"\ud801"` and a literal `"�"` onto one value.
 
 Give each value its own segment; concatenating them into one string brings back
 the ambiguity the tenant is there to remove.

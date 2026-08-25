@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { describe, it, expect, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
-import { mkdir as mkdirAsync } from "node:fs/promises";
+import { mkdir as mkdirAsync, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
@@ -1414,7 +1415,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
   function segment(value: string | undefined): string {
     return value === undefined
       ? "0"
-      : `1${Buffer.from(value, "utf16le").toString("hex")}`;
+      : `1${createHash("sha256").update(Buffer.from(value, "utf16le")).digest("hex")}`;
   }
 
   function checkoutFor(tenantId: string | undefined, key: string): string {
@@ -1468,9 +1469,21 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
 
   it("runs the throwaway-directory example the docs lead with", async () => {
     const spy = vi.fn();
-    const root = mkdtempSync(join(tmpdir(), "cwd-docs-"));
+    // The root deliberately does NOT exist — it is a path inside a fresh temp
+    // directory, not a directory. `mkdtemp` creates only the unique leaf and
+    // returns ENOENT when the parent is missing, so the example has to create
+    // the root itself. A test that pre-created the root would pass against an
+    // example that never provisions anything, which is exactly what let this
+    // through: the reusable example gained recursive `mkdir` and the throwaway
+    // one beside it did not.
+    const root = join(mkdtempSync(join(tmpdir(), "cwd-docs-")), "agent-checkouts");
+    expect(existsSync(root)).toBe(false);
+
     const agent = claudeCodeAgent({
-      cwd: () => mkdtempSync(join(root, "run-")),
+      cwd: async () => {
+        await mkdirAsync(root, { recursive: true });
+        return mkdtemp(join(root, "run-"));
+      },
       // Part of the documented example, not a test detail — see below.
       detached: true,
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
@@ -1538,7 +1551,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
 
     expect(error).toBeNull();
     expect(spy.mock.calls[0][0].options?.cwd).toBe(
-      "/var/agent-checkouts/0/174006500730074002d00730065007300730069006f006e00",
+      "/var/agent-checkouts/0/1c3e80e8d697513453697d7259472182ea9629168cc6bdffb1dd4d658c60c665d",
     );
   });
 
@@ -1648,9 +1661,41 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     const encoded = indistinguishableUnderUtf8.map((v) => segment(v));
     expect(new Set(encoded).size).toBe(indistinguishableUnderUtf8.length);
 
-    // And an ordinary astral character still round-trips, so injectivity was
-    // not bought by mangling valid input.
-    expect(Buffer.from(segment("😀").slice(1), "hex").toString("utf16le")).toBe("😀");
+    // Hashing the string directly reintroduces the same collapse — the digest
+    // is not what fixes this, feeding it code units is. Pinned so a later
+    // simplification to `.update(value)` fails here rather than in production.
+    const hashedAsUtf8 = indistinguishableUnderUtf8.map((v) =>
+      createHash("sha256").update(v, "utf8").digest("hex"),
+    );
+    expect(new Set(hashedAsUtf8).size).toBe(1);
+
+    // An ordinary astral character stays distinct from its own code units read
+    // separately, so distinctness was not bought by mangling valid input.
+    expect(segment("😀")).not.toBe(segment("\ud83d"));
+    expect(segment("😀")).not.toBe(segment("\ude00"));
+  });
+
+  it("bounds every segment, whatever the id's length", () => {
+    // A filename stops at 255 characters. The previous encoder was reversible
+    // and therefore grew with its input — hex of UTF-16 runs to four characters
+    // per code unit, so a 64-character session id produced a 257-character
+    // component and `mkdir` failed ENAMETOOLONG. Ids that long are ordinary and
+    // no retry can shorten one.
+    const reversible = (v: string) => `1${Buffer.from(v, "utf16le").toString("hex")}`;
+    expect(reversible("a".repeat(64)).length).toBeGreaterThan(255); // the bug, pinned
+
+    // Fixed width now: `1` plus a 64-character digest, for any input at all.
+    for (const value of [...HOSTILE, "a".repeat(64), "b".repeat(10_000)]) {
+      expect(segment(value)).toHaveLength(65);
+    }
+    expect(segment(undefined)).toHaveLength(1);
+
+    // The property that actually matters — a full path stays under the limit
+    // no matter how long either half of the identity is.
+    const long = "x".repeat(10_000);
+    for (const part of checkoutFor(long, long).split("/")) {
+      expect(part.length).toBeLessThanOrEqual(255);
+    }
   });
 
   it("keeps two tenants sharing one session id apart", () => {
