@@ -803,6 +803,40 @@ describe("the ledger is partitioned by tenant", () => {
     }
   });
 
+  it("gives two conductors on ONE epic the same board, whatever phase they run", async () => {
+    // **A known limit, pinned rather than fixed.** The board identity is
+    // (tenant, epic) by design — the phase is deliberately not a third
+    // discriminator — so building a second conductor for another phase of the
+    // SAME epic points both at one collection. The other one's `wake` then
+    // claims these rows, the manager's phase guard refuses them, and the
+    // refusal costs a valid task an attempt: `attempts` is incremented inside
+    // the claim write, so it is spent before any guard can run.
+    //
+    // The supported shape is the one directly below: a second phase gets its
+    // own `epic`. This assertion exists so the limit is a recorded property
+    // rather than folklore, and so anyone who later makes the phase part of the
+    // identity has to come here and say so.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+    const implement = conductorFlow({ ...base, phase: implementPhase() });
+    const review = conductorFlow({
+      ...base,
+      phase: { phase: "review", readable: {}, buildPrompt: () => "r", isDone: () => true },
+    });
+
+    expect(review.collectionId).toBe(implement.collectionId);
+    expect(review.boardId).toBe(implement.boardId);
+
+    // And the supported shape: a distinct epic separates them completely.
+    const separated = conductorFlow({
+      ...base,
+      epic: "shared-epic-review",
+      phase: { phase: "review", readable: {}, buildPrompt: () => "r", isDone: () => true },
+    });
+    expect(separated.collectionId).not.toBe(implement.collectionId);
+    expect(separated.boardId).not.toBe(implement.boardId);
+  });
+
   it("refuses a request resolved to a different tenant", async () => {
     // The ledger id is construction-time, so a conductor serves one tenant. A
     // request resolved to another would be reading and claiming rows that are
