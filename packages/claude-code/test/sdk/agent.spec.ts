@@ -697,6 +697,22 @@ describe("claudeCodeAgent — detached", () => {
  * resource collections and `testBlock` returns items and scope state, not
  * resource rows.
  */
+/**
+ * **Why this block drives `block.config.execute` rather than `testBlock`.**
+ *
+ * The rule everywhere else is that a test dispatches a block the way consumers
+ * do — `testBlock` — so a public-composition regression cannot pass while the
+ * test stays green. These tests are the exception, and the reason is a gap
+ * rather than a preference: they assert on the ROWS the recorder wrote, which
+ * means they need a handle on `ctx.resources` after the run, and
+ * `TestBlockResult` exposes `output`, `items`, `state` and `stateChanges` — no
+ * resources. `createTestContext({ declaredResources })` is the only way to hold
+ * the collections the assertions read.
+ *
+ * If `testBlock` ever surfaces the resolved resources, every test in this block
+ * should move. Until then this is the honest trade, stated once here instead of
+ * being re-derived at each call site.
+ */
 describe("claudeCodeAgent — recordWork", () => {
   /** A real run's shapes, trimmed to what the recorder consumes. */
   const RECORDING_SCRIPT: SdkMessageLike[] = [
@@ -1407,12 +1423,18 @@ describe("claudeCodeAgent — the documented cwd example", () => {
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
     });
 
-    const runtime = await createTestContext({});
-    await agent.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+    // Through `testBlock`, not `agent.config.execute`: the private callback
+    // bypasses the dispatch the documented configuration actually runs under,
+    // so driving it would show the resolver returned a string rather than that
+    // the string reaches a run.
+    const { error } = await testBlock(agent, { input: { prompt: "go" } });
 
-    const sessionId = runtime.ctx.session.identity.id;
-    expect(sessionId).toBeTruthy();
-    expect(spy.mock.calls[0][0].options?.cwd).toBe(`${CHECKOUT_ROOT}/${sessionId}`);
+    // `testBlock` pins the session to "test-session", so the expected checkout
+    // is a LITERAL rather than the same expression the resolver computes — the
+    // recorder tests' discipline, for the same reason: an expectation derived
+    // from the implementation agrees with it whatever it does.
+    expect(error).toBeNull();
+    expect(spy.mock.calls[0][0].options?.cwd).toBe("/var/agent-checkouts/test-session");
   });
 
   it("keeps the run inside the root when the session id is a traversal", () => {
