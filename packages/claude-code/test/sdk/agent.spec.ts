@@ -1363,3 +1363,42 @@ describe("claudeCodeAgent — recordWork", () => {
     expect(notes).toContain("not recording this run's work");
   });
 });
+
+/**
+ * The `cwd` snippet from the docs, actually executed.
+ *
+ * The three prose copies — the option's JSDoc, the package README and the SDK
+ * agent guide — shipped an invented `currentRun(ctx)` helper that exists nowhere
+ * in the repo, so the first thing a reader would do with a brand-new option was
+ * paste code that dies on an undefined symbol.
+ *
+ * Nothing here compiles fenced code blocks, and this package's `tsconfig`
+ * includes only `src/**` — so a type-level guard under `test/` would never have
+ * run. This is a runtime one instead: the snippet is reproduced verbatim and
+ * driven through the block, so an unresolvable symbol is a hard failure and a
+ * resolver whose shape stopped matching the option is a red test.
+ *
+ * **Keep this a copy-paste match for the three prose copies.** If it needs an
+ * edit to pass, they need the same edit.
+ */
+describe("claudeCodeAgent — the documented cwd example", () => {
+  it("runs exactly as written in the README, the guide and the option's JSDoc", async () => {
+    // ── the snippet ──────────────────────────────────────────────────────────
+    const CHECKOUT_ROOT = "/var/agent-checkouts";
+
+    const spy = vi.fn();
+    const agent = claudeCodeAgent({
+      cwd: (_input, ctx) => join(CHECKOUT_ROOT, ctx.session.identity.id),
+      // Not part of the snippet — the SDK seam, so this runs without a model.
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+    });
+    // ── end snippet ──────────────────────────────────────────────────────────
+
+    const runtime = await createTestContext({});
+    await agent.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    const sessionId = runtime.ctx.session.identity.id;
+    expect(sessionId).toBeTruthy();
+    expect(spy.mock.calls[0][0].options?.cwd).toBe(`${CHECKOUT_ROOT}/${sessionId}`);
+  });
+});

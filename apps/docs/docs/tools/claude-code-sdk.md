@@ -156,14 +156,23 @@ work on a checkout that is not the one the server lives in.
 `cwd` gives a run its own directory:
 
 ```ts
+import { join } from "node:path";
+
+const CHECKOUT_ROOT = "/var/agent-checkouts";
+
 const agent = claudeCodeAgent({
-  cwd: async (_input, ctx) => (await currentRun(ctx)).workspacePath,
+  cwd: (_input, ctx) => join(CHECKOUT_ROOT, ctx.session.identity.id),
 });
 ```
 
 It is a function rather than a string on purpose. A flow is built once and then
 serves many runs, so a fixed directory would be the wrong shape — this resolves
-per run, just before the agent starts.
+per run, just before the agent starts. Return a promise if the directory has to
+be looked up or created first.
+
+What you key it on is yours. The session id above gives each conversation its
+own checkout; a background job that already knows which repository it is working
+on would key it on that instead.
 
 Two things follow the directory. The run's file tools address relative paths
 inside it. And the record of what the run touched, if you have `recordWork` on
