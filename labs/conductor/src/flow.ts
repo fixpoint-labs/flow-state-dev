@@ -122,17 +122,34 @@ export const CONDUCTOR_FLOW_KIND = "conductor" as const;
 /**
  * Is this a row this conductor would have filed?
  *
- * **Two properties, not one, and the second was missing.** A row is ours when
- * its id derives from its payload AND it is routed to our assignee. The id half
- * was extracted first and the routing half was left out — so a pre-created row
- * carrying the right `{ issue, phase }` under a different assignee was accepted
- * as an idempotent seed and drained. The claim charges an attempt before
- * dispatch, and dispatch then finds no worker declared for that assignee: the
- * requested coding run is billed or stranded without ever launching.
+ * **Every field `seed` sets that changes what a drain DOES, checked together.**
+ * The predicate started as "does the id derive from the payload", and each
+ * review since has found another field that decides an outcome and was not
+ * being looked at. So it is written against the `addTask` call it mirrors, and
+ * the list below says why each field is in or out — an enumeration that states
+ * its own boundary can be checked against the call site; one that does not comes
+ * up short every time.
  *
- * `assignee` is a separate immutable routing input, which is exactly why the id
- * check could not cover it — and why the question this predicate answers is
- * "would we have filed this row", not "does the id match".
+ * - `id` and `input` — the task's identity. A mismatch means the row is not
+ *   this task at all, and a seed reported as filed files nothing.
+ * - `assignee` — which worker a drain routes to. Wrong, and the claim charges an
+ *   attempt and then finds no worker declared: a run billed or stranded without
+ *   launching.
+ * - `maxAttempts` — the retry budget, and **absent means single-attempt**, not
+ *   "the default". A row filed without it turns the first failed coding run
+ *   terminal on a conductor configured for retries; an oversized one spends past
+ *   what the host configured.
+ * - `goal` and `metadata` are deliberately NOT checked. The manager builds its
+ *   own prompt, so `goal` decides nothing; `metadata` is model-patchable through
+ *   `updateTask`, so it cannot be an invariant — a value that can change after
+ *   the check is not one the check can promise anything about.
+ *
+ * **A correction to what this file said one commit ago:** `assignee` was
+ * described as immutable. It is not — `updateTask` patches `priority`,
+ * `metadata`, `assignee` and labels. The check still earns its place, because a
+ * foreign row at seed time is caught, but it is a check on the row as filed and
+ * not a guarantee about the row later. `maxAttempts` genuinely is immutable
+ * through that surface, which is why it is the stronger of the two.
  *
  * **One predicate, because the invariant has four doors and I kept fixing one.**
  * A conductor row's id is a pure function of its `{ issue, phase }`, and every
@@ -163,8 +180,12 @@ export const CONDUCTOR_FLOW_KIND = "conductor" as const;
  * written as "anything other than a clean match is not a match" rather than as a
  * list of the ways it can go wrong.
  */
-function isOurRow(task: { id: string; input?: unknown; assignee?: unknown }): boolean {
+function isOurRow(
+  task: { id: string; input?: unknown; assignee?: unknown; maxAttempts?: unknown },
+  maxAttempts: number,
+): boolean {
   if (task.assignee !== ASSIGNEE) return false;
+  if (task.maxAttempts !== maxAttempts) return false;
   const found = task.input as { issue?: unknown; phase?: unknown } | undefined;
   if (typeof found?.issue !== "string" || typeof found?.phase !== "string") return false;
   try {
@@ -415,11 +436,12 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // for was never filed at all. A silent nothing-happened, paid for by
         // somebody else's retry budget.
         //
-        if (!isOurRow(existing)) {
+        if (!isOurRow(existing, maxAttempts)) {
           throw new Error(
             `[conductor] a row already exists at "${taskId}" and it is not one this ` +
               `conductor filed — its payload does not describe ${input.issue}/${input.phase}, ` +
-              `or it is routed to an assignee other than "${ASSIGNEE}". Refusing to report ` +
+              `it is routed to an assignee other than "${ASSIGNEE}", or its retry budget ` +
+              `is not the ${maxAttempts} this conductor configures. Refusing to report ` +
               `this seed as filed: draining that row charges it an attempt and then finds ` +
               `nothing to run it, and the task asked for here would never exist.`,
           );
@@ -472,11 +494,12 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // the same thing, and a foreign row can be inserted between the lookup
         // and the create as easily as before it. Reporting it as this seed's
         // answer files nothing and hands the drain somebody else's task.
-        if (!isOurRow(raced)) {
+        if (!isOurRow(raced, maxAttempts)) {
           throw new Error(
             `[conductor] the create at "${taskId}" lost to a row this conductor did not ` +
-              `file — wrong payload for ${input.issue}/${input.phase}, or an assignee other ` +
-              `than "${ASSIGNEE}". Refusing to report this seed as filed: the task asked ` +
+              `file — wrong payload for ${input.issue}/${input.phase}, an assignee other ` +
+              `than "${ASSIGNEE}", or a retry budget that is not ${maxAttempts}. Refusing ` +
+              `to report this seed as filed: the task asked ` +
               `for here would never exist.`,
           );
         }
@@ -633,7 +656,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // and see that nothing is known about its run. Throwing would hide the
         // whole listing behind one bad row.
         const record =
-          issue !== null && phaseName !== null && isOurRow(task)
+          issue !== null && phaseName !== null && isOurRow(task, maxAttempts)
             ? await readRunRow(ctx as never, runTopic(collectionId, issue, phaseName))
             : undefined;
 

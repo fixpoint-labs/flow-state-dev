@@ -441,7 +441,10 @@ export function conductorDrainBudgetMs(options: {
     options.ownershipWaitMs +
     (options.provisionTimeoutMs ?? GIT_TIMEOUT_MS) +
     options.runTimeoutMs +
-    NETWORK_CALL_TIMEOUT_MS;
+    // The completion check AND the prompt builder. Both are public hooks, both
+    // are bounded by this constant, and the budget has to reserve time for each
+    // — a bound the budget does not account for is as wrong as no bound.
+    NETWORK_CALL_TIMEOUT_MS * 2;
 
   // `* 4 / 3` clears a reserve of up to a quarter; the flat minute dwarfs the
   // small absolute cap that binds instead on tiny budgets.
@@ -772,7 +775,23 @@ export function harnessManager(options: ManagerOptions) {
         ctx: ctx as BlockContext,
       };
 
-      const prompt = await phase.buildPrompt(run);
+      // **Bounded for the same reason the completion check is.** This await
+      // happens after the row is claimed and opened and before the agent's own
+      // deadline starts, so an unbounded hook leaves the row `in_progress` with
+      // nothing to settle it — past the budget a host sized its shutdown from.
+      // `isDone` was bounded and this was not, which is the same enumeration
+      // failure the rest of this branch keeps producing: two public hooks, one
+      // rule, one of them carried through.
+      //
+      // Unlike `isDone`, the derived budget did NOT already reserve time here,
+      // so `conductorDrainBudgetMs` gains the term. A bound the budget does not
+      // account for would make the advertised number wrong in the other
+      // direction, which is the defect being fixed, inverted.
+      const prompt = await withDeadline(
+        async () => phase.buildPrompt(run),
+        NETWORK_CALL_TIMEOUT_MS,
+        `the ${state.phase} phase's prompt builder`,
+      );
 
       // **Ownership first, then provisioning.** Validating the worktree and
       // then waiting for the lock leaves a window in which the displaced

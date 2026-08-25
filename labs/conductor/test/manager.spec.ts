@@ -1753,3 +1753,53 @@ describe("a row is only ours if its routing is ours too", () => {
     );
   }, 20_000);
 });
+
+describe("a row is only ours if its retry budget is ours too", () => {
+  it("refuses an existing row filed without the configured retry budget", async () => {
+    // `maxAttempts` is not decoration and its ABSENCE is not "the default": the
+    // substrate is single-attempt without it. A row pre-created with the right
+    // id, payload and assignee but no budget is accepted as an idempotent seed
+    // and drained under a retry policy the conductor never configured — the
+    // first failed coding run goes terminal on a board built for retries, which
+    // is the exact economics decision 1 is priced on.
+    //
+    // Unlike `assignee`, this one really is immutable through `updateTask`
+    // (which patches priority, metadata, assignee and labels), so checking it
+    // says something about the row for its whole life.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-NOBUDGET", PHASE), {
+            id: conductorTaskId("FIX-NOBUDGET", PHASE),
+            goal: "filed with no retry budget",
+            input: { issue: "FIX-NOBUDGET", phase: PHASE },
+            status: "pending",
+            attempts: 0,
+            assignee: "harness",
+            // `maxAttempts` deliberately absent — everything else is correct.
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    await expect(
+      live.call("seed", { issue: "FIX-NOBUDGET", phase: PHASE }),
+    ).rejects.toThrow(/retry budget|not one this conductor filed|did not file/);
+  }, 20_000);
+});
