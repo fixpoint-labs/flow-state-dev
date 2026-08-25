@@ -929,7 +929,7 @@ export const inbox = <em>defineResourceCollection</em>({
   pattern: "inbox/**",               <i>// inbox/&lt;epicId&gt;/&lt;rowId&gt; &#8212; one epic per prefix</i>
   scope: "user",                     <i>// one set, shared by the coordinator and every workstream</i>
   llmReadable: true,
-  client: { state: { read: true }, <b>live</b>: true },   <i>// each row streams to the operator</i>
+  client: { state: { read: true }, <b>live</b>: true },   <i>// the delta rides the mutating request's stream</i>
   stateSchema: z.object({
     workstream:  z.string(),                            <i>// the topic that asked</i>
     taskId:      z.string(),
@@ -944,7 +944,7 @@ export const inbox = <em>defineResourceCollection</em>({
   }),
 });</pre>
 
-  <p><code>client.live: true</code> streams each mutated row's projected data mid-stream instead of flagging a snapshot refetch, so a row appears in the operator's view the moment a workstream writes it. That is a real option on the real config, and it is what makes the inbox behave like an inbox rather than a table you refresh.</p>
+  <p><code>client.live: true</code> streams each mutated row's projected data mid-stream instead of flagging a snapshot refetch. It is a real option on the real config. The delta rides the mutating request's own stream, though, so it makes the inbox live for the session doing the writing and reaches no session watching from outside. A coordinator-attached client picks a workstream's row up on its next entry, through the snapshot read.</p>
 
   <h3>A workstream requests a plan change; it does not make one</h3>
 
@@ -1013,7 +1013,7 @@ export const inbox = <em>defineResourceCollection</em>({
         <tr><td>Mail addressed to the coordinator&#8217;s session</td><td>both</td><td><span class="tag t-prop">proposed</span></td><td><strong>What a watch sends &#8212; and what anything else sends too.</strong> One message, one named recipient, handled as a request on that session. Nothing in the tree sends a message today, so this is a build rather than a wiring job. Its shape is below; the build is scoped and under review (section 11)</td></tr>
         <tr><td><code>awaiting_review</code> keeps the drain alive</td><td>hot</td><td><span class="tag t-real">exists</span></td><td>The <strong>blocking</strong> wait, and the only route here that holds a request open. An <code>awaiting_review</code> row keeps the worker loop alive in both <code>complete</code> and <code>complete-or-blocked</code>, because the worker's <code>.waitForCondition</code> blocks until someone moves the row back to <code>pending</code>; the loop's idle poll (<code>idlePollMs</code>, default 50ms) is what turns while it waits. Real, and fine for a wait measured in minutes. Not what the coordinator uses, and not what the first real run ships on</td></tr>
         <tr><td>A scheduled action re-enters</td><td>cold</td><td><span class="tag t-none">no address</span></td><td><strong>The transport is real. The route is not.</strong> <code>@flow-state-dev/scheduled</code> does dispatch on a timer and stamp <code>source: "scheduled"</code> &#8212; but it dispatches with <strong>no session</strong> (<em>&#8220;scheduled envelopes have no session&#8221;</em>), and a dynamic schedule&#8217;s row carries a user, not a session. A tick can start fresh work; it cannot re-enter the coordinator, because it cannot name it. Cron becomes a sender instead &#8212; below</td></tr>
-        <tr><td>You open the session and see the row</td><td>cold</td><td><span class="tag t-real">exists</span></td><td>Resource mutations emit <code>resource_change</code> events and <code>client.live</code> merges them into the cached snapshot. A person re-entering is itself a wake, and the inbox is visible without anything else happening</td></tr>
+        <tr><td>You open the session and see the row</td><td>cold</td><td><span class="tag t-real">exists</span></td><td>A person re-entering is itself a wake, and the inbox is visible without anything else happening</td></tr>
         <tr><td>An existing inbound transport</td><td>&#8212;</td><td><span class="tag t-none">wrong seam</span></td><td>The packages are real and none of them is this. <code>mcp</code>, <code>chat-sdk</code>, <code>voice-openai</code> and <code>scheduled</code> carry <em>external</em> origin into a flow. <code>node</code> and <code>bullmq</code> host the server and run the jobs &#8212; they are not receivers at all</td></tr>
         <tr><td>Session-addressed messaging</td><td>&#8212;</td><td><span class="tag t-none">doesn&#8217;t exist</span></td><td>&#8220;Send this to that session&#8221; has no implementation today &#8212; which is precisely the gap mail fills. <code>RequestHost</code> is closed at four verbs &#8212; <code>startDetached</code>, <code>parentTask</code>, <code>settleParentTask</code>, <code>livenessOf?</code> &#8212; and the only child-to-parent verb among them is <code>settleParentTask</code>, which has no production caller and is in any case <strong>structural</strong>: a task row transition, not a message</td></tr>
         <tr><td><code>reactTo</code> on the inbox</td><td>&#8212;</td><td><span class="tag t-none">wrong tool</span></td><td>Runs in the mutating session, inline in the workstream's own turn. Useful for workstream-side bookkeeping; it can never reach the coordinator</td></tr>
@@ -1107,7 +1107,7 @@ export const inbox = <em>defineResourceCollection</em>({
 
   <p>The reason no existing package covers the cold-path wake is worth stating precisely rather than filing as a gap. An <strong>inbound transport carries external origin into a flow</strong>: <code>mcp</code>, <code>chat-sdk</code>, <code>voice-openai</code> and <code>scheduled</code> each translate somebody else's protocol into a dispatch and stamp where it came from. <code>node</code> and <code>bullmq</code> are host and runtime adapters &#8212; they serve the process and run the jobs, and receive nothing on their own account. A workstream telling a coordinator it has a question is neither of those. It is session-to-session, inside one system, under one principal. That is a <strong>different seam</strong>, and it is empty.</p>
 
-  <p>What fills it is <strong>mail: a message bus, not an event bus</strong> &#8212; a working name this document keeps for readability, though the name is now settled: the filed epic is called <strong>relay</strong> (thread 3, section 11). One message travels from one request to one named recipient &#8212; another session, or the same session as a new request. Sessions address each other directly, so a workstream reaches the coordinator, the coordinator reaches a workstream, and two top-level sessions reach each other the same way. There is no topic, no subscriber list, and <strong>no fan-out</strong>. What a sender may legally address is a design question of its own (thread 2); where it <em>finds</em> an address to send to is the <code>sessions/*</code> rows of section 8.</p>
+  <p>What fills it is <strong>mail: a message bus, not an event bus</strong> &#8212; a working name this document keeps for readability, though the name is now settled: the filed epic is called <strong>relay</strong> (thread 3, section 11). One message travels from one request to one named recipient &#8212; another session, or the same session as a new request. Sessions address each other directly, so a workstream reaches the coordinator, the coordinator reaches a workstream, and two top-level sessions reach each other the same way. There is no topic, no subscriber list, and <strong>no fan-out</strong>. What a sender may legally address is settled: a session it already holds, or one it spawned itself. There is no lookup, and there is not going to be one (thread 2).</p>
 
   <div class="note">
     <span class="lbl">Fan-out is ruled out, not deferred</span>
@@ -1500,7 +1500,7 @@ type PhaseLogic = {
         <tr><td>issues</td><td><code>epics/[epicId]/issues/[issueId]</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Category, position in the graph, current phase, PR, review rounds spent</td></tr>
         <tr><td>specs</td><td><code>specs/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Spec body and approval state</td></tr>
         <tr><td><strong>inbox</strong></td><td><code>inbox/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>The coordinator's working set.</strong> One row per open question, keyed <code>&lt;epicId&gt;/&lt;rowId&gt;</code> so a list narrows to one epic, with the workstream that asked it</td></tr>
-        <tr><td><strong>sessions</strong></td><td><code>sessions/*</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>What the other coordinators are doing.</strong> One row per session, written by that session: the epic it holds, phase and open counts, when it last moved, and the address to reach it</td></tr>
+        <tr><td><strong>sessions</strong></td><td><code>sessions/*</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>What the other coordinators are doing.</strong> One row per session, written by that session: the epic it holds, phase and open counts, when it last moved</td></tr>
         <tr><td>runs</td><td><code>runs/**</code></td><td>session + <code>sharedToWorkstream</code></td><td><span class="tag t-prop">proposed</span></td><td>One row per run, keyed by topic and phase: child session, request id, worktree, branch, outcome, cost, and a copy of the resume handle. The handle itself rides the task; this row is what a person reads (section 6)</td></tr>
         <tr><td>decisions</td><td><code>decisions/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Gates and steers as records: what was asked, who answered, when, and the reason given</td></tr>
         <tr><td>observed-file-ops</td><td><code>[topic]/observations</code></td><td>session</td><td><span class="tag t-real">exists</span></td><td>What a run changed</td></tr>
@@ -1518,7 +1518,7 @@ type PhaseLogic = {
 
   <h3>Sessions know what the others are working on</h3>
 
-  <p>A planner reasoning alone plans work that collides with a sibling's. So a planning or architect role gets <strong>the other epics in flight</strong> in its generator context: what each one is doing, how far along it is, when it last moved. Two things follow. It stops proposing work another session already owns &#8212; and, better, it can decide to <strong>ask before it commits</strong>, sending a message to the session holding the neighbouring epic to check an assumption while the plan is still cheap to change. Deconfliction is the floor. Coordination is the point. These rows complement the architect's org-scoped memory (section 1) rather than substituting for it: resources hold what has been decided across epics, this set holds what is moving right now.</p>
+  <p>A planner reasoning alone plans work that collides with a sibling's. So a planning or architect role gets <strong>the other epics in flight</strong> in its generator context: what each one is doing, how far along it is, when it last moved. Two things follow. It stops proposing work another session already owns &#8212; and, better, it can decide to <strong>ask before it commits</strong>, raising the assumption with the operator through its own session while the plan is still cheap to change. Deconfliction is the floor. Coordination is the point. These rows complement the architect's org-scoped memory (section 1) rather than substituting for it: resources hold what has been decided across epics, this set holds what is moving right now.</p>
 
   <p><strong>This is a collection, not a framework session registry</strong>, and that call is the interesting part. A registry answers <em>&#8220;session abc123 is alive&#8221;</em>. What a planner needs is <em>&#8220;this epic is refactoring the store adapters, three issues open, last moved an hour ago&#8221;</em>. Each coordinator writes its own row as it works; any role reads the set through a context formatter over a <code>list()</code>. Four reasons it belongs here rather than in the engine:</p>
 
@@ -1539,7 +1539,7 @@ type PhaseLogic = {
     <p>So it is the right instrument for <strong>&#8220;should I still be waiting on this&#8221;</strong> and the wrong one for <strong>&#8220;did that work happen&#8221;</strong>. Two limits bind this use of it in particular. The verb is <em>optional</em> and absent when the liveness gate refuses (section 9). And identity filters <em>before</em> the answer is built &#8212; user, tenant, flow kind, then descendant-session &#8212; with the module stating the consequence in as many words: <em>&#8220;an id outside the caller's lineage or under a different principal comes back indistinguishable from an unknown id &#8212; there is no existence oracle here.&#8221;</em> A <em>peer</em> coordinator's session is outside that lineage, since the walk only ever climbs to the caller's own. Which is the argument for the timeout again. <strong>The sender's own clock is the answer; the lookup corroborates it &#8212; and only for one's own descendants.</strong></p>
   </div>
 
-  <p><strong>Discovery and delivery are one table.</strong> The row already holds the address you would send to, so a planner that decides to ask the neighbouring epic a question already has what it needs to send &#8212; mail, addressed to a session, exactly as section 6 describes it. The list is not a second system for mail to integrate with later. It is the directory mail was always going to need.</p>
+  <p><strong>The rows are intelligence, not an address book.</strong> A planner reads them to see what a peer is holding and how far along it is. Nothing in the set is a way to reach that peer. A sender addresses a session it already holds, or one it spawned itself (thread 2).</p>
 
   <div class="note">
     <span class="lbl">Memory &#8212; deferred on purpose, not ruled out</span>
@@ -1623,7 +1623,7 @@ type PhaseLogic = {
         <tr><td>Can it enumerate live runs?</td><td>No. There is no "list my workstreams" API and no registry</td></tr>
         <tr><td>Can it tell whether one is alive?</td><td><code>ctx.requestHost.livenessOf(requestIds)</code> &#8212; an <em>optional</em> method, absent when the liveness gate refuses. Design for it being missing</td></tr>
         <tr><td>What settles a row?</td><td>The workstream, through the runner's fenced recorders. Never the parent</td></tr>
-        <tr><td>What does the operator see?</td><td><code>task-change</code> items plus a transient board-meta component carrying <code>{ status, terminationReason, counts }</code>, both already emitted &#8212; and, with <code>client.live</code>, inbox rows as they appear</td></tr>
+        <tr><td>What does the operator see?</td><td><code>task-change</code> items plus a transient board-meta component carrying <code>{ status, terminationReason, counts }</code>, both already emitted</td></tr>
       </tbody>
     </table>
   </div>
@@ -1925,9 +1925,9 @@ export const conductorConfig = <b>createConductorCapability</b>({
   <ul>
     <li>The <strong>classify-and-route step</strong> &#8212; the coordinator's actual job (section 6).</li>
     <li>The <strong>manager and architect roles</strong>, and the call-site and scope decisions behind them (section 1).</li>
-    <li>The <strong><code>sessions/*</code> directory</strong> &#8212; what the other coordinators are working on (section 8).</li>
+    <li>The <strong><code>sessions/*</code> rows</strong> &#8212; what the other coordinators are working on (section 8).</li>
     <li>The <strong>config capability</strong> that holds the phase table (section 10).</li>
-    <li><strong>More than one issue on one board</strong>, and any operator UI beyond rows streaming to the client. Both are explicitly out of the proof's scope.</li>
+    <li><strong>More than one issue on one board</strong>, and any operator UI beyond the rows themselves. Both are explicitly out of the proof's scope.</li>
   </ul>
 
   <p>That is not an argument for filing them now. The proof exists to make several of these cheaper to specify &#8212; a role's call site, in particular, is a question the first real role block answers better than any amount of design does (thread 11). It is an argument for not reading the sections above as a plan.</p>
