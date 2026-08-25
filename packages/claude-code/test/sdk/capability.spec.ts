@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator } from "@flow-state-dev/core";
-import { createTestContext } from "@flow-state-dev/testing";
+import { testBlock } from "@flow-state-dev/testing";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { createClaudeCodeAgentCapability } from "../../src/sdk/capability";
 import { claudeCodeAgent } from "../../src/sdk/agent";
 
@@ -164,20 +165,27 @@ describe("createClaudeCodeAgentCapability — cwd", () => {
           } as never;
         },
       }),
-    }) as unknown as {
-      __presetDefs: {
-        tools: {
-          tools: Array<{
-            config: { execute: (i: unknown, c: unknown) => Promise<unknown> };
-          }>;
-        };
-      };
-    };
+    });
 
-    const [tool] = cap.__presetDefs.tools.tools;
-    const runtime = await createTestContext({});
-    await tool.config.execute({ prompt: "go" }, runtime.ctx as never);
+    // **Dispatched through `testBlock`, not through `block.config.execute`.**
+    // The private callback bypasses everything the framework does around a
+    // block, so a test driving it shows the option reached a closure rather than
+    // that it reaches a run.
+    //
+    // Reaching INTO the capability for the block is a separate question, and
+    // there is no public way to do it: `DefinedCapability` declares
+    // `__presetDefs` and exposes no accessor for a preset's tools. Every sibling
+    // test in this file takes the same route for the same reason. That missing
+    // accessor is a real gap — named here rather than papered over.
+    const [tool] = (
+      cap as unknown as {
+        __presetDefs: { tools: { tools: BlockDefinition<any, any>[] } };
+      }
+    ).__presetDefs.tools.tools;
 
+    const { error } = await testBlock(tool, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
     expect(seen).toBe("/work/checkout-a");
   });
 });
