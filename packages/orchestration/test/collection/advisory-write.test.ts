@@ -1625,3 +1625,54 @@ describe("a displacement inside the snapshot→write window (FIX-964)", () => {
     ).rejects.toThrow("store unreachable");
   });
 });
+
+/**
+ * The budget the target resolution reads is part of the call's basis too.
+ *
+ * Resolving `fail`'s route needs the collection's granted-retry total, and that
+ * total is *changed by the write itself* — so reading it after the failure asks
+ * the question against a world the write already moved.
+ */
+describe("resolving fail's route against pre-write budget state (FIX-964)", () => {
+  it("does not swallow a post-commit failure that spent the last retry", async () => {
+    // Found by review, and introduced by widening clause (b) past terminal
+    // states. A retrying `fail()` spends the collection's final retry and then
+    // throws *after* committing. Read post-error, the budget is already spent,
+    // so the route resolves to `errored` — but the write actually produced
+    // `pending`. Clause (b) then sees a status "our write could not have
+    // produced" and contains a post-commit failure, which is exactly the signal
+    // FIX-963 exists to raise and this seam promises to hand it.
+    const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
+      tasks: {},
+    });
+    const collection = createSequencerBackedTaskCollection({
+      collectionId: "budgeted",
+      sequencer,
+      maxTotalRetries: 1,
+    });
+
+    await collection.addTask({ id: "t", goal: "t", maxAttempts: 5 });
+    const task = await collection.claim("worker-1");
+    if (task === null) throw new Error("fixture failed to claim");
+    const claim = ticketForClaim(collection.collectionId, task);
+
+    const commitsThenThrowsOnFail: TaskCollectionRef = {
+      ...collection,
+      fail: async (id, error, options) => {
+        await collection.fail(id, error, options);
+        throw new Error("onChange rejected after the commit");
+      },
+    };
+
+    await expect(
+      advisoryFail(commitsThenThrowsOnFail, "t", "worker blew up", {
+        ifAllowed: true,
+        claim,
+      })
+    ).rejects.toThrow("onChange rejected after the commit");
+
+    // And the write really did land on the retry route — which is what makes
+    // the post-error budget read misleading in the first place.
+    expect(collection.get("t")?.status).toBe("pending");
+  });
+});

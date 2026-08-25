@@ -123,7 +123,7 @@ export async function advisoryComplete(
   output: unknown,
   options: TaskTransitionOptions
 ): Promise<TaskWriteOutcome> {
-  const before = observe(ref, taskId);
+  const before = observe(ref, taskId, "complete");
   try {
     return await ref.complete(taskId, output, options);
   } catch (err) {
@@ -145,7 +145,7 @@ export async function advisoryFail(
   error: string,
   options: TaskTransitionOptions
 ): Promise<TaskWriteOutcome> {
-  const before = observe(ref, taskId);
+  const before = observe(ref, taskId, "fail");
   try {
     return await ref.fail(taskId, error, options);
   } catch (err) {
@@ -156,18 +156,60 @@ export async function advisoryFail(
 /**
  * Everything about the call that has to be known BEFORE the write.
  *
- * Both fields answer the same question — *what was true when this call ran* —
- * and both have to be captured up front for the same reason: read afterwards,
- * they describe the world the failure left behind rather than the one the call
- * started in. See {@link attribute} for what each one is load-bearing for.
+ * Every field answers the same question — *what was true when this call ran* —
+ * and every one has to be captured up front for the same reason: read
+ * afterwards, they describe the world the failure left behind rather than the
+ * one the call started in. Each has already been a bug read late.
+ *
+ * - `task` — the snapshot clause (a) judges. Read late, a committed write looks
+ *   like somebody else's settlement.
+ * - `at` — the clock the lease arm compares against. Read late, a store that
+ *   hangs past the lease turns a plain outage into a lost claim.
+ * - `grantedRetries` — the collection's spent retry budget, which decides which
+ *   route a `fail` took. Read late, a write that spent the *last* retry makes
+ *   its own route look unreachable, and the post-commit failure it then raised
+ *   gets contained as though somebody else had displaced the task.
  */
 interface CallBasis {
   task: Task | undefined;
   at: number;
+  grantedRetries: number | undefined;
 }
 
-function observe(ref: TaskCollectionRef, taskId: string): CallBasis {
-  return { task: readQuietly(ref, taskId), at: readClock(ref) };
+function observe(
+  ref: TaskCollectionRef,
+  taskId: string,
+  verb: "complete" | "fail"
+): CallBasis {
+  return {
+    task: readQuietly(ref, taskId),
+    at: readClock(ref),
+    grantedRetries: readGrantedRetries(ref, verb),
+  };
+}
+
+/**
+ * The retry budget as it stood before the write, or `undefined` when it cannot
+ * change the answer.
+ *
+ * Deliberately narrow, because this is the one input that costs a scan.
+ * {@link routeFailure} consults the total only on a `fail` against a collection
+ * that actually enforces a budget — every other call short-circuits before the
+ * thunk — so those are the only calls that pay for it, and a `complete` or an
+ * unbudgeted board pays nothing. A budgeted board pays one O(tasks) sum per
+ * *failed* task, which is the same sum its own backing already runs inside the
+ * write that failed.
+ */
+function readGrantedRetries(
+  ref: TaskCollectionRef,
+  verb: "complete" | "fail"
+): number | undefined {
+  if (verb !== "fail" || ref.maxTotalRetries == null) return undefined;
+  try {
+    return sumGrantedRetries(ref.list());
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -235,12 +277,13 @@ function readClock(ref: TaskCollectionRef): number {
 function resolveTarget(
   ref: TaskCollectionRef,
   verb: "complete" | "fail",
-  basis: Task
+  basis: Task,
+  grantedRetries: number | undefined
 ): WriteTarget {
   if (verb === "complete") return { status: "completed", kind: "completed" };
   const routing = routeFailure(
     basis,
-    () => sumGrantedRetries(ref.list()),
+    () => grantedRetries ?? sumGrantedRetries(ref.list()),
     ref.maxTotalRetries ?? undefined
   );
   return routing.action === "retry"
@@ -301,7 +344,7 @@ function attribute(
   // advisory decline at all.
   if (basis === undefined) return undefined;
 
-  const target = resolveTarget(ref, verb, basis);
+  const target = resolveTarget(ref, verb, basis, before.grantedRetries);
 
   // (a) The task was already declinable when this call ran.
   //
