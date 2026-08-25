@@ -1,35 +1,36 @@
 /**
  * FIX-1154 — characterization POC. Throwaway; never merges.
  *
- * THE QUESTION
- * The epic (FIX-1157, theme 2) marks one claim as its most load-bearing and
- * least evidenced: that every row of `resource-cas.ts`'s eight-row conflict
- * policy survives when resources grow increment and append verbs. It has only
- * ever been read off the types. This file runs it.
+ * WHAT THIS IS
+ * The evidence base for FIX-1154's mutation-surface gap write-up. Every row
+ * characterizes what the resource write path does on `main` TODAY. Nothing here
+ * models a proposed API: D-6 (#1446) settled that resources do not get
+ * `incState` / `pushState` this cycle, and the issue ships the map of the
+ * differences instead.
  *
- * WHAT IS BEING MODELLED, AND WHERE THE MODEL STOPS
- * The proposed `incState` / `pushState` are registry ops that hand a mutator to
- * `persistResourceState` — exactly as `patchState` hands it a merge. From
- * outside the registry the faithful stand-in for that is the ref's own
- * `updateState`: same per-key write queue, same `mutateResourceKey`, same
- * `runResourceCAS` under `intent: "mutate"`, same schema normalization. The only
- * difference between this stand-in and the real op is who authors the mutator
- * body — the framework instead of the caller — which is not a difference the
- * driver can see.
+ * HOW IT DRIVES THE REAL PATH
+ * Increments and appends on a resource are performed the only way `main` allows
+ * — as mutator bodies handed to the ref's own `updateState`, which is the same
+ * per-key write queue, the same `mutateResourceKey`, the same `runResourceCAS`
+ * under `intent: "mutate"` and the same schema normalization that every shipped
+ * resource write takes. `incrementVia` / `appendVia` below are those mutator
+ * bodies. Two execution contexts over one shared store, no mocks.
  *
- * So this POC is evidence about the DRIVER under increment/append-shaped
- * mutators. It is not evidence that a store-native delta verb would behave the
- * same way; the spec DEFERS that tier (§6 decision 2, settled at D-6) precisely
- * because nothing here would carry over to it.
+ * WHERE THE MODEL STOPS
+ * This is evidence about the version-checked write path. It says nothing about
+ * a store-native delta verb; that tier is DEFERRED (§6 decision 2, D-6) and
+ * nothing here would carry over to it. It also drives `createExecutionContext`
+ * directly — deliberately, because that isolates the CAS driver — so it never
+ * traverses `runAction`.
  *
- * THE SECOND QUESTION (added round 13)
- * The last four rows are not about the driver. They pin the REFUSAL HAZARDS —
- * the values §7 says the two verbs must reject. They characterize the gap
- * rather than the guard, because the guard does not exist yet: each row asserts
- * what `main` does today, so it states what the shipped refusal has to stop.
- * They were added because three review rounds in a row corrected these rules in
- * prose, each time enumerating the value kinds known at the time and each time
- * missing a neighbour. Running them is cheaper than arguing them.
+ * THE ROWS THAT PIN DEFECTS
+ * Several rows assert behaviour that is WRONG and is meant to be. They pin the
+ * six defects the write-up documents (§7b), so a fix landing shows up as that
+ * row failing rather than as a silent divergence. Each is labelled inline.
+ * They exist because prose kept getting these rules wrong — three review rounds
+ * in a row corrected them, each time enumerating the value kinds known at the
+ * time and each time missing a neighbour. Running them is cheaper than arguing
+ * them.
  *
  * RUN IT
  *   pnpm install
@@ -73,10 +74,8 @@ const counter = defineResource({
 const tasks = defineResourceCollection({
   scope: "session",
   pattern: "tasks/**",
-  // CLOSED, not `.passthrough()`. The verbs are specified for reflectable
-  // object schemas (§7), and an open schema cannot recover a key's type or tell
-  // a typo from a dynamic key. A fixture that used passthrough would be
-  // demonstrating on a shape the spec does not support.
+  // CLOSED, not `.passthrough()` — the ordinary shape, so the rows below
+  // characterize the ordinary case rather than an open-schema edge.
   stateSchema: z.object({
     n: z.number().default(0),
     log: z.array(z.string()).default([])
@@ -84,21 +83,14 @@ const tasks = defineResourceCollection({
 });
 
 /**
- * A SAME-TYPE transform: output type === input type, so this schema SATISFIES
- * both availability conditions in §7 and the verbs are offered on it. It still
- * drifts, because the drift is not an availability property — see the FIX-1260
- * row below.
- */
-/**
  * A resource whose array field is `z.array(z.any())` and which carries a
  * SECOND, unrelated field. Both matter:
  *
- *  - `z.any()` is what the spec's §7 append rule is written against — it is the
- *    schema that accepts every hazardous value, so a narrower one would prove
- *    nothing about the guard.
- *  - `keep` is the untouched-field control. The failure these rows guard is not
- *    a bad value being stored; it is the WHOLE STATE being reset while the call
- *    reports success, and only an unrelated field can show that.
+ *  - `z.any()` is the schema that accepts every hazardous value, so a narrower
+ *    one would show nothing about what the storage layer does with them.
+ *  - `keep` is the untouched-field control. The failure these rows characterize
+ *    is not a bad value being stored; it is the WHOLE STATE being reset while
+ *    the call reports success, and only an unrelated field can show that.
  */
 const bag = defineResource({
   scope: "session",
@@ -111,6 +103,12 @@ const bag = defineResource({
   default: { n: 0, keep: "schema-default", items: [] }
 });
 
+/**
+ * A SAME-TYPE transform — output type === input type — which is what makes the
+ * drift below invisible to any check stated over the handle's type. It drifts
+ * because `normalizeResourceState` stores the OUTPUT of `safeParse`. Defect D3
+ * / FIX-1260.
+ */
 const drifting = defineResource({
   scope: "session",
   ref: "drifting",
@@ -121,11 +119,10 @@ const drifting = defineResource({
 });
 
 // Two type-changing transforms that differ ONLY in whether the schema's input
-// side accepts the schema's own output. Both expose `n: number`, so both offer
-// the verbs. `refusing` rejects the candidate a verb builds; `overlapping`
-// takes it back. This pair is why the spec states the refusal as a CONDITION
-// ("output re-parses as input") and not as the universal "every call on a
-// transforming schema refuses" — see §7's transform table and §10 17b/17c.
+// side accepts the schema's own output. `refusing` rejects a candidate built
+// from its own output; `overlapping` takes it back. The pair separates two
+// outcomes that look alike from outside: one lands in D1's destructive
+// replacement, the other writes normally.
 const refusing = defineResource({
   scope: "session",
   ref: "refusing",
@@ -146,6 +143,42 @@ const overlapping = defineResource({
   default: { n: "0", keep: "schema-default" } as never
 });
 
+/**
+ * A top-level `.catch()` around a closed object carrying an inner refinement —
+ * ordinary defensive Zod, and the shape behind defect D2. `.catch()` means
+ * `safeParse` NEVER fails, so an invalid candidate is not rejected: it comes
+ * back as the fallback, and the normalizer stores that.
+ */
+const caught = defineResource({
+  scope: "session",
+  ref: "caught",
+  stateSchema: z
+    .object({
+      n: z.number().nonnegative().default(0),
+      keep: z.string().default("schema-default")
+    })
+    .catch({ n: 0, keep: "schema-default" }),
+  default: { n: 0, keep: "schema-default" }
+});
+
+/**
+ * A same-type transform that INTRODUCES a value the storage layer cannot
+ * round-trip. Defect D4: the corruption originates inside the schema, after any
+ * check a caller could perform on its own argument.
+ */
+const infinitizing = defineResource({
+  scope: "session",
+  ref: "infinitizing",
+  stateSchema: z.object({
+    n: z
+      .number()
+      .transform((v) => (v > 100 ? Infinity : v))
+      .default(0),
+    keep: z.string().default("schema-default")
+  }),
+  default: { n: 0, keep: "schema-default" }
+});
+
 function makeFlow() {
   return defineFlow({
     kind: "fix1154-poc",
@@ -154,7 +187,16 @@ function makeFlow() {
         inputSchema: z.string(),
         block: handler({
           name: "noop",
-          resources: { counter, tasks, drifting, bag, refusing, overlapping },
+          resources: {
+            counter,
+            tasks,
+            drifting,
+            bag,
+            refusing,
+            overlapping,
+            caught,
+            infinitizing
+          },
           execute: () => "ok"
         })
       }
@@ -210,10 +252,14 @@ function readRow(stores: StoreRegistry, key: string) {
 }
 
 // ---------------------------------------------------------------------------
-// The two proposed verbs, as the registry would implement them: a mutator body
-// handed to the same write path `patchState` already uses. `toNumber` / `toList`
-// mirror `state-container.ts`'s `incState` / `pushState` coercions so the two
-// primitives agree on what a missing or wrong-typed field means.
+// Incrementing and appending on a resource, the only way `main` allows: a
+// mutator body handed to `updateState`, which reaches the same write path
+// `patchState` uses. These are call-site shapes, not API — resources have no
+// `incState` / `pushState` and are not getting them this cycle (D-6, #1446).
+//
+// `toNumber` / `toList` mirror `state-container.ts`'s bag-side coercions, so
+// the shape being characterized here is the one a developer would write after
+// reading the bag's docs.
 // ---------------------------------------------------------------------------
 
 type MutableRef = {
@@ -223,7 +269,7 @@ type MutableRef = {
 const toNumber = (v: unknown): number => (typeof v === "number" ? v : 0);
 const toList = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
-function incState(ref: MutableRef, increments: Record<string, number>): Promise<void> {
+function incrementVia(ref: MutableRef, increments: Record<string, number>): Promise<void> {
   return ref.updateState((s) => {
     const next = { ...s } as Record<string, unknown>;
     for (const [field, delta] of Object.entries(increments)) {
@@ -233,7 +279,7 @@ function incState(ref: MutableRef, increments: Record<string, number>): Promise<
   });
 }
 
-function pushState(ref: MutableRef, field: string, value: unknown): Promise<void> {
+function appendVia(ref: MutableRef, field: string, value: unknown): Promise<void> {
   return ref.updateState((s) => {
     const next = { ...s } as Record<string, unknown>;
     next[field] = [...toList(next[field]), value];
@@ -251,29 +297,29 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
 
     // Materialize the row first, so this exercises the plain retry row rather
     // than the create-if-absent one below.
-    await incState(ctxA.resources.counter as unknown as MutableRef, { n: 1 });
+    await incrementVia(ctxA.resources.counter as unknown as MutableRef, { n: 1 });
 
     const ctxC = await makeCtx(stores, "req_c");
     await Promise.all([
-      incState(ctxB.resources.counter as unknown as MutableRef, { n: 1 }),
-      incState(ctxC.resources.counter as unknown as MutableRef, { n: 1 })
+      incrementVia(ctxB.resources.counter as unknown as MutableRef, { n: 1 }),
+      incrementVia(ctxC.resources.counter as unknown as MutableRef, { n: 1 })
     ]);
 
     // Neither increment is lost: the loser re-ran its mutator against the
-    // winner's state. This is the claim the verbs exist to make good on.
+    // winner's state. This is what map row 10's resource half rests on.
     expect((await readRow(stores, "counter"))?.state).toMatchObject({ n: 3 });
   });
 
   it("row: ordinary conflict — two contexts appending to one array both land", async () => {
     const stores = createInMemoryStores();
     const ctxA = await makeCtx(stores, "req_a");
-    await pushState(ctxA.resources.counter as unknown as MutableRef, "log", "seed");
+    await appendVia(ctxA.resources.counter as unknown as MutableRef, "log", "seed");
 
     const ctxB = await makeCtx(stores, "req_b");
     const ctxC = await makeCtx(stores, "req_c");
     await Promise.all([
-      pushState(ctxB.resources.counter as unknown as MutableRef, "log", "b"),
-      pushState(ctxC.resources.counter as unknown as MutableRef, "log", "c")
+      appendVia(ctxB.resources.counter as unknown as MutableRef, "log", "b"),
+      appendVia(ctxC.resources.counter as unknown as MutableRef, "log", "c")
     ]);
 
     const log = ((await readRow(stores, "counter"))?.state as PocState).log as string[];
@@ -298,7 +344,7 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const instance = await (ctxB.resources.tasks as any).get("t1");
     await (ctxA.resources.tasks as any).delete("t1");
 
-    await expect(incState(instance, { n: 1 })).rejects.toBeInstanceOf(ResourceDeletedError);
+    await expect(incrementVia(instance, { n: 1 })).rejects.toBeInstanceOf(ResourceDeletedError);
     expect((await readRow(stores, "tasks/t1"))?.state).toBeUndefined();
   });
 
@@ -311,17 +357,17 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const instance = await (ctxB.resources.tasks as any).get("t1");
     await (ctxA.resources.tasks as any).delete("t1");
 
-    await expect(pushState(instance, "log", "x")).rejects.toBeInstanceOf(ResourceDeletedError);
+    await expect(appendVia(instance, "log", "x")).rejects.toBeInstanceOf(ResourceDeletedError);
     expect((await readRow(stores, "tasks/t1"))?.state).toBeUndefined();
   });
 
   it("row: verified no-op — a zero increment neither bumps the version nor emits", async () => {
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
-    await incState(ctx.resources.counter as unknown as MutableRef, { n: 5 });
+    await incrementVia(ctx.resources.counter as unknown as MutableRef, { n: 5 });
     const before = await readRow(stores, "counter");
 
-    await incState(ctx.resources.counter as unknown as MutableRef, { n: 0 });
+    await incrementVia(ctx.resources.counter as unknown as MutableRef, { n: 0 });
     const after = await readRow(stores, "counter");
 
     // Suppression is only correct because the driver re-read and confirmed the
@@ -331,14 +377,14 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
   });
 
   it("row: never-persisted key — a no-op increment is NOT reported as a deletion", async () => {
-    // The regression the driver header calls out, now reached through the new
-    // verb: a declared resource living on its schema default, touched for the
-    // first time with a mutation that changes nothing.
+    // The regression the driver header calls out: a declared resource living
+    // on its schema default, touched for the first time with a mutation that
+    // changes nothing.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
 
     await expect(
-      incState(ctx.resources.counter as unknown as MutableRef, { n: 0 })
+      incrementVia(ctx.resources.counter as unknown as MutableRef, { n: 0 })
     ).resolves.toBeUndefined();
 
     // Nothing written, nothing claimed deleted.
@@ -352,10 +398,10 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
 
     // Negative control FIRST. If the emitter were not wired, or this resource
     // were not live, every assertion below would pass for the wrong reason.
-    await incState(ref, { n: 5 });
+    await incrementVia(ref, { n: 5 });
     expect(changes()).toHaveLength(1);
 
-    await incState(ref, { n: 0 });
+    await incrementVia(ref, { n: 0 });
     expect(changes()).toHaveLength(1); // still 1 — the no-op notified nothing
   });
 
@@ -370,10 +416,10 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const instance = await (ctx.resources.tasks as any).get("t1");
 
     const afterCreate = changes().length;
-    await incState(instance, { n: 3 });
+    await incrementVia(instance, { n: 3 });
     expect(changes().length).toBe(afterCreate + 1); // negative control
 
-    await incState(instance, { n: 0 });
+    await incrementVia(instance, { n: 0 });
     expect(changes().length).toBe(afterCreate + 1); // no-op stayed silent
   });
 
@@ -394,23 +440,24 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
 
     // B's increment computes {n:5} — identical to what B holds — so it takes
     // the no-op path, not the persist path.
-    await expect(incState(instance, { n: 0 })).rejects.toBeInstanceOf(ResourceDeletedError);
+    await expect(incrementVia(instance, { n: 0 })).rejects.toBeInstanceOf(ResourceDeletedError);
   });
 
-  it("CURRENT BEHAVIOUR (defect, FIX-1258): a version-0 context REVIVES a tombstone", async () => {
+  it("CURRENT BEHAVIOUR (defect D5): a version-0 context REVIVES a tombstone", async () => {
     // This row asserts what the shipped driver does TODAY, not what it should
-    // do. It is a live defect — reachable through shipped APIs, and NOT caused
-    // by the two new verbs: `updateState` does exactly this on `main`.
+    // do. A live defect, reachable through shipped APIs with no new verb
+    // involved: `updateState` does exactly this on `main`.
     //
-    // FIX-1154 deliberately does not fix it; FIX-1258 owns it. **This row will
-    // fail when FIX-1258 lands, and that failure is the intended signal.**
+    // FIX-1154 documents it and does not fix it. **This row will fail when the
+    // fix lands, and that failure is the intended signal.** Provenance:
+    // FIX-1258.
     const stores = createInMemoryStores();
     // B's context exists BEFORE the key is ever written, so it holds container
     // version 0 for "counter" — it never observed a live row.
     const ctxB = await makeCtx(stores, "req_b");
     const ctxA = await makeCtx(stores, "req_a");
 
-    await incState(ctxA.resources.counter as unknown as MutableRef, { n: 5 });
+    await incrementVia(ctxA.resources.counter as unknown as MutableRef, { n: 5 });
     expect((await readRow(stores, "counter"))?.state).toMatchObject({ n: 5 });
 
     // Tombstone it through the store — the same call the session-delete route
@@ -421,7 +468,7 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
 
     // B now makes a real change, writing at expectedVersion 0 — create-if-absent,
     // which a tombstone satisfies (`resource-state-predicate.ts:147-149`).
-    await incState(ctxB.resources.counter as unknown as MutableRef, { n: 1 });
+    await incrementVia(ctxB.resources.counter as unknown as MutableRef, { n: 1 });
 
     // The deleted resource is live again, holding B's default-derived value.
     // A's data is gone and the delete has been undone, with no error raised.
@@ -432,13 +479,13 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
 
-    await incState(ctx.resources.counter as unknown as MutableRef, { n: 1 });
+    await incrementVia(ctx.resources.counter as unknown as MutableRef, { n: 1 });
     expect((await readRow(stores, "counter"))?.state).toMatchObject({ n: 1 });
   });
 
   it("row: two first-touch increments race — they CONVERGE, they do not raise already-exists", async () => {
-    // The one row where the new verbs could plausibly have differed from
-    // `patchState`. A first touch writes at `expectedVersion: 0`, which IS
+    // The one row where an increment-shaped mutator could plausibly have
+    // differed from `patchState`. A first touch writes at `expectedVersion: 0`, which IS
     // create-if-absent — but under `intent: "mutate"`, so the loser refreshes
     // and re-runs rather than going terminal the way an explicit `create` does.
     const stores = createInMemoryStores();
@@ -446,29 +493,25 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const ctxB = await makeCtx(stores, "req_b");
 
     await Promise.all([
-      incState(ctxA.resources.counter as unknown as MutableRef, { n: 1 }),
-      incState(ctxB.resources.counter as unknown as MutableRef, { n: 1 })
+      incrementVia(ctxA.resources.counter as unknown as MutableRef, { n: 1 }),
+      incrementVia(ctxB.resources.counter as unknown as MutableRef, { n: 1 })
     ]);
 
     expect((await readRow(stores, "counter"))?.state).toMatchObject({ n: 2 });
   });
 
-  it("CURRENT BEHAVIOUR (defect, FIX-1260): a same-type transform DRIFTS the stored value", async () => {
-    // Like the FIX-1258 row above, this asserts what `main` does TODAY.
+  it("CURRENT BEHAVIOUR (defect D3): a same-type transform DRIFTS the stored value", async () => {
+    // Like the tombstone row above, this asserts what `main` does TODAY.
     //
-    // The schema satisfies both §7 availability conditions — no string index
-    // signature, and its output type IS its input type — so the verbs are
-    // offered on it. It drifts anyway, because `normalizeResourceState` stores
-    // the OUTPUT of `safeParse` rather than the candidate it validated, and both
-    // ends of a read-modify-write cycle run it (`resource-registry.ts:209` on
-    // load, `:664` on write).
+    // `normalizeResourceState` stores the OUTPUT of `safeParse` rather than the
+    // candidate it validated, and both ends of a read-modify-write cycle run it
+    // (`resource-registry.ts:209` on load, `:664` on write). The schema's output
+    // type IS its input type, so nothing stated over the handle's type could
+    // exclude this.
     //
-    // FIX-1154 deliberately does not fix it, and deliberately does NOT put a
-    // guard behind the two new verbs: that would leave `updateState` /
-    // `patchState` / `setState` corrupting through the same normalizer while the
-    // new verbs looked safe — the per-verb asymmetry this epic exists to remove.
-    // FIX-1260 owns it, in the shared normalizer. **This row fails when FIX-1260
-    // lands, and that failure is the intended signal.**
+    // The fix belongs to the shared normalizer, where it lands once for every
+    // mutator. **This row fails when that lands, and the failure is the intended
+    // signal.** Provenance: FIX-1260.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
     const ref = ctx.resources.drifting as unknown as MutableRef;
@@ -483,50 +526,108 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
 
     expect(second.n).toBe(first.n + 1);
 
-    // And through the proposed verb, which inherits it rather than causing it:
-    // a +1 lands as +2 and the call resolves successfully.
+    // And through an increment-shaped mutator, where a caller asking for +1
+    // gets +2 and the call resolves successfully.
     const before = (await readRow(stores, "drifting"))?.state as { n: number };
-    await incState(ref, { n: 1 });
+    await incrementVia(ref, { n: 1 });
     const after = (await readRow(stores, "drifting"))?.state as { n: number };
     expect(after.n).toBe(before.n + 2);
   });
 
-  it("row: a transform REFUSES only when its input side rejects its own output", async () => {
-    // The row that separates the CONDITION from the UNIVERSAL. An earlier draft
-    // of the spec said the verbs "are offered on a type-changing transform, and
-    // every call refuses non-retryably". The second half is false, and it had
-    // propagated into the published docs brief before anyone read it against
-    // the very heading it sat under ("output re-parses as input").
+  it("CURRENT BEHAVIOUR (defect D2): a .catch() schema SWALLOWS the failure and stores the fallback", async () => {
+    // Strictly worse than D1 and not the same defect. D1 needs the schema to
+    // REJECT the candidate; `.catch()` means `safeParse` never fails at all, so
+    // there is no rejection anywhere in this path. An inner refinement violation
+    // comes back as the catch fallback, `normalizeResourceState` stores that,
+    // and the whole row is replaced with no error raised.
     //
-    // Both schemas below are type-changing and both expose `n: number`, so the
-    // handles are indistinguishable and both offer the verbs. What differs is
-    // whether the candidate the verb builds survives a trip back through the
-    // schema's INPUT side.
+    // `.catch()` is ordinary defensive Zod — the point of the row is that the
+    // shape is unremarkable.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    const ref = ctx.resources.caught as unknown as MutableRef;
+
+    await ref.updateState(() => ({ n: 5, keep: "DO-NOT-LOSE" }));
+    expect((await readRow(stores, "caught"))?.state).toMatchObject({
+      n: 5,
+      keep: "DO-NOT-LOSE"
+    });
+
+    // Violates the INNER `nonnegative()` refinement. Nothing throws.
+    await ref.updateState((s) => ({ ...s, n: (s.n as number) - 99 }));
+
+    const row = await readRow(stores, "caught");
+    // The untouched field is gone, and the version advanced — a successful write
+    // that erased live data.
+    expect(row?.state).toMatchObject({ n: 0, keep: "schema-default" });
+    expect(row?.version).toBe(2);
+  });
+
+  it("CURRENT BEHAVIOUR (defect D4): a transform can INTRODUCE a value the adapters disagree on", async () => {
+    // The round-trip hazard reached from inside the schema rather than from the
+    // caller's argument, which is what makes it un-guardable at the call site:
+    // every value the caller supplied here is an ordinary finite number.
+    //
+    // The memory store keeps `Infinity` (it clones with `structuredClone`); a
+    // JSON-backed adapter stores `null`, which then fails the schema on the next
+    // durable read and lands in D1's replacement. Nothing throws on either side,
+    // so the two deployments simply hold different data from the same call.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    const ref = ctx.resources.infinitizing as unknown as MutableRef;
+
+    await ref.updateState(() => ({ n: 500, keep: "DO-NOT-LOSE" }));
+
+    const state = (await readRow(stores, "infinitizing"))?.state as {
+      n: number;
+      keep: string;
+    };
+    // Memory: the transform's output, stored intact.
+    expect(state.n).toBe(Infinity);
+    expect(state.keep).toBe("DO-NOT-LOSE");
+
+    // Every JSON-backed adapter: the same state, flattened.
+    expect(JSON.parse(JSON.stringify(state))).toEqual({
+      n: null,
+      keep: "DO-NOT-LOSE"
+    });
+  });
+
+  it("row: a transform loses the row only when its input side rejects its own output", async () => {
+    // The row that separates the CONDITION from the UNIVERSAL. An earlier draft
+    // of the spec generalized this to "every call on a transforming schema
+    // refuses", which is false, and it had propagated into the published docs
+    // brief before anyone read it against the heading it sat under ("output
+    // re-parses as input").
+    //
+    // Both schemas below are type-changing and both expose `n: number`, so from
+    // outside they are indistinguishable. What differs is whether a candidate
+    // built from the schema's own output survives a trip back through its INPUT
+    // side — and only that decides whether the row survives.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
 
-    // 1. Input wants a string. The candidate `{n: 1}` does not re-parse.
-    //    This is the case §10 17b tests: the write path's response to an
-    //    invalid candidate is to replace the whole state with the schema
-    //    default — which is why 17b asserts the STATE, not just the throw.
+    // 1. Input wants a string. The candidate `{n: 1}` does not re-parse, and
+    //    the write path's response to an invalid candidate is to replace the
+    //    whole state with the schema default — defect D1, reached through an
+    //    ordinary normalizing schema. Assert the STATE, not an absence of throw:
+    //    nothing throws here either way.
     const refusingRef = ctx.resources.refusing as unknown as MutableRef;
     await refusingRef.updateState((s) => ({ ...s, keep: "DO-NOT-LOSE" }));
-    await incState(refusingRef, { n: 1 });
+    await incrementVia(refusingRef, { n: 1 });
     const afterRefusing = (await readRow(stores, "refusing"))?.state as {
       n: number;
       keep: string;
     };
-    // No guard exists yet, so `main` does the destructive thing rather than
-    // refusing. The shipped verb has to turn this into a typed, non-retryable
-    // ValidationError that leaves the row alone.
+    // `keep` was live data. It is gone, and the call reported success.
     expect(afterRefusing.keep).toBe("schema-default");
 
     // 2. Input accepts a number OR a string. The same candidate re-parses, so
-    //    the call SUCCEEDS and the row is intact. An implementation that
-    //    refuses whenever it detects a transform breaks this row (§10 17c).
+    //    the write lands and the row is intact. The negative control: the
+    //    hazard is re-parse rejection, not "the schema transforms".
     const overlappingRef = ctx.resources.overlapping as unknown as MutableRef;
     await overlappingRef.updateState((s) => ({ ...s, keep: "DO-NOT-LOSE" }));
-    await incState(overlappingRef, { n: 1 });
+    await incrementVia(overlappingRef, { n: 1 });
     const afterOverlapping = (await readRow(stores, "overlapping"))?.state as {
       n: number;
       keep: string;
@@ -536,15 +637,16 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
   });
 
   // -------------------------------------------------------------------------
-  // THE REFUSAL ROWS.
+  // THE DATA-LOSS ROWS.
   //
-  // Everything above characterizes the CAS driver. These four characterize the
-  // hazards the two verbs have to refuse — and they exist because prose kept
-  // getting them wrong. Each pins what `main` does TODAY, so each states the
-  // gap the shipped guard has to close rather than the guard's own behaviour.
+  // Everything above characterizes the CAS driver. These four characterize what
+  // the write path does with values the schema ACCEPTS but the storage layer
+  // cannot carry — §7c's hazard class. They exist because prose kept getting
+  // the boundary wrong, each round enumerating the kinds known at the time.
+  // Each pins what `main` does TODAY.
   // -------------------------------------------------------------------------
 
-  it("refusal gap: BRANDED OBJECTS survive z.array(z.any()) and then split by adapter", async () => {
+  it("data loss: BRANDED OBJECTS survive z.array(z.any()) and then split by adapter", async () => {
     // The case no kind-based check sees. `undefined`, functions, symbols and
     // bigints all announce themselves to a `typeof` test; a Date does not. It
     // is an object with no enumerable own properties, so a guard walking
@@ -554,14 +656,14 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const ctx = await makeCtx(stores, "req_a");
     const ref = ctx.resources.bag as unknown as MutableRef;
 
-    await pushState(ref, "items", new Date("2020-01-01T00:00:00.000Z"));
-    await pushState(ref, "items", new Map([["a", 1]]));
-    await pushState(ref, "items", new Set([1, 2]));
-    await pushState(ref, "items", /abc/g);
+    await appendVia(ref, "items", new Date("2020-01-01T00:00:00.000Z"));
+    await appendVia(ref, "items", new Map([["a", 1]]));
+    await appendVia(ref, "items", new Set([1, 2]));
+    await appendVia(ref, "items", /abc/g);
 
     const items = ((await readRow(stores, "bag"))?.state as PocState).items as unknown[];
 
-    // 1. The schema accepted all four. No refusal exists today.
+    // 1. The schema accepted all four. Nothing on this path rejects them.
     expect(items).toHaveLength(4);
 
     // 2. The MEMORY store preserved them as live instances, because
@@ -577,9 +679,9 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     // 3. A JSON-backed adapter stores something DIFFERENT for the same write:
     //    the Date flattens to a string, and Map/Set/RegExp flatten to `{}` —
     //    losing their contents outright. Two adapters, two stored values, one
-    //    caller. That divergence is the whole reason the append rule exists,
-    //    and it is why the rule is stated as "survives a JSON round-trip
-    //    unchanged" rather than as a list of forbidden kinds.
+    //    caller. That divergence is why §7c states the hazard as "survives a
+    //    JSON round-trip unchanged" rather than as a list of forbidden kinds:
+    //    a Date is perfectly JSON-safe and still stores differently.
     expect(JSON.parse(JSON.stringify(items))).toEqual([
       "2020-01-01T00:00:00.000Z",
       {},
@@ -588,20 +690,20 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     ]);
   });
 
-  it("refusal gap: a BIGINT or SYMBOL delta throws a RETRYABLE raw TypeError", async () => {
+  it("data loss: a BIGINT or SYMBOL delta throws a RETRYABLE raw TypeError", async () => {
     // `current + delta` runs before anything validates `delta`. For these two
     // the arithmetic itself throws, and it throws the wrong TYPE: a raw
     // TypeError is not a FlowError, so `isRetryableError` returns true for it
     // under any policy — the block re-runs, replaying every side effect it
-    // already performed. "Documented as fatal" does not survive this; only the
-    // error's type does.
+    // already performed. Documenting an error as fatal does not survive this;
+    // only the error's type does, which is the mechanism behind D6.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
     const ref = ctx.resources.bag as unknown as MutableRef;
     const policy = { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 };
 
     for (const delta of [1n, Symbol("nope")]) {
-      const caught = await incState(ref, { n: delta } as never).then(
+      const caught = await incrementVia(ref, { n: delta } as never).then(
         () => undefined,
         (e: unknown) => e
       );
@@ -616,7 +718,7 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect((await readRow(stores, "bag"))?.state).toBeUndefined();
   });
 
-  it("refusal gap: a STRING delta does not throw at all — it RESETS THE ROW and reports success", async () => {
+  it("data loss: a STRING delta does not throw at all — it RESETS THE ROW and reports success", async () => {
     // The worst row in this file, and the one that shows why the delta has to
     // be validated BEFORE the arithmetic rather than caught after it.
     //
@@ -628,14 +730,14 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const ctx = await makeCtx(stores, "req_a");
     const ref = ctx.resources.bag as unknown as MutableRef;
 
-    await incState(ref, { n: 5 });
+    await incrementVia(ref, { n: 5 });
     await ref.updateState((s) => ({ ...s, keep: "DO-NOT-LOSE" }));
 
     const before = await readRow(stores, "bag");
     expect(before?.state).toMatchObject({ n: 5, keep: "DO-NOT-LOSE" });
 
     // No rejection. The call resolves.
-    await expect(incState(ref, { n: "5" } as never)).resolves.toBeUndefined();
+    await expect(incrementVia(ref, { n: "5" } as never)).resolves.toBeUndefined();
 
     const after = await readRow(stores, "bag");
     // The counter is back to its default AND the untouched field is destroyed.
@@ -644,12 +746,11 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect(after?.version).toBeGreaterThan(before?.version as number);
   });
 
-  it("control: a plain Error is retryable too — which is why refusals need a TYPE", async () => {
-    // The negative control for the two rows above. It is not about the verbs;
-    // it pins the classifier's default, which is what makes every "throws"
-    // instruction in the spec insufficient on its own. A refusal that throws
-    // `new Error("bad delta")` satisfies every test that only asserts
-    // rejection, and is then retried.
+  it("control: a plain Error is retryable too — which is why D6 is a defect", async () => {
+    // The negative control for the two rows above, and D6's mechanism. It pins
+    // the classifier's default: a refusal thrown as `new Error(...)` satisfies
+    // every test that only asserts rejection, and is then retried anyway. Both
+    // read-only refusals on `main` are exactly that shape.
     const policy = { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 };
 
     expect(isRetryableError(new Error("bad delta"), policy)).toBe(true);
