@@ -452,7 +452,7 @@ describe("a half-created checkout does not brick every retry", () => {
     });
   });
 
-  it("recreates a marked checkout even when `.git` is already there", async () => {
+  it("recreates a marked checkout whose tree agrees it is half-built", async () => {
     // **This assertion is the inverse of the one it replaces, and the reason is
     // a measurement.** The old rule made `.git` the witness that provisioning
     // finished, so a marked checkout carrying `.git` was reused and the marker
@@ -465,16 +465,24 @@ describe("a half-created checkout does not brick every retry", () => {
     // agent, whose first commit then deletes the 159 files the checkout never
     // received.
     //
-    // So the marker wins. It is written before `worktree add` and cleared after
-    // it returns, so a tree carrying one is by construction a tree no agent has
-    // run in — this function had not returned, and the agent runs only after it
-    // does. Recreating costs a provision and can lose nothing.
+    // So `.git` alone does not authorise reuse. Neither does the marker alone
+    // authorise deletion: it sits in the workspace root, where the coding agent
+    // can write it. What authorises deletion is the two of them AGREEING — a
+    // marker, and a tree that independently reports tracked files missing. That
+    // combination is a provision that did not finish, and recreating it costs a
+    // provision and can lose nothing. The case where they disagree is the test
+    // below.
     const config = workspace();
     const location = at("FIX-1219", "implement");
     const first = await provisionCheckout(config, location);
 
-    // The half-finished add: `.git` and the branch are real, the tree is not,
-    // and the marker is the only thing that says so.
+    // The half-finished add, staged as it actually looks: `.git` and the branch
+    // are real and a TRACKED FILE IS MISSING from the working tree, which is
+    // what a killed `worktree add` leaves behind and what `git ls-files
+    // --deleted` reports. The marker alone is no longer enough — it is writable
+    // by anything with access to the workspace root, the coding agent included —
+    // so the tree has to agree that it is half-built.
+    rmSync(join(first.path, "tracked.txt"));
     writeFileSync(join(first.path, "half-populated.txt"), "partial");
     writeFileSync(`${first.path}.provisioning`, "");
 
@@ -495,6 +503,40 @@ describe("a half-created checkout does not brick every retry", () => {
     expect(readFileSync(join(second.path, "uncommitted.txt"), "utf8")).toBe(
       "the last attempt's work",
     );
+  });
+
+  it("refuses a marked checkout whose tree is complete", async () => {
+    // **The forged marker.** The marker is a file in the workspace root, beside
+    // the checkout, and the coding agent has a shell — so it can create one at
+    // any point, including in a tree holding a whole attempt's work. Believing it
+    // on its own means a recursive delete of exactly what the reuse design exists
+    // to protect.
+    //
+    // Here the two signals disagree: a marker says a provision was interrupted,
+    // and the tree says every tracked file is present. Deleting would destroy work
+    // that is definitely real to honour a marker that might not be; reusing would
+    // ignore a marker that might be. So neither happens — the operator is told,
+    // and the tree is left exactly as it was found.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+
+    writeFileSync(`${first.path}.provisioning`, "");
+
+    await expect(provisionCheckout(config, location)).rejects.toThrow(
+      /says a provision was interrupted, but the checkout/,
+    );
+    // The load-bearing assertions: nothing was deleted, and the marker was not
+    // quietly cleared either — a refusal that consumed the evidence would let the
+    // next attempt sail past into a reuse this one just declined to make.
+    expect(readFileSync(join(first.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+    expect(readFileSync(join(first.path, "tracked.txt"), "utf8")).toBe(
+      "content the checkout should carry\n",
+    );
+    expect(existsSync(`${first.path}.provisioning`)).toBe(true);
   });
 
   it("keeps a tree whose `.git` went missing without an interrupted provision", async () => {

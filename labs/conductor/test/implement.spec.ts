@@ -91,6 +91,20 @@ describe("the done-condition — which pull requests count", () => {
     // And the port belongs ONLY to the selector: a pull request row's head
     // identity is `owner/name`, with no host and no port to compare against.
     expect(repoSlugFromRemote("https://ghe.acme:8443/owner/repo")?.ownerRepo).toBe("owner/repo");
+
+    // **A trailing slash is not part of the name.** The strip order used to be
+    // `.git` then slashes, so `…/repo.git/` kept its suffix and named a
+    // repository called `repo.git` — `gh -R` then found no pull requests for
+    // `repo`, and a finished run was reported unfinished and retried until the
+    // budget ran out. `git remote add` accepts the URL exactly as typed, so this
+    // is a spelling a real remote can carry.
+    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git/")?.selector)
+      .toBe("github.com/fixpoint-labs/flow-state-dev");
+    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git//")?.ownerRepo)
+      .toBe("fixpoint-labs/flow-state-dev");
+    expect(repoSlugFromRemote("git@github.com:fixpoint-labs/flow-state-dev.git/")?.selector).toBe(
+      "github.com/fixpoint-labs/flow-state-dev",
+    );
   });
 
   it("hands the selector and the attribution to their own callers", () => {

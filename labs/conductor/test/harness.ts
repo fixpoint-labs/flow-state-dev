@@ -9,7 +9,7 @@
  * verdict can be staged, and the done-condition, so the conjunction's two arms
  * can be staged independently.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
@@ -154,7 +154,15 @@ export function seedRepo(dir: string): void {
   git("init", "--initial-branch=main", ".");
   git("config", "user.email", "conductor@example.test");
   git("config", "user.name", "Conductor Test");
-  git("commit", "--allow-empty", "-m", "root");
+  // **A stand-in repository has tracked content, because a real one does.**
+  // These fixtures committed nothing, so every worktree cut from them had zero
+  // tracked files — which makes a half-populated checkout indistinguishable from
+  // a complete one (`git ls-files --deleted` is empty either way), and that
+  // distinction is what the provisioning marker is now corroborated against.
+  // Another fixture that had drifted from the thing it stands for.
+  writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
+  git("add", "tracked.txt");
+  git("commit", "-m", "root");
   // **A stand-in source repository has an `origin`, because a real one does.**
   // The implement phase's completion probe reads it, and `conductorFlow` now
   // refuses a source repo without one — a guard that exists because the failure

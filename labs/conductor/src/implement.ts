@@ -125,7 +125,12 @@ export interface RemoteRepo {
 }
 
 export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
-  const trimmed = url.trim().replace(/\.git$/, "");
+  // **Trailing slashes come off BEFORE `.git`, not after.** `…/repo.git/` left
+  // the suffix in place, so the selector named a repository called `repo.git`
+  // and every pull request for `repo` was missed — a successful run reported
+  // unfinished, retried, budget spent. Fourth spelling this parser has been
+  // wrong about, after the host, the port and the casing.
+  const trimmed = url.trim().replace(/\/+$/, "").replace(/\.git$/, "");
   // `scheme://[user@]host/owner/name`
   // The port is part of the HOST, captured with it. Matching it and throwing it
   // away sent an Enterprise checkout on `:8443` to the same hostname on 443 — a

@@ -555,6 +555,29 @@ async function gitIdentity(dir: string, timeoutMs: number): Promise<string | und
   }
 }
 
+/**
+ * Does this tree look like a `worktree add` that was killed part-way?
+ *
+ * `git ls-files --deleted` lists tracked files that the index expects and the
+ * working tree does not have — which is precisely what a half-populated checkout
+ * is, and precisely what a checkout an agent has worked in is not. Used to
+ * corroborate the provisioning marker before acting on it, because the marker
+ * itself is writable by anything with access to the workspace root.
+ *
+ * **A tree we cannot interrogate does not look half-built.** If git cannot
+ * answer — no `.git`, an unreadable repository, a timeout — the honest answer is
+ * "unknown", and unknown must not authorise a recursive delete. The caller's
+ * other branches handle a missing `.git` on its own terms.
+ */
+async function looksHalfBuilt(path: string, timeoutMs: number): Promise<boolean> {
+  if (!existsSync(join(path, ".git"))) return true;
+  try {
+    return (await git(path, ["ls-files", "--deleted"], timeoutMs)).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function branchExists(
   config: WorkspaceConfig,
   branch: string,
@@ -632,31 +655,57 @@ export async function provisionCheckout(
 
   const marker = provisioningMarkerFor(path);
 
-  // **The marker outranks `.git`, and this inverts an earlier call in this
-  // file.** `.git` was treated as the witness that provisioning finished, so a
-  // checkout carrying it was reused and the marker cleared on the way past.
+  // **A marked tree is reused, cleared, or refused — and the marker alone does
+  // not decide which.** Two earlier calls in this file were both wrong, in
+  // opposite directions, and the rule below is what is left after each was
+  // measured.
   //
-  // Measured, and the measurement is what moved it. `git worktree add` killed
-  // mid-checkout can leave `.git`, the expected branch, and a registered
-  // worktree all in place with the tree only partly populated: 400 tracked
-  // files, 241 present, and 401 staged deletions waiting in the index. Reusing
-  // that hands the agent a tree that looks healthy and is missing most of the
-  // repository — and its first commit deletes every file the checkout never
-  // received.
+  // First: `.git` was treated as the witness that provisioning finished, so any
+  // checkout carrying it was reused. That is wrong. `git worktree add` killed
+  // mid-checkout leaves `.git`, the expected branch, and a registered worktree
+  // all in place with the tree only partly populated — measured at 400 tracked
+  // files, 241 present, 401 staged deletions waiting in the index. Reusing that
+  // hands the agent a tree that looks healthy and is missing most of the
+  // repository, and its first commit deletes every file the checkout never
+  // received. So `.git` witnesses that setup REACHED a point, not that it
+  // finished.
   //
-  // So `.git` witnesses that setup REACHED a point, not that it finished. The
-  // marker is the only positive statement that provisioning started and did not
-  // return, and it is written before `worktree add` and cleared after, so when
-  // it is present the tree is by construction one no agent has run in: this
-  // function had not returned, and the agent runs only after it does. Clearing
-  // and recreating costs a reprovision and can lose nothing.
+  // Second, the over-correction: let the marker outrank `.git`, on the argument
+  // that a marked tree is "by construction one no agent has run in" — the marker
+  // is written before `worktree add` and cleared before this function returns,
+  // and the agent runs only after it returns. That is wrong about who can write
+  // the file. The marker lives beside the checkout, in the workspace root, and
+  // the coding agent has a shell: it can create `<checkout>.provisioning` at any
+  // time. The next attempt then reads a forged or stray marker as proof of an
+  // interrupted provision and recursively deletes a tree holding committed and
+  // uncommitted work — the exact loss the whole reuse design is priced on,
+  // caused by the guard against it.
   //
-  // That also subsumes what clearing-on-`.git` was added for. A marker stranded
-  // by a death just after `worktree add` returned no longer outlives its
-  // meaning, because the next provision acts on it immediately — against a tree
-  // that cannot yet hold work — instead of leaving it armed for a later attempt
-  // to misread.
-  const interrupted = existsSync(marker);
+  // There is no filesystem location an unrestricted agent cannot reach, so
+  // "store the marker out of its scope" is not available. What IS available is a
+  // second opinion: a killed `worktree add` leaves tracked files MISSING from
+  // the working tree (the 241-of-400 measurement above; the rest are listed by
+  // `git ls-files --deleted`), while a checkout an agent has worked in does not.
+  // So the marker is acted on only when the tree independently agrees it is
+  // half-built.
+  //
+  // When they disagree — marker present, `.git` valid, nothing missing — the
+  // tree is REFUSED rather than reused or deleted. Reusing it would ignore a
+  // marker that might be real; deleting it destroys work that is definitely
+  // real. This module's standing answer for contents it cannot explain is to
+  // keep them and say so.
+  const interrupted = existsSync(marker) && (await looksHalfBuilt(path, left()));
+
+  if (existsSync(marker) && !interrupted && existsSync(join(path, ".git"))) {
+    throw new Error(
+      `[conductor] ${marker} says a provision was interrupted, but the checkout at ${path} ` +
+        `is complete — every tracked file is present. One of the two is lying, and this ` +
+        `will not guess: the marker can be created by anything with write access to the ` +
+        `workspace root, including the coding agent, and the tree may hold real work. ` +
+        `Inspect it, then delete the marker to reuse the checkout or delete the checkout ` +
+        `to have it rebuilt.`,
+    );
+  }
 
   if (!interrupted && existsSync(join(path, ".git"))) {
     if (!(await branchExists(config, branch, left()))) {
@@ -762,11 +811,13 @@ export async function provisionCheckout(
     // exactly like an interrupted provision while holding real uncommitted work,
     // and clearing it destroys the thing decision 2 is priced on.
     //
-    // So the interrupted case is IDENTIFIED rather than inferred. The marker is
-    // written before `worktree add` and removed when it returns, so its presence
-    // is a positive statement that a provision started and did not finish.
-    // Absent, this directory is something we did not make and cannot explain,
-    // and the safe disposition for unknown contents is to keep them.
+    // So the interrupted case is IDENTIFIED rather than inferred. `interrupted`
+    // is the corroborated reading established above, not a bare `existsSync` on
+    // the marker; with no `.git` here the corroboration is trivially satisfied,
+    // so on this branch it reduces to the marker — but it reduces to it by the
+    // same rule, not by a second one. Absent, this directory is something we did
+    // not make and cannot explain, and the safe disposition for unknown contents
+    // is to keep them.
     if (!interrupted) {
       throw new Error(
         `[conductor] the checkout at ${path} has no \`.git\` and no record of an ` +

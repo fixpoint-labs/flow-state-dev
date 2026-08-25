@@ -194,10 +194,16 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  *   permanently unclaimable (`depsSatisfied`). `seed` reports filed and the run
  *   simply never happens: no error, no attempt, no work.
  *
- * `status` is deliberately NOT checked: a completed row is the ordinary
- * idempotent case, and refusing it would turn re-seeding a finished task into an
- * error. `priority` and `labels` decide order and nothing else, and are
- * model-patchable besides.
+ * - `status`, but only the PARKED ones. `isClaimable` admits `pending` and a
+ *   lapsed `in_progress`; `completed`, `errored` and `cancelled` are terminal, so
+ *   a seed reporting "filed" against them is honest — the row exists and its
+ *   story is finished, which is the ordinary idempotent case. `blocked` and
+ *   `awaiting_review` are neither: the row exists, will never be claimed, and
+ *   `seed` says filed while nothing ever runs. Saying "status is not checked"
+ *   was too coarse — it is one field carrying three different answers.
+ *
+ * `priority` and `labels` decide order and nothing else, and are model-patchable
+ * besides.
  *
  * `assignee` is model-patchable through `updateTask` while `maxAttempts` and
  * `deps` are not — so this is a statement about the row as filed, and only the
@@ -210,6 +216,7 @@ function seedMayReuse(
     assignee?: unknown;
     maxAttempts?: unknown;
     deps?: unknown;
+    status?: unknown;
   },
   maxAttempts: number,
 ): boolean {
@@ -217,6 +224,10 @@ function seedMayReuse(
   if (task.maxAttempts !== maxAttempts) return false;
   // Absent or empty is what this conductor files; anything else gates the claim.
   if (Array.isArray(task.deps) ? task.deps.length > 0 : task.deps !== undefined) return false;
+  // Parked: not claimable, not terminal. `awaiting_review` is `blocked`'s
+  // sibling here and was not reported — the set is what matters, not the
+  // instance.
+  if (task.status === "blocked" || task.status === "awaiting_review") return false;
   return rowOwnsItsIdentity(task);
 }
 
@@ -482,7 +493,8 @@ export function conductorFlow(options: ConductorFlowOptions) {
               `conductor filed — its payload does not describe ${input.issue}/${input.phase}, ` +
               `it is routed to an assignee other than "${ASSIGNEE}", its retry budget is ` +
               `not the ${maxAttempts} this conductor configures, or it carries dependencies ` +
-              `that would keep it unclaimable. Refusing to report ` +
+              `that would keep it unclaimable, or a parked status a drain never ` +
+              `admits. Refusing to report ` +
               `this seed as filed: draining that row charges it an attempt and then finds ` +
               `nothing to run it, and the task asked for here would never exist.`,
           );
@@ -540,7 +552,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
             `[conductor] the create at "${taskId}" lost to a row this conductor did not ` +
               `file — wrong payload for ${input.issue}/${input.phase}, an assignee other ` +
               `than "${ASSIGNEE}", a retry budget that is not ${maxAttempts}, or dependencies ` +
-              `that would keep it unclaimable. Refusing ` +
+              `that would keep it unclaimable, or a parked status. Refusing ` +
               `to report this seed as filed: the task asked ` +
               `for here would never exist.`,
           );
