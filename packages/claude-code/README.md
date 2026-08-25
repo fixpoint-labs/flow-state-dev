@@ -124,45 +124,75 @@ By default a run works in whatever directory the server process is running in.
 Pass `cwd` to point it somewhere else:
 
 ```ts
-import { isAbsolute, join, relative } from "node:path";
+import { mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
 
 const CHECKOUT_ROOT = "/var/agent-checkouts";
+
+claudeCodeAgent({
+  // A fresh directory per run, created by the server. No caller input reaches
+  // the path.
+  cwd: () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
+});
+```
+
+A function, not a string: one flow build serves many runs, so it resolves per
+invocation. It may return a promise, as here.
+
+The run's file tools address relative paths inside that directory, and so does
+`recordWork`'s record of what the run touched. It is a working directory, not a
+boundary — a run can still reach an absolute path outside it, and that operation
+is recorded at the path it reached.
+
+#### Reusing a directory across runs
+
+A throwaway directory is the easy case. If you want runs that belong together to
+share a checkout — a retry picking up where the last attempt stopped, say — the
+path has to be derived from something stable, and **that is where the sharp
+edges are**:
+
+```ts
+import { isAbsolute, join, relative } from "node:path";
+
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-function checkoutFor(sessionId: string): string {
-  // Session ids arrive from the caller over HTTP, so this is untrusted input on
-  // its way to becoming a filesystem path (BP-031). Rejected rather than
-  // stripped: stripping maps two sessions onto one checkout.
-  if (!SAFE_SEGMENT.test(sessionId)) {
-    throw new Error(`unusable session id: ${sessionId}`);
-  }
-  const dir = join(CHECKOUT_ROOT, sessionId);
-  // `relative`, not a string prefix: `join` uses the platform separator, so
-  // comparing against a literal "/" rejects every valid id on Windows.
+function safeSegment(value: string): string {
+  // Rejected, never stripped: stripping maps two distinct values onto one
+  // directory, which silently gives two runs the same checkout.
+  if (!SAFE_SEGMENT.test(value)) throw new Error(`unusable path segment: ${value}`);
+  return value;
+}
+
+function checkoutFor(tenantId: string | undefined, key: string): string {
+  // A separate segment each. Concatenating them re-creates the ambiguity the
+  // tenant is here to remove.
+  const dir = join(CHECKOUT_ROOT, safeSegment(tenantId ?? "default"), safeSegment(key));
+  // `relative`, not a string prefix: `join` uses the platform separator, so a
+  // check against a literal "/" rejects every valid value on Windows.
   const rel = relative(CHECKOUT_ROOT, dir);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
   }
   return dir;
 }
-
-claudeCodeAgent({
-  cwd: (_input, ctx) => checkoutFor(ctx.session.identity.id),
-});
 ```
 
-A function, not a string: one flow build serves many runs, so it resolves per
-invocation. It may be async, for a directory that has to be looked up or
-provisioned first.
+Three rules, and each of them exists because of a way this goes wrong:
 
-**Validate whatever you key the directory on before it becomes a path.** A
-working directory decides where a coding agent writes, so an identifier that
-reached it from a request body would let a caller redirect the run.
+- **Validate every part as a single path segment.** Session ids and request ids
+  both arrive from the caller, so a value like `../../server-repo` would send the
+  run somewhere you did not choose (BP-031).
+- **Include the tenant when you have one.** Two tenants can hold the same session
+  id — the framework namespaces its own session storage by tenant for exactly
+  that reason — so a path built from the session alone puts two tenants in one
+  directory.
+- **Confirm the result is still inside your root**, with `relative` rather than a
+  string comparison.
 
-The run's file tools address relative paths inside that directory, and so does
-`recordWork`'s record of what the run touched. It is a working directory, not a
-boundary — a run can still reach an absolute path outside it, and that operation
-is recorded at the path it reached.
+Prefer a key you control over one that arrives with the request. The safest
+version of this is a value your own code assigned — a job id from your queue, a
+row id from your database — with the guards above as the backstop rather than
+the only defence.
 
 Full behaviour, including what an empty or symlinked directory does, is on the
 `cwd` option's own docs in `src/sdk/agent.ts` and in the
