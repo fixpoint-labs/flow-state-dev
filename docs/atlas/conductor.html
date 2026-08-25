@@ -870,7 +870,7 @@ export const conductor = <em>defineFlow</em>({
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 400" role="img" aria-label="The question channel as a cycle. A harness manager wraps each workstream, runs the turn, reads the outcome, and posts what it cannot answer to the inbox. The inbox is a user-scoped collection keyed by epic, holding one row per open question, moving from open to asked to answered. The coordinator, which is the main session, reads the inbox, asks one open row at a time, and classifies your reply. Your answer becomes a steer carrying an answer, an instruction, a tangent or a cancel, and the steer travels back into the running workstream.">
+      <svg viewBox="0 0 940 400" role="img" aria-label="The question channel as a cycle. A harness manager wraps each workstream, runs the turn, reads the outcome, and posts what it cannot answer to the inbox. The inbox is a user-scoped collection holding one row per open question, moving from open to asked to answered. The coordinator, which is the main session, reads the inbox, asks one open row at a time, and classifies your reply. Your answer becomes a steer carrying an answer, an instruction, a tangent or a cancel, and the steer travels back into the running workstream.">
         <rect class="n-prop" x="16" y="46" width="268" height="104" rx="4"/>
         <text class="t-b f-accent" x="34" y="72">harness manager</text>
         <text class="t-xs" x="34" y="90">PROPOSED &middot; ONE PER RUN</text>
@@ -882,7 +882,7 @@ export const conductor = <em>defineFlow</em>({
 
         <rect class="n-prop" x="336" y="46" width="268" height="104" rx="4"/>
         <text class="t-b f-accent" x="354" y="72">inbox/**</text>
-        <text class="t-xs" x="354" y="90">PROPOSED &middot; USER-SCOPED, KEYED BY EPIC</text>
+        <text class="t-xs" x="354" y="90">PROPOSED &middot; USER-SCOPED COLLECTION</text>
         <text class="t-s" x="354" y="112">one row per open question</text>
         <text class="t-s" x="354" y="132">open &#8594; asked &#8594; answered</text>
 
@@ -920,13 +920,11 @@ export const conductor = <em>defineFlow</em>({
 
   <p>A user-scoped collection, one instance per open question. The scope choice is load-bearing: a detached child inherits tenant, user, org and flow kind from the request that started it, so a <strong>user</strong>-scoped collection is one instance set shared by the coordinator and every workstream under it. A session-scoped collection would need <code>sharedToWorkstream: true</code> to reach the lineage at all, and would then be tied to one epic's session &#8212; the wrong lifetime for a thing you answer tomorrow morning. The run index further down makes the opposite call, for the opposite reason.</p>
 
-  <p><strong>The epic is the partition; the scope is the lifetime.</strong> User scope is one bucket per user with no session dimension, and every coordinator runs flow kind <code>conductor</code>, so flow isolation does not separate two epics either. Only the key can. Rows land at <code>inbox/&lt;epicId&gt;/&lt;rowId&gt;</code>, so a coordinator's <code>list()</code> narrows to its own epic at the source rather than loading the user's rows and discarding most of them. Same rule the board applies to its task ledger, where the <code>boardId</code> and the collection id are both derived from the epic: the id partitions, the scope decides how long a row lives.</p>
-
-  <p>Pool them instead and both halves fail quietly. A coordinator steering another epic's topic never reaches that epic's run, because the child session id is derived from its own parent session and lineage; the steer spawns a fresh unrelated agent run on the wrong board, while the borrowed row flips to <code>answered</code> carrying an answer written for a different question.</p>
+  <p><strong>The board partitions by epic; the inbox does not.</strong> A board is a claim pool, and one collection id is one pool &#8212; the claim predicate tests status and deps only, so two epics sharing an id claim each other's rows (section 4). An inbox is not a pool: nothing claims a row, and issue ids are globally unique, so two epics cannot collide on a key. An unfiltered <code>list()</code> spanning every epic is the product rather than a defect &#8212; it is your inbox, and everything waiting on you sits in one place.</p>
 
   <pre class="code"><i>// PROPOSED &#8212; defineResourceCollection and every option below exist.</i>
 export const inbox = <em>defineResourceCollection</em>({
-  pattern: "inbox/**",               <i>// inbox/&lt;epicId&gt;/&lt;rowId&gt; &#8212; one epic per prefix</i>
+  pattern: "inbox/**",               <i>// inbox/&lt;issue&gt;/&lt;phase&gt;/&lt;attempt&gt;/&lt;fingerprint&gt;</i>
   scope: "user",                     <i>// one set, shared by the coordinator and every workstream</i>
   llmReadable: true,
   client: { state: { read: true }, <b>live</b>: true },   <i>// the delta rides the mutating request's stream</i>
@@ -1233,19 +1231,19 @@ export const inbox = <em>defineResourceCollection</em>({
 
   <h3>The coordinator's job, and why it stays small</h3>
 
-  <p>When the coordinator wakes it does one thing: read the open inbox rows under its own epic, ask about them, take your reply, and route it. That is a classification problem over a set of size one to three. It is not a re-derivation of the epic, and it never needs to be, because everything that would justify a larger context is already in a collection somebody else can read.</p>
+  <p>When the coordinator wakes it does one thing: read the open inbox rows, ask about them, take your reply, and route it. That is a classification problem over a set of size one to three. It is not a re-derivation of the epic, and it never needs to be, because everything that would justify a larger context is already in a collection somebody else can read.</p>
 
   <p>Three workstreams asking at once is the ordinary case, not the edge case. <strong>The coordinator serializes.</strong> One inbox, one question at a time, and the answer routed back to the run that asked. That is deliberately the opposite of per-workstream question threads, where you would address any of three channels in any order &#8212; which is exactly the juggling of parallel Claude sessions this project exists to replace. Recreating it inside the tool would forfeit the point.</p>
 
-  <p>And the classify-and-route step is itself <strong>a flow made of blocks</strong>, not one large model turn. A small structured generator decides which of the epic's open rows a reply answers; a router dispatches one steer per answered row. Both primitives ship today: <code>intentClassifier</code> and <code>intentRouter</code> live in <code>@flow-state-dev/core</code>, and <code>router({ routes, execute })</code> is a first-class block kind.</p>
+  <p>And the classify-and-route step is itself <strong>a flow made of blocks</strong>, not one large model turn. A small structured generator decides which open rows a reply answers; a router dispatches one steer per answered row. Both primitives ship today: <code>intentClassifier</code> and <code>intentRouter</code> live in <code>@flow-state-dev/core</code>, and <code>router({ routes, execute })</code> is a first-class block kind.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 254" role="img" aria-label="The classify-and-route flow. One reply enters against the N open inbox rows of one epic. A structured generator classifies it into a list of row id, answer and confidence triples. A router dispatches one steer per answered row into the workstream that asked. A reply that matches nothing, or matches two rows at equal confidence, branches to an ask-back that re-asks naming both rows. A reply may answer several rows, one row, or none, and may open a new topic while it does.">
+      <svg viewBox="0 0 940 254" role="img" aria-label="The classify-and-route flow. One reply enters against N open inbox rows. A structured generator classifies it into a list of row id, answer and confidence triples. A router dispatches one steer per answered row into the workstream that asked. A reply that matches nothing, or matches two rows at equal confidence, branches to an ask-back that re-asks naming both rows. A reply may answer several rows, one row, or none, and may open a new topic while it does.">
         <rect class="n-human" x="30" y="56" width="184" height="76" rx="4"/>
         <text class="t-b f-human" x="46" y="82">your reply</text>
         <text class="t-xs" x="46" y="100">ONE MESSAGE</text>
-        <text class="t-xs" x="46" y="116">N OPEN ROWS, ONE EPIC</text>
+        <text class="t-xs" x="46" y="116">N OPEN ROWS</text>
         <path class="ln" d="M214,94 L262,94"/>
 
         <rect class="n-prop" x="262" y="56" width="184" height="76" rx="4"/>
@@ -1273,7 +1271,7 @@ export const inbox = <em>defineResourceCollection</em>({
         <text class="t-lbl" x="470" y="228" text-anchor="middle">A REPLY MAY ANSWER SEVERAL ROWS, ONE ROW, OR NONE &#8212; AND MAY OPEN A NEW TOPIC WHILE IT DOES</text>
       </svg>
     </div>
-    <figcaption><b>Classification, not conversation.</b> The generator's input is the reply plus its epic's open rows &#8212; a bounded prompt whose size does not grow with the epic. <code>intentRouter</code> as shipped picks exactly one category, so the multi-answer case needs a structured classifier plus a per-answer dispatch rather than the packaged router.</figcaption>
+    <figcaption><b>Classification, not conversation.</b> The generator's input is the reply plus the open rows &#8212; a bounded prompt whose size does not grow with the epic. <code>intentRouter</code> as shipped picks exactly one category, so the multi-answer case needs a structured classifier plus a per-answer dispatch rather than the packaged router.</figcaption>
   </figure>
 
   <p><strong>The honest hard case.</strong> A reply that answers one row cleanly is easy. Three cases are not, and the design has to say what happens rather than hope:</p>
@@ -1295,7 +1293,7 @@ export const inbox = <em>defineResourceCollection</em>({
         <tr><td>Starts the run and lets the turn finish</td><td><span class="tag t-real">exists</span></td><td><code>claudeCodeAgent</code> runs the SDK's own agentic loop to completion and returns a handle carrying status, usage and cost. <code>maxTurns</code> bounds it</td></tr>
         <tr><td>Reads the outcome</td><td><span class="tag t-real">exists</span></td><td>A terminal SDK subtype other than <code>"success"</code> is an <em>outcome</em>, not a throw &#8212; a handle with <code>status: "errored"</code> plus an error item. An SDK throw mid-stream is wrapped and rethrown</td></tr>
         <tr><td>Decides: settle, retry, wait, or ask</td><td><span class="tag t-prop">proposed</span></td><td>The one genuinely new piece of logic. Its inputs are the handle, the done-condition, and the attempt count</td></tr>
-        <tr><td>Posts a row to the inbox when it must ask</td><td><span class="tag t-prop">proposed</span></td><td><code>ctx.resources.inbox.create(`${epicId}/${rowId}`, {&#8230;})</code>, and then <strong>parks the task and ends its request</strong>, so nothing is held open while the question waits and the row is the resume point. The exit that lets the request go is merged; the verb that brings an answer back to the row is not (the note above). Blocking in <code>awaiting_review</code> instead keeps the request open. That is the short-horizon option for a question being answered right now, and <strong>it is not what the first real run ships on</strong> (section 11)</td></tr>
+        <tr><td>Posts a row to the inbox when it must ask</td><td><span class="tag t-prop">proposed</span></td><td><code>ctx.resources.inbox.create(`${issue}/${phase}/${attempt}/${fingerprint}`, {&#8230;})</code>, and then <strong>parks the task and ends its request</strong>, so nothing is held open while the question waits and the row is the resume point. The exit that lets the request go is merged; the verb that brings an answer back to the row is not (the note above). Blocking in <code>awaiting_review</code> instead keeps the request open. That is the short-horizon option for a question being answered right now, and <strong>it is not what the first real run ships on</strong> (section 11)</td></tr>
         <tr><td>Records the run's session handle</td><td><span class="tag t-real">exists</span></td><td>The block returns an <code>SdkAgentHandle</code> carrying <code>sessionId</code> even when detached &#8212; the detached guard skips the <em>write to session state</em>, not the return. The manager takes it off the output, writes it back onto the task, and copies it to the <code>runs/**</code> row for whoever is reading</td></tr>
         <tr><td>Continues the conversation on a steer</td><td><span class="tag t-prop">proposed</span></td><td>Continuity is not automatic: nothing hands a prior handle to a detached run today. The manager reads the handle off the claimed task and passes it in as the next run's resume id &#8212; the one input <code>claudeCodeAgent</code> does not yet accept on the detached path (section 12)</td></tr>
         <tr><td>Settles the row</td><td><span class="tag t-real">exists</span></td><td>The detached runner's ticket-fenced recorders &#8212; the same ones the inline drain uses, not a second settlement path. Fenced: a displaced child's settle comes back <code>"fence-rejected"</code>. The note below is why the distinction is worth holding</td></tr>
@@ -1499,7 +1497,7 @@ type PhaseLogic = {
         <tr><td>epics</td><td><code>epics/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>The objective, gate state, the issue set, wrap output</td></tr>
         <tr><td>issues</td><td><code>epics/[epicId]/issues/[issueId]</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Category, position in the graph, current phase, PR, review rounds spent</td></tr>
         <tr><td>specs</td><td><code>specs/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Spec body and approval state</td></tr>
-        <tr><td><strong>inbox</strong></td><td><code>inbox/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>The coordinator's working set.</strong> One row per open question, keyed <code>&lt;epicId&gt;/&lt;rowId&gt;</code> so a list narrows to one epic, with the workstream that asked it</td></tr>
+        <tr><td><strong>inbox</strong></td><td><code>inbox/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>The coordinator's working set.</strong> One row per open question, keyed <code>&lt;issue&gt;/&lt;phase&gt;/&lt;attempt&gt;/&lt;fingerprint&gt;</code> so a list spans every epic, with the workstream that asked it</td></tr>
         <tr><td><strong>sessions</strong></td><td><code>sessions/*</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>What the other coordinators are doing.</strong> One row per session, written by that session: the epic it holds, phase and open counts, when it last moved</td></tr>
         <tr><td>runs</td><td><code>runs/**</code></td><td>session + <code>sharedToWorkstream</code></td><td><span class="tag t-prop">proposed</span></td><td>One row per run, keyed by topic and phase: child session, request id, worktree, branch, outcome, cost, and a copy of the resume handle. The handle itself rides the task; this row is what a person reads (section 6)</td></tr>
         <tr><td>decisions</td><td><code>decisions/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Gates and steers as records: what was asked, who answered, when, and the reason given</td></tr>
