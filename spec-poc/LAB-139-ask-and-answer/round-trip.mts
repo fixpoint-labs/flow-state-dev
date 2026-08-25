@@ -349,6 +349,15 @@ async function subject() {
   });
 
   // 5. M3. The operator answers, from a request holding no claim ticket.
+  //
+  // SHORTCUT — NOT THE PRODUCT SEAM. The answer rides `resumeFromReview`'s
+  // feedback argument because that was the cheapest way to prove the substrate
+  // moves the row. The spec forbids it (decision 1: `feedback` carries why the
+  // last attempt FAILED, never an answer). Production is: patch the inbox row
+  // to `answered` → fold answered rows into the prompt → `resumeFromReview`
+  // with NO feedback. Do not graduate this call; §10's behaviours 7, 8 and 9
+  // are green-field. See the README's "The answer path here is NOT the product
+  // seam".
   const answered = await runOne(
     flow,
     stores,

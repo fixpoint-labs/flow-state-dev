@@ -130,4 +130,11 @@ graduate them into **one integration scenario plus conductor unit tests**, not t
 `pnpm tsx` scripts. M1 in particular is a premise that has already moved once, so it is worth
 keeping as a real check.
 
+**Behaviours 7, 8 and 9 have NO coverage here, and tidying M3–M4 will not produce it.** The
+prompt fold, the two-channel separation and the three decide arms all depend on the answer
+arriving the *product* way — inbox patch → prompt fold → `resumeFromReview` with **no**
+feedback — and these scripts deliver it as feedback instead (see the warning above). They are
+green-field tests to write, not POC code to graduate. An implementer who starts from M3's
+answer-delivery seam builds the thing decision 1 exists to forbid.
+
 **Do not graduate the answer path.** It is the one part of these scripts the spec forbids.
