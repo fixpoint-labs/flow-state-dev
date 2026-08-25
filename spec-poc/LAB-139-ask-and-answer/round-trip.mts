@@ -173,12 +173,26 @@ function buildFlow(options: { kind: string; onReview: "hold" | "exit" }) {
     },
   });
 
+  /** Cancel the task while its question is open (M8 setup). */
+  const cancel = handler({
+    name: `${options.kind}-cancel`,
+    inputSchema: z.unknown(),
+    outputSchema: z.object({ outcome: z.string() }),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks: TaskCollectionRef = await ctx.cap[`${options.kind}-board`].tasks();
+      const verdict = await tasks.cancel("issue-1", "operator cancelled");
+      return { outcome: verdict.outcome };
+    },
+  });
+
   const flow = defineFlow({
     kind: options.kind,
     actions: {
       drain: { block: board.drain },
       answer: { block: answer },
       stampFeedback: { block: stampFeedback },
+      cancel: { block: cancel },
     },
   })({ id: options.kind });
 
@@ -384,6 +398,78 @@ async function control() {
   });
 }
 
+/**
+ * M8 / M9 — what `resumeFromReview` does when the answer should NOT be applied.
+ *
+ * The `answer` action orders two writes: the inbox row and the board row. Which
+ * one commits first decides what a reader sees when the second is refused, so
+ * these two are the facts the ordering has to be chosen against — and both were
+ * reasoned from the transition table before they were run here.
+ *
+ *   M8  a task cancelled while its question was open — does the resume decline,
+ *       and with what reason?
+ *   M9  a SECOND answer arriving after the first already re-queued the row.
+ *       `pending → pending` is a legal transition, so the interesting question
+ *       is whether the substrate reports `recorded` (a write happened, and the
+ *       second answer looks successful) or `unchanged`.
+ */
+async function declines() {
+  console.log("\n================ DECLINES — what a refused answer reports ================\n");
+
+  // M8: cancel the task while the question is open, then answer it.
+  {
+    const stores = createInMemoryStores();
+    const { flow, LEDGER_ID } = buildFlow({ kind: "lab139cancel", onReview: "exit" });
+    const dispatched: RecordedDispatch[] = [];
+    await runOne(flow, stores, "drain", {}, { sessionId: COORDINATOR_SESSION, dispatched });
+    await replay(flow, stores, dispatched[0]!);
+    await runOne(flow, stores, "cancel", {}, { sessionId: COORDINATOR_SESSION });
+    const cancelled = await row(stores, LEDGER_ID);
+    const answered = await runOne(flow, stores, "answer", { feedback: "ANSWER: too late" }, {
+      sessionId: COORDINATOR_SESSION,
+    });
+    say("M8 answer a cancelled task", {
+      rowStatusBefore: cancelled?.status,
+      verdict: answered.output ?? "(no output)",
+      requestError: answered.error === undefined ? "none" : String(answered.error),
+      rowStatusAfter: (await row(stores, LEDGER_ID))?.status,
+      note:
+        "resumeFromReview was called with NO options. Without `ifAllowed: true` an " +
+        "illegal transition THROWS rather than declining — cancelled -> pending is illegal",
+    });
+  }
+
+  // M9: two answers, the second arriving after the row is already `pending`.
+  {
+    const stores = createInMemoryStores();
+    const { flow, LEDGER_ID } = buildFlow({ kind: "lab139double", onReview: "exit" });
+    const dispatched: RecordedDispatch[] = [];
+    await runOne(flow, stores, "drain", {}, { sessionId: COORDINATOR_SESSION, dispatched });
+    await replay(flow, stores, dispatched[0]!);
+    const first = await runOne(flow, stores, "answer", { feedback: "ANSWER: first" }, {
+      sessionId: COORDINATOR_SESSION,
+    });
+    const afterFirst = await row(stores, LEDGER_ID);
+    const second = await runOne(flow, stores, "answer", { feedback: "ANSWER: second" }, {
+      sessionId: COORDINATOR_SESSION,
+    });
+    const afterSecond = await row(stores, LEDGER_ID);
+    say("M9 a second answer over an already-resumed row", {
+      first: first.output,
+      statusAfterFirst: afterFirst?.status,
+      feedbackAfterFirst: afterFirst?.feedback,
+      second: second.output,
+      statusAfterSecond: afterSecond?.status,
+      feedbackAfterSecond: afterSecond?.feedback,
+      verdict:
+        (second.output as { outcome: string }).outcome === "recorded"
+          ? "THE SECOND ANSWER LOOKED SUCCESSFUL — the board cannot fence this; the inbox row must"
+          : "the substrate refused the second answer on its own",
+    });
+  }
+}
+
 await subject();
 await control();
+await declines();
 console.log("\ndone.\n");

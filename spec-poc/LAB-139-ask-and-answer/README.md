@@ -19,7 +19,7 @@ output is the finding, not an assertion of a hoped-for answer.
 ## Run it
 
 ```
-pnpm tsx spec-poc/LAB-139-ask-and-answer/round-trip.mts    # ~5s
+pnpm tsx spec-poc/LAB-139-ask-and-answer/round-trip.mts    # ~10s
 pnpm tsx spec-poc/LAB-139-ask-and-answer/inbox-write.mts   # instant
 ```
 
@@ -33,6 +33,21 @@ what a real host would have done. Shape borrowed from
 The framework logs heavily on these paths; every measurement is printed on one line prefixed
 `>>>`, so `| grep '>>>'` is the readable view.
 
+## ⚠ The answer path here is NOT the product seam
+
+**Read this before graduating anything.** To keep the board round trip cheap to demonstrate,
+M3–M9 deliver the answer through `resumeFromReview`'s **feedback** argument (`"ANSWER: …"`) and
+the stub manager reads it off `input.feedback`. **The spec forbids exactly that** — `feedback`
+is LAB-138's failure-reason carrier, and mixing the two is what §6 decision 1 exists to
+prevent.
+
+Production is: **patch the inbox row → the manager folds answered rows into the prompt →
+`resumeFromReview` with NO feedback.** These scripts prove the *substrate* moves the row and
+re-dispatches it. They prove nothing about how the answer reaches the prompt.
+
+Consequently the spec's behaviours **7, 8 and 9 have no coverage here at all** — the prompt
+fold, the two-channel separation, and the three decide arms are green-field.
+
 ## round-trip.mts — the board half
 
 | | measured |
@@ -42,9 +57,11 @@ The framework logs heavily on these paths; every measurement is printed on one l
 | **M2 a drain over a held row** | `terminationReason: "parked-for-review"`, **0** new dispatches |
 | **M6 feedback clearing** | `resumeFromReview(id)` with no feedback → previous feedback **absent**, row `pending` |
 | **M3 the answer** | a coordinator request holding **no claim ticket** → `{outcome: "recorded"}`, row `pending` |
-| **M4 the resumed run** | next drain dispatched again (2 total); the replayed child ran, saw the answer, row `completed` |
+| **M4 the resumed run** | next drain dispatched again (2 total); the replayed child ran and the row reached `completed` |
 | **M5 the budget** | `attempts` 1 → 2 against `maxAttempts: 3`, no abandonments |
 | **M7 control** | same board without `onReview: "exit"` → `terminationReason: "blocked-by-failures"` after 3.5s on a board with **no failures** |
+| **M8 a cancelled task** | a bare `resumeFromReview` **threw** — *"illegal status transition for task 'issue-1': cancelled → pending"*. It did not decline: the terminal guard is only consulted when `ifAllowed` is passed |
+| **M9 a second answer** | over an already re-queued (`pending`) row → **`{outcome: "recorded"}`**, and the row's feedback was **overwritten**. `pending → pending` is legal, so the board does not fence a duplicate answer |
 
 **M1 is the headline: the park survived.** The epic's table row is stale on `main`, so
 LAB-139 needs no workaround for it — a worker parks itself and walks away.
@@ -56,6 +73,12 @@ board that has none. A caller reading that verdict is told something false.
 **M5 is the cost nobody had priced.** `attempts` is incremented at claim time and
 `shouldRetryOnFail` discounts only abandonments, so an answered resume spends a retry the
 same way a failure does. That is spec decision 2.
+
+**M8 and M9 are the decline arms, and they are with the product owner.** Park-exit made
+`resumeFromReview` work *after the launching request ended*; it did not make the verb
+*parked-only* or *atomic*, and those are different properties. The spec records both
+measurements in §12 and deliberately changes nothing on the strength of them while that
+decision is open.
 
 ## inbox-write.mts — the inbox half
 
@@ -70,17 +93,24 @@ re-execution is a read. That is the whole of LAB-139's replay-safe write, and th
 had to hold is the second one — a replay landing *after* a person answered must not reset the
 row.
 
+*(This script's collection definition omits `llmWritable: false`, which the spec requires. A
+POC-only shortcut, not a proposal.)*
+
 ## What these do NOT show
 
-- **Nothing about the coding agent.** No `claudeCodeAgent`, no model, no checkout. The worker
-  here is a stub that parks on its first visit and finishes on its second.
+- **Nothing about the coding agent.** No `claudeCodeAgent`, no model, no checkout — so nothing
+  about the per-attempt question marker either, which is where §10 behaviour 10 lives.
 - **Nothing about resuming the same coding session.** That is FIX-1246's, and it is the
   Proof's one hard blocker. The resumed attempt here is a cold start by construction.
 - **Nothing about Relay.** FIX-1230 has nothing in tree; the announcement is not exercised.
+- **Nothing about how the answer reaches the prompt** — see the warning above.
 - **In-process only**, in-memory stores, one board, one row.
 
 ## Graduating
 
-Behaviours 1, 2, 3, 5, 6 and 12 of the spec's §10 are these measurements tidied into real CI
-specs. Graduate them rather than rewriting them — M1 in particular is a premise that has
-already moved once.
+Behaviours 1, 2, 3, 6 and 13 of the spec's §10 are these *substrate* measurements tidied up —
+graduate them into **one integration scenario plus conductor unit tests**, not two permanent
+`pnpm tsx` scripts. M1 in particular is a premise that has already moved once, so it is worth
+keeping as a real check.
+
+**Do not graduate the answer path.** It is the one part of these scripts the spec forbids.
