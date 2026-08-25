@@ -19,8 +19,17 @@
  *
  * So this POC is evidence about the DRIVER under increment/append-shaped
  * mutators. It is not evidence that a store-native delta verb would behave the
- * same way; the spec drops that tier (§6 decision 2) precisely because nothing
- * here would carry over to it.
+ * same way; the spec DEFERS that tier (§6 decision 2, settled at D-6) precisely
+ * because nothing here would carry over to it.
+ *
+ * THE SECOND QUESTION (added round 13)
+ * The last four rows are not about the driver. They pin the REFUSAL HAZARDS —
+ * the values §7 says the two verbs must reject. They characterize the gap
+ * rather than the guard, because the guard does not exist yet: each row asserts
+ * what `main` does today, so it states what the shipped refusal has to stop.
+ * They were added because three review rounds in a row corrected these rules in
+ * prose, each time enumerating the value kinds known at the time and each time
+ * missing a neighbour. Running them is cheaper than arguing them.
  *
  * RUN IT
  *   pnpm install
@@ -41,6 +50,8 @@ import {
   type StoreRegistry
 } from "../../packages/engine/src";
 import { createInternalResponseEmitter } from "../../packages/engine/src/streaming/response-emitter";
+import { isRetryableError } from "../../packages/engine/src/execution/retry";
+import { FlowError } from "../../packages/engine/src/errors/flow-error";
 
 /** Local stand-in for the framework's `JsonObject` — the POC never leaves this file. */
 type PocState = Record<string, unknown>;
@@ -78,6 +89,28 @@ const tasks = defineResourceCollection({
  * drifts, because the drift is not an availability property — see the FIX-1260
  * row below.
  */
+/**
+ * A resource whose array field is `z.array(z.any())` and which carries a
+ * SECOND, unrelated field. Both matter:
+ *
+ *  - `z.any()` is what the spec's §7 append rule is written against — it is the
+ *    schema that accepts every hazardous value, so a narrower one would prove
+ *    nothing about the guard.
+ *  - `keep` is the untouched-field control. The failure these rows guard is not
+ *    a bad value being stored; it is the WHOLE STATE being reset while the call
+ *    reports success, and only an unrelated field can show that.
+ */
+const bag = defineResource({
+  scope: "session",
+  ref: "bag",
+  stateSchema: z.object({
+    n: z.number().default(0),
+    keep: z.string().default("schema-default"),
+    items: z.array(z.any()).default([])
+  }),
+  default: { n: 0, keep: "schema-default", items: [] }
+});
+
 const drifting = defineResource({
   scope: "session",
   ref: "drifting",
@@ -95,7 +128,7 @@ function makeFlow() {
         inputSchema: z.string(),
         block: handler({
           name: "noop",
-          resources: { counter, tasks, drifting },
+          resources: { counter, tasks, drifting, bag },
           execute: () => "ok"
         })
       }
@@ -430,5 +463,134 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     await incState(ref, { n: 1 });
     const after = (await readRow(stores, "drifting"))?.state as { n: number };
     expect(after.n).toBe(before.n + 2);
+  });
+
+  // -------------------------------------------------------------------------
+  // THE REFUSAL ROWS.
+  //
+  // Everything above characterizes the CAS driver. These four characterize the
+  // hazards the two verbs have to refuse — and they exist because prose kept
+  // getting them wrong. Each pins what `main` does TODAY, so each states the
+  // gap the shipped guard has to close rather than the guard's own behaviour.
+  // -------------------------------------------------------------------------
+
+  it("refusal gap: BRANDED OBJECTS survive z.array(z.any()) and then split by adapter", async () => {
+    // The case no kind-based check sees. `undefined`, functions, symbols and
+    // bigints all announce themselves to a `typeof` test; a Date does not. It
+    // is an object with no enumerable own properties, so a guard walking
+    // enumerable properties — the obvious implementation — finds nothing wrong
+    // with any of these four and passes them straight through.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    const ref = ctx.resources.bag as unknown as MutableRef;
+
+    await pushState(ref, "items", new Date("2020-01-01T00:00:00.000Z"));
+    await pushState(ref, "items", new Map([["a", 1]]));
+    await pushState(ref, "items", new Set([1, 2]));
+    await pushState(ref, "items", /abc/g);
+
+    const items = ((await readRow(stores, "bag"))?.state as PocState).items as unknown[];
+
+    // 1. The schema accepted all four. No refusal exists today.
+    expect(items).toHaveLength(4);
+
+    // 2. The MEMORY store preserved them as live instances, because
+    //    `cloneValue` prefers `structuredClone` (`core/src/helpers/clone.ts:16`),
+    //    which round-trips all four of these types intact.
+    expect(items.map((v) => Object.prototype.toString.call(v))).toEqual([
+      "[object Date]",
+      "[object Map]",
+      "[object Set]",
+      "[object RegExp]"
+    ]);
+
+    // 3. A JSON-backed adapter stores something DIFFERENT for the same write:
+    //    the Date flattens to a string, and Map/Set/RegExp flatten to `{}` —
+    //    losing their contents outright. Two adapters, two stored values, one
+    //    caller. That divergence is the whole reason the append rule exists,
+    //    and it is why the rule is stated as "survives a JSON round-trip
+    //    unchanged" rather than as a list of forbidden kinds.
+    expect(JSON.parse(JSON.stringify(items))).toEqual([
+      "2020-01-01T00:00:00.000Z",
+      {},
+      {},
+      {}
+    ]);
+  });
+
+  it("refusal gap: a BIGINT or SYMBOL delta throws a RETRYABLE raw TypeError", async () => {
+    // `current + delta` runs before anything validates `delta`. For these two
+    // the arithmetic itself throws, and it throws the wrong TYPE: a raw
+    // TypeError is not a FlowError, so `isRetryableError` returns true for it
+    // under any policy — the block re-runs, replaying every side effect it
+    // already performed. "Documented as fatal" does not survive this; only the
+    // error's type does.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    const ref = ctx.resources.bag as unknown as MutableRef;
+    const policy = { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 };
+
+    for (const delta of [1n, Symbol("nope")]) {
+      const caught = await incState(ref, { n: delta } as never).then(
+        () => undefined,
+        (e: unknown) => e
+      );
+
+      expect(caught).toBeInstanceOf(TypeError);
+      expect(caught).not.toBeInstanceOf(FlowError);
+      // The assertion that matters: the retry layer WILL re-run this.
+      expect(isRetryableError(caught as Error, policy)).toBe(true);
+    }
+
+    // Nothing was written — the throw happens in the mutator, before persist.
+    expect((await readRow(stores, "bag"))?.state).toBeUndefined();
+  });
+
+  it("refusal gap: a STRING delta does not throw at all — it RESETS THE ROW and reports success", async () => {
+    // The worst row in this file, and the one that shows why the delta has to
+    // be validated BEFORE the arithmetic rather than caught after it.
+    //
+    // `0 + "5"` does not throw; it concatenates. The candidate `{n:"05"}` then
+    // fails the schema, and the write path's response to an invalid candidate
+    // is to REPLACE THE WHOLE STATE WITH THE SCHEMA DEFAULT — silently, and
+    // successfully. An unrelated field holding real data is collateral.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    const ref = ctx.resources.bag as unknown as MutableRef;
+
+    await incState(ref, { n: 5 });
+    await ref.updateState((s) => ({ ...s, keep: "DO-NOT-LOSE" }));
+
+    const before = await readRow(stores, "bag");
+    expect(before?.state).toMatchObject({ n: 5, keep: "DO-NOT-LOSE" });
+
+    // No rejection. The call resolves.
+    await expect(incState(ref, { n: "5" } as never)).resolves.toBeUndefined();
+
+    const after = await readRow(stores, "bag");
+    // The counter is back to its default AND the untouched field is destroyed.
+    expect(after?.state).toMatchObject({ n: 0, keep: "schema-default" });
+    // ...and the version advanced, so this was a real write, not a no-op.
+    expect(after?.version).toBeGreaterThan(before?.version as number);
+  });
+
+  it("control: a plain Error is retryable too — which is why refusals need a TYPE", async () => {
+    // The negative control for the two rows above. It is not about the verbs;
+    // it pins the classifier's default, which is what makes every "throws"
+    // instruction in the spec insufficient on its own. A refusal that throws
+    // `new Error("bad delta")` satisfies every test that only asserts
+    // rejection, and is then retried.
+    const policy = { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 };
+
+    expect(isRetryableError(new Error("bad delta"), policy)).toBe(true);
+    expect(isRetryableError(new TypeError("bad delta"), policy)).toBe(true);
+
+    // Only a FlowError carrying `retryable: false` aborts the loop.
+    expect(
+      isRetryableError(
+        new FlowError("bad delta", { code: "validation_error", retryable: false }),
+        policy
+      )
+    ).toBe(false);
   });
 });
