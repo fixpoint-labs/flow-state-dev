@@ -21,6 +21,7 @@ import {
   resolveUserStorageKey
 } from "../src";
 import { resourceStorageKeys } from "../src/resources/storage-keys";
+import { compareZodSchemas } from "../src/registry/schema-compat";
 
 /**
  * One declared resource, spelled out far enough to exercise the three parts of
@@ -1004,6 +1005,143 @@ describe("cross-flow resource schema validation", () => {
         )
       ).not.toThrow();
     });
+  });
+});
+
+/**
+ * A state schema may legitimately declare a field named after an
+ * `Object.prototype` member. The comparator must test the OTHER shape with an
+ * own-key check — `in` finds the builtin and compares a function against a Zod
+ * type, turning two schemas with disjoint fields into a reported conflict.
+ */
+describe("schema fields named after Object.prototype members", () => {
+  it("treats a prototype-named field as disjoint, not conflicting", () => {
+    const withToString = z.object({ toString: z.string() });
+    const without = z.object({ other: z.string() });
+
+    const result = compareZodSchemas(withToString, without);
+    expect(result.kind).toBe("compatible");
+    if (result.kind === "compatible") {
+      expect(result.warnings.join(" ")).toContain("toString");
+    }
+  });
+
+  it("compares two schemas that both declare the field", () => {
+    expect(compareZodSchemas(
+      z.object({ toString: z.string() }),
+      z.object({ toString: z.string() })
+    ).kind).toBe("identical");
+
+    // And a real disagreement on that field is still caught.
+    const clash = compareZodSchemas(
+      z.object({ toString: z.string() }),
+      z.object({ toString: z.number() })
+    );
+    expect(clash.kind).toBe("incompatible");
+  });
+
+  it("reports disjoint fields symmetrically in both directions", () => {
+    // The inherited hit also dropped the field from the disjoint report, so
+    // A-vs-B and B-vs-A disagreed about what was disjoint.
+    const withToString = z.object({ toString: z.string() });
+    const without = z.object({ other: z.string() });
+
+    const forward = compareZodSchemas(withToString, without);
+    const backward = compareZodSchemas(without, withToString);
+    expect(forward.kind).toBe("compatible");
+    expect(backward.kind).toBe("compatible");
+    if (forward.kind === "compatible" && backward.kind === "compatible") {
+      expect(backward.warnings.join(" ")).toContain("toString");
+    }
+  });
+
+  it("does not reject flows over a prototype-named schema field", () => {
+    const registry = createFlowRegistry();
+    registry.register(
+      makeFlow({
+        kind: "flow-a",
+        resources: { prefs: { schema: z.object({ toString: z.string() }) } },
+      })
+    );
+    expect(() =>
+      registry.register(
+        makeFlow({
+          kind: "flow-b",
+          resources: { prefs: { schema: z.object({ other: z.string() }) } },
+        })
+      )
+    ).not.toThrow();
+  });
+});
+
+/**
+ * Compatibility is NOT transitive: `{a: string}` is compatible with both
+ * `{b: string}` and `{b: number}` (disjoint fields each time), while those two
+ * conflict with each other. Keeping one schema per cell and comparing every
+ * later declaration against it alone would admit that pair.
+ */
+describe("non-transitive compatibility over one cell", () => {
+  const coll = (schema: z.ZodTypeAny, ref: string) =>
+    defineResourceCollection({
+      scope: "user",
+      pattern: "files/*",
+      stateSchema: schema,
+      ref,
+    } as never);
+
+  it("catches a conflict between two later declarations in one flow", () => {
+    const registry = createFlowRegistry();
+    const error = captureConflict(() =>
+      registry.register(
+        makeFlow({
+          kind: "flow-a",
+          rawResources: {
+            one: coll(z.object({ a: z.string() }), "one"),
+            two: coll(z.object({ b: z.string() }), "two"),
+            three: coll(z.object({ b: z.number() }), "three"),
+          },
+        })
+      )
+    );
+    expect(error.field).toBe("resources.files/*");
+  });
+
+  it("catches a conflict against a schema that is not the flow's first", () => {
+    // flow-a holds two compatible declarations for one cell; flow-b conflicts
+    // with the SECOND. Retaining only the first would admit it.
+    const registry = createFlowRegistry();
+    registry.register(
+      makeFlow({
+        kind: "flow-a",
+        rawResources: {
+          one: coll(z.object({ a: z.string() }), "one"),
+          two: coll(z.object({ b: z.string() }), "two"),
+        },
+      })
+    );
+
+    const error = captureConflict(() =>
+      registry.register(
+        makeFlow({ kind: "flow-b", rawResources: { x: coll(z.object({ b: z.number() }), "x") } })
+      )
+    );
+    expect(new Set([error.flowA, error.flowB])).toEqual(new Set(["flow-a", "flow-b"]));
+  });
+
+  it("still accepts a genuinely compatible set over one cell", () => {
+    const registry = createFlowRegistry();
+    expect(() =>
+      registry.register(
+        makeFlow({
+          kind: "flow-a",
+          rawResources: {
+            one: coll(z.object({ a: z.string() }), "one"),
+            two: coll(z.object({ b: z.string() }), "two"),
+            three: coll(z.object({ c: z.string() }), "three"),
+          },
+        })
+      )
+    ).not.toThrow();
   });
 });
 

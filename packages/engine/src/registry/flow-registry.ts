@@ -51,7 +51,7 @@ export interface SharedScopeDescription {
 type ScopeParticipant = {
   flowKind: string;
   stateSchema?: ZodTypeAny;
-  resourceSchemas: Record<string, ResourceDeclaration>;
+  resourceSchemas: Record<string, ResourceDeclarations>;
 };
 
 /**
@@ -196,7 +196,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
       // `validateScope` looks refs up in, so it is the read side of the
       // prototype hazard `emptySchemaMap` documents.
       resourceSchemas: Object.assign(
-        emptySchemaMap<ResourceDeclaration>(),
+        emptySchemaMap<ResourceDeclarations>(),
         declaration.resourceSchemas
       ),
     });
@@ -247,19 +247,27 @@ export class InMemoryFlowRegistry implements FlowRegistry {
         checkPair(scope, "stateSchema", existing.flowKind, flowKind, existing.stateSchema, incoming.stateSchema);
       }
 
-      // Exact-ref comparison — exclusion 1 above.
-      for (const [ref, incoming_] of Object.entries(incoming.resourceSchemas)) {
-        const existing_ = existing.resourceSchemas[ref];
-        if (existing_ === undefined) continue;
-        checkPair(
-          scope,
-          `resources.${ref}`,
-          existing.flowKind,
-          flowKind,
-          existing_.schema,
-          incoming_.schema,
-          incoming_.collection || existing_.collection
-        );
+      // Exact-ref comparison — exclusion 1 above. Every incoming declaration
+      // against every existing one for the cell, because compatibility is not
+      // transitive (see `ResourceDeclarations`): comparing only one from each
+      // side would admit a pair that conflicts with each other while both look
+      // compatible with the one they were checked against.
+      for (const [ref, incomingDecls] of Object.entries(incoming.resourceSchemas)) {
+        const existingDecls = existing.resourceSchemas[ref];
+        if (existingDecls === undefined) continue;
+        for (const existingDecl of existingDecls) {
+          for (const incomingDecl of incomingDecls) {
+            checkPair(
+              scope,
+              `resources.${ref}`,
+              existing.flowKind,
+              flowKind,
+              existingDecl.schema,
+              incomingDecl.schema,
+              incomingDecl.collection || existingDecl.collection
+            );
+          }
+        }
       }
     }
   }
@@ -275,9 +283,28 @@ type ResourceDeclaration = {
   collection: boolean;
 };
 
+/**
+ * Every distinct declaration a flow makes for one storage cell — not just the
+ * first.
+ *
+ * **Compatibility is not transitive**, which is why this is a list. `{a: string}`
+ * and `{b: string}` are compatible (disjoint fields), and `{a: string}` and
+ * `{b: number}` are compatible for the same reason — but `{b: string}` and
+ * `{b: number}` are not. Keeping only the first schema for a cell would compare
+ * every later declaration against it alone and admit that pair.
+ *
+ * Kept as a list rather than merged into an accumulated shape deliberately.
+ * There is no shape merger — `compareZodSchemas` returns a verdict, not a
+ * schema — and writing one would need a merge rule for every branch it handles,
+ * including the non-object ones where "merge" has no meaning. A merged shape
+ * would also lose which two declarations actually disagree, which is what the
+ * error names.
+ */
+type ResourceDeclarations = ResourceDeclaration[];
+
 type ScopeDeclaration = {
   stateSchema?: ZodTypeAny;
-  resourceSchemas: Record<string, ResourceDeclaration>;
+  resourceSchemas: Record<string, ResourceDeclarations>;
 };
 
 /**
@@ -388,7 +415,7 @@ function collectScopeDeclaration(
     ? undefined
     : (scopeConfig as { stateSchema?: ZodTypeAny } | undefined)?.stateSchema;
 
-  const resourceSchemas = emptySchemaMap<ResourceDeclaration>();
+  const resourceSchemas = emptySchemaMap<ResourceDeclarations>();
   // Same-flow cell occupancy, keyed by `(effective isolation, ref)`. Separate
   // from `resourceSchemas` — and checked BEFORE the isolation filter below —
   // because a same-flow collision is not a cross-flow question. Isolation
@@ -399,7 +426,7 @@ function collectScopeDeclaration(
   // Isolation is part of the key rather than ignored, because it DOES separate
   // a shared declaration from an isolated one: those land in different buckets
   // and genuinely do not collide.
-  const cellsInFlow = new Map<string, ResourceDeclaration>();
+  const cellsInFlow = new Map<string, ResourceDeclarations>();
   const storageKeys = resourceStorageKeys(flow.resources);
   for (const [accessor, entry] of Object.entries(flow.resources ?? {})) {
     if (entry === undefined || entry.scope !== scope) continue;
@@ -419,26 +446,34 @@ function collectScopeDeclaration(
     // JSON-encoded so the two fields cannot concatenate ambiguously, matching
     // `tupleKey` in core's `flow/defineFlow.ts`.
     const cellKey = JSON.stringify([isolated, ref]);
-    const prior = cellsInFlow.get(cellKey);
-    if (prior !== undefined) {
-      // Two of THIS flow's declarations resolve to one durable cell. Aliases
-      // of a single definition land here harmlessly (same schema object, so
-      // the comparison is identical), but genuinely distinct declarations do
-      // not — most reachably two collections sharing a `pattern` while core's
-      // build-time check keys them apart on an incidental `ref`.
+    const priors = cellsInFlow.get(cellKey);
+    if (priors !== undefined) {
+      // Two of THIS flow's declarations resolve to one durable cell — most
+      // reachably two collections sharing a `pattern` while core's build-time
+      // check keys them apart on an incidental `ref`.
       //
-      // Comparing rather than overwriting is the point: last-write-wins drops
-      // the earlier schema, so a third flow compatible with only the survivor
-      // would register clean while sharing cells with the one that was dropped.
-      checkPair(scope, `resources.${ref}`, flow.kind, flow.kind, prior.schema, schema, prior.collection || collection);
+      // Aliases of a single definition reach here too, and are skipped by
+      // reference: the same schema object adds nothing to compare against, and
+      // dropping it keeps these lists at one entry in the ordinary case.
+      if (priors.some((prior) => prior.schema === schema)) continue;
+      // Against EVERY prior, not just the first — compatibility is not
+      // transitive, so a declaration compatible with one may still conflict
+      // with another already accepted for this cell.
+      for (const prior of priors) {
+        checkPair(scope, `resources.${ref}`, flow.kind, flow.kind, prior.schema, schema, prior.collection || collection);
+      }
+      priors.push({ schema, collection });
+      if (!isolated) (resourceSchemas[ref] ??= []).push({ schema, collection });
       continue;
     }
-    cellsInFlow.set(cellKey, { schema, collection });
+    cellsInFlow.set(cellKey, [{ schema, collection }]);
 
     // Cross-flow view: isolated declarations are flow-namespaced, so they
     // cannot collide with another flow's and do not participate.
     if (isolated) continue;
-    resourceSchemas[ref] = { schema, collection };
+    // A shared and an isolated declaration occupy different cells but share a
+    // `ref`, so this list may already exist from the isolated branch above.
+    (resourceSchemas[ref] ??= []).push({ schema, collection });
   }
 
   if (stateSchema === undefined && Object.keys(resourceSchemas).length === 0) {
@@ -486,8 +521,12 @@ function describeScope(entries: Map<string, ScopeParticipant>): SharedScopeDescr
   let stateSchema: ZodTypeAny | undefined;
   for (const entry of entries.values()) {
     stateSchema ??= entry.stateSchema;
-    for (const [name, declaration] of Object.entries(entry.resourceSchemas)) {
-      resources[name] ??= declaration.schema;
+    for (const [name, declarations] of Object.entries(entry.resourceSchemas)) {
+      // One representative schema per ref — this view is a merged summary for
+      // diagnostics, not the comparison set. `SharedScopeDescription.resources`
+      // is a public shape and stays one schema per ref.
+      const first = declarations[0];
+      if (first !== undefined) resources[name] ??= first.schema;
     }
   }
   return { stateSchema, resources };
