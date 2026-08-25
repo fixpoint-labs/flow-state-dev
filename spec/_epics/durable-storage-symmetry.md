@@ -56,6 +56,16 @@ the honest description of it.**
   FIX-1158's **spun-off remainder** — scope deliberately excluded from that bug and blocked
   on it. At Backlog and **not in the active set**; carried in §4 so the set is complete. It
   changes no theme and adds no decision at this altitude.
+- **FIX-1258** (a deleted resource revived by a request that never saw it) is the version-`0`
+  hole in theme 1's tombstone row — found by FIX-1154's spec review and reproduced on the real
+  path. **Not in the active set**, on the reasoning that already keeps FIX-1155 out and spun
+  FIX-1207 off: **epic membership is not a severity queue.** It is a live bug that should be
+  scheduled on its own merits, plausibly before this epic wraps, but holding the epic open does
+  not make it get fixed any sooner — and taking it in would make this epic's boundary "resource
+  concurrency bugs we found", which is how a set stops being a set.
+
+**The active set is FIX-1154 plus the FIX-1158 lodger.** FIX-1155, FIX-1207 and FIX-1258 are
+carried in §4 so the record is complete; **wrap does not wait for any of them.**
 
 Whether one substantive issue plus a lodger is an epic at all — rather than one issue and a
 standalone bug — is the second live fork in §5. It is the product owner's call, not this
@@ -95,7 +105,8 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    **never observed** the resource revives it after a delete. The product bet is unchanged —
    deleted stays deleted — it is simply not enforced on that one path. It ships on `main`
    today through `updateState`, none of FIX-1154's new verbs cause it, and **FIX-1258** owns
-   closing it.
+   closing it — a child carried **outside the active set** (§1), so this epic can wrap before
+   it lands.
 
    **Constrains:** FIX-1154's "shared driver seam" question resolves to *state the divergence
    once*, not *reconcile the drivers*; no issue in this set may propose unifying them. **The
@@ -208,7 +219,7 @@ asymmetries remain deliberate and where each one is written down.**
 | Asymmetry between the two primitives | After the set lands | Where its reason lives |
 |---|---|---|
 | Two CAS drivers — `cas.ts` vs `resource-cas.ts` | **Survives — deliberate** (theme 1) | The eight-row policy table, staying in `resource-cas.ts`'s header; **FIX-1154** adds the missing guard on `createScopeStateOps` / `createScopePersist` |
-| `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, same lifecycle root. **FIX-1258** narrows *which* absent states a version-`0` write may create into — a tombstone is one of them today, which is the hole in theme 1's tombstone row | Already in `state-and-scopes.md` → "CAS and Concurrency"; the hole itself in theme 1 |
+| `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, same lifecycle root. **FIX-1258** narrows *which* absent states a version-`0` write may create into — a tombstone is one of them today, which is the hole in theme 1's tombstone row. It sits **outside the active set**, so that hole is **still open at wrap** | Already in `state-and-scopes.md` → "CAS and Concurrency"; the hole itself in theme 1 |
 | Resource-only surface — content, `client`, `reactTo`, `edges`, collections | **Survives — not an asymmetry.** No state analogue exists to be symmetric with | FIX-1154's scope boundaries |
 | Mutation surfaces differ in several ways — verbs one primitive lacks, and differences in shape among the verbs they nominally share | **Increment and append close** (**FIX-1154**, Tier 1). The remainder is **mapped, not closed** — each difference recorded as closed, as deliberate asymmetry with a reason, or as deferred | **FIX-1154's spec.** The epic states the shape of the answer; the inventory is the child's deliverable |
 | Return contract — `Promise<boolean>` vs `Promise<void>` | **Survives — deliberate.** Scope state's `boolean` exists because its `state_change` notification gate needs it; resources gate `resource_change` on an internally verified no-op. FIX-1154 closes the **increment/append** gap only | Settled at epic altitude — §5, resolved |
@@ -252,7 +263,7 @@ is a real outcome to sign off or reject, not a gap. It is put as a decision in �
 |---|---|---|---|---|---|
 | [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — increment and append close on the resource path (`ResourceRef.incState` / `pushState`, Tier 1), and the **remaining differences are mapped in its spec**: each one closed, deliberate with a reason, or deferred | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) | In Review |
-| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo |
+| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo *(not in the active set; wrap does not wait for it)* |
 | [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) | Cross-flow validation compares exact refs, so overlapping collection keyspaces slip through — the scope excluded from FIX-1158, filed separately | **bug** | — | — | Backlog *(blocked by FIX-1158; not in the active set)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state adds local serialization across the cross-context boundary while **retaining store-level CAS**; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | — | Backlog *(not in the active set)* |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
@@ -267,18 +278,60 @@ here has no way to know the framing was tried.*
 
 ## 5. Open cross-cutting questions
 
-- **Is one substantive issue plus a lodger an epic at all?** FIX-1154 *is* the objective;
-  FIX-1158 would ship standalone. Raised independently by two reviewers on this PR, and
-  correct on the reasoning — the shared-doc argument that used to answer it is withdrawn (§1).
-  The alternatives are: keep the epic as one issue plus an honest lodger, or dissolve it into
-  one issue and a related bug. Blocks nothing — both children proceed either way — but it
-  decides whether this coordination artifact should exist. **The owner's call**, put to them
-  as a decision on the epic PR.
-- **Does this epic deliver its objective with the request-scope concurrency asymmetry still
-  standing?** FIX-1155 is a child but sits at Backlog and out of the active set. Raised by
-  this epic-spec at authoring; blocks nothing today — the other two proceed either way — but
-  it decides what "wrapped" means. Put to the owner as a decision on the epic PR (§3, last
-  table row).
+Both live forks below are the **owner's call**, and both are stated in full here rather than
+only on the epic PR — the PR closes when the epic wraps; this document outlives it.
+
+- **Is this an epic, or one issue and a standalone bug?** *Raised independently by two
+  reviewers on this PR, and correct on the reasoning — the shared-doc argument that used to
+  answer it is withdrawn (§1). Blocks nothing: both active children proceed either way.*
+
+  **Plain terms.** An epic costs a gate, a PR that stays open for its whole life, and a
+  coordination doc somebody maintains. It buys one signed-off home for decisions that outlive
+  any single ticket. FIX-1154 *is* the objective; FIX-1158 would ship standalone.
+
+  **The trade-off.** Keeping it holds the cross-cutting calls — the CAS divergence, never
+  `"any"` on the resource path, the return-contract asymmetry — in one place the next person
+  finds. Dissolving it saves the overhead but scatters those calls into one issue's spec,
+  where a future third consumer will not look.
+
+  **My recommendation: keep it, with FIX-1158 named a lodger rather than dressed up as a
+  member.** These are exactly the decisions that get re-derived expensively, and this epic has
+  already paid once for re-deriving one (#1291, closed unmerged). Three themes plus a
+  rejected-framings block is cheap insurance against paying that twice.
+
+  **What would change my mind:** if you would rather not carry an open gate on work this
+  small, or if FIX-1158 gets picked up and merged before FIX-1154 is even specced — that would
+  show the set was never a set.
+
+  **What being wrong costs: low both ways.** Wrong toward keeping costs coordination overhead
+  on two issues. Wrong toward dissolving costs one re-derivation later.
+
+- **Does this epic finish with the task-board fan-out crash still live?** *Raised by this
+  epic-spec at authoring; blocks nothing today — the active children proceed either way — but
+  it decides what "wrapped" means (§3, last table row).*
+
+  **Plain terms.** FIX-1155 fixes a failure users hit today: a fan-out wider than about four
+  concurrent writers over a request-backed task board throws `ConcurrentModificationError`
+  with no application-level cause. By default that is `planAndExecute`, `supervisor`,
+  `blackboard` and `goalSeekLoop`. It is a child of this epic but sits at Backlog, outside the
+  active set.
+
+  **The trade-off.** Including it means the epic delivers a user-visible reliability fix, at
+  the cost of a third workstream and a file-collision risk with FIX-1154. Leaving it out means
+  the epic wraps clean on its actual thesis, but the asymmetry stays standing and the crash
+  waits for a separate ticket to be scheduled.
+
+  **My recommendation: leave it out, and schedule it as its own issue soon.** It is an
+  asymmetry *inside* scope state, completing FIX-492 for the scope it deferred — it would read
+  identically if resources did not exist. Carrying it here makes the epic's boundary
+  "concurrency things we noticed", which is how a set stops being a set.
+
+  **What would change my mind:** if the fan-out crash is being hit by a real user or a shipped
+  pattern now. Then it is a reliability fix that should not wait on scheduling.
+
+  **What being wrong costs: low and reversible either way** — a delay until it is scheduled,
+  or one workstream of coordination overhead.
+
 - **~~Do resources grow a committed `boolean`, or is the `Promise<boolean>` vs
   `Promise<void>` split deliberate?~~** *Resolved: deliberate, and only the increment/append gap
   closes.*
@@ -341,3 +394,13 @@ here has no way to know the framing was tried.*
   ships on `main` today independently of FIX-1154's verbs. Filed as a `direct`-route bug and
   added to §4; §3's `0`-semantics row now points at it, because that row is where a reader
   would otherwise conclude the version-`0` behaviour was fully deliberate.
+- **FIX-1258 classified outside the active set; both owner forks completed (2026-08-25)** —
+  review found §1, §4 and §5 disagreeing about what the epic contains, and both live forks
+  stated as mechanisms and alternatives with no recommendation, no what-would-change-my-mind
+  and no cost of being wrong (BP-041). **FIX-1258 is carried but outside the active set and
+  wrap does not wait for it** — epic membership is not a severity queue, which is the argument
+  that already keeps FIX-1155 out and spun FIX-1207 off. §1, theme 1, §3 and §4 now say so in
+  the same terms. The forks carry all six parts, **sourced from this PR's description** rather
+  than re-derived, so the two surfaces cannot drift apart: the reasoning was never missing,
+  only the durable restatement of it was thin — and the doc is the surface that outlives the
+  PR.
