@@ -366,7 +366,7 @@ describe("the manager — contention, and what it must not cost", () => {
       // the waiter must outlast the 250ms hold without ever becoming eligible
       // to steal the tree as stale.
       runTimeoutMs: 1_000,
-      gitTimeoutMs: 2_000,
+      provisionTimeoutMs: 2_000,
       ownership: { waitMs: 5_000, pollMs: 20, staleAfterMs: 4_000 },
     });
 
@@ -590,6 +590,65 @@ describe("the flow — how much it runs at once", () => {
   });
 });
 
+describe("the drain budget covers the whole worker", () => {
+  // The defect: `detachedDrainTimeoutMs` was `runTimeoutMs`, the agent step
+  // alone. A worker also waits for the lock, provisions, and probes for the PR —
+  // and the engine carves its cancellation reserve OUT of this budget rather
+  // than adding to it, so the effective wait was already LESS than the agent's
+  // own deadline. A valid run near its deadline was cancelled before it could
+  // produce a verdict.
+  const budgetFor = async (over: Record<string, unknown> = {}) => {
+    const { conductorFlow } = await import("../src/flow");
+    const { workspace, ...rest } = over as { workspace?: object };
+    return conductorFlow({
+      epic: "budget-epic",
+      workspace: {
+        root: "/tmp/conductor-budget",
+        sourceRepo: "/tmp/conductor-budget-repo",
+        baseRef: "main",
+        ...(workspace ?? {}),
+      },
+      runTimeoutMs: 1_800_000,
+      ...rest,
+    }).drainBudgetMs;
+  };
+
+  it("exceeds the agent deadline by more than the lock wait", async () => {
+    // The property, not the arithmetic. Asserting a computed constant would
+    // pass just as happily for a budget that forgot a term.
+    const runTimeoutMs = 1_800_000;
+    const budget = await budgetFor();
+    const { resolveOwnership } = await import("../src/manager");
+    const { ownership } = resolveOwnership({ runTimeoutMs });
+
+    expect(budget).toBeGreaterThan(runTimeoutMs);
+    expect(budget).toBeGreaterThan(runTimeoutMs + ownership.waitMs);
+  });
+
+  it("grows when any one term grows", async () => {
+    // Every term is load-bearing. A budget that ignored one would be FLAT here
+    // for that term — which is exactly how the reported defect looked.
+    const base = await budgetFor();
+    expect(await budgetFor({ runTimeoutMs: 3_600_000 })).toBeGreaterThan(base);
+    expect(
+      await budgetFor({ workspace: { provisionTimeoutMs: 1_200_000 } }),
+    ).toBeGreaterThan(base);
+    expect(
+      await budgetFor({ ownership: { waitMs: 9_000_000, staleAfterMs: 8_000_000 } }),
+    ).toBeGreaterThan(base);
+  });
+
+  it("refuses a budget past the ceiling a timer honours", async () => {
+    // The state this fix creates: the budget is now DERIVED, so inputs that are
+    // each individually legal can push it past 2**31-1 — where a timer silently
+    // clamps to 1ms and cancels every run immediately. That is the very failure
+    // the budget exists to prevent, arriving through the fix for it.
+    await expect(budgetFor({ runTimeoutMs: 2_000_000_000 })).rejects.toThrow(
+      /exceeds the largest delay a timer honours/,
+    );
+  });
+});
+
 describe("the manager — the stale window is refused at construction", () => {
   it("refuses a stale window inside the run's own deadline", () => {
     // A stale window shorter than the deadline means a live attempt's lock ages
@@ -602,7 +661,7 @@ describe("the manager — the stale window is refused at construction", () => {
       createConductorHarness({
         resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
         runTimeoutMs: 60_000,
-        gitTimeoutMs: 1_000,
+        provisionTimeoutMs: 1_000,
         ownership: { waitMs: 90_000, staleAfterMs: 30_000 },
       }),
     ).toThrow(/must exceed/);
@@ -622,18 +681,18 @@ describe("the manager — the stale window is refused at construction", () => {
       createConductorHarness({
         resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
         runTimeoutMs: 30_000,
-        gitTimeoutMs: 20_000,
+        provisionTimeoutMs: 20_000,
         ownership: { waitMs: 90_000, staleAfterMs: 40_000 },
       }),
     ).toThrow(/longest a live attempt can hold the lock/);
   });
 
-  it("accepts a stale window past the deadline", async () => {
+  it("accepts a stale window past the whole legitimate hold", async () => {
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     const h = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
       runTimeoutMs: 30_000,
-      gitTimeoutMs: 1_000,
+      provisionTimeoutMs: 1_000,
       ownership: { waitMs: 90_000, staleAfterMs: 90_000 },
     });
     h.dispose();
