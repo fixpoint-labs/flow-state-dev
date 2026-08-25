@@ -21,6 +21,7 @@ import {
   createCapturedChanges,
   createFakeSequencerState,
 } from "../helpers";
+import { dropsTheGuards, unreachable } from "../collection/store-wrappers";
 
 function buildCollection(): TaskCollectionRef {
   const captured = createCapturedChanges();
@@ -712,18 +713,6 @@ describe("a worker's background work survives transport teardown", () => {
  * the write-back seam and not at a boundary check.
  */
 describe("a custom store that ignores the advisory guards", () => {
-  /**
-   * Takes `(id, output)`, so JavaScript discards the options object and the
-   * guards are never evaluated. Everything else is a real backing.
-   */
-  function dropsTheGuards(inner: TaskCollectionRef): TaskCollectionRef {
-    return {
-      ...inner,
-      complete: (id, output) => inner.complete(id, output),
-      fail: (id, error) => inner.fail(id, error),
-    };
-  }
-
   it("does not reject the handler when the task was settled while the worker ran", async () => {
     const c = buildCollection();
     await c.addTask({ id: "t", goal: "do thing" });
@@ -778,11 +767,7 @@ describe("a custom store that ignores the advisory guards", () => {
     await expect(
       runForTest(
         dispatchAndExecuteBlock({
-          collection: {
-            ...c,
-            complete: () => Promise.reject(new Error("store unreachable")),
-            fail: () => Promise.reject(new Error("store unreachable")),
-          },
+          collection: unreachable(c, "store unreachable"),
           dispatcher: fifoDispatcher,
           workers: worker,
           onError: "skip",
