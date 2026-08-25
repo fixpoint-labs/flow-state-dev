@@ -251,13 +251,18 @@ Not themes. Both are recorded here for want of anywhere else: the first corrects
 this document previously promised, and the second belongs to a `direct`-route bug that has no
 spec of its own.
 
-- **FIX-1155 retains store-level CAS.** It adds local serialization around the cross-context
-  boundary; it does **not** switch request scope to the in-memory mutex. A resumed or
-  BullMQ-reclaimed writer holds a **distinct `StateContainer`** and so does not share the FIFO
-  mutex — a lock-only fix would repair same-context task-board fan-out while letting a stale
-  writer overwrite newer durable request state. That cross-context concurrency is established
-  in *Rejected framings* below; the earlier "serializes through the FIFO mutex" framing
-  contradicted it and is corrected here and in §4.
+- **FIX-1155 retains store-level CAS. The two mechanisms cover different writers, and neither
+  covers the other's.** The in-memory queue serializes **same-context** writers; **store-level
+  CAS** is what protects **cross-context** writers. `withScopeLock` keys its FIFO queue on the
+  `StateContainer` object itself (a `WeakMap`, `stores/scope-lock.ts`) and its own contract says
+  *"mutators on different containers are independent"* — so it cannot reach across contexts at
+  all, and a resumed or BullMQ-reclaimed writer holding a **distinct `StateContainer`** is
+  outside it by construction. FIX-1155 therefore adds serialization **within** a context and
+  **does not** switch request scope to the in-memory mutex: a lock-only fix would repair
+  same-context task-board fan-out while letting a stale writer overwrite newer durable request
+  state. That cross-context concurrency is established in *Rejected framings* below. **Do not
+  read this as an instruction to widen the lock** — making it process-wide or distributed is the
+  lock-only design this constraint exists to prevent; the cross-context job is already CAS's.
 - **FIX-1158 keys cross-flow checks by `(scope, ref, flowIsolation)`, not by accessor name.**
   Accessors are explicitly not storage identity: a flow can expose the same shared user/org
   resource under different accessors, or reuse one accessor for different `ref`s, so reading
@@ -304,7 +309,7 @@ expensive thing this epic has already paid for.
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) | In Review |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo *(not in the active set; wrap does not wait for it)* |
 | [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) | Cross-flow validation compares exact refs, so overlapping collection keyspaces slip through — the scope excluded from FIX-1158, filed separately | **bug** | — | — | Backlog *(blocked by FIX-1158; not in the active set)* |
-| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state adds local serialization across the cross-context boundary while **retaining store-level CAS**; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | — | Backlog *(not in the active set)* |
+| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | — | Backlog *(not in the active set)* |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
 *A bug carries no spec PR by design — it routes straight to implementation
@@ -427,4 +432,11 @@ the epic PR — the PR closes when the epic wraps; this document outlives it.
   template (no end-state POC was built) with its two orphaned pieces moved into themes 1 and 2,
   because a second carrier for decisions the themes already own is a drift generator — that
   section's `0` row had to be corrected twice, in two separate rounds, for exactly that reason.
+- **FIX-1155's mechanism corrected (2026-08-25)** — the in-memory queue serializes **same-context**
+  writers and store-level CAS covers **cross-context** ones, where the constraint had the queue
+  spanning that boundary, because `withScopeLock` keys its FIFO on the `StateContainer` itself and
+  cannot reach past it. **Which makes four**, and the pattern is worth stating for whoever reads
+  this next: every claim this epic has had to retract was a *mechanism* description — how the code
+  behaves — and the **decision** wrapped around it survived each time intact. Trust this document's
+  decisions; re-derive its descriptions of the code from the code.
 
