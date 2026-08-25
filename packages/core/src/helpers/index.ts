@@ -37,3 +37,4 @@ export {
   type UpdateOutcome,
   type UpdateStateRunner,
 } from "./update-state-with";
+export { toError } from "./to-error";

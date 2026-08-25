@@ -21,17 +21,7 @@ export function matchesRescueHandler(error: Error, handler: RescueHandlerSpec): 
   return false;
 }
 
-export function toError(value: unknown): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.length > 0) {
-    return new Error(value);
-  }
-
-  return new Error("Unknown block execution error");
-}
+export { toError } from "../../helpers/to-error";
 
 export function withTimeout<TValue>(
   promise: Promise<TValue>,

@@ -32,16 +32,7 @@
  * session-scoped resources this is harmless (session storage is
  * transient); for user/org scope it can orphan data.
  */
-import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
-
-function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pattern" in value &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
-  );
-}
+import { isCollectionConfig } from "./is-collection-config";
 
 /**
  * Build `accessor → storage key` mapping for a per-scope resource config

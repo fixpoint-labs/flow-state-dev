@@ -2,6 +2,7 @@ import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
 import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
+import { toUserContent } from "./to-user-content";
 
 export type IntentCategories = Record<string, string>;
 
@@ -25,14 +26,6 @@ export interface IntentClassifierConfig<
    * `"trace"` for observability-only runs.
    */
   itemVisibility?: ItemVisibility;
-}
-
-function toUserContent(input: unknown): string {
-  if (typeof input === "string") {
-    return input;
-  }
-
-  return JSON.stringify(input, null, 2);
 }
 
 function createDefaultOutputSchema(categories: readonly string[]) {
