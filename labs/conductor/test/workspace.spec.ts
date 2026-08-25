@@ -23,6 +23,7 @@ import {
   type RunPrincipal,
   type WorkspaceConfig,
   encodeSegment,
+  isStrictlyInside,
 } from "../src/workspace";
 import { seedRepo } from "./harness";
 
@@ -143,6 +144,48 @@ describe("provisioning", () => {
 });
 
 const bounds = { waitMs: 2_000, pollMs: 10, staleAfterMs: 60_000 };
+
+describe("the containment rule guarding the only recursive removal", () => {
+  // `provisionCheckout` clears a half-created tree — a directory git left behind
+  // when `worktree add` was killed mid-run. That is a recursive `rmSync`, and the
+  // only thing standing between it and the wrong directory is this predicate.
+  //
+  // It was a `startsWith(`${root}/`)` prefix test. Each case below is a way a
+  // prefix test answers wrongly, and the two refusal cases are the ones that
+  // matter most: a refusal here leaves the partial tree in place, so every later
+  // attempt meets it again and spends a retry on it.
+
+  it("accepts an ordinary checkout under the root", () => {
+    expect(isStrictlyInside("/ws/FIX-1--implement", "/ws")).toBe(true);
+    expect(isStrictlyInside("/ws/nested/deeper", "/ws")).toBe(true);
+  });
+
+  it("refuses the root itself rather than clearing every checkout in it", () => {
+    // The prefix test short-circuited on equality and let this through, so a
+    // caller arriving with the root as its checkout path would have had
+    // `rmSync(root, { recursive: true })` run against the directory holding
+    // every other checkout. The guard exists for exactly the caller that does
+    // not exist yet, which is the caller it admitted.
+    expect(isStrictlyInside("/ws", "/ws")).toBe(false);
+  });
+
+  it("accepts a child when the root is the filesystem root", () => {
+    // `${root}/` is `//` here, which no resolved absolute path starts with, so
+    // the prefix test refused every child of a `/` root.
+    expect(isStrictlyInside("/anything", "/")).toBe(true);
+  });
+
+  it("refuses a sibling whose name merely starts with the root", () => {
+    expect(isStrictlyInside("/ws-elsewhere/tree", "/ws")).toBe(false);
+  });
+
+  it("refuses a path that climbs out, and keeps one that only looks like it", () => {
+    expect(isStrictlyInside("/elsewhere", "/ws")).toBe(false);
+    // `..` is a segment, not a prefix. A directory named `..conductor` is an
+    // ordinary child, and comparing the string prefix would have refused it.
+    expect(isStrictlyInside("/ws/..conductor", "/ws")).toBe(true);
+  });
+});
 
 describe("a cancelled attempt stops waiting for the tree", () => {
   it("gives up the wait instead of polling out the whole window", async () => {

@@ -44,7 +44,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
@@ -585,7 +585,7 @@ export async function provisionCheckout(
     // `checkoutPathFor`, and this keeps that true for any future caller that
     // reaches this function another way.
     const root = resolve(config.root);
-    if (path !== root && !path.startsWith(`${root}/`)) {
+    if (!isStrictlyInside(path, root)) {
       throw new Error(
         `[conductor] refusing to clear ${path}: it is not inside the workspace root ` +
           `${root}. A half-created checkout is only ever removed from the directory this ` +
@@ -605,6 +605,36 @@ export async function provisionCheckout(
     : ["worktree", "add", "-b", branch, path, config.baseRef];
   await git(config.sourceRepo, args, left());
   return { path, branch, created: true };
+}
+
+/**
+ * Is `candidate` a **strict descendant** of `root`?
+ *
+ * The rule lives here rather than at the `rmSync` it guards, because a rule at a
+ * call site gets copied and a rule in a function gets imported.
+ *
+ * Two things a `startsWith(`${root}/`)` prefix test gets wrong, and both fail
+ * toward leaving a half-created tree that every later attempt trips over and
+ * spends a retry on:
+ *
+ * - **A separator is not always `/`.** `resolve` yields the platform's
+ *   separator, so on Windows every legitimate child fails a `/`-terminated
+ *   prefix. `relative` compares path *segments* and has no separator to get
+ *   wrong.
+ * - **A root of `/` has no `${root}/` to match.** The prefix becomes `//`, which
+ *   no resolved absolute path starts with, so every child is refused.
+ *
+ * **The root itself is not inside itself.** The prefix test admitted it — the
+ * old condition short-circuited on `candidate === root` and let the removal
+ * through, so a caller arriving with the root as its checkout path would have
+ * had `rmSync(root, { recursive: true })` run against the directory holding
+ * every other checkout. An empty `relative` is that case, and it is refused.
+ */
+export function isStrictlyInside(candidate: string, root: string): boolean {
+  const rel = relative(root, candidate);
+  // `..` is compared as a whole segment, not as a prefix: a directory named
+  // `..conductor` is an ordinary child, and a prefix test would refuse it.
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 /** A held checkout. Release it on every exit from the attempt that took it. */
