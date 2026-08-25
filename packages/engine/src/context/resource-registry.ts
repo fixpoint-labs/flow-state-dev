@@ -556,7 +556,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     externalResourceContext?: ExternalResourceContext;
   }
 ): ResourceRegistry<TResources> {
-  const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
+  // Null-prototype: keyed by author-supplied accessor names, and this is the
+  // map `get()` below reads. On a plain `{}` an accessor of `__proto__` would
+  // replace the map's prototype rather than add a key, and an accessor sharing
+  // a name with an `Object.prototype` member would resolve to that builtin
+  // instead of throwing "not registered".
+  const handles = Object.create(null) as Record<
+    string,
+    ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>
+  >;
   const configs = options.configs ?? {};
 
   // Serialize mutating writes per storage key. A resource write is a
