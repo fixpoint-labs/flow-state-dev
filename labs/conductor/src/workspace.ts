@@ -592,23 +592,33 @@ export async function provisionCheckout(
 
   const marker = provisioningMarkerFor(path);
 
-  if (existsSync(join(path, ".git"))) {
-    // **Clear the marker the moment a completed checkout is observed.**
-    //
-    // Removing it after `worktree add` returns is not enough: a process that
-    // dies in the gap between the tree existing and that line leaves the marker
-    // behind on a checkout that is finished. Nothing cleaned it up, because this
-    // path returned early — and the marker then outlives its own meaning. If the
-    // run's agent later removes `.git`, the next attempt reads that stale marker
-    // as proof of an interrupted provision and deletes a tree holding real work,
-    // which is the exact outcome the marker was introduced to prevent.
-    //
-    // Cleared HERE rather than after the branch checks below, because `.git` is
-    // what settles whether provisioning finished. The checks that follow decide
-    // whether the checkout is USABLE, which is a different question — and a
-    // throw from one of them must not leave the stale marker in place.
-    rmSync(marker, { force: true });
+  // **The marker outranks `.git`, and this inverts an earlier call in this
+  // file.** `.git` was treated as the witness that provisioning finished, so a
+  // checkout carrying it was reused and the marker cleared on the way past.
+  //
+  // Measured, and the measurement is what moved it. `git worktree add` killed
+  // mid-checkout can leave `.git`, the expected branch, and a registered
+  // worktree all in place with the tree only partly populated: 400 tracked
+  // files, 241 present, and 401 staged deletions waiting in the index. Reusing
+  // that hands the agent a tree that looks healthy and is missing most of the
+  // repository — and its first commit deletes every file the checkout never
+  // received.
+  //
+  // So `.git` witnesses that setup REACHED a point, not that it finished. The
+  // marker is the only positive statement that provisioning started and did not
+  // return, and it is written before `worktree add` and cleared after, so when
+  // it is present the tree is by construction one no agent has run in: this
+  // function had not returned, and the agent runs only after it does. Clearing
+  // and recreating costs a reprovision and can lose nothing.
+  //
+  // That also subsumes what clearing-on-`.git` was added for. A marker stranded
+  // by a death just after `worktree add` returned no longer outlives its
+  // meaning, because the next provision acts on it immediately — against a tree
+  // that cannot yet hold work — instead of leaving it armed for a later attempt
+  // to misread.
+  const interrupted = existsSync(marker);
 
+  if (!interrupted && existsSync(join(path, ".git"))) {
     if (!(await branchExists(config, branch, left()))) {
       throw new Error(
         `[conductor] the checkout at ${path} is on branch "${branch}", which no longer ` +
@@ -678,7 +688,7 @@ export async function provisionCheckout(
     // is a positive statement that a provision started and did not finish.
     // Absent, this directory is something we did not make and cannot explain,
     // and the safe disposition for unknown contents is to keep them.
-    if (!existsSync(marker)) {
+    if (!interrupted) {
       throw new Error(
         `[conductor] the checkout at ${path} has no \`.git\` and no record of an ` +
           `interrupted provision, so it is not a half-created checkout and this will not ` +

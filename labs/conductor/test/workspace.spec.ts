@@ -452,37 +452,47 @@ describe("a half-created checkout does not brick every retry", () => {
     });
   });
 
-  it("clears a marker stranded by a death between the tree and the cleanup", async () => {
-    // The marker is removed after `worktree add` returns. A process that dies in
-    // the gap leaves it behind on a checkout that is FINISHED, and the reuse
-    // path used to return early without touching it — so the marker outlived its
-    // own meaning.
+  it("recreates a marked checkout even when `.git` is already there", async () => {
+    // **This assertion is the inverse of the one it replaces, and the reason is
+    // a measurement.** The old rule made `.git` the witness that provisioning
+    // finished, so a marked checkout carrying `.git` was reused and the marker
+    // cleared on the way past.
     //
-    // That is not harmless. It re-arms exactly the deletion the marker exists to
-    // prevent: if the agent later removes `.git`, the next attempt reads the
-    // stale marker as proof of an interrupted provision and clears a tree that
-    // holds real work. Staged as the full sequence rather than asserting on the
-    // file, because the file is the mechanism and the work surviving is the point.
+    // `git worktree add` killed mid-checkout does not respect that rule. Killing
+    // one against a 400-file repository left `.git` present, HEAD on the
+    // expected branch, the worktree registered — and 241 files populated with
+    // 401 staged deletions in the index. The old rule hands exactly that to the
+    // agent, whose first commit then deletes the 159 files the checkout never
+    // received.
+    //
+    // So the marker wins. It is written before `worktree add` and cleared after
+    // it returns, so a tree carrying one is by construction a tree no agent has
+    // run in — this function had not returned, and the agent runs only after it
+    // does. Recreating costs a provision and can lose nothing.
     const config = workspace();
     const location = at("FIX-1219", "implement");
     const first = await provisionCheckout(config, location);
-    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
 
-    // The death: a completed checkout with the marker still beside it.
+    // The half-finished add: `.git` and the branch are real, the tree is not,
+    // and the marker is the only thing that says so.
+    writeFileSync(join(first.path, "half-populated.txt"), "partial");
     writeFileSync(`${first.path}.provisioning`, "");
 
-    // Reuse must clean it up on the way through.
     const second = await provisionCheckout(config, location);
-    expect(second.created).toBe(false);
+    expect(second.created).toBe(true);
     expect(existsSync(`${first.path}.provisioning`)).toBe(false);
+    // The corrupt contents are gone rather than handed on.
+    expect(existsSync(join(first.path, "half-populated.txt"))).toBe(false);
 
-    // And the re-armed deletion is disarmed: `.git` goes missing, and the tree
-    // is now refused rather than cleared.
-    rmSync(join(first.path, ".git"), { recursive: true, force: true });
+    // And what the old test was protecting still holds, by a better route: the
+    // marker cannot survive to re-arm a later deletion, because this provision
+    // acted on it. A subsequent `.git` removal is refused, not cleared.
+    writeFileSync(join(second.path, "uncommitted.txt"), "the last attempt's work");
+    rmSync(join(second.path, ".git"), { recursive: true, force: true });
     await expect(provisionCheckout(config, location)).rejects.toThrow(
       /no record of an interrupted provision/,
     );
-    expect(readFileSync(join(first.path, "uncommitted.txt"), "utf8")).toBe(
+    expect(readFileSync(join(second.path, "uncommitted.txt"), "utf8")).toBe(
       "the last attempt's work",
     );
   });

@@ -338,8 +338,37 @@ export function conductorFlow(options: ConductorFlowOptions) {
       const taskId = conductorTaskId(input.issue, input.phase);
       const existing = await ctx.cap[boardId].getTask(taskId);
       if (existing !== undefined) {
-        // Already filed. `wake` is what re-drains it — re-seeding must not mint
-        // a second run, and must not reset the retry budget of the first.
+        // **Idempotent means "this row IS the one asked for", not "a row exists
+        // at that id".** The id is derived from the issue and phase, so the two
+        // normally agree — but the board is a shared collection, and this file
+        // already assumes elsewhere that a task can reach it by any route that
+        // can write a row. A row filed at this id carrying a different payload
+        // would otherwise be reported as a successful seed: the next drain
+        // claims the foreign row, charges it an attempt, and the manager's own
+        // id guard then refuses it — while the task the caller actually asked
+        // for was never filed at all. A silent nothing-happened, paid for by
+        // somebody else's retry budget.
+        //
+        // Checked by re-deriving the id from the payload rather than comparing
+        // the fields, so the canonical folding is the same one `conductorTaskId`
+        // applies and a casing difference is not read as a conflict.
+        const found = existing.input as { issue?: unknown; phase?: unknown } | undefined;
+        const foundId =
+          typeof found?.issue === "string" && typeof found?.phase === "string"
+            ? conductorTaskId(found.issue, found.phase)
+            : undefined;
+        if (foundId !== taskId) {
+          throw new Error(
+            `[conductor] a row already exists at "${taskId}" and its payload does not ` +
+              `describe ${input.issue}/${input.phase}. Refusing to report this seed as ` +
+              `filed: draining that row would charge it an attempt and refuse it, and the ` +
+              `task asked for here would never exist.`,
+          );
+        }
+
+        // Already filed, and filed for this. `wake` is what re-drains it —
+        // re-seeding must not mint a second run, and must not reset the retry
+        // budget of the first.
         await ctx.sequencer?.patchState({ taskId: existing.id });
         return { taskId: existing.id };
       }

@@ -380,6 +380,39 @@ function managerState(ctx: BlockContext): z.infer<typeof managerStateSchema> {
  * is a longer worst-case shutdown wait, which is bounded and visible, instead of
  * a cancelled run, which is neither.
  */
+/**
+ * Run `work`, and reject if it has not settled within `ms`.
+ *
+ * **The timer never outlives the call.** A bare `setTimeout` race leaks a
+ * pending timer per invocation — harmless once, and this runs on every settled
+ * attempt of every row, so the handles accumulate on a long-lived dispatcher and
+ * hold the event loop open past a shutdown that is otherwise finished.
+ *
+ * The bounded work is not cancelled, because nothing here can cancel it: the
+ * hook is somebody else's function. What this buys is that the *worker* stops
+ * waiting and the row settles, which is the property the drain budget rests on.
+ */
+export async function withDeadline<T>(
+  work: () => Promise<T>,
+  ms: number,
+  what: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new ConductorAttemptFailed(`${what} did not answer within ${ms}ms`)),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export function conductorDrainBudgetMs(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
@@ -803,15 +836,29 @@ export function harnessManager(options: ManagerOptions) {
         );
       }
 
-      const done = await phase.isDone({
-        epic: boardCollectionId,
-        issue: state.issue!,
-        phase: state.phase!,
-        attempt: identity.attempt,
-        workspacePath: state.workspacePath!,
-        branch: state.branch!,
-        ctx: ctx as BlockContext,
-      });
+      // **Bounded, because the whole-worker budget already says it is.**
+      // `conductorDrainBudgetMs` sums four terms and spends
+      // `NETWORK_CALL_TIMEOUT_MS` on this step — a number taken from the
+      // built-in probe, which bounds its own `gh` call. `isDone` is a public
+      // seam, so any other phase's check was unbounded and could outlive the
+      // budget the host sized its shutdown from, leaving the row `in_progress`
+      // with nothing left to settle it. The bound is the same constant the
+      // budget already reserves, so this makes the advertised number true rather
+      // than adding a new one.
+      const done = await withDeadline(
+        async () =>
+          phase.isDone({
+            epic: boardCollectionId,
+            issue: state.issue!,
+            phase: state.phase!,
+            attempt: identity.attempt,
+            workspacePath: state.workspacePath!,
+            branch: state.branch!,
+            ctx: ctx as BlockContext,
+          }),
+        NETWORK_CALL_TIMEOUT_MS,
+        `the ${state.phase} phase's completion check`,
+      );
       if (!done) {
         throw new ConductorAttemptFailed(
           `the run finished cleanly and the ${state.phase} phase is still not done`,

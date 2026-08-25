@@ -551,6 +551,54 @@ describe("the flow — seeding twice", () => {
     expect(seen.prompts).toHaveLength(1);
   });
 
+  it("refuses a row at this id whose payload describes something else", async () => {
+    // Idempotent has to mean "this row IS the one asked for", not "a row exists
+    // at that id". The board is a shared collection and this flow already
+    // assumes a task can reach it by any route that can write a row — so a row
+    // filed at this id with a foreign payload was reported as a successful seed
+    // while the task asked for was never filed. The next drain then claims the
+    // foreign row, charges it an attempt, and the manager's id guard refuses it:
+    // a silent nothing-happened, paid for out of somebody else's retry budget.
+    //
+    // Staged by corrupting the payload through the ledger the board actually
+    // reads, rather than by asserting on the comparison in isolation — the
+    // defect is that `seed` never looked, so the check has to run from `seed`.
+    let corrupted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], {
+        prompts: [],
+        cwds: [],
+      }),
+      isDone: async (run) => {
+        if (!corrupted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId(ISSUE, PHASE), {
+            input: { issue: "FIX-SOMEONE-ELSE", phase: PHASE },
+          });
+          corrupted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+
+    // Waited on the corruption itself rather than on settlement: rewriting the
+    // payload is exactly what makes this row invisible to `status`, so `settle`
+    // would poll for a row it can no longer find.
+    const deadline = Date.now() + 8_000;
+    while (!corrupted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(corrupted, "the drain never reached the completion check").toBe(true);
+
+    await expect(live.call("seed", { issue: ISSUE, phase: PHASE })).rejects.toThrow(
+      /does not describe/,
+    );
+  }, 20_000);
+
   it("returns one row when the seeds are CONCURRENT", async () => {
     // **The interleaving the sequential test cannot reach.** That one awaits the
     // first seed's settlement before starting the second, so both calls see the
@@ -1399,5 +1447,32 @@ describe("the ledger is partitioned by tenant", () => {
       );
       expect(taskId).toBe(conductorTaskId(ISSUE, PHASE));
     });
+  });
+});
+
+describe("the completion check is bounded", () => {
+  it("gives up on a hook that never answers, and leaves no timer behind", async () => {
+    const { withDeadline } = await import("../src/manager");
+
+    // The gap this closes: `conductorDrainBudgetMs` sums four terms and spends
+    // `NETWORK_CALL_TIMEOUT_MS` on the completion check — a number taken from the
+    // built-in probe, which bounds its own `gh` call. `isDone` is a public seam,
+    // so any other phase's check was unbounded and could outlive the budget a
+    // host sized its shutdown from, leaving the row `in_progress` with nothing
+    // left to settle it.
+    await expect(withDeadline(() => new Promise(() => {}), 20, "the check")).rejects.toThrow(
+      /did not answer within 20ms/,
+    );
+
+    // **And the timer is cleared on the winning path.** A bare `Promise.race`
+    // leaks one pending timer per call; this runs on every settled attempt of
+    // every row, so on a long-lived dispatcher the handles accumulate and hold
+    // the event loop open past a shutdown that is otherwise finished. Asserted
+    // by racing the process's own emptiness: a leaked 60s timer would keep this
+    // `setImmediate` chain alive well past the resolve.
+    const before = process.getActiveResourcesInfo?.().filter((r) => r === "Timeout").length ?? 0;
+    await withDeadline(async () => "fast", 60_000, "the check");
+    const after = process.getActiveResourcesInfo?.().filter((r) => r === "Timeout").length ?? 0;
+    expect(after).toBeLessThanOrEqual(before);
   });
 });
