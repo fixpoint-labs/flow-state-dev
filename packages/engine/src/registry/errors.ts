@@ -12,6 +12,12 @@ export interface CrossFlowSchemaConflictDetails {
   flowB: string;
   reason: CompatibilityReason;
   detail: string;
+  /**
+   * True when the conflicting field is a resource COLLECTION. Changes only the
+   * remedy wording: a collection's storage identity is its `pattern`, and
+   * `ResourceCollectionConfig` exposes no `ref` to change.
+   */
+  collection?: boolean;
 }
 
 /**
@@ -37,8 +43,13 @@ export class CrossFlowSchemaConflictError extends Error {
 
   constructor(details: CrossFlowSchemaConflictDetails) {
     const flag = details.scope === "user" ? "isolateUserState" : "isolateOrgState";
+    // A collection keys on its `pattern` and has no `ref` to change, so the
+    // single-resource remedy would be advice that does nothing.
+    const identityRemedy = details.collection === true
+      ? `give one a distinct pattern`
+      : `give it a distinct ref`;
     const remedy = details.field.startsWith("resources.")
-      ? `Set flowIsolation: true on that resource in one of the flows to opt out of cross-flow sharing, give it a distinct ref, or reconcile the schemas.`
+      ? `Set flowIsolation: true on that ${details.collection === true ? "collection" : "resource"} in one of the flows to opt out of cross-flow sharing, ${identityRemedy}, or reconcile the schemas.`
       : `Set ${flag}: true on one of the flows to opt out of cross-flow sharing, or reconcile the schemas.`;
     super(
       `Flows "${details.flowA}" and "${details.flowB}" declare incompatible ${details.scope}.${details.field} schemas (${details.reason}: ${details.detail}). ` +

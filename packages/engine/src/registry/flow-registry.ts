@@ -51,7 +51,7 @@ export interface SharedScopeDescription {
 type ScopeParticipant = {
   flowKind: string;
   stateSchema?: ZodTypeAny;
-  resourceSchemas: Record<string, ZodTypeAny>;
+  resourceSchemas: Record<string, ResourceDeclaration>;
 };
 
 /**
@@ -195,7 +195,10 @@ export class InMemoryFlowRegistry implements FlowRegistry {
       // Copy onto a null-prototype map, not `{ ...spread }` — this is the map
       // `validateScope` looks refs up in, so it is the read side of the
       // prototype hazard `emptySchemaMap` documents.
-      resourceSchemas: Object.assign(emptySchemaMap(), declaration.resourceSchemas),
+      resourceSchemas: Object.assign(
+        emptySchemaMap<ResourceDeclaration>(),
+        declaration.resourceSchemas
+      ),
     });
   }
 
@@ -245,18 +248,36 @@ export class InMemoryFlowRegistry implements FlowRegistry {
       }
 
       // Exact-ref comparison — exclusion 1 above.
-      for (const [ref, incomingSchema] of Object.entries(incoming.resourceSchemas)) {
-        const existingSchema = existing.resourceSchemas[ref];
-        if (existingSchema === undefined) continue;
-        checkPair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingSchema, incomingSchema);
+      for (const [ref, incoming_] of Object.entries(incoming.resourceSchemas)) {
+        const existing_ = existing.resourceSchemas[ref];
+        if (existing_ === undefined) continue;
+        checkPair(
+          scope,
+          `resources.${ref}`,
+          existing.flowKind,
+          flowKind,
+          existing_.schema,
+          incoming_.schema,
+          incoming_.collection || existing_.collection
+        );
       }
     }
   }
 }
 
+/**
+ * One resource's contribution to a scope's shared view. `collection` is
+ * carried only so a conflict can name the right remedy — a collection keys on
+ * its `pattern` and has no `ref` to change.
+ */
+type ResourceDeclaration = {
+  schema: ZodTypeAny;
+  collection: boolean;
+};
+
 type ScopeDeclaration = {
   stateSchema?: ZodTypeAny;
-  resourceSchemas: Record<string, ZodTypeAny>;
+  resourceSchemas: Record<string, ResourceDeclaration>;
 };
 
 /**
@@ -280,8 +301,8 @@ type ScopeDeclaration = {
  * needs `Object.prototype`, and a null-prototype map cannot regress the way a
  * denylist can.
  */
-function emptySchemaMap(): Record<string, ZodTypeAny> {
-  return Object.create(null) as Record<string, ZodTypeAny>;
+function emptySchemaMap<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
 }
 
 /**
@@ -324,10 +345,11 @@ function storageRef(
   if (isCollectionConfig(entry)) {
     return entry.pattern;
   }
-  // `resourceStorageKeys` maps every accessor it is given, and returns a plain
-  // object — so guard the lookup rather than trusting a bare index, for the
-  // inherited-member reason `emptySchemaMap` documents.
-  return Object.hasOwn(storageKeys, accessor) ? storageKeys[accessor] : accessor;
+  // Exactly the shape the runtime uses (`resource-registry.ts:1489`,
+  // `route-utils.ts:366`), so the check cannot resolve a different key than the
+  // write path. `resourceStorageKeys` returns a null-prototype map, so a miss
+  // is a real miss rather than an inherited member.
+  return storageKeys[accessor] ?? accessor;
 }
 
 /**
@@ -366,7 +388,7 @@ function collectScopeDeclaration(
     ? undefined
     : (scopeConfig as { stateSchema?: ZodTypeAny } | undefined)?.stateSchema;
 
-  const resourceSchemas = emptySchemaMap();
+  const resourceSchemas = emptySchemaMap<ResourceDeclaration>();
   const storageKeys = resourceStorageKeys(flow.resources);
   for (const [accessor, entry] of Object.entries(flow.resources ?? {})) {
     if (entry === undefined || entry.scope !== scope) continue;
@@ -379,7 +401,10 @@ function collectScopeDeclaration(
     if (resolveResourceIsolation(entry.flowIsolation, flow, scope)) continue;
     const schema = entry.stateSchema;
     if (schema === undefined) continue;
-    resourceSchemas[storageRef(entry, accessor, storageKeys)] = schema;
+    resourceSchemas[storageRef(entry, accessor, storageKeys)] = {
+      schema,
+      collection: isCollectionConfig(entry),
+    };
   }
 
   if (stateSchema === undefined && Object.keys(resourceSchemas).length === 0) {
@@ -395,7 +420,8 @@ function checkPair(
   flowA: string,
   flowB: string,
   schemaA: ZodTypeAny,
-  schemaB: ZodTypeAny
+  schemaB: ZodTypeAny,
+  collection = false
 ): void {
   const result = compareZodSchemas(schemaA, schemaB);
   if (result.kind === "incompatible") {
@@ -406,6 +432,7 @@ function checkPair(
       flowB,
       reason: result.reason,
       detail: result.detail,
+      collection,
     });
   }
   if (result.kind === "compatible" && result.warnings.length > 0) {
@@ -419,12 +446,12 @@ function describeScope(entries: Map<string, ScopeParticipant>): SharedScopeDescr
   // `??=` reads before it writes, so on a plain `{}` an inherited member at
   // that key is not nullish and the entry is silently dropped from the
   // description. See `emptySchemaMap`.
-  const resources = emptySchemaMap();
+  const resources = emptySchemaMap<ZodTypeAny>();
   let stateSchema: ZodTypeAny | undefined;
   for (const entry of entries.values()) {
     stateSchema ??= entry.stateSchema;
-    for (const [name, schema] of Object.entries(entry.resourceSchemas)) {
-      resources[name] ??= schema;
+    for (const [name, declaration] of Object.entries(entry.resourceSchemas)) {
+      resources[name] ??= declaration.schema;
     }
   }
   return { stateSchema, resources };

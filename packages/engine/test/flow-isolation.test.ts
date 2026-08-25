@@ -20,6 +20,7 @@ import {
   resolveOrgStorageKey,
   resolveUserStorageKey
 } from "../src";
+import { resourceStorageKeys } from "../src/resources/storage-keys";
 
 /**
  * One declared resource, spelled out far enough to exercise the three parts of
@@ -583,6 +584,10 @@ describe("cross-flow resource schema validation", () => {
     );
     expect(error.scope).toBe("user");
     expect(error.field).toBe("resources.files/*");
+    // A collection has no `ref` to change and keys on its pattern, so the
+    // single-resource remedy would be advice that does nothing.
+    expect(error.message).toContain("distinct pattern");
+    expect(error.message).not.toContain("distinct ref");
   });
 
   /**
@@ -638,6 +643,31 @@ describe("cross-flow resource schema validation", () => {
           })
         )
       ).not.toThrow();
+    });
+
+    it("resolves a __proto__ accessor to the same key the runtime persists under", () => {
+      // The check and the write path must agree on WHERE a declaration lives.
+      // `resourceStorageKeys` is the runtime's own accessor→key helper; on a
+      // plain-object map a `__proto__` accessor creates no own mapping, so the
+      // lookup returns `Object.prototype` and persists as `"[object Object]"`
+      // while the check files it under `__proto__`. A resource declaring
+      // `ref: "[object Object]"` could then overwrite that cell unchecked.
+      const resource = defineResource({
+        scope: "user",
+        stateSchema: z.object({ theme: z.string() }),
+      });
+      const flow = makeFlow({ kind: "flow-proto", rawResources: { ["__proto__"]: resource } });
+
+      // The accessor survives flow build as a real own key.
+      const declared = flow.resources ?? {};
+      expect(Object.hasOwn(declared, "__proto__")).toBe(true);
+
+      const runtimeKey = resourceStorageKeys(declared)["__proto__"];
+      expect(runtimeKey).toBe("__proto__");
+
+      const registry = createFlowRegistry();
+      registry.register(flow);
+      expect(Object.keys(registry.describeSharedSchemas().user.resources)).toEqual([runtimeKey]);
     });
 
     it("reports a __proto__ resource in the shared schema description", () => {
