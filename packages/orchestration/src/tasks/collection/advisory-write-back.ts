@@ -96,12 +96,11 @@
  * changes for a caller who was already correct.
  */
 import type { TaskChangeKind } from "./change-event";
-import type { TaskStatus } from "../schema/task";
+import type { Task, TaskStatus } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import { routeFailure, sumGrantedRetries, transitionDeclineReason } from "./internal";
 import type {
   TaskCollectionRef,
-  TaskHandle,
   TaskTransitionOptions,
   TaskWriteOutcome,
 } from "./types";
@@ -125,11 +124,11 @@ export async function advisoryComplete(
   output: unknown,
   options: TaskTransitionOptions
 ): Promise<TaskWriteOutcome> {
-  const snapshot = readQuietly(ref, taskId);
+  const before = observe(ref, taskId);
   try {
     return await ref.complete(taskId, output, options);
   } catch (err) {
-    return containOrRethrow(ref, taskId, "complete", snapshot, options, err);
+    return containOrRethrow(ref, taskId, "complete", before, options, err);
   }
 }
 
@@ -147,33 +146,65 @@ export async function advisoryFail(
   error: string,
   options: TaskTransitionOptions
 ): Promise<TaskWriteOutcome> {
-  const snapshot = readQuietly(ref, taskId);
+  const before = observe(ref, taskId);
   try {
     return await ref.fail(taskId, error, options);
   } catch (err) {
-    return containOrRethrow(ref, taskId, "fail", snapshot, options, err);
+    return containOrRethrow(ref, taskId, "fail", before, options, err);
   }
 }
 
 /**
- * Read a task without letting the read displace the write's own error.
+ * Everything about the call that has to be known BEFORE the write.
  *
- * A custom store's `get` may throw, and on the post-error path that would
+ * Both fields answer the same question — *what was true when this call ran* —
+ * and both have to be captured up front for the same reason: read afterwards,
+ * they describe the world the failure left behind rather than the one the call
+ * started in. See {@link attribute} for what each one is load-bearing for.
+ */
+interface CallBasis {
+  task: Task | undefined;
+  at: number;
+}
+
+function observe(ref: TaskCollectionRef, taskId: string): CallBasis {
+  return { task: readQuietly(ref, taskId), at: readClock(ref) };
+}
+
+/**
+ * Read a task, detached from the store, without letting the read displace the
+ * write's own error.
+ *
+ * **Detached, because a snapshot that a store can still edit is not a
+ * snapshot.** `get` is free to hand back the same object the write then mutates
+ * in place, and this seam runs against stores it does not control, so it cannot
+ * assume otherwise — a live object would let a post-commit failure read as a
+ * task that was already settled when the call began, which is precisely the
+ * confusion taking the snapshot early exists to prevent. A shallow copy is
+ * enough: every field the attribution reads is a scalar. Both built-in backings
+ * already return a fresh object per call, so this costs them one allocation and
+ * changes nothing.
+ *
+ * The `TaskHandle` shed by the copy (its `items()`) is not read here.
+ *
+ * A custom store's `get` may also throw, and on the post-error path that would
  * replace the failure the caller needs to see with a bookkeeping one. An
  * unreadable task simply removes an input: clause (a) goes unavailable when the
  * snapshot is missing, clause (b) when the re-read is, and with neither the
  * original error propagates.
  */
-function readQuietly(ref: TaskCollectionRef, taskId: string): TaskHandle | undefined {
+function readQuietly(ref: TaskCollectionRef, taskId: string): Task | undefined {
   try {
-    return ref.get(taskId);
+    const task = ref.get(taskId);
+    return task === undefined ? undefined : { ...task };
   } catch {
     return undefined;
   }
 }
 
 /**
- * The clock the lease arm of the predicate compares against.
+ * The clock the lease arm of the predicate compares against, sampled with the
+ * snapshot rather than after the write. See {@link CallBasis}.
  *
  * `now` was added to `TaskCollectionRef` with leases and is therefore the field
  * a hand-written store is most likely to be missing — and a store missing it is
@@ -205,7 +236,7 @@ function readClock(ref: TaskCollectionRef): number {
 function resolveTarget(
   ref: TaskCollectionRef,
   verb: "complete" | "fail",
-  basis: TaskHandle
+  basis: Task
 ): WriteTarget {
   if (verb === "complete") return { status: "completed", kind: "completed" };
   const routing = routeFailure(
@@ -233,13 +264,13 @@ function containOrRethrow(
   ref: TaskCollectionRef,
   taskId: string,
   verb: "complete" | "fail",
-  snapshot: TaskHandle | undefined,
+  before: CallBasis,
   options: TaskTransitionOptions,
   err: unknown
 ): TaskWriteOutcome {
   let contained: TaskWriteOutcome | undefined;
   try {
-    contained = attribute(ref, taskId, verb, snapshot, options);
+    contained = attribute(ref, taskId, verb, before, options);
   } catch {
     contained = undefined;
   }
@@ -260,9 +291,10 @@ function attribute(
   ref: TaskCollectionRef,
   taskId: string,
   verb: "complete" | "fail",
-  snapshot: TaskHandle | undefined,
+  before: CallBasis,
   options: TaskTransitionOptions
 ): TaskWriteOutcome | undefined {
+  const snapshot = before.task;
   const current = readQuietly(ref, taskId);
   const basis = snapshot ?? current;
   // Neither a before nor an after. Nothing to attribute the throw to, so it is
@@ -271,16 +303,24 @@ function attribute(
   if (basis === undefined) return undefined;
 
   const target = resolveTarget(ref, verb, basis);
-  const now = readClock(ref);
 
   // (a) The task was already declinable when this call ran.
+  //
+  // Judged against the clock as it read WHEN THE CALL RAN, not as it reads now.
+  // The predicate's lease arm is a comparison against `leaseUntil`, so a clock
+  // sampled after the failure asks whether the lease has run out *by the time
+  // the store gave up* — and a store that hangs past the lease and then throws
+  // would answer yes. That reads a plain outage as a lost claim and drops the
+  // worker's result in silence, which is the exact conversion this seam must
+  // never make. The question is whether a conforming store would have declined
+  // this call, so it is asked as of the call.
   if (snapshot !== undefined) {
     const reason = transitionDeclineReason(
       snapshot,
       target.status,
       options,
       ref.collectionId,
-      now,
+      before.at,
       undefined,
       target.kind
     );
@@ -305,7 +345,7 @@ function attribute(
           target.status,
           options,
           ref.collectionId,
-          now,
+          before.at,
           undefined,
           target.kind
         ) ?? "terminal";

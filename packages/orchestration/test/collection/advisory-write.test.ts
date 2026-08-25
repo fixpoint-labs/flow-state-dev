@@ -26,6 +26,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   createSequencerBackedTaskCollection,
   createResourceBackedTaskCollection,
+  MIN_LEASE_DURATION_MS,
   ticketForClaim,
   type TaskClaimTicket,
   type TaskCollectionRef,
@@ -1484,5 +1485,87 @@ describe("the seam against a ref that predates part of the interface (FIX-964)",
     await expect(
       advisoryFail(hostile, "t", "worker blew up", { ifAllowed: true, claim })
     ).rejects.toThrow("write path is down");
+  });
+});
+
+/**
+ * Two ways the seam could contain something it must not, both found by review
+ * on the first implementation. Each is a case where the *evidence* the
+ * attribution reads is taken from the wrong moment, so each is pinned by making
+ * that moment observable rather than by asserting an internal call.
+ */
+describe("the seam judges the call by what was true WHEN IT RAN (FIX-964)", () => {
+  it("does not read a slow store outage as a lost claim", async () => {
+    // The lease arm of the decline predicate is a comparison against
+    // `leaseUntil`. Sample the clock after the failure and it answers "has the
+    // lease run out by the time the store gave up" — so a store that hangs
+    // past the lease and then throws looks exactly like a displaced worker, and
+    // the outage is contained and the result dropped in silence.
+    //
+    // Here the clock is moved past the lease *during* the write, which is what
+    // a slow outage does. The task is still `in_progress` and still ours.
+    let clock = 1000;
+    const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
+      tasks: {},
+    });
+    const captured = createCapturedChanges();
+    const collection = createSequencerBackedTaskCollection({
+      collectionId: "tasks",
+      sequencer,
+      onChange: captured.onChange,
+      now: () => clock,
+    });
+
+    await collection.addTask({ id: "t", goal: "t" });
+    const task = await collection.claim("worker-1", { leaseDurationMs: MIN_LEASE_DURATION_MS });
+    if (task === null) throw new Error("fixture failed to claim");
+    const claim = ticketForClaim(collection.collectionId, task);
+
+    const slowOutage: TaskCollectionRef = {
+      ...collection,
+      complete: () => {
+        clock += MIN_LEASE_DURATION_MS * 10;
+        return Promise.reject(new Error("store unreachable"));
+      },
+    };
+
+    await expect(
+      advisoryComplete(slowOutage, "t", "output", { ifAllowed: true, claim })
+    ).rejects.toThrow("store unreachable");
+    expect(collection.get("t")?.status).toBe("in_progress");
+  });
+
+  it("does not let a store edit the snapshot out from under the attribution", async () => {
+    // The snapshot is the whole reason a post-commit failure can be told apart
+    // from "somebody had already settled it". A store is free to hand `get()`
+    // back the same object its write then mutates in place, and this seam runs
+    // against stores it does not control — so a snapshot it can still edit is
+    // not a snapshot, and a committed-then-threw write would read as a task
+    // that was already terminal when the call began.
+    //
+    // Both built-in backings copy on `get` already; this store does not.
+    const { collection } = await sequencerBacking()();
+    await collection.addTask({ id: "t", goal: "t" });
+    const task = await collection.claim("worker-1");
+    if (task === null) throw new Error("fixture failed to claim");
+    const claim = ticketForClaim(collection.collectionId, task);
+
+    const live = { ...collection.get("t") } as Record<string, unknown>;
+    const mutatesItsOwnView: TaskCollectionRef = {
+      ...collection,
+      get: (id: string) => (id === "t" ? (live as never) : collection.get(id)),
+      complete: async (id, output, options) => {
+        const outcome = await collection.complete(id, output, options);
+        // The commit lands, the store updates the object it already handed out,
+        // and only then does something after the write fail.
+        live.status = "completed";
+        throw new Error("onChange rejected after the commit");
+      },
+    };
+
+    await expect(
+      advisoryComplete(mutatesItsOwnView, "t", "output", { ifAllowed: true, claim })
+    ).rejects.toThrow("onChange rejected after the commit");
+    expect(collection.get("t")?.status).toBe("completed");
   });
 });
