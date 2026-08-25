@@ -53,13 +53,20 @@ import {
   runTopic,
   runTopicPrefix,
 } from "./run-record";
-import { conductorTaskInputSchema, harnessManager, type PhaseSpec } from "./manager";
+import {
+  conductorTaskInputSchema,
+  describeTenant,
+  harnessManager,
+  requestTenant,
+  type RequestIdentityContext,
+  type PhaseSpec,
+} from "./manager";
 import { implementPhase } from "./implement";
 import {
   assertSafeSegment,
   conductorTaskId,
-  encodeSegment,
   joinIdentity,
+  tenantSegment,
   type WorkspaceConfig,
 } from "./workspace";
 
@@ -73,11 +80,16 @@ export interface ConductorFlowOptions {
    */
   epic: string;
   /**
-   * The tenant this conductor serves. Defaults to `"single-tenant"`.
+   * The tenant this conductor serves. **Omitted means untenanted** — which is a
+   * distinct identity, not a synonym for any particular tenant name.
    *
    * Construction-time rather than per-request, because it partitions a
    * collection identity. A multi-tenant host builds one conductor per
-   * (tenant, epic); the manager refuses a request resolved to any other tenant.
+   * (tenant, epic), and **every action refuses a request resolved to any other
+   * tenant before it touches the board** — `seed` before the row is written,
+   * `status` before the ledger is read, `wake` before the claim that would
+   * charge an attempt. The manager checks again before executing, because a
+   * task can reach the board by any route that can write a row.
    */
   tenant?: string;
   workspace: WorkspaceConfig;
@@ -101,7 +113,7 @@ export const CONDUCTOR_FLOW_KIND = "conductor" as const;
 export function conductorFlow(options: ConductorFlowOptions) {
   const {
     epic,
-    tenant = "single-tenant",
+    tenant,
     workspace,
     maxAttempts = 3,
     runTimeoutMs = 1_800_000,
@@ -115,7 +127,10 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // partitions routing (it is hashed into the derived workstream session id),
   // the collection identity partitions storage, and neither substitutes for the
   // other.
-  const boardId = joinIdentity("conductor", encodeSegment(tenant), assertSafeSegment("epic", epic));
+  // `tenantSegment`, not `encodeSegment(tenant ?? something)`. The board and
+  // the checkout MUST agree on what a tenant is, and the way they stopped
+  // agreeing was a default here that the checkout did not share.
+  const boardId = joinIdentity("conductor", tenantSegment(tenant), assertSafeSegment("epic", epic));
   // **The tenant is in the collection identity, not just the epic.**
   //
   // User scope is keyed on the BARE user id — `createExecutionContext` passes
@@ -128,13 +143,22 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // Conductor owns this identity, which is the lever that already carries the
   // epic — so the tenant goes in the same place rather than reaching for a
   // framework change. It has to be construction-time because a collection id is:
-  // a multi-tenant host builds one conductor per (tenant, epic), and the manager
-  // refuses a request whose resolved tenant is not this one.
+  // a multi-tenant host builds one conductor per (tenant, epic).
+  //
+  // **Partitioning is only half of it.** A separate collection isolates nothing
+  // unless the tenant is actually checked on the way in, and this sentence used
+  // to claim the manager did that — which was true for one action of three. The
+  // gate is `assertRequestTenant`, and every action passes it before any board
+  // access; see its note for what each one leaked without it.
   //
   // **This partitions the run record too, for free.** The run topic leads with
   // this id, so putting the tenant here puts it in both keys — one change, one
   // rule, both stores.
-  const collectionId = joinIdentity("conductor-tasks", encodeSegment(tenant), assertSafeSegment("epic", epic));
+  const collectionId = joinIdentity(
+    "conductor-tasks",
+    tenantSegment(tenant),
+    assertSafeSegment("epic", epic),
+  );
 
   const tasks = defineTaskCollection({
     id: collectionId,
@@ -300,6 +324,61 @@ export function conductorFlow(options: ConductorFlowOptions) {
     ),
   });
 
+  /**
+   * **The tenant gate. Every action passes it before touching the board.**
+   *
+   * The tenant is resolved from the request's own authenticated principal —
+   * never from a body, a payload, or task metadata (BP-031) — and compared to
+   * the one this conductor was constructed for.
+   *
+   * It used to live only inside the manager, which runs when the drain
+   * *dispatches a claimed row*. That left the guarantee this file documents
+   * untrue for two of the three actions and too late for the third:
+   *
+   * - `seed` wrote a row with no tenant check at all — cross-tenant task
+   *   injection.
+   * - `status` read the ledger with no tenant check at all — cross-tenant
+   *   status disclosure.
+   * - `wake` claimed first and refused after. `applyClaimToTask` sets
+   *   `in_progress` and increments `attempts` in one write, so a refused
+   *   cross-tenant wake still burnt an attempt on another tenant's valid task.
+   *   Refusing is not enough; it has to refuse *before the claim*.
+   *
+   * A partition only isolates if the tenant is actually checked, and the
+   * collection identity carrying the tenant is what makes this the whole of the
+   * isolation rather than half of it.
+   *
+   * The manager keeps its own copy of this check. Not redundancy: a task can
+   * reach the board by any route that can write a row, so the gate guards the
+   * actions and the manager guards the execution.
+   */
+  function assertRequestTenant(ctx: RequestIdentityContext): void {
+    const resolved = requestTenant(ctx);
+    if (resolved !== tenant) {
+      throw new Error(
+        `[conductor] this conductor serves ${describeTenant(tenant)}; the request resolved ` +
+          `to ${describeTenant(resolved)}. Refusing before reading or writing the board, ` +
+          `rather than running one tenant's task in another's workspace.`,
+      );
+    }
+  }
+
+  /**
+   * The gate as a step, so `seed` and `wake` refuse before the drain claims.
+   *
+   * A `.tap()` and not a `.step()`: it inspects the request and passes the
+   * chain value through untouched.
+   */
+  const tenantGate = handler({
+    name: "conductor-tenant-gate",
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    execute: (input, ctx) => {
+      assertRequestTenant(ctx);
+      return input;
+    },
+  });
+
   const readStatus = handler({
     name: "conductor-status",
     inputSchema: z.object({ issue: z.string().optional() }),
@@ -307,6 +386,9 @@ export function conductorFlow(options: ConductorFlowOptions) {
     uses: [board.capability],
     resources: { [RUNS]: runRecordCollection },
     execute: async (input, ctx) => {
+      // Before the listing, not after it — a refusal that has already read the
+      // rows has already disclosed them.
+      assertRequestTenant(ctx);
       const tasksOnBoard = await ctx.cap[boardId].listTasks();
       const rows = [];
       for (const task of tasksOnBoard) {
@@ -346,6 +428,10 @@ export function conductorFlow(options: ConductorFlowOptions) {
           outputSchema: z.object({ taskId: z.string() }),
           stateSchema: z.object({ taskId: z.string().nullable().default(null) }),
         })
+          // First, before the row is written: seeding is a WRITE, so a check
+          // that ran after it would be reporting an injection rather than
+          // preventing one.
+          .tap(tenantGate)
           .tap(seedTask)
           // The drain claims the row and hands it to a workstream, then returns
           // with the row still open. The seeding request does not wait for the
@@ -360,7 +446,19 @@ export function conductorFlow(options: ConductorFlowOptions) {
           .step(returnTaskId),
       },
       /** Drain again: claim whatever is ready, including a re-pended retry. */
-      wake: { block: board.drain },
+      wake: {
+        // **Wrapped, so the gate runs before the claim.** A bare `board.drain`
+        // claimed the row and let the manager refuse afterwards — and the claim
+        // write is what increments `attempts`, so the refusal arrived one
+        // charged attempt too late, on a task belonging to someone else.
+        block: sequencer({
+          name: "conductor-wake",
+          inputSchema: z.unknown(),
+          outputSchema: z.unknown(),
+        })
+          .tap(tenantGate)
+          .step(board.drain),
+      },
       /** The read surface. Zero-model, server-side, board row first. */
       status: { block: readStatus },
     },

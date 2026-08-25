@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { conductorFlow } from "../src/flow";
-import { encodeSegment, joinIdentity } from "../src/workspace";
+import { joinIdentity, tenantSegment } from "../src/workspace";
 import { runRecordCollection } from "../src/run-record";
 import {
   RUNS,
@@ -266,7 +266,7 @@ describe("the manager — a phase cannot claim the manager's own collections", (
         // The manager's own board accessor, derived the way the flow derives it
         // rather than spelled out — so an encoding change cannot make this test
         // silently stop naming the reserved key.
-        [joinIdentity("conductor-tasks", encodeSegment("single-tenant"), EPIC)]: runRecordCollection,
+        [joinIdentity("conductor-tasks", tenantSegment(undefined), EPIC)]: runRecordCollection,
       })).toThrow(
       /the manager owns/,
     );
