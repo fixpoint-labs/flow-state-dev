@@ -12,6 +12,7 @@
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { acquireCheckout, encodeSegment } from "../src/workspace";
 import {
@@ -587,6 +588,55 @@ describe("the flow — how much it runs at once", () => {
     expect(peak).toBe(2);
     for (const done of release) done();
     await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+});
+
+describe("a failed attempt releases the tree", () => {
+  it("does not strand the lock when provisioning fails", async () => {
+    // The only other release is the agent step's `onSettled`, which never fires
+    // when the throw happens BEFORE that step is dispatched. Staged with a
+    // deleted branch, which is one of the real ways `provisionCheckout` throws:
+    // the checkout exists, so the branch is checked, and the branch is gone.
+    //
+    // The assertion is on the LOCK FILE, not on the row. A test that only
+    // checked the attempt failed would pass with the lock stranded — and a
+    // stranded lock is not visible until the next retry waits out the stale
+    // window, which is now the run's deadline plus the whole git budget.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => false,
+      maxAttempts: 3,
+    });
+
+    // Attempt 1 provisions the checkout and fails the done-condition, leaving a
+    // real tree and a real branch behind.
+    const first = await seedAndDrain(live);
+    expect(first.status).toBe("pending");
+    const checkout = join(live.workspaceRoot, ...[]);
+    expect(seen.prompts).toHaveLength(1);
+
+    // Now delete the branch out from under it, so attempt 2 throws inside
+    // provisioning — after the lock is taken.
+    const branch = first.run?.branch;
+    expect(branch).toBeTruthy();
+    // `update-ref -d`, not `branch -D`: the branch is checked out in the
+    // worktree, so `branch -D` refuses — while the thing being staged (a ref
+    // that vanished underneath a live checkout) is exactly what this does.
+    execFileSync("git", ["update-ref", "-d", `refs/heads/${String(branch)}`], {
+      cwd: live.sourceRepo,
+      stdio: "pipe",
+    });
+
+    const after = await wakeAndSettle(live);
+    expect(after.feedback).toMatch(/no longer\s+exists/);
+    // The agent was never dispatched on attempt 2, so `onSettled` never ran.
+    expect(seen.prompts).toHaveLength(1);
+
+    // The lock must be gone anyway.
+    const lock = `${first.run?.workspacePath}.lock`;
+    expect(existsSync(lock), `${lock} was left behind`).toBe(false);
+    void checkout;
   });
 });
 
