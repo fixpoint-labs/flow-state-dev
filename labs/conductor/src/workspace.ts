@@ -77,7 +77,7 @@ export interface Checkout {
  */
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-function assertSafeSegment(label: string, value: string): string {
+export function assertSafeSegment(label: string, value: string): string {
   if (!SAFE_SEGMENT.test(value) || value.includes("..")) {
     throw new Error(
       `[conductor] ${label} "${value}" is not a usable path segment — ` +

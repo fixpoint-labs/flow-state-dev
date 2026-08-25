@@ -115,8 +115,10 @@ commits land on another is the kind of agreement where every layer is wrong toge
 - **No resume.** Conductor starts runs; it does not continue one across a wait. That is
   FIX-1179 / FIX-1246's, and the association a resume reads from is a typed field on the task —
   the session id on the run record is a copy conductor keeps so it can say which session a run was.
-- **One issue at a time**, by design. The board's concurrency setting governs it; the manager holds
-  a worker slot for the run's whole duration.
+- **One issue at a time is a property of how you seed, not something the board enforces.** The
+  board's `concurrency` is set to 1, which bounds how many rows one drain hands off — but a
+  detached dispatch hands off and returns, releasing the slot long before the run finishes. Two
+  seeded issues produce two live runs whatever that setting is; measured, and pinned by a test.
 - **No UI.**
 
 ## Deployment

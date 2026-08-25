@@ -261,7 +261,7 @@ describe("the manager — a phase cannot claim the manager's own collections", (
     // Worse than the run record. The live-claim fence would consult unrelated
     // rows — defeating obligation A while every test that does not stage two
     // attempts still passes.
-    expect(withReadable({ [`conductor-tasks-${EPIC}`]: runRecordCollection })).toThrow(
+    expect(withReadable({ [`conductor-tasks-single-tenant-${EPIC}`]: runRecordCollection })).toThrow(
       /the manager owns/,
     );
   });
