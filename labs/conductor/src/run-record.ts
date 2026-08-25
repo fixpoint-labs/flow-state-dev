@@ -218,15 +218,32 @@ const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "awaiting_review"]);
  * The row-local check is kept underneath as a monotonic backstop for the window
  * where the board read itself could be stale. Neither is sufficient alone.
  *
- * ## What this does not close
+ * ## What this does not close — two limits, and they are different
  *
- * A task deleted and recreated under the same issue-phase while a displaced
- * worker is still alive resets the counter, so an attempt-aware or monotonic
- * fence can accept a stale write from the old incarnation. Closing that would
- * need the task board to pass claim identity (`incarnationId`) through to the
- * worker, which it does not — `TaskWorkerInput` carries neither that nor
- * `createdAt`. That is framework work and outside this lab's boundary; it is
- * named here so nobody mistakes it for either a bug or a task.
+ * **ABA.** A task deleted and recreated under the same issue-phase while a
+ * displaced worker is still alive resets the counter, so an attempt-aware or
+ * monotonic fence can accept a stale write from the old incarnation. Closing
+ * that would need the task board to pass claim identity (`incarnationId`)
+ * through to the worker, which it does not — `TaskWorkerInput` carries neither
+ * that nor `createdAt`. Framework work, outside this lab's boundary.
+ *
+ * **The read-then-write window.** The reads above and the upsert below are not
+ * one atomic operation. A replacement claim landing between them lets the
+ * displaced attempt's write through: it read `attempts === N`, the board moved
+ * to `N + 1`, and the write applies anyway. Closing *that* needs a conditional
+ * resource write — a compare-and-swap the collection API does not offer — so it
+ * is also framework surface rather than something ordering inside this file can
+ * fix.
+ *
+ * **What bounds it**, and why it is a narrow stale field rather than a lost
+ * run: the board row is untouched (the substrate fences settlement itself, so
+ * completion is never affected), the monotonic check makes the damage
+ * non-repeating once the replacement has written, and the replacement's own
+ * opening upsert overwrites every attempt-scoped field on the way in. So the
+ * observable worst case is a run-record field that is briefly the displaced
+ * attempt's, corrected when the live attempt opens the row.
+ *
+ * Both are named here so neither is mistaken for a bug or for a task.
  */
 export async function writeRunRow(
   ctx: BlockContext,

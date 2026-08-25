@@ -27,19 +27,58 @@ export interface ImplementPhaseOptions {
 }
 
 /**
- * Ask GitHub whether this branch has a pull request.
+ * The pull-request states that count as "this phase produced something".
+ *
+ * **`CLOSED` is excluded, and that exclusion is the whole point.** A branch
+ * whose pull request was opened and then closed WITHOUT merging still has a row
+ * on GitHub. Counting it means a later attempt that exits cleanly completes the
+ * task with no open and no merged pull request anywhere — a silent success,
+ * which is the exact defect class this lab exists to close, re-entering through
+ * the completion check itself.
+ *
+ * Not hypothetical: a closed-unmerged pull request is an ordinary artifact of
+ * this repo's own process (every spec PR closes unmerged by design).
+ */
+const COMPLETING_PR_STATES = new Set(["OPEN", "MERGED"]);
+
+/**
+ * Does this branch have a pull request that counts?
+ *
+ * Split from the `gh` call so the state rule is testable without a network —
+ * the rule is the part that can be wrong, and the part a reviewer needs pinned.
+ * Tolerates a row with no `state` by rejecting it (BP-030): an answer we cannot
+ * classify must not complete a task.
+ */
+export function hasCompletingPr(stdout: string): boolean {
+  let rows: unknown;
+  try {
+    rows = JSON.parse(stdout || "[]");
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows)) return false;
+  return rows.some((row) =>
+    COMPLETING_PR_STATES.has(String((row as { state?: unknown } | null)?.state)),
+  );
+}
+
+/**
+ * Ask GitHub whether this branch has a pull request that counts.
  *
  * Run from inside the run's own checkout, so `gh` resolves the repository from
  * where the work happened rather than from wherever the server sits.
+ *
+ * `--state all` is still passed, deliberately: the alternative — asking only for
+ * open ones — would miss a run that opened a PR and had it merged before the
+ * verdict was read. The state is requested and judged here instead.
  */
 async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
   const { stdout } = await run(
     "gh",
-    ["pr", "list", "--head", ctx.branch, "--state", "all", "--json", "number"],
+    ["pr", "list", "--head", ctx.branch, "--state", "all", "--json", "number,state"],
     { cwd: ctx.workspacePath, maxBuffer: 4 * 1024 * 1024 },
   );
-  const rows = JSON.parse(stdout || "[]") as unknown[];
-  return rows.length > 0;
+  return hasCompletingPr(stdout);
 }
 
 /** Build the implement phase. */

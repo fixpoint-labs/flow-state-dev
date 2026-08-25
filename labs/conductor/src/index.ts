@@ -5,47 +5,15 @@
 // epic's board, one detached manager, a checkout that belongs to the run, and a
 // verdict read before the row is settled.
 //
-// LAB-139 inherits this board — which is why its lifetime (durable, `user`-
-// scoped, partitioned by epic) is settled here rather than at that altitude.
+// **Deliberately three exports.** Everything inside this lab imports the
+// individual `./src/*` modules directly, so a wide barrel would be surface
+// nothing consumes — and `knip.json` treats this file as the public boundary,
+// which means anything re-exported here reads as supported. Re-add a specific
+// symbol when LAB-139 or a second phase actually reaches for it (tenet 3).
 // ---------------------------------------------------------------------------
 
 export {
   conductorFlow,
   CONDUCTOR_FLOW_KIND,
-  ASSIGNEE,
   type ConductorFlowOptions,
 } from "./flow";
-export {
-  harnessManager,
-  conductorTaskInputSchema,
-  ConductorAttemptFailed,
-  type ManagerOptions,
-  type PhaseSpec,
-  type PhaseRunContext,
-} from "./manager";
-export { implementPhase, type ImplementPhaseOptions } from "./implement";
-export {
-  RUNS,
-  runRecordCollection,
-  runRecordStateSchema,
-  runOutcomeSchema,
-  runTopic,
-  runTopicPrefix,
-  openRunRow,
-  writeRunRow,
-  readRunRow,
-  type RunRecordState,
-  type RunOutcome,
-  type AttemptIdentity,
-  type RunRowWrite,
-} from "./run-record";
-export {
-  checkoutPathFor,
-  branchFor,
-  provisionCheckout,
-  acquireCheckout,
-  type WorkspaceConfig,
-  type Checkout,
-  type CheckoutLease,
-  type OwnershipBounds,
-} from "./workspace";

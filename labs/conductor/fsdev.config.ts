@@ -6,9 +6,17 @@
  * resolver skips the ambient `FSDEV_DEFAULT_MODEL` scan that would otherwise
  * fire on a model-using environment.
  *
- *   pnpm fsdev run conductor seed   -i '{"issue":"FIX-1219","phase":"implement"}'
- *   pnpm fsdev run conductor wake   -i '{}'
- *   pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
+ *   pnpm fsdev run conductor seed   -s conductor -i '{"issue":"FIX-1219","phase":"implement"}'
+ *   pnpm fsdev run conductor wake   -s conductor -i '{}'
+ *   pnpm fsdev run conductor status -s conductor -i '{"issue":"FIX-1219"}'
+ *
+ * **`-s` is required, not tidy.** The CLI mints a fresh session per invocation
+ * unless one is named, and the run record is session-scoped with lineage
+ * sharing — so three unnamed invocations are three lineages, and `status` would
+ * report the board row with `run: null`, losing the failure reason, the harness
+ * session id, the cost and the checkout. The board row itself is `user`-scoped
+ * and survives either way. See the README's "Reading it back from a new
+ * session" for the limit this works around.
  *
  * `CONDUCTOR_REPO` names the repository checkouts are cut from. It must not be
  * the directory this process runs in: the point is a run driving *that*
