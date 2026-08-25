@@ -137,6 +137,181 @@ describe("provisioning", () => {
 
 const bounds = { waitMs: 2_000, pollMs: 10, staleAfterMs: 60_000 };
 
+describe("a cancelled attempt stops waiting for the tree", () => {
+  it("gives up the wait instead of polling out the whole window", async () => {
+    // Shutdown, or a lease renewal reporting the claim lost, propagates through
+    // `ctx.signal`. An ordinary sleep ignores it, so a stale attempt polled for
+    // the entire ownership window and could still go on to acquire and provision
+    // a tree whose result it can no longer record. That window is now the run's
+    // deadline plus provisioning plus slack, so ignoring the signal costs a
+    // replacement the better part of an hour.
+    //
+    // The bound here is deliberately long: a test that passed because the wait
+    // expired would prove nothing, so the ONLY thing that can end this call in
+    // time is the signal.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-cancel-"));
+    dirs.push(dir);
+    const checkout = join(dir, "tree");
+    const held = await acquireCheckout(checkout, "the holder", {
+      waitMs: 1_000,
+      pollMs: 10,
+      staleAfterMs: 600_000,
+    });
+
+    const controller = new AbortController();
+    const waiting = acquireCheckout(
+      checkout,
+      "the waiter",
+      { waitMs: 600_000, pollMs: 10, staleAfterMs: 600_000 },
+      Date.now,
+      controller.signal,
+    );
+
+    setTimeout(() => controller.abort(), 50);
+    await expect(waiting).rejects.toThrow(/was cancelled/);
+
+    // The holder still owns the tree: a cancelled waiter must not have taken or
+    // cleared anything on its way out.
+    expect(existsSync(`${checkout}.lock`)).toBe(true);
+    held.release();
+  });
+
+  it("does not wait at all when it is already cancelled", async () => {
+    // The signal can already be aborted when the step is entered. Checked before
+    // the first create, not only in the sleep, or a cancelled attempt still takes
+    // the lock on its very first pass — which is the acquisition this exists to
+    // prevent.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-cancel2-"));
+    dirs.push(dir);
+    const checkout = join(dir, "tree");
+
+    await expect(
+      acquireCheckout(
+        checkout,
+        "already gone",
+        { waitMs: 60_000, pollMs: 10, staleAfterMs: 600_000 },
+        Date.now,
+        AbortSignal.abort(),
+      ),
+    ).rejects.toThrow(/was cancelled/);
+
+    expect(existsSync(`${checkout}.lock`)).toBe(false);
+  });
+});
+
+describe("a relative workspace root still lands in one place", () => {
+  it("provisions where every other consumer looks", async () => {
+    // Reproduced before fixing: the derived path is consumed from two different
+    // working directories. The lock, the existence check, the recorded path and
+    // the agent's `cwd` all resolve it against the DISPATCHER's directory, while
+    // `git worktree add` runs with `cwd: config.sourceRepo`. With a relative
+    // root the worktree landed under the source repo and everything else looked
+    // for it under the dispatcher — so the agent got a directory that does not
+    // exist, and no retry recovers because the derivation is stable and stably
+    // wrong.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-rel-"));
+    dirs.push(dir);
+    const sourceRepo = join(dir, "repo");
+    execFileSync("mkdir", ["-p", sourceRepo]);
+    seedRepo(sourceRepo);
+
+    const dispatcher = join(dir, "dispatcher");
+    execFileSync("mkdir", ["-p", dispatcher]);
+    const previous = process.cwd();
+    process.chdir(dispatcher);
+    try {
+      // Relative, exactly as `CONDUCTOR_CHECKOUTS=checkouts` supplies it.
+      const config = { root: "checkouts", sourceRepo, baseRef: "main" };
+      const location = at("FIX-1219", "implement");
+
+      const checkout = await provisionCheckout(config, location);
+
+      // The one property that matters: the path the rest of the system will use
+      // is the path git actually created. Asserted through `checkoutPathFor`
+      // rather than against a literal, since that is what the lock, the run
+      // record and the agent `cwd` all derive from.
+      expect(checkout.path).toBe(checkoutPathFor(config, location));
+      expect(existsSync(join(checkout.path, ".git"))).toBe(true);
+      // And NOT under the source repository, which is where it used to go.
+      expect(existsSync(join(sourceRepo, "checkouts"))).toBe(false);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+});
+
+describe("provisioning is bounded as ONE operation", () => {
+  // The defect: `provisionTimeoutMs` was a PER-CALL timeout while the ownership
+  // arithmetic read it as the whole provisioning budget. The fresh-checkout path
+  // runs three git commands back to back — `worktree prune`, a `rev-parse` to
+  // test the branch, then `worktree add` — so a bound of N permitted a real hold
+  // of 3N. A live attempt could still be inside `worktree add` when its lock was
+  // declared stale, and a reclaimed attempt could take the same tree.
+  //
+  // These drive the injectable clock rather than real time, so the arithmetic is
+  // what is under test and nothing here depends on how fast git happens to be.
+  // The per-call timeouts handed to git stay large (tens of seconds), so a
+  // failure is the budget and never a killed command.
+  const CLOCK_STEP = 25_000;
+
+  function steppingClock(step = CLOCK_STEP): () => number {
+    let t = 0;
+    return () => {
+      const at = t;
+      t += step;
+      return at;
+    };
+  }
+
+  it("spends ONE budget across every command, not one per command", async () => {
+    // Budget 60s, clock +25s per reading. The third command's draw is what
+    // exhausts it — which is precisely the command a per-call bound would have
+    // funded in full.
+    const config = { ...workspace(), provisionTimeoutMs: 60_000 };
+
+    await expect(
+      provisionCheckout(config, at("FIX-1219", "implement"), steppingClock()),
+    ).rejects.toThrow(/provisioning exceeded its budget/);
+  });
+
+  it("bounds the REUSE path too, which runs fewer commands", async () => {
+    // Two commands rather than three, so it needs a tighter clock to exhaust —
+    // and it must still be bounded, or the cheaper path silently escapes the
+    // rule. Provision once with room to spare, then re-enter it.
+    const config = { ...workspace(), provisionTimeoutMs: 60_000 };
+    await provisionCheckout(config, at("FIX-1219", "implement"));
+
+    await expect(
+      provisionCheckout(config, at("FIX-1219", "implement"), steppingClock(50_000)),
+    ).rejects.toThrow(/provisioning exceeded its budget/);
+  });
+
+  it("still provisions when the budget covers the whole operation", async () => {
+    // The bound has to leave the product working. Real clock, real git.
+    const config = { ...workspace(), provisionTimeoutMs: 60_000 };
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    expect(checkout.created).toBe(true);
+    expect(existsSync(join(checkout.path, ".git"))).toBe(true);
+  });
+
+  it("never hands a git call a zero or negative timeout", async () => {
+    // The state this fix creates. `execFile` reads `timeout: 0` as NO TIMEOUT,
+    // so an exhausted budget passed straight down would REMOVE the bound at the
+    // exact moment it is needed. It has to throw instead.
+    const config = { ...workspace(), provisionTimeoutMs: 60_000 };
+
+    await expect(
+      provisionCheckout(config, at("FIX-1219", "implement"), steppingClock(120_000)),
+    ).rejects.toThrow(/provisioning exceeded its budget/);
+
+    // And the degenerate config, which is the value that would actually reach
+    // `execFile` as "no timeout" if the guard compared with `<` instead of `<=`.
+    await expect(
+      provisionCheckout({ ...config, provisionTimeoutMs: 0 }, at("FIX-1", "implement")),
+    ).rejects.toThrow(/provisioning exceeded its budget/);
+  });
+});
+
 describe("obligation B — one live attempt per tree", () => {
 
   it("makes a second attempt WAIT rather than proceed or fail", async () => {
@@ -224,7 +399,7 @@ describe("obligation B — releasing is as guarded as stealing", () => {
   it("a displaced holder's release does not remove the replacement's lock", async () => {
     // The sibling of the steal guard, and reachable *because* of the
     // construction check rather than in spite of it: a run that overruns
-    // `runTimeoutMs` becomes stale-eligible while its process is still alive.
+    // the whole hold budget becomes stale-eligible while its process is still alive.
     // Another attempt steals the lock and takes the tree; then the original's
     // release fires. Unguarded, it removes THE REPLACEMENT'S lock, and a third
     // attempt acquires the path while the replacement is mid-edit.

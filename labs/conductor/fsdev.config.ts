@@ -20,9 +20,15 @@
  * dispatcher's own code. Numeric settings are validated there too; see
  * `positiveIntFromEnv` for why an unchecked one is charged to a task.
  *
- * **`detachedDrainTimeoutMs` is raised deliberately.** Its default is tuned to a
+ * **`detachedDrainTimeoutMs` is derived, not chosen.** Its default is tuned to a
  * serverless SIGTERM grace period, far shorter than a coding run, so an
- * in-process host that leaves it alone truncates a run on every shutdown. On a
+ * in-process host that leaves it alone truncates a run on every shutdown. But
+ * setting it to the agent's own deadline was barely better: a worker also waits
+ * for the checkout lock, provisions, and probes for the pull request, and the
+ * engine carves its cancellation reserve OUT of this budget — so the effective
+ * wait was *less* than the agent deadline alone, and a valid near-deadline run
+ * was cancelled before it could produce a verdict. `conductorFlow` derives the
+ * number from all four terms; see `conductorDrainBudgetMs`. On a
  * queue-consuming host the setting does not apply at all and the platform's kill
  * timeout is the real ceiling — see the README.
  */
@@ -30,7 +36,7 @@ import path from "node:path";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
-import { positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
+import { assertBaseRefExists, positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
 function neverResolvesAModel(): never {
   throw new Error(
@@ -41,12 +47,17 @@ function neverResolvesAModel(): never {
 const RUN_TIMEOUT_MS = positiveIntFromEnv("CONDUCTOR_RUN_TIMEOUT_MS", 1_800_000);
 const root = path.join(process.cwd(), ".fsdev");
 
-const { flow } = conductorFlow({
+const sourceRepo = requireSourceRepo();
+const baseRef = process.env.CONDUCTOR_BASE_REF ?? "main";
+// Startup, not mid-run: a ref that does not resolve fails every `worktree add`.
+assertBaseRefExists(sourceRepo, baseRef);
+
+const { flow, drainBudgetMs } = conductorFlow({
   epic: process.env.CONDUCTOR_EPIC ?? "harness-manager",
   workspace: {
     root: process.env.CONDUCTOR_CHECKOUTS ?? path.join(root, "checkouts"),
-    sourceRepo: requireSourceRepo(),
-    baseRef: process.env.CONDUCTOR_BASE_REF ?? "main",
+    sourceRepo,
+    baseRef,
   },
   maxAttempts: positiveIntFromEnv("CONDUCTOR_MAX_ATTEMPTS", 3),
   runTimeoutMs: RUN_TIMEOUT_MS,
@@ -59,5 +70,5 @@ export default createFlowState({
   }) as ModelResolver,
   stores: { dev: { primary: filesystemStores({ rootDir: path.join(root, "data") }) } },
   defaultProfile: "dev",
-  detachedDrainTimeoutMs: RUN_TIMEOUT_MS,
+  detachedDrainTimeoutMs: drainBudgetMs,
 });

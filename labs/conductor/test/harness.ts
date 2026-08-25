@@ -192,8 +192,8 @@ export interface HarnessOptions {
   tenant?: string;
   ownership?: { waitMs?: number; pollMs?: number; staleAfterMs?: number };
   runTimeoutMs?: number;
-  /** The per-git-call bound, which the stale window must clear. */
-  gitTimeoutMs?: number;
+  /** The bound on ALL of provisioning, which the stale window must clear. */
+  provisionTimeoutMs?: number;
   /** The relay seam. Called after the park; a no-op by default. */
   announce?: NonNullable<Parameters<typeof conductorFlow>[0]["announce"]>;
 }
@@ -222,7 +222,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   };
 
   // Derived, not spelled out. The manager enforces
-  // `waitMs >= staleAfterMs > runTimeoutMs`, and three independent constants
+  // `waitMs >= staleAfterMs > runTimeoutMs + provisionTimeoutMs`, and independent constants
   // here let a test set one of them and get a construction error that has
   // nothing to do with what it was testing. Deriving keeps every harness
   // instance valid by construction, whichever knob a test turns.
@@ -231,9 +231,9 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   // provisioning AND the run, so the stale window must clear both. Shrinking
   // the git budget is what keeps the suite's numbers small while the inequality
   // stays the real one.
-  const gitTimeoutMs = options.gitTimeoutMs ?? 10_000;
+  const provisionTimeoutMs = options.provisionTimeoutMs ?? 10_000;
   const staleAfterMs =
-    options.ownership?.staleAfterMs ?? runTimeoutMs + gitTimeoutMs + 1_000;
+    options.ownership?.staleAfterMs ?? runTimeoutMs + provisionTimeoutMs + 1_000;
   const ownership = {
     waitMs: options.ownership?.waitMs ?? staleAfterMs,
     pollMs: options.ownership?.pollMs ?? 25,
@@ -243,7 +243,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   const built = conductorFlow({
     epic: options.epic ?? "harness-manager",
     ...(options.tenant !== undefined ? { tenant: options.tenant } : {}),
-    workspace: { root: workspaceRoot, sourceRepo, baseRef: "main", gitTimeoutMs },
+    workspace: { root: workspaceRoot, sourceRepo, baseRef: "main", provisionTimeoutMs },
     maxAttempts: options.maxAttempts ?? 3,
     runTimeoutMs,
     phase,

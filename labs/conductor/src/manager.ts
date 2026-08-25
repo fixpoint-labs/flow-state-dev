@@ -46,7 +46,8 @@ import {
   type TaskWorker,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { GIT_TIMEOUT_MS } from "./exec";
+import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
+import { MAX_TIMER_MS } from "./config-env";
 import {
   RUNS,
   openRunRow,
@@ -171,7 +172,11 @@ export interface ManagerOptions {
   workspace: WorkspaceConfig;
   /** Wall-clock budget for the harness run itself. */
   runTimeoutMs: number;
-  /** How checkout contention is bounded. Defaults derive from `runTimeoutMs`. */
+  /**
+   * How checkout contention is bounded. Defaults derive from the longest a live
+   * attempt can hold the lock — the run's deadline plus the provisioning budget,
+   * not the deadline alone.
+   */
   ownership?: Partial<OwnershipBounds>;
   /** Forwarded to the coding agent, so tests can script the SDK. */
   agent?: Omit<Parameters<typeof claudeCodeAgent>[0], "detached" | "recordWork" | "cwd">;
@@ -337,9 +342,13 @@ async function fenced(
  * rejects mid-run, which is the charged-attempt failure the gate exists to
  * remove, reintroduced by a second copy of one rule.
  *
- * `DEFAULT_TENANT` is a literal rather than `undefined` for the same reason
- * `principalSegments` tags tenant presence: an untenanted deployment must have
- * a *value* to compare, not an absence that every comparison silently passes.
+ * **Absence is the value.** An untenanted request resolves to `undefined`, and
+ * that is compared directly — it is not folded into a placeholder name. The
+ * earlier version defaulted to a literal, which made a real tenant of that name
+ * and no tenant at all the same fact: they shared a board while
+ * `tenantSegment` kept them in different checkouts, so a task could execute
+ * against a tree that was not its own. Presence is carried by the type here and
+ * tagged by `tenantSegment` in every derived identity.
  */
 export function requestTenant(ctx: RequestIdentityContext): string | undefined {
   return runPrincipal(ctx).tenantId;
@@ -391,20 +400,76 @@ function managerState(ctx: BlockContext): z.infer<typeof managerStateSchema> {
   return state;
 }
 
-/** Build the manager: one detached worker for one phase. */
-export function harnessManager(options: ManagerOptions) {
-  const {
-    boardCollectionId,
-    boardCollection,
-    tenant,
-    phase,
-    workspace,
-    runTimeoutMs,
-    agent = {},
-    announce = () => {},
-    name = "harness-manager",
-  } = options;
+/**
+ * Everything one worker can legitimately spend, end to end.
+ *
+ * **The shutdown budget has to cover the whole worker, not the agent step.**
+ * `detachedDrainTimeoutMs` was set to `runTimeoutMs`, which is only one of four
+ * things a claimed row does before it settles — and the engine carves its
+ * cancellation reserve OUT of that budget rather than adding to it, so the
+ * effective wait was already *less* than the agent's own deadline. A valid run
+ * near its deadline was cancelled before it could produce a verdict, and the
+ * row it was working settled on an outcome nothing had decided.
+ *
+ * The four terms, in the order a worker spends them:
+ *
+ * 1. `waitMs` — the lock wait. A worker queued behind another attempt's tree is
+ *    working, not stuck, and cancelling it is the same defect.
+ * 2. the provisioning budget — one deadline for all of git, see
+ *    `WorkspaceConfig.provisionTimeoutMs`.
+ * 3. `runTimeoutMs` — the agent.
+ * 4. the completion probe — `gh pr list`, which runs AFTER the agent deadline
+ *    and is what turns a finished run into a verdict.
+ *
+ * **The margin is deliberate and is not a mirrored constant.** The engine
+ * reserves a share of this budget for unwinding cancelled children — a fraction
+ * capped by a flat value, both module-private. Copying either would be a silent
+ * coupling to a number we do not own, so instead the budget is scaled past the
+ * largest reserve that fraction can take and given absolute slack on top. If the
+ * engine's reserve changes, this is generous rather than wrong; the failure mode
+ * is a longer worst-case shutdown wait, which is bounded and visible, instead of
+ * a cancelled run, which is neither.
+ */
+export function conductorDrainBudgetMs(options: {
+  runTimeoutMs: number;
+  provisionTimeoutMs?: number | undefined;
+  ownershipWaitMs: number;
+}): number {
+  const work =
+    options.ownershipWaitMs +
+    (options.provisionTimeoutMs ?? GIT_TIMEOUT_MS) +
+    options.runTimeoutMs +
+    NETWORK_CALL_TIMEOUT_MS;
 
+  // `* 4 / 3` clears a reserve of up to a quarter; the flat minute dwarfs the
+  // small absolute cap that binds instead on tiny budgets.
+  const budget = Math.ceil((work * 4) / 3) + 60_000;
+
+  if (budget > MAX_TIMER_MS) {
+    throw new Error(
+      `[conductor] the derived drain budget (${budget}ms) exceeds the largest delay a ` +
+        `timer honours (${MAX_TIMER_MS}ms). Lower runTimeoutMs, the ownership wait, or ` +
+        `workspace.provisionTimeoutMs — a budget past the ceiling is silently clamped and ` +
+        `would cancel every run immediately.`,
+    );
+  }
+  return budget;
+}
+
+/**
+ * Resolve the ownership bounds and check them, once.
+ *
+ * Pure and exported because **two callers need the resolved numbers**: the
+ * manager enforces them, and the flow needs `waitMs` to size the drain budget.
+ * Re-deriving in the second place is how the last three defects on this branch
+ * happened, so there is one derivation and it is called twice.
+ */
+export function resolveOwnership(options: {
+  runTimeoutMs: number;
+  provisionTimeoutMs?: number | undefined;
+  ownership?: Partial<OwnershipBounds> | undefined;
+}): { ownership: OwnershipBounds; maxLockHeldMs: number } {
+  const { runTimeoutMs } = options;
   // **How long a live attempt can legitimately hold the lock.**
   //
   // Not `runTimeoutMs`. The lock is acquired BEFORE the checkout is provisioned
@@ -416,8 +481,12 @@ export function harnessManager(options: ManagerOptions) {
   // agents mutate one checkout. Obligation B, defeated by arithmetic.
   //
   // `provisionBudget` is a bound and not an estimate — it is the same number
-  // the git calls are actually given, so the two cannot drift.
-  const provisionBudget = workspace.gitTimeoutMs ?? GIT_TIMEOUT_MS;
+  // provisioning is given as a SINGLE deadline for the whole operation, so the
+  // two cannot drift. That it is one deadline rather than one timeout per git
+  // call is what makes this arithmetic true: provisioning runs up to three
+  // commands back to back, so a per-call bound of N would let the real hold
+  // reach 3N while this sum said N.
+  const provisionBudget = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
   const maxLockHeldMs = runTimeoutMs + provisionBudget;
 
   const ownership: OwnershipBounds = {
@@ -443,8 +512,9 @@ export function harnessManager(options: ManagerOptions) {
   };
 
   // The default satisfies this by construction; an override can break it, and
-  // the breakage is silent and severe. A stale window INSIDE the run's own
-  // deadline means a live attempt's lock ages past "stale" while it is still
+  // the breakage is silent and severe. A stale window inside the legitimate
+  // hold — the run's deadline plus provisioning — means a live attempt's lock
+  // ages past "stale" while it is still
   // working, so a replacement clears it and two coding agents mutate one
   // checkout — obligation B violated by configuration rather than by a race.
   // Refused at construction because there is no runtime moment at which the
@@ -464,9 +534,33 @@ export function harnessManager(options: ManagerOptions) {
         `${runTimeoutMs}ms + the provisioning budget ${provisionBudget}ms): the lock is ` +
         `taken before the checkout is provisioned, so a window sized against the run's ` +
         `deadline alone can elapse while the holder is still inside git. Raise the stale ` +
-        `window, lower the deadline, or lower workspace.gitTimeoutMs.`,
+        `window, lower the deadline, or lower options.provisionTimeoutMs.`,
     );
   }
+
+
+  return { ownership, maxLockHeldMs };
+}
+
+/** Build the manager: one detached worker for one phase. */
+export function harnessManager(options: ManagerOptions) {
+  const {
+    boardCollectionId,
+    boardCollection,
+    tenant,
+    phase,
+    workspace,
+    runTimeoutMs,
+    agent = {},
+    announce = () => {},
+    name = "harness-manager",
+  } = options;
+
+  const { ownership } = resolveOwnership({
+    runTimeoutMs,
+    provisionTimeoutMs: workspace.provisionTimeoutMs,
+    ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
+  });
 
   /** Every collection the manager or its phase touches, by accessor key. */
   // **Two accessors are the manager's and a phase may not claim them.**
@@ -722,11 +816,20 @@ export function harnessManager(options: ManagerOptions) {
       // Safe in this order because `acquireCheckout` needs only the path, not a
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
-      leases.set(leaseKey(ctx as BlockContext), await acquireCheckout(
-        state.workspacePath!,
-        `${input.taskId}#${input.attempts}`,
-        ownership,
-      ));
+      leases.set(
+        leaseKey(ctx as BlockContext),
+        await acquireCheckout(
+          state.workspacePath!,
+          `${input.taskId}#${input.attempts}`,
+          ownership,
+          Date.now,
+          // Cancellation stops the WAIT. A cancelled attempt that kept polling
+          // could still acquire and provision a tree whose result it can no
+          // longer record — and the wait is now long enough for that to cost a
+          // replacement most of an hour.
+          (ctx as BlockContext).signal,
+        ),
+      );
       await provisionCheckout(workspace, {
         principal: runPrincipal(ctx as BlockContext),
         epic: boardCollectionId,
@@ -932,6 +1035,27 @@ export function harnessManager(options: ManagerOptions) {
     outputSchema: z.never(),
     resources,
     execute: async (error: unknown, ctx): Promise<never> => {
+      // **Release the tree on the way out, whatever failed.**
+      //
+      // The only other release is the agent step's `onSettled`, which never
+      // fires if the throw happened before that step was dispatched — a git
+      // timeout, a deleted branch, a worktree on the wrong branch. The lock and
+      // its map entry then outlived the attempt, and the next retry waited for
+      // the stale window to expire before it could even start.
+      //
+      // Raising that window to cover provisioning made this strictly worse: it
+      // went from the run's deadline to the deadline PLUS the git budget, so
+      // the fix for one defect lengthened this one. Released here rather than
+      // around `provisionCheckout`, because the rule is "any failure after the
+      // lock is taken releases it" — a `try` around today's one throwing call
+      // is the same fix aimed at the instance, and the next step added between
+      // acquire and dispatch would not be covered.
+      //
+      // Idempotent: `releaseLease` deletes the entry, so the agent path's
+      // `onSettled` having already released makes this a no-op, and `release()`
+      // is identity-guarded so it can never remove a replacement's lock.
+      releaseLease(ctx as BlockContext);
+
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state as z.infer<typeof managerStateSchema> | undefined;
       // A failure BEFORE the row was opened has no identity to fence against —

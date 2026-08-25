@@ -54,10 +54,12 @@ import {
   runTopicPrefix,
 } from "./run-record";
 import {
+  conductorDrainBudgetMs,
   conductorTaskInputSchema,
   describeTenant,
   harnessManager,
   requestTenant,
+  resolveOwnership,
   type RequestIdentityContext,
   type PhaseSpec,
 } from "./manager";
@@ -436,10 +438,13 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
   const tenantGate = handler({
     name: "conductor-tenant-gate",
     inputSchema: z.unknown(),
-    outputSchema: z.unknown(),
-    execute: (input, ctx) => {
+    // `void`, not the input echoed back. `.tap()` already preserves the chain
+    // value and ignores what this returns, so returning the input would be an
+    // identity handler — a step that exists only to satisfy a type
+    // (AGENTS.md 5). The gate's whole job is the throw.
+    outputSchema: z.void(),
+    execute: (_input, ctx) => {
       assertRequestTenant(ctx);
-      return input;
     },
   });
 
@@ -637,7 +642,28 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
   // epic, so there is exactly one instance and nothing to choose.
   const flow = defineConductor({ id: "default" });
 
-  return { flow, board, tasks, boardId, collectionId, runs: runRecordCollection };
+  // **The host's shutdown budget, derived rather than guessed.** Exposed
+  // because only this module knows all four terms a worker spends, and a host
+  // that picks its own number picks it from the one term it can see.
+  const drainBudgetMs = conductorDrainBudgetMs({
+    runTimeoutMs,
+    provisionTimeoutMs: workspace.provisionTimeoutMs,
+    ownershipWaitMs: resolveOwnership({
+      runTimeoutMs,
+      provisionTimeoutMs: workspace.provisionTimeoutMs,
+      ...(ownership !== undefined ? { ownership } : {}),
+    }).ownership.waitMs,
+  });
+
+  return {
+    flow,
+    board,
+    tasks,
+    boardId,
+    collectionId,
+    runs: runRecordCollection,
+    drainBudgetMs,
+  };
 }
 
 export { runTopic, runTopicPrefix };

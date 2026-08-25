@@ -205,9 +205,14 @@ different worker, where the recorded checkout names nothing and the retry restar
 work the retry budget is priced on. Making checkouts portable is not built and is deliberately out
 of scope.
 
-**Raise the shutdown budget past your longest expected run.** For an in-process host that is
-`detachedDrainTimeoutMs` on `createFlowState`, whose default is tuned to a serverless SIGTERM
-window — far shorter than a coding run. On a queue-consuming host (`colocated` or `worker-only`)
+**Use the shutdown budget `conductorFlow` derives for you.** It returns `drainBudgetMs`; pass
+that as `detachedDrainTimeoutMs` on `createFlowState`. Sizing it by hand goes wrong in both
+directions: the framework default is tuned to a serverless SIGTERM window, far shorter than a
+coding run, and the obvious correction — the run's own deadline — is *also* too small. A worker
+waits for the checkout lock, provisions, runs the agent, and then probes for the pull request, and
+the engine carves its cancellation reserve out of this budget rather than adding to it. Set it to
+the agent deadline and a valid run near that deadline is cancelled before it can produce a
+verdict. On a queue-consuming host (`colocated` or `worker-only`)
 that setting does not apply at all: `dispose()` waits for the worker separately and without it, so
 the **platform's** kill timeout is the real ceiling. Miss either and every long run truncates
 silently.

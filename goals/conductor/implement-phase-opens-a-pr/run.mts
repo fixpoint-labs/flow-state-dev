@@ -38,7 +38,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../../../labs/conductor/src/flow.ts";
 import { implementPhase } from "../../../labs/conductor/src/implement.ts";
-import { assertDistinctRepository } from "../../../labs/conductor/src/config-env.ts";
+import {
+  assertDistinctRepository,
+  positiveIntFromEnv,
+} from "../../../labs/conductor/src/config-env.ts";
+import { NETWORK_CALL_TIMEOUT_MS } from "../../../labs/conductor/src/exec.ts";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 
@@ -67,7 +71,10 @@ type StatusRow = {
 };
 
 const USER_ID = "conductor-goal-user";
-const RUN_TIMEOUT_MS = Number(process.env.GOAL_RUN_TIMEOUT_MS ?? 1_800_000);
+// The production parser, not `Number()`. A `NaN` here would survive every
+// comparison and reach `AbortSignal.timeout` only after the row was claimed
+// and the checkout provisioned — charging an attempt for a shell typo.
+const RUN_TIMEOUT_MS = positiveIntFromEnv("GOAL_RUN_TIMEOUT_MS", 1_800_000);
 const POLL_INTERVAL_MS = 5_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -172,7 +179,7 @@ await runGoal(async () => {
     // The finding, not a workaround: the default is tuned to a serverless
     // SIGTERM grace period rather than to a coding run, so an in-process host
     // must raise it past its longest expected run or a shutdown kills one.
-    detachedDrainTimeoutMs: RUN_TIMEOUT_MS,
+    detachedDrainTimeoutMs: built.drainBudgetMs,
     logger: silentLogger,
   } as never);
 
@@ -210,7 +217,16 @@ await runGoal(async () => {
     // Poll the BOARD ROW. `in_progress` means the run is still alive; anything
     // else is a settlement the board's own fenced recorder made. `pending`
     // means a retry is waiting, so wake it.
-    const deadline = Date.now() + RUN_TIMEOUT_MS;
+    // **The whole worker's budget, not the agent step's.** A worker waits for
+    // the checkout lock, provisions, runs the agent, and then probes for the
+    // pull request. Deadlining on `RUN_TIMEOUT_MS` records a permanent failure
+    // for a run that was still legitimately working — and would then delete the
+    // checkout out from under it.
+    //
+    // This is the third site to need the same number, and the second to be
+    // missed after `fsdev.config.ts` was fixed. Hence the derived value rather
+    // than another local sum.
+    const deadline = Date.now() + built.drainBudgetMs;
     for (;;) {
       row = await readRow();
       if (row === undefined) {
@@ -221,7 +237,7 @@ await runGoal(async () => {
       if (row.status === "pending") await call("wake", {});
       if (Date.now() >= deadline) {
         failures.push(
-          `the row was still ${row.status} after ${RUN_TIMEOUT_MS}ms — last reason: ` +
+          `the row was still ${row.status} after ${built.drainBudgetMs}ms — last reason: ` +
             `${row.run?.reason ?? row.feedback ?? "none recorded"}`,
         );
         break;
@@ -282,10 +298,14 @@ await runGoal(async () => {
         // than from anything the manager wrote, so this is independent of the
         // done-condition the manager consulted.
         if (row.run.branch !== null && checkout !== null) {
+          // Bounded, like the manager's own probe. Unbounded, a wedged `gh` or
+          // a hanging credential helper never returns — so `finally` is never
+          // reached, the runtime is never disposed, and the scratch checkout is
+          // never removed.
           const prs = execFileSync(
             "gh",
             ["pr", "list", "--head", row.run.branch, "--state", "all", "--json", "number"],
-            { cwd: checkout, encoding: "utf8" },
+            { cwd: checkout, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
           );
           if ((JSON.parse(prs || "[]") as unknown[]).length === 0) {
             failures.push(`no pull request exists for branch "${row.run.branch}"`);

@@ -44,7 +44,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
@@ -56,15 +56,22 @@ export interface WorkspaceConfig {
   /** The ref a fresh checkout branches from. */
   baseRef: string;
   /**
-   * How long a single git call may take, in milliseconds.
+   * How long **the whole of provisioning** may take, in milliseconds.
    *
-   * Configurable rather than constant because it is **part of the ownership
-   * arithmetic**, not just a safety net: the lock is taken before provisioning,
-   * so the longest a live attempt can legitimately hold it is this plus the
-   * run's own deadline. The stale window has to exceed that sum, and a suite
-   * that wants small bounds has to be able to shrink both halves.
+   * One budget for the operation, not one per git call. That distinction is the
+   * entire point: provisioning runs up to three git commands back to back
+   * (`worktree prune`, a `rev-parse` to test the branch, then `worktree add`),
+   * so a per-call timeout of N bounds the operation at 3N. The ownership
+   * arithmetic reads this number as the longest provisioning can hold the lock,
+   * and a number that is wrong by a factor of the command count is worse than no
+   * number: a live attempt could still be inside `worktree add` when its lock is
+   * declared stale, letting a reclaimed attempt steal the tree and edit the same
+   * checkout concurrently.
+   *
+   * Expressing it as one deadline also means adding a fourth git command cannot
+   * silently widen the bound.
    */
-  gitTimeoutMs?: number;
+  provisionTimeoutMs?: number;
 }
 
 /** One provisioned checkout. */
@@ -338,7 +345,20 @@ function issuePhaseSegment(location: RunLocation): string {
  * epic whose board filed it.
  */
 export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation): string {
-  return join(config.root, ...locationSegments(location), issuePhaseSegment(location));
+  // **Absolute, always.** The derived path is consumed from two different
+  // working directories: the lock, the existence checks, the recorded path and
+  // the agent's `cwd` all resolve it against the dispatcher's directory, while
+  // `git worktree add` runs with `cwd: config.sourceRepo`. A relative
+  // `workspace.root` therefore split in two — reproduced: the worktree lands
+  // under the SOURCE REPO while everything else looks for it under the
+  // dispatcher, so the agent is handed a directory that does not exist and no
+  // retry recovers, because the derivation is stable and stably wrong.
+  //
+  // Resolved here rather than at each call because this is the one derivation
+  // every consumer goes through. A host should still pass an absolute root:
+  // `resolve` reads `process.cwd()`, so a process that changes directory
+  // mid-flight would move the checkout, and that is not a case this guards.
+  return resolve(config.root, ...locationSegments(location), issuePhaseSegment(location));
 }
 
 /**
@@ -375,6 +395,26 @@ function lockPathFor(checkoutPath: string): string {
   return `${checkoutPath}.lock`;
 }
 
+/**
+ * The remaining time in one provisioning, as a per-call timeout.
+ *
+ * **Zero is not "no budget left" to `execFile` — it is "no timeout at all".**
+ * So an exhausted deadline has to throw here rather than be passed down, or the
+ * exact case this bound exists for (provisioning running long enough to be
+ * declared stale) would remove the bound instead of enforcing it.
+ */
+function remainingBudget(deadline: number, now: () => number): number {
+  const left = deadline - now();
+  if (left <= 0) {
+    throw new Error(
+      "[conductor] provisioning exceeded its budget (workspace.provisionTimeoutMs) before " +
+        "it finished. The lock is held across provisioning, so a longer one would risk " +
+        "being declared stale while this attempt is still legitimately working.",
+    );
+  }
+  return left;
+}
+
 async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Promise<string> {
   const { stdout } = await run("git", args, {
     cwd,
@@ -392,18 +432,22 @@ async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Pro
  */
 async function currentBranch(
   checkoutPath: string,
-  timeoutMs?: number,
+  timeoutMs: number,
 ): Promise<string | null> {
   const head = await git(checkoutPath, ["rev-parse", "--abbrev-ref", "HEAD"], timeoutMs);
   return head === "HEAD" ? null : head;
 }
 
-async function branchExists(config: WorkspaceConfig, branch: string): Promise<boolean> {
+async function branchExists(
+  config: WorkspaceConfig,
+  branch: string,
+  timeoutMs: number,
+): Promise<boolean> {
   try {
     await git(
       config.sourceRepo,
       ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
-      config.gitTimeoutMs,
+      timeoutMs,
     );
     return true;
   } catch {
@@ -426,13 +470,21 @@ async function branchExists(config: WorkspaceConfig, branch: string): Promise<bo
 export async function provisionCheckout(
   config: WorkspaceConfig,
   location: RunLocation,
+  now: () => number = Date.now,
 ): Promise<Checkout> {
   const path = checkoutPathFor(config, location);
   const branch = branchFor(location);
-  mkdirSync(config.root, { recursive: true });
+  mkdirSync(resolve(config.root), { recursive: true });
+
+  // **One deadline for the whole operation.** Every git call below draws from
+  // it, so the lock is held for at most this long no matter how many commands
+  // the path happens to run. `now` is injectable for the same reason it is on
+  // `acquireCheckout`: the thing under test is time arithmetic.
+  const deadline = now() + (config.provisionTimeoutMs ?? GIT_TIMEOUT_MS);
+  const left = () => remainingBudget(deadline, now);
 
   if (existsSync(join(path, ".git"))) {
-    if (!(await branchExists(config, branch))) {
+    if (!(await branchExists(config, branch, left()))) {
       throw new Error(
         `[conductor] the checkout at ${path} is on branch "${branch}", which no longer ` +
           `exists in ${config.sourceRepo}. Refusing to recreate it: the tree may hold ` +
@@ -455,7 +507,7 @@ export async function provisionCheckout(
     // Fail loudly rather than resetting. A reset would discard whatever the tree
     // holds, and this module never resets (decision 2's carry-forward is exactly
     // that work).
-    const head = await currentBranch(path, config.gitTimeoutMs);
+    const head = await currentBranch(path, left());
     if (head !== branch) {
       throw new Error(
         `[conductor] the checkout at ${path} is on branch "${head}", not the expected ` +
@@ -471,12 +523,12 @@ export async function provisionCheckout(
   // A worktree whose directory was removed leaves an administrative entry
   // behind, and `worktree add` then refuses the path by name. Pruning is not a
   // reset: it touches bookkeeping, never a tree.
-  await git(config.sourceRepo, ["worktree", "prune"], config.gitTimeoutMs);
+  await git(config.sourceRepo, ["worktree", "prune"], left());
 
-  const args = (await branchExists(config, branch))
+  const args = (await branchExists(config, branch, left()))
     ? ["worktree", "add", path, branch]
     : ["worktree", "add", "-b", branch, path, config.baseRef];
-  await git(config.sourceRepo, args, config.gitTimeoutMs);
+  await git(config.sourceRepo, args, left());
   return { path, branch, created: true };
 }
 
@@ -540,8 +592,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * level; closing it needs a rename/token protocol, which is a bigger change
  * than this lab's ownership problem warrants.
  *
- * **What bounds the residual** is the construction check that
- * `staleAfterMs` must exceed `runTimeoutMs`: a lock is only ever judged stale
+ * **What bounds the residual** is the construction check that `staleAfterMs`
+ * must exceed the longest a live attempt can legitimately hold the lock — the
+ * run's deadline AND the provisioning that precedes it, since the lock is taken
+ * first. A lock is only ever judged stale
  * once no live attempt could still be holding it, so the window requires a
  * holder to release and a new attempt to acquire between two adjacent
  * syscalls. Narrow enough to name rather than to solve — and named rather than
@@ -552,8 +606,32 @@ export async function acquireCheckout(
   owner: string,
   bounds: OwnershipBounds,
   now: () => number = Date.now,
+  signal?: AbortSignal,
 ): Promise<CheckoutLease> {
   const lock = lockPathFor(checkoutPath);
+  /**
+   * Stop waiting once this attempt has been cancelled.
+   *
+   * **Checked in the WAIT, never during an in-flight git command.** Shutdown, or
+   * a lease renewal reporting that this attempt lost its claim, propagates
+   * through `ctx.signal` — and an ordinary sleep ignores it, so a stale attempt
+   * kept polling for the whole ownership window and could still go on to acquire
+   * and provision a checkout it can no longer record a result for. That window
+   * is now the run's deadline plus provisioning plus slack, so ignoring the
+   * signal costs the better part of an hour of a replacement's time.
+   *
+   * Interrupting the wait is safe in a way interrupting provisioning is not:
+   * nothing has been created yet, so there is nothing half-made to leave behind.
+   */
+  const stopIfCancelled = (): void => {
+    if (signal?.aborted !== true) return;
+    throw new Error(
+      `[conductor] the attempt waiting for the checkout at ${checkoutPath} was cancelled ` +
+        "before it acquired the lock. Stopping rather than taking a tree whose result " +
+        "this attempt can no longer record.",
+    );
+  };
+  stopIfCancelled();
   mkdirSync(join(checkoutPath, ".."), { recursive: true });
   const deadline = now() + bounds.waitMs;
 
@@ -571,7 +649,7 @@ export async function acquireCheckout(
           //
           // The case it closes is reachable, and the construction check is what
           // makes it reachable rather than preventing it: a run that overruns
-          // `runTimeoutMs` becomes stale-eligible while its process is still
+          // the whole hold budget becomes stale-eligible while its process is still
           // alive. Another attempt steals the lock and takes the tree; then this
           // release fires and, checking nothing, removes THE REPLACEMENT'S lock.
           // A third attempt acquires the path while the replacement is mid-edit —
@@ -639,5 +717,6 @@ export async function acquireCheckout(
       );
     }
     await sleep(bounds.pollMs);
+    stopIfCancelled();
   }
 }
