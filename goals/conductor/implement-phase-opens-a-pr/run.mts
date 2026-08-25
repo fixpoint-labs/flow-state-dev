@@ -38,7 +38,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../../../labs/conductor/src/flow.ts";
 import { implementPhase } from "../../../labs/conductor/src/implement.ts";
-import { assertDistinctRepository } from "../../../labs/conductor/src/config-env.ts";
+import {
+  assertDistinctRepository,
+  positiveIntFromEnv,
+} from "../../../labs/conductor/src/config-env.ts";
+import { NETWORK_CALL_TIMEOUT_MS } from "../../../labs/conductor/src/exec.ts";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 
@@ -67,7 +71,10 @@ type StatusRow = {
 };
 
 const USER_ID = "conductor-goal-user";
-const RUN_TIMEOUT_MS = Number(process.env.GOAL_RUN_TIMEOUT_MS ?? 1_800_000);
+// The production parser, not `Number()`. A `NaN` here would survive every
+// comparison and reach `AbortSignal.timeout` only after the row was claimed
+// and the checkout provisioned — charging an attempt for a shell typo.
+const RUN_TIMEOUT_MS = positiveIntFromEnv("GOAL_RUN_TIMEOUT_MS", 1_800_000);
 const POLL_INTERVAL_MS = 5_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -291,10 +298,14 @@ await runGoal(async () => {
         // than from anything the manager wrote, so this is independent of the
         // done-condition the manager consulted.
         if (row.run.branch !== null && checkout !== null) {
+          // Bounded, like the manager's own probe. Unbounded, a wedged `gh` or
+          // a hanging credential helper never returns — so `finally` is never
+          // reached, the runtime is never disposed, and the scratch checkout is
+          // never removed.
           const prs = execFileSync(
             "gh",
             ["pr", "list", "--head", row.run.branch, "--state", "all", "--json", "number"],
-            { cwd: checkout, encoding: "utf8" },
+            { cwd: checkout, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
           );
           if ((JSON.parse(prs || "[]") as unknown[]).length === 0) {
             failures.push(`no pull request exists for branch "${row.run.branch}"`);

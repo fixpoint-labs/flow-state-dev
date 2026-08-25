@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  assertBaseRefExists,
   MAX_TIMER_MS,
   positiveIntFromEnv,
   repositoryIdentity,
@@ -118,6 +119,39 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     process.chdir(plain);
     process.env.CONDUCTOR_REPO = repo();
     expect(() => requireSourceRepo()).not.toThrow();
+  });
+});
+
+describe("the base ref — refused at startup, not once per retry", () => {
+  it("refuses a ref the target repository does not have", () => {
+    // `provisionCheckout` hands this straight to `git worktree add` as the
+    // commit-ish for a fresh checkout. A typo, or a repository whose default
+    // branch is not `main`, therefore fails EVERY attempt — after the row is
+    // claimed, once per retry, until the budget is gone.
+    const dir = repo();
+    expect(() => assertBaseRefExists(dir, "no-such-branch")).toThrow(/does not resolve/);
+  });
+
+  it("accepts the ref the repository actually has", () => {
+    // The guard must not become an outage: `seedRepo` creates `main`.
+    const dir = repo();
+    expect(() => assertBaseRefExists(dir, "main")).not.toThrow();
+  });
+
+  it("agrees with what git will actually do with it", () => {
+    // The check predicts `worktree add`, so a ref it ACCEPTS must be one that
+    // command can cut from. Verified against the real command rather than
+    // asserted, since agreeing with git is the whole purpose.
+    const dir = repo();
+    const tree = join(dir, "..", `wt-base-${Date.now()}`);
+    dirs.push(tree);
+    assertBaseRefExists(dir, "main");
+    expect(() =>
+      execFileSync("git", ["worktree", "add", "-b", "cut", tree, "main"], {
+        cwd: dir,
+        stdio: "pipe",
+      }),
+    ).not.toThrow();
   });
 });
 

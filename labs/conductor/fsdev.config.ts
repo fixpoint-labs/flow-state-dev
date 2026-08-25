@@ -36,7 +36,7 @@ import path from "node:path";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
-import { positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
+import { assertBaseRefExists, positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
 function neverResolvesAModel(): never {
   throw new Error(
@@ -47,12 +47,17 @@ function neverResolvesAModel(): never {
 const RUN_TIMEOUT_MS = positiveIntFromEnv("CONDUCTOR_RUN_TIMEOUT_MS", 1_800_000);
 const root = path.join(process.cwd(), ".fsdev");
 
+const sourceRepo = requireSourceRepo();
+const baseRef = process.env.CONDUCTOR_BASE_REF ?? "main";
+// Startup, not mid-run: a ref that does not resolve fails every `worktree add`.
+assertBaseRefExists(sourceRepo, baseRef);
+
 const { flow, drainBudgetMs } = conductorFlow({
   epic: process.env.CONDUCTOR_EPIC ?? "harness-manager",
   workspace: {
     root: process.env.CONDUCTOR_CHECKOUTS ?? path.join(root, "checkouts"),
-    sourceRepo: requireSourceRepo(),
-    baseRef: process.env.CONDUCTOR_BASE_REF ?? "main",
+    sourceRepo,
+    baseRef,
   },
   maxAttempts: positiveIntFromEnv("CONDUCTOR_MAX_ATTEMPTS", 3),
   runTimeoutMs: RUN_TIMEOUT_MS,

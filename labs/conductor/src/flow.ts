@@ -374,10 +374,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
   const tenantGate = handler({
     name: "conductor-tenant-gate",
     inputSchema: z.unknown(),
-    outputSchema: z.unknown(),
-    execute: (input, ctx) => {
+    // `void`, not the input echoed back. `.tap()` already preserves the chain
+    // value and ignores what this returns, so returning the input would be an
+    // identity handler — a step that exists only to satisfy a type
+    // (AGENTS.md 5). The gate's whole job is the throw.
+    outputSchema: z.void(),
+    execute: (_input, ctx) => {
       assertRequestTenant(ctx);
-      return input;
     },
   });
 
