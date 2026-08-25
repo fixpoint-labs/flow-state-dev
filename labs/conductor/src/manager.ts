@@ -767,6 +767,27 @@ export function harnessManager(options: ManagerOptions) {
     outputSchema: z.never(),
     resources,
     execute: async (error: unknown, ctx): Promise<never> => {
+      // **Release the tree on the way out, whatever failed.**
+      //
+      // The only other release is the agent step's `onSettled`, which never
+      // fires if the throw happened before that step was dispatched — a git
+      // timeout, a deleted branch, a worktree on the wrong branch. The lock and
+      // its map entry then outlived the attempt, and the next retry waited for
+      // the stale window to expire before it could even start.
+      //
+      // Raising that window to cover provisioning made this strictly worse: it
+      // went from the run's deadline to the deadline PLUS the git budget, so
+      // the fix for one defect lengthened this one. Released here rather than
+      // around `provisionCheckout`, because the rule is "any failure after the
+      // lock is taken releases it" — a `try` around today's one throwing call
+      // is the same fix aimed at the instance, and the next step added between
+      // acquire and dispatch would not be covered.
+      //
+      // Idempotent: `releaseLease` deletes the entry, so the agent path's
+      // `onSettled` having already released makes this a no-op, and `release()`
+      // is identity-guarded so it can never remove a replacement's lock.
+      releaseLease(ctx as BlockContext);
+
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state as z.infer<typeof managerStateSchema> | undefined;
       // A failure BEFORE the row was opened has no identity to fence against —
