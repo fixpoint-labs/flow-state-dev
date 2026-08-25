@@ -91,7 +91,7 @@ describe("the run record — the two key vocabularies", () => {
     // asserted rather than a round trip.
     const stored = (await runs.getOptional(TOPIC))!.path;
     expect(stored).toBe(`runs/${EPIC}/${ISSUE}/${PHASE}`);
-    // Which is what a route's `topicPrefix=runs/<issue>/` then matches.
+    // Which is what a route's `topicPrefix=runs/<epic>/<issue>/` then matches.
     expect(stored.startsWith(`runs/${runTopicPrefix(EPIC, ISSUE)}`)).toBe(true);
   });
 });
