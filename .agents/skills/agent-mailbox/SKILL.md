@@ -79,7 +79,7 @@ The PR title is the slug: `{team}/{type}/{id}/{lane}` — e.g. `fsd/epic/conduct
 
 | The handle | Do |
 |---|---|
-| Its slug names **your** epic or issue (`fsd/epic/<yours>/*`, `fsd/issue/<yours>/*`) | **Subscribe.** It was opened to reach you. Report it in one line |
+| Its slug names **your** epic or issue — the bare `fsd/epic/<yours>` (the canonical one an epic registers) or any lane under it, `fsd/epic/<yours>/<lane>`; same for `fsd/issue/<yours>` | **Subscribe.** It was opened to reach you. Report it in one line |
 | The user, or a peer on a handle you're already on, asks you to join | **Subscribe** |
 | Anything else open | **One line in your report. Don't subscribe.** Every comment on a handle wakes every session attached to it — a subscription you don't need is a recurring tax on the whole board |
 
@@ -102,6 +102,11 @@ A local session has no push, so mail simply never arrives. Poll for it:
 .agents/skills/agent-mailbox/mailbox-poll.sh <from> <session> <pr>[,<pr>...]
 # e.g. mailbox-poll.sh fsd-em a 2,7
 ```
+
+Each emitted line is `mail #<pr>/<comment-id> …`, and the body is cut at 240 chars with a
+trailing `[…]`. **A line is a notification, not the message** — when it ends in `[…]`, fetch that
+comment by its id before acting. A `kind: decision` or a handoff read from a truncated body is
+the failure this marker exists to prevent.
 
 Run it under `Monitor` with `persistent: true`. Each line it prints becomes one wake, and it
 prints **only messages addressed to you** — your own posts echoing back, bot noise, headerless

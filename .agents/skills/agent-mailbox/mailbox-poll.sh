@@ -67,10 +67,14 @@ while true; do
     # Capture before printing. A jq failure here must NOT reach the watermark write:
     # advancing over a batch we never emitted would mark unseen mail as delivered and
     # skip it on every later tick — a silent, permanent drop.
+    # Each record carries its own `#<pr>/<id>` prefix. A single printf prefixing the
+    # whole block would label only the first line, and every line is a separate wake —
+    # so later ones would arrive unroutable when this watches more than one handle.
+    # The id is what makes a truncated body retrievable.
     out=$(printf '%s' "$json" \
       | jq --arg me "$ME" --arg mysession "$MYSESSION" --arg since "$since_id" -f "$FILTER" \
-      | jq -r '.[] | "\(.from)/\(.session // "-")\(if .to then " -> " + .to else " (all)" end) [\(.kind // "msg")]: \(.text)"') || continue
-    [ -n "$out" ] && printf 'mail #%s %s\n' "$pr" "$out"
+      | jq -r --arg pr "$pr" '.[] | "mail #\($pr)/\(.id) \(.from)/\(.session // "-")\(if .to then " -> " + .to else " (all)" end) [\(.kind // "msg")]: \(.text)"') || continue
+    [ -n "$out" ] && printf '%s\n' "$out"
 
     # Advance past everything fetched, not only what we emitted: our own posts never
     # pass the filter, so a watermark that tracked emissions would never move past them.

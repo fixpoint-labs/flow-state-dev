@@ -1293,7 +1293,10 @@ it's here:
 
 - `.orchestration/` reads and writes (the status table, the epic record, handle caches).
 - PR subscriptions (`subscribe_pr_activity`) and, locally, the `watch-pr` Monitors.
-- Mailbox handle subscriptions, and replying on a handle from the table it already holds.
+- The epic's mailbox handle, whole: registering it, subscribing, keeping `handles/<slug>.md`
+  current, retiring it at wrap, and replying from the table it already holds. The brief is
+  that status table serialized, so this is the same act as an `.orchestration/` write — not
+  an edit to dispatch. What it may *say* there is still bounded by the table above.
 - The Linear status mirror.
 - Surfacing gates, blockers and status; recording your answers to them.
 - Resolving the set and confirming it with you.

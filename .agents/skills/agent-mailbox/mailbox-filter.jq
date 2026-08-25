@@ -31,7 +31,10 @@ def field($n):
 def strip_header:
   (.body // "") | gsub("\r"; "") | sub("^\\s*\n"; "") | split("\n\n")
   | (if length > 1 then (.[1:] | join("\n\n")) else "" end)
-  | gsub("\\s+"; " ") | sub("^ "; "") | .[0:240];
+  | gsub("\\s+"; " ") | sub("^ "; "")
+  # Mark the cut rather than hiding it: the emitted line is a notification, and a
+  # silently-truncated `decision` or handoff would be acted on as if complete.
+  | if length > 240 then .[0:240] + " […]" else . end;
 
 map(
   select((.id // 0) > ($since | tonumber))
