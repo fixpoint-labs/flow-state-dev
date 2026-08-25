@@ -115,6 +115,33 @@ export function requireSourceRepo(): string {
 }
 
 /**
+ * Refuse a base ref the target repository does not have.
+ *
+ * `provisionCheckout` passes this straight to `git worktree add` as the
+ * commit-ish for a fresh checkout, so a typo or a repository whose default
+ * branch is not `main` fails **every** attempt — after the row is claimed, once
+ * per retry, until the budget is gone. It is a startup fact, not a run-time
+ * one, so it is checked where the operator can still see it.
+ *
+ * Verified with `rev-parse --verify`, the same call `branchExists` uses, so the
+ * check and the thing it predicts cannot disagree.
+ */
+export function assertBaseRefExists(repo: string, baseRef: string): void {
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`], {
+      cwd: repo,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+  } catch {
+    throw new Error(
+      `[conductor] CONDUCTOR_BASE_REF "${baseRef}" does not resolve to a commit in ${repo}. ` +
+        "A fresh checkout is cut from it with `git worktree add`, so every attempt would " +
+        "fail there and spend the row's whole retry budget on a name no retry can fix.",
+    );
+  }
+}
+
+/**
  * A positive, finite, whole number of milliseconds from the environment.
  *
  * **Every numeric setting goes through here**, because `Number()` on an
