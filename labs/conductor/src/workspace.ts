@@ -565,7 +565,25 @@ export async function provisionCheckout(
   const deadline = now() + (config.provisionTimeoutMs ?? GIT_TIMEOUT_MS);
   const left = () => remainingBudget(deadline, now);
 
+  const marker = provisioningMarkerFor(path);
+
   if (existsSync(join(path, ".git"))) {
+    // **Clear the marker the moment a completed checkout is observed.**
+    //
+    // Removing it after `worktree add` returns is not enough: a process that
+    // dies in the gap between the tree existing and that line leaves the marker
+    // behind on a checkout that is finished. Nothing cleaned it up, because this
+    // path returned early — and the marker then outlives its own meaning. If the
+    // run's agent later removes `.git`, the next attempt reads that stale marker
+    // as proof of an interrupted provision and deletes a tree holding real work,
+    // which is the exact outcome the marker was introduced to prevent.
+    //
+    // Cleared HERE rather than after the branch checks below, because `.git` is
+    // what settles whether provisioning finished. The checks that follow decide
+    // whether the checkout is USABLE, which is a different question — and a
+    // throw from one of them must not leave the stale marker in place.
+    rmSync(marker, { force: true });
+
     if (!(await branchExists(config, branch, left()))) {
       throw new Error(
         `[conductor] the checkout at ${path} is on branch "${branch}", which no longer ` +
@@ -622,7 +640,6 @@ export async function provisionCheckout(
   // Cleaning here rather than in a `catch` around the failed `add` is
   // deliberate: a catch cannot run when the whole process is killed, and this
   // covers that case too.
-  const marker = provisioningMarkerFor(path);
   if (existsSync(path)) {
     // **A missing `.git` does not prove nobody ever worked here**, which is what
     // this branch used to assume. The run holds an agent with shell access, so

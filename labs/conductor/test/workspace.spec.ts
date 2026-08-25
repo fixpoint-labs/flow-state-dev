@@ -452,6 +452,41 @@ describe("a half-created checkout does not brick every retry", () => {
     });
   });
 
+  it("clears a marker stranded by a death between the tree and the cleanup", async () => {
+    // The marker is removed after `worktree add` returns. A process that dies in
+    // the gap leaves it behind on a checkout that is FINISHED, and the reuse
+    // path used to return early without touching it — so the marker outlived its
+    // own meaning.
+    //
+    // That is not harmless. It re-arms exactly the deletion the marker exists to
+    // prevent: if the agent later removes `.git`, the next attempt reads the
+    // stale marker as proof of an interrupted provision and clears a tree that
+    // holds real work. Staged as the full sequence rather than asserting on the
+    // file, because the file is the mechanism and the work surviving is the point.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+
+    // The death: a completed checkout with the marker still beside it.
+    writeFileSync(`${first.path}.provisioning`, "");
+
+    // Reuse must clean it up on the way through.
+    const second = await provisionCheckout(config, location);
+    expect(second.created).toBe(false);
+    expect(existsSync(`${first.path}.provisioning`)).toBe(false);
+
+    // And the re-armed deletion is disarmed: `.git` goes missing, and the tree
+    // is now refused rather than cleared.
+    rmSync(join(first.path, ".git"), { recursive: true, force: true });
+    await expect(provisionCheckout(config, location)).rejects.toThrow(
+      /no record of an interrupted provision/,
+    );
+    expect(readFileSync(join(first.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+  });
+
   it("keeps a tree whose `.git` went missing without an interrupted provision", async () => {
     // The inference this branch used to make was `no .git` → `nobody ever worked
     // here`. That does not hold: the run holds an agent with shell access, so
