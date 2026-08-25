@@ -106,6 +106,11 @@ export interface ManagerOptions {
   boardCollectionId: string;
   /** The board's ledger declaration, so the manager can read a claim. */
   boardCollection: DefinedResourceCollection;
+  /**
+   * The tenant this conductor serves — the same value that partitions the
+   * board's collection identity. Every request must resolve to it.
+   */
+  tenant: string;
   phase: PhaseSpec;
   workspace: WorkspaceConfig;
   /** Wall-clock budget for the harness run itself. */
@@ -235,6 +240,7 @@ export function harnessManager(options: ManagerOptions) {
   const {
     boardCollectionId,
     boardCollection,
+    tenant,
     phase,
     workspace,
     runTimeoutMs,
@@ -337,6 +343,22 @@ export function harnessManager(options: ManagerOptions) {
           `[conductor] task ${input.taskId} is a "${phaseName}" row on a manager ` +
             `configured for "${phase.phase}". Refusing rather than running ` +
             `${phase.phase}'s prompt and completion check against it.`,
+        );
+      }
+
+      // **A conductor serves one tenant, and refuses any other.**
+      //
+      // The board's collection identity is partitioned by tenant at
+      // construction, so a request resolved to a different tenant would be
+      // reading and claiming rows that are not its own — the ledger half of the
+      // isolation the checkout and branch already have. Refused here for the
+      // same reason the phase is: this is where the wrong work would execute.
+      const resolvedTenant = runPrincipal(ctx as BlockContext).tenantId ?? "single-tenant";
+      if (resolvedTenant !== tenant) {
+        throw new ConductorAttemptFailed(
+          `[conductor] this conductor serves tenant "${tenant}"; the request resolved to ` +
+            `"${resolvedTenant}". Refusing rather than running one tenant's task in another's ` +
+            `workspace.`,
         );
       }
 

@@ -55,7 +55,11 @@ import {
 } from "./run-record";
 import { conductorTaskInputSchema, harnessManager, type PhaseSpec } from "./manager";
 import { implementPhase } from "./implement";
-import { conductorTaskId, type WorkspaceConfig } from "./workspace";
+import {
+  assertSafeSegment,
+  conductorTaskId,
+  type WorkspaceConfig,
+} from "./workspace";
 
 /** The one assignee this board routes to. */
 export const ASSIGNEE = "harness" as const;
@@ -66,6 +70,14 @@ export interface ConductorFlowOptions {
    * routing id and the storage identity, which is why it is required.
    */
   epic: string;
+  /**
+   * The tenant this conductor serves. Defaults to `"single-tenant"`.
+   *
+   * Construction-time rather than per-request, because it partitions a
+   * collection identity. A multi-tenant host builds one conductor per
+   * (tenant, epic); the manager refuses a request resolved to any other tenant.
+   */
+  tenant?: string;
   workspace: WorkspaceConfig;
   /**
    * How many attempts a row gets. Without one the substrate's default is
@@ -87,6 +99,7 @@ export const CONDUCTOR_FLOW_KIND = "conductor" as const;
 export function conductorFlow(options: ConductorFlowOptions) {
   const {
     epic,
+    tenant = "single-tenant",
     workspace,
     maxAttempts = 3,
     runTimeoutMs = 1_800_000,
@@ -96,8 +109,30 @@ export function conductorFlow(options: ConductorFlowOptions) {
   } = options;
 
   // Both ids, per epic, and neither substituting for the other.
-  const boardId = `conductor-${epic}`;
-  const collectionId = `conductor-tasks-${epic}`;
+  // The tenant is in BOTH ids for the same reason the epic is: `boardId`
+  // partitions routing (it is hashed into the derived workstream session id),
+  // the collection identity partitions storage, and neither substitutes for the
+  // other.
+  const boardId = `conductor-${tenant}-${epic}`;
+  // **The tenant is in the collection identity, not just the epic.**
+  //
+  // User scope is keyed on the BARE user id — `createExecutionContext` passes
+  // `scopeId: userId` — while session scope tenant-qualifies its key. So two
+  // tenants sharing a user id share every `user`-scoped collection, and the
+  // board is one: one tenant's `wake` could claim a row another tenant filed and
+  // run that task in the claiming tenant's workspace, with status and retry
+  // accounting shared.
+  //
+  // Conductor owns this identity, which is the lever that already carries the
+  // epic — so the tenant goes in the same place rather than reaching for a
+  // framework change. It has to be construction-time because a collection id is:
+  // a multi-tenant host builds one conductor per (tenant, epic), and the manager
+  // refuses a request whose resolved tenant is not this one.
+  //
+  // **This partitions the run record too, for free.** The run topic leads with
+  // this id, so putting the tenant here puts it in both keys — one change, one
+  // rule, both stores.
+  const collectionId = `conductor-tasks-${assertSafeSegment("tenant", tenant)}-${epic}`;
 
   const tasks = defineTaskCollection({
     id: collectionId,
@@ -108,6 +143,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
   const manager = harnessManager({
     boardCollectionId: collectionId,
     boardCollection: tasks,
+    tenant,
     phase,
     workspace,
     runTimeoutMs,
@@ -168,6 +204,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
       if (existing !== undefined) {
         // Already filed. `wake` is what re-drains it — re-seeding must not mint
         // a second run, and must not reset the retry budget of the first.
+        await ctx.sequencer?.patchState({ taskId: existing.id });
         return { taskId: existing.id };
       }
 
@@ -197,6 +234,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
           // only; nothing derives a path or a permission from it.
           metadata: { topic: `${input.issue}/${input.phase}` },
         });
+        await ctx.sequencer?.patchState({ taskId: task.id });
         return { taskId: task.id };
       } catch (err) {
         // Only a lost race is absorbed. Anything else — a malformed task, a
@@ -204,8 +242,26 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // successful seed.
         const raced = await ctx.cap[boardId].getTask(taskId);
         if (raced === undefined) throw err;
+        await ctx.sequencer?.patchState({ taskId: raced.id });
         return { taskId: raced.id };
       }
+    },
+  });
+
+  /** Hand the seeded task id back as the action's output. */
+  const returnTaskId = handler({
+    name: "conductor-return-task-id",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({ taskId: z.string() }),
+    execute: (_input, ctx) => {
+      const taskId = (ctx.sequencer?.state as { taskId?: unknown } | undefined)?.taskId;
+      if (typeof taskId !== "string" || taskId === "") {
+        throw new Error(
+          "[conductor] seed completed without recording a task id — the row was filed but " +
+            "the caller cannot name it.",
+        );
+      }
+      return { taskId };
     },
   });
 
@@ -281,13 +337,21 @@ export function conductorFlow(options: ConductorFlowOptions) {
         block: sequencer({
           name: "conductor-seed",
           inputSchema: seedInput,
-          outputSchema: z.unknown(),
+          outputSchema: z.object({ taskId: z.string() }),
+          stateSchema: z.object({ taskId: z.string().nullable().default(null) }),
         })
           .tap(seedTask)
           // The drain claims the row and hands it to a workstream, then returns
           // with the row still open. The seeding request does not wait for the
           // run — which is the point.
-          .step(board.drain),
+          .step(board.drain)
+          // **The action answers with the task id, not the drain's output.**
+          // `.tap()` discards what `seedTask` returned and the drain replaces the
+          // chain value, so without this the caller got `undefined` — and a
+          // caller cannot follow up on a row it cannot name. It also made the
+          // concurrent-idempotency test pass for the wrong reason: both reads
+          // were `undefined`, so "both seeds named one row" held vacuously.
+          .step(returnTaskId),
       },
       /** Drain again: claim whatever is ready, including a re-pended retry. */
       wake: { block: board.drain },

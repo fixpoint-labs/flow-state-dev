@@ -285,6 +285,12 @@ await runGoal(async () => {
       }
     }
   } finally {
+    // **Dispose before deleting.** On the timeout path the row is still
+    // `in_progress`, so a detached run is still executing against this checkout
+    // — removing the tree and the SQLite files underneath it produces a cascade
+    // of follow-on failures that look like the finding and are not, and leaves
+    // the runtime's resources open. Disposal drains the detached work first.
+    await (state as unknown as { dispose?: () => Promise<void> }).dispose?.();
     rmSync(scratch, { recursive: true, force: true });
   }
 

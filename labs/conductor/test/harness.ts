@@ -128,6 +128,8 @@ export interface HarnessOptions {
   isDone?: PhaseSpec["isDone"];
   maxAttempts?: number;
   epic?: string;
+  /** Build the conductor for this tenant. The request still resolves untenanted. */
+  tenant?: string;
   ownership?: { waitMs?: number; pollMs?: number; staleAfterMs?: number };
   runTimeoutMs?: number;
 }
@@ -157,6 +159,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
 
   const built = conductorFlow({
     epic: options.epic ?? "harness-manager",
+    ...(options.tenant !== undefined ? { tenant: options.tenant } : {}),
     workspace: { root: workspaceRoot, sourceRepo, baseRef: "main" },
     maxAttempts: options.maxAttempts ?? 3,
     runTimeoutMs: options.runTimeoutMs ?? 30_000,

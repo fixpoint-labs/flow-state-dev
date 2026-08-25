@@ -52,7 +52,7 @@ type StatusRow = {
 const ISSUE = "FIX-1219";
 const PHASE = "implement";
 /** The harness's default epic, so the ledger can be addressed by accessor key. */
-const COLLECTION_ID = "conductor-tasks-harness-manager";
+const COLLECTION_ID = "conductor-tasks-single-tenant-harness-manager";
 
 let live: ConductorHarness | undefined;
 afterEach(() => {
@@ -444,10 +444,10 @@ describe("the manager — the phase surface", () => {
       runTimeoutMs: 5_000,
     });
 
-    expect(built.boardId).toBe("conductor-second-phase");
+    expect(built.boardId).toBe("conductor-single-tenant-second-phase");
     // A distinct STORAGE identity, not just a distinct routing id: two epic
     // boards sharing a collection would operate on the same rows.
-    expect(built.collectionId).toBe("conductor-tasks-second-phase");
+    expect(built.collectionId).toBe("conductor-tasks-single-tenant-second-phase");
     expect(built.collectionId).not.toBe(h.built.collectionId);
   });
 
@@ -474,10 +474,20 @@ describe("the flow — seeding twice", () => {
       isDone: () => true,
     });
 
-    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const first = await live.call<{ taskId: string }>("seed", {
+      issue: ISSUE,
+      phase: PHASE,
+    });
     await settle(live);
-    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const second = await live.call<{ taskId: string }>("seed", {
+      issue: ISSUE,
+      phase: PHASE,
+    });
     await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // Named, not merely equal — see the concurrent case below.
+    expect(first.taskId).toBe(`${ISSUE}--${PHASE}`);
+    expect(second.taskId).toBe(first.taskId);
 
     const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
     expect(rows).toHaveLength(1);
@@ -511,10 +521,19 @@ describe("the flow — seeding twice", () => {
     for (const result of results) {
       expect(result.status).toBe("fulfilled");
     }
-    // And both name the same row.
+
     const ids = results.map((r) =>
       r.status === "fulfilled" ? r.value.taskId : "rejected",
     );
+
+    // **Both name a REAL row, and it is the same one.** The set-size check alone
+    // was vacuous while `seed` discarded its own id: both reads were `undefined`,
+    // so the set had size one and the assertion passed on two nothings. Assert
+    // the id exists and equals the derived identity before asserting agreement —
+    // a check that cannot tell one row from no rows is not a check.
+    for (const id of ids) {
+      expect(id).toBe(`${ISSUE}--${PHASE}`);
+    }
     expect(new Set(ids).size).toBe(1);
 
     await settle(live);
@@ -707,5 +726,70 @@ describe("the run record — readable from any coordinator session", () => {
     expect(rows[0].run?.costUsd).toBe(0.02);
     expect(rows[0].run?.workspacePath).toBe(original.run?.workspacePath);
     expect(rows[0].run?.branch).toBe(original.run?.branch);
+  });
+});
+
+describe("the ledger is partitioned by tenant", () => {
+  // The inverse of the checkout/branch isolation, and it was the asymmetry left
+  // after that fold. User scope is keyed on the BARE user id —
+  // `createExecutionContext` passes `scopeId: userId`, while session scope
+  // tenant-qualifies its key — so two tenants sharing a user id share every
+  // `user`-scoped collection. The board is one: one tenant's `wake` could claim
+  // a row another filed and run it in the claiming tenant's workspace, with
+  // status and retry accounting shared.
+  const base = {
+    epic: "shared-epic",
+    workspace: { root: "/tmp/conductor-tenants", sourceRepo: "/tmp/x", baseRef: "main" },
+    runTimeoutMs: 30_000,
+  };
+
+  it("gives two tenants different ledgers for the same epic", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    const acme = conductorFlow({ ...base, tenant: "acme" });
+    const globex = conductorFlow({ ...base, tenant: "globex" });
+
+    // Storage — the half that decides who can claim whose row.
+    expect(acme.collectionId).not.toBe(globex.collectionId);
+    // Routing — hashed into the derived workstream session id.
+    expect(acme.boardId).not.toBe(globex.boardId);
+  });
+
+  it("puts the tenant in the run topic too, through the same id", async () => {
+    // The run topic leads with the collection identity, so partitioning that
+    // partitions the run record as well — one change, both stores.
+    const { conductorFlow } = await import("../src/flow");
+    const { runTopic } = await import("../src/run-record");
+    const acme = conductorFlow({ ...base, tenant: "acme" });
+    const globex = conductorFlow({ ...base, tenant: "globex" });
+
+    expect(runTopic(acme.collectionId, ISSUE, PHASE)).not.toBe(
+      runTopic(globex.collectionId, ISSUE, PHASE),
+    );
+  });
+
+  it("validates the tenant like every other segment", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    for (const bad of ["../escape", "a/b", "..", "", "with space"]) {
+      expect(() => conductorFlow({ ...base, tenant: bad })).toThrow(/not a usable path/);
+    }
+  });
+
+  it("refuses a request resolved to a different tenant", async () => {
+    // The ledger id is construction-time, so a conductor serves one tenant. A
+    // request resolved to another would be reading and claiming rows that are
+    // not its own — refused where the wrong work would execute.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => true,
+      tenant: "acme",
+    });
+
+    const row = await seedAndDrain(live);
+
+    // The harness authenticates with no tenant, so it resolves "single-tenant".
+    expect(row.status).not.toBe("completed");
+    expect(row.feedback).toMatch(/serves tenant "acme"/);
+    expect(seen.prompts).toHaveLength(0);
   });
 });
