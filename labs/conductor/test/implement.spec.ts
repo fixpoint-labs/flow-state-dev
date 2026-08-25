@@ -77,8 +77,8 @@ describe("the board task's identity", () => {
 
   it("is validated like a path segment, because it lands in the ledger's key space", () => {
     for (const bad of ["../escape", "a/b", "..", "", "with space"]) {
-      expect(() => conductorTaskId(bad, "implement")).toThrow(/not a usable path/);
-      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable path/);
+      expect(() => conductorTaskId(bad, "implement")).toThrow(/not a usable identity segment/);
+      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
   });
 
@@ -90,7 +90,7 @@ describe("the board task's identity", () => {
       conductorTaskId("FIX-1219", "implement"),
     );
     expect(branchFor(at("FIX-1219", "implement"))).toBe(
-      "conductor/single-tenant/alice/conductor-tasks-test-epic/FIX-1219-implement",
+      "conductor/t0/h616c696365/conductor-tasks-test-epic/FIX-1219--implement",
     );
   });
 });

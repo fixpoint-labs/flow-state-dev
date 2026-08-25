@@ -13,7 +13,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { acquireCheckout } from "../src/workspace";
+import { acquireCheckout, encodeSegment } from "../src/workspace";
 import {
   createConductorHarness,
   USER_ID,
@@ -52,7 +52,7 @@ type StatusRow = {
 const ISSUE = "FIX-1219";
 const PHASE = "implement";
 /** The harness's default epic, so the ledger can be addressed by accessor key. */
-const COLLECTION_ID = "conductor-tasks-single-tenant-harness-manager";
+const COLLECTION_ID = "conductor-tasks--h73696e676c652d74656e616e74--harness-manager";
 
 let live: ConductorHarness | undefined;
 afterEach(() => {
@@ -138,7 +138,7 @@ describe("the manager — the verdict at each exit", () => {
     expect(row.run?.workspacePath).toContain(`${ISSUE}--${PHASE}`);
     // Principal- and epic-namespaced: two users, or two epics, never share a ref.
     expect(row.run?.branch).toBe(
-      `conductor/single-tenant/${USER_ID}/${COLLECTION_ID}/${ISSUE}-${PHASE}`,
+      `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${ISSUE}--${PHASE}`,
     );
   });
 
@@ -362,7 +362,11 @@ describe("the manager — contention, and what it must not cost", () => {
     live = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
       isDone: () => true,
-      ownership: { waitMs: 5_000, pollMs: 20, staleAfterMs: 60_000 },
+      // Every bound is explicit here because the ordering IS the subject:
+      // the waiter must outlast the 250ms hold without ever becoming eligible
+      // to steal the tree as stale.
+      runTimeoutMs: 3_000,
+      ownership: { waitMs: 5_000, pollMs: 20, staleAfterMs: 4_000 },
     });
 
     const checkout = join(live.workspaceRoot, `${ISSUE}--${PHASE}`);
@@ -444,10 +448,10 @@ describe("the manager — the phase surface", () => {
       runTimeoutMs: 5_000,
     });
 
-    expect(built.boardId).toBe("conductor-single-tenant-second-phase");
+    expect(built.boardId).toBe("conductor--h73696e676c652d74656e616e74--second-phase");
     // A distinct STORAGE identity, not just a distinct routing id: two epic
     // boards sharing a collection would operate on the same rows.
-    expect(built.collectionId).toBe("conductor-tasks-single-tenant-second-phase");
+    expect(built.collectionId).toBe("conductor-tasks--h73696e676c652d74656e616e74--second-phase");
     expect(built.collectionId).not.toBe(h.built.collectionId);
   });
 
@@ -597,7 +601,7 @@ describe("the manager — the stale window is refused at construction", () => {
       createConductorHarness({
         resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
         runTimeoutMs: 60_000,
-        ownership: { staleAfterMs: 30_000 },
+        ownership: { waitMs: 90_000, staleAfterMs: 30_000 },
       }),
     ).toThrow(/must exceed/);
   });
@@ -607,7 +611,7 @@ describe("the manager — the stale window is refused at construction", () => {
     const h = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
       runTimeoutMs: 30_000,
-      ownership: { staleAfterMs: 90_000 },
+      ownership: { waitMs: 90_000, staleAfterMs: 90_000 },
     });
     h.dispose();
   });
@@ -767,10 +771,14 @@ describe("the ledger is partitioned by tenant", () => {
     );
   });
 
-  it("validates the tenant like every other segment", async () => {
+  it("accepts any tenant id and keeps distinct ones distinct", async () => {
     const { conductorFlow } = await import("../src/flow");
     for (const bad of ["../escape", "a/b", "..", "", "with space"]) {
-      expect(() => conductorFlow({ ...base, tenant: bad })).toThrow(/not a usable path/);
+      // Encoded, not validated — every tenant id is usable, and distinct ones
+      // stay distinct. That is the property; a grammar was the old answer.
+      expect(conductorFlow({ ...base, tenant: bad }).collectionId).not.toBe(
+        conductorFlow({ ...base, tenant: `${bad}x` }).collectionId,
+      );
     }
   });
 

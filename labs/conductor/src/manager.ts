@@ -47,6 +47,7 @@ import {
   runTopic,
   writeRunRow,
   type AttemptIdentity,
+  type RunRowWrite,
 } from "./run-record";
 import {
   acquireCheckout,
@@ -194,6 +195,46 @@ function runPrincipal(ctx: BlockContext): RunPrincipal {
   };
 }
 
+/**
+ * This attempt is no longer the live one.
+ *
+ * Distinct from {@link ConductorAttemptFailed} because it is not a failed
+ * attempt — §9's taxonomy puts a lost claim in neither class: the attempt
+ * writes nothing and leaves the row to be recovered. Throwing is still the
+ * right exit, because the board's own fenced recorder declines a settlement
+ * from a lost claim, so nothing is settled and no retry is spent.
+ */
+export class ConductorAttemptSuperseded extends Error {
+  constructor(where: string) {
+    super(
+      `[conductor] this attempt was superseded before ${where}; stopping rather than ` +
+        `continuing to work a row another attempt now holds.`,
+    );
+    this.name = "ConductorAttemptSuperseded";
+  }
+}
+
+/**
+ * Write through the fence and **read the answer**.
+ *
+ * A fence whose refusal is discarded is not a fence. Every refusal here means
+ * the same thing — a replacement holds the row — and the only correct response
+ * is to stop: continuing spends paid agent execution on work that belongs to
+ * another attempt, and can take the checkout ahead of its rightful holder,
+ * which is obligation B's harm reached through the mechanism meant to prevent
+ * it.
+ *
+ * This is the same shape as the SDK reporting an errored verdict that nobody
+ * reads — the defect decision 1 exists to remove, occurring inside this lab's
+ * own fence.
+ */
+async function fenced(
+  write: Promise<RunRowWrite>,
+  where: string,
+): Promise<void> {
+  if ((await write) === "refused") throw new ConductorAttemptSuperseded(where);
+}
+
 /** Read the typed payload off the worker input, refusing an unusable one loudly. */
 function taskPayload(input: { input?: unknown; taskId: string }): {
   issue: string;
@@ -251,7 +292,17 @@ export function harnessManager(options: ManagerOptions) {
   const ownership: OwnershipBounds = {
     // Sized against the lease-renewal lag that produces overlap, and well
     // inside the run's own deadline: an ordinary reclaim resolves in seconds.
-    waitMs: options.ownership?.waitMs ?? 120_000,
+    // **At least the stale bound**, or a waiter gives up on a lock it was about
+    // to be allowed to take. With a dead host the board reclaims after the
+    // lease, but the lock is not stale-eligible until `staleAfterMs` — so a
+    // shorter wait times out, throws, and spends a retry, and repeated wakes
+    // exhaust the budget on infrastructure long before takeover is permitted.
+    //
+    // The alternative — not charging lock waits as coding failures — needs an
+    // exit that neither completes nor fails the row, and that third outcome is
+    // exactly what this spec defers to LAB-139. So the bound moves instead: it
+    // costs latency on a genuinely wedged tree and no design change.
+    waitMs: options.ownership?.waitMs ?? runTimeoutMs + 300_000,
     pollMs: options.ownership?.pollMs ?? 1_000,
     // Past the run's deadline, so a lock is declared stale only once no live
     // attempt could still hold it. That is what removes the need for a
@@ -266,6 +317,14 @@ export function harnessManager(options: ManagerOptions) {
   // checkout — obligation B violated by configuration rather than by a race.
   // Refused at construction because there is no runtime moment at which the
   // mistake announces itself.
+  if (ownership.waitMs < ownership.staleAfterMs) {
+    throw new Error(
+      `[conductor] ownership.waitMs (${ownership.waitMs}ms) must be at least ` +
+        `ownership.staleAfterMs (${ownership.staleAfterMs}ms): a shorter wait gives up on a ` +
+        `dead holder's lock before it is stale-eligible, and spends a retry doing it.`,
+    );
+  }
+
   if (ownership.staleAfterMs <= runTimeoutMs) {
     throw new Error(
       `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed ` +
@@ -388,18 +447,23 @@ export function harnessManager(options: ManagerOptions) {
         branch,
       });
 
-      // A refusal here means this attempt was already superseded. It is not a
-      // failure of the attempt and nothing is settled on it — the board's own
-      // fence governs that. The write is simply not applied.
-      await openRunRow(
-        ctx as BlockContext,
-        {
-          taskId: input.taskId,
-          attempt: input.attempts,
-          topic,
-          boardCollectionId,
-        },
-        { workspacePath, branch },
+      // **Refusal stops the attempt.** The row can be reclaimed between the
+      // runner's start gate and this call, and a discarded refusal let the
+      // known-stale worker walk on into checkout preparation and paid agent
+      // execution — taking the tree ahead of its replacement for roughly a
+      // lease-renewal interval.
+      await fenced(
+        openRunRow(
+          ctx as BlockContext,
+          {
+            taskId: input.taskId,
+            attempt: input.attempts,
+            topic,
+            boardCollectionId,
+          },
+          { workspacePath, branch },
+        ),
+        "the run row was opened",
       );
     },
   });
@@ -430,17 +494,29 @@ export function harnessManager(options: ManagerOptions) {
       };
 
       const prompt = await phase.buildPrompt(run);
+
+      // **Ownership first, then provisioning.** Validating the worktree and
+      // then waiting for the lock leaves a window in which the displaced
+      // attempt — still running — switches branches, so the replacement
+      // launches in a checkout whose HEAD no longer matches the branch it was
+      // told about, and an existing pull request for that branch can satisfy
+      // completion incorrectly. Acquiring first removes the window rather than
+      // validating twice around it.
+      //
+      // Safe in this order because `acquireCheckout` needs only the path, not a
+      // provisioned tree: it creates the parent directory and locks beside the
+      // checkout.
+      leases.set(leaseKey(ctx as BlockContext), await acquireCheckout(
+        state.workspacePath!,
+        `${input.taskId}#${input.attempts}`,
+        ownership,
+      ));
       await provisionCheckout(workspace, {
         principal: runPrincipal(ctx as BlockContext),
         epic: boardCollectionId,
         issue: state.issue!,
         phase: state.phase!,
       });
-      leases.set(leaseKey(ctx as BlockContext), await acquireCheckout(
-        state.workspacePath!,
-        `${input.taskId}#${input.attempts}`,
-        ownership,
-      ));
       return { prompt };
     },
   });
@@ -481,14 +557,17 @@ export function harnessManager(options: ManagerOptions) {
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
-      await writeRunRow(ctx as BlockContext, identity, {
+      await fenced(
+        writeRunRow(ctx as BlockContext, identity, {
         sessionId: handle.sessionId,
         finalMessage: handle.finalMessage,
         usage: handle.usage,
         costUsd: handle.costUsd,
         childSessionId: ctx.session.identity.id,
         requestId: ctx.request.identity.id,
-      });
+        }),
+        "the verdict was recorded",
+      );
 
       if (!succeeded) {
         throw new ConductorAttemptFailed(
@@ -511,10 +590,10 @@ export function harnessManager(options: ManagerOptions) {
         );
       }
 
-      await writeRunRow(ctx as BlockContext, identity, {
-        outcome: "succeeded",
-        reason: null,
-      });
+      await fenced(
+        writeRunRow(ctx as BlockContext, identity, { outcome: "succeeded", reason: null }),
+        "the row was completed",
+      );
       return {
         issue: state.issue!,
         phase: state.phase!,
@@ -542,6 +621,10 @@ export function harnessManager(options: ManagerOptions) {
       // A failure BEFORE the row was opened has no identity to fence against —
       // and cannot have left stale metadata either, since nothing was written.
       if (state?.topic != null && state.taskId != null && state.attempt != null) {
+        // **The one refusal that is deliberately not read.** This handler is
+        // already unwinding and re-throws below whatever happens, so a refusal
+        // means only that a superseded attempt recorded nothing — which is the
+        // correct outcome. Every other call site stops on refusal.
         await writeRunRow(
           ctx as BlockContext,
           {

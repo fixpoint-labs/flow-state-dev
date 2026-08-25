@@ -10,6 +10,7 @@ import {
   acquireCheckout,
   branchFor,
   checkoutPathFor,
+  conductorTaskId,
   provisionCheckout,
   type RunLocation,
   type RunPrincipal,
@@ -72,11 +73,9 @@ describe("where the checkout is — derived, never read back", () => {
     // obligation B's harm arriving through the door meant to prevent it).
     const config = workspace();
     for (const bad of ["../escape", "a/b", "..", ".", "", "with space", "/abs"]) {
-      expect(() => checkoutPathFor(config, at(bad, "implement"))).toThrow(/not a usable path/);
-      expect(() => checkoutPathFor(config, at("FIX-1", "implement", { principal: { userId: bad } }))).toThrow(
-        /not a usable path/,
-      );
-      expect(() => branchFor(at("FIX-1", bad))).toThrow(/not a usable path/);
+      // Issue and phase are OURS, so the grammar is legitimate there.
+      expect(() => checkoutPathFor(config, at(bad, "implement"))).toThrow(/not a usable identity segment/);
+      expect(() => branchFor(at("FIX-1", bad))).toThrow(/not a usable identity segment/);
     }
   });
 });
@@ -105,7 +104,7 @@ describe("provisioning", () => {
       encoding: "utf8",
     }).trim();
     expect(head).toBe(
-      "conductor/single-tenant/alice/conductor-tasks-test-epic/FIX-1219-implement",
+      "conductor/t0/h616c696365/conductor-tasks-test-epic/FIX-1219--implement",
     );
   });
 
@@ -316,23 +315,46 @@ describe("one job's state is isolated per principal", () => {
   });
 
   it("does not let a user and a tenant run together into one path", () => {
-    // Separate segments, never concatenated: tenant `a` + user `b/c` and tenant
-    // `a/b` + user `c` must not collapse. The grammar forbids the separator, so
-    // this is impossible rather than unlikely.
-    expect(() => checkoutPathFor(config, at("FIX-1", "implement", { principal: { userId: "a/b" } }))).toThrow();
-    expect(() =>
-      checkoutPathFor(config, at("FIX-1", "implement", { principal: { userId: "u", tenantId: "a/b" } })),
-    ).toThrow();
+    // Encoding is injective, so `a` + `b/c` and `a/b` + `c` cannot collapse —
+    // impossible rather than merely forbidden.
+    expect(
+      checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: "b/c", tenantId: "a" } })),
+    ).not.toBe(
+      checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: "c", tenantId: "a/b" } })),
+    );
   });
 
-  it("validates the principal like every other segment", () => {
-    for (const bad of ["../escape", "..", "", "with space", "/abs"]) {
-      expect(() => branchFor(at("FIX-1", "implement", { principal: { userId: bad } }))).toThrow(
-        /not a usable path/,
-      );
-      expect(() => branchFor(at("FIX-1", "implement", { principal: { userId: "u", tenantId: bad } }))).toThrow(
-        /not a usable path/,
-      );
+  it("accepts the identifiers the framework actually issues", () => {
+    // User and tenant ids are unrestricted strings. A grammar would fail every
+    // attempt during derivation and burn the retry budget on a mismatch the run
+    // cannot fix.
+    for (const id of ["auth0|abc", "alice@example.com", "CON", "acme.", "a/b", "ünïcode"]) {
+      expect(() =>
+        checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: id } })),
+      ).not.toThrow();
+    }
+  });
+
+  it("keeps an untenanted request apart from a tenant named like the default", () => {
+    // Presence is tagged separately from value, so these can never collide —
+    // the alias a `?? "single-tenant"` fallback would have created.
+    expect(
+      checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: "u" } })),
+    ).not.toBe(
+      checkoutPathFor(
+        config,
+        at("FIX-1", "i", { principal: { userId: "u", tenantId: "single-tenant" } }),
+      ),
+    );
+  });
+
+  it("keeps every hostile principal inside the root", () => {
+    // Encoding, not rejecting: these are all legal identifiers somewhere, and
+    // none of them can express a separator or a traversal once encoded.
+    for (const bad of ["../escape", "..", "", "with space", "/abs", "CON", "a."]) {
+      const dir = checkoutPathFor(config, at("FIX-1", "i", { principal: { userId: bad } }));
+      expect(dir.startsWith(`${config.root}/`)).toBe(true);
+      expect(dir.split("/")).not.toContain("..");
     }
   });
 });
@@ -417,8 +439,112 @@ describe("two epics on one issue-phase are isolated too", () => {
   it("validates the epic like every other segment", () => {
     for (const bad of ["../escape", "a/b", "..", "", "with space"]) {
       expect(() => branchFor(at("FIX-1", "implement", { epic: bad }))).toThrow(
-        /not a usable path/,
+        /not a usable identity segment/,
       );
+    }
+  });
+});
+
+describe("the identity rule — injective, and safe for every consumer", () => {
+  const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
+
+  it("does not alias when the delimiter is redistributed between components", () => {
+    // The measured defect, in the shape that produced it: with a join over a
+    // delimiter a component may itself contain, `(issue "a--b", phase "c")` and
+    // `(issue "a", phase "b--c")` spell ONE task id, one checkout and one
+    // branch. Two live attempts, one tree.
+    //
+    // Asserted as the PROPERTY — no tuple survives validation and collides —
+    // rather than as a spelling, so a future change of delimiter or encoding
+    // cannot make this test stop covering the thing it exists for.
+    const tuples: Array<[string, string]> = [
+      ["a-b", "c"],
+      ["a", "b-c"],
+      ["a-b-c", "d"],
+      ["a", "b-c-d"],
+      ["FIX-1219", "implement"],
+      ["FIX", "1219-implement"],
+    ];
+    const seen = new Map<string, string>();
+    for (const [issue, phase] of tuples) {
+      const id = conductorTaskId(issue, phase);
+      const previous = seen.get(id);
+      expect(previous, `"${id}" is also (${previous})`).toBeUndefined();
+      seen.set(id, `${issue} + ${phase}`);
+      // The path and the branch must agree with it, or the isolation the id
+      // buys is undone by the two derivations that actually touch disk.
+      expect(checkoutPathFor(config, at(issue, phase))).toContain(id);
+      expect(branchFor(at(issue, phase))).toContain(id);
+    }
+    expect(seen.size).toBe(tuples.length);
+  });
+
+  it("refuses a component that could forge the frame", () => {
+    // The other half: the join is only injective because no component can
+    // contain the delimiter. That has to be enforced, not hoped for.
+    for (const bad of ["a--b", "--a", "a--"]) {
+      expect(() => conductorTaskId(bad, "implement")).toThrow(/not a usable identity segment/);
+      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
+    }
+  });
+
+  it("derives branch names git will actually accept, for everything it accepts", () => {
+    // Path-safe is not ref-safe, and this string is BOTH. The property is
+    // **whatever the grammar admits must survive the ref check** — asserting it
+    // over a fixed set of good inputs would pass under any grammar, including
+    // the one that shipped this bug. So the corpus includes values the grammar
+    // is expected to reject, and the check runs on exactly the ones it lets
+    // through.
+    //
+    // Measured, not reasoned: `git check-ref-format --branch` rejects
+    // `thing.lock` and a trailing dot; the old grammar accepted both, so an
+    // accepted phase produced a branch that could never be created — and the
+    // row was claimed, charged, and retried against a config error no retry
+    // fixes.
+    const corpus = ["implement", "review-2", "a_b", "thing.lock", "phase.", "a.b", "a--b"];
+    let checked = 0;
+    for (const phase of corpus) {
+      let accepted = true;
+      try {
+        conductorTaskId("FIX-1219", phase);
+      } catch {
+        accepted = false;
+      }
+      if (!accepted) continue;
+      checked += 1;
+      const branch = branchFor(at("FIX-1219", phase));
+      execFileSync("git", ["check-ref-format", "--branch", branch], { stdio: "pipe" });
+    }
+    // The corpus must actually exercise the check, or a grammar that rejected
+    // everything would pass this vacuously.
+    expect(checked).toBeGreaterThanOrEqual(3);
+  });
+
+  it("derives branch names git accepts for any principal, however hostile", () => {
+    // The opaque half: these are never rejected — they are encoded — so every
+    // one of them must come out ref-clean.
+    const principals: RunPrincipal[] = [
+      { userId: "alice" },
+      { userId: "auth0|abc" },
+      { userId: "alice@example.com" },
+      { userId: "a.", tenantId: "acme.lock" },
+      { userId: "../escape", tenantId: "with space" },
+      { userId: "", tenantId: "" },
+    ];
+    for (const principal of principals) {
+      const branch = branchFor(at("FIX-1219", "implement", { principal }));
+      execFileSync("git", ["check-ref-format", "--branch", branch], { stdio: "pipe" });
+    }
+  });
+
+  it("rejects the owned segments git would reject downstream", () => {
+    // Measured with `git check-ref-format --branch`: `alice.lock` and a
+    // trailing dot are both REJECTED there and were both ACCEPTED by the old
+    // grammar. Accepting here and failing at checkout creation is the worse
+    // failure — the row is claimed, the attempt is charged, and the retry
+    // budget is spent on a configuration error no retry can fix.
+    for (const bad of ["thing.lock", "phase.", "a.b"]) {
+      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
   });
 });

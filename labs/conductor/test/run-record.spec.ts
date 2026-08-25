@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { conductorFlow } from "../src/flow";
+import { encodeSegment, joinIdentity } from "../src/workspace";
 import { runRecordCollection } from "../src/run-record";
 import {
   RUNS,
@@ -261,7 +262,12 @@ describe("the manager — a phase cannot claim the manager's own collections", (
     // Worse than the run record. The live-claim fence would consult unrelated
     // rows — defeating obligation A while every test that does not stage two
     // attempts still passes.
-    expect(withReadable({ [`conductor-tasks-single-tenant-${EPIC}`]: runRecordCollection })).toThrow(
+    expect(withReadable({
+        // The manager's own board accessor, derived the way the flow derives it
+        // rather than spelled out — so an encoding change cannot make this test
+        // silently stop naming the reserved key.
+        [joinIdentity("conductor-tasks", encodeSegment("single-tenant"), EPIC)]: runRecordCollection,
+      })).toThrow(
       /the manager owns/,
     );
   });

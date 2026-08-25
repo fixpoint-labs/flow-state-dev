@@ -157,22 +157,31 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
     ...(options.isDone !== undefined ? { isDone: options.isDone } : {}),
   };
 
+  // Derived, not spelled out. The manager enforces
+  // `waitMs >= staleAfterMs > runTimeoutMs`, and three independent constants
+  // here let a test set one of them and get a construction error that has
+  // nothing to do with what it was testing. Deriving keeps every harness
+  // instance valid by construction, whichever knob a test turns.
+  const runTimeoutMs = options.runTimeoutMs ?? 30_000;
+  const staleAfterMs = options.ownership?.staleAfterMs ?? runTimeoutMs + 1_000;
+  const ownership = {
+    waitMs: options.ownership?.waitMs ?? staleAfterMs,
+    pollMs: options.ownership?.pollMs ?? 25,
+    staleAfterMs,
+  };
+
   const built = conductorFlow({
     epic: options.epic ?? "harness-manager",
     ...(options.tenant !== undefined ? { tenant: options.tenant } : {}),
     workspace: { root: workspaceRoot, sourceRepo, baseRef: "main" },
     maxAttempts: options.maxAttempts ?? 3,
-    runTimeoutMs: options.runTimeoutMs ?? 30_000,
+    runTimeoutMs,
     phase,
     agent: {
       resolveClaudeAgent: options.resolveClaudeAgent,
       includePartialMessages: false,
     },
-    ownership: {
-      waitMs: options.ownership?.waitMs ?? 2_000,
-      pollMs: options.ownership?.pollMs ?? 25,
-      staleAfterMs: options.ownership?.staleAfterMs ?? 60_000,
-    },
+    ownership,
   });
 
   const state = createFlowState({
