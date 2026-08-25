@@ -1676,3 +1676,63 @@ describe("resolving fail's route against pre-write budget state (FIX-964)", () =
     expect(collection.get("t")?.status).toBe("pending");
   });
 });
+
+/**
+ * The route a `fail` takes is decided *inside* the store's atomic write, and the
+ * seam predicts it from outside. A prediction that could have been overtaken
+ * must not be treated as fact.
+ */
+describe("fail's route is a prediction, not a fact (FIX-964)", () => {
+  it("does not swallow a post-commit failure when a SIBLING spent the last retry", async () => {
+    // Found by review, after the pre-write budget capture. Capturing the total
+    // early fixes the case where this write spends the last retry itself — it
+    // does nothing about a sibling spending it in the same window. The write
+    // then routes terminal while the seam still predicts `pending`, clause (b)
+    // reads the committed `errored` row as somebody else's displacement, and a
+    // post-commit failure is contained.
+    //
+    // The seam cannot know which route the store took. What it can know is when
+    // its own prediction was overtakeable — a concurrent grant only ever pushes
+    // the total UP, so a predicted retry can flip to terminal and never the
+    // reverse — and bias to rethrow there.
+    const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
+      tasks: {},
+    });
+    const collection = createSequencerBackedTaskCollection({
+      collectionId: "budgeted",
+      sequencer,
+      maxTotalRetries: 1,
+    });
+
+    await collection.addTask({ id: "mine", goal: "mine", maxAttempts: 5 });
+    await collection.addTask({ id: "sibling", goal: "sibling", maxAttempts: 5 });
+    const mine = await collection.claim("worker-1", { eligibility: (t) => t.id === "mine" });
+    if (mine === null) throw new Error("fixture failed to claim");
+    const claim = ticketForClaim(collection.collectionId, mine);
+
+    const siblingEatsTheBudget: TaskCollectionRef = {
+      ...collection,
+      fail: async (id, error, options) => {
+        // The sibling consumes the collection's final retry after this call's
+        // budget was sampled and before its write runs.
+        const other = await collection.claim("worker-2", {
+          eligibility: (t) => t.id === "sibling",
+        });
+        if (other !== null) await collection.fail(other.id, "sibling failed");
+        await collection.fail(id, error, options);
+        throw new Error("onChange rejected after the commit");
+      },
+    };
+
+    await expect(
+      advisoryFail(siblingEatsTheBudget, "mine", "worker blew up", {
+        ifAllowed: true,
+        claim,
+      })
+    ).rejects.toThrow("onChange rejected after the commit");
+
+    // The write really did route terminal, which is what the stale prediction
+    // missed.
+    expect(collection.get("mine")?.status).toBe("errored");
+  });
+});

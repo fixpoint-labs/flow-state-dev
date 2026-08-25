@@ -104,10 +104,18 @@ import type {
   TaskWriteOutcome,
 } from "./types";
 
-/** What a write-back was aiming at, resolved from the verb and the task. */
+/**
+ * What a write-back was aiming at, resolved from the verb and the task.
+ *
+ * `status` is a **prediction**, not a fact: the store picks the route inside its
+ * own atomic write, and the seam is outside it. `alternate` names the other
+ * status the write could have produced when that prediction was overtakeable,
+ * so clause (b) can decline to call such a row somebody else's work.
+ */
 interface WriteTarget {
   status: TaskStatus;
   kind: TaskChangeKind;
+  alternate?: TaskStatus;
 }
 
 /**
@@ -286,9 +294,19 @@ function resolveTarget(
     () => grantedRetries ?? sumGrantedRetries(ref.list()),
     ref.maxTotalRetries ?? undefined
   );
-  return routing.action === "retry"
-    ? { status: "pending", kind: "retried" }
-    : { status: "errored", kind: "errored" };
+  if (routing.action !== "retry") return { status: "errored", kind: "errored" };
+  // A predicted retry is the one answer a concurrent write can overtake. The
+  // budget decides it, grants only ever push the total UP, and the total is
+  // sampled before the write — so between the sample and the store's atomic
+  // section a sibling can spend the last retry and flip this write to terminal.
+  // The reverse cannot happen: a total never shrinks, so a predicted terminal
+  // stays terminal.
+  const overtakeable = ref.maxTotalRetries != null && routing.countsAgainstBudget;
+  return {
+    status: "pending",
+    kind: "retried",
+    ...(overtakeable ? { alternate: "errored" as TaskStatus } : {}),
+  };
 }
 
 /**
@@ -394,8 +412,13 @@ function attribute(
   // would have declined escapes and abandons the siblings — this change's own
   // defect, reached through its own seam.
   if (current !== undefined) {
+    // Either status this write could have produced counts as "ours". Where the
+    // route was overtakeable the seam genuinely does not know which one the
+    // store committed, and the bias under that uncertainty is the one this file
+    // takes everywhere: rethrowing something containable costs this board, while
+    // containing something loud costs FIX-963 its entire signal.
     const couldBeOurs =
-      current.status === target.status &&
+      (current.status === target.status || current.status === target.alternate) &&
       (options.claim === undefined || current.attempts === options.claim.attempt);
     if (!couldBeOurs) {
       const reason = transitionDeclineReason(

@@ -134,8 +134,11 @@ would have made before committing: the late result is dropped and the drain
 continues. The guarantee is board survival, not equivalence. It fires on a throw,
 so a stale write the state machine happens to permit still commits and still
 clobbers, and no error a store never raises can be contained. Everything else —
-a store outage, a write that committed and then failed on the way out — propagates
-unchanged.
+a store outage on a task the worker still holds, a write that committed and then
+failed on the way out — propagates unchanged. The qualifier is load-bearing: when
+the task was *already* settled or displaced before the call, the seam cannot tell
+an outage apart from the decline a conforming store would have made, and contains
+it. Don't build an alerting path on an error the substrate may drop.
 
 Every mutation method except `claim` and `reclaim` resolves to a
 `TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
