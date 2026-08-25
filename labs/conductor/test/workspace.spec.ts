@@ -415,9 +415,13 @@ describe("a half-created checkout does not brick every retry", () => {
     const location = at("FIX-1219", "implement");
     const path = checkoutPathFor(config, location);
 
-    // The exact leftover shape: the directory, some content, and no `.git`.
+    // The exact leftover shape: the directory, some content, no `.git`, and the
+    // marker the provision wrote before calling `worktree add`. The marker is
+    // part of the shape rather than test scaffolding — it is what makes this an
+    // interrupted provision rather than a directory of unknown origin.
     mkdirSync(join(path, "src"), { recursive: true });
     writeFileSync(join(path, "src", "partial.ts"), "half written");
+    writeFileSync(`${path}.provisioning`, "");
     expect(existsSync(join(path, ".git"))).toBe(false);
 
     const checkout = await provisionCheckout(config, location);
@@ -440,11 +444,41 @@ describe("a half-created checkout does not brick every retry", () => {
     execFileSync("git", ["branch", branch, "main"], { cwd: config.sourceRepo, stdio: "pipe" });
     mkdirSync(path, { recursive: true });
     writeFileSync(join(path, "leftover"), "x");
+    writeFileSync(`${path}.provisioning`, "");
 
     return expect(provisionCheckout(config, location)).resolves.toMatchObject({
       created: true,
       branch,
     });
+  });
+
+  it("keeps a tree whose `.git` went missing without an interrupted provision", async () => {
+    // The inference this branch used to make was `no .git` → `nobody ever worked
+    // here`. That does not hold: the run holds an agent with shell access, so
+    // removing or renaming `.git` inside its own checkout is reachable — a
+    // cleanup script, or an agent deciding to start over. The tree then looks
+    // exactly like an interrupted provision while holding real uncommitted work,
+    // and clearing it destroys the thing the whole reuse design is priced on.
+    //
+    // Staged on a REAL checkout rather than a hand-made directory, because the
+    // point is that a genuine tree can reach this state.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+
+    // The agent removes its own `.git`. Provisioning is long finished, so there
+    // is no marker — which is exactly what separates this from the case above.
+    rmSync(join(first.path, ".git"), { recursive: true, force: true });
+    expect(existsSync(`${first.path}.provisioning`)).toBe(false);
+
+    await expect(provisionCheckout(config, location)).rejects.toThrow(
+      /no record of an interrupted provision/,
+    );
+    // The load-bearing assertion: the work is still there.
+    expect(readFileSync(join(first.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
   });
 
   it("still refuses to clear a real checkout", async () => {

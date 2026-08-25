@@ -436,6 +436,18 @@ function lockPathFor(checkoutPath: string): string {
 }
 
 /**
+ * Marks a provisioning that has started and not yet finished.
+ *
+ * Written before `git worktree add` and removed once it returns, so a directory
+ * left behind by a killed provision is **positively identified** rather than
+ * inferred from a missing `.git`. Beside the checkout rather than inside it, for
+ * the same reason the lock is: `worktree add` must never meet a non-empty target.
+ */
+function provisioningMarkerFor(checkoutPath: string): string {
+  return `${checkoutPath}.provisioning`;
+}
+
+/**
  * The remaining time in one provisioning, as a per-call timeout.
  *
  * **Zero is not "no budget left" to `execFile` — it is "no timeout at all".**
@@ -610,7 +622,28 @@ export async function provisionCheckout(
   // Cleaning here rather than in a `catch` around the failed `add` is
   // deliberate: a catch cannot run when the whole process is killed, and this
   // covers that case too.
+  const marker = provisioningMarkerFor(path);
   if (existsSync(path)) {
+    // **A missing `.git` does not prove nobody ever worked here**, which is what
+    // this branch used to assume. The run holds an agent with shell access, so
+    // removing or renaming `.git` inside its own checkout is reachable — by a
+    // cleanup script, or by an agent deciding to start over. The tree then looks
+    // exactly like an interrupted provision while holding real uncommitted work,
+    // and clearing it destroys the thing decision 2 is priced on.
+    //
+    // So the interrupted case is IDENTIFIED rather than inferred. The marker is
+    // written before `worktree add` and removed when it returns, so its presence
+    // is a positive statement that a provision started and did not finish.
+    // Absent, this directory is something we did not make and cannot explain,
+    // and the safe disposition for unknown contents is to keep them.
+    if (!existsSync(marker)) {
+      throw new Error(
+        `[conductor] the checkout at ${path} has no \`.git\` and no record of an ` +
+          `interrupted provision, so it is not a half-created checkout and this will not ` +
+          `clear it — it may hold work. Inspect it and remove it by hand if it is junk.`,
+      );
+    }
+
     // A guard on a destructive call. The path is derived under `config.root` by
     // `checkoutPathFor`, and this keeps that true for any future caller that
     // reaches this function another way.
@@ -633,7 +666,17 @@ export async function provisionCheckout(
   const args = (await branchExists(config, branch, left()))
     ? ["worktree", "add", path, branch]
     : ["worktree", "add", "-b", branch, path, config.baseRef];
+
+  // Written BEFORE the call that creates the tree and removed only once it has
+  // returned, so the window the marker covers is exactly the window in which a
+  // kill leaves a partial directory. A failed `add` deliberately leaves it: the
+  // provision did not finish, and the next attempt is the one entitled to clear.
+  // `worktree add` creates the nested path itself, so the marker's own parent
+  // may not exist yet — the same reason `acquireCheckout` makes it for the lock.
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(marker, "");
   await git(config.sourceRepo, args, left());
+  rmSync(marker, { force: true });
   return { path, branch, created: true };
 }
 
