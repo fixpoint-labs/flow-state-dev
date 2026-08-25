@@ -254,8 +254,10 @@ export interface ClaudeCodeAgentOptions {
    *   string prefix — `join` uses the platform separator, so a literal `"/"`
    *   comparison rejects every valid value on Windows.
    *
-   * Prefer a key the server assigned over one that arrived with the request.
-   * The package README carries the worked version.
+   * Prefer a key the server assigned over one that arrived with the request —
+   * session and request ids both reach the server from the caller, so the
+   * encoding is what makes an untrusted one safe to build a path from
+   * (BP-031). The package README carries the worked version.
    *
    * The resolver may be async, for a directory that has to be looked up or
    * provisioned first.
