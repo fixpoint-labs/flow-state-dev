@@ -483,16 +483,4 @@ function releaseLease(ctx: BlockContext): void {
   leases.delete(key);
 }
 
-/**
- * Release every lease this process holds.
- *
- * For a host tearing down, and for a test that failed between `prepare` and the
- * harness step's dispatch — the one window in which nothing releases, because
- * `onSettled` does not fire for a step that was never dispatched.
- */
-export function releaseAllLeases(): void {
-  for (const lease of leases.values()) lease.release();
-  leases.clear();
-}
-
 export { RUNS };
