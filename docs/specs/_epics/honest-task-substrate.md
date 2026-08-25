@@ -33,7 +33,7 @@ per-operation `setAssignee` guard are on `main`.
 | FIX-948 | **Done** | Shipped as `maxTotalRetries` in [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031). *OQ-C is closed by shipment.* |
 | FIX-963 | Backlog | **Still live — re-verified in code 2026-08-24.** Now unblocked: FIX-989 shipped the detection primitive it was waiting on. |
 | FIX-964 | ~~Backlog~~ | **DESCOPED 2026-08-24, owner call.** FIX-976's shipped widening closed most of it; the residue is narrow. Unparented, not closed — see §3.5. |
-| FIX-978 | Backlog | **Likely subsumed by shipped work (FIX-1005).** Subsumption check owed before it specs — OQ-E. |
+| FIX-978 | ~~Backlog~~ | **CLOSED 2026-08-25 — subsumed by FIX-1005.** OQ-E settled against `main`; all three claims closed. Its one residue is FIX-1250's. |
 
 Three further issues joined this track after the epic opened and have **shipped**:
 FIX-989 (durable write provenance, [#1128](https://github.com/fixpoint-labs/flow-state-dev/pull/1128)),
@@ -41,30 +41,37 @@ FIX-992 (`ResourceStateStore` compare-and-swap) and FIX-995 (`updateState` callb
 FIX-989 in particular is the objective landing squarely — a caller can now ask whether its
 own write committed after a call that threw.
 
-The three open spec PRs ([#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990),
-[#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992),
-[#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994)) have not moved since
-2026-07-30 and none has cleared its approval gate, so `cross-spec-review` still has not run.
-Two of the three are now questionable on staleness grounds rather than on review grounds,
-which is a different problem from the one Decision 2 anticipated.
+**All three stale spec PRs are now resolved, and none of them by review.** #990 (FIX-978) is
+closed with its issue; #994 (FIX-964) is on hold with its issue descoped; only
+[#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) (FIX-963) is still live work.
+Two of three specs died of staleness rather than of a review finding — which is the
+counter-argument to letting an epic sit: **the review budget spent on them in July bought
+nothing, because the codebase answered both questions first.**
 
 ### Track 2 — the human-wait board pair (owner widening, 2026-08-24)
 
 | Issue | State | Where it stands |
 |---|---|---|
-| FIX-1234 | **In Review** | Park/exit mode. Impl PR [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) — CI green, one approving review, review rounds in progress. |
+| FIX-1234 | **Done** | Park/exit mode. Impl PR [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) **merged** 2026-08-25. The first Track-2 deliverable to land. |
 | FIX-1238 | Backlog | The park-exit verdict's carrier depends on step adjacency, and a break is silent. |
 | FIX-1244 | Backlog | Unblock-with-input. **Blocked by FIX-1234.** A *new* request carrying a payload — not `continueRequest`, not `ctx.suspend`. D-1: FIX-1241 / [#1429](https://github.com/fixpoint-labs/flow-state-dev/pull/1429). |
-| FIX-1245 | Backlog · **P2 High** | Rename the shipped status `awaiting_review` → `needs_input`. **Gates the close of Track 2** — filed 2026-08-24 after the widening comment, which had listed the rename as out. It is now in. |
+| FIX-1245 | Backlog · **P2 High** | Rename the shipped status `awaiting_review` → **`parked`**. **Gates the close of Track 2.** *Retargeted 2026-08-24 from `needs_input`, which the widening comment and this doc's first revision both named.* |
+| FIX-1250 | Backlog | `TaskWorkerInput` carries no claim ticket or incarnation id, so an **out-of-process** worker cannot fence a stale settle. Filed 2026-08-25 out of Conductor (LAB-138 / PR #1442), which had to re-derive the fence in userland. |
 
 **Related to Relay ([FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197)), not parented
 under it or LAB-140.**
 
-**FIX-1245 is the objective applied to the epic's own vocabulary.** Park-exit, unblock-with-input
-and Conductor all speak `needs_input` while the board writes `awaiting_review` — a status that
-names the wrong thing is the same defect this epic exists to remove, one level up. It is **not**
-the vehicle for park-exit: PR #1422 ships against whichever name is live when it merges, and the
-rename lands before Track 2 closes.
+**FIX-1245 is the objective applied to the epic's own vocabulary.** The board writes
+`awaiting_review` for a row that is parked on a human — a status that names the wrong thing is
+the same defect this epic exists to remove, one level up. **The target is `parked`, not
+`needs_input`** (retargeted 2026-08-24). It was not the vehicle for park-exit, and did not need
+to be: #1422 merged against the old name, so this is a clean follow-on rename rather than a
+blocker on it.
+
+**FIX-1250 is Track 2's honesty gap at the process boundary.** Park-exit made a drain able to
+leave a row parked; FIX-1250 is about the worker that comes back to settle it being able to
+prove the claim it holds is still live. It also carries the one residue OQ-E left behind when
+it closed FIX-978 — see §4.
 
 **Explicitly out of this epic:** coordinator UX · Conductor-specific flow (LAB-139 consumes
 it) · FIX-1231 · FIX-765 (a second pause model).
@@ -102,11 +109,11 @@ number. **Refreshed 2026-08-24** against live Linear state.
 
 | Set | Size | Members |
 |---|---|---|
-| **Track 1 — original honesty set** | 5 | FIX-951 ✅, FIX-976 ✅, FIX-948 ✅, FIX-963, FIX-978 *(FIX-964 descoped)* |
+| **Track 1 — original honesty set** | 4 | FIX-951 ✅, FIX-976 ✅, FIX-948 ✅, FIX-963 *(FIX-964 descoped, FIX-978 closed)* |
 | ├ **Shipped** | 3 | FIX-951 (anchor), FIX-976, FIX-948 |
-| └ **Open** | 2 | FIX-963, FIX-978 *(and FIX-978 is pending OQ-E)* |
+| └ **Open** | **1** | FIX-963 |
 | **Track 1 — joined and shipped after the epic opened** | 3 | FIX-989 ✅, FIX-992 ✅, FIX-995 ✅ |
-| **Track 2 — human-wait board pair** *(added 2026-08-24)* | 4 | FIX-1234, FIX-1238, FIX-1244, FIX-1245 |
+| **Track 2 — human-wait board work** *(added 2026-08-24)* | 5 | FIX-1234 ✅, FIX-1238, FIX-1244, FIX-1245, FIX-1250 |
 | **Decision-1-bound** | **1** | FIX-976 *(shipped — the decision is spent)* |
 | **Project siblings** — off-objective, direct-fix, *not* parented | 2 | FIX-972 (PR #984), FIX-962 (PR #985) |
 | **Discovered work** — same defect family, filed separately, *not* parented | 1 | FIX-985 |
@@ -162,6 +169,12 @@ renews a lease during execution (`grep -rni "renew|heartbeat|extendLease"` retur
 and `DEFAULT_LEASE_DURATION_MS` is 30s while a generator's model call routinely exceeds
 that — so an expired lease is the *normal* state of a healthy worker. Any fix that infers
 abandonment from expiry alone trades a hang for silent duplicate execution, which is worse.
+
+> **⚠ This paragraph and FIX-978's row above are the July diagnosis, preserved as written.**
+> Every factual claim in them was true then and is false now: FIX-1005 shipped lease renewal,
+> raised `DEFAULT_LEASE_DURATION_MS` to 120 s, gave `reclaim` real callers via `isClaimable`,
+> and closed the issue. Kept rather than rewritten because the *reasoning* is what OQ-E had to
+> falsify — see §4. Do not cite this paragraph as current behavior.
 
 ### FIX-951 is the completed anchor — and that changes what Decision 1 is
 
@@ -575,15 +588,21 @@ This decision used to say "the Decision-1-bound three wait." Three things retire
   helper-level guard behind for the others to inherit. That subset is a *constraint-sharing* group,
   and naming it here is **not** a scoping rule for `cross-spec-review` — see the bullet above.
 
-> **Note, 2026-08-24 — the set this decision scopes has shrunk under it.** FIX-976 and FIX-948
-> have **shipped**, and **FIX-964 has been descoped**, so none of the three is in a spec set any
-> more; the A1 constraint they shared is settled in merged code rather than pending between
-> specs. What `cross-spec-review` would actually run over now is **FIX-963 alone** — and OQ-E may
-> yet remove FIX-978 as well. **A coherence pass over a set of one is not a pass; skip it** and
-> review FIX-963's spec on its own merits. The decision's *rule* (the set is every open spec,
-> never a file-colliding subset) stands unchanged — only its membership moved.
+> **Note, 2026-08-25 — this decision has no set left to scope.** FIX-976 and FIX-948 **shipped**,
+> FIX-964 was **descoped**, and FIX-978 is **closed as subsumed** (OQ-E). The A1 constraint the
+> file-colliding subset shared is settled in merged code rather than pending between specs.
+> `cross-spec-review` would run over **FIX-963 alone**, and **a coherence pass over a set of one
+> is not a pass — skip it** and review FIX-963's spec on its own merits. The decision's *rule*
+> (the set is every open spec, never a file-colliding subset) stands unchanged and is what a
+> future epic should reuse; only its membership went to zero.
 
 ### Decision 3 — an expired lease is not evidence of abandonment; no issue in this set may assume otherwise
+
+> **Note, 2026-08-25 — this decision was vindicated and is now discharged.** It held that a real
+> recovery path needs either a run identity on the claim or **lease renewal during execution**.
+> FIX-1005 shipped renewal, which is what let it close FIX-978 without ever inferring abandonment
+> from expiry — see OQ-E in §4. **It is still binding on FIX-1250**, which is the run-identity
+> half of the same sentence, at the process boundary.
 
 > **Note, 2026-08-24 — two stale pointers, folded late.** These were flagged on the epic PR on
 > 2026-07-29 and never folded before the epic went dormant.
@@ -644,7 +663,7 @@ running — must hold after each of these issues lands. Two constraints follow:
 
 ## 3. Running index
 
-Durable audit log of every PR under this epic. **Refreshed 2026-08-24** against live Linear
+Durable audit log of every PR under this epic. **Refreshed 2026-08-25** against live Linear
 state. Empty columns mean not yet reached.
 
 **Epic PR:** [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) · never merged, open for the life of the epic. *(Closed 2026-08-16 while the epic was dormant; reopened 2026-08-24 on revival.)*
@@ -660,23 +679,23 @@ state. Empty columns mean not yet reached.
 | **FIX-992** | `ResourceStateStore.set` had no `expectedVersion` | **Done** | [#1010](https://github.com/fixpoint-labs/flow-state-dev/pull/1010) | [#1035](https://github.com/fixpoint-labs/flow-state-dev/pull/1035), [#1036](https://github.com/fixpoint-labs/flow-state-dev/pull/1036), [#1039](https://github.com/fixpoint-labs/flow-state-dev/pull/1039) **merged** |
 | **FIX-995** | `updateState` callbacks report work that never committed | **Done** | [#1022](https://github.com/fixpoint-labs/flow-state-dev/pull/1022) | [#1023](https://github.com/fixpoint-labs/flow-state-dev/pull/1023) **merged** |
 
-**Track 1 — open, and each one needs a staleness check before it specs.** These spec PRs have
-not moved since 2026-07-30. Substantial adjacent work shipped in the interval, so the question
-for each is no longer *"is the spec right"* but *"is the defect still there":*
+**Track 1 — one open issue.** The staleness sweep is finished; both of its other candidates
+were resolved without being built.
 
-| Issue | Title (short) | Linear | Spec PR | Verdict 2026-08-24 |
+| Issue | Title (short) | Linear | Spec PR | Verdict |
 |---|---|---|---|---|
-| **FIX-963** | Recorder failure after a task commits is swallowed | Backlog · P3 | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · *spec review* | **Still live**, re-verified in `record-result.ts`. Now *implementable* — FIX-989 shipped `didWriteLand`, the primitive it lacked. **Keep.** |
-| **FIX-978** | Stranded `in_progress` lease hangs a later drain ~14h | Backlog · P2 | [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) · *on hold* | **Likely subsumed.** FIX-1005 made a lapsed lease claimable (`leaseLapsed` → `isClaimable`), so the next claim reclaims a stranded row — the hang this issue names. See **OQ-E**. |
+| **FIX-963** | Recorder failure after a task commits is swallowed | Backlog · P3 | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · *spec review* | **Still live**, re-verified in `record-result.ts`. Now *implementable* — FIX-989 shipped `didWriteLand`, the primitive it lacked. **The last Track-1 defect.** |
+| ~~FIX-978~~ | Stranded `in_progress` lease hangs a later drain ~14h | **Canceled** 2026-08-25 | [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) **closed** | **Subsumed by FIX-1005** — OQ-E settled against `main`. Residue owned by FIX-1250. |
 
 **Track 2 — the human-wait board pair** *(added by owner call 2026-08-24)*:
 
 | Issue | Title (short) | Linear | Spec PR | Impl PR |
 |---|---|---|---|---|
-| **FIX-1234** | Exit/park mode so `awaiting_review` doesn't hold the launching request open | **In Review** | [#1419](https://github.com/fixpoint-labs/flow-state-dev/pull/1419) *approved* | [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) · CI green, 1 approve, in review rounds |
+| **FIX-1234** | Exit/park mode so `awaiting_review` doesn't hold the launching request open | **Done** | [#1419](https://github.com/fixpoint-labs/flow-state-dev/pull/1419) *approved* | [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) **merged** 2026-08-25 |
 | **FIX-1238** | The park-exit verdict's carrier depends on step adjacency; a break is silent | Backlog | — | — |
 | **FIX-1244** | Unblock a parked task with an input, starting a new request | Backlog · *blocked by FIX-1234* | — | — |
-| **FIX-1245** | Rename the shipped status `awaiting_review` → `needs_input` | Backlog · **P2 High** · *gates Track 2's close* | — | — |
+| **FIX-1245** | Rename the shipped status `awaiting_review` → **`parked`** | Backlog · **P2 High** · *gates Track 2's close* | — | — |
+| **FIX-1250** | Workers get no claim identity, so an out-of-process worker can't fence a stale settle | Backlog | — | — |
 
 **Project siblings** — *off-objective · direct-fix*, **not** parented under FIX-980, listed
 for audit continuity only. Neither shapes any cross-cutting decision here:
@@ -753,22 +772,32 @@ redundant. It was answered in the doing: FIX-948 shipped `maxTotalRetries`
 ([#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031)) and is `Done`. Whatever
 FIX-933 bounds, it did not cover this.
 
-**OQ-E — is FIX-978 subsumed by FIX-1005? *(new 2026-08-24; precondition to speccing
-FIX-978, not a human blocker.)*** FIX-978 says a stranded `in_progress` lease has **no
-reclaim path**, so a later drain rides out ~14h at production defaults before reporting
-`blocked` — a verdict naming the wrong cause. Since then FIX-1005 shipped `leaseLapsed`, and
-`isClaimable` now admits a lapsed `in_progress` row, so **the next claim reclaims a stranded
-row rather than waiting it out**; `hasClaimableTask` reads the same lease on the exit side,
-and `transitionDeclineReason`'s fence gives the third half FIX-978's spec asked for (never
-writing to a row you no longer own). On the evidence in
-`packages/orchestration/src/tasks/collection/internal.ts` and `task-board/shared.ts`, the
-hang looks closed and the honest-verdict half looks largely closed with it.
+**OQ-E — is FIX-978 subsumed by FIX-1005? — SETTLED YES, 2026-08-25. FIX-978 closed.**
+Checked against `origin/main` @ `2e046e9`, deliberately not against FIX-978's own spec. All
+three of its claims:
 
-**What is owed:** read FIX-1005, FIX-981 and FIX-990 against FIX-978's three claims and
-either close FIX-978 as subsumed or restate the residue. **Do not spec FIX-978 against PR
-[#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) as written** — that spec
-predates all three and is on hold for a reason. Its own author already routed the
-*reclamation* half to FIX-939 milestone 2, and FIX-939 is now `Done`.
+| FIX-978 claimed | Status on `main` |
+|---|---|
+| No reclaim path, so a later drain rides out ~14h | **Closed.** `isClaimable` admits a lapsed `in_progress` row (`status !== "pending" && !leaseLapsed(task, now)` is the only rejection), so the next claim reclaims a stranded row. The same predicate feeds the wake probe, so exit and wake agree. |
+| The drain reports `blocked`, naming the wrong cause | **Closed, from the other side.** `claimDisposition` settles a row `errored` once `readAbandonments(task) >= maxAbandonments` (`DEFAULT_MAX_ABANDONMENTS = 3`), with `abandonmentExhaustedError` naming the real cause. A row nobody is on is now re-dispatched or settled — never left in-flight forever. |
+| Never write to a row you no longer own | **Closed in-process.** `transitionDeclineReason` declines `not-my-task` when the ticket doesn't name the row, `lost-claim` when the lease lapsed under the holder. |
+
+**Decision 3 is what made the fix possible, not what blocked it.** D3 held that an expired lease
+is not evidence of abandonment, and that a real recovery path needs either a run identity on the
+claim or **lease renewal during execution**. FIX-1005 shipped renewal (`renewLease`, cadence
+`span / RENEWAL_DIVISOR`, lease default 120 s), so recovery counts renewals a live worker failed
+to make rather than inferring death from expiry. The constraint this epic wrote in July is
+satisfied by construction in the code that closed the issue.
+
+**The one residue has an owner.** Claim 3 holds in-process only: `TaskWorkerInput` carries no
+claim ticket or incarnation id, so an out-of-process worker cannot fence a stale settle at the
+boundary. That is **FIX-1250**, filed 2026-08-25 out of Conductor (LAB-138 / PR #1442), which had
+to re-derive the fence in userland. It is in Track 2, and it is where the last of FIX-978 went.
+
+**Spec PR [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) is closed with the
+issue.** It predates FIX-1005, FIX-981 and FIX-990 and describes a substrate that no longer
+exists — do not build from it. Reopen FIX-978 only if a hang is observed on current `main`; the
+table above is the thing to falsify.
 
 **OQ-D — is `TaskCollectionRef` the wrong shape for an extension point? *(follow-up beyond this
 epic — explicitly not this epic's work.)*** Recorded in round 3 from FIX-964's spec (PR #994), which
@@ -1027,9 +1056,9 @@ removing the `?`, and nobody should retry it.
      different caller. Detached, not closed; each keeps its project, priority and relations.
      FIX-993 flagged as the one genuine judgment call and kept in.
   4. **FIX-1245 folded in.** Filed by the owner at 18:49 on 2026-08-24, after the widening
-     comment that had listed the `awaiting_review` → `needs_input` rename as out of scope.
-     It is now in, at High, and it gates the close of Track 2. Recorded here because the
-     comment and the ticket disagree and the ticket is later.
+     comment that had listed the status rename as out of scope. It is now in, at High, and it
+     gates the close of Track 2. Recorded here because the comment and the ticket disagree and
+     the ticket is later.
 - **FIX-964 descoped, 2026-08-24 (owner call).** Unparented from FIX-980; spec PR #994 stays
   open, marked *on hold*. The reasoning is the epic working as intended: FIX-976 shipped the
   widened return types, which delivered the compile-time signal §5 had confirmed, and the
@@ -1038,3 +1067,24 @@ removing the `?`, and nobody should retry it.
   on a path with no first-party caller, not the defect the objective promised to close.
   **Track 1's open set is now FIX-963, plus FIX-978 pending OQ-E**, which also collapses
   `cross-spec-review` to a set of one — see the note on Decision 2.
+- **2026-08-25 — the staleness sweep finished, and it mostly removed work.** Four movements
+  since the revival, folded together:
+  1. **FIX-978 closed as subsumed (OQ-E settled).** All three of its claims are closed on `main`
+     by FIX-1005; spec PR #990 closed unmerged. The residue — an out-of-process worker cannot
+     fence a stale settle — is **FIX-1250**'s. Full evidence table in §4. Decision 3 turned out
+     to be what *enabled* the fix rather than what blocked it: it named lease renewal as one of
+     the two acceptable mechanisms, and renewal is what FIX-1005 shipped.
+  2. **FIX-1234 merged** ([#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422)),
+     Track 2's first landed deliverable.
+  3. **FIX-1250 added to Track 2**, out of Conductor (LAB-138 / PR #1442) having to re-derive
+     claim fencing in userland. It is the same objective at the process boundary: a worker
+     settling a row should be able to prove its claim is still live.
+  4. **FIX-1245 retargeted** — the rename lands on **`parked`**, not `needs_input`. Both the
+     widening comment and this doc's first revision named the wrong target.
+
+  **The pattern is worth naming, because it is the argument against letting an epic idle.** Of
+  the three Track-1 specs that sat at review for four weeks, **two were resolved without being
+  built** — one descoped because a sibling shipped the mechanism, one closed because a sibling
+  shipped the fix. The review rounds spent on them in July bought nothing; the codebase answered
+  both questions first. **Track 1 is down to FIX-963 and FIX-993**, and Decision 2's
+  `cross-spec-review` has no set left to run over.
