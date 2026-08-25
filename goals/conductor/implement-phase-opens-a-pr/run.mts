@@ -288,15 +288,20 @@ await runGoal(async () => {
   //
   // So the pull requests that exist BEFORE the run are recorded, and the
   // assertion at the end demands one that is not among them.
-  const preexistingPrs = prNumbersFor(
-    sourceRepo,
-    branchFor({
-      principal: { userId: USER_ID },
-      epic: fixture.epic,
-      issue: fixture.issue,
-      phase: fixture.phase,
-    }),
-  );
+  // **The board's COLLECTION identity, not the bare epic.** The manager builds
+  // its location with `epic: boardCollectionId` — `conductor-tasks--t0--<epic>`,
+  // not `<epic>` — so a snapshot keyed on `fixture.epic` inspects a branch no run
+  // ever uses. It comes back empty every time, and the assertion it feeds then
+  // passes unconditionally: a guard against a false pass that is itself a false
+  // pass. `conductorFlow` returns the value; the first version derived a
+  // plausible one instead of asking for the real one.
+  const snapshotBranch = branchFor({
+    principal: { userId: USER_ID },
+    epic: built.collectionId,
+    issue: fixture.issue,
+    phase: fixture.phase,
+  });
+  const preexistingPrs = prNumbersFor(sourceRepo, snapshotBranch);
 
   let row: StatusRow | undefined;
   try {
@@ -446,6 +451,21 @@ await runGoal(async () => {
               ],
               { cwd: checkout, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
             );
+            // **The snapshot has to be of the branch the run actually used.**
+            // Derived before the run from values this script composes itself, so
+            // a wrong composition silently snapshots a branch nobody touches and
+            // the new-PR assertion below passes unconditionally. That is not a
+            // hypothetical: the first version of this snapshot keyed on the bare
+            // epic instead of the board's collection identity and was inert.
+            // Compared against what the manager recorded, so the mis-wiring
+            // becomes a failure instead of a green.
+            if (row.run.branch !== snapshotBranch) {
+              failures.push(
+                `the pre-run pull-request snapshot was taken for branch ` +
+                  `"${snapshotBranch}" but the run used "${row.run.branch}", so the ` +
+                  `check that this run opened a NEW pull request proved nothing`,
+              );
+            }
             if (!hasCompletingPr(prs, repo.ownerRepo)) {
               failures.push(
                 `no open or merged pull request exists for branch "${row.run.branch}"`,

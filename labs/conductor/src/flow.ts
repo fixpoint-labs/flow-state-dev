@@ -120,7 +120,19 @@ export interface ConductorFlowOptions {
 export const CONDUCTOR_FLOW_KIND = "conductor" as const;
 
 /**
- * Does this row's payload derive the id the row is filed under?
+ * Is this a row this conductor would have filed?
+ *
+ * **Two properties, not one, and the second was missing.** A row is ours when
+ * its id derives from its payload AND it is routed to our assignee. The id half
+ * was extracted first and the routing half was left out — so a pre-created row
+ * carrying the right `{ issue, phase }` under a different assignee was accepted
+ * as an idempotent seed and drained. The claim charges an attempt before
+ * dispatch, and dispatch then finds no worker declared for that assignee: the
+ * requested coding run is billed or stranded without ever launching.
+ *
+ * `assignee` is a separate immutable routing input, which is exactly why the id
+ * check could not cover it — and why the question this predicate answers is
+ * "would we have filed this row", not "does the id match".
  *
  * **One predicate, because the invariant has four doors and I kept fixing one.**
  * A conductor row's id is a pure function of its `{ issue, phase }`, and every
@@ -151,7 +163,8 @@ export const CONDUCTOR_FLOW_KIND = "conductor" as const;
  * written as "anything other than a clean match is not a match" rather than as a
  * list of the ways it can go wrong.
  */
-function payloadDerivesId(task: { id: string; input?: unknown }): boolean {
+function isOurRow(task: { id: string; input?: unknown; assignee?: unknown }): boolean {
+  if (task.assignee !== ASSIGNEE) return false;
   const found = task.input as { issue?: unknown; phase?: unknown } | undefined;
   if (typeof found?.issue !== "string" || typeof found?.phase !== "string") return false;
   try {
@@ -402,12 +415,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // for was never filed at all. A silent nothing-happened, paid for by
         // somebody else's retry budget.
         //
-        if (!payloadDerivesId(existing)) {
+        if (!isOurRow(existing)) {
           throw new Error(
-            `[conductor] a row already exists at "${taskId}" and its payload does not ` +
-              `describe ${input.issue}/${input.phase}. Refusing to report this seed as ` +
-              `filed: draining that row would charge it an attempt and refuse it, and the ` +
-              `task asked for here would never exist.`,
+            `[conductor] a row already exists at "${taskId}" and it is not one this ` +
+              `conductor filed — its payload does not describe ${input.issue}/${input.phase}, ` +
+              `or it is routed to an assignee other than "${ASSIGNEE}". Refusing to report ` +
+              `this seed as filed: draining that row charges it an attempt and then finds ` +
+              `nothing to run it, and the task asked for here would never exist.`,
           );
         }
 
@@ -458,11 +472,12 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // the same thing, and a foreign row can be inserted between the lookup
         // and the create as easily as before it. Reporting it as this seed's
         // answer files nothing and hands the drain somebody else's task.
-        if (!payloadDerivesId(raced)) {
+        if (!isOurRow(raced)) {
           throw new Error(
-            `[conductor] the create at "${taskId}" lost to a row whose payload does not ` +
-              `describe ${input.issue}/${input.phase}. Refusing to report this seed as ` +
-              `filed: the task asked for here would never exist.`,
+            `[conductor] the create at "${taskId}" lost to a row this conductor did not ` +
+              `file — wrong payload for ${input.issue}/${input.phase}, or an assignee other ` +
+              `than "${ASSIGNEE}". Refusing to report this seed as filed: the task asked ` +
+              `for here would never exist.`,
           );
         }
         await ctx.sequencer?.patchState({ taskId: raced.id });
@@ -618,7 +633,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // and see that nothing is known about its run. Throwing would hide the
         // whole listing behind one bad row.
         const record =
-          issue !== null && phaseName !== null && payloadDerivesId(task)
+          issue !== null && phaseName !== null && isOurRow(task)
             ? await readRunRow(ctx as never, runTopic(collectionId, issue, phaseName))
             : undefined;
 

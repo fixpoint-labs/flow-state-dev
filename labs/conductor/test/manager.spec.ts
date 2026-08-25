@@ -1704,3 +1704,52 @@ describe("the phase's own precondition is refused at the same door", () => {
     ).toThrow(/does not name a host and repository/);
   });
 });
+
+describe("a row is only ours if its routing is ours too", () => {
+  it("refuses an existing row at this id that is assigned elsewhere", async () => {
+    // The id/payload check answers "is this the same task". It does not answer
+    // "would we have filed this row" — `assignee` is a separate immutable
+    // routing input, so a pre-created row with the right payload under another
+    // assignee passed as an idempotent seed. The board claim charges an attempt
+    // before dispatch, and dispatch then finds no worker declared for that
+    // assignee: the requested coding run is billed or stranded without ever
+    // launching, and the seed reported success.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-OTHER", PHASE), {
+            id: conductorTaskId("FIX-OTHER", PHASE),
+            goal: "filed by somebody else's worker",
+            input: { issue: "FIX-OTHER", phase: PHASE },
+            status: "pending",
+            attempts: 0,
+            // Everything correct except the routing.
+            assignee: "someone-else",
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    // Seeding the planted issue must NOT report it as filed: the id and payload
+    // agree, and the row still is not one this conductor can run.
+    await expect(live.call("seed", { issue: "FIX-OTHER", phase: PHASE })).rejects.toThrow(
+      /assignee other than "harness"/,
+    );
+  }, 20_000);
+});
