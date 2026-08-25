@@ -215,7 +215,17 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
       const outcome = result as { output?: unknown; status?: string; error?: unknown };
       if (outcome.error !== undefined && outcome.error !== null) {
         // Surface the real failure rather than a downstream "undefined.rows".
-        throw new Error(`conductor action "${action}" failed: ${JSON.stringify(outcome.error)}`);
+        //
+        // `message` is read explicitly: it is a non-enumerable own property on
+        // an Error, so `JSON.stringify` drops it and the envelope renders as
+        // `{"code":"execution_error","cause":{}}` — every failure looking
+        // identical, which is the opposite of what this exists for.
+        const err = outcome.error as { message?: unknown; cause?: { message?: unknown } };
+        const detail =
+          (typeof err.message === "string" && err.message) ||
+          (typeof err.cause?.message === "string" && err.cause.message) ||
+          JSON.stringify(outcome.error);
+        throw new Error(`conductor action "${action}" failed: ${detail}`);
       }
       return outcome.output as T;
     },

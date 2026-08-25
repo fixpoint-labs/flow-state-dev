@@ -261,6 +261,26 @@ export function harnessManager(options: ManagerOptions) {
     resources,
     execute: async (input, ctx) => {
       const { issue, phase: phaseName } = taskPayload(input);
+
+      // **A manager runs exactly one phase, and it must be the one on the row.**
+      // Without this the caller's phase names the checkout, the branch and the
+      // run record while the CONFIGURED phase supplies the prompt and the
+      // done-condition — so a row seeded `review` would be handed implement's
+      // instructions, judged by implement's completion check, and settled as a
+      // completed review. That is the silent wrong success this lab exists to
+      // remove, wearing the phase surface as a disguise.
+      //
+      // Refused here as well as at `seed`, because a task can reach this board
+      // by any route that can write a row, and this is where the wrong
+      // semantics would actually execute.
+      if (phaseName !== phase.phase) {
+        throw new ConductorAttemptFailed(
+          `[conductor] task ${input.taskId} is a "${phaseName}" row on a manager ` +
+            `configured for "${phase.phase}". Refusing rather than running ` +
+            `${phase.phase}'s prompt and completion check against it.`,
+        );
+      }
+
       const workspacePath = checkoutPathFor(workspace, issue, phaseName);
       const branch = branchFor(issue, phaseName);
       const topic = runTopic(issue, phaseName);
