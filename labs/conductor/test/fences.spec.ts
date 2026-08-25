@@ -64,3 +64,60 @@ describe("every fence's refusal is read", () => {
     expect(unwrapped).toHaveLength(1);
   });
 });
+
+
+/**
+ * Every child process this package spawns is bounded.
+ *
+ * A source check, for the same reason the fence check is one: the property is
+ * "no call site anywhere lacks a wall clock", and that is a statement about the
+ * SET of call sites rather than about any behaviour a single test can drive. A
+ * wedged `gh` or `git` is exactly what cannot be staged reliably.
+ *
+ * This exists because the rule kept reopening at new doors. It was applied in
+ * `exec.ts`, then missed at the goal script's three `execFileSync` calls, then
+ * missed again at the two startup git queries in `config-env.ts` — each found
+ * by a review round rather than by the previous fix. A check over the set is
+ * what makes the next door fail here instead.
+ */
+const SPAWNING_FILES = [
+  join(__dirname, "..", "src", "config-env.ts"),
+  join(__dirname, "..", "src", "exec.ts"),
+  join(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "goals",
+    "conductor",
+    "implement-phase-opens-a-pr",
+    "run.mts",
+  ),
+];
+
+describe("every child process is bounded", () => {
+  it("finds the spawning call sites at all", () => {
+    // Or the assertion below examines nothing and passes vacuously.
+    const total = SPAWNING_FILES.map((f) => readFileSync(f, "utf8"))
+      .join("\n")
+      .match(/execFileSync\s*\(|execFileAsync\s*\(/g);
+    expect(total?.length ?? 0).toBeGreaterThanOrEqual(5);
+  });
+
+  it("gives every spawn a wall clock", () => {
+    for (const file of SPAWNING_FILES) {
+      const src = readFileSync(file, "utf8");
+      const pattern = /(execFileSync|execFileAsync)\s*\(/g;
+      for (let m = pattern.exec(src); m !== null; m = pattern.exec(src)) {
+        // The options object of a spawn ends at the closing paren of the call;
+        // a 600-char window covers every call in these files and is checked for
+        // a timeout the call actually carries.
+        const window = src.slice(m.index, m.index + 600);
+        expect(
+          /timeout:/.test(window),
+          `an unbounded spawn in ${file.split("/").pop()}: ${window.slice(0, 110)}`,
+        ).toBe(true);
+      }
+    }
+  });
+});

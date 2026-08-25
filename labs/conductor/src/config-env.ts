@@ -12,6 +12,17 @@ import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 
 /**
+ * How long a startup git query may take.
+ *
+ * Short on purpose, and deliberately not `GIT_TIMEOUT_MS`. These are metadata
+ * reads against a local repository — `rev-parse` answers in milliseconds — and
+ * they run before anything is claimed, so a generous bound buys nothing and a
+ * tight one turns a wedged filesystem into a clear startup failure instead of a
+ * dispatcher that never finishes booting.
+ */
+const STARTUP_GIT_TIMEOUT_MS = 30_000;
+
+/**
  * The repository this process itself lives in, or `undefined` outside a
  * repository.
  *
@@ -27,6 +38,12 @@ export function repositoryIdentity(dir: string): string | undefined {
       cwd: dir,
       stdio: ["ignore", "pipe", "ignore"],
       encoding: "utf8",
+      // Bounded like every other child process this lab spawns. The blast
+      // radius here is smaller than the run-time probes — a hang at startup
+      // charges no attempt, because nothing has been claimed yet — but the rule
+      // is "every child process bounds itself", and a dispatcher wedged before
+      // it can serve anything is still a dispatcher nobody can diagnose.
+      timeout: STARTUP_GIT_TIMEOUT_MS,
     }).trim();
     // `realpathSync`, not `path.resolve`. Resolving lexically canonicalises the
     // SPELLING and not the location: `git rev-parse --git-common-dir` answers
@@ -135,6 +152,7 @@ export function assertBaseRefExists(repo: string, baseRef: string): void {
     execFileSync("git", ["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`], {
       cwd: repo,
       stdio: ["ignore", "ignore", "ignore"],
+      timeout: STARTUP_GIT_TIMEOUT_MS,
     });
   } catch {
     throw new Error(
