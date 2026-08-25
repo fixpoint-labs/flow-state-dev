@@ -16,6 +16,11 @@ import {
   type EventActorsWorkspaceState,
 } from "../schemas";
 
+/**
+ * State-only: writes the workspace resource and emits, returns nothing.
+ * @remarks Compose with `.tap(createAppendEntry(...))`, never `.step()` —
+ * it returns nothing, so `.step()` hands `undefined` to the next step.
+ */
 export function createAppendEntry(
   name: string,
   workspaceResource: DefinedResource,
@@ -24,7 +29,6 @@ export function createAppendEntry(
   return handler({
     name: `${name}-append`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { [resourceKey]: workspaceResource },
     activeStatusMessage: (entry) => {
       const entryTopic =
@@ -43,7 +47,7 @@ export function createAppendEntry(
         (e: Record<string, unknown>) =>
           e.type === entryType && e.topic === entryTopic
       );
-      if (isDuplicate) return entry;
+      if (isDuplicate) return;
 
       await (ctx.resources as Record<string, any>)[resourceKey].patchState({
         entries: [...state.entries, entry],
@@ -62,8 +66,6 @@ export function createAppendEntry(
         },
         { key: `entry-${emissionCount}` }
       );
-
-      return entry;
     },
   });
 }

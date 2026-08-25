@@ -18,6 +18,7 @@ import {
   isTransitionAllowed,
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
+import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
   TaskHandle,
@@ -166,6 +167,20 @@ export function shouldRetryOnFail(task: Task): boolean {
 export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
   "in_progress",
   "awaiting_review",
+]);
+
+/**
+ * The change kinds that mean "this attempt is reporting its result" (FIX-1234).
+ *
+ * Named because {@link transitionDeclineReason} refuses exactly these on a row
+ * that is parked for review, and the set is not guessable from the target
+ * status: a failure with retries left targets `pending`, which is also where a
+ * `resumeFromReview` lands. The kind separates them; the status cannot.
+ */
+export const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
+  "completed",
+  "errored",
+  "retried",
 ]);
 
 /**
@@ -440,7 +455,8 @@ export function transitionDeclineReason(
   options: TaskTransitionOptions | undefined,
   collectionId: string,
   now: number,
-  requireFrom?: TaskStatus
+  requireFrom?: TaskStatus,
+  changeKind?: TaskChangeKind
 ): TaskWriteDeclineReason | undefined {
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
@@ -456,6 +472,35 @@ export function transitionDeclineReason(
   }
   if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
     return "disallowed";
+  }
+  // FIX-1234: the caller asked not to settle a row somebody parked for review.
+  //
+  // Nothing above refuses this on its own, and that is deliberate rather than an
+  // oversight: `awaiting_review` is in ATTEMPT_OWNED_STATUSES, `terminal` does
+  // not fire on a parked row, `isTransitionAllowed` permits both
+  // `awaiting_review → completed` and `→ errored`, and `leaseLapsed`
+  // short-circuits to `false` for any status other than `in_progress`. A holder
+  // recording a review's REJECTION as a failure is a supported write, and it
+  // travels exactly this path.
+  //
+  // So this is opt-in. What it exists for is the write-back that follows a
+  // worker's own run: a worker that parked its task and then returned or threw
+  // owes the substrate no result, and letting its settlement land would erase
+  // the park — or, with retries left, re-queue the row in front of a sibling
+  // while a human is still being asked. Those callers pass
+  // `refuseWhenParked` and get a decline; every other caller sees the contract
+  // it always had.
+  //
+  // Scoped to settlement kinds so the flag cannot refuse the verbs that legally
+  // move a parked row: `resumeFromReview` targets `pending`, which a retrying
+  // failure also targets, and only the kind separates them.
+  if (
+    options.refuseWhenParked === true &&
+    task.status === "awaiting_review" &&
+    changeKind !== undefined &&
+    SETTLEMENT_CHANGE_KINDS.has(changeKind)
+  ) {
+    return "parked";
   }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
   if (claim !== undefined && leaseLapsed(task, now)) return "lost-claim";

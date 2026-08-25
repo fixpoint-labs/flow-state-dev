@@ -42,6 +42,7 @@ const board = taskBoard({
 | `maxTotalRetries` | `number \| null` | `50` | Cumulative failure retries across every task. `0` means run once, never retry. `unblock` / `resume` / `reclaim` do not spend this. |
 | `dispatcher` | `"fifo"` \| `"topological"` \| `"priority"` \| instance | `"topological"` | How a ready task is picked. |
 | `onIdle` | `"complete-or-blocked"` \| `"complete"` \| `"wait"` | `"complete-or-blocked"` | When the pool stops. See [Task board](./task-board#termination-onidle-modes). |
+| `onReview` | `"hold"` \| `"exit"` | `"hold"` | Whether a task parked with `awaitReview` keeps the drain open. `"exit"` lets the drain return and leaves the task parked for a later one. Needs a `defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`. See [Task board](./task-board#waiting-on-a-person-onreview). |
 | `initialTasks` | `TaskInit[]` | omitted | Tasks seeded at board start. |
 | `onError` | `"skip"` \| `"fail"` | `"skip"` | `"skip"` records the failure and lets siblings continue. `"fail"` fails the board. |
 | `maxIterations` | `number` | `10000` | Per-worker loop cap. A circuit breaker if enqueue cycles never drain. |

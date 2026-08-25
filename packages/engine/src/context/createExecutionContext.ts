@@ -109,13 +109,13 @@ import {
   loadDeclaredScopeContent,
   loadDeclaredResourceState,
   filterFlowLevelEager,
-  isCollectionConfig,
   normalizeStateDefault,
   type LazyLoadOutcome,
   type ScopeLazyLoad,
   type ResourceChangeDelta,
   type ResourceSeamChangeType,
 } from "./resource-registry";
+import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 
 
