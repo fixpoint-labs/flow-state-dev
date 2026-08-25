@@ -137,6 +137,109 @@ describe("provisioning", () => {
 
 const bounds = { waitMs: 2_000, pollMs: 10, staleAfterMs: 60_000 };
 
+describe("a cancelled attempt stops waiting for the tree", () => {
+  it("gives up the wait instead of polling out the whole window", async () => {
+    // Shutdown, or a lease renewal reporting the claim lost, propagates through
+    // `ctx.signal`. An ordinary sleep ignores it, so a stale attempt polled for
+    // the entire ownership window and could still go on to acquire and provision
+    // a tree whose result it can no longer record. That window is now the run's
+    // deadline plus provisioning plus slack, so ignoring the signal costs a
+    // replacement the better part of an hour.
+    //
+    // The bound here is deliberately long: a test that passed because the wait
+    // expired would prove nothing, so the ONLY thing that can end this call in
+    // time is the signal.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-cancel-"));
+    dirs.push(dir);
+    const checkout = join(dir, "tree");
+    const held = await acquireCheckout(checkout, "the holder", {
+      waitMs: 1_000,
+      pollMs: 10,
+      staleAfterMs: 600_000,
+    });
+
+    const controller = new AbortController();
+    const waiting = acquireCheckout(
+      checkout,
+      "the waiter",
+      { waitMs: 600_000, pollMs: 10, staleAfterMs: 600_000 },
+      Date.now,
+      controller.signal,
+    );
+
+    setTimeout(() => controller.abort(), 50);
+    await expect(waiting).rejects.toThrow(/was cancelled/);
+
+    // The holder still owns the tree: a cancelled waiter must not have taken or
+    // cleared anything on its way out.
+    expect(existsSync(`${checkout}.lock`)).toBe(true);
+    held.release();
+  });
+
+  it("does not wait at all when it is already cancelled", async () => {
+    // The signal can already be aborted when the step is entered. Checked before
+    // the first create, not only in the sleep, or a cancelled attempt still takes
+    // the lock on its very first pass — which is the acquisition this exists to
+    // prevent.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-cancel2-"));
+    dirs.push(dir);
+    const checkout = join(dir, "tree");
+
+    await expect(
+      acquireCheckout(
+        checkout,
+        "already gone",
+        { waitMs: 60_000, pollMs: 10, staleAfterMs: 600_000 },
+        Date.now,
+        AbortSignal.abort(),
+      ),
+    ).rejects.toThrow(/was cancelled/);
+
+    expect(existsSync(`${checkout}.lock`)).toBe(false);
+  });
+});
+
+describe("a relative workspace root still lands in one place", () => {
+  it("provisions where every other consumer looks", async () => {
+    // Reproduced before fixing: the derived path is consumed from two different
+    // working directories. The lock, the existence check, the recorded path and
+    // the agent's `cwd` all resolve it against the DISPATCHER's directory, while
+    // `git worktree add` runs with `cwd: config.sourceRepo`. With a relative
+    // root the worktree landed under the source repo and everything else looked
+    // for it under the dispatcher — so the agent got a directory that does not
+    // exist, and no retry recovers because the derivation is stable and stably
+    // wrong.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-rel-"));
+    dirs.push(dir);
+    const sourceRepo = join(dir, "repo");
+    execFileSync("mkdir", ["-p", sourceRepo]);
+    seedRepo(sourceRepo);
+
+    const dispatcher = join(dir, "dispatcher");
+    execFileSync("mkdir", ["-p", dispatcher]);
+    const previous = process.cwd();
+    process.chdir(dispatcher);
+    try {
+      // Relative, exactly as `CONDUCTOR_CHECKOUTS=checkouts` supplies it.
+      const config = { root: "checkouts", sourceRepo, baseRef: "main" };
+      const location = at("FIX-1219", "implement");
+
+      const checkout = await provisionCheckout(config, location);
+
+      // The one property that matters: the path the rest of the system will use
+      // is the path git actually created. Asserted through `checkoutPathFor`
+      // rather than against a literal, since that is what the lock, the run
+      // record and the agent `cwd` all derive from.
+      expect(checkout.path).toBe(checkoutPathFor(config, location));
+      expect(existsSync(join(checkout.path, ".git"))).toBe(true);
+      // And NOT under the source repository, which is where it used to go.
+      expect(existsSync(join(sourceRepo, "checkouts"))).toBe(false);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+});
+
 describe("provisioning is bounded as ONE operation", () => {
   // The defect: `provisionTimeoutMs` was a PER-CALL timeout while the ownership
   // arithmetic read it as the whole provisioning budget. The fresh-checkout path
