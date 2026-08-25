@@ -72,6 +72,21 @@ const tasks = defineResourceCollection({
   })
 });
 
+/**
+ * A SAME-TYPE transform: output type === input type, so this schema SATISFIES
+ * both availability conditions in §7 and the verbs are offered on it. It still
+ * drifts, because the drift is not an availability property — see the FIX-1260
+ * row below.
+ */
+const drifting = defineResource({
+  scope: "session",
+  ref: "drifting",
+  stateSchema: z.object({
+    n: z.number().default(0).transform((v) => v + 1)
+  }),
+  default: { n: 0 }
+});
+
 function makeFlow() {
   return defineFlow({
     kind: "fix1154-poc",
@@ -80,7 +95,7 @@ function makeFlow() {
         inputSchema: z.string(),
         block: handler({
           name: "noop",
-          resources: { counter, tasks },
+          resources: { counter, tasks, drifting },
           execute: () => "ok"
         })
       }
@@ -207,7 +222,14 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect(new Set(log)).toEqual(new Set(["seed", "b", "c"]));
   });
 
-  it("row: conflict against a tombstone stays TERMINAL — no resurrection", async () => {
+  it("row: conflict against a tombstone is TERMINAL and FAILS FAST", async () => {
+    // What this row proves is the *shape* of the failure, not that a write was
+    // prevented. A positive held version requires a LIVE row at that version
+    // (`resource-state-predicate.ts:145-156`), so the write could not land under
+    // either driver. The shared driver would re-present the same positive
+    // version each retry and exhaust into a generic ConcurrentModificationError;
+    // this driver reports the deletion immediately and precisely. (Resurrection
+    // is real only at version 0 — the FIX-1258 row below.)
     const stores = createInMemoryStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.tasks as any).create("t1", { n: 1 });
@@ -221,7 +243,7 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect((await readRow(stores, "tasks/t1"))?.state).toBeUndefined();
   });
 
-  it("row: append against a tombstone stays TERMINAL too", async () => {
+  it("row: append against a tombstone is TERMINAL and fails fast too", async () => {
     const stores = createInMemoryStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.tasks as any).create("t1", { log: [] });
@@ -370,5 +392,43 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     ]);
 
     expect((await readRow(stores, "counter"))?.state).toMatchObject({ n: 2 });
+  });
+
+  it("CURRENT BEHAVIOUR (defect, FIX-1260): a same-type transform DRIFTS the stored value", async () => {
+    // Like the FIX-1258 row above, this asserts what `main` does TODAY.
+    //
+    // The schema satisfies both §7 availability conditions — no string index
+    // signature, and its output type IS its input type — so the verbs are
+    // offered on it. It drifts anyway, because `normalizeResourceState` stores
+    // the OUTPUT of `safeParse` rather than the candidate it validated, and both
+    // ends of a read-modify-write cycle run it (`resource-registry.ts:209` on
+    // load, `:664` on write).
+    //
+    // FIX-1154 deliberately does not fix it, and deliberately does NOT put a
+    // guard behind the two new verbs: that would leave `updateState` /
+    // `patchState` / `setState` corrupting through the same normalizer while the
+    // new verbs looked safe — the per-verb asymmetry this epic exists to remove.
+    // FIX-1260 owns it, in the shared normalizer. **This row fails when FIX-1260
+    // lands, and that failure is the intended signal.**
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    const ref = ctx.resources.drifting as unknown as MutableRef;
+
+    // An IDENTITY mutator — no arithmetic from any verb, framework or caller.
+    // If the value still moves, the drift is the normalizer's alone.
+    await ref.updateState((s) => ({ ...s }));
+    const first = (await readRow(stores, "drifting"))?.state as { n: number };
+
+    await ref.updateState((s) => ({ ...s }));
+    const second = (await readRow(stores, "drifting"))?.state as { n: number };
+
+    expect(second.n).toBe(first.n + 1);
+
+    // And through the proposed verb, which inherits it rather than causing it:
+    // a +1 lands as +2 and the call resolves successfully.
+    const before = (await readRow(stores, "drifting"))?.state as { n: number };
+    await incState(ref, { n: 1 });
+    const after = (await readRow(stores, "drifting"))?.state as { n: number };
+    expect(after.n).toBe(before.n + 2);
   });
 });
