@@ -58,27 +58,26 @@ Anything else is a **failed attempt**. The row goes back to `pending` with the r
 feedback, or to `errored` once the retry budget is spent. A retry re-runs the agent from the
 beginning, in the checkout the last one left behind, and is told why the last one stopped.
 
-### Reading it back from a new session
-
-**Drive every action from one named session.** On the CLI that means `-s`:
+### Reading it back
 
 ```bash
-pnpm fsdev run conductor seed   -s conductor -i '{"issue":"FIX-1219","phase":"implement"}'
-pnpm fsdev run conductor wake   -s conductor -i '{}'
-pnpm fsdev run conductor status -s conductor -i '{"issue":"FIX-1219"}'
+pnpm fsdev run conductor seed   -i '{"issue":"FIX-1219","phase":"implement"}'
+pnpm fsdev run conductor wake   -i '{}'
+pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
 ```
 
-The board row is `user`-scoped and visible from anywhere. The **run record is
-not**: it is session-scoped, shared across a session's own lineage, so a *new*
-coordinator session resolves a different lineage root and sees nothing. Ask for
-`status` from a fresh session and you get the board row with `run: null` — the
-failure reason, the harness session id, the cost and the checkout path all
-missing, with the board row still reading correctly beside them.
+`status` answers from any session. The board row and the run record are both
+scoped to the user, so a `status` call from a coordinator session that never saw
+the run still returns the harness session id, the checkout, the branch, the last
+outcome and the cost — which is the point of recording them at all.
 
-The CLI mints a fresh session per invocation unless you pass `-s`, so this is
-reachable through ordinary use rather than being an edge case. Naming the
-session avoids it. Making the run record readable from any session is a real
-gap, not a decision — it is not designed around here.
+The session id on a run record is a copy, kept so conductor can say which
+session a run was. It is not a resume handle, and nothing here reads it back to
+continue anything.
+
+**Retention is a known gap.** Nothing prunes run records, and at user scope they
+outlive every session. Fine while a conductor drives one issue at a time; a
+long-lived board over many issues needs a retention policy, which is not built.
 
 ### Where the checkout lives
 

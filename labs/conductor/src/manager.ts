@@ -238,13 +238,40 @@ export function harnessManager(options: ManagerOptions) {
   }
 
   /** Every collection the manager or its phase touches, by accessor key. */
+  // **Two accessors are the manager's and a phase may not claim them.**
+  // Refused rather than silently overridden, and rather than merged last.
+  //
+  // A phase whose `readable` carried `runs` would send this manager's
+  // bookkeeping into a collection `status` never reads — the row would be
+  // written, and every read of it would answer nothing. One carrying the board's
+  // accessor is worse: the live-claim fence would consult unrelated rows,
+  // quietly defeating the whole obligation-A mechanism while every test that
+  // does not stage two attempts still passes.
+  //
+  // Merging the manager's entries LAST would also prevent both, and it is the
+  // wrong fix: the phase author's declaration would simply not work, with
+  // nothing anywhere saying why. This fails at construction, naming the key.
+  const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId]);
+  const claimed = Object.keys(phase.readable).filter((key) =>
+    RESERVED_ACCESSORS.has(key),
+  );
+  if (claimed.length > 0) {
+    throw new Error(
+      `[conductor] the "${phase.phase}" phase declares readable collection(s) ` +
+        `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns — ` +
+        `"${RUNS}" is the run record and "${boardCollectionId}" is the board ledger ` +
+        `the attempt fence reads. Both are already available to the phase; declaring ` +
+        `them again would replace the manager's own.`,
+    );
+  }
+
   const resources: Record<string, DeclaredResourceEntry> = {
+    ...phase.readable,
     [RUNS]: runRecordCollection,
     // Declared so the fence can read the LIVE claim off the board row. The
     // board declares the same definition object, so this is one registration
     // rather than a second storage slot that looks like the first.
     [boardCollectionId]: boardCollection as unknown as DeclaredResourceEntry,
-    ...phase.readable,
   };
 
   /**

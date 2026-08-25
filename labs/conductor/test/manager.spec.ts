@@ -556,37 +556,6 @@ describe("the manager — the stale window is refused at construction", () => {
   });
 });
 
-describe("PROBE — concurrency under detached dispatch", () => {
-  it("counts simultaneously-live runs from one drain", async () => {
-    let live_ = 0;
-    let peak = 0;
-    const gate: Array<() => void> = [];
-    live = createConductorHarness({
-      resolveClaudeAgent: () => ({
-        query: async function* () {
-          live_ += 1;
-          peak = Math.max(peak, live_);
-          await new Promise<void>((r) => gate.push(r));
-          live_ -= 1;
-          yield sdkResult("success") as never;
-        },
-      }),
-      isDone: () => true,
-    });
-
-    await live.call("seed", { issue: "FIX-1001", phase: PHASE });
-    await live.call("seed", { issue: "FIX-1002", phase: PHASE });
-    await live.call("wake", {});
-
-    // Let anything that started get going.
-    await new Promise((r) => setTimeout(r, 400));
-    // eslint-disable-next-line no-console
-    console.log("PEAK SIMULTANEOUS RUNS:", peak, "STILL LIVE:", live_);
-    for (const release of gate) release();
-    await new Promise((r) => setTimeout(r, 300));
-  });
-});
-
 describe("the flow — one board, one phase", () => {
   it("refuses to file a row for a phase this board does not run", async () => {
     // Without this the caller's phase names the checkout, the branch and the run
@@ -658,5 +627,47 @@ describe("the flow — one board, one phase", () => {
     // to fence a write against yet, and the board is the honest witness.
     expect(seen.prompts).toHaveLength(1);
     expect(after.feedback).toMatch(/configured for "implement"/);
+  });
+});
+
+describe("the run record — readable from any coordinator session", () => {
+  it("answers a status call from a session that never saw the run", async () => {
+    // The shape that reproduced the bug, now asserting the fix.
+    //
+    // `sharedToWorkstream` gave one identity across A session's lineage, and a
+    // new coordinator session is a different lineage root — so `status` from a
+    // fresh session returned the board row with `run: null`, losing the failure
+    // reason, the harness session, the cost and the checkout. The board said the
+    // job was done and the record of what it did was absent: a silent partial
+    // answer.
+    //
+    // Reachable through ordinary use, not just in a test — the CLI mints a fresh
+    // session per invocation unless one is named, so the documented
+    // seed / wake / status sequence was three lineages.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => true,
+    });
+
+    const original = await seedAndDrain(live);
+    expect(original.run?.sessionId).toBe("sess_stub");
+
+    // A genuinely different coordinator session — not a child of the first.
+    const { rows } = await live.call<{ rows: StatusRow[] }>(
+      "status",
+      { issue: ISSUE },
+      `sess_a_different_coordinator_${Date.now()}`,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("completed");
+    // The half that was null before: everything only this row holds.
+    expect(rows[0].run).not.toBeNull();
+    expect(rows[0].run?.outcome).toBe("succeeded");
+    expect(rows[0].run?.sessionId).toBe("sess_stub");
+    expect(rows[0].run?.costUsd).toBe(0.02);
+    expect(rows[0].run?.workspacePath).toBe(original.run?.workspacePath);
+    expect(rows[0].run?.branch).toBe(original.run?.branch);
   });
 });

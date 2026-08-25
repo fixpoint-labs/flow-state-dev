@@ -13,23 +13,25 @@
  *
  * ## Why the path is derived and not stored
  *
- * The run record is session-scoped; the board is `user`-scoped so a parked row
- * outlives the coordinator session that filed it. A task woken in a NEW
- * coordinator session therefore sees the board row and not the previous
- * checkout row — and if that row were the authority for the path, the retry
- * would silently start from nothing, which is precisely the carry-forward the
- * retry budget is priced on.
+ * **The durable task is the only thing that must exist for a retry to work**, so
+ * it is what the path is computed from. Anything else — a record, a cache, a
+ * field somebody remembered to write — is a second source that can be absent,
+ * stale, or disagree, and the failure when it is absent is silent: the retry
+ * starts from an empty directory instead of the work the last attempt left,
+ * which is exactly the carry-forward the retry budget is priced on.
  *
- * The two obvious repairs both cost more than they are worth. Moving the
- * association onto the durable task is a typed top-level task field, which is
- * FIX-1179's to design and which this lab is explicitly not allowed to stand in
- * for. Constraining retries and wakes to the original session lineage forks the
- * decision that made the board `user`-scoped in the first place — a parked row
- * must outlive its session, or a human's answer tomorrow has nowhere to land.
+ * This argument used to lean on the run record being session-scoped while the
+ * board was not. **That difference is gone** — the run record is `user`-scoped
+ * now (see `./run-record`) — and the derivation is unchanged, because it never
+ * depended on the gap. A record readable from everywhere is still a record.
  *
- * Deriving costs neither. The run record still RECORDS the path, exactly as it
- * records the harness session id: a copy conductor reads to say where a run
- * was, never the source anything resolves from.
+ * The alternative worth naming: moving the association onto the durable task as
+ * a typed top-level field. That is FIX-1179's to design, and this lab is
+ * explicitly not allowed to stand in for it.
+ *
+ * The run record still RECORDS the path, exactly as it records the harness
+ * session id: a copy conductor reads to say where a run was, never the source
+ * anything resolves from.
  *
  * ## The derivation's inputs are not model-writable (BP-031)
  *
@@ -221,6 +223,24 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * The lock sits BESIDE the checkout rather than inside it, so `git worktree add`
  * never meets a non-empty directory and the file survives a tree that has not
  * been created yet.
+ *
+ * ## What this is not: atomic
+ *
+ * **Acquiring** is atomic — an `O_EXCL` create either wins or does not.
+ * **Unlinking** is not, in either of the two places that do it. Both the steal
+ * and the release establish the file's identity (inode plus the bytes it
+ * carries) immediately before removing it, but compare-then-unlink is two
+ * syscalls, and a lock could in principle change hands between them. That is
+ * cross-process mutual exclusion the filesystem API does not offer at this
+ * level; closing it needs a rename/token protocol, which is a bigger change
+ * than this lab's ownership problem warrants.
+ *
+ * **What bounds the residual** is the construction check that
+ * `staleAfterMs` must exceed `runTimeoutMs`: a lock is only ever judged stale
+ * once no live attempt could still be holding it, so the window requires a
+ * holder to release and a new attempt to acquire between two adjacent
+ * syscalls. Narrow enough to name rather than to solve — and named rather than
+ * left for a reader to assume the inode check is a guarantee it is not.
  */
 export async function acquireCheckout(
   checkoutPath: string,
@@ -235,14 +255,32 @@ export async function acquireCheckout(
   for (;;) {
     try {
       writeFileSync(lock, JSON.stringify({ owner, at: now() }), { flag: "wx" });
+      // The identity of the file we just created, captured rather than re-derived.
+      // See `release`.
+      const mine = statSync(lock).ino;
       return {
         release() {
-          // Only ever remove OUR lock. A wait that stole a stale one has
-          // rewritten the file, so a late release from the original holder must
-          // not take the live attempt's lock with it.
+          // **Never unlink a lock without establishing it is still the one we
+          // hold.** Same rule as the steal above, and it has to be here too —
+          // this is the other place that unlinks.
+          //
+          // The case it closes is reachable, and the construction check is what
+          // makes it reachable rather than preventing it: a run that overruns
+          // `runTimeoutMs` becomes stale-eligible while its process is still
+          // alive. Another attempt steals the lock and takes the tree; then this
+          // release fires and, checking nothing, removes THE REPLACEMENT'S lock.
+          // A third attempt acquires the path while the replacement is mid-edit —
+          // two agents in one tree, which is the whole thing the lock prevents.
+          //
+          // So both the inode and the owner must still be ours. The inode is the
+          // load-bearing half: an owner string alone cannot tell our lock from a
+          // later file that happens to carry the same bytes.
           try {
+            const current = statSync(lock);
             const held = JSON.parse(readFileSync(lock, "utf8")) as { owner?: string };
-            if (held.owner === owner) rmSync(lock, { force: true });
+            if (current.ino === mine && held.owner === owner) {
+              rmSync(lock, { force: true });
+            }
           } catch {
             // Already gone, or unreadable. Either way there is nothing of ours
             // left to release, and a cleanup failure must never fail a run.

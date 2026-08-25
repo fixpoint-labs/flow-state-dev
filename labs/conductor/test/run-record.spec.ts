@@ -8,6 +8,8 @@
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { conductorFlow } from "../src/flow";
+import { runRecordCollection } from "../src/run-record";
 import {
   RUNS,
   openRunRow,
@@ -227,5 +229,43 @@ describe("the run record — the clearing rule", () => {
     // issue-phase, not the attempt.
     expect(row.workspacePath).toBe("/w/a");
     expect(row.attempt).toBe(2);
+  });
+});
+
+describe("the manager — a phase cannot claim the manager's own collections", () => {
+  const EPIC = "reserved-test";
+  const workspace = { root: "/tmp/conductor-reserved", sourceRepo: "/tmp/x", baseRef: "main" };
+
+  /** Build a conductor whose phase declares `readable`, and nothing else. */
+  const withReadable = (readable: Record<string, unknown>) => () =>
+    conductorFlow({
+      epic: EPIC,
+      workspace,
+      runTimeoutMs: 30_000,
+      phase: {
+        phase: "implement",
+        readable: readable as never,
+        buildPrompt: () => "go",
+        isDone: () => true,
+      },
+    });
+
+  it("refuses a phase whose readable set names the run record", () => {
+    // Overriding `runs` sends the manager's bookkeeping into a collection
+    // `status` never reads: the row is written, and every read answers nothing.
+    expect(withReadable({ [RUNS]: runRecordCollection })).toThrow(/the manager owns/);
+  });
+
+  it("refuses a phase whose readable set names the board ledger", () => {
+    // Worse than the run record. The live-claim fence would consult unrelated
+    // rows — defeating obligation A while every test that does not stage two
+    // attempts still passes.
+    expect(withReadable({ [`conductor-tasks-${EPIC}`]: runRecordCollection })).toThrow(
+      /the manager owns/,
+    );
+  });
+
+  it("accepts a phase that declares a collection of its own", () => {
+    expect(withReadable({ "phase-notes": runRecordCollection })).not.toThrow();
   });
 });
