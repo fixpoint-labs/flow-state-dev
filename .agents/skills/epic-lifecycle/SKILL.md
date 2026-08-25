@@ -669,8 +669,12 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   reuses its handle rather than opening a second.
   **What an epic writes into `handles/<slug>.md`**: the objective and its gate state, the
   per-issue rows with phase and PR, open blockers, what's next — the status table you already
-  hold, refreshed when state changes. That is how another EM or a cold-resumed session picks
-  this epic up. What you may answer on a handle with your own hands:
+  hold, refreshed when state changes. It is **orientation, not state**: agents outside this
+  repo have nothing else to read, but *you* resuming this epic rebuild the table from Linear
+  and the PRs first and then rewrite the brief — never the reverse, or a brief the last
+  coordinator died before refreshing becomes your live state
+  ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordination
+  stores"). What you may answer on a handle with your own hands:
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The agent mailbox".
 - **An approved spec PR held by the cross-spec pass stays open, and that is correct** — don't
   "fix" it. Step 5 below may hand that spec an alignment edit needing a fresh review round, so

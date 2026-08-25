@@ -23,6 +23,9 @@ if [ -z "$ME" ] || [ -z "$MYSESSION" ] || [ -z "$PRS" ]; then
 fi
 command -v gh  >/dev/null || { echo "mailbox-poll: needs gh (local sessions only)" >&2; exit 2; }
 command -v jq  >/dev/null || { echo "mailbox-poll: needs jq" >&2; exit 2; }
+# Fail at arm time rather than polling forever against an expired token: a dead poll
+# and a quiet mailbox are indistinguishable from the outside.
+gh auth status >/dev/null 2>&1 || { echo "mailbox-poll: gh is not authenticated" >&2; exit 2; }
 
 REPO=${MAILBOX_REPO:-fixpoint-labs/agent-mailbox}
 INTERVAL=${MAILBOX_INTERVAL:-60}
@@ -30,6 +33,8 @@ STATE=${MAILBOX_STATE:-.orchestration/mailbox}
 FILTER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mailbox-filter.jq"
 [ -r "$FILTER" ] || { echo "mailbox-poll: missing $FILTER" >&2; exit 2; }
 mkdir -p "$STATE"
+declare -A fails            # consecutive fetch failures, per handle
+FAIL_ALERT=${MAILBOX_FAIL_ALERT:-5}
 
 # Watermarks are per (repo, identity, handle), never per handle alone: two sessions
 # can share one checkout and one handle under different from/session pairs, and a
@@ -52,17 +57,33 @@ while true; do
     url="repos/$REPO/issues/$pr/comments?per_page=100"
     [ -n "$since_ts" ] && url="$url&since=$since_ts"
 
-    json=$(gh api --paginate "$url" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || continue
-    [ -z "$json" ] && continue
+    if ! json=$(gh api --paginate "$url" 2>/dev/null | jq -s 'add // []' 2>/dev/null) \
+       || [ -z "$json" ]; then
+      fails[$pr]=$(( ${fails[$pr]:-0} + 1 ))
+      # Say it once, on the wake channel. Staying silent here reports a broken poll
+      # as an idle mailbox, which is the one thing an operator cannot tell apart.
+      [ "${fails[$pr]}" = "$FAIL_ALERT" ] && \
+        printf 'mail #%s POLL FAILING — %s consecutive fetch errors, mail is NOT being checked\n' \
+          "$pr" "$FAIL_ALERT"
+      continue
+    fi
+    fails[$pr]=0
+
     read -r max_id max_ts < <(printf '%s' "$json" \
       | jq -r '"\(map(.id) | max // 0) \(map(.updated_at) | max // "")"') || continue
-    # Nothing came back inside the window: leave the watermark where it is.
-    [ "$max_id" = "0" ] && continue
 
     # First sight of a handle: record where we came in rather than replaying its
     # history. Priming, not amnesia — the backlog at arm time is the caller's to read
-    # directly, exactly as with watch-pr.
+    # directly, exactly as with watch-pr. This MUST run before the empty-window check:
+    # a freshly registered handle has no comments, and skipping the prime would leave
+    # no watermark, so its first real message would be primed away instead of emitted.
     if [ ! -f "$wm" ]; then printf '%s %s' "$max_id" "$max_ts" > "$wm"; continue; fi
+
+    # Nothing came back inside the window: leave the watermark where it is.
+    [ "$max_id" = "0" ] && continue
+    # Never regress the id. Editing one old comment can make it the only thing the
+    # window returns; writing its lower id back would re-emit every message above it.
+    [ "$max_id" -lt "$since_id" ] && max_id=$since_id
 
     # Capture before printing. A jq failure here must NOT reach the watermark write:
     # advancing over a batch we never emitted would mark unseen mail as delivered and
