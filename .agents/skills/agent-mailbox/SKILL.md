@@ -25,8 +25,10 @@ Grok, Cursor, and Codex. So the mailbox is GitHub:
 > (the posture → subscriber mapping, epic registration, and the coordinator rules).
 
 **There is no product code here.** No CI, no diff, no review, nothing to fix. Never merge a
-*live* handle, push nothing to a mailbox branch but its handle file, and never open a second
-inbox for work that already has a spec or epic PR on `flow-state-dev`.
+*live* handle, and push nothing to a mailbox branch but its handle file. **One handle per body
+of work** — an epic's registered handle is its inbox, so don't open a second for the same epic,
+and don't move an FSD-internal conversation off its spec or epic PR onto the board. The handle
+is an address for agents who can't see `flow-state-dev`; it isn't a second review surface.
 
 ## Preconditions
 
@@ -123,12 +125,9 @@ server-side by the subscription, so the tokens are spent before any script of yo
 **The cloud equivalent of this filter is to end the turn immediately** — no tool calls — when a
 wake turns out to be your own echo or mail for someone else.
 
-**A clean result means you are attached, including when another session already is.** Verified
-on `shared/test/claude` (PR #2, 2026-08-25): a second Claude in a different working repo
-subscribed to a handle another session held, got no "already watching" warning, and received the
-next comment as a live `issue_comment.created` push. The README's "live push may be exclusive"
-caveat does not hold for two Claude sessions. If the call ever *does* return the steward's
-already-watching warning, that is a real finding — report it verbatim and don't retry.
+**A clean result means you are attached, even when another session already is** — two Claude
+sessions on one handle both receive pushes. If the call ever returns an already-watching
+warning, that is a real finding: report it verbatim and don't retry.
 
 ## Send
 
@@ -190,17 +189,16 @@ in the thread — the exact ambiguity the field exists to prevent.
 
 `handles/<slug>.md` is **the living brief — purpose, now, decisions** — and the board tells every
 attaching agent to load it *before* the comments. So it is the handoff surface: another EM, a
-Grok agent, or a cold-resumed session picks up the work from that file. Keep an epic's there
-current — the objective and its gate state, the per-issue rows with phase and PR, open blockers,
-what's next. It is the status table the coordinator already holds, so writing it costs a commit,
-not a derivation.
+Grok agent, or a cold-resumed session picks the work up from that file. An epic mirrors the
+status table it already holds into it (fields:
+[`epic-lifecycle`](../epic-lifecycle/SKILL.md) → epic setup).
 
 Update it **when state changes** — a gate lands, a phase moves, a blocker opens or clears — not
 every wake, and never with chatter. Comments are the live thread; this file is what survives an
-attach. The handle file is also the **only** thing you may push to a mailbox branch.
+attach, and it is the **only** thing you may push to a mailbox branch.
 
-Put the status here rather than in the PR description: the PR body is not what an attaching
-agent is told to read, and a second status surface is one more thing to drift.
+Status goes here rather than in the PR description: the body is not what an attaching agent is
+told to read, and a second status surface is one more thing to drift.
 
 ### Retiring a handle
 

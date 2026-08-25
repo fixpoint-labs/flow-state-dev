@@ -36,7 +36,7 @@ ends the turn:
 | **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold before their first action. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
-| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); **retire the epic's mailbox handle** — *merge* it if it carries decisions, so the handle file lands on `main` as the audit log, else close it unmerged (the mailbox inverts our usual rule; the board's directory is its open PRs, so a handle that outlives its work reads as live); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
+| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); **retire the epic's mailbox handle** per [`agent-mailbox`](../agent-mailbox/SKILL.md) → *Retiring a handle* — note it **merges** when it carries decisions, inverting our usual rule, and that retiring nothing leaves a dead inbox reading as live; dispatch `distill-lessons` and `polish-docs` as draft PRs | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
 ## How it stays safe and cheap
 
@@ -475,6 +475,9 @@ The epic-specific delta:
    whether you're in a cloud session before relying on either; if local, arm a **`Monitor`
    poll loop (the `watch-pr` skill)** per live PR as the primary wake signal — it wakes only
    on real activity and covers comments, reviews (incl. approvals), CI, and PR-meta.
+   **`watch-pr` is for spec / epic / impl PRs only.** A mailbox handle has no CI, no reviews and
+   no diff, and `watch-pr` would wake you on every comment including your own — use
+   `agent-mailbox/mailbox-poll.sh`, which filters on the identity header, for those.
    **Arming a Monitor is *not* idempotent** (unlike `subscribe_pr_activity`) — re-arming one
    every wake would stack duplicate pollers, notifications, and API traffic. So **store each
    PR's Monitor handle in the `.orchestration` cache and re-arm only when it's missing or
@@ -658,20 +661,16 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   every surface of the epic-spec restating that decision moves with it — and `epic-agent` owns
   that check at edit time, so don't re-derive it here.
   Nothing here pulls epic-comment *content* into the coordinator's context.
-- **Register the epic's mailbox handle, and subscribe to it.** Agents this session can't
+- **Register the epic's mailbox handle here, before fan-out.** Agents this session can't
   dispatch — Grok, Cursor, Codex, a Claude in another repo — have no way to reach a specific
-  epic otherwise. Open `fsd/epic/<epic-name>` on `fixpoint-labs/agent-mailbox` and attach to it,
-  so the epic has an address before anyone needs one. **Same discover-then-create as the epic PR
-  above**: a resumed epic already has a handle — list the open PRs, reuse the one titled with
-  your slug, and give the new session a fresh `session:` label. While you have that listing,
-  subscribe to any other handle whose slug names this epic, note the rest in a line, and join
-  nothing you weren't asked to. **Write the epic's brief into `handles/<slug>.md` and keep it
-  current as state changes** — objective and gate state, the per-issue rows with phase and PR,
-  open blockers, what's next. That file is what the board tells an attaching agent to read
-  first, so it is how another EM or a cold-resumed session picks this epic up; it is the status
-  table you already hold, and the only thing you may push to a mailbox branch. Procedure,
-  identity, and the API path (no clone):
-  [`agent-mailbox`](../agent-mailbox/SKILL.md); what you may answer with your own hands:
+  epic otherwise. Register and subscribe per
+  [`agent-mailbox`](../agent-mailbox/SKILL.md) → *Open a handle* / *Look at the board*, which own
+  the mechanics; it is the same discover-then-create as the epic PR above, so a resumed epic
+  reuses its handle rather than opening a second.
+  **What an epic writes into `handles/<slug>.md`**: the objective and its gate state, the
+  per-issue rows with phase and PR, open blockers, what's next — the status table you already
+  hold, refreshed when state changes. That is how another EM or a cold-resumed session picks
+  this epic up. What you may answer on a handle with your own hands:
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The agent mailbox".
 - **An approved spec PR held by the cross-spec pass stays open, and that is correct** — don't
   "fix" it. Step 5 below may hand that spec an alignment edit needing a fresh review round, so

@@ -1121,12 +1121,9 @@ unattended.
 ## The agent mailbox (talking to agents outside the session)
 
 Some work needs an agent this session cannot dispatch — Grok, Cursor, Codex, a Claude running
-out of `orb-harness`. None of them can be addressed inside a running session and none can
-receive a webhook, but all of them can read and write GitHub PR comments. So the channel is a
-board of PRs in [`fixpoint-labs/agent-mailbox`](https://github.com/fixpoint-labs/agent-mailbox),
-one open PR per handle, its conversation comments the messages, and `handles/<slug>.md` the living
-brief an attaching agent reads first. The **operating procedure** — attach
-with push access, list open handles, the identity header, what to subscribe to — is
+out of `orb-harness`. None can be addressed inside a running session or receive a webhook, but
+all can read and write GitHub PR comments, so the channel is a board of handle PRs in
+[`fixpoint-labs/agent-mailbox`](https://github.com/fixpoint-labs/agent-mailbox), operated per
 [`agent-mailbox`](../../.agents/skills/agent-mailbox/SKILL.md). What follows is only what the
 *coordinator* owns.
 
