@@ -111,6 +111,33 @@ describe("the done-condition — which pull requests count", () => {
     expect(hasCompletingPr(matching, repo?.selector)).toBe(false);
   });
 
+  it("attributes a row whose casing differs from the remote's", () => {
+    // GitHub owner and repository names are case-INSENSITIVE, and the API
+    // answers in one canonical casing whatever the remote spells. So a checkout
+    // cloned from `Fixpoint-Labs/Flow-State-Dev` reaches the same repository,
+    // `gh -R` accepts it — and an exact comparison then rejects every pull
+    // request the run actually opened, reporting a successful run unfinished and
+    // spending its retries. The same harm the attribution check was added to
+    // prevent, arriving through the check: a second door on the rule I closed
+    // one door of last round.
+    const remote = repoSlugFromRemote("git@github.com:Fixpoint-Labs/Flow-State-Dev.git");
+    expect(remote?.ownerRepo).toBe("Fixpoint-Labs/Flow-State-Dev");
+
+    const canonical = JSON.stringify([
+      {
+        number: 1442,
+        state: "OPEN",
+        headRepository: { name: "flow-state-dev" },
+        headRepositoryOwner: { login: "fixpoint-labs" },
+      },
+    ]);
+    expect(hasCompletingPr(canonical, remote?.ownerRepo)).toBe(true);
+
+    // The fold must not become a wildcard: a DIFFERENT repository is still
+    // refused however it is cased, which is the rule the fold is bending.
+    expect(hasCompletingPr(canonical, "Someone-Else/Flow-State-Dev")).toBe(false);
+  });
+
   it("refuses a remote it cannot name, rather than guessing one", () => {
     // Undefined is a refusal, not a fallback: a remote we cannot name is a
     // repository we cannot pin the listing to, and an unpinned listing is the

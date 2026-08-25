@@ -944,8 +944,24 @@ export async function acquireCheckout(
         }
         continue;
       }
-    } catch {
+    } catch (err) {
       // It was released between the failed create and the stat. Retry.
+      //
+      // **Only disappearance retries, and the narrowing is the whole point.**
+      // `continue` here skips both the deadline check and the `await` below, so
+      // it is only safe for a condition the next iteration can resolve. A
+      // PERMANENT read failure — the path is a directory (`EISDIR`), the file is
+      // unreadable to this uid (`EACCES`) — reproduces on every pass: the `wx`
+      // create fails `EEXIST`, the read throws again, and the loop spins
+      // synchronously forever. Not merely slow: nothing between here and the top
+      // yields, so the deadline never fires, `stopIfCancelled` is never reached,
+      // and the dispatcher's event loop is held by a provisioning wait that
+      // advertises a bound it can no longer honour.
+      //
+      // Waiting `waitMs` first and then reporting a wedged HOLDER would be a
+      // second wrong answer: nobody holds this lock, the filesystem state is
+      // permanent, and the retry budget buys nothing. So it is raised as itself.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
       continue;
     }
 

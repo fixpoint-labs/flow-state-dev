@@ -72,8 +72,28 @@ export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
     const name = r?.headRepository?.name;
     // Either field missing is unattributable, so it does not count.
     if (typeof owner !== "string" || typeof name !== "string") return false;
-    return `${owner}/${name}` === inRepo;
+    return sameRepo(`${owner}/${name}`, inRepo);
   });
+}
+
+/**
+ * Do two `owner/name` spellings name one GitHub repository?
+ *
+ * **Case-folded, because GitHub's are.** Owner and repository names are
+ * case-insensitive there: a remote spelled `Fixpoint-Labs/Flow-State-Dev`
+ * reaches the same repository as `fixpoint-labs/flow-state-dev`, and `gh -R`
+ * accepts either. The API answers in ONE canonical casing regardless, so an
+ * exact comparison against the remote's spelling rejects every pull request the
+ * run actually opened — a successful run reported unfinished, retried, and its
+ * budget spent. The same harm the attribution check itself was added to prevent,
+ * arriving through the check.
+ *
+ * Folded with `toLowerCase()` rather than a locale-aware fold: these are ASCII
+ * identifiers, and a locale-sensitive one would make the answer depend on the
+ * host's locale.
+ */
+function sameRepo(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
 }
 
 /**

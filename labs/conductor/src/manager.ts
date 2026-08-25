@@ -105,6 +105,16 @@ export interface PhaseSpec {
   /**
    * Has the job actually been done? Re-evaluated now, and consulted ONLY after
    * a successful verdict — never as an alternative route to completion.
+   *
+   * **The two carry-forward fields are prompt-time only: `feedback` and
+   * `previousSessionId` are absent here, deliberately and always.** They
+   * describe the attempt BEFORE this one, which is what a prompt needs and what
+   * a done-condition has no use for — the question is whether the job is done
+   * now, not how the last attempt went. `feedback` is also not reachable at this
+   * point: it arrives on the worker's input, and the verdict handler is handed
+   * the run's own result instead. A phase whose done-condition genuinely needs
+   * either wants them put on the manager's state first; do that when such a
+   * phase exists rather than plumbing a field nothing reads.
    */
   isDone(run: PhaseRunContext): boolean | Promise<boolean>;
   /**

@@ -656,6 +656,29 @@ describe("obligation B — one live attempt per tree", () => {
     ).rejects.toThrow(/still held/);
   });
 
+  it("raises a permanently unreadable lock instead of spinning on it", async () => {
+    // The retry that skipped its own bound. The catch around the stat-and-read
+    // took EVERY error as "it was released, try again" and `continue`d — past
+    // the deadline check and past the only `await` in the loop. For a
+    // DISAPPEARANCE that is right; for a permanent read failure it is a
+    // synchronous infinite loop: `wx` fails EEXIST, the read throws again, and
+    // nothing yields. The deadline never fires, cancellation is never observed,
+    // and the dispatcher's event loop is held by a wait advertising a bound it
+    // can no longer honour.
+    //
+    // A directory at the lock path is the cheapest way to stage a read that
+    // cannot succeed on any pass; `EACCES` from a lock owned by another uid is
+    // the same shape and the likelier one in production.
+    const config = workspace();
+    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    mkdirSync(`${path}.lock`, { recursive: true });
+
+    // Rejects with the filesystem's own error, NOT the "still held" bound
+    // message: nobody holds this lock. Waiting `waitMs` out first would buy
+    // nothing and then blame a holder that does not exist.
+    await expect(acquireCheckout(path, "attempt#1", bounds)).rejects.toThrow(/EISDIR|EACCES/);
+  });
+
   it("takes a lock no live attempt could still be holding", async () => {
     // A host that died mid-run leaves its lock behind. Waiting out a bound
     // nobody is going to release would fail a perfectly good attempt. The
