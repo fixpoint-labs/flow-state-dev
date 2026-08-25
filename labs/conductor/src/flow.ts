@@ -118,6 +118,35 @@ export interface ConductorFlowOptions {
 /** The flow's `kind`, which is how the HTTP routes address it. */
 export const CONDUCTOR_FLOW_KIND = "conductor" as const;
 
+/**
+ * Does this row's payload derive the id the row is filed under?
+ *
+ * **One predicate, because the invariant has four doors and I kept fixing one.**
+ * A conductor row's id is a pure function of its `{ issue, phase }`, and every
+ * surface that trusts a row — the seed's pre-create lookup, the seed's
+ * race-recovery re-read, the status join's run-record lookup, and the manager's
+ * own guard before it executes — depends on that holding. The board is a shared
+ * collection and this flow states elsewhere that a task can reach it by any
+ * route that can write a row, so a row where the two disagree is reachable, and
+ * each door that skips the check turns it into a different silent wrong answer:
+ * a seed reported as filed that was not, or one task's session, cost and
+ * checkout reported under another task's row.
+ *
+ * Written as a function rather than repeated inline so a fifth door has
+ * something to call. Re-DERIVING the id is the check, rather than comparing the
+ * fields: `conductorTaskId` folds case, so two spellings of one task are not a
+ * conflict, and no caller has to remember that.
+ *
+ * Missing or non-string fields answer `false`. A payload we cannot read is one
+ * we cannot attribute, and this file's rule for an answer it cannot classify is
+ * to refuse it rather than assume the benign reading.
+ */
+function payloadDerivesId(task: { id: string; input?: unknown }): boolean {
+  const found = task.input as { issue?: unknown; phase?: unknown } | undefined;
+  if (typeof found?.issue !== "string" || typeof found?.phase !== "string") return false;
+  return conductorTaskId(found.issue, found.phase) === task.id;
+}
+
 /** Build the conductor flow for one epic. */
 export function conductorFlow(options: ConductorFlowOptions) {
   const {
@@ -349,15 +378,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // for was never filed at all. A silent nothing-happened, paid for by
         // somebody else's retry budget.
         //
-        // Checked by re-deriving the id from the payload rather than comparing
-        // the fields, so the canonical folding is the same one `conductorTaskId`
-        // applies and a casing difference is not read as a conflict.
-        const found = existing.input as { issue?: unknown; phase?: unknown } | undefined;
-        const foundId =
-          typeof found?.issue === "string" && typeof found?.phase === "string"
-            ? conductorTaskId(found.issue, found.phase)
-            : undefined;
-        if (foundId !== taskId) {
+        if (!payloadDerivesId(existing)) {
           throw new Error(
             `[conductor] a row already exists at "${taskId}" and its payload does not ` +
               `describe ${input.issue}/${input.phase}. Refusing to report this seed as ` +
@@ -407,6 +428,19 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // successful seed.
         const raced = await ctx.cap[boardId].getTask(taskId);
         if (raced === undefined) throw err;
+        // **The winner of the race gets the same interrogation as a row found
+        // before it.** The check one branch up was added first and stopped
+        // there — but the row reached through this catch is trusted for exactly
+        // the same thing, and a foreign row can be inserted between the lookup
+        // and the create as easily as before it. Reporting it as this seed's
+        // answer files nothing and hands the drain somebody else's task.
+        if (!payloadDerivesId(raced)) {
+          throw new Error(
+            `[conductor] the create at "${taskId}" lost to a row whose payload does not ` +
+              `describe ${input.issue}/${input.phase}. Refusing to report this seed as ` +
+              `filed: the task asked for here would never exist.`,
+          );
+        }
         await ctx.sequencer?.patchState({ taskId: raced.id });
         return { taskId: raced.id };
       }
@@ -537,12 +571,6 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // case (`assertSafeSegment`), so seeding `FIX-1` and seeding `fix-1`
         // resolve the same row — but a raw comparison here then hid that row
         // from `status({ issue: "fix-1" })` while `seed` kept returning it. One
-        // surface folding and the other not is a silent partial answer: the
-        // caller sees an empty listing for a task that exists and is running.
-        // **Compare the canonical form on both sides.** Identity derivation folds
-        // case (`assertSafeSegment`), so seeding `FIX-1` and seeding `fix-1`
-        // resolve the same row — but a raw comparison here then hid that row
-        // from `status({ issue: "fix-1" })` while `seed` kept returning it. One
         // surface folding and the other not is a silent partial answer: an
         // empty listing for a task that exists and is running.
         if (
@@ -552,8 +580,21 @@ export function conductorFlow(options: ConductorFlowOptions) {
           continue;
         }
 
+        // **The run record is attached only to a row that owns it.** The topic
+        // is derived from the PAYLOAD, and the row's id is not consulted — so a
+        // row filed under a non-canonical id while carrying another task's
+        // `{ issue, phase }` is reported with that task's session, cost,
+        // checkout and outcome. The manager refuses to execute such a row, which
+        // is what makes this reachable rather than theoretical: the malformed row
+        // sits there permanently, and `status` narrates somebody else's run over
+        // it. Every field would be real and attributed to the wrong task.
+        //
+        // Left as `null` rather than refused, because this is a read surface: a
+        // caller asking what is on the board should see the malformed row exists,
+        // and see that nothing is known about its run. Throwing would hide the
+        // whole listing behind one bad row.
         const record =
-          issue !== null && phaseName !== null
+          issue !== null && phaseName !== null && payloadDerivesId(task)
             ? await readRunRow(ctx as never, runTopic(collectionId, issue, phaseName))
             : undefined;
 

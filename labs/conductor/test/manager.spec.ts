@@ -1476,3 +1476,73 @@ describe("the completion check is bounded", () => {
     expect(after).toBeLessThanOrEqual(before);
   });
 });
+
+describe("status attributes a run record to the row that owns it", () => {
+  it("reports no run for a row whose id does not derive from its payload", async () => {
+    // The board capability can file a row under any id. The manager refuses to
+    // EXECUTE one whose id and payload disagree — which is what makes this
+    // reachable rather than theoretical: the malformed row sits there
+    // permanently, and `status` derived the run topic from the payload alone.
+    // So a row filed under a junk id while carrying a real task's
+    // `{ issue, phase }` was narrated with that task's session, cost, checkout
+    // and outcome. Every field real, every field attributed to the wrong task.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          // A second row, under a NON-canonical id, carrying the real task's
+          // payload. `status` filters by issue, so it comes back in the listing
+          // beside the genuine one.
+          await ledger.upsert("not-the-canonical-id", {
+            id: "not-the-canonical-id",
+            goal: "a row filed under an id its payload does not derive",
+            input: { issue: ISSUE, phase: PHASE },
+            status: "pending",
+            attempts: 0,
+            assignee: "harness",
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    // Not `seedAndDrain`: its helper reads `rows[0]`, and planting a second row
+    // for this issue makes that ambiguous. Waited on the genuine row by id.
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const canonical = conductorTaskId(ISSUE, PHASE);
+    const deadline = Date.now() + 10_000;
+    let rows: StatusRow[] = [];
+    for (;;) {
+      ({ rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE }));
+      const mine = rows.find((r) => r.taskId === canonical);
+      // Polled to `completed` rather than to "not in_progress": right after
+      // `seed` returns the row is briefly `pending` and unclaimed, which a
+      // not-in_progress test reads as a settlement that has not happened.
+      if (mine?.status === "completed") break;
+      if (mine !== undefined && mine.status !== "pending" && mine.status !== "in_progress") {
+        throw new Error(`settled unexpectedly: ${JSON.stringify(mine)}`);
+      }
+      if (Date.now() >= deadline) throw new Error(`never settled: ${JSON.stringify(rows)}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(rows.find((r) => r.taskId === canonical)?.status).toBe("completed");
+    const impostor = rows.find((r) => r.taskId === "not-the-canonical-id");
+    expect(impostor, "the planted row should be listed").toBeDefined();
+    // Listed — a caller asking what is on the board should see it exists — but
+    // carrying nothing about a run it does not own.
+    expect(impostor?.run).toBeNull();
+
+    // And the genuine row is unaffected: this must not become a blanket refusal
+    // that hides real records.
+    expect(rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE))?.run?.sessionId).toBe(
+      "sess_stub",
+    );
+  }, 20_000);
+});
