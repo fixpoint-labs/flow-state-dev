@@ -109,9 +109,15 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    (`routes/session-routes.ts:231`). **Nothing on the scope write path supplies that identity
    either.** `checkScopeWriteVersion` (`stores/scope-write-predicate.ts`) compares the stored
    version against `expectedVersion` and reads nothing else — and its numeric branch reads an
-   **absent record as version `0`**, deliberately, because `set(id, record, 0)` is how every new
-   scope record is created. So a stale writer holding a freshly-created record's version `0` is
-   admitted against the slot after a hard delete, without even needing a reused version. So the
+   **absent record as version `0`**. Numeric `0` is what a container's first CAS state write
+   passes (`state-container.ts:58` starts it at `0`); on the ordinary path the record already
+   exists at v0, created through `"absent"` (`ensure-session-record.ts:48`) or `"any"`
+   (`createExecutionContext.ts:595`, `:704`, `:1275`), so `0` matches a **live** row as intended.
+   Because absence also reads as `0`, the same write lands when the row is *gone*. **That is not
+   a bag-side hole** — a version-`0` write into an empty slot **is** a create, and refusing it
+   would break first touch or require tombstones on scope records, which unifies the drivers
+   this theme keeps apart. The resource side differs precisely because it *has* a tombstone and
+   a deleted-stays-deleted bet, so its predicate intends to refuse and misses `0`. So the
    divergence is **tombstoned generations versus hard-deleted, recreatable records.**
 
    **`lineageId` is not the missing discriminator** — the epic said so and was wrong. It is the
@@ -275,7 +281,7 @@ asymmetries remain deliberate and where each one is written down.**
 | Asymmetry between the two primitives | After the set lands | Where its reason lives |
 |---|---|---|
 | Two CAS drivers — `cas.ts` vs `resource-cas.ts` | **Survives — deliberate** (theme 1) | The eight-row policy table, staying in `resource-cas.ts`'s header; **FIX-1154** adds the missing guard on `createScopeStateOps` / `createScopePersist` |
-| `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, and it is the same root as the row above: the two stores model deletion differently (tombstoned vs hard-deleted and recreatable), so `0` cannot mean the same thing on both sides. **FIX-1258** narrows *which* absent states a version-`0` write may create into — a tombstone is one of them today, which is the hole in theme 1's tombstone row. It sits **outside the active set**, so that hole is **still open at wrap** | Already in `state-and-scopes.md` → "CAS and Concurrency"; the hole itself in theme 1 |
+| A numeric `0` is **intended** to name a *live v0 record* for scope state — but `checkScopeWriteVersion` maps an absent row to `0` too, so it admits a live v0 row **and** an absent or hard-deleted slot. For resources `0` means *no live row* outright. Scope stores take `"absent"` for the strict form; `ResourceStateStore` rejects it | **Survives — deliberate**, and it is the same root as the row above: the two stores model deletion differently (tombstoned vs hard-deleted and recreatable), so `0` cannot mean the same thing on both sides. The scope side's wider match is **not a defect** — a version-`0` write into an empty slot is a create (theme 1). No scope-init path leans on it: session creation takes `"absent"`, user/org/request init takes `"any"`. **FIX-1258** narrows *which* absent states a version-`0` write may create into — a tombstone is one of them today, which is the hole in theme 1's tombstone row. It sits **outside the active set**, so that hole is **still open at wrap** | Already in `state-and-scopes.md` → "CAS and Concurrency"; the hole itself in theme 1 |
 | Resource-only surface — content, `client`, `reactTo`, `edges`, collections | **Survives — not an asymmetry.** No state analogue exists to be symmetric with | FIX-1154's scope boundaries |
 | Mutation surfaces differ in several ways — verbs one primitive lacks, and differences in shape among the verbs they nominally share | **Increment and append close** (**FIX-1154**, Tier 1). The remainder is **mapped, not closed** — each difference recorded as closed, as deliberate asymmetry with a reason, or as deferred | **FIX-1154's spec.** The epic states the shape of the answer; the inventory is the child's deliverable |
 | Return contract — `Promise<boolean>` vs `Promise<void>` | **Survives — deliberate.** Scope state's `boolean` exists because its `state_change` notification gate needs it; resources gate `resource_change` on an internally verified no-op. FIX-1154 closes the **increment/append** gap only | Settled at epic altitude — §5, resolved |
@@ -495,11 +501,17 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   lives there, pointing identity away from versions. It does not: `checkScopeWriteVersion`
   (`stores/scope-write-predicate.ts`) compares the stored version against `expectedVersion` and
   reads nothing else, and no file on the scope write path references `lineageId` at all — it is
-  the inherited storage address for `sharedToWorkstream` resources (FIX-1068). Worse for the
-  reading it replaces: that predicate reads an **absent record as version `0`** by design, so a
-  stale writer holding a new record's version `0` is admitted against a hard-deleted slot
-  without any version reuse. **This voided the reasoning behind a decision not to file the
-  scope-side gap, which is re-opened.**
+  the inherited storage address for `sharedToWorkstream` resources (FIX-1068). **The reason was
+  wrong; the conclusion it was offered for stands — there is no bag analog of FIX-1258.** That
+  predicate reads an absent record as version `0` by design, and a version-`0` write into an
+  empty scope slot **is** a create: refusing it would break first touch, or require tombstones on
+  scope records and so unify the drivers theme 1 keeps apart. The resource side differs because
+  it carries a tombstone and a deleted-stays-deleted bet, so its predicate intends to refuse and
+  misses `0`. The fence that does exist for the scope case is **FIX-1000** (spec PR
+  [#1049](https://github.com/fixpoint-labs/flow-state-dev/pull/1049), impl PR
+  [#1106](https://github.com/fixpoint-labs/flow-state-dev/pull/1106)), which states it outright —
+  work still running when a delete lands writes into the session after it was emptied. It is a
+  FIX-992 residual, **outside this set and not a member of the running index.**
   **(2)** FIX-1154's new verbs **inherit** the version-`0` hole rather than being unaffected —
   new entry points, not a new defect — and the limitation is pinned by a named POC row instead
   of making FIX-1258 a prerequisite.
@@ -512,6 +524,16 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   the fork itself.
   Corrections **1** and **4** are again claims about code this set is not changing; that class
   now stands at **six**.
+- **Width sweep (2026-08-25)** — the recurring defect in this document is not a wrong rule but a
+  **rule stated at the wrong width**: `0` means live-row as motivated, live-row-or-absent as
+  implemented; "resources have a lifecycle" as motivated, "resources tombstone" as implemented.
+  So every rule and mapping the doc states was re-checked against its actual width. **One was
+  wrong** — §3's `0` row, fixed above. **Seven held**: the eight-row policy table is eight rows;
+  `DeltaStoreOps` takes `expectedVersion` on all four verbs; `"absent"` throws on the delta verbs
+  (by allowlist, so tighter than stated, not looser); the commutative opt-out really is the one
+  line `scope-persist.ts:60`; `ResourceStateStore` rejects `"absent"`; resources' `patchState` is
+  depth-1; scope stores take `"absent"`. Recorded so the next reader knows the sweep was a sweep
+  and not a spot-check.
 - **Convergence rule narrowed, same date** — "further feedback routes to the children as
   implementer notes" was too blanket: an owner's fork resolution or a post-convergence
   epic-level correction would have been routed downward and lost, on a page that now says it
