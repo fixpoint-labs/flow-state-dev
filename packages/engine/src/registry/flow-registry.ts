@@ -13,11 +13,9 @@
  * resource carries its own `flowIsolation` override and drops out on that.
  */
 import type { DeclaredResourceEntry, FlowInstance } from "@flow-state-dev/core/types";
-import {
-  isDefinedResourceCollection,
-  isExternalResourceCollection,
-} from "@flow-state-dev/core/types";
+import { isExternalResourceCollection } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
+import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveResourceIsolation } from "../stores/scope-keys";
 import { CrossFlowSchemaConflictError, type ConflictScope } from "./errors";
@@ -212,11 +210,12 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    * `ref` within one scope. Two ways two flows can still land on one durable
    * cell without ever being compared:
    *
-   *   1. **Overlapping collection keyspaces.** A collection's `ref` is its
-   *      glob pattern, so a collection at `files/*` and a concrete resource at
-   *      `files/a` index under different refs — while `resolveCollectionKey`
+   *   1. **Overlapping collection keyspaces.** A collection indexes under its
+   *      glob `pattern`, so a collection at `files/*` and a concrete resource
+   *      at `files/a` index under different refs — while `resolveCollectionKey`
    *      resolves the collection's `"a"` to `files/a`, the very same
-   *      `ResourceStateStore` cell.
+   *      `ResourceStateStore` cell. Note this is *overlap*, not equality: two
+   *      collections sharing one pattern DO compare (see `storageRef`).
    *   2. **Same-kind instances with differing resource overrides.**
    *      `FlowInstanceOptions` lets each instance override `resources`, but
    *      participants are retained per `flowKind` (first instance wins — see
@@ -291,31 +290,39 @@ function emptySchemaMap(): Record<string, ZodTypeAny> {
  * expose one shared resource under any accessor it likes, and may reuse an
  * accessor for a different `ref`.
  *
- * Two rules, each matching the path that actually writes the data:
+ * Two rules, each taken from the path that actually writes the cell — NOT from
+ * core's build-time `effectiveStorageTuple`, which disagrees on both counts
+ * (see the divergence note below):
  *
- *   - **Collections** mirror `effectiveStorageTuple` in core's
- *     `flow/defineFlow.ts` — explicit `ref`, else the glob `pattern`. The
- *     `isDefinedResourceCollection` gate matters: `defineResource` preserves
- *     extra properties, so a plain resource carrying an incidental `pattern`
- *     must still key on its accessor, exactly as `defineFlow` treats it.
+ *   - **Collections key on `pattern`, always.** Every instance key is
+ *     `resolveCollectionKey(config.pattern, key)` — see `resource-registry.ts`
+ *     (`:1018`, `:1046`, `:1196`) and every route in `resource-routes.ts`.
+ *     `resourceStorageKeys` short-circuits collections before it reads `ref`
+ *     (`storage-keys.ts:49-52`), and nothing in the engine reads `ref` off a
+ *     collection anywhere. So an incidental `ref` on a collection changes no
+ *     storage key: honouring it here would index two same-pattern collections
+ *     apart while they read and write the same durable cells.
  *   - **Single resources** take their canonical key from `resourceStorageKeys`
  *     (`ref`, else the FIRST accessor a given definition object appears
  *     under). Registering one `DefinedResource` under several accessors is
  *     supported, and every alias persists to that one canonical slot — so
  *     indexing an alias under its own name would invent a cell the flow never
  *     writes.
+ *
+ * The collection test is `isCollectionConfig` — the same **structural** check
+ * (`typeof pattern === "string"`) the persistence path branches on, not core's
+ * `__brand` test. The two disagree for a `defineResource` carrying an
+ * incidental `pattern`: core treats it as a single resource, the engine routes
+ * it down the collection branch. That divergence is real and pre-existing;
+ * this check follows the engine, because the engine is what writes the data.
  */
 function storageRef(
   entry: DeclaredResourceEntry,
   accessor: string,
   storageKeys: Record<string, string>
 ): string {
-  if (isDefinedResourceCollection(entry)) {
-    // `ref` is read through a cast because `ResourceCollectionConfig` does not
-    // declare one — but the definers preserve extra properties, and core's
-    // `effectiveStorageTuple` gives an incidental `ref` precedence over the
-    // pattern. Mirror that, so the two cannot disagree about the same entry.
-    return (entry as { ref?: string }).ref ?? entry.pattern;
+  if (isCollectionConfig(entry)) {
+    return entry.pattern;
   }
   // `resourceStorageKeys` maps every accessor it is given, and returns a plain
   // object — so guard the lookup rather than trusting a bare index, for the

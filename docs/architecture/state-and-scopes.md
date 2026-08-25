@@ -428,7 +428,7 @@ The error names both flow kinds, the scope (`user` or `org`), the field path (`s
 
 The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss). Two overlaps are the exception, and are **not** detected today:
 
-- **A collection pattern overlapping a concrete ref.** Refs are compared exactly, so a collection at `files/*` and a resource at `files/a` index separately even though the collection's `"a"` instance resolves to that same cell.
+- **A collection pattern overlapping a concrete ref.** Refs are compared exactly, so a collection at `files/*` and a resource at `files/a` index separately even though the collection's `"a"` instance resolves to that same cell. Two collections declaring the *same* pattern are compared normally — a collection indexes on its `pattern`, which is what its instance keys derive from.
 - **Two instances of one flow kind whose `resources` overrides disagree.** Participants are retained per `flowKind` and same-kind pairs are skipped, so per-instance overrides are never compared against each other.
 
 ### Per-flow isolation (opt-in)

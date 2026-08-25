@@ -519,11 +519,13 @@ describe("cross-flow resource schema validation", () => {
       expect(error.field).toBe("resources.foo");
     });
 
-    it("keys a non-collection carrying an incidental pattern on its accessor", () => {
+    it("keys a resource carrying an incidental pattern the way persistence does", () => {
       // `defineResource` preserves unknown properties, so a plain resource can
-      // carry a `pattern`. It is not a collection and does not key on it —
-      // treating it as one would index a cell the flow never writes, missing
-      // this real conflict at the shared accessor.
+      // carry a `pattern`. The engine's persistence path branches on the
+      // STRUCTURAL `isCollectionConfig` test, so it routes this down the
+      // collection branch and keys its instances off the pattern — even though
+      // core's brand-based check calls it a single resource. Follow the engine:
+      // these two flows share cells under `files/*` despite differing accessors.
       const withPattern = (schema: z.ZodTypeAny) =>
         defineResource({
           scope: "user",
@@ -538,11 +540,49 @@ describe("cross-flow resource schema validation", () => {
 
       const error = captureConflict(() =>
         registry.register(
-          makeFlow({ kind: "flow-b", rawResources: { notes: withPattern(z.object({ body: z.number() })) } })
+          makeFlow({ kind: "flow-b", rawResources: { archive: withPattern(z.object({ body: z.number() })) } })
         )
       );
-      expect(error.field).toBe("resources.notes");
+      expect(error.field).toBe("resources.files/*");
     });
+  });
+
+  /**
+   * A collection's storage identity is its `pattern` and nothing else. Every
+   * instance key is `resolveCollectionKey(config.pattern, key)`, and the engine
+   * reads `ref` off a collection nowhere — `resourceStorageKeys` short-circuits
+   * collections before it even looks. An incidental `ref` therefore moves no
+   * data, and must not move the comparison either.
+   */
+  it("compares same-pattern collections that carry differing incidental refs", () => {
+    const collection = (schema: z.ZodTypeAny, ref: string) =>
+      defineResourceCollection({
+        scope: "user",
+        pattern: "files/*",
+        stateSchema: schema,
+        ref,
+      } as never);
+
+    const registry = createFlowRegistry();
+    registry.register(
+      makeFlow({
+        kind: "flow-a",
+        rawResources: { files: collection(z.object({ body: z.string() }), "alpha") },
+      })
+    );
+
+    // Different `ref`, same `pattern` — one set of durable cells. Keying on the
+    // ref would file these apart and let incompatible schemas both register.
+    const error = captureConflict(() =>
+      registry.register(
+        makeFlow({
+          kind: "flow-b",
+          rawResources: { files: collection(z.object({ body: z.number() }), "beta") },
+        })
+      )
+    );
+    expect(error.scope).toBe("user");
+    expect(error.field).toBe("resources.files/*");
   });
 
   /**
