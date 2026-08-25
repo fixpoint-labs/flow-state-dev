@@ -280,12 +280,27 @@ defineFlow({
 ```
 
 The two keys lining up is the point: derive the checkout from the session and
-arbitrate on the session, and a tree is never shared by two live runs.
+arbitrate on the session.
 
-This arbitration is in-process. If you route execution to external workers, the
-policy is not enforced across them, and two workers can still land in one
-checkout — that needs a lock in shared storage, which is beyond what this recipe
-gives you. A single-instance host is the case it covers.
+**A policy arbitrates dispatches, so be precise about what that does and does not
+cover.** Three ways two runs can end up in one checkout, and this closes one of
+them:
+
+- **Two requests, one session.** Covered. That is what the policy is for.
+- **Two agent invocations inside one dispatch.** Not covered. A generator's tool
+  calls in a single model step run concurrently, so if you expose this block as
+  a model-facing tool through the agent capability, the model can call it twice
+  in one step and both invocations land in the same directory — inside one
+  dispatch, where the policy never sees them. Give the agent a per-run directory
+  (the `mkdtemp` example above) when the model can invoke it, and keep the
+  reused checkout for one agent step per run.
+- **Two workers, one session.** Not covered. The arbiter is a map in the running
+  process, so routing execution to external workers leaves both able to land in
+  one checkout. That needs a lock in shared storage, which is beyond what this
+  recipe gives you.
+
+So the recipe is safe for a single-instance host running the agent as a step,
+one invocation per dispatch. Outside that, derive a fresh directory per run.
 
 Encoding rather than validating is the whole point, and it is worth being
 explicit about why. A validating grammar has to enumerate every way a string can

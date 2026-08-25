@@ -276,7 +276,10 @@ export interface ClaudeCodeAgentOptions {
    *   twice is the point; two live runs in it is not. Actions run concurrently
    *   by default, so declare `concurrency: "queue"` (or `"reject"`) on the
    *   action — it arbitrates on the session, the same value the checkout is
-   *   derived from. In-process only; external workers need a shared lock.
+   *   derived from. It arbitrates DISPATCHES, so it does not cover two
+   *   invocations in one dispatch (a model calling this tool twice in one step)
+   *   or two external workers. Reuse a checkout for one agent step per run on a
+   *   single-instance host; derive a fresh directory otherwise.
    *
    * The authenticated tenant is `ctx.session.identity.tenantId`;
    * `ctx.session.identity.id` is deliberately bare, because two tenants can

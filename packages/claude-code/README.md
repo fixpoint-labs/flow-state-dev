@@ -222,9 +222,15 @@ so two runs for one session get the same tree and race in it. Declare a
 concurrency policy on the action that runs the agent — `concurrency: "queue"`
 serializes on the session, which is the same value the checkout is derived from,
 so one run finishes before the next starts (`"reject"` if a second request
-should be dropped instead). That arbitration is in-process: routing execution to
-external workers needs a lock in shared storage, which this recipe does not
-give you.
+should be dropped instead).
+
+A policy arbitrates *dispatches*, which leaves two cases open. A generator's
+tool calls in one model step run concurrently, so a block exposed as a
+model-facing tool can be invoked twice inside a single dispatch, where the
+policy never sees it. And the arbiter is a map in the running process, so
+external workers are not arbitrated either. The recipe is safe for a
+single-instance host running the agent as a step, one invocation per run; give
+the agent a fresh directory per run otherwise.
 
 Encoding rather than validating is the whole point, and it is worth being
 explicit about why. A validating grammar has to enumerate every way a string can
