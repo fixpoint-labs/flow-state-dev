@@ -18,7 +18,6 @@ export {
 export {
   harnessManager,
   conductorTaskInputSchema,
-  releaseAllLeases,
   ConductorAttemptFailed,
   type ManagerOptions,
   type PhaseSpec,
