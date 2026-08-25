@@ -1018,13 +1018,45 @@ describe("the manager — the stale window is refused at construction", () => {
     ).toThrow(/longest a live attempt can hold the lock/);
   });
 
-  it("accepts a stale window past the whole legitimate hold", async () => {
+  it("refuses a wait that merely EQUALS the stale window", async () => {
+    // **This assertion is the inverse of the one it replaces, and the old one
+    // was the defect.** `acquireCheckout` tests `age > staleAfterMs`, so a
+    // waiter whose wait equals the window reaches its deadline at the exact
+    // moment the lock becomes eligible and times out instead of taking over —
+    // charging a coding retry for a dead holder it was about to be allowed to
+    // reclaim. The previous version of this test asserted that configuration was
+    // ACCEPTED, and the production defaults were equal too, so this was the
+    // ordinary path rather than an exotic override.
+    expect(() =>
+      createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+        runTimeoutMs: 30_000,
+        provisionTimeoutMs: 1_000,
+        ownership: { waitMs: 90_000, staleAfterMs: 90_000, pollMs: 25 },
+      }),
+    ).toThrow(/by at least one poll interval/);
+
+    // One poll short is still short — the boundary is where this went wrong, so
+    // the boundary is what is pinned.
+    expect(() =>
+      createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+        runTimeoutMs: 30_000,
+        provisionTimeoutMs: 1_000,
+        ownership: { waitMs: 90_024, staleAfterMs: 90_000, pollMs: 25 },
+      }),
+    ).toThrow(/by at least one poll interval/);
+  });
+
+  it("accepts a wait one poll past the stale window", async () => {
+    // The guard must not become an outage: exactly one poll of headroom is the
+    // rule, so exactly one poll of headroom has to be legal.
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     const h = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
       runTimeoutMs: 30_000,
       provisionTimeoutMs: 1_000,
-      ownership: { waitMs: 90_000, staleAfterMs: 90_000 },
+      ownership: { waitMs: 90_025, staleAfterMs: 90_000, pollMs: 25 },
     });
     h.dispose();
   });
@@ -1801,5 +1833,56 @@ describe("a row is only ours if its retry budget is ours too", () => {
     await expect(
       live.call("seed", { issue: "FIX-NOBUDGET", phase: PHASE }),
     ).rejects.toThrow(/retry budget|not one this conductor filed|did not file/);
+  }, 20_000);
+});
+
+describe("status attribution does not depend on the retry policy", () => {
+  it("keeps reporting a run for a row whose retry budget is not the configured one", async () => {
+    // A durable board outlives the process that filed its rows, so a host
+    // restarted with a different `maxAttempts` meets rows still carrying the
+    // budget they were filed with — while their id, payload and run topic are
+    // unchanged. Attribution has nothing to do with retry policy, so a `status`
+    // that compares it hides the session, checkout, cost and outcome of every
+    // pre-restart run behind `run: null`.
+    //
+    // That is not hypothetical: it is what broadening the shared predicate for
+    // SEED ADMISSION did to this read-only join, one commit after the goal check
+    // argued the same separation in the other direction.
+    //
+    // Staged by moving the budget on a settled row rather than by restarting the
+    // harness — each harness builds its own store, so a "restart" would lose the
+    // durable rows this is about. The property under test is the same either
+    // way: identity unchanged, policy different, record still attributed.
+    let moved = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      maxAttempts: 3,
+      isDone: async (run) => {
+        if (!moved) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId(ISSUE, PHASE), { maxAttempts: 5 });
+          moved = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 10_000;
+    let rows: StatusRow[] = [];
+    for (;;) {
+      ({ rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE }));
+      const mine = rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE));
+      if (moved && mine !== undefined && mine.status !== "in_progress") break;
+      if (Date.now() >= deadline) throw new Error(`never settled: ${JSON.stringify(rows)}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const mine = rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE));
+    expect(mine?.attempts, "the budget really did move off the configured one").toBeDefined();
+    // The record is still attributed: the identity never moved, only the policy.
+    expect(mine?.run?.sessionId).toBe("sess_stub");
   }, 20_000);
 });

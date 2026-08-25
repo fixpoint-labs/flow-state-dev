@@ -120,72 +120,46 @@ export interface ConductorFlowOptions {
 export const CONDUCTOR_FLOW_KIND = "conductor" as const;
 
 /**
- * Is this a row this conductor would have filed?
+ * Does this row's payload derive the id it is filed under?
  *
- * **Every field `seed` sets that changes what a drain DOES, checked together.**
- * The predicate started as "does the id derive from the payload", and each
- * review since has found another field that decides an outcome and was not
- * being looked at. So it is written against the `addTask` call it mirrors, and
- * the list below says why each field is in or out — an enumeration that states
- * its own boundary can be checked against the call site; one that does not comes
- * up short every time.
+ * **Attribution only, and the separation from admission is the point.** Two
+ * different questions are asked about a board row and they need different
+ * answers:
  *
- * - `id` and `input` — the task's identity. A mismatch means the row is not
- *   this task at all, and a seed reported as filed files nothing.
- * - `assignee` — which worker a drain routes to. Wrong, and the claim charges an
- *   attempt and then finds no worker declared: a run billed or stranded without
- *   launching.
- * - `maxAttempts` — the retry budget, and **absent means single-attempt**, not
- *   "the default". A row filed without it turns the first failed coding run
- *   terminal on a conductor configured for retries; an oversized one spends past
- *   what the host configured.
- * - `goal` and `metadata` are deliberately NOT checked. The manager builds its
- *   own prompt, so `goal` decides nothing; `metadata` is model-patchable through
- *   `updateTask`, so it cannot be an invariant — a value that can change after
- *   the check is not one the check can promise anything about.
+ * - *Does this row own this run record?* — identity, and nothing else. `status`
+ *   asks it, and a wrong answer misreports one task's session, cost and
+ *   checkout under another's.
+ * - *May `seed` reuse this row instead of filing one?* — identity AND the
+ *   policy a drain would then run it under. `seedMayReuse` asks that.
  *
- * **A correction to what this file said one commit ago:** `assignee` was
- * described as immutable. It is not — `updateTask` patches `priority`,
- * `metadata`, `assignee` and labels. The check still earns its place, because a
- * foreign row at seed time is caught, but it is a check on the row as filed and
- * not a guarantee about the row later. `maxAttempts` genuinely is immutable
- * through that surface, which is why it is the stronger of the two.
+ * They were one predicate for exactly one round, and broadening it for the
+ * second question immediately broke the first: adding the retry-budget check
+ * meant a host restarted with a different `maxAttempts` reported `run: null` for
+ * every row filed before the restart, hiding real recorded work behind a policy
+ * comparison that has nothing to do with who owns a record. The identity is
+ * unchanged in that case; only the policy moved.
  *
- * **One predicate, because the invariant has four doors and I kept fixing one.**
- * A conductor row's id is a pure function of its `{ issue, phase }`, and every
- * surface that trusts a row — the seed's pre-create lookup, the seed's
- * race-recovery re-read, the status join's run-record lookup, and the manager's
- * own guard before it executes — depends on that holding. The board is a shared
- * collection and this flow states elsewhere that a task can reach it by any
- * route that can write a row, so a row where the two disagree is reachable, and
- * each door that skips the check turns it into a different silent wrong answer:
- * a seed reported as filed that was not, or one task's session, cost and
- * checkout reported under another task's row.
+ * The same mistake in the other direction is already argued in the goal check —
+ * the product's state rule kept apart from the check's stricter question — and
+ * this file made it anyway, one round later, by merging rather than splitting.
  *
- * Written as a function rather than repeated inline so a fifth door has
- * something to call. Re-DERIVING the id is the check, rather than comparing the
- * fields: `conductorTaskId` folds case, so two spellings of one task are not a
- * conflict, and no caller has to remember that.
+ * Every surface that attributes a row goes through THIS function: the seed's
+ * pre-create lookup and race-recovery re-read (via `seedMayReuse`), the status
+ * join, and by the same rule the manager's own guard before it executes. The
+ * board is a shared collection and this flow states elsewhere that a task can
+ * reach it by any route that can write a row, so a row whose id and payload
+ * disagree is reachable — and each door that skips the check turns it into a
+ * different silent wrong answer.
  *
- * **Every way the derivation can fail answers `false`, including a throw.** The
- * first version checked the field TYPES and stopped there — but
+ * **Every way the derivation can fail answers `false`, including a throw.**
  * `conductorTaskId` validates the owned-segment grammar and RAISES on a
  * violation, so a persisted row carrying `{ issue: "FIX.1" }` did not fail this
- * predicate, it failed the whole call. On the `status` path that turned one
- * malformed row into an error for the entire listing: every valid row hidden by
- * one bad neighbour, on a read surface whose job is to say what is on the board.
- *
- * Enumerating one failure mode of "cannot derive" and missing the other is the
- * same shape as the defects this predicate was extracted to prevent, so it is
- * written as "anything other than a clean match is not a match" rather than as a
- * list of the ways it can go wrong.
+ * predicate, it failed the whole call — turning one malformed row into an error
+ * for an entire `status` listing. Written as "anything other than a clean match
+ * is not a match" rather than as a list of the ways it can go wrong, because the
+ * list is the part that keeps coming up short.
  */
-function isOurRow(
-  task: { id: string; input?: unknown; assignee?: unknown; maxAttempts?: unknown },
-  maxAttempts: number,
-): boolean {
-  if (task.assignee !== ASSIGNEE) return false;
-  if (task.maxAttempts !== maxAttempts) return false;
+function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
   const found = task.input as { issue?: unknown; phase?: unknown } | undefined;
   if (typeof found?.issue !== "string" || typeof found?.phase !== "string") return false;
   try {
@@ -193,6 +167,28 @@ function isOurRow(
   } catch {
     return false;
   }
+}
+
+/**
+ * May `seed` treat this existing row as the one it was asked to file?
+ *
+ * **Identity plus the policy a drain would run it under.** Attribution is not
+ * enough here: `seed` reports success and the row is then DRAINED, so a row
+ * whose routing or retry budget differs from this conductor's runs real work
+ * under a policy nobody configured.
+ *
+ * See `rowOwnsItsIdentity` for why the two questions are separate — and note
+ * that `assignee` is model-patchable through `updateTask` while `maxAttempts` is
+ * not, so this is a statement about the row as filed, not a guarantee about it
+ * afterwards.
+ */
+function seedMayReuse(
+  task: { id: string; input?: unknown; assignee?: unknown; maxAttempts?: unknown },
+  maxAttempts: number,
+): boolean {
+  if (task.assignee !== ASSIGNEE) return false;
+  if (task.maxAttempts !== maxAttempts) return false;
+  return rowOwnsItsIdentity(task);
 }
 
 /** Build the conductor flow for one epic. */
@@ -436,7 +432,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // for was never filed at all. A silent nothing-happened, paid for by
         // somebody else's retry budget.
         //
-        if (!isOurRow(existing, maxAttempts)) {
+        if (!seedMayReuse(existing, maxAttempts)) {
           throw new Error(
             `[conductor] a row already exists at "${taskId}" and it is not one this ` +
               `conductor filed — its payload does not describe ${input.issue}/${input.phase}, ` +
@@ -494,7 +490,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // the same thing, and a foreign row can be inserted between the lookup
         // and the create as easily as before it. Reporting it as this seed's
         // answer files nothing and hands the drain somebody else's task.
-        if (!isOurRow(raced, maxAttempts)) {
+        if (!seedMayReuse(raced, maxAttempts)) {
           throw new Error(
             `[conductor] the create at "${taskId}" lost to a row this conductor did not ` +
               `file — wrong payload for ${input.issue}/${input.phase}, an assignee other ` +
@@ -656,7 +652,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
         // and see that nothing is known about its run. Throwing would hide the
         // whole listing behind one bad row.
         const record =
-          issue !== null && phaseName !== null && isOurRow(task, maxAttempts)
+          issue !== null && phaseName !== null && rowOwnsItsIdentity(task)
             ? await readRunRow(ctx as never, runTopic(collectionId, issue, phaseName))
             : undefined;
 

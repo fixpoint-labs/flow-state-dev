@@ -193,9 +193,15 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   const provisionTimeoutMs = options.provisionTimeoutMs ?? 10_000;
   const staleAfterMs =
     options.ownership?.staleAfterMs ?? runTimeoutMs + provisionTimeoutMs + 1_000;
+  const pollMs = options.ownership?.pollMs ?? 25;
   const ownership = {
-    waitMs: options.ownership?.waitMs ?? staleAfterMs,
-    pollMs: options.ownership?.pollMs ?? 25,
+    // **Strictly past the stale window, by one poll.** The manager requires it,
+    // and it derived `staleAfterMs` exactly — which is the configuration the
+    // manager now refuses, because a wait that ENDS when the lock becomes
+    // eligible times out instead of taking over. The fixture had the same defect
+    // the production default did.
+    waitMs: options.ownership?.waitMs ?? staleAfterMs + pollMs,
+    pollMs,
     staleAfterMs,
   };
 

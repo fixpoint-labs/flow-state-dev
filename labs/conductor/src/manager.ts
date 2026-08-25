@@ -507,7 +507,12 @@ export function resolveOwnership(options: {
     // exit that neither completes nor fails the row, and that third outcome is
     // exactly what this spec defers to LAB-139. So the bound moves instead: it
     // costs latency on a genuinely wedged tree and no design change.
-    waitMs: options.ownership?.waitMs ?? maxLockHeldMs + 300_000,
+    // **Strictly longer than the stale window, by at least one poll.** See the
+    // check below for why equal is not enough; the default has to satisfy the
+    // rule it is the reference for.
+    waitMs:
+      options.ownership?.waitMs ??
+      maxLockHeldMs + 300_000 + (options.ownership?.pollMs ?? 1_000),
     pollMs: options.ownership?.pollMs ?? 1_000,
     // Past the longest legitimate hold — the run's deadline AND the
     // provisioning that precedes it — so a lock is declared stale only once no
@@ -524,11 +529,30 @@ export function resolveOwnership(options: {
   // checkout — obligation B violated by configuration rather than by a race.
   // Refused at construction because there is no runtime moment at which the
   // mistake announces itself.
-  if (ownership.waitMs < ownership.staleAfterMs) {
+  // **Strictly longer, and by at least one poll — equal is a boundary that never
+  // resolves.** `acquireCheckout` tests `age > staleAfterMs`, so a waiter whose
+  // wait EQUALS the stale window reaches its deadline at the exact moment the
+  // lock becomes eligible and times out instead of taking over. The defaults
+  // were equal, so this was not an exotic override: the ordinary configuration
+  // charged a coding retry for a dead holder it was about to be allowed to
+  // reclaim.
+  //
+  // One poll interval of headroom, because eligibility is only observed on a
+  // poll: a wait that ends between two passes is a wait that never looked.
+  //
+  // What this does NOT fix, stated so nobody reads more into it: a lock created
+  // AFTER the waiter started can always age past the waiter's deadline. That
+  // holder is fresh rather than dead, so timing out is the correct answer there
+  // — the guarantee bought here is for a lock the waiter found already held.
+  const minimumWaitMs = ownership.staleAfterMs + ownership.pollMs;
+  if (ownership.waitMs < minimumWaitMs) {
     throw new Error(
-      `[conductor] ownership.waitMs (${ownership.waitMs}ms) must be at least ` +
-        `ownership.staleAfterMs (${ownership.staleAfterMs}ms): a shorter wait gives up on a ` +
-        `dead holder's lock before it is stale-eligible, and spends a retry doing it.`,
+      `[conductor] ownership.waitMs (${ownership.waitMs}ms) must exceed ` +
+        `ownership.staleAfterMs (${ownership.staleAfterMs}ms) by at least one poll ` +
+        `interval (${ownership.pollMs}ms), so at least ${minimumWaitMs}ms: a lock becomes ` +
+        `stale-eligible only once its age is STRICTLY past the window, and eligibility is ` +
+        `only observed on a poll. A wait that ends at or before that point gives up on a ` +
+        `dead holder's lock it was about to be allowed to take, and spends a retry doing it.`,
     );
   }
 
