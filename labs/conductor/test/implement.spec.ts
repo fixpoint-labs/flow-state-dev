@@ -72,14 +72,43 @@ describe("the done-condition — which pull requests count", () => {
     // github.com (or `GH_HOST`) instead of the host the checkout came from — a
     // real PR missed, or a same-named one elsewhere settling the task. `gh`
     // documents `-R` as `[HOST/]OWNER/REPO` so this can be said explicitly.
-    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git")).toBe(
+    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git")?.selector).toBe(
       "github.com/fixpoint-labs/flow-state-dev",
     );
-    expect(repoSlugFromRemote("git@github.com:fixpoint-labs/flow-state-dev.git")).toBe(
+    expect(repoSlugFromRemote("git@github.com:fixpoint-labs/flow-state-dev.git")?.selector).toBe(
       "github.com/fixpoint-labs/flow-state-dev",
     );
-    expect(repoSlugFromRemote("git@ghe.acme:owner/repo.git")).toBe("ghe.acme/owner/repo");
-    expect(repoSlugFromRemote("https://ghe.acme:8443/owner/repo")).toBe("ghe.acme/owner/repo");
+    expect(repoSlugFromRemote("git@ghe.acme:owner/repo.git")?.selector).toBe("ghe.acme/owner/repo");
+    expect(repoSlugFromRemote("https://ghe.acme:8443/owner/repo")?.selector).toBe(
+      "ghe.acme/owner/repo",
+    );
+  });
+
+  it("hands the selector and the attribution to their own callers", () => {
+    // These are NOT interchangeable, and shipping them as one string made
+    // passing the wrong one a typo rather than a type error — which is exactly
+    // what happened: `-R` got the host (right) and the attribution check got the
+    // host too (never matches), so every completing pull request was rejected
+    // and a successful run would have burned its whole retry budget.
+    //
+    // Asserted as a round trip through the pair, because the defect lived in the
+    // JOIN between two things that were each individually correct.
+    const repo = repoSlugFromRemote("git@ghe.acme:owner/repo.git");
+    expect(repo?.selector).toBe("ghe.acme/owner/repo");
+    expect(repo?.ownerRepo).toBe("owner/repo");
+
+    const matching = JSON.stringify([
+      {
+        number: 1,
+        state: "OPEN",
+        headRepository: { name: "repo" },
+        headRepositoryOwner: { login: "owner" },
+      },
+    ]);
+    // The attribution field accepts it; the selector field does not. That
+    // asymmetry is the bug, pinned.
+    expect(hasCompletingPr(matching, repo?.ownerRepo)).toBe(true);
+    expect(hasCompletingPr(matching, repo?.selector)).toBe(false);
   });
 
   it("refuses a remote it cannot name, rather than guessing one", () => {

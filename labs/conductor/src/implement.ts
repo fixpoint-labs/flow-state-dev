@@ -95,7 +95,14 @@ export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
  * not serve is left to fail loudly at the call rather than being guessed at
  * here; what must never happen is silently querying a DIFFERENT host.
  */
-export function repoSlugFromRemote(url: string): string | undefined {
+export interface RemoteRepo {
+  /** For `gh -R`, which documents `[HOST/]OWNER/REPO`. */
+  selector: string;
+  /** For attribution: what a PR row's `headRepositoryOwner/headRepository` spells. */
+  ownerRepo: string;
+}
+
+export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
   const trimmed = url.trim().replace(/\.git$/, "");
   // `scheme://[user@]host/owner/name`
   const viaUrl = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/.exec(trimmed);
@@ -110,7 +117,16 @@ export function repoSlugFromRemote(url: string): string | undefined {
   // The last two are owner and name; anything before is a path prefix some
   // hosts allow and `gh` does not, so it is refused rather than dropped.
   if (segments.length > 2) return undefined;
-  return `${host}/${segments[0]}/${segments[1]}`;
+  // **Two values, named, because they are not interchangeable and I shipped them
+  // as if they were.** `-R` wants the host; a PR row's head identity is
+  // `owner/repo` with no host, so comparing the selector against it rejects
+  // every matching pull request and a successful run exhausts its retries.
+  // Returning one string made passing the wrong one a typo rather than a type
+  // error, and the typo is exactly what happened.
+  return {
+    selector: `${host}/${segments[0]}/${segments[1]}`,
+    ownerRepo: `${segments[0]}/${segments[1]}`,
+  };
 }
 
 /**
@@ -151,8 +167,8 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       signal: ctx.ctx.signal,
     },
   );
-  const thisRepo = repoSlugFromRemote(originStdout.trim());
-  if (thisRepo === undefined) return false;
+  const repo = repoSlugFromRemote(originStdout.trim());
+  if (repo === undefined) return false;
 
   const { stdout } = await run(
     "gh",
@@ -166,7 +182,7 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       "--json",
       "number,state,headRepository,headRepositoryOwner",
       "-R",
-      thisRepo,
+      repo.selector,
     ],
     {
       cwd: ctx.workspacePath,
@@ -178,7 +194,7 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       maxBuffer: 4 * 1024 * 1024,
     },
   );
-  return hasCompletingPr(stdout, thisRepo);
+  return hasCompletingPr(stdout, repo.ownerRepo);
 }
 
 /** Build the implement phase. */

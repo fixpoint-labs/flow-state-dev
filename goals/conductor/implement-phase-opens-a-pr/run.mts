@@ -348,11 +348,11 @@ await runGoal(async () => {
                 "--json",
                 "number,state,headRepository,headRepositoryOwner",
                 "-R",
-                repo,
+                repo.selector,
               ],
               { cwd: checkout, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
             );
-            if (!hasCompletingPr(prs, repo.split("/").slice(-2).join("/"))) {
+            if (!hasCompletingPr(prs, repo.ownerRepo)) {
               failures.push(
                 `no open or merged pull request exists for branch "${row.run.branch}"`,
               );
