@@ -110,8 +110,9 @@ describe("provisioning", () => {
   });
 });
 
+const bounds = { waitMs: 2_000, pollMs: 10, staleAfterMs: 60_000 };
+
 describe("obligation B — one live attempt per tree", () => {
-  const bounds = { waitMs: 2_000, pollMs: 10, staleAfterMs: 60_000 };
 
   it("makes a second attempt WAIT rather than proceed or fail", async () => {
     const config = workspace();
@@ -191,5 +192,59 @@ describe("obligation B — one live attempt per tree", () => {
     // nothing to do with what is under test.
     (await waiting).release();
     expect(third).toBe(true);
+  });
+});
+
+describe("obligation B — releasing is as guarded as stealing", () => {
+  it("a displaced holder's release does not remove the replacement's lock", async () => {
+    // The sibling of the steal guard, and reachable *because* of the
+    // construction check rather than in spite of it: a run that overruns
+    // `runTimeoutMs` becomes stale-eligible while its process is still alive.
+    // Another attempt steals the lock and takes the tree; then the original's
+    // release fires. Unguarded, it removes THE REPLACEMENT'S lock, and a third
+    // attempt acquires the path while the replacement is mid-edit.
+    const config = workspace();
+    const path = checkoutPathFor(config, "FIX-1219", "implement");
+
+    const overrun = await acquireCheckout(path, "attempt#1", bounds);
+    // Attempt 2 steals it — the overrunning attempt is still alive.
+    const replacement = await acquireCheckout(path, "attempt#2", {
+      waitMs: 500,
+      pollMs: 10,
+      staleAfterMs: 0,
+    });
+
+    // …and only now does attempt 1 notice it is done.
+    overrun.release();
+
+    // The replacement must still hold the tree. Asserted by a third attempt
+    // NOT getting it — the observable form of "two agents in one checkout".
+    let third = false;
+    const waiting = acquireCheckout(path, "attempt#3", bounds).then((lease) => {
+      third = true;
+      return lease;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(third).toBe(false);
+
+    replacement.release();
+    (await waiting).release();
+    expect(third).toBe(true);
+  });
+
+  it("a holder still releases its own lock", async () => {
+    // The other direction: the guard must not be so tight that nothing is ever
+    // released, which would wedge every checkout after one run.
+    const config = workspace();
+    const path = checkoutPathFor(config, "FIX-1219", "implement");
+
+    const first = await acquireCheckout(path, "attempt#1", bounds);
+    first.release();
+
+    // Free immediately, without waiting out the bound.
+    const started = Date.now();
+    const second = await acquireCheckout(path, "attempt#2", bounds);
+    expect(Date.now() - started).toBeLessThan(500);
+    second.release();
   });
 });

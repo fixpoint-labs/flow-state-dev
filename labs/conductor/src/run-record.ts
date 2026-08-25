@@ -18,18 +18,47 @@
  * `**` and not `*`: a single wildcard matches exactly one segment, so a
  * two-segment topic would resolve nothing on every read and every write.
  *
- * ## Session-scoped, lineage-shared — and why that is safe
+ * ## `user`-scoped, same principal as the board
  *
- * The board is `user`-scoped because a parked row must outlive the coordinator
- * session. This has no such requirement: it is written by the run and read
- * while the lineage is alive, and lineage sharing is exactly what lets the
- * child workstream write what the conductor session reads.
+ * This was session-scoped with lineage sharing, on the reasoning that the run
+ * record has no need to outlive the session that wrote it. That reasoning was
+ * wrong, and the way it was wrong is worth keeping written down.
  *
- * The lifetime difference used to have a sharp edge — a task woken in a NEW
- * coordinator session sees the board row and not this one. That edge is gone
- * because the checkout path is **derived** from the durable task rather than
- * read back from here (see `./workspace`); this row records the path, and is
- * never the authority for it.
+ * `sharedToWorkstream` gives one identity across *a* session's lineage, and a
+ * new coordinator session is a different lineage root. So a `status` call from
+ * a new session returned the board row and `run: null` — measured, not
+ * theorised — losing the failure reason, the harness session, the cost and the
+ * checkout. The board row said the job was done and the record of what it did
+ * was simply absent. **A silent partial answer**, which is the same family of
+ * defect this whole lab exists to remove.
+ *
+ * It reached ordinary use, too: the CLI mints a fresh session per invocation
+ * unless one is named, so the documented `seed` / `wake` / `status` sequence
+ * was three lineages.
+ *
+ * The board is `user`-scoped so a later coordinator session still sees the job
+ * (D-4). This issue's success criterion is that what the run DID is readable
+ * afterwards without opening a transcript. A companion ledger at a different
+ * scope cannot satisfy that, so it sits at the same scope as the board.
+ *
+ * **Retention is a named limit.** Nothing prunes these rows, and at
+ * `user` scope they outlive every session. Acceptable while a conductor runs
+ * one issue at a time; a board driving many issues over a long life needs a
+ * retention policy, which is deliberately not built here.
+ *
+ * ## What this is NOT
+ *
+ * **This is observability, not the resume store.** The session id on a row is a
+ * copy conductor keeps so it can say which session a run was. The association a
+ * resume reads from is a typed top-level field on the task and belongs to
+ * FIX-1179 / FIX-1246. Moving this ledger to `user` scope makes it durable
+ * enough to *look* like a resume key, and it is not one — nothing here should
+ * grow into that, and LAB-139 stays gated on FIX-1246 rather than draining
+ * this.
+ *
+ * The checkout path is still **derived** from the durable task rather than read
+ * back from here (see `./workspace`). This row records a copy. That has not
+ * changed and does not change with the scope: a copy, never a source.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -108,11 +137,12 @@ export type RunRecordState = z.infer<typeof runRecordStateSchema>;
  */
 export const runRecordCollection = defineResourceCollection({
   pattern: `${RUNS}/**`,
-  scope: "session",
-  // The child workstream writes what the conductor session reads. Without this
-  // the child resolves an empty ledger and the row is written where nobody
-  // looks.
-  sharedToWorkstream: true,
+  // Same principal as the board, so a `status` call from any coordinator
+  // session answers with the run row rather than `null`. `sharedToWorkstream`
+  // is not passed and would be rejected here — `user` scope already spans every
+  // session the principal touches, which is a superset of what lineage sharing
+  // gave and is what the child workstream needs too.
+  scope: "user",
   prefetchMode: "lazy",
   stateSchema: runRecordStateSchema,
 });

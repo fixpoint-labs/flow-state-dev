@@ -13,7 +13,7 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { RUNS, runRecordCollection, readRunRow, runTopic } from "./run-record";
+import { readRunRow, runTopic } from "./run-record";
 import type { PhaseRunContext, PhaseSpec } from "./manager";
 
 const run = promisify(execFile);
@@ -87,9 +87,12 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
 
   return {
     phase: "implement",
-    // The prompt reads this issue's own row, so a second attempt can be told
-    // where it is picking up from rather than being handed a bare instruction.
-    readable: { [RUNS]: runRecordCollection },
+    // Empty, and that is not an oversight. The prompt below reads this issue's
+    // run row, but `runs` is the MANAGER's collection — always declared, and
+    // reserved, because a phase re-declaring it would replace the manager's own
+    // and send its bookkeeping somewhere `status` never reads. `readable` is for
+    // collections a phase brings of its own.
+    readable: {},
 
     async buildPrompt(ctx: PhaseRunContext): Promise<string> {
       const previous = await readRunRow(ctx.ctx, runTopic(ctx.issue, ctx.phase));
