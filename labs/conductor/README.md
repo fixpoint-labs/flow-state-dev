@@ -84,9 +84,28 @@ long-lived board over many issues needs a retention policy, which is not built.
 Derived, never read back from anywhere:
 
 ```
-<root>/<tenant>/<user>/<epic>/<issue>--<phase>
-conductor/<tenant>/<user>/<epic>/<issue>-<phase>
+<root>/<tenant>/<user>/<board-collection-id>/<issue>--<phase>
+conductor/<tenant>/<user>/<board-collection-id>/<issue>--<phase>
 ```
+
+`<tenant>` and `<user>` are **encoded**, not validated: `t0` when the request is
+untenanted, `t1h<hex>` when it is not, and `h<hex>` for the user. Those ids belong to
+whoever issued them — `auth0|abc` and `alice@example.com` are ordinary values — so a
+grammar there would reject a valid caller on every attempt and burn the row's retry
+budget on a mismatch no retry can fix. Encoding cannot reject anyone, and it cannot
+map two callers onto one directory.
+
+`<board-collection-id>`, `<issue>` and `<phase>` are identifiers *we* issue, so those
+are validated instead: letters and digits separated by single `-` or `_`. Two things
+the grammar buys, and both were bugs first. It forbids `--`, which is what makes `--`
+a frame no component can forge — otherwise issue `a--b` + phase `c` and issue `a` +
+phase `b--c` derive one directory and one branch. And it forbids dots, because this
+string is a git ref as well as a path: `git check-ref-format` rejects a name ending in
+`.` or `.lock`, so a dot-bearing phase would be accepted here and then fail at every
+checkout creation.
+
+The rule behind both halves, stated once in `src/workspace.ts`: **a derived identity
+must be injective over its components, and safe for every consumer of the string.**
 
 Derived because the board outlives the session that filed a row — a task woken in a new
 coordinator session must resolve the same directory, or the retry silently starts from nothing.

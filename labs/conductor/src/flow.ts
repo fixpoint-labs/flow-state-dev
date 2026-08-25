@@ -58,6 +58,8 @@ import { implementPhase } from "./implement";
 import {
   assertSafeSegment,
   conductorTaskId,
+  encodeSegment,
+  joinIdentity,
   type WorkspaceConfig,
 } from "./workspace";
 
@@ -113,7 +115,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // partitions routing (it is hashed into the derived workstream session id),
   // the collection identity partitions storage, and neither substitutes for the
   // other.
-  const boardId = `conductor-${tenant}-${epic}`;
+  const boardId = joinIdentity("conductor", encodeSegment(tenant), assertSafeSegment("epic", epic));
   // **The tenant is in the collection identity, not just the epic.**
   //
   // User scope is keyed on the BARE user id — `createExecutionContext` passes
@@ -132,7 +134,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // **This partitions the run record too, for free.** The run topic leads with
   // this id, so putting the tenant here puts it in both keys — one change, one
   // rule, both stores.
-  const collectionId = `conductor-tasks-${assertSafeSegment("tenant", tenant)}-${epic}`;
+  const collectionId = joinIdentity("conductor-tasks", encodeSegment(tenant), assertSafeSegment("epic", epic));
 
   const tasks = defineTaskCollection({
     id: collectionId,

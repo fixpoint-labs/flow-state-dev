@@ -68,20 +68,98 @@ export interface Checkout {
 }
 
 /**
- * A segment that is safe to put in a path and in a branch name.
+ * **The identity rule, stated once because it has been re-learned four times.**
  *
- * Anchored, no dots-only values, no separators — so no input can climb out of
- * the root, and `..` can never appear. Rejects rather than sanitizes: silently
- * mapping two distinct issues onto one segment would give two runs one checkout,
- * which is obligation B's harm arriving through the door meant to prevent it.
+ * Every string this module derives — a task id, a collection id, a board id, a
+ * directory, a branch — is built from components. Two properties govern all of
+ * them, and each was violated in a different place by a fix that was written
+ * over the cases in front of it instead of over the rule:
+ *
+ * 1. **Injective over its components.** No redistribution of characters between
+ *    components may produce the same string. A delimiter that a component can
+ *    itself contain is not a frame, it is a suggestion: with a `-` join,
+ *    `(tenant "a-b", epic "c")` and `(tenant "a", epic "b-c")` both spell
+ *    `conductor-tasks-a-b-c`, so two tenants share one claim pool. With a `--`
+ *    join over components that may contain `--`, `(issue "a--b", phase "c")`
+ *    and `(issue "a", phase "b--c")` share one task id, one checkout and one
+ *    branch — obligation B's harm arriving through the door built to stop it.
+ *    Both were measured, not reasoned about.
+ *
+ * 2. **Safe for every consumer of the string, not just the first one.** These
+ *    segments become filesystem paths AND git refs. `git check-ref-format`
+ *    rejects a name ending in `.` or `.lock`; the old grammar accepted both.
+ *    An accepted-then-rejected value is worse than a rejected one: the row is
+ *    claimed, the checkout fails to create, the attempt is charged, and the
+ *    whole retry budget is spent on a configuration error no retry can fix.
+ *
+ * Two mechanisms serve the one rule, chosen by who owns the identifier:
+ *
+ * - Identifiers **we** issue (epics, issue keys, phase names) are *validated*
+ *   against {@link OWNED_SEGMENT}. The grammar is ours to set, a malformed
+ *   issue key is a real signal, and the value stays readable in a path.
+ * - Identifiers **someone else** issues (user ids, tenant ids) are *encoded*
+ *   by {@link encodeSegment}. See its note for why a grammar is the wrong
+ *   instrument there.
+ *
+ * Both outputs are free of {@link IDENTITY_DELIMITER}, which is what makes the
+ * join injective — the frame is a sequence no component can forge.
  */
-const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const OWNED_SEGMENT = /^[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*$/;
+
+/**
+ * The frame. Never a single `-`: our own issue keys contain those.
+ *
+ * `git check-ref-format` accepts `--` inside a ref, and so does every
+ * filesystem — verified, not assumed.
+ */
+const IDENTITY_DELIMITER = "--";
 
 export function assertSafeSegment(label: string, value: string): string {
-  if (!SAFE_SEGMENT.test(value) || value.includes("..")) {
+  if (!OWNED_SEGMENT.test(value)) {
     throw new Error(
-      `[conductor] ${label} "${value}" is not a usable path segment — ` +
-        `letters, digits, and \`.\`/\`_\`/\`-\` after a leading alphanumeric, and no "..".`,
+      `[conductor] ${label} "${value}" is not a usable identity segment — ` +
+        `letters and digits, separated by single \`-\` or \`_\`. No dots (a git ref ` +
+        `may not end in "." or ".lock"), no "${IDENTITY_DELIMITER}" (it is the ` +
+        `component frame), and nothing that could climb out of a directory.`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Join identity components into one string, injectively.
+ *
+ * Every component reaching here is already frame-free — an owned one by
+ * grammar, an opaque one by encoding — so the join is reversible and two
+ * distinct component tuples can never collide. **Use this for every derived
+ * identity.** A literal prefix is an ordinary component: it must be frame-free
+ * too, which is why `conductor-tasks` is spelled with a single dash.
+ */
+export function joinIdentity(...parts: string[]): string {
+  return parts.join(IDENTITY_DELIMITER);
+}
+
+/**
+ * A string that is used as ONE path segment or ref component, whole.
+ *
+ * The rule above has two roles, and conflating them is what made the first
+ * attempt at this reject its own output. A **component** is joined with others,
+ * so it must be frame-free ({@link assertSafeSegment}). A **derived identity**
+ * is the finished string — a board collection id, say — and it lands between
+ * `/` separators rather than inside a join, so it may legitimately contain the
+ * frame. What it may still never do is anything a path or a git ref forbids.
+ *
+ * `joinIdentity`'s output satisfies this by construction; this exists for the
+ * identities that arrive from elsewhere already built.
+ */
+const DERIVED_IDENTITY = /^[A-Za-z0-9]+(?:[_-]+[A-Za-z0-9]+)*$/;
+
+export function assertDerivedIdentity(label: string, value: string): string {
+  if (!DERIVED_IDENTITY.test(value)) {
+    throw new Error(
+      `[conductor] ${label} "${value}" is not a usable identity segment — ` +
+        `letters and digits, separated by \`-\` or \`_\`. No dots (a git ref may not ` +
+        `end in "." or ".lock"), and nothing that could climb out of a directory.`,
     );
   }
   return value;
@@ -116,11 +194,46 @@ export interface RunPrincipal {
  */
 function principalSegments(principal: RunPrincipal): string[] {
   return [
-    // A literal rather than an empty segment on a single-tenant deployment, so
-    // the depth of the tree never depends on configuration.
-    assertSafeSegment("tenant", principal.tenantId ?? "single-tenant"),
-    assertSafeSegment("user", principal.userId),
+    // Tenant PRESENCE is tagged separately from tenant VALUE, so an untenanted
+    // request and a tenant that happens to be named like the placeholder can
+    // never land in one directory.
+    principal.tenantId === undefined ? "t0" : `t1${encodeSegment(principal.tenantId)}`,
+    encodeSegment(principal.userId),
   ];
+}
+
+/**
+ * Encode an identifier into one path segment. **Encode, never validate.**
+ *
+ * The framework's user and tenant ids are unrestricted strings — `auth0|abc`
+ * and `alice@example.com` are ordinary values, and neither matches a filesystem
+ * grammar. Validating them would fail every attempt during workspace derivation
+ * and burn the retry budget on a configuration mismatch the run cannot fix.
+ *
+ * Worse, a grammar is a rule someone else's identifier space never agreed to,
+ * and enforcing it is a list that is never finished: separators, `..`, trailing
+ * dots (Windows strips them, so `acme` and `acme.` are one directory), reserved
+ * device names, case folding. Encoding removes the list — the output is
+ * injective, so two distinct ids can never share a directory, and its alphabet
+ * contains nothing any filesystem treats specially.
+ *
+ * Hex of the UTF-8 bytes behind a literal `h`: `h[0-9a-f]*`, which cannot spell
+ * a reserved device name, cannot end in a dot, and cannot contain a separator
+ * or the identity frame.
+ *
+ * **The prefix is load-bearing, not decoration.** Bare hex of an empty id is
+ * the empty string, and an empty segment is silently dropped by `join` and
+ * outright rejected by `git check-ref-format` — so an empty user id produced a
+ * branch that could never be created. That was a note in this comment telling
+ * callers to compensate; it is now a property of the output, because a rule
+ * every caller must remember is a rule one caller will forget.
+ *
+ * **The issue and phase segments stay validated.** Those identifiers are ours,
+ * the grammar is one we set, and rejecting a malformed issue key is a real
+ * signal rather than an imposition.
+ */
+export function encodeSegment(value: string): string {
+  return `h${Buffer.from(value, "utf8").toString("hex")}`;
 }
 
 /**
@@ -157,13 +270,16 @@ export interface RunLocation {
 function locationSegments(location: RunLocation): string[] {
   return [
     ...principalSegments(location.principal),
-    assertSafeSegment("epic", location.epic),
+    // The BOARD COLLECTION ID, not a bare epic name — it arrives already
+    // joined, so it is checked as a finished identity rather than as a
+    // component. See `assertDerivedIdentity`.
+    assertDerivedIdentity("epic", location.epic),
   ];
 }
 
-/** The issue-phase leaf, shared by the path and the branch. */
+/** The issue-phase leaf, shared by the path, the branch, and the board task id. */
 function issuePhaseSegment(location: RunLocation): string {
-  return `${assertSafeSegment("issue", location.issue)}--${assertSafeSegment("phase", location.phase)}`;
+  return conductorTaskId(location.issue, location.phase);
 }
 
 /**
@@ -184,7 +300,7 @@ export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation):
  * a traversal there is the identical class of problem it would be in a path.
  */
 export function conductorTaskId(issue: string, phase: string): string {
-  return `${assertSafeSegment("issue", issue)}--${assertSafeSegment("phase", phase)}`;
+  return joinIdentity(assertSafeSegment("issue", issue), assertSafeSegment("phase", phase));
 }
 
 /**
@@ -198,7 +314,11 @@ export function conductorTaskId(issue: string, phase: string): string {
  */
 export function branchFor(location: RunLocation): string {
   const scope = locationSegments(location).join("/");
-  return `conductor/${scope}/${assertSafeSegment("issue", location.issue)}-${assertSafeSegment("phase", location.phase)}`;
+  // The same leaf the checkout path uses. It was spelled with a SINGLE dash
+  // here while the path used `--`, so the branch aliased on inputs the path
+  // kept apart — the identity rule broken in one of the two places that had to
+  // agree, which is the whole reason the leaf is now derived in one function.
+  return `conductor/${scope}/${issuePhaseSegment(location)}`;
 }
 
 /** The lock file guarding one checkout. Beside it, not inside — see `acquire`. */
