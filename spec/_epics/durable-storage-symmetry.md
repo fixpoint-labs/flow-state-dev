@@ -86,6 +86,17 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    root: **resources have a lifecycle, scope records do not.** A session always exists, so
    absent-vs-deleted never arises there.
 
+   **The tombstone row is incomplete for version `0` — a known hole in this rule, not a second
+   rule.** The row is true for a writer holding a live version, and that writer is already
+   refused. It is false for version `0`: a context that loaded a key *before it existed* keeps
+   container version `0`, `runResourceCAS` sends it as the `mutate` intent's `expectedVersion`
+   (`resource-cas.ts:219-220`), and `checkWriteVersion` accepts `0` against a tombstone as
+   create-if-absent (`resource-state-predicate.ts:147-149`) — so a write from a context that
+   **never observed** the resource revives it after a delete. The product bet is unchanged —
+   deleted stays deleted — it is simply not enforced on that one path. It ships on `main`
+   today through `updateState`, none of FIX-1154's new verbs cause it, and **FIX-1258** owns
+   closing it.
+
    **Constrains:** FIX-1154's "shared driver seam" question resolves to *state the divergence
    once*, not *reconcile the drivers*; no issue in this set may propose unifying them. **The
    eight-row table stays in `resource-cas.ts`'s header** — the gap is a missing guard at the
@@ -197,7 +208,7 @@ asymmetries remain deliberate and where each one is written down.**
 | Asymmetry between the two primitives | After the set lands | Where its reason lives |
 |---|---|---|
 | Two CAS drivers — `cas.ts` vs `resource-cas.ts` | **Survives — deliberate** (theme 1) | The eight-row policy table, staying in `resource-cas.ts`'s header; **FIX-1154** adds the missing guard on `createScopeStateOps` / `createScopePersist` |
-| `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, same lifecycle root | Already in `state-and-scopes.md` → "CAS and Concurrency" |
+| `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, same lifecycle root. **FIX-1258** narrows *which* absent states a version-`0` write may create into — a tombstone is one of them today, which is the hole in theme 1's tombstone row | Already in `state-and-scopes.md` → "CAS and Concurrency"; the hole itself in theme 1 |
 | Resource-only surface — content, `client`, `reactTo`, `edges`, collections | **Survives — not an asymmetry.** No state analogue exists to be symmetric with | FIX-1154's scope boundaries |
 | Mutation surfaces differ in several ways — verbs one primitive lacks, and differences in shape among the verbs they nominally share | **Increment and append close** (**FIX-1154**, Tier 1). The remainder is **mapped, not closed** — each difference recorded as closed, as deliberate asymmetry with a reason, or as deferred | **FIX-1154's spec.** The epic states the shape of the answer; the inventory is the child's deliverable |
 | Return contract — `Promise<boolean>` vs `Promise<void>` | **Survives — deliberate.** Scope state's `boolean` exists because its `state_change` notification gate needs it; resources gate `resource_change` on an internally verified no-op. FIX-1154 closes the **increment/append** gap only | Settled at epic altitude — §5, resolved |
@@ -239,15 +250,16 @@ is a real outcome to sign off or reject, not a gap. It is put as a decision in �
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — increment and append close on the resource path (`ResourceRef.incState` / `pushState`, Tier 1), and the **remaining differences are mapped in its spec**: each one closed, deliberate with a reason, or deferred | spec | — | — | Todo |
-| [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | — | Todo |
+| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — increment and append close on the resource path (`ResourceRef.incState` / `pushState`, Tier 1), and the **remaining differences are mapped in its spec**: each one closed, deliberate with a reason, or deferred | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review |
+| [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) | In Review |
+| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo |
 | [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) | Cross-flow validation compares exact refs, so overlapping collection keyspaces slip through — the scope excluded from FIX-1158, filed separately | **bug** | — | — | Backlog *(blocked by FIX-1158; not in the active set)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state adds local serialization across the cross-context boundary while **retaining store-level CAS**; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | — | Backlog *(not in the active set)* |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
 *A bug carries no spec PR by design — it routes straight to implementation
 ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec").
-An empty Spec PR cell on the `bug` row is correct, not a gap.*
+An empty Spec PR cell on a `bug` row is correct, not a gap.*
 
 *FIX-1153 is kept in the index rather than dropped. Its cancellation and the closed PR are the
 epic's most expensive finding — see* Rejected framings *in §2 — and a reader who cannot see it
@@ -320,3 +332,12 @@ here has no way to know the framing was tried.*
   the epic states only the *kinds* of divergence. **The reason is the lesson — the epic kept
   asserting an inventory it could not keep accurate.** An epic states the shape of an answer; a
   derivation that must be re-derived to stay true belongs to the child that owns the work.
+- **New child FIX-1258; theme 1's tombstone row qualified (2026-08-25)** — a second uncontested
+  factual correction to a converged document, outside the two-round budget for the same reason
+  as the entry above. FIX-1154's spec review reproduced a revival on the real path: a context
+  that never observed a key keeps version `0`, and `checkWriteVersion` accepts `0` against a
+  tombstone, so a never-observed write undoes a delete. Recorded as a **known hole in an
+  existing rule** rather than a new rule — the bet (deleted stays deleted) is unchanged, and it
+  ships on `main` today independently of FIX-1154's verbs. Filed as a `direct`-route bug and
+  added to §4; §3's `0`-semantics row now points at it, because that row is where a reader
+  would otherwise conclude the version-`0` behaviour was fully deliberate.
