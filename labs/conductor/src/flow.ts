@@ -152,6 +152,17 @@ export function conductorFlow(options: ConductorFlowOptions) {
     outputSchema: z.object({ taskId: z.string() }),
     uses: [board.capability],
     execute: async (input, ctx) => {
+      // One board, one phase. Refused here so the mistake surfaces at the call
+      // that made it rather than as a row that runs the wrong phase's prompt —
+      // the manager refuses it too, since a task can reach the board by any
+      // route that can write a row.
+      if (input.phase !== phase.phase) {
+        throw new Error(
+          `[conductor] this board runs the "${phase.phase}" phase; refusing to file a ` +
+            `"${input.phase}" row. One board per phase — build a second conductor for it.`,
+        );
+      }
+
       const taskId = conductorTaskId(input.issue, input.phase);
       const existing = await ctx.cap[boardId].getTask(taskId);
       if (existing !== undefined) {

@@ -586,3 +586,77 @@ describe("PROBE — concurrency under detached dispatch", () => {
     await new Promise((r) => setTimeout(r, 300));
   });
 });
+
+describe("the flow — one board, one phase", () => {
+  it("refuses to file a row for a phase this board does not run", async () => {
+    // Without this the caller's phase names the checkout, the branch and the run
+    // record while the CONFIGURED phase supplies the prompt and the
+    // done-condition — so a `review` row would be handed implement's
+    // instructions, judged by implement's completion check, and settled as a
+    // completed review.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => true,
+    });
+
+    // The action's error is wrapped by `runAction`, so the assertion is on the
+    // message surviving into the envelope rather than on the envelope's shape.
+    await expect(live.call("seed", { issue: ISSUE, phase: "review" })).rejects.toThrow(
+      /review/,
+    );
+
+    // Nothing was filed and nothing ran.
+    const { rows } = await live.call<{ rows: StatusRow[] }>("status", {});
+    expect(rows).toHaveLength(0);
+    expect(seen.prompts).toHaveLength(0);
+  });
+
+  it("refuses to RUN a row whose phase changed under it", async () => {
+    // The seed guard is the friendly one; this is the load-bearing one. A task
+    // can reach this board by any route that can write a row, so the manager
+    // checks too — and this stages that by rewriting the filed row's payload
+    // out of band, from inside the done-condition, exactly where a row that
+    // "arrived another way" is indistinguishable from one that was edited.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      maxAttempts: 3,
+      isDone: async (run) => {
+        const ledger = (
+          run.ctx as unknown as {
+            resources: Record<
+              string,
+              {
+                getOptional(k: string): Promise<{ state: unknown } | undefined>;
+                upsert(k: string, u: unknown): Promise<unknown>;
+              }
+            >;
+          }
+        ).resources[COLLECTION_ID];
+        const taskId = `${ISSUE}--${PHASE}`;
+        const row = (await ledger.getOptional(taskId))?.state as { input?: unknown };
+        await ledger.upsert(taskId, {
+          ...row,
+          input: { issue: ISSUE, phase: "review" },
+        });
+        // Fail this attempt so the row re-pends and a second one claims it.
+        return false;
+      },
+    });
+
+    await seedAndDrain(live);
+    expect(seen.prompts).toHaveLength(1);
+
+    const after = await wakeAndSettle(live);
+
+    // The second attempt refused before building a prompt or touching the tree.
+    //
+    // Asserted on the board's own `feedback` — captured by `fail()` when it
+    // re-pended the row — rather than on the run record. The refusal happens
+    // before the row is opened, so there is deliberately no run-record identity
+    // to fence a write against yet, and the board is the honest witness.
+    expect(seen.prompts).toHaveLength(1);
+    expect(after.feedback).toMatch(/configured for "implement"/);
+  });
+});
