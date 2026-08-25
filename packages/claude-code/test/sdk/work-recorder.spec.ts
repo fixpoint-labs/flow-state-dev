@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { resolve as resolvePath } from "node:path";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve as resolvePath } from "node:path";
 import {
   canonicalFilePathKey,
   createWorkRecorder,
@@ -1000,5 +1002,66 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
 
     expect(files.writes).toHaveLength(0);
     expect(plan.writes).toHaveLength(0);
+  });
+});
+
+/**
+ * `createWorkRecorder` is exported, so it is a public door in its own right —
+ * and the working-directory rule has to hold at every door, not only the one
+ * the agent walks through.
+ */
+describe("createWorkRecorder — normalizes cwd at its own boundary", () => {
+  it("resolves a symlinked cwd to the physical path", async () => {
+    // The bug this closes is the highest-value one on this feature: a spawned
+    // process reports the PHYSICAL directory, so a recorder keyed against the
+    // link spelling sees every ordinary write as a divergence, writes a gap
+    // instead of settling the row, and leaves the write permanently `pending`.
+    // The agent path normalized; a direct caller did not, and got it back.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "rec-symlink-")));
+    const real = join(root, "real");
+    const link = join(root, "link");
+    mkdirSync(real);
+    symlinkSync(real, link);
+
+    const files = fakeCollection();
+    const recorder = createWorkRecorder({
+      runId: RUN,
+      files,
+      plan: fakeCollection(),
+      gaps: fakeCollection(),
+      cwd: link,
+      onSkipped: () => {},
+      now: () => 1_700_000_000_000,
+    });
+    recorder.observe(fileCall("src/a.ts"));
+    await recorder.stop();
+
+    const keys = [...files.rows.keys()];
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toContain(`${real}/src/a.ts`);
+    expect(keys[0]).not.toContain(`${link}/src/a.ts`);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("treats an empty cwd as unset", async () => {
+    // `""` is not nullish, so it needs an explicit branch somewhere or the key
+    // silently changes shape. Two layers now agree on it — the constructor
+    // normalizes and `canonicalFilePathKey` keeps its own guard — so this
+    // stays green if either is removed. That is deliberate belt-and-braces,
+    // not redundant coverage: the helper is exported and reachable directly.
+    const files = fakeCollection();
+    const recorder = createWorkRecorder({
+      runId: RUN,
+      files,
+      plan: fakeCollection(),
+      gaps: fakeCollection(),
+      cwd: "",
+      onSkipped: () => {},
+      now: () => 1_700_000_000_000,
+    });
+    recorder.observe(fileCall("src/a.ts"));
+    await recorder.stop();
+
+    expect([...files.rows.keys()][0]).toContain(resolvePath("src/a.ts"));
   });
 });

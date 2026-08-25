@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { mkdir as mkdirAsync } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
@@ -1413,7 +1414,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
   function segment(value: string | undefined): string {
     return value === undefined
       ? "0"
-      : `1${Buffer.from(value, "utf8").toString("hex")}`;
+      : `1${Buffer.from(value, "utf16le").toString("hex")}`;
   }
 
   function checkoutFor(tenantId: string | undefined, key: string): string {
@@ -1452,6 +1453,17 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     "acme..",
     "Acme",
     "\\\\server\\share",
+    // Lone surrogates and the replacement character. A JS string is a sequence
+    // of UTF-16 code units, and these are legal strings JSON will carry — but
+    // they are not valid Unicode, so any UTF-8 encoder maps all three onto the
+    // replacement character's bytes and collapses them into one segment.
+    "\ud800",
+    "\ud801",
+    "\udfff",
+    "�",
+    // A well-formed surrogate PAIR must survive too — the fix must not buy
+    // injectivity by mangling ordinary astral characters.
+    "😀",
   ];
 
   it("runs the throwaway-directory example the docs lead with", async () => {
@@ -1459,6 +1471,8 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     const root = mkdtempSync(join(tmpdir(), "cwd-docs-"));
     const agent = claudeCodeAgent({
       cwd: () => mkdtempSync(join(root, "run-")),
+      // Part of the documented example, not a test detail — see below.
+      detached: true,
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
     });
 
@@ -1466,6 +1480,44 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
 
     expect(error).toBeNull();
     expect(spy.mock.calls[0][0].options?.cwd).toMatch(/\/run-[^/]+$/);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("does not resume a prior conversation into a fresh throwaway directory", async () => {
+    // Why `detached: true` is in the example above rather than beside it. By
+    // default the agent persists `sdkSessionId` and hands it back as the SDK's
+    // `resume` on the next run in the same session. Pair that with a per-run
+    // directory and run two resumes a conversation created in a tree that no
+    // longer exists — the agent picks up mid-task in an empty checkout.
+    // The prior run's handle is SEEDED rather than produced by a first call:
+    // two `testBlock` calls each build their own context, so state never
+    // carries between them and a two-call version of this test passes whether
+    // or not `detached` is set — it cannot fail, so it proves nothing.
+    const spy = vi.fn();
+    const root = mkdtempSync(join(tmpdir(), "cwd-resume-"));
+    const throwaway = {
+      cwd: () => mkdtempSync(join(root, "run-")),
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+    };
+
+    // Without `detached`, the seeded handle is forwarded — the run is pointed
+    // at a brand-new empty directory AND told to continue a conversation that
+    // belongs to a different one.
+    await testBlock(claudeCodeAgent(throwaway), {
+      input: { prompt: "go" },
+      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+    });
+    expect(spy.mock.calls[0][0].options?.resume).toBe("sess_prior");
+
+    // With it, the session provider is not consulted at all, so a fresh
+    // directory always gets a fresh conversation.
+    spy.mockClear();
+    await testBlock(claudeCodeAgent({ ...throwaway, detached: true }), {
+      input: { prompt: "go" },
+      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+    });
+    expect(spy.mock.calls[0][0].options).not.toHaveProperty("resume");
+
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -1480,13 +1532,45 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
 
     // `testBlock` pins the session to "test-session" and sets no tenant, so the
     // expectation is a LITERAL — an expectation derived from the implementation
-    // agrees with it whatever it does. `0` is the absent-tenant tag.
+    // agrees with it whatever it does. `0` is the absent-tenant tag; the rest
+    // is UTF-16 code units, two bytes each.
     const { error } = await testBlock(agent, { input: { prompt: "go" } });
 
     expect(error).toBeNull();
     expect(spy.mock.calls[0][0].options?.cwd).toBe(
-      "/var/agent-checkouts/0/1746573742d73657373696f6e",
+      "/var/agent-checkouts/0/174006500730074002d00730065007300730069006f006e00",
     );
+  });
+
+  it("provisions the directory before the SDK is handed it", async () => {
+    // The derivation above is pure, so nothing in it creates the checkout —
+    // and the SDK spawns a process into that path, which fails ENOENT if it is
+    // not there. The documented resolver therefore mkdirs before returning;
+    // this pins that the directory EXISTS at the moment the SDK sees it,
+    // rather than that mkdir was called.
+    const root = mkdtempSync(join(tmpdir(), "cwd-provision-"));
+    const seen: { cwd?: string; existed?: boolean } = {};
+    const agent = claudeCodeAgent({
+      cwd: async (_input, ctx) => {
+        const dir = join(root, segment(ctx.session.identity.tenantId), segment(ctx.session.identity.id));
+        await mkdirAsync(dir, { recursive: true });
+        return dir;
+      },
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], (call) => {
+        seen.cwd = call.options?.cwd;
+        seen.existed = existsSync(call.options?.cwd ?? "");
+      }),
+    });
+
+    const { error } = await testBlock(agent, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(seen.existed).toBe(true);
+
+    // `recursive` is what makes REUSE work rather than throwing on the second
+    // run — the whole point of a stable checkout.
+    await expect(mkdirAsync(seen.cwd!, { recursive: true })).resolves.not.toThrow();
+    rmSync(root, { recursive: true, force: true });
   });
 
   it("keeps an absent tenant apart from one named like the old fallback", () => {
@@ -1533,9 +1617,40 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
   it("is injective — no two distinct values share a directory", () => {
     // The property "reject, don't strip" was protecting. Injectivity gives it
     // outright: two runs can never share a checkout by accident.
+    //
+    // Asserted as a PROPERTY over the corpus rather than as the cases named so
+    // far, because that is the difference this test exists to hold. Three
+    // rounds of findings each closed the instance in front of them — a
+    // separator, a Windows alias, an absent tenant — and the next instance kept
+    // arriving. The corpus carries lone surrogates now; the assertion is
+    // unchanged, which is the point.
     const values = [...HOSTILE, "alice", "bob", "tenant", "tenant.", "a", "a."];
     const dirs = values.map((v) => checkoutFor(undefined, v));
     expect(new Set(dirs).size).toBe(values.length);
+
+    // The same property on the tenant half, and across the pair — a tuple is
+    // what actually addresses a checkout.
+    const pairs = values.flatMap((t) => values.map((k) => checkoutFor(t, k)));
+    expect(new Set(pairs).size).toBe(values.length * values.length);
+  });
+
+  it("survives what UTF-8 cannot represent", () => {
+    // The finding that ended the hex-of-UTF-8 encoder. `Buffer.from` with utf8
+    // substitutes the replacement character for a lone surrogate, so these four
+    // distinct strings encoded identically — and a session id arrives as JSON,
+    // which carries all four happily. Three sessions, one working tree.
+    const indistinguishableUnderUtf8 = ["\ud800", "\ud801", "\udfff", "�"];
+    const utf8 = indistinguishableUnderUtf8.map((v) =>
+      Buffer.from(v, "utf8").toString("hex"),
+    );
+    expect(new Set(utf8).size).toBe(1); // the bug, pinned
+
+    const encoded = indistinguishableUnderUtf8.map((v) => segment(v));
+    expect(new Set(encoded).size).toBe(indistinguishableUnderUtf8.length);
+
+    // And an ordinary astral character still round-trips, so injectivity was
+    // not bought by mangling valid input.
+    expect(Buffer.from(segment("😀").slice(1), "hex").toString("utf16le")).toBe("😀");
   });
 
   it("keeps two tenants sharing one session id apart", () => {

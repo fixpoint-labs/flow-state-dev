@@ -163,12 +163,25 @@ const CHECKOUT_ROOT = "/var/agent-checkouts";
 
 const agent = claudeCodeAgent({
   cwd: () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
+  // A fresh directory per run only makes sense with a fresh conversation.
+  // See below.
+  detached: true,
 });
 ```
 
 It is a function rather than a string on purpose. A flow is built once and then
 serves many runs, so a fixed directory would be the wrong shape — this resolves
 per run, just before the agent starts, and can return a promise as it does here.
+
+**A throwaway directory and a resumed conversation do not go together**, which
+is why `detached: true` is part of this example rather than an aside. By
+default the agent keeps conversation state and hands the SDK a `resume` handle
+from the previous run in the same session. Pair that with `mkdtemp` and the
+second invocation resumes a conversation that was created in a directory that
+no longer has anything to do with the tree it now runs in — the agent picks up
+mid-task in an empty checkout. Either start fresh each run, as here, or keep a
+stable directory when you want resume. A per-run directory with resume left on
+is the combination that surprises people.
 
 Two things follow the directory. The run's file tools address relative paths
 inside it. And the record of what the run touched, if you have `recordWork` on
@@ -188,21 +201,27 @@ the first stopped. That means building the path out of a value, and it is worth
 being careful about which value and how.
 
 ```ts
+import { mkdir } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 function segment(value: string | undefined): string {
-  // Encode, don't validate. A grammar is a list of things to remember —
-  // separators, `..`, trailing dots, reserved device names, case folding — and
-  // the list is never finished. Hex is one segment, injective, and contains
-  // nothing any filesystem treats specially.
+  // Encode, don't validate — and encode the string's OWN data model.
   //
-  // The leading tag carries two things hex alone cannot. Absence is `0` and
-  // every present value is `1…`, so "no tenant" and a tenant named `default`
-  // stay different directories. And it keeps the segment non-empty — hex of
-  // `""` is `""`, which `join` drops.
+  // A JS string is a sequence of UTF-16 code units, so encoding those is a
+  // bijection: every string has exactly one encoding, and no two strings share
+  // one. UTF-8 is not, because it is a *transcoding* with no representation
+  // for a lone surrogate — `Buffer.from("\ud800", "utf8")` yields the
+  // replacement character, so "\ud800", "\ud801" and a literal "�" all
+  // collapse onto one segment, and JSON will happily carry any of them.
+  //
+  // This is terminal rather than the next iteration: there is no JavaScript
+  // string left that the encoder cannot represent distinctly.
+  //
+  // The leading tag keeps absence distinct from any value, and keeps every
+  // segment non-empty — hex of `""` is `""`, which `join` drops.
   return value === undefined
     ? "0"
-    : `1${Buffer.from(value, "utf8").toString("hex")}`;
+    : `1${Buffer.from(value, "utf16le").toString("hex")}`;
 }
 
 function checkoutFor(tenantId: string | undefined, key: string): string {
@@ -217,12 +236,24 @@ function checkoutFor(tenantId: string | undefined, key: string): string {
 }
 ```
 
-Wire it to the option with both halves of the identity:
+`checkoutFor` derives a path and nothing more — deriving is pure and testable,
+provisioning is the resolver's job. Wire both halves of the identity in, and
+create the directory before handing it over:
 
 ```ts
 const agent = claudeCodeAgent({
-  cwd: (_input, ctx) =>
-    checkoutFor(ctx.session.identity.tenantId, ctx.session.identity.id),
+  cwd: async (_input, ctx) => {
+    const dir = checkoutFor(
+      ctx.session.identity.tenantId,
+      ctx.session.identity.id,
+    );
+    // The SDK spawns a process into this directory, so it has to exist —
+    // Node fails the spawn with ENOENT otherwise. `recursive` is what makes
+    // reuse work: the second run finds the first run's tree instead of
+    // erroring on a directory that is already there.
+    await mkdir(dir, { recursive: true });
+    return dir;
+  },
 });
 ```
 
@@ -237,6 +268,23 @@ value two different tenants could hold.
 An encoded segment sidesteps the whole list. It is **injective** — two distinct
 ids never collide, which is what stops two runs sharing a checkout — and its
 output alphabet contains nothing any filesystem treats specially.
+
+**Encode the code units, not the UTF-8 bytes**, or injectivity quietly fails at
+the one place it matters. A JavaScript string is a sequence of UTF-16 code
+units, and not every such sequence is valid Unicode: a *lone surrogate* like
+`"\ud800"` is a perfectly legal JS string that JSON will carry to your server.
+UTF-8 has no representation for one, so `Buffer.from(value, "utf8")` silently
+substitutes the replacement character, and `"\ud800"`, `"\ud801"` and a literal
+`"�"` all encode identically. Three distinct session ids, one working tree.
+Encoding the code units themselves has no such gap, because it encodes what the
+string actually is rather than a translation of it.
+
+That distinction is the reason to stop here rather than patch again. Each
+earlier round closed the case in front of it — separators, then Windows
+aliases, then an absent tenant — and the next case kept arriving. Encoding a
+string's own data model is not one more case: it is the point past which no
+JavaScript string can be misrepresented, so the list is finished rather than
+shorter.
 
 Give each value its own segment; concatenating them into one string brings back
 the ambiguity the tenant is there to remove.

@@ -14,7 +14,6 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { realpathSync } from "node:fs";
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -31,6 +30,7 @@ import {
 } from "./translate";
 import {
   createWorkRecorder,
+  normalizeWorkingDirectory,
   type UpsertableCollection,
   type WorkRecorder,
 } from "./work-recorder";
@@ -202,20 +202,25 @@ export interface ClaudeCodeAgentOptions {
    *   // A fresh directory per run, created by the server. No caller input
    *   // reaches the path.
    *   cwd: () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
+   *   // A per-run directory needs a per-run conversation: by default the SDK
+   *   // is handed a `resume` handle from the last run in this session, which
+   *   // would resume it inside a tree that has nothing to do with it.
+   *   detached: true,
    * })
    * ```
    *
    * **Reusing a directory across runs is the harder case**, and it is where the
-   * sharp edges are. Deriving the path from something stable means deriving it
-   * from a value, and the rule is **encode, never validate**:
+   * sharp edges are. This is the example to copy — the guard is part of it
+   * rather than a footnote, because a snippet is what actually gets pasted:
    *
    * ```ts
+   * import { mkdir } from "node:fs/promises";
    * import { isAbsolute, join, relative } from "node:path";
    *
    * function segment(value: string | undefined): string {
    *   return value === undefined
    *     ? "0"
-   *     : `1${Buffer.from(value, "utf8").toString("hex")}`;
+   *     : `1${Buffer.from(value, "utf16le").toString("hex")}`;
    * }
    *
    * function checkoutFor(tenantId: string | undefined, key: string): string {
@@ -226,38 +231,40 @@ export interface ClaudeCodeAgentOptions {
    *   }
    *   return dir;
    * }
+   *
+   * claudeCodeAgent({
+   *   cwd: async (_input, ctx) => {
+   *     const dir = checkoutFor(
+   *       ctx.session.identity.tenantId,
+   *       ctx.session.identity.id,
+   *     );
+   *     await mkdir(dir, { recursive: true });
+   *     return dir;
+   *   },
+   * })
    * ```
    *
-   * - **Encode each part rather than validating it.** A validating grammar has
-   *   to enumerate every way a string can misbehave as a path — separators and
-   *   `..` are the obvious two, but Windows also strips trailing dots (so
-   *   `acme` and `acme.` are one directory), reserves `CON`, `PRN`, `AUX`,
-   *   `NUL`, `COM1`…`LPT9` as device names that cannot be directories at all,
-   *   and folds case — and that list is never finished. Hex is **injective**,
-   *   so two distinct ids can never share a checkout, and its output alphabet
-   *   contains nothing any filesystem treats specially. Rejecting beats
-   *   stripping, but encoding beats both.
-   * - **Tag presence; never substitute a stand-in value.** `segment(undefined)`
-   *   is `0` and every present value encodes to `1…`, so an un-tenanted host
-   *   and a tenant whose id is literally `"default"` stay different
-   *   directories. A `?? "default"` fallback merges them, and the two then
-   *   share a working tree. The tag also keeps every segment non-empty: hex of
-   *   `""` is `""`, which `join` silently discards, shortening the path by a
-   *   level and collapsing distinct tuples onto one directory.
-   * - **Include the tenant when there is one**, in its own segment. Two tenants
-   *   can hold the same session id — the framework namespaces its own session
-   *   storage by tenant for exactly that reason, and deliberately leaves
-   *   `ctx.session.identity.id` bare. The authenticated tenant is on
-   *   `ctx.session.identity.tenantId`. Never concatenate the two into one
-   *   segment; that brings back the ambiguity the tenant is there to remove.
-   * - **Confirm the result is inside the root** with `path.relative`, not a
-   *   string prefix — `join` uses the platform separator, so a literal `"/"`
-   *   comparison rejects every valid value on Windows.
+   * Four rules, one line each; the **guide carries the derivation** so it lives
+   * in one place and three copies cannot drift into contradicting each other:
    *
-   * Prefer a key the server assigned over one that arrived with the request —
-   * session and request ids both reach the server from the caller, so the
+   * - **Encode, never validate.** A grammar of forbidden shapes is a list
+   *   nobody finishes — separators, `..`, Windows' stripped trailing dots,
+   *   reserved device names, case folding.
+   * - **Encode UTF-16 code units, not UTF-8.** Only the former is injective
+   *   over arbitrary JS strings: UTF-8 maps every lone surrogate onto the
+   *   replacement character, so distinct session ids would share a tree.
+   * - **Tag presence; never substitute a stand-in.** A `?? "default"` fallback
+   *   merges an un-tenanted host with a tenant named `default`. The tag also
+   *   keeps each segment non-empty, since `join` discards an empty one.
+   * - **One segment per value, and confirm containment** with `path.relative`
+   *   rather than a string prefix, which rejects every valid value on Windows.
+   *
+   * The authenticated tenant is `ctx.session.identity.tenantId`;
+   * `ctx.session.identity.id` is deliberately bare, because two tenants can
+   * hold one session id. Prefer a key the server assigned over one that
+   * arrived with the request — both reach the server from the caller, so the
    * encoding is what makes an untrusted one safe to build a path from
-   * (BP-031). The package README carries the worked version.
+   * (BP-031).
    *
    * The resolver may be async, for a directory that has to be looked up or
    * provisioned first.
@@ -288,43 +295,6 @@ export interface ClaudeCodeAgentOptions {
  */
 function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
   return subtype !== "success";
-}
-
-/**
- * Reduce a resolver's answer to the ONE value both halves use, or `undefined`.
- *
- * Two normalizations, and each closes a way the two halves could disagree while
- * both looked correct.
- *
- * **Empty string means unset.** `""` is not nullish, so it survives the SDK's
- * own `cwd ?? default` and reaches the child-process spawner — where Node
- * silently falls back to the process directory rather than failing. The
- * recorder already read `""` as unset, so on that path the two agree by a
- * coincidence of two different fallbacks rather than by construction, and
- * anything consuming `cwd` without spawning (a session key, a project root) has
- * no such coincidence to lean on. Collapsing it here makes the agreement
- * structural.
- *
- * **Symlinks resolve to the physical path.** `path.resolve` is purely lexical,
- * so the recorder would key `/link/src/a.ts` while the spawned SDK process —
- * whose `process.cwd()` is the physical directory — reports `/real/src/a.ts`.
- * The recorder's divergence check compares the two, sees a mismatch, and writes
- * a gap instead of settling the row, leaving an ordinary write permanently
- * `pending`. Measured against a real symlinked directory, not assumed.
- *
- * A path that cannot be resolved is handed back as written: the invariant still
- * holds (both halves see one value), and an unusable directory is left to fail
- * where it should, in the SDK.
- */
-export function normalizeWorkingDirectory(
-  cwd: string | undefined,
-): string | undefined {
-  if (cwd === undefined || cwd === "") return undefined;
-  try {
-    return realpathSync(cwd);
-  } catch {
-    return cwd;
-  }
 }
 
 /**
