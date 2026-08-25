@@ -193,10 +193,17 @@ export interface ClaudeCodeAgentOptions {
    * called once per invocation, before `query`.
    *
    * ```ts
+   * import { join } from "node:path";
+   *
+   * const CHECKOUT_ROOT = "/var/agent-checkouts";
+   *
    * claudeCodeAgent({
-   *   cwd: async (_input, ctx) => (await currentRun(ctx)).workspacePath,
+   *   cwd: (_input, ctx) => join(CHECKOUT_ROOT, ctx.session.identity.id),
    * })
    * ```
+   *
+   * The resolver may be async, for a directory that has to be looked up or
+   * provisioned first.
    *
    * **An option, never a field on the block's input** — a correctness
    * constraint rather than a style preference. The same block is exposed as a

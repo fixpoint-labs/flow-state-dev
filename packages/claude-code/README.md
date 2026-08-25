@@ -124,13 +124,18 @@ By default a run works in whatever directory the server process is running in.
 Pass `cwd` to point it somewhere else:
 
 ```ts
+import { join } from "node:path";
+
+const CHECKOUT_ROOT = "/var/agent-checkouts";
+
 claudeCodeAgent({
-  cwd: async (_input, ctx) => (await currentRun(ctx)).workspacePath,
+  cwd: (_input, ctx) => join(CHECKOUT_ROOT, ctx.session.identity.id),
 });
 ```
 
 A function, not a string: one flow build serves many runs, so it resolves per
-invocation.
+invocation. It may be async, for a directory that has to be looked up or
+provisioned first.
 
 The run's file tools address relative paths inside that directory, and so does
 `recordWork`'s record of what the run touched. It is a working directory, not a
