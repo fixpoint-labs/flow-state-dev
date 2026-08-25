@@ -19,7 +19,7 @@ If you need a controller that reads shared state and picks the next specialist i
 
 ```
 emit(entry)
-  → appendEntry          (write to workspace resource)
+  → appendEntry          (tap: write to workspace resource, produces no output)
   → spawnInitialTasks    (one Task per matching actor, depth=1)
   → taskBoard.drain      (concurrent drain — workers re-emit recursively)
 ```
@@ -204,6 +204,20 @@ import { matchTopic, compilePattern, normalizeToEntries } from "@flow-state-dev/
 // Helper blocks (for remixing)
 import { createAppendEntry } from "@flow-state-dev/patterns/eventActors";
 ```
+
+:::caution `createAppendEntry` must be composed with `.tap()`
+
+The block that `createAppendEntry` returns appends the entry to the workspace resource and emits its `rb-entry` component. It produces no output. Compose it with `.tap()`, which runs a block for its side effect and passes the untouched pipeline value through to the next step:
+
+```ts
+sequencer({ name: "my-emit", inputSchema: entrySchema })
+  .tap(createAppendEntry("my-emit", rb.workspace))   // entry is recorded, the entry flows on
+  .step(myCustomDispatch)
+```
+
+Composing it as `.step(...)` hands `undefined` to the next step, because `.step()` forwards the block's output and there is no output. Earlier releases echoed the entry back, so `.step()` appeared to work; that echo was removed because it duplicated the payload in the items log for no benefit.
+
+:::
 
 ## See also
 
