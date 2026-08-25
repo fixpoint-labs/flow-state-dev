@@ -257,6 +257,36 @@ const agent = claudeCodeAgent({
 });
 ```
 
+A reused checkout is shared mutable state, so the last thing to wire up is what
+happens when two runs for the same session overlap. Actions run concurrently
+unless you say otherwise, and the resolver above creates the directory without
+claiming it — so both runs get the same tree and their edits and Git operations
+race in it.
+
+Declare a [concurrency policy](../advanced/concurrency-policies.md) on the
+action that runs the agent:
+
+```ts
+defineFlow({
+  kind: "coding",
+  actions: {
+    // `queue` serializes on the session — the same value the checkout is
+    // derived from, so one run finishes in the tree before the next starts.
+    // `reject` instead if a second request should be dropped rather than
+    // waited on.
+    implement: { block: codingPipeline, concurrency: "queue" },
+  },
+});
+```
+
+The two keys lining up is the point: derive the checkout from the session and
+arbitrate on the session, and a tree is never shared by two live runs.
+
+This arbitration is in-process. If you route execution to external workers, the
+policy is not enforced across them, and two workers can still land in one
+checkout — that needs a lock in shared storage, which is beyond what this recipe
+gives you. A single-instance host is the case it covers.
+
 Encoding rather than validating is the whole point, and it is worth being
 explicit about why. A validating grammar has to enumerate every way a string can
 misbehave as a path, and that list is longer than it looks: separators and `..`

@@ -216,6 +216,16 @@ const agent = claudeCodeAgent({
 });
 ```
 
+A reused checkout is shared mutable state. Actions run concurrently unless you
+say otherwise, and the resolver above creates the directory without claiming it,
+so two runs for one session get the same tree and race in it. Declare a
+concurrency policy on the action that runs the agent — `concurrency: "queue"`
+serializes on the session, which is the same value the checkout is derived from,
+so one run finishes before the next starts (`"reject"` if a second request
+should be dropped instead). That arbitration is in-process: routing execution to
+external workers needs a lock in shared storage, which this recipe does not
+give you.
+
 Encoding rather than validating is the whole point, and it is worth being
 explicit about why. A validating grammar has to enumerate every way a string can
 misbehave as a path, and that list is longer than it looks: separators and `..`

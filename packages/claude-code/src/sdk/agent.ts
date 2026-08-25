@@ -272,6 +272,11 @@ export interface ClaudeCodeAgentOptions {
    *   keeps each segment non-empty, since `join` discards an empty one.
    * - **One segment per value, and confirm containment** with `path.relative`
    *   rather than a string prefix, which rejects every valid value on Windows.
+   * - **Serialize runs that share a checkout.** Deriving the same directory
+   *   twice is the point; two live runs in it is not. Actions run concurrently
+   *   by default, so declare `concurrency: "queue"` (or `"reject"`) on the
+   *   action — it arbitrates on the session, the same value the checkout is
+   *   derived from. In-process only; external workers need a shared lock.
    *
    * The authenticated tenant is `ctx.session.identity.tenantId`;
    * `ctx.session.identity.id` is deliberately bare, because two tenants can
