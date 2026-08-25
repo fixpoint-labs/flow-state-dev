@@ -44,8 +44,15 @@ const COMPLETING_PR_STATES = new Set(["OPEN", "MERGED"]);
  * the rule is the part that can be wrong, and the part a reviewer needs pinned.
  * Tolerates a row with no `state` by rejecting it (BP-030): an answer we cannot
  * classify must not complete a task.
+ *
+ * **`inRepo` is the repository the run worked in**, and a row whose head lives
+ * anywhere else is rejected however green its state. `gh`'s `--head` filter
+ * matches a branch NAME, so a fork's branch carrying this run's name comes back
+ * in the same listing; counting it would settle the row on a pull request the
+ * run did not open. Rejected rather than trusted, for the same reason a missing
+ * `state` is: an answer we cannot attribute must not complete a task.
  */
-export function hasCompletingPr(stdout: string): boolean {
+export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
   let rows: unknown;
   try {
     rows = JSON.parse(stdout || "[]");
@@ -53,9 +60,20 @@ export function hasCompletingPr(stdout: string): boolean {
     return false;
   }
   if (!Array.isArray(rows)) return false;
-  return rows.some((row) =>
-    COMPLETING_PR_STATES.has(String((row as { state?: unknown } | null)?.state)),
-  );
+  return rows.some((row) => {
+    const r = row as {
+      state?: unknown;
+      headRepository?: { name?: unknown } | null;
+      headRepositoryOwner?: { login?: unknown } | null;
+    } | null;
+    if (!COMPLETING_PR_STATES.has(String(r?.state))) return false;
+    if (inRepo === undefined) return true;
+    const owner = r?.headRepositoryOwner?.login;
+    const name = r?.headRepository?.name;
+    // Either field missing is unattributable, so it does not count.
+    if (typeof owner !== "string" || typeof name !== "string") return false;
+    return `${owner}/${name}` === inRepo;
+  });
 }
 
 /**
@@ -67,11 +85,40 @@ export function hasCompletingPr(stdout: string): boolean {
  * `--state all` is still passed, deliberately: the alternative — asking only for
  * open ones — would miss a run that opened a PR and had it merged before the
  * verdict was read. The state is requested and judged here instead.
+ *
+ * **`--head` matches a branch NAME, not a branch.** `gh` documents it as a
+ * head-branch filter and does not accept `<owner>:<branch>`, so a pull request
+ * opened from a FORK whose head branch happens to carry this run's name is
+ * returned by this listing. Accepting it would complete a clean agent run that
+ * never opened a pull request at all — a stranger's branch settling our row as
+ * done, which is the silent wrong success this phase exists to detect. So the
+ * head repository is requested and checked: only a pull request whose head is
+ * in the repository the run worked in counts.
  */
 async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
+  const { stdout: originStdout } = await run(
+    "gh",
+    ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+    {
+      cwd: ctx.workspacePath,
+      timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+      signal: ctx.ctx.signal,
+    },
+  );
+  const thisRepo = originStdout.trim();
+
   const { stdout } = await run(
     "gh",
-    ["pr", "list", "--head", ctx.branch, "--state", "all", "--json", "number,state"],
+    [
+      "pr",
+      "list",
+      "--head",
+      ctx.branch,
+      "--state",
+      "all",
+      "--json",
+      "number,state,headRepository,headRepositoryOwner",
+    ],
     {
       cwd: ctx.workspacePath,
       // Bounded twice. Without either, a listing that never answers holds the
@@ -82,7 +129,7 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       maxBuffer: 4 * 1024 * 1024,
     },
   );
-  return hasCompletingPr(stdout);
+  return hasCompletingPr(stdout, thisRepo);
 }
 
 /** Build the implement phase. */

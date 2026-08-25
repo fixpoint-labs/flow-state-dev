@@ -39,6 +39,43 @@ describe("the done-condition — which pull requests count", () => {
     expect(hasCompletingPr(JSON.stringify([{ number: 2, state: "MERGED" }]))).toBe(true);
   });
 
+  it("refuses a completing PR whose head is in another repository", () => {
+    // `gh pr list --head` matches a branch NAME. A fork can carry a branch with
+    // this run's name, and its OPEN or MERGED pull request comes back in the
+    // same listing — settling a clean agent run that never opened one. A
+    // stranger's branch completing our row is the silent wrong success this
+    // check exists to detect, so the head repository is compared.
+    const mine = "fixpoint-labs/flow-state-dev";
+    const fromAFork = JSON.stringify([
+      {
+        number: 9,
+        state: "MERGED",
+        headRepository: { name: "flow-state-dev" },
+        headRepositoryOwner: { login: "someone-else" },
+      },
+    ]);
+    expect(hasCompletingPr(fromAFork, mine)).toBe(false);
+
+    const fromMine = JSON.stringify([
+      {
+        number: 10,
+        state: "OPEN",
+        headRepository: { name: "flow-state-dev" },
+        headRepositoryOwner: { login: "fixpoint-labs" },
+      },
+    ]);
+    expect(hasCompletingPr(fromMine, mine)).toBe(true);
+  });
+
+  it("refuses a row it cannot attribute to a repository", () => {
+    // Same reasoning as the missing `state` case above (BP-030): an answer we
+    // cannot classify must not complete a task, and one we cannot ATTRIBUTE is
+    // the same problem wearing a different field.
+    expect(
+      hasCompletingPr(JSON.stringify([{ number: 11, state: "MERGED" }]), "owner/repo"),
+    ).toBe(false);
+  });
+
   it("takes the branch when any row counts, even beside a closed one", async () => {
     // A branch can carry a closed attempt and a live one.
     expect(
