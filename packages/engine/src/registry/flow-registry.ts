@@ -7,13 +7,18 @@
  * declarations. Incompatible pairs throw a `CrossFlowSchemaConflictError` —
  * see `registry/errors.ts` and the `state-and-scopes` architecture doc.
  *
- * The two halves are gated at different granularities, because they key at
- * different granularities (see {@link collectScopeDeclaration}): the scope
- * record's `stateSchema` drops out under flow-level isolation, while each
- * resource drops out on its own effective `flowIsolation`.
+ * The two halves are gated at different granularities (see
+ * {@link collectScopeDeclaration}): the scope record is a single blob per
+ * scope, so its `stateSchema` drops out under the flow-level flag, while each
+ * resource carries its own `flowIsolation` override and drops out on that.
  */
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { DeclaredResourceEntry, FlowInstance } from "@flow-state-dev/core/types";
+import {
+  isDefinedResourceCollection,
+  isExternalResourceCollection,
+} from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
+import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveResourceIsolation } from "../stores/scope-keys";
 import { CrossFlowSchemaConflictError, type ConflictScope } from "./errors";
 import { compareZodSchemas } from "./schema-compat";
@@ -189,19 +194,23 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     this.participants[scope].set(flowKind, {
       flowKind,
       stateSchema: declaration.stateSchema,
-      resourceSchemas: { ...declaration.resourceSchemas },
+      // Copy onto a null-prototype map, not `{ ...spread }` — this is the map
+      // `validateScope` looks refs up in, so it is the read side of the
+      // prototype hazard `emptySchemaMap` documents.
+      resourceSchemas: Object.assign(emptySchemaMap(), declaration.resourceSchemas),
     });
   }
 
   /**
    * Compares an incoming declaration against every other registered kind.
    *
-   * **What the resource half keys on, and the two overlaps it deliberately
-   * does NOT catch.** A user/org resource's storage identity is
-   * `(scope, ref, effective flowIsolation)`. `collectScopeDeclaration` has
-   * already dropped the isolated ones, so what remains is an exact match on
-   * `ref` within one scope's shared set. Two ways two flows can still land on
-   * one durable cell without ever being compared:
+   * **What the resource half compares, and the two overlaps it deliberately
+   * does NOT catch.** Effective `flowIsolation` is a *participation filter*,
+   * not part of the index: `collectScopeDeclaration` has already dropped the
+   * isolated entries, since a flow-namespaced resource cannot collide with
+   * another flow's. What reaches here is the shared set, matched on exact
+   * `ref` within one scope. Two ways two flows can still land on one durable
+   * cell without ever being compared:
    *
    *   1. **Overlapping collection keyspaces.** A collection's `ref` is its
    *      glob pattern, so a collection at `files/*` and a concrete resource at
@@ -251,14 +260,30 @@ type ScopeDeclaration = {
   resourceSchemas: Record<string, ZodTypeAny>;
 };
 
-/** Resource declaration shape this module reads off `flow.resources`. */
-type ResourceEntry = {
-  scope?: string;
-  ref?: string;
-  pattern?: string;
-  flowIsolation?: boolean;
-  stateSchema?: ZodTypeAny;
-};
+/**
+ * An empty schema map with **no prototype**, for every map keyed by a resource
+ * `ref`.
+ *
+ * A `ref` is an author-supplied string, so on a plain `{}` it can collide with
+ * `Object.prototype` — and the collision breaks this check in both directions:
+ *
+ *   - **Writing** `__proto__` runs the inherited setter instead of creating an
+ *     own key. The resource silently vanishes from the validator, and two
+ *     flows with incompatible schemas register clean over one cell — exactly
+ *     the data loss this check exists to prevent.
+ *   - **Reading** any inherited member name (`toString`, `constructor`,
+ *     `hasOwnProperty`, …) returns a function rather than `undefined`, so a
+ *     resource no other flow declares is compared against a builtin and
+ *     reported as a conflict that does not exist.
+ *
+ * Both are reachable from ordinary `defineResource({ ref })` input, so the
+ * prototype is dropped rather than the keys sanitized: nothing downstream
+ * needs `Object.prototype`, and a null-prototype map cannot regress the way a
+ * denylist can.
+ */
+function emptySchemaMap(): Record<string, ZodTypeAny> {
+  return Object.create(null) as Record<string, ZodTypeAny>;
+}
 
 /**
  * The storage `ref` a resource declaration occupies — the namespace half of
@@ -266,19 +291,44 @@ type ResourceEntry = {
  * expose one shared resource under any accessor it likes, and may reuse an
  * accessor for a different `ref`.
  *
- * Mirrors `effectiveStorageTuple` in core's `flow/defineFlow.ts`: an explicit
- * `ref` wins, a collection falls back to its `pattern`, anything else to the
- * accessor key.
+ * Two rules, each matching the path that actually writes the data:
+ *
+ *   - **Collections** mirror `effectiveStorageTuple` in core's
+ *     `flow/defineFlow.ts` — explicit `ref`, else the glob `pattern`. The
+ *     `isDefinedResourceCollection` gate matters: `defineResource` preserves
+ *     extra properties, so a plain resource carrying an incidental `pattern`
+ *     must still key on its accessor, exactly as `defineFlow` treats it.
+ *   - **Single resources** take their canonical key from `resourceStorageKeys`
+ *     (`ref`, else the FIRST accessor a given definition object appears
+ *     under). Registering one `DefinedResource` under several accessors is
+ *     supported, and every alias persists to that one canonical slot — so
+ *     indexing an alias under its own name would invent a cell the flow never
+ *     writes.
  */
-function storageRef(entry: ResourceEntry, accessor: string): string {
-  return entry.ref ?? entry.pattern ?? accessor;
+function storageRef(
+  entry: DeclaredResourceEntry,
+  accessor: string,
+  storageKeys: Record<string, string>
+): string {
+  if (isDefinedResourceCollection(entry)) {
+    // `ref` is read through a cast because `ResourceCollectionConfig` does not
+    // declare one — but the definers preserve extra properties, and core's
+    // `effectiveStorageTuple` gives an incidental `ref` precedence over the
+    // pattern. Mirror that, so the two cannot disagree about the same entry.
+    return (entry as { ref?: string }).ref ?? entry.pattern;
+  }
+  // `resourceStorageKeys` maps every accessor it is given, and returns a plain
+  // object — so guard the lookup rather than trusting a bare index, for the
+  // inherited-member reason `emptySchemaMap` documents.
+  return Object.hasOwn(storageKeys, accessor) ? storageKeys[accessor] : accessor;
 }
 
 /**
  * What one flow contributes to a scope's shared-storage view.
  *
- * The two halves are collected under different isolation rules because they
- * key under different isolation rules:
+ * The two halves are collected under different isolation rules because the
+ * scope record is a single blob per scope (flow-level flag), while each
+ * resource carries its own override (`resolveResourceIsolation`):
  *
  *   - The **scope record's `stateSchema`** is a single blob per scope, keyed
  *     by the flow-level `isolateUserState` / `isolateOrgState` flag
@@ -309,14 +359,20 @@ function collectScopeDeclaration(
     ? undefined
     : (scopeConfig as { stateSchema?: ZodTypeAny } | undefined)?.stateSchema;
 
-  const resources = flow.resources as Record<string, ResourceEntry> | undefined;
-  const resourceSchemas: Record<string, ZodTypeAny> = {};
-  for (const [accessor, entry] of Object.entries(resources ?? {})) {
+  const resourceSchemas = emptySchemaMap();
+  const storageKeys = resourceStorageKeys(flow.resources);
+  for (const [accessor, entry] of Object.entries(flow.resources ?? {})) {
     if (entry === undefined || entry.scope !== scope) continue;
+    // External collections are read-through views over the app's own store —
+    // they never occupy a framework-owned `ResourceStateStore` cell, so two
+    // flows exposing the same pattern over separate backings share nothing.
+    // Their config admits neither `ref` nor `flowIsolation`, so treating them
+    // as shared storage would reject a valid app with no way to opt out.
+    if (isExternalResourceCollection(entry)) continue;
     if (resolveResourceIsolation(entry.flowIsolation, flow, scope)) continue;
     const schema = entry.stateSchema;
     if (schema === undefined) continue;
-    resourceSchemas[storageRef(entry, accessor)] = schema;
+    resourceSchemas[storageRef(entry, accessor, storageKeys)] = schema;
   }
 
   if (stateSchema === undefined && Object.keys(resourceSchemas).length === 0) {
@@ -353,7 +409,10 @@ function checkPair(
 }
 
 function describeScope(entries: Map<string, ScopeParticipant>): SharedScopeDescription {
-  const resources: Record<string, ZodTypeAny> = {};
+  // `??=` reads before it writes, so on a plain `{}` an inherited member at
+  // that key is not nullish and the entry is silently dropped from the
+  // description. See `emptySchemaMap`.
+  const resources = emptySchemaMap();
   let stateSchema: ZodTypeAny | undefined;
   for (const entry of entries.values()) {
     stateSchema ??= entry.stateSchema;

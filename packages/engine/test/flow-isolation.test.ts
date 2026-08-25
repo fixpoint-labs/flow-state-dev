@@ -4,6 +4,7 @@
  * isolation behavior.
  */
 import {
+  defineExternalResourceCollection,
   defineFlow,
   defineResource,
   defineResourceCollection,
@@ -38,9 +39,13 @@ type ResourceSpec = {
 
 function buildResources(
   userResources: Record<string, z.ZodTypeAny> | undefined,
-  resources: Record<string, ResourceSpec> | undefined
+  resources: Record<string, ResourceSpec> | undefined,
+  rawResources?: Record<string, unknown>
 ): Record<string, unknown> | undefined {
-  const declared: Record<string, unknown> = {};
+  // Pre-built entries, for the cases the spec shorthand can't express:
+  // two accessors sharing ONE definition object, external collections, and
+  // definitions carrying incidental extra properties.
+  const declared: Record<string, unknown> = { ...rawResources };
   for (const [name, schema] of Object.entries(userResources ?? {})) {
     declared[name] = defineResource({ scope: "user", stateSchema: schema });
   }
@@ -72,6 +77,7 @@ function makeFlowFactory(options: {
   orgSchema?: z.ZodTypeAny;
   userResources?: Record<string, z.ZodTypeAny>;
   resources?: Record<string, ResourceSpec>;
+  rawResources?: Record<string, unknown>;
 }) {
   const block = handler<{ value: string }, { ok: boolean }>({
     name: "iso-handler",
@@ -95,7 +101,11 @@ function makeFlowFactory(options: {
     },
     user,
     org: options.orgSchema ? { stateSchema: options.orgSchema } : undefined,
-    resources: buildResources(options.userResources, options.resources) as never,
+    resources: buildResources(
+      options.userResources,
+      options.resources,
+      options.rawResources
+    ) as never,
   });
 }
 
@@ -255,10 +265,13 @@ describe("FlowRegistry cross-flow schema validation", () => {
  * with the flat `flow.resources` map — so it iterated `undefined` and never
  * fired for either scope.
  *
- * These cases pin WHAT the restored check keys on: `(scope, ref, effective
- * flowIsolation)`. Keying on the accessor name instead reintroduces the bug in
- * a new shape — missing incompatible schemas that do share a durable cell, and
- * rejecting schemas that are genuinely isolated.
+ * These cases pin WHAT the restored check compares: shared resources at the
+ * same `(scope, ref)`. Effective `flowIsolation` is a participation filter
+ * applied first — isolated resources are flow-namespaced and so cannot
+ * collide — rather than a third element of the key. Comparing accessor names
+ * instead reintroduces the bug in a new shape: missing incompatible schemas
+ * that do share a durable cell, and rejecting schemas that are genuinely
+ * isolated.
  */
 describe("cross-flow resource schema validation", () => {
   it("keys on the storage ref, not the accessor name", () => {
@@ -413,6 +426,194 @@ describe("cross-flow resource schema validation", () => {
     const desc = registry.describeSharedSchemas();
     expect(desc.participants.user).toEqual(["flow-a", "flow-b"]);
     expect(Object.keys(desc.user.resources)).toEqual(["preferences"]);
+  });
+
+  /**
+   * The check must not INVENT conflicts either. A false rejection is a startup
+   * failure for a correct program, so each case below is a valid app that must
+   * register clean — the direction a green suite hides, since the broken
+   * version of this check never threw at all.
+   */
+  describe("does not reject valid apps", () => {
+    it("ignores external collections sharing a pattern", () => {
+      // External collections are read-through views over the app's own store,
+      // so two flows exposing `positions/*` over separate backings share no
+      // framework cell. Their config admits neither `ref` nor `flowIsolation`,
+      // so a rejection here would be unstartable with no way out.
+      const external = (schema: z.ZodTypeAny) =>
+        defineExternalResourceCollection({
+          pattern: "positions/*",
+          scope: "user",
+          stateSchema: schema,
+          read: async () => null,
+          search: (async () => ({ hits: [] })) as never,
+        });
+
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({
+          kind: "flow-a",
+          rawResources: { portfolio: external(z.object({ shares: z.string() })) },
+        })
+      );
+
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-b",
+            rawResources: { portfolio: external(z.object({ shares: z.number() })) },
+          })
+        )
+      ).not.toThrow();
+    });
+
+    it("canonicalizes an aliased resource to its first accessor", () => {
+      // One definition object under two accessors persists to ONE slot, keyed
+      // by the first accessor — `foo` here, not `preferences`. Indexing the
+      // alias under its own name would collide with flow-b's unrelated
+      // `preferences` cell.
+      const shared = defineResource({
+        scope: "user",
+        stateSchema: z.object({ theme: z.string() }),
+      });
+
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({
+          kind: "flow-a",
+          rawResources: { foo: shared, preferences: shared },
+        })
+      );
+
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-b",
+            resources: { preferences: { schema: z.object({ theme: z.number() }) } },
+          })
+        )
+      ).not.toThrow();
+    });
+
+    it("still catches a conflict on the canonical key of an aliased resource", () => {
+      // The other direction of the same rule: flow-b addressing the canonical
+      // slot (`foo`) DOES share the cell and must be rejected.
+      const shared = defineResource({
+        scope: "user",
+        stateSchema: z.object({ theme: z.string() }),
+      });
+
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({ kind: "flow-a", rawResources: { foo: shared, preferences: shared } })
+      );
+
+      const error = captureConflict(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-b",
+            resources: { foo: { schema: z.object({ theme: z.number() }) } },
+          })
+        )
+      );
+      expect(error.field).toBe("resources.foo");
+    });
+
+    it("keys a non-collection carrying an incidental pattern on its accessor", () => {
+      // `defineResource` preserves unknown properties, so a plain resource can
+      // carry a `pattern`. It is not a collection and does not key on it —
+      // treating it as one would index a cell the flow never writes, missing
+      // this real conflict at the shared accessor.
+      const withPattern = (schema: z.ZodTypeAny) =>
+        defineResource({
+          scope: "user",
+          stateSchema: schema,
+          pattern: "files/*",
+        } as never);
+
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({ kind: "flow-a", rawResources: { notes: withPattern(z.object({ body: z.string() })) } })
+      );
+
+      const error = captureConflict(() =>
+        registry.register(
+          makeFlow({ kind: "flow-b", rawResources: { notes: withPattern(z.object({ body: z.number() })) } })
+        )
+      );
+      expect(error.field).toBe("resources.notes");
+    });
+  });
+
+  /**
+   * A `ref` is an author-supplied string used as a map key, so the maps that
+   * index by it must not carry `Object.prototype`. Both directions bite:
+   * writing `__proto__` hits the inherited setter instead of creating an own
+   * key, and reading any inherited member name finds a function where a schema
+   * should be.
+   */
+  describe("refs that collide with Object.prototype", () => {
+    it("catches a conflict on a resource whose ref is __proto__", () => {
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({
+          kind: "flow-a",
+          resources: { danger: { ref: "__proto__", schema: z.object({ theme: z.string() }) } },
+        })
+      );
+
+      // On a plain-object accumulator this write goes through the inherited
+      // `__proto__` setter, creating no enumerable own key — so the resource
+      // disappears from the validator and two incompatible flows register
+      // clean over one cell.
+      const error = captureConflict(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-b",
+            resources: { danger: { ref: "__proto__", schema: z.object({ theme: z.number() }) } },
+          })
+        )
+      );
+      expect(error.scope).toBe("user");
+      expect(error.field).toBe("resources.__proto__");
+    });
+
+    it("does not invent a conflict from an inherited Object.prototype member", () => {
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({
+          kind: "flow-a",
+          resources: { preferences: { schema: z.object({ theme: z.string() }) } },
+        })
+      );
+
+      // flow-a declares nothing at ref `toString`. Looking that ref up on a
+      // plain-object map yields `Object.prototype.toString` — a function, not
+      // `undefined` — which would be compared as if it were a declared schema.
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-b",
+            resources: { stringify: { ref: "toString", schema: z.object({ theme: z.number() }) } },
+          })
+        )
+      ).not.toThrow();
+    });
+
+    it("reports a __proto__ resource in the shared schema description", () => {
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({
+          kind: "flow-a",
+          resources: { danger: { ref: "__proto__", schema: z.object({ theme: z.string() }) } },
+        })
+      );
+
+      // `describeScope` accumulates with `??=`, which reads before it writes —
+      // an inherited value at that key is not nullish, so the entry is dropped.
+      const desc = registry.describeSharedSchemas();
+      expect(Object.keys(desc.user.resources)).toEqual(["__proto__"]);
+    });
   });
 
   /**

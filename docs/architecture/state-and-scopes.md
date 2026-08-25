@@ -421,10 +421,10 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 
 The error names both flow kinds, the scope (`user` or `org`), the field path (`stateSchema` or `resources.<ref>`), and a reason. Resolution is either reconciling the schemas or opting into isolation.
 
-**What each half is keyed on.** The two halves of the check follow the two storage-key rules below, so they drop out of the shared view at different granularities:
+**What each half compares.** The two halves of the check follow the two storage-key rules below, so they drop out of the shared view at different granularities:
 
 - The **scope record's `stateSchema`** is one blob per scope, so it follows the flow-level `isolateUserState` / `isolateOrgState` flag. A flow that isolates a scope contributes no `stateSchema` to it.
-- **Resources** are keyed by `(scope, ref, effective flowIsolation)` — never by the accessor name they hang off `ctx.resources.<key>`, which is a naming choice rather than a storage identity. Each resource drops out on its own effective `flowIsolation`, independently of the flow-level flag: a flow that isolates a scope still participates for a resource that declares `flowIsolation: false`, and a shared flow does not participate for a resource that declares `flowIsolation: true`.
+- **Resources** are compared when two flows declare a shared resource at the same `(scope, ref)` — never by the accessor name they hang off `ctx.resources.<key>`, which is a naming choice rather than a storage identity. Effective `flowIsolation` decides *participation* rather than forming part of that key: an isolated resource is flow-namespaced and so cannot collide, and it is dropped before any comparison. Each resource is judged on its own `flowIsolation`, independently of the flow-level flag — a flow that isolates a scope still participates for a resource declaring `flowIsolation: false`, and a shared flow does not participate for a resource declaring `flowIsolation: true`.
 
 The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss). Two overlaps are the exception, and are **not** detected today:
 
