@@ -63,6 +63,19 @@ import {
 } from "./manager";
 import { implementPhase } from "./implement";
 import {
+  INBOX,
+  inboxCollection,
+  listQuestions,
+  withdrawQuestion,
+} from "./inbox";
+import {
+  answerInputSchema,
+  answerOutputSchema,
+  decideAnswer,
+  type AnswerBoard,
+  type AnswerOutput,
+} from "./answer";
+import {
   assertSafeSegment,
   conductorTaskId,
   joinIdentity,
@@ -104,6 +117,14 @@ export interface ConductorFlowOptions {
   /** Forwarded to the coding agent (model, tools, permission mode, a test stub). */
   agent?: Parameters<typeof harnessManager>[0]["agent"];
   ownership?: Parameters<typeof harnessManager>[0]["ownership"];
+  /**
+   * Told, after the park, that a question exists. Defaults to a no-op.
+   *
+   * The seam Relay (FIX-1230) fills once it lands. Absent, an operator finds
+   * the question by calling `status` rather than by being told — which is why
+   * `status` reports the open rows and not only the board row.
+   */
+  announce?: Parameters<typeof harnessManager>[0]["announce"];
 }
 
 /** The flow's `kind`, which is how the HTTP routes address it. */
@@ -120,6 +141,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     phase = implementPhase(),
     agent,
     ownership,
+    announce,
   } = options;
 
   // Both ids, per epic, and neither substituting for the other.
@@ -175,6 +197,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     runTimeoutMs,
     ...(agent !== undefined ? { agent } : {}),
     ...(ownership !== undefined ? { ownership } : {}),
+    ...(announce !== undefined ? { announce } : {}),
   });
 
   const board = taskBoard({
@@ -190,6 +213,23 @@ export function conductorFlow(options: ConductorFlowOptions) {
     workers: {
       [ASSIGNEE]: { worker: manager, dispatch: { mode: "detached" } },
     },
+    // **A run parked on a person is not this drain's to wait on.**
+    //
+    // Without it the drain holds its launching request open on the parked row
+    // until it runs out its iteration budget, and then returns with the row
+    // abandoned where it sits — worse than a hang, because it reports
+    // `blocked-by-failures` on a board with no failures. With it, the drain
+    // returns `parked-for-review`, the row stays parked and durable, and the
+    // drain `answer` runs later is what picks it up.
+    //
+    // Its three construction refusals are all satisfied here, and each was
+    // confirmed rather than assumed: the ledger is a `defineTaskCollection()`
+    // (a request-backed one is refused); `onIdle` is left at its default
+    // `complete-or-blocked` (both `wait` and `complete` are refused); and this
+    // board seeds through the `seed` action rather than `initialTasks`, so the
+    // stable-id refusal never fires. Every refusal throws at construction, so
+    // getting this wrong fails before `seed` can run.
+    onReview: "exit",
   });
 
   const seedInput = conductorTaskInputSchema;
@@ -320,9 +360,33 @@ export function conductorFlow(options: ConductorFlowOptions) {
          * second copy of it.
          */
         run: runRecordStateSchema.nullable(),
+        /**
+         * The questions this issue-phase is waiting on, oldest first.
+         *
+         * **This is how an operator sees a question with no UI built and with
+         * Relay absent**, which is the whole reason `status` grew a second
+         * half. Open rows only: an answered or withdrawn one is history, and
+         * the two ledgers stay independent — the board row is the authority on
+         * the job's state and the inbox row on the question's, neither inferred
+         * from the other.
+         */
+        questions: z.array(
+          z.object({
+            /** The row's name — pass this verbatim to `answer`. */
+            question: z.string(),
+            /** What the run actually asked. */
+            text: z.string(),
+            /** Which attempt asked it. */
+            attempt: z.number(),
+            askedAt: z.number().nullable(),
+          }),
+        ),
       }),
     ),
   });
+
+/** Board statuses from which a question can never be answered. */
+const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
 
   /**
    * **The tenant gate. Every action passes it before touching the board.**
@@ -384,7 +448,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     inputSchema: z.object({ issue: z.string().optional() }),
     outputSchema: statusOutput,
     uses: [board.capability],
-    resources: { [RUNS]: runRecordCollection },
+    resources: { [RUNS]: runRecordCollection, [INBOX]: inboxCollection },
     execute: async (input, ctx) => {
       // Before the listing, not after it — a refusal that has already read the
       // rows has already disclosed them.
@@ -402,6 +466,37 @@ export function conductorFlow(options: ConductorFlowOptions) {
             ? await readRunRow(ctx as never, runTopic(collectionId, issue, phaseName))
             : undefined;
 
+        // **`status` RECONCILES what it reads.** The board's `cancel` writes the
+        // task row and nothing else — the manager never runs again, so neither
+        // of its withdrawal arms ever fires — and the `answer` guard refuses a
+        // terminal task, so the question is unanswerable by construction. Left
+        // alone it shows here forever as a question nobody can act on.
+        //
+        // Reconciling at the READ rather than wrapping the board's `cancel` is
+        // deliberate: an operator can cancel through the board's own verb, so a
+        // conductor `cancel` wrapper is a step that can be bypassed, while the
+        // only surface that can DISPLAY a stranded row is the one that clears
+        // it. The `answer` guard does the same on its way to refusing. Both
+        // writes are the ordinary forward-only withdraw, so running either twice
+        // is a read.
+        const questions = [];
+        if (issue !== null && phaseName !== null) {
+          const terminal = TERMINAL_TASK_STATUSES.has(task.status);
+          for (const row of await listQuestions(ctx as never, issue, phaseName)) {
+            if (row.state.status !== "open") continue;
+            if (terminal) {
+              await withdrawQuestion(ctx as never, row.topic);
+              continue;
+            }
+            questions.push({
+              question: row.topic,
+              text: row.state.question,
+              attempt: row.attempt,
+              askedAt: row.state.askedAt,
+            });
+          }
+        }
+
         rows.push({
           taskId: task.id,
           issue,
@@ -411,9 +506,50 @@ export function conductorFlow(options: ConductorFlowOptions) {
           feedback: task.feedback ?? null,
           // The whole row, not a re-listing of it — see the output schema.
           run: record ?? null,
+          questions,
         });
       }
       return { rows };
+    },
+  });
+
+  /**
+   * Answer a question, re-queue the run, and drain — the operator's one verb.
+   *
+   * The decision, the guard and the recovery rule live in `./answer`; this is
+   * the wiring. Two things about the shape are load-bearing:
+   *
+   * - **The drain is a real step of this action**, gated on the decision. Not a
+   *   call the handler makes: `board.drain` is the board's own sequencer, and
+   *   running it as a step is what makes the re-dispatch a genuine drain of this
+   *   board in this request rather than a second entry point into its machinery.
+   * - **`.tapIf` and not `.stepIf`** (BP-036): the drain's output must not
+   *   replace the chain value, because the chain value is what the operator gets
+   *   back — the decision and its reason.
+   */
+  const answerQuestionStep = handler({
+    name: "conductor-answer",
+    inputSchema: answerInputSchema,
+    outputSchema: answerOutputSchema,
+    uses: [board.capability],
+    resources: { [INBOX]: inboxCollection },
+    execute: async (input, ctx) => {
+      // Before the board is read and before the row is written, like every
+      // other action: a refusal that has already disclosed a question, or
+      // already applied an answer, is not a refusal.
+      assertRequestTenant(ctx);
+      const tasks = await ctx.cap[boardId].tasks();
+      const surface: AnswerBoard = {
+        get: (id) => tasks.get(id),
+        resumeFromReview: (id, feedback) => tasks.resumeFromReview(id, feedback),
+        // The collection's own clock, never `Date.now()` — a lease is a
+        // comparison and a comparison needs one clock. Reading the wall clock
+        // works right up until the collection is built on an injected one, at
+        // which point a live task reads as abandoned and an abandoned one as
+        // live: exactly the distinction the recovery rule's third arm turns on.
+        now: () => tasks.now(),
+      };
+      return decideAnswer(ctx as never, surface, input);
     },
   });
 
@@ -445,7 +581,19 @@ export function conductorFlow(options: ConductorFlowOptions) {
           // were `undefined`, so "both seeds named one row" held vacuously.
           .step(returnTaskId),
       },
-      /** Drain again: claim whatever is ready, including a re-pended retry. */
+      /**
+       * Drain again: claim whatever is ready, including a re-pended retry.
+       *
+       * **Every drain conductor runs must name the coordinator session.**
+       * `createExecutionContext` defaults an absent `sessionId` to a fresh
+       * `ephemeral_…` value, which becomes the scope id for session-scoped
+       * state — so a drain that omits it resolves a different ledger, finds an
+       * empty board, and reports success having reached nothing. This board is
+       * `user`-scoped so its ledger is not the exposure, but the failure looks
+       * like nothing happened either way. A requirement on the caller, stated
+       * rather than assumed; `answer` inherits it by running its drain inside
+       * its own request.
+       */
       wake: {
         // **Wrapped, so the gate runs before the claim.** A bare `board.drain`
         // claimed the row and let the manager refuse afterwards — and the claim
@@ -461,6 +609,27 @@ export function conductorFlow(options: ConductorFlowOptions) {
       },
       /** The read surface. Zero-model, server-side, board row first. */
       status: { block: readStatus },
+      /**
+       * Answer a parked run's question and start it again holding the answer.
+       *
+       * **The drain is this action's**, not the operator's next step.
+       * `resumeFromReview` only re-queues the row, and with `onReview: "exit"`
+       * the drain that observed the question has already ended — so an `answer`
+       * that stopped after two calls would leave the row waiting for whatever
+       * happens to drain next.
+       */
+      answer: {
+        block: sequencer({
+          name: "conductor-answer-question",
+          inputSchema: answerInputSchema,
+          outputSchema: answerOutputSchema,
+        })
+          .step(answerQuestionStep)
+          // Only when the decision actually authorized it. A drain is NOT a
+          // no-op — on a `pending` row it claims and dispatches — so a
+          // declined answer must not run one.
+          .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain),
+      },
     },
   });
 

@@ -18,6 +18,7 @@ import {
   createConductorHarness,
   USER_ID,
   hangingAgent,
+  askingAgent,
   scriptedAgent,
   sdkResult,
   throwingAgent,
@@ -47,6 +48,8 @@ type StatusRow = {
     requestId: string | null;
     updatedAt: number | null;
   } | null;
+  /** The open questions this issue-phase is waiting on (LAB-139). */
+  questions: Array<{ question: string; text: string; attempt: number }>;
 };
 
 const ISSUE = "FIX-1219";
@@ -83,6 +86,34 @@ async function settle(h: ConductorHarness, timeoutMs = 10_000): Promise<StatusRo
         `the row never left in_progress within ${timeoutMs}ms — last seen ` +
           `${JSON.stringify(row)}`,
       );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+/**
+ * `settle`, read as a named tenant.
+ *
+ * A tenanted conductor refuses an untenanted `status`, so the shared helper —
+ * which reads as the harness default — cannot observe a tenanted board at all.
+ */
+async function settleAsTenant(
+  h: ConductorHarness,
+  tenant: string,
+  timeoutMs = 10_000,
+): Promise<StatusRow> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { rows } = await h.call<{ rows: StatusRow[] }>(
+      "status",
+      { issue: ISSUE },
+      undefined,
+      tenant,
+    );
+    const row = rows[0];
+    if (row !== undefined && row.status !== "in_progress") return row;
+    if (Date.now() >= deadline) {
+      throw new Error(`the row never left in_progress within ${timeoutMs}ms`);
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
@@ -942,6 +973,42 @@ describe("the ledger is partitioned by tenant", () => {
       );
       expect(after.rows[0].attempts).toBe(before.rows[0].attempts);
       expect(after.rows[0].status).toBe(before.rows[0].status);
+    });
+
+    it("refuses a foreign ANSWER before it writes and before it dispatches", async () => {
+      // The fourth action, and it carries BOTH harms the other three split
+      // between them: an unchecked `answer` writes to another tenant's question
+      // AND ends in a drain, so it would start that tenant's coding run in this
+      // one's workspace. Asserting only that it threw would pass with the
+      // answer already applied, or with the drain already away.
+      //
+      // Staged against a genuinely answerable row, so the refusal is the tenant
+      // gate rather than the guard declining a question that was not open —
+      // which is the same reason `seed` is staged before the foreign `wake`.
+      const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+      live = createConductorHarness({
+        resolveClaudeAgent: askingAgent("which path?", "success", seen),
+        isDone: () => false,
+        tenant: OTHER,
+      });
+      await live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, OTHER);
+      const parked = await settleAsTenant(live, OTHER);
+      expect(parked.status).toBe("awaiting_review");
+      const topic = parked.questions[0]!.question;
+      const runsBefore = seen.prompts.length;
+
+      await expect(
+        live.call("answer", { question: topic, answer: "not yours" }, undefined, "globex"),
+      ).rejects.toThrow(/serves "acme"/);
+
+      // Nothing was applied and nothing was dispatched. Read as the RIGHT
+      // tenant, or the read would be refused too and this would pass because it
+      // saw nothing either way.
+      const after = await settleAsTenant(live, OTHER);
+      expect(after.status).toBe("awaiting_review");
+      expect(after.questions[0]?.question).toBe(topic);
+      expect(after.attempts).toBe(parked.attempts);
+      expect(seen.prompts).toHaveLength(runsBefore);
     });
 
     it("does not let a tenant NAMED like the default alias an untenanted one", async () => {

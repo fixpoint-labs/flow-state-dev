@@ -18,7 +18,7 @@ Research software. Unpublished, private to this workspace.
 
 ## What it does today
 
-One phase (`implement`), one issue at a time, two outcomes.
+One phase (`implement`), one issue at a time, three outcomes.
 
 ```ts
 import { conductorFlow } from "@flow-state-dev/conductor";
@@ -40,7 +40,8 @@ Three zero-model actions:
 |---|---|
 | `seed` | Files one issue-phase as a durable row and drains the board. Returns without waiting for the run. |
 | `wake` | Drains again — claims whatever is ready, including a re-pended retry. |
-| `status` | Reads the board row beside the run's own record. |
+| `status` | Reads the board row beside the run's own record, and the questions the run is waiting on. |
+| `answer` | Answers one of those questions and starts the run again holding it. |
 
 `status` reads the **board row** for completion, always. The board ledger cannot be made
 client-readable (`defineTaskCollection()` exposes no `client` option, so its collection-state route
@@ -48,15 +49,62 @@ answers 403), and nothing else can stand in: a settlement declined on a lost cla
 rather than thrown, so both the run record and the request read as success while the row is still
 open.
 
-### The two outcomes
+### The three outcomes
 
 **Done** needs a successful run **and** the job actually finished — for `implement`, a pull request
 existing for the branch. Either one alone completes a row that should not be: a run can open the
 pull request and *then* exhaust its turn budget.
 
+**Waiting on a person** needs a run that did not fail **and** a question it wrote down. Both
+halves, for the same reason: a run that asked and then ran out of budget is not waiting on
+anybody, and holding the board for it would stall the job silently.
+
 Anything else is a **failed attempt**. The row goes back to `pending` with the reason attached as
 feedback, or to `errored` once the retry budget is spent. A retry re-runs the agent from the
 beginning, in the checkout the last one left behind, and is told why the last one stopped.
+
+### Asking, and being answered
+
+A run that hits a real ambiguity has two bad options: guess, or stop with nothing useful to show.
+It gets a third one here. The prompt tells it to write the question — and only the question — to a
+file in its own checkout. The manager reads that file, files the question as a durable row, puts
+the job on hold and returns. Nothing is held open while you think about it, and the run costs
+nothing.
+
+You answer the row by name:
+
+```bash
+pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
+# → questions: [{ question: "FIX-1219/implement/1/a3f19c…", text: "Which path did you mean?" }]
+
+pnpm fsdev run conductor answer -i '{
+  "question": "FIX-1219/implement/1/a3f19c…",
+  "answer": "Correct the path only. Leave the symlink alone."
+}'
+```
+
+`answer` does the whole round trip: it records the answer, takes the job off hold, and starts it
+again. The next attempt is told what you said, alongside every earlier answer, oldest first. There
+is nothing else to run afterwards.
+
+A refusal comes back as a refusal, never as silence — `result: "declined"` with a reason and both
+rows' statuses. Answering a question the job is not actually waiting on does nothing, and says so.
+
+**Three live limits, worth knowing before they surprise you.**
+
+- **An answer spends one of the run's retries.** Ask three questions of a job budgeted for three
+  and it has none left for a real failure. Budget for questions *plus* failures.
+- **The answered run restarts rather than resumes.** It begins a fresh coding session in the same
+  checkout, holding your answer and whatever the last attempt left on disk — it does not pick up
+  the earlier conversation.
+- **A second answer arriving while the first is still being applied is dropped, not refused.** The
+  run comes back holding the first one. Answer once, and read `status` before answering again.
+
+There is no inbox UI, and no way to redirect a run mid-flight or send it on a side errand. The one
+thing you can do to a live run is answer what it asked.
+
+Nothing bounds how long a question may stay open. A job waiting on a person is deliberately
+outside the lease's governance, so a question nobody answers holds its row indefinitely.
 
 ### Reading it back
 
@@ -136,12 +184,13 @@ commits land on another is the kind of agreement where every layer is wrong toge
   and the refusal costs a valid task an attempt — `attempts` is incremented inside the claim write,
   so it is spent before any guard can run. Give the second phase its own `epic` value. The seed
   error says so, and a test pins both halves.
-- **No third outcome.** "Made progress but is not finished" would have to settle the row either
-  done (dishonest) or waiting (a status nothing here has a use for). A run that asks a person for a
-  decision, and the inbox it waits in, are LAB-139's.
-- **No resume.** Conductor starts runs; it does not continue one across a wait. That is
-  FIX-1179 / FIX-1246's, and the association a resume reads from is a typed field on the task —
-  the session id on the run record is a copy conductor keeps so it can say which session a run was.
+- **No "made progress but is not finished" outcome.** It would have to settle the row either done
+  (dishonest) or waiting on a person (which now means something specific: a question with an
+  answer coming). A run that stalled without asking anything is a failed attempt.
+- **No resume.** Conductor starts runs; it does not continue one across a wait — an answered run
+  begins a fresh coding session in the same checkout. That is FIX-1179 / FIX-1246's, and the
+  association a resume reads from is a typed field on the task — the session id on the run record
+  is a copy conductor keeps so it can say which session a run was.
 - **One issue at a time is a property of how you seed, not something the board enforces.** The
   board's `concurrency` is set to 1, which bounds how many rows one drain hands off — but a
   detached dispatch hands off and returns, releasing the slot long before the run finishes. Two
