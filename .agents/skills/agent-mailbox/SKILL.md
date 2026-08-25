@@ -28,8 +28,7 @@ a spec or epic PR on `flow-state-dev`.
   rather than as a permissions error — you will debug the wrong thing.
 - **Cloud session for live push.** `subscribe_pr_activity` is cloud-only, for the reasons in
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment: cloud vs.
-  local". **Locally there is no push**: run [`watch-pr`](../watch-pr/SKILL.md) against the
-  mailbox PR instead, and say plainly that the watch dies with the session.
+  local". Locally there is no push at all — see [Local: poll instead](#local-poll-instead).
 
 ## Who you are
 
@@ -85,6 +84,37 @@ Idempotent — safe to re-assert every wake, and cheaper than tracking whether y
 
 **Subscribe before you comment**, always. Commenting first and attaching after is how you miss
 the reply to your own message.
+
+### Local: poll instead
+
+A local session has no push, so mail simply never arrives. Poll for it:
+
+```bash
+.agents/skills/agent-mailbox/mailbox-poll.sh <from> <session> <pr>[,<pr>...]
+# e.g. mailbox-poll.sh fsd-em a 2,7
+```
+
+Run it under `Monitor` with `persistent: true`. Each line it prints becomes one wake, and it
+prints **only messages addressed to you** — your own posts echoing back, bot noise, headerless
+comments, and mail whose `to:` names another subscriber are all dropped in the subprocess. A
+tick with no mail for you costs nothing at all, which is what makes a 60s poll affordable.
+
+Prefer this over pointing [`watch-pr`](../watch-pr/SKILL.md) at a handle. That skill watches a
+PR *being reviewed* — diffs, checks, approvals, merge state, none of which a handle has — and it
+has no notion of the identity header, so it would wake you on every comment including your own.
+
+Same caveats as any local watch: it dies with the session, and it **primes on first sight of a
+handle** rather than replaying history, so the backlog at arm time is yours to read directly in
+the same wake.
+
+**It does not work in a cloud session, and the reason is worth knowing** — `GH_TOKEN` is set
+there, which invites exactly this attempt. The agent proxy refuses `api.github.com` from a
+shell regardless (`403 — GitHub access is not enabled for this session`); git smart-HTTP is
+allowed, but comments live only in the REST API, which is reachable solely through the GitHub
+MCP tools a subprocess can't call. Nor would it help: in the cloud the wake is delivered
+server-side by the subscription, so the tokens are spent before any script of yours could run.
+**The cloud equivalent of this filter is to end the turn immediately** — no tool calls — when a
+wake turns out to be your own echo or mail for someone else.
 
 **A clean result means you are attached, including when another session already is.** Verified
 on `shared/test/claude` (PR #2, 2026-08-25): a second Claude in a different working repo
