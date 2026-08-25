@@ -194,13 +194,19 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  *   permanently unclaimable (`depsSatisfied`). `seed` reports filed and the run
  *   simply never happens: no error, no attempt, no work.
  *
- * - `status`, but only the PARKED ones. `isClaimable` admits `pending` and a
- *   lapsed `in_progress`; `completed`, `errored` and `cancelled` are terminal, so
- *   a seed reporting "filed" against them is honest — the row exists and its
- *   story is finished, which is the ordinary idempotent case. `blocked` and
- *   `awaiting_review` are neither: the row exists, will never be claimed, and
- *   `seed` says filed while nothing ever runs. Saying "status is not checked"
- *   was too coarse — it is one field carrying three different answers.
+ * - `status`, which carries three different answers and is therefore read
+ *   FIRST, before any of the above. `completed`, `errored` and `cancelled` are
+ *   terminal: no drain will ever run them, so every check in the list is moot
+ *   and identity alone admits the row — the ordinary idempotent case, and the
+ *   public promise that a second seed returns the existing one. `blocked` and
+ *   `awaiting_review` are parked: the row exists, will never be claimed, and
+ *   `seed` says filed while nothing runs. `pending` and a lapsed `in_progress`
+ *   are the only ones a drain can take, and only those are held to the list.
+ *
+ * The ORDER is load-bearing, not stylistic. Asking about the retry budget before
+ * the terminal case refused a finished row filed under a different `maxAttempts`
+ * — a policy that could never be applied to it used as grounds to reject it,
+ * contradicting this very paragraph.
  *
  * `priority` and `labels` decide order and nothing else, and are model-patchable
  * besides.
@@ -209,6 +215,9 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  * `deps` are not — so this is a statement about the row as filed, and only the
  * latter two are guarantees about it afterwards.
  */
+const TERMINAL_STATUSES = new Set(["completed", "errored", "cancelled"]);
+const PARKED_STATUSES = new Set(["blocked", "awaiting_review"]);
+
 function seedMayReuse(
   task: {
     id: string;
@@ -220,6 +229,17 @@ function seedMayReuse(
   },
   maxAttempts: number,
 ): boolean {
+  if (!rowOwnsItsIdentity(task)) return false;
+
+  // **A finished row is reused on identity alone**, and the order is the whole
+  // point. Every check below asks whether a drain could run this row the way the
+  // seed promises — and no drain will ever run a terminal row, so a policy it
+  // can never apply cannot be grounds for refusing it. Asking first meant a
+  // `completed` row filed under a different retry budget was rejected, which
+  // contradicted both this function's own doc and the public promise that a
+  // second seed returns the existing row.
+  if (TERMINAL_STATUSES.has(task.status as string)) return true;
+
   if (task.assignee !== ASSIGNEE) return false;
   if (task.maxAttempts !== maxAttempts) return false;
   // Absent or empty is what this conductor files; anything else gates the claim.
@@ -227,8 +247,8 @@ function seedMayReuse(
   // Parked: not claimable, not terminal. `awaiting_review` is `blocked`'s
   // sibling here and was not reported — the set is what matters, not the
   // instance.
-  if (task.status === "blocked" || task.status === "awaiting_review") return false;
-  return rowOwnsItsIdentity(task);
+  if (PARKED_STATUSES.has(task.status as string)) return false;
+  return true;
 }
 
 /** Build the conductor flow for one epic. */

@@ -683,6 +683,33 @@ describe("provisioning is bounded as ONE operation", () => {
     ).rejects.toThrow(/provisioning exceeded its budget/);
   });
 
+  it("draws a FRESH budget for the marker probe's second command", async () => {
+    // The marker-recovery probe runs two git commands — `ls-files --deleted`,
+    // then `status --porcelain`. Both were handed ONE snapshot of the remaining
+    // time, so together they could hold the lock for twice what
+    // `provisionTimeoutMs` promises. The stale threshold is derived from that
+    // same number, so the overrun is exactly long enough for a replacement to
+    // declare this attempt dead and take the checkout while it is still probing.
+    //
+    // Staged on the path that reaches the probe: a real checkout, a tracked file
+    // removed, and the marker beside it. The clock is stepped so the budget
+    // survives the first command and is gone by the second — which a per-call
+    // snapshot would have funded in full.
+    const config = { ...workspace(), provisionTimeoutMs: 60_000 };
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    rmSync(join(first.path, "tracked.txt"));
+    writeFileSync(`${first.path}.provisioning`, "");
+
+    await expect(
+      provisionCheckout(config, location, steppingClock(35_000)),
+    ).rejects.toThrow(/provisioning exceeded its budget/);
+
+    // And the tree is still there: a probe that ran out of budget answered
+    // nothing, so nothing was cleared on the strength of it.
+    expect(existsSync(join(first.path, ".git"))).toBe(true);
+  });
+
   it("still provisions when the budget covers the whole operation", async () => {
     // The bound has to leave the product working. Real clock, real git.
     const config = { ...workspace(), provisionTimeoutMs: 60_000 };

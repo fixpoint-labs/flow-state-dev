@@ -608,14 +608,34 @@ function everyChangeIsADeletion(porcelain: string): boolean {
  * "unknown", and unknown must not authorise a recursive delete. The caller's
  * other branches handle a missing `.git` on its own terms.
  */
-async function looksHalfBuilt(path: string, timeoutMs: number): Promise<boolean> {
+async function looksHalfBuilt(path: string, left: () => number): Promise<boolean> {
   if (!existsSync(join(path, ".git"))) return true;
+
+  // **A budget per command, drawn from the one deadline.** Both probes ran on a
+  // single snapshot of the remaining time, so together they could hold the lock
+  // for twice what `provisionTimeoutMs` promises — long enough for the stale
+  // threshold derived from that same number to expire and a replacement to take
+  // the checkout while this probe is still running.
+  //
+  // Each `left()` is called OUTSIDE the `catch` deliberately. An exhausted
+  // budget is a loud, specific failure everywhere else in this file, and
+  // swallowing it here would report "not half-built" for a probe that never
+  // finished — a refusal dressed as an answer.
+  const forListing = left();
+  let missing: string;
   try {
-    if ((await git(path, ["ls-files", "--deleted"], timeoutMs)).length === 0) return false;
+    missing = await git(path, ["ls-files", "--deleted"], forListing);
+  } catch {
+    return false;
+  }
+  if (missing.length === 0) return false;
+
+  const forStatus = left();
+  try {
     const porcelain = await git(
       path,
       ["status", "--porcelain", "--untracked-files=all"],
-      timeoutMs,
+      forStatus,
     );
     return everyChangeIsADeletion(porcelain);
   } catch {
@@ -745,7 +765,7 @@ export async function provisionCheckout(
   // marker that might be real; deleting it destroys work that is definitely
   // real. This module's standing answer for contents it cannot explain is to
   // keep them and say so.
-  const interrupted = existsSync(marker) && (await looksHalfBuilt(path, left()));
+  const interrupted = existsSync(marker) && (await looksHalfBuilt(path, left));
 
   if (existsSync(marker) && !interrupted && existsSync(join(path, ".git"))) {
     throw new Error(

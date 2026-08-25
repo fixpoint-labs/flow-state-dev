@@ -1909,6 +1909,56 @@ describe("a row is only ours if its retry budget is ours too", () => {
       live.call("seed", { issue: "FIX-NOBUDGET", phase: PHASE }),
     ).rejects.toThrow(/retry budget|not one this conductor filed|did not file/);
   }, 20_000);
+
+  it("reuses a FINISHED row whose retry budget is not the configured one", async () => {
+    // **The other side of the same rule, and the ordering is what makes it
+    // true.** Every admission check asks whether a drain could run this row the
+    // way the seed promises. No drain will ever run a terminal row — so a retry
+    // policy that can never be applied to it is not grounds for refusing it.
+    //
+    // Checking policy before the terminal case meant a durable board restarted
+    // under a different `maxAttempts` threw on re-seeding an issue it had
+    // already finished, which contradicts the documented idempotency and the
+    // public promise that a second seed returns the existing row. A host cannot
+    // re-seed its way out of it either: the budget on a finished row is history.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-FINISHED", PHASE), {
+            id: conductorTaskId("FIX-FINISHED", PHASE),
+            goal: "finished under another budget",
+            input: { issue: "FIX-FINISHED", phase: PHASE },
+            // Terminal, and filed under a budget this conductor is not running.
+            status: "completed",
+            attempts: 1,
+            assignee: "harness",
+            maxAttempts: 99,
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    // Reused, not refused, and it is the same row rather than a new one.
+    await expect(
+      live.call("seed", { issue: "FIX-FINISHED", phase: PHASE }),
+    ).resolves.toMatchObject({ taskId: conductorTaskId("FIX-FINISHED", PHASE) });
+  }, 20_000);
 });
 
 describe("status attribution does not depend on the retry policy", () => {
