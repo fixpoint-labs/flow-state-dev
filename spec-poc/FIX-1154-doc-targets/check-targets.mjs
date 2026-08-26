@@ -91,6 +91,33 @@
  * anyone. A FILE DISPOSITIONED AT A LINE IS NOT A FILE DISPOSITIONED, hence the
  * coverage check at the bottom.
  *
+ * THE TARGET EXEMPTION WAS DRAWN AGAINST (a)/(b) AND APPLIED TO (c) — round 30
+ * Round 29 added predicate (c) and, in the same edit, exempted targets from line
+ * coverage — justifying the exemption entirely in terms of GUARANTEE lines ("the
+ * engine README alone carries nine the brief legitimately does not enumerate").
+ * That justification is sound for (a)/(b) and does not transfer to (c), which the
+ * exemption was never re-tested against. It is this document's own recurring
+ * defect — a rule stated at the width of the instance that motivated it — aimed
+ * at the exemption instead of at the rule.
+ *
+ * The difference is whether the brief's own instruction REACHES the line. A brief
+ * saying "correct the false concurrency guarantee on this page" reaches every
+ * guarantee line on it: each is an instance of that instruction, and enumerating
+ * them adds nothing. It does not reach a line that makes no concurrency claim at
+ * all and is stale for an unrelated reason — FIX-1269 adding two verbs to a list
+ * — because that is a DIFFERENT EDIT, and a writer executing the brief perfectly
+ * still leaves it wrong. `docs/architecture/state-and-scopes.md:108` is that: an
+ * exhaustive "every registry write op" naming three verbs, on an EXTEND target
+ * whose brief asks for a comparison table and concurrency guidance, selected by
+ * (c) with no guarantee vocabulary anywhere on the line.
+ *
+ * So the exemption is scoped rather than removed: a target is still settled at
+ * file level for (a)/(b), and must CITE its (c)-only lines — those selected by
+ * shape while carrying no guarantee vocabulary. Measured before it was adopted:
+ * 13 such lines across 19 targets, against 104 candidate lines in total. It does
+ * not drag in the 91 guarantee lines that would turn §11 back into an inventory,
+ * and the engine README's nine stay exempt exactly as round 29 intended.
+ *
  * RUN IT
  *   node spec-poc/FIX-1154-doc-targets/check-targets.mjs
  *
@@ -382,9 +409,20 @@ function candidates() {
           (aboutScopeState && GUARANTEE.test(line)) || enumeratesWriteSurface(line)
       );
     if (hits.length === 0) continue;
-    found.push({ file: path.relative(repoRoot, file), hits });
+    found.push({ file: path.relative(repoRoot, file), hits, aboutScopeState });
   }
   return found;
+}
+
+/**
+ * A line selected by (c) ALONE — an enumeration carrying no guarantee vocabulary.
+ * The round-30 distinction: (a)/(b) lines are reached by a brief that says
+ * "correct the guarantee on this page"; a (c)-only line is not reached by it,
+ * because correcting a guarantee and adding a verb to a stale list are different
+ * edits. See the header.
+ */
+function cSelectedOnly(line, aboutScopeState) {
+  return enumeratesWriteSurface(line) && !(aboutScopeState && GUARANTEE.test(line));
 }
 
 const spec = readFileSync(path.join(repoRoot, "spec/FIX-1154.md"), "utf8");
@@ -457,6 +495,33 @@ function citedLines(file) {
 }
 
 /**
+ * Every line number §11 cites against a page, IGNORING whether it also names the
+ * path bare. `citedLines` returns `null` the moment it sees a bare mention, which
+ * is right for a whole-file ruling and useless for a target: a target is ALWAYS
+ * named bare, in its own `- **EXTEND** \`path\`` bullet. So targets need the
+ * union of citations rather than the whole-file verdict.
+ */
+function citedLinesAnywhere(file) {
+  const cited = new Set();
+  for (const key of keysFor(file)) {
+    let i = 0;
+    while ((i = section11.indexOf(key, i)) !== -1) {
+      const m = section11
+        .slice(i + key.length, i + key.length + 48)
+        .match(/^(?:\.mdx?)?:(\d+(?:\s*[-,]\s*\d+)*)/);
+      if (m) {
+        for (const part of m[1].split(",")) {
+          const [from, to] = part.trim().split("-").map(Number);
+          for (let n = from; n <= (to ?? from); n++) cited.add(n);
+        }
+      }
+      i += key.length;
+    }
+  }
+  return cited;
+}
+
+/**
  * The TARGET set — every distinct path §11 marks EXTEND or QUALIFY.
  *
  * §11 refuses to state this as a figure ("the target set is this list, not a
@@ -470,7 +535,17 @@ function citedLines(file) {
  * One path is deliberately named twice (`state/mutation-model.md` is both the
  * first EXTEND and one of the two reference pages the sweep turned up), so the
  * set is deduped — §11 says it is one target and takes one brief.
+ *
+ * A TARGET IS A PATH — round 30, and this is not a hypothetical guard. Adding a
+ * sub-bullet to a QUALIFY brief that opened with a code span (`- \`incState\` /
+ * \`pushState\` → …`) matched the sub-bullet pattern below and entered the set:
+ * the run reported 21 targets, two of them named `incState` and `setStateRecord`.
+ * §6's Size line cites this number, so ordinary prose inside a brief could inflate
+ * the one figure the document deliberately does not write by hand. Requiring a
+ * path shape costs one predicate and closes it.
  */
+const looksLikePath = (s) => s.includes("/") && /\.mdx?$/.test(s);
+
 function targets() {
   const lines = section11.split("\n");
   const stopAt = lines.findIndex((l) => /Deliberately left alone/.test(l));
@@ -480,13 +555,16 @@ function targets() {
     const line = lines[i];
     // Top-level EXTEND bullets: `- **EXTEND** \`path\``
     const extend = line.match(/^- \*\*EXTEND\*\* `([^`]+)`/);
-    if (extend) {
+    if (extend && looksLikePath(extend[1])) {
       found.add(extend[1]);
       continue;
     }
     // QUALIFY sub-bullets: `  - \`path:line\` — ...`
     const qualify = line.match(/^\s{2,}- `([^`]+)`/);
-    if (qualify) found.add(qualify[1].replace(/:[\d,\s:-]+$/, ""));
+    if (qualify) {
+      const p = qualify[1].replace(/:[\d,\s:-]+$/, "");
+      if (looksLikePath(p)) found.add(p);
+    }
   }
   return [...found].sort();
 }
@@ -556,4 +634,35 @@ if (uncovered.length > 0) {
   process.exit(1);
 }
 
-console.log("\nEvery candidate is dispositioned in §11, at every line it was selected on.");
+// A target's brief owns the page for (a)/(b), and must CITE its (c)-only lines —
+// the ones its own instruction does not reach. Round 30; see the header.
+const targetCGaps = [];
+for (const { file, hits, aboutScopeState } of all) {
+  if (!targetSet.has(file)) continue;
+  const cOnly = hits.filter(([, line]) => cSelectedOnly(line, aboutScopeState));
+  if (cOnly.length === 0) continue;
+  const cited = citedLinesAnywhere(file);
+  const missed = cOnly.filter(([lineNo]) => !cited.has(lineNo));
+  if (missed.length > 0) targetCGaps.push({ file, cited, missed });
+}
+
+if (targetCGaps.length > 0) {
+  console.error(
+    `\n${targetCGaps.length} target(s) carry enumeration-only lines their brief does not name.\n` +
+      `A brief that corrects a guarantee does not reach a list that is merely going stale —\n` +
+      `different defect, different edit. Cite the line in the brief, or rule it open:`
+  );
+  for (const { file, cited, missed } of targetCGaps) {
+    const shown = [...cited].sort((a, b) => a - b).join(", ") || "no lines";
+    console.error(`  ${file}  (§11 cites ${shown})`);
+    for (const [lineNo, line] of missed) {
+      console.error(`    :${lineNo}: ${line.trim().slice(0, 132)}`);
+    }
+  }
+  process.exit(1);
+}
+
+console.log(
+  "\nEvery candidate is dispositioned in §11, at every line it was selected on,\n" +
+    "and every target names the enumeration-only lines its brief does not reach."
+);

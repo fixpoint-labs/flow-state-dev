@@ -1,5 +1,5 @@
 /**
- * FIX-1154 — claim checks for rounds 25, 26 and 28. Throwaway; never merges.
+ * FIX-1154 — claim checks for rounds 25, 26, 28 and 30. Throwaway; never merges.
  *
  * WHY A THIRD FILE
  * Each round below corrected a factual claim in the write-up that had been
@@ -24,7 +24,11 @@
  *     to whether a row exists (round 28: also false). Group 4 drives the single
  *     handle's composition; group 4b drives the REAL registry and settles what
  *     the axis is, what the collection handle does instead, and how far it
- *     reaches.
+ *     reaches. Round 30 adds the axis's OTHER side: §11 stated the replacement
+ *     observables universally ("every existing single…", "every existing
+ *     collection row…"), which contradicts the same section's rule two lines
+ *     above — a live row already holding its own fallback takes no write and no
+ *     version bump.
  *  5. D6's replay predicate required `retryableErrors` unset or empty. A
  *     non-empty allowlist containing a matching class replays it too.
  *
@@ -616,6 +620,58 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
     await inst.updateState(() => ({ n: "bad" }) as never);
 
     expect(await readRow(stores, "strict/s1")).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Round 30. The axis above says "equal -> nothing is written", and §11 then
+  // stated the two observables UNIVERSALLY ("every existing single is replaced
+  // by its defaults", "every existing collection row by {}"). Both are the
+  // DIFFERENT-fallback case. When a live row already HOLDS what normalization
+  // returns, the same call is a verified no-op — no write, no version bump.
+  //
+  // These are not the first-touch rows above. There the row does not exist;
+  // here it exists, at a version, and still nothing happens. That is what makes
+  // the universal phrasing wrong rather than merely imprecise.
+  // -------------------------------------------------------------------------
+  it("a single ALREADY AT its defaults is a no-op — not 'replaced by its defaults'", async () => {
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_single_at_default");
+    const ref = ctx.resources.single as never as MutableRef;
+
+    // Land a row that differs, then bring it back TO the defaults, so the row
+    // genuinely exists at a version and equals what the fallback would return.
+    await ref.updateState(() => ({ n: 5, keep: "DO-NOT-LOSE" }));
+    await ref.updateState(() => ({ n: 0, keep: "seed" }));
+    const before = await readRow(stores, "single");
+    expect(before?.state).toEqual({ n: 0, keep: "seed" });
+    expect(before?.version).toBe(2);
+
+    await ref.updateState(() => ({ n: "bad" }) as never);
+
+    const after = await readRow(stores, "single");
+    expect(after?.state).toEqual({ n: 0, keep: "seed" });
+    expect(after?.version).toBe(2); // NOT 3 — the write never reached a store
+  });
+
+  it("a collection row ALREADY HOLDING {} is a no-op — the second invalid write does nothing", async () => {
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_coll_at_empty");
+    const handle = ctx.resources.tasks as never as CollectionHandle;
+    await handle.create("t5", { n: 5, keep: "DO-NOT-LOSE" });
+    const inst = await handle.get("t5");
+
+    // First invalid write: fallback {} differs from the stored row, so it lands.
+    await inst.updateState(() => ({ n: "bad" }) as never);
+    const before = await readRow(stores, "tasks/t5");
+    expect(before?.state).toEqual({});
+    expect(before?.version).toBe(2);
+
+    // Second: the row already IS {}, which is exactly what the fallback returns.
+    await inst.updateState(() => ({ n: "bad" }) as never);
+
+    const after = await readRow(stores, "tasks/t5");
+    expect(after?.state).toEqual({});
+    expect(after?.version).toBe(2); // NOT 3 — reachable in ordinary retry traffic
   });
 });
 
