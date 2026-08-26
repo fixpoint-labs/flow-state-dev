@@ -45,6 +45,7 @@ import {
   handler
 } from "@flow-state-dev/core";
 import {
+  ConcurrentModificationError,
   createExecutionContext,
   createInMemoryStores,
   ResourceDeletedError,
@@ -268,6 +269,71 @@ function readRow(stores: StoreRegistry, key: string) {
   return stores.resourceState.get("session", "sess_1", key);
 }
 
+/**
+ * A store seam that models a competing writer which always wins the race for
+ * one key. Every `set` this context attempts is preceded by a real
+ * unconditional write from the "other" writer, so the version the driver just
+ * read is genuinely stale by the time its own write arrives, and the conflict
+ * it gets back carries the row that actually won.
+ *
+ * This is a LIVE-row conflict on purpose. A tombstone conflict
+ * (`currentValue: undefined`) is the terminal path two rows below and would
+ * short-circuit the retry loop instead of exhausting it, which is the opposite
+ * of what this row is for.
+ *
+ * `contendedKey` is scoped to one key so the same registry can still service
+ * the resource's other reads and writes normally.
+ */
+function withAlwaysLosingWrites(
+  stores: StoreRegistry,
+  contendedKey: string
+): { stores: StoreRegistry; attempts: () => number } {
+  const inner = stores.resourceState;
+  let attempts = 0;
+
+  const contendedSet: typeof inner.set = async (
+    scopeType,
+    scopeId,
+    resourceKey,
+    state,
+    expectedVersion
+  ) => {
+    if (resourceKey !== contendedKey) {
+      return inner.set(scopeType, scopeId, resourceKey, state, expectedVersion);
+    }
+    attempts += 1;
+
+    // The competing writer lands first, unconditionally.
+    const current = await inner.get(scopeType, scopeId, resourceKey);
+    const rival = { ...(current?.state ?? {}), rival: attempts } as typeof state;
+    const landed = await inner.set(scopeType, scopeId, resourceKey, rival, "any");
+
+    return {
+      ok: false,
+      conflict: {
+        currentValue: rival,
+        currentVersion: landed.ok ? landed.version : (current?.version ?? 0) + 1
+      }
+    };
+  };
+
+  // A proxy, not a spread: the registry's stores carry methods this row never
+  // touches (`getByPrefix`, used to load the collection) and a spread drops the
+  // ones that live on the prototype.
+  const resourceState = new Proxy(inner, {
+    get(target, prop, receiver) {
+      if (prop === "set") return contendedSet;
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+
+  return {
+    stores: { ...stores, resourceState },
+    attempts: () => attempts
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Incrementing and appending on a resource, the only way `main` allows: a
 // mutator body handed to `updateState`, which reaches the same write path
@@ -342,6 +408,29 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const log = ((await readRow(stores, "counter"))?.state as PocState).log as string[];
     expect(log).toHaveLength(3);
     expect(new Set(log)).toEqual(new Set(["seed", "b", "c"]));
+  });
+
+  it("row: contention outlasting the retry budget raises ConcurrentModificationError", async () => {
+    // The §9 row for retry exhaustion. Every other contention row here
+    // CONVERGES — the loser re-runs and lands — so none of them reaches the
+    // end of the budget. This one pins the failure at the end: a rival that
+    // wins every race leaves the driver nothing to converge on.
+    const base = createInMemoryStores();
+    const ctxSeed = await makeCtx(base, "req_seed");
+    await incrementVia(ctxSeed.resources.counter as unknown as MutableRef, { n: 1 });
+
+    const contended = withAlwaysLosingWrites(base, "counter");
+    const ctx = await makeCtx(contended.stores, "req_loser");
+
+    await expect(
+      incrementVia(ctx.resources.counter as unknown as MutableRef, { n: 1 })
+    ).rejects.toBeInstanceOf(ConcurrentModificationError);
+
+    // `resource-cas.ts:62` sets DEFAULT_MAX_RETRIES = 3, so the budget is four
+    // attempts, not three. Asserting the count is what separates "exhausted"
+    // from "gave up on the first conflict" — the two are indistinguishable
+    // from the error type alone.
+    expect(contended.attempts()).toBe(4);
   });
 
   it("row: conflict against a tombstone is TERMINAL and FAILS FAST", async () => {
