@@ -17,8 +17,8 @@
 bag (`ctx.session.state`) and resources (`ctx.resources.<name>`). Today a developer picks
 between them by **which API happens to carry the verb they need**, not by where the data
 belongs: a named increment or append verb means scope state (`incState` / `pushState` on
-`ScopeStateHandle`, `core/src/types/state.ts`), per-key versioning and collision detection
-means resources — `ResourceRef` carries no delta verb at all
+`ScopeStateOps`, `core/src/types/state.ts`), per-key versioning and collision detection
+means resources — the resource handles carry no delta verb at all
 (`core/src/types/resource.ts`). The operating rule is **symmetry where it is
 safe, and the asymmetry stated once where it is not**: one mutation contract wherever the two
 primitives can share one without
@@ -27,15 +27,15 @@ place a reader hits *before* reaching for the wrong import rather than after.
 
 **This cycle closes the increment/append gap and maps the rest** — decided by the owner in
 [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446), Ask 1 = **A** (amended
-2026-08-26; it read **B**, *document the gap*, from 2026-08-25). `ResourceRef.incState` /
+2026-08-26; it read **B**, *document the gap*, from 2026-08-25). `incState` /
 `pushState` **ship** (FIX-1269): the bag already carries these verbs, two live callers cross the
 primitives, and a documented gap is a worse foundation than the two methods that close it.
 Decision 3 follows — the write-up becomes **API documentation**, not a withheld-gap story. Every
 *other* difference is still **mapped, not closed** (FIX-1154).
 
-**What ships is API symmetry, not a contention win.** Tier 1 adds the two verbs to the handle and
-touches no store interface: **no store-native delta verb and no contention improvement** —
-concurrent increments still resolve by CAS retry exactly as `updateState` does today.
+**What ships is API symmetry, not a contention win.** Tier 1 adds the two verbs to the handle types
+and touches no store interface: **no store-native delta verb and no contention improvement** —
+concurrent increments still resolve by CAS retry as `updateState` does today.
 **CAS atomicity is preserved**, because the verbs ride the read-modify-write *inside* the CAS
 loop, which re-runs the mutator against the winner's row on every conflict.
 **Nor does the deferred store-native half win contention**
@@ -60,7 +60,7 @@ honest description of a small set.**
 - **FIX-1154** (the mutation surface — **the map**: every remaining difference between the two
   mutation surfaces recorded in its own spec, each one deliberate-with-a-reason or deferred)
   *is* the epic. Without it nothing here delivers.
-- **FIX-1269** (the handle verbs — `ResourceRef.incState` / `pushState`) is what D-6 = **A**
+- **FIX-1269** (the handle verbs — `incState` / `pushState`) is what D-6 = **A**
   added. **Tier 1 only**: the handle surface, not the store interface.
 - **FIX-1158** (cross-flow resource validation never runs) is a **same-subsystem
   unintended-asymmetry lodger** — the epic's own thesis pointed at itself, where the
@@ -99,7 +99,7 @@ Whether this is an epic at all was asked twice and is **decided: it stays an epi
 
 **Not doing:** merging the two primitives; deleting or deprecating either one at any scope;
 re-attempting the org-state removal; cross-record atomicity (FIX-854); and resource-specific
-surface with no state analogue at all — content, `client`, `reactTo`, `edges`, collections.
+surface with no state analogue — content, `client`, `reactTo`, `edges`, collections.
 **One pair of verbs closes; the rest is only mapped** (D-6, above) — and most of it is out of
 scope **by construction**. The one thing **deferred rather than absent** is the
 **store-native** delta layer (`incField` / `pushToArray`) — FIX-1267, next to FIX-992 (theme 2,
@@ -348,10 +348,24 @@ below the themes had both gone stale against the code that merged.
    overclaiming (D-6).**
 
    - ***Tier 1 — the handle surface. Ships this cycle (FIX-1269).*** Caller-visible
-     **increment and append** on `ResourceRef`, adding **no store-interface surface**.
-     **It wins no contention** — concurrent writers still resolve by CAS retry exactly as
+     **increment and append** on the public resource handle types, adding **no store-interface
+     surface**. **It wins no contention** — concurrent writers still resolve by CAS retry exactly as
      `updateState` does today. What it buys is API symmetry, so a developer stops picking a
      primitive by its verb list.
+
+     **The surface promise covers `ResourceContext`, not only `ResourceRef` — "the handle surface"
+     is two types.** `ResourceContext<TState>` (`core/src/types/resource.ts`) is a **separate public
+     type** declaring its own `state` / `patchState` / `setState` / `updateState`, and on
+     `origin/main` it carries **no** `incState` or `pushState`. It is public rather than incidental
+     by two named exports: `DefinedResource.ContextType` resolves to it, and so does
+     `ContextOf<T, "resource">`. It is also the type our own documentation *sends people to* —
+     `docs/architecture/resources-and-client-data.md` says *"`defineResource` exposes `StateType` and
+     `ContextType` helpers for typing shared helper functions"* and works the example with an
+     `addStep(ctx: PlanContext, …)` whose body calls `ctx.updateState(...)`. So a developer following
+     our documented pattern for shared resource helpers reaches the one type the new verbs would have
+     skipped — **the gap this epic exists to close, reopened one type over.** An epic whose objective
+     is symmetry cannot ship an asymmetric surface, which is why the requirement is fixed here rather
+     than left to a child to notice.
 
      **Do not describe it as adding a store-native delta verb or as reducing contention — and
      do not describe it as non-atomic.** The verbs ride the same read-modify-write *inside* the
@@ -368,8 +382,9 @@ below the themes had both gone stale against the code that merged.
      not an atomicity one — theme 1, FIX-1258.)*
 
      **How it is built is FIX-1269's spec's call**
-     — this document fixes the tier boundary, the no-contention claim and the atomicity claim,
-     not the mechanism, the persistence path, or a size.
+     — this document fixes the tier boundary, **which public types the promise covers**, the
+     no-contention claim and the atomicity claim, not the mechanism, the persistence path, a size,
+     or whether the two types share a base or declare the verbs separately.
    - ***Tier 2 — the store interface. Still deferred (FIX-1267).*** Store-native `incField` /
      `pushToArray` on `ResourceStateStore` across every adapter plus conformance — the tier
      carrying this theme's unproven claim, the liveness gating, and the constraint amendment
@@ -437,7 +452,7 @@ below the themes had both gone stale against the code that merged.
 
    **FIX-1269 and FIX-1154 now share one paragraph, and that is this theme's live seam.**
    Decision 3 makes the docs follow the verbs, so FIX-1269 owns the **reference** half — the two
-   new methods on `ResourceRef`, their signatures and their return contract — and FIX-1154 owns
+   new methods on the resource handle types, their signatures and their return contract — and FIX-1154 owns
    the **comparison** half, the paragraph explaining how the two mutation surfaces line up.
    **Both halves inherit theme 2's atomicity ruling**, and the comparison half is where it is
    easiest to get wrong: the two surfaces differ in verb list and in return type, **not** in
@@ -522,7 +537,7 @@ expensive thing this epic has already paid for.
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review · nothing about this issue is blocked. Its docs **publish** after FIX-1269 lands — a prose ordering, deliberately not a Linear blocker (theme 3) |
-| [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` on the resource handle. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
+| [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `incState` / `pushState` on **both** public resource handle types, `ResourceRef` and `ResourceContext`. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, comparing shared declarations on `(scope, ref)` — the durable cell, not the accessor name | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | **A write issued after the delete does not revive the resource.** The condition is the **version the write begins with, not what the context observed** — a context that never saw the key and one whose held version the delete evicted both arrive at the create-if-absent seed of `0`, so a fix written for the never-observed case alone leaves the defect live. Same **held-then-lost** shape FIX-1259 fixes on the scope side (`related`). The ordinary first touch of a never-written resource is unchanged, **and so is explicit recreation after a delete** (FIX-992 behaviour, pinned in two suites; theme 1 constrains the fix) — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
 | [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. **The split is the right axis and is not sufficient on its own** — the constraint that goes with it, the measured evidence ([comment `5430501537`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430501537)) and the choice of mechanism are [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260)'s, on its issue and its PR | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
@@ -612,7 +627,7 @@ the PR closes when the epic wraps; this document outlives it.
 - **~~Does this cycle add public resource verbs, or document the gap?~~** *Resolved by the owner
   in [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446): **ship the verbs.***
   **Ask 1 = A, amended 2026-08-26** — it was **B** (*document the gap*) from 2026-08-25, and
-  Jake flipped it in Decision Manager chat. `ResourceRef.incState` / `pushState` **ship this
+  Jake flipped it in Decision Manager chat. `incState` / `pushState` **ship this
   cycle** as FIX-1269: the bag already carries these verbs, two live callers already cross the
   primitives, and the foundation-honesty rule cuts the *other* way once a gap is the thing being
   documented — an API you have to explain the absence of is worse than the two methods that
@@ -632,21 +647,23 @@ the PR closes when the epic wraps; this document outlives it.
   asymmetry stated once where it is not. This is that statement. Raised by review on this PR,
   decided here at epic altitude so no child picks either way on its own.
 
-  **Constrains FIX-1269:** the shipping `ResourceRef.incState` / `pushState` return
-  **`Promise<void>`**, matching `ResourceRef`'s existing `patchState` / `setState` /
-  `updateState` (`core/src/types/resource.ts:280-282`) — **not** the `Promise<boolean>` that
-  `ScopeStateHandle` returns (`core/src/types/state.ts:42-43`). The verbs are being added for
-  API symmetry, which makes copying the bag's signature the tempting move and the wrong one: it
-  would fork `ResourceRef`'s own return contract to close a gap with the other primitive.
+  **Constrains FIX-1269:** the shipping `incState` / `pushState` return **`Promise<void>`** on
+  **both** handle types, matching the `patchState` / `setState` / `updateState` that `ResourceRef`
+  and `ResourceContext` each already declare (`core/src/types/resource.ts`) — **not** the
+  `Promise<boolean>` that `ScopeStateOps` returns (`core/src/types/state.ts`). The verbs are being
+  added for API symmetry, which makes copying the bag's signature the tempting move and the wrong
+  one: it would fork the resource side's own return contract to close a gap with the other
+  primitive.
 
 ---
 
 ## Epic evolution
 
 One line per turn, per
-[`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) → *Epic evolution*. The log
-had grown to 339 lines and was restating theme and index mechanics in prose — a second technical
-carrier needing reconciliation, the same failure as the §4 diagnosis and the child-only constraints.
+[`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) → *Epic evolution*. The log had
+grown to 339 lines of theme and index mechanics restated in prose — a second technical carrier needing
+reconciliation, the same failure as the §4 diagnosis and the child-only constraints. **Entries one
+through three went with that trim**, so the numbered tally below starts visible at **Four**, not at one.
 **Corrections are counted, not narrated:** the count is this epic's own measured signal, and where a
 retraction taught something the themes do not already say, it earns a clause.
 
@@ -834,3 +851,10 @@ retraction taught something the themes do not already say, it earns a clause.
   scope's `"absent"` is the **shape** the resource side lacks, **not a value to copy**, and the two
   `ExpectedVersion` vocabularies stay separate. *(**Twenty** — the first correction to a fix this
   document **specified** rather than to a description of shipped code.)*
+- **Tier 1's surface widened to `ResourceContext` (2026-08-26)** — `DefinedResource.ContextType` and
+  `ContextOf<T, "resource">` resolve to it and the architecture doc sends shared helpers there, so verbs
+  on `ResourceRef` alone reopen this epic's own gap one type over. *(**Twenty-one** — a **promise** stated
+  at the wrong width; every earlier width error was a description.)*
+- **`ScopeStateHandle` never existed (2026-08-26)** — the scope-side verbs live on **`ScopeStateOps`**
+  (`core/src/types/state.ts`), mixed into each `*ScopeHandle`; the name was cited twice as if real.
+  *(**Twenty-two** — cite-by-symbol cannot catch a symbol that was never a symbol.)*
