@@ -275,6 +275,26 @@ function readRow(stores: StoreRegistry, key: string) {
 }
 
 /**
+ * The two REAL durable adapters, each on a throwaway backing store.
+ *
+ * They are module-scope rather than local to one row because §7c's partition
+ * is a claim about adapters, and more than one row has to write through them
+ * to establish it. A row that simulates the durable side with a hand-rolled
+ * `JSON.stringify` is testing this file's arithmetic, not a store — which is
+ * exactly the miss round 22 found and round 23 found again on the D4 row.
+ *
+ * The pair is deliberately one CLONE-FIRST adapter (filesystem `cloneValue`s
+ * before it serializes) and one STRINGIFY-FIRST adapter (SQLite goes straight
+ * into the payload), because that is the partition that holds — not
+ * memory-versus-durable.
+ */
+const freshFs = async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "fix1154-poc-"));
+  return createFilesystemStores({ rootDir: dir, developmentOnly: true });
+};
+const freshSqlite = () => createSQLiteStores({ filename: ":memory:" }) as StoreRegistry;
+
+/**
  * A store seam that models a competing writer which always wins the race for
  * one key. Every `set` this context attempts is preceded by a real
  * unconditional write from the "other" writer, so the version the driver just
@@ -674,7 +694,7 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect(row?.version).toBe(2);
   });
 
-  it("CURRENT BEHAVIOUR (defect D4): a transform can INTRODUCE a value the adapters disagree on", async () => {
+  it("CURRENT BEHAVIOUR (defect D4): a transform INTRODUCES a value the adapters disagree on — three real stores", async () => {
     // The round-trip hazard reached from inside the schema rather than from the
     // caller's argument, which is what makes it un-guardable at the call site:
     // every value the caller supplied here is an ordinary finite number.
@@ -683,6 +703,18 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     // JSON-backed adapter stores `null`, which then fails the schema on the next
     // durable read and lands in D1's replacement. Nothing throws on either side,
     // so the two deployments simply hold different data from the same call.
+    //
+    // ROUND 23: the durable half of this row used to be
+    // `JSON.parse(JSON.stringify(state))` — this file's own arithmetic, not a
+    // store. So the three outcomes §9/§10 credited to it (the call resolves,
+    // the row lands as `null`, a later context reaches D1) were not established
+    // by anything: `JSON.stringify` cannot show that a write RESOLVED, that a
+    // ROW landed, or what a later LOAD does with it. Round 22 added the
+    // three-adapter seam one row below and this older row kept its marker —
+    // the same neighbour miss, on the evidence marker itself. It now writes
+    // through the real filesystem and SQLite adapters and re-reads them, which
+    // establishes all three, and the D1 chain in step 3 is a stronger result
+    // than the row previously claimed.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
     const ref = ctx.resources.infinitizing as unknown as MutableRef;
@@ -697,11 +729,47 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect(state.n).toBe(Infinity);
     expect(state.keep).toBe("DO-NOT-LOSE");
 
-    // Every JSON-backed adapter: the same state, flattened.
-    expect(JSON.parse(JSON.stringify(state))).toEqual({
-      n: null,
-      keep: "DO-NOT-LOSE"
-    });
+    // The durable half, through the REAL adapters rather than a hand-rolled
+    // round trip. Both are stringify-first for this value: `Infinity` survives
+    // `structuredClone`, so the filesystem adapter's clone does not refuse it
+    // and both stores reach `JSON.stringify`. Same call, same schema, and the
+    // stored row differs from memory's.
+    for (const stores of [await freshFs(), freshSqlite()]) {
+      const ctx = await makeCtx(stores, "req_d4_durable");
+      const ref = ctx.resources.infinitizing as unknown as MutableRef;
+
+      // 1. The call RESOLVES. No error reaches the caller on either adapter.
+      await expect(
+        ref.updateState(() => ({ n: 500, keep: "DO-NOT-LOSE" }))
+      ).resolves.toBeUndefined();
+
+      // 2. The row LANDED, and `n` is `null` — not `Infinity`, not absent.
+      //    Version 1, so this was a real write and not a refused one.
+      const row = await readRow(stores, "infinitizing");
+      expect(row?.state).toEqual({ n: null, keep: "DO-NOT-LOSE" });
+      expect(row?.version).toBe(1);
+
+      // 3. And the chain completes: a LATER context loading that row reaches
+      //    D1. `z.number()` refuses the `null` the storage layer produced, so
+      //    normalization replaces the WHOLE state with the default — the live
+      //    `keep: "DO-NOT-LOSE"` is destroyed on the way in, before any code
+      //    of the reader's runs. This is the row that shows D4 is not a
+      //    cosmetic flattening: it feeds D1's replacement one read later.
+      const later = await makeCtx(stores, "req_d4_later");
+      const laterRef = later.resources.infinitizing as unknown as MutableRef;
+      expect((laterRef as unknown as { state: unknown }).state).toEqual({
+        n: 0,
+        keep: "schema-default"
+      });
+
+      // 4. ...and the reader's own next write persists that replacement, so
+      //    the loss becomes durable without anything having thrown at any
+      //    point on either call.
+      await laterRef.updateState((s) => ({ ...s, keep: "SECOND-WRITE" }));
+      const row2 = await readRow(stores, "infinitizing");
+      expect(row2?.state).toEqual({ n: 0, keep: "SECOND-WRITE" });
+      expect(row2?.version).toBe(2);
+    }
   });
 
   it("row: a transform loses the row only when its input side rejects its own output", async () => {
@@ -833,12 +901,6 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     // that corrupts quietly. Three behaviours, not two.
     const fn = () => "nope";
     const sym = Symbol("nope");
-
-    const freshFs = async () => {
-      const dir = await mkdtemp(path.join(tmpdir(), "fix1154-poc-"));
-      return createFilesystemStores({ rootDir: dir, developmentOnly: true });
-    };
-    const freshSqlite = () => createSQLiteStores({ filename: ":memory:" }) as StoreRegistry;
 
     // --- Shape 2: bigint. Memory KEEPS it; both durable adapters REJECT it.
     const memStores = createInMemoryStores();
