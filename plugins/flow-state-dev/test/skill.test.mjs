@@ -73,7 +73,10 @@ describe("every fact the skill acts on appears in the report", () => {
     "mount",
     "routeSlots",
     "devCommand",
+    "devCommand.needsSeparator",
     "fsdevConfig",
+    "fsdevConfig.winner",
+    "fsdevConfig.winnerIsOurs",
     "secrets",
     "secretFiles",
     "ignoreFile",
@@ -152,6 +155,12 @@ describe("the instruction set names no file outside its host's allowlist", () =>
     expect(text).toMatch(/fsdev\.config\.mts/);
     expect(text).toMatch(/no `?fsdev\.config\.\*`/);
   });
+
+  it("does not print the registration line when the winning config is ours", () => {
+    const text = skillText();
+    expect(text).toMatch(/winnerIsOurs/);
+    expect(text).toMatch(/do \*\*not\*\* print the registration line/);
+  });
 });
 
 describe("the write barrier and the two phases", () => {
@@ -187,6 +196,13 @@ describe("secrets never enter the transcript", () => {
     expect(text).toMatch(/FSD_DEMO_TOKEN/);
     expect(text).toMatch(/\.env\.local/);
   });
+
+  it("re-runs detection with --provider after the developer chooses one", () => {
+    const text = skillText();
+    expect(text).toMatch(/--provider OPENAI_API_KEY/);
+    expect(text).toMatch(/ANTHROPIC_API_KEY/);
+    expect(text).toMatch(/GOOGLE_GENERATIVE_AI_API_KEY/);
+  });
 });
 
 describe("the skill's embedded next-steps block equals canonical", () => {
@@ -198,6 +214,14 @@ describe("the skill's embedded next-steps block equals canonical", () => {
 
   it("equals canonical after normalization, every branch included", () => {
     expect(() => assertCanonicalNextSteps(embeddedNextSteps(), "SKILL.md")).not.toThrow();
+  });
+
+  it("emits the block through the exported renderer after install", () => {
+    const text = skillText();
+    expect(text).toMatch(/renderNextSteps/);
+    expect(text).toMatch(/from "@flow-state-dev\/fsdev"/);
+    expect(text).toMatch(/packageManager\.value/);
+    expect(text).toMatch(/host\.topology/);
   });
 
   it("fails on a copy with the second-process branch trimmed", () => {
@@ -270,6 +294,8 @@ describe("authored templates satisfy the contract", () => {
     expect(flow).toMatch(/createBearerSecretPrincipalResolver/);
     expect(flow).toMatch(/FSD_DEMO_TOKEN/);
     expect(flow).toMatch(/from "zod"/);
+    expect(flow).toMatch(/principal === null/);
+    expect(flow).not.toMatch(/Action request requires non-empty userId/);
   });
 
   it("the mount pair uses createNextHandler and forwards the bare path", () => {
@@ -279,5 +305,11 @@ describe("authored templates satisfy the contract", () => {
     expect(bare).toMatch(/fsd:generated/);
     expect(catchAll).toMatch(/createNextHandler/);
     expect(bare).toMatch(/path:\s*\[\]/);
+  });
+
+  it("the skill points the mount import at the CLI winner, not a hardcoded .mts", () => {
+    const text = skillText();
+    expect(text).toMatch(/fsdevConfig\.winner/);
+    expect(text).toMatch(/CONFIG_IMPORT/);
   });
 });

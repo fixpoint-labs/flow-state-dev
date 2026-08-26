@@ -17,7 +17,9 @@ The config calls `createFlowState` with:
 - `modelResolver` — a pre-built resolver from `createModelResolver`, passed as `modelResolver`. Never the `models` shorthand. Next bundles server code and breaks the dynamic provider path.
 - `devtool` — `{ userId: "demo", bearerToken: process.env.FSD_DEMO_TOKEN }` so `fsdev dev` can reach the closed demo flow.
 
-When the project already has a config, do not write one. Register the new flow in theirs. Auth for the demo stays on that flow alone — do not add a host-level `resolvePrincipal` to a config you did not write.
+When the project already has a config, do not write one. If that winner carries our `fsd:generated` marker, the demo flow is already registered — print no registration line. If it does not, hand back the one line that registers `./flows/hello/flow.mts` as kind `hello`. Do not edit a file this run did not author. Auth for the demo stays on that flow alone — do not add a host-level `resolvePrincipal` to a config you did not write.
+
+The Next mount pair imports the CLI winner (`fsdevConfig.winner`), not a hardcoded `fsdev.config.mts`.
 
 ## Provider wiring
 

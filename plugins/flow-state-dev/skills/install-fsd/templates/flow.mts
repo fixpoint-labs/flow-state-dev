@@ -27,10 +27,16 @@ function resolveDemoPrincipal(context: { request?: Request }) {
       status: 401,
     });
   }
-  return createBearerSecretPrincipalResolver({
+  const principal = createBearerSecretPrincipalResolver({
     secret,
     principal: { userId: "demo" },
   })(context);
+  if (principal === null) {
+    throw new PrincipalResolutionError("Demo flow is closed. Send Authorization: Bearer.", {
+      status: 401,
+    });
+  }
+  return principal;
 }
 
 export default defineFlow({

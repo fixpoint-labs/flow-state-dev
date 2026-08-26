@@ -12,7 +12,7 @@ Hosts: Next.js App Router (15 or later) and plain Node. There is no `fsdev init`
 
 ## Ask a coding assistant
 
-Ask it to run the `install-fsd` skill from your project directory.
+Ask a coding assistant that has the `install-fsd` skill to run it from your project directory. If yours does not, copy the files on this page.
 
 The assistant inspects the project first. On Next.js App Router, FSD answers inside your existing server at the mount path (`/api/flows`, plus any Next `basePath`). On Node, FSD runs in a second process beside your server.
 
@@ -28,7 +28,7 @@ The run writes only the files below, and only when they are absent or already ma
 
 **Next.js App Router**
 
-- `fsdev.config.mts`: flows, stores, and the model resolver. Written only when no `fsdev.config.*` exists. If you already have a config, the new flow is registered in yours and the rest of that file is left alone.
+- `fsdev.config.mts`: flows, stores, and the model resolver. Written only when no `fsdev.config.*` exists. If you already have a config, that file is left alone and the assistant hands back the one line that registers the new flow.
 - `flows/hello/flow.mts`: demo flow, kind `hello`, action `send`
 - `<appRoot>/api/flows/route.<ext>` and `<appRoot>/api/flows/[...path]/route.<ext>`: mount pair under the App Router root (`app` or `src/app`), with the project's route extension
 - `.gitignore`: a delimited section for `.env.local` and `.fsdev/`
@@ -174,10 +174,16 @@ function resolveDemoPrincipal(context: { request?: Request }) {
       status: 401,
     });
   }
-  return createBearerSecretPrincipalResolver({
+  const principal = createBearerSecretPrincipalResolver({
     secret,
     principal: { userId: "demo" },
   })(context);
+  if (principal === null) {
+    throw new PrincipalResolutionError("Demo flow is closed. Send Authorization: Bearer.", {
+      status: 401,
+    });
+  }
+  return principal;
 }
 
 export default defineFlow({
