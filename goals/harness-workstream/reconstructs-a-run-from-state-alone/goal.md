@@ -627,15 +627,15 @@ not currently grade:
   review round: the state grew and the check did not, and that gap is the same shape as
   certifying a fractional account.
 
-  **Deliberately NOT closed, and the reason is a rule two functions up.** Comparing the count
-  needs gaps to offset it — `translate.ts` emits a `work_gap_observed` *instead of* a
-  `file_op_observed` when a settled mutation names no path, and `work-recorder.ts` counts only
-  `applied`, so a FAITHFUL recorder legitimately reports one confirmation against two completed
-  calls. But letting a gap discharge a count on a row that EXISTS contradicts the ordering rule
-  the mutation loop states outright — *a gap explains a mutation the collection is MISSING, and
-  does not license a row that is present and wrong* — and would reopen the global reconciliation
-  whose seven directions were each produced by the previous one's repair. That is a change to
-  A2's contract, not a field and a comparison, so it is named here instead of folded in.
+  **Deliberately NOT closed, and the reason is scope, not entanglement.** The comparison needs no
+  gap term: a pathless mutation is dropped by BOTH surfaces — `translate.ts` returns after
+  `work_gap_observed` without emitting `file_op_observed`, the reader `continue`s before pushing
+  it — so it is on neither side. What is left is a field on `DidEntry`, one comparison in the
+  per-row loop, both fixtures updated so the pin has teeth, and two guard cases, deferred to its
+  own change because this one is documentation and that is code with a review surface. One detail
+  for whoever builds it: `naming` counts non-terminal mutations too, and one with unreadable
+  status yields `outcome: null` (`reader.mts:446`), so the expected count is a range, and the
+  check abstains when any naming mutation's `outcome` is null.
   **No guard case ships beside it either, and that is not an omission**: the guard cases feed
   `gradeRun` a single view, and `DidEntry` carries no count — so no directly-fed world separates a
   faithful two-touch row from a lossy one, and a pin would have nothing to assert. The pin becomes
