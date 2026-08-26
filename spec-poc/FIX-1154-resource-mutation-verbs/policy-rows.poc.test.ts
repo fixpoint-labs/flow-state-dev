@@ -2,11 +2,18 @@
  * FIX-1154 — characterization POC. Throwaway; never merges.
  *
  * WHAT THIS IS
- * The evidence base for FIX-1154's mutation-surface gap write-up. Every row
- * characterizes what the resource write path does on `main` TODAY. Nothing here
- * models a proposed API: D-6 (#1446) settled that resources do not get
- * `incState` / `pushState` this cycle, and the issue ships the map of the
- * differences instead.
+ * The evidence base for FIX-1154's mutation-surface write-up. Every row
+ * characterizes what the resource write path does on `main` TODAY, and nothing
+ * here models a proposed API.
+ *
+ * D-6 (#1446) UPDATE (2026-08-26): Ask 1 was amended from B to A — resources DO
+ * get `incState` / `pushState`, shipping as FIX-1269. That does not change a
+ * single row below, and the reason is the point: FIX-1269 is a HANDLE surface,
+ * read-modify-write over this same `runResourceCAS` path under `intent:
+ * "mutate"`. So every conflict, refusal and normalization behaviour pinned here
+ * is exactly what the new verbs will inherit — this file characterizes their
+ * semantics in advance, under the older spelling (`updateState` with a mutator
+ * body). It wins no contention, and neither will they.
  *
  * HOW IT DRIVES THE REAL PATH
  * Increments and appends on a resource are performed the only way `main` allows
@@ -360,10 +367,12 @@ function withAlwaysLosingWrites(
 }
 
 // ---------------------------------------------------------------------------
-// Incrementing and appending on a resource, the only way `main` allows: a
+// Incrementing and appending on a resource, the only way `main` allows TODAY: a
 // mutator body handed to `updateState`, which reaches the same write path
-// `patchState` uses. These are call-site shapes, not API — resources have no
-// `incState` / `pushState` and are not getting them this cycle (D-6, #1446).
+// `patchState` uses. These are call-site shapes, not API — on `main` resources
+// have no `incState` / `pushState`. FIX-1269 adds them (D-6 #1446, Ask 1
+// amended to A on 2026-08-26) as a handle surface over this same path, so these
+// bodies are what those verbs will do internally.
 //
 // `toNumber` / `toList` mirror `state-container.ts`'s bag-side coercions, so
 // the shape being characterized here is the one a developer would write after
@@ -895,10 +904,19 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     // one column. The filesystem RESOURCE-STATE adapter calls `cloneValue`
     // (→ `structuredClone`) on the way in, BEFORE any serialization
     // (`filesystem/resource-state-store.ts:166`), so it throws on exactly the
-    // shape the JSON column was supposed to swallow. SQLite has no such clone
-    // — it `JSON.stringify`s straight into the payload
-    // (`store-sqlite/src/resource-state-store.ts:212`) — so it is the adapter
-    // that corrupts quietly. Three behaviours, not two.
+    // shape the JSON column was supposed to swallow. The SQL adapters have no
+    // such clone — they `JSON.stringify` straight into the payload
+    // (`store-sqlite/src/resource-state-store.ts:212`,
+    // `store-postgres/src/resource-state-store.ts:147`) — so they are the
+    // adapters that corrupt quietly. Three behaviours, not two.
+    //
+    // SCOPE OF THIS ROW (round 25): the stringify-first side is exercised here
+    // through SQLite ONLY. Postgres takes the identical code path — same
+    // `JSON.stringify`, no clone anywhere in the package — but is NOT run by
+    // this POC and has no coverage of this class in its own package either.
+    // Do not read a green run here as evidence about Postgres; it is evidence
+    // about the clone-first/stringify-first split, with one stringify-first
+    // adapter standing in for both.
     const fn = () => "nope";
     const sym = Symbol("nope");
 

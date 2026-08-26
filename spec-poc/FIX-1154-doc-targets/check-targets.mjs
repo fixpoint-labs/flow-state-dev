@@ -196,8 +196,44 @@ function isDispositioned(file) {
   return section11.includes(route);
 }
 
+/**
+ * The TARGET set — every distinct path §11 marks EXTEND or QUALIFY.
+ *
+ * §11 refuses to state this as a figure ("the target set is this list, not a
+ * number") because a hand-written count goes stale the moment the section
+ * widens, and it has: round 24 shipped a §10 count that no longer matched its
+ * own list. But §6's Size line still owes the reader a magnitude, and "Small —
+ * documentation only" understates a change that rewrites this many published
+ * pages. So the count is DERIVED here rather than written down there: the Size
+ * line cites this output, and widening §11 moves the number automatically.
+ *
+ * One path is deliberately named twice (`state/mutation-model.md` is both the
+ * first EXTEND and one of the two reference pages the sweep turned up), so the
+ * set is deduped — §11 says it is one target and takes one brief.
+ */
+function targets() {
+  const lines = section11.split("\n");
+  const stopAt = lines.findIndex((l) => /Deliberately left alone/.test(l));
+  const end = stopAt === -1 ? lines.length : stopAt;
+  const found = new Set();
+  for (let i = 0; i < end; i++) {
+    const line = lines[i];
+    // Top-level EXTEND bullets: `- **EXTEND** \`path\``
+    const extend = line.match(/^- \*\*EXTEND\*\* `([^`]+)`/);
+    if (extend) {
+      found.add(extend[1]);
+      continue;
+    }
+    // QUALIFY sub-bullets: `  - \`path:line\` — ...`
+    const qualify = line.match(/^\s{2,}- `([^`]+)`/);
+    if (qualify) found.add(qualify[1].replace(/:[\d,\s:-]+$/, ""));
+  }
+  return [...found].sort();
+}
+
 const all = candidates();
 const undispositioned = all.filter(({ file }) => !isDispositioned(file));
+const TARGETS = targets();
 
 // The marker names what it executed over AND what it could not reach — §10's
 // evidence-marker row, applied to this file's own output. The count is
@@ -211,6 +247,9 @@ for (const { file, hits } of all) {
   const mark = isDispositioned(file) ? "ok" : "UNDISPOSITIONED";
   console.log(`  [${mark}] ${file}  (${hits.length} line${hits.length === 1 ? "" : "s"})`);
 }
+
+console.log(`\ndocumentation targets: ${TARGETS.length}  (distinct EXTEND/QUALIFY paths — §6's Size line cites this)`);
+for (const t of TARGETS) console.log(`  ${t}`);
 
 if (undispositioned.length > 0) {
   console.error(
