@@ -330,7 +330,7 @@ A content-bearing collection can opt into the generic content tools, the same wa
 - `llmReadable: true` — a generator can read instance content with `readResourceContentTool()`, and find it with `grepResourceContent` / `searchResources`.
 - `llmWritable: true` — a generator can overwrite an instance body with `writeResourceContentTool()`.
 
-Both default to `false`: a collection that doesn't opt in stays invisible to those tools. The write tool requires `llmWritable`, not `llmReadable`. `writable` gates block-level instance writes, not these tools. See [Writable](#writable).
+Both default to `false`: a collection that doesn't opt in stays invisible to those tools. The write tool requires `llmWritable`, not `llmReadable`. A `writable: false` collection still refuses the write. See [Writable](#writable).
 
 ```ts
 import { generator, readResourceContentTool, writeResourceContentTool } from "@flow-state-dev/core";

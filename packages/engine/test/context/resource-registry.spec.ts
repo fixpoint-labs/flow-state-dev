@@ -757,6 +757,21 @@ describe("createScopeResourceRegistry — collections", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("create and delete still work on a writable: false collection (FIX-1261)", async () => {
+    // writable gates instance writes, not collection-handle membership.
+    // A guard accidentally placed on create/delete would stay green on the
+    // refuse-patch / accept-patch pair alone.
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number().default(0) }).passthrough()
+    });
+    const registry = makeRegistry({ configs: { items: nsConfig } });
+    const created = await (registry as any).items.create("doc1", { v: 1 });
+    expect(created.state).toEqual({ v: 1 });
+    await (registry as any).items.delete("doc1");
+    expect(await (registry as any).items.getOptional("doc1")).toBeUndefined();
+  });
+
   it("accepts an instance write on a collection that does not set writable: false (FIX-1261)", async () => {
     // The complementary half: omitting the flag (the normal collection)
     // must still persist. A guard that refused every collection would
