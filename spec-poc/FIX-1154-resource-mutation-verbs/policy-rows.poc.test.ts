@@ -36,6 +36,9 @@
  *   pnpm install
  *   cd spec-poc/FIX-1154-resource-mutation-verbs && ../../node_modules/.bin/vitest run
  */
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -47,10 +50,12 @@ import {
 import {
   ConcurrentModificationError,
   createExecutionContext,
+  createFilesystemStores,
   createInMemoryStores,
   ResourceDeletedError,
   type StoreRegistry
 } from "../../packages/engine/src";
+import { createSQLiteStores } from "../../packages/store-sqlite/src";
 import { createInternalResponseEmitter } from "../../packages/engine/src/streaming/response-emitter";
 import { isRetryableError } from "../../packages/engine/src/execution/retry";
 import { FlowError } from "../../packages/engine/src/errors/flow-error";
@@ -806,6 +811,106 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     //    round-trip hazard must not be routed into D1 by default.
     const reread = bag.stateSchema.safeParse({ n: 0, keep: "k", items: flattened });
     expect(reread.success).toBe(true);
+  });
+
+  it("data loss: the LOUD shapes, written DIRECTLY through three real store paths", async () => {
+    // Added round 22, and it CORRECTED §7c rather than confirming it.
+    //
+    // The row above simulates the durable side with a raw
+    // `JSON.parse(JSON.stringify(...))`, and the delta row below never reaches
+    // persistence at all — its arithmetic throws first. Neither supports §7c's
+    // two LOUD shapes, which are claims about what the STORES do. This row
+    // writes the values themselves, as ordinary array members, through the
+    // real paths.
+    //
+    // WHAT RUNNING IT CHANGED: "SQLite / filesystem (`JSON.stringify`)" is not
+    // one column. The filesystem RESOURCE-STATE adapter calls `cloneValue`
+    // (→ `structuredClone`) on the way in, BEFORE any serialization
+    // (`filesystem/resource-state-store.ts:166`), so it throws on exactly the
+    // shape the JSON column was supposed to swallow. SQLite has no such clone
+    // — it `JSON.stringify`s straight into the payload
+    // (`store-sqlite/src/resource-state-store.ts:212`) — so it is the adapter
+    // that corrupts quietly. Three behaviours, not two.
+    const fn = () => "nope";
+    const sym = Symbol("nope");
+
+    const freshFs = async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "fix1154-poc-"));
+      return createFilesystemStores({ rootDir: dir, developmentOnly: true });
+    };
+    const freshSqlite = () => createSQLiteStores({ filename: ":memory:" }) as StoreRegistry;
+
+    // --- Shape 2: bigint. Memory KEEPS it; both durable adapters REJECT it.
+    const memStores = createInMemoryStores();
+    const memCtx = await makeCtx(memStores, "req_bigint_mem");
+    await appendVia(memCtx.resources.bag as unknown as MutableRef, "items", 1n);
+    const memItems = ((await readRow(memStores, "bag"))?.state as PocState)
+      .items as unknown[];
+    // The write RESOLVED and the memory store holds the live bigint.
+    expect(memItems).toEqual([1n]);
+    expect(typeof memItems[0]).toBe("bigint");
+
+    for (const stores of [await freshFs(), freshSqlite()]) {
+      const ctx = await makeCtx(stores, "req_bigint_durable");
+      const failure = await appendVia(
+        ctx.resources.bag as unknown as MutableRef,
+        "items",
+        1n
+      ).then(
+        () => undefined,
+        (e: unknown) => e
+      );
+      // Same call, same value, same schema — and the durable adapter throws
+      // mid-write, with a raw error naming no field. Nothing landed.
+      expect(failure).toBeInstanceOf(TypeError);
+      expect((failure as Error).message).toMatch(/BigInt/i);
+      expect(failure instanceof FlowError).toBe(false);
+      expect((await readRow(stores, "bag"))?.state).toBeUndefined();
+    }
+
+    // --- Shape 3: function and symbol. `structuredClone` refuses both, so
+    //     EVERY adapter that clones on the way in throws — memory AND
+    //     filesystem. This is where §7c's two-column split breaks.
+    for (const value of [fn, sym]) {
+      for (const stores of [createInMemoryStores(), await freshFs()]) {
+        const ctx = await makeCtx(stores, "req_clone_refuses");
+        const failure = await appendVia(
+          ctx.resources.bag as unknown as MutableRef,
+          "items",
+          value
+        ).then(
+          () => undefined,
+          (e: unknown) => e
+        );
+        expect((failure as Error)?.name).toBe("DataCloneError");
+        expect((await readRow(stores, "bag"))?.state).toBeUndefined();
+      }
+
+      // SQLite is the one that accepts it — and the shape of that acceptance
+      // is not what §7c said either. The STORE takes it (`JSON.stringify` with
+      // no clone), so the row lands corrupted; the call then throws anyway,
+      // from the registry's own read-back of the state it just wrote
+      // (`resource-registry.ts:1588` → `readState` → `cloneValue`, :1492).
+      const sqlite = freshSqlite();
+      const ctx = await makeCtx(sqlite, "req_sqlite_quiet");
+      const failure = await appendVia(
+        ctx.resources.bag as unknown as MutableRef,
+        "items",
+        value
+      ).then(
+        () => undefined,
+        (e: unknown) => e
+      );
+
+      // It throws...
+      expect((failure as Error)?.name).toBe("DataCloneError");
+      // ...and the write landed anyway, flattened to `null`. The throw does not
+      // roll it back. This is the row that matters: an error the caller sees
+      // and a corruption it does not prevent, on the same call.
+      const items = ((await readRow(sqlite, "bag"))?.state as PocState)
+        .items as unknown[];
+      expect(items).toEqual([null]);
+    }
   });
 
   it("data loss: a BIGINT or SYMBOL delta throws a RETRYABLE raw TypeError", async () => {
