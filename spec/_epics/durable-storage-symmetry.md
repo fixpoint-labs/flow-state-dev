@@ -208,9 +208,9 @@ below the themes had both gone stale against the code that merged.
    rule.** The row is true for a writer holding a live version, and that writer is already
    refused. It is false for version `0` — and **the condition is the version the write begins with,
    not what the context has observed.** `runResourceCAS` sends the container's version as the
-   `mutate` intent's `expectedVersion` (`resource-cas.ts:219-220`), and `checkWriteVersion` accepts
+   `mutate` intent's `expectedVersion` (`runResourceCAS`), and `checkWriteVersion` accepts
    `0` against a tombstone as create-if-absent, "satisfied by a tombstone as well as a key that never
-   existed" (`resource-state-predicate.ts:147-149`). **Two writers arrive holding `0`.** One never
+   existed" (`resource-state-predicate.ts`). **Two *mutations* arrive holding `0`.** One never
    observed the key. The other observed it and **lost the version**: `deleteResourceKey` pairs its
    durable delete with an *in-place live-cache delete* (`resource-registry.ts`), so a context still
    holding a `ResourceRef` re-seeds from the absent row and writes at `0`. The second is the
@@ -227,7 +227,43 @@ below the themes had both gone stale against the code that merged.
    path they reuse rather than introducing one, and closing it once at the predicate fixes all
    three. **FIX-1269 must not grow its own version handling to route around this** — a local
    workaround in the new verbs would leave `updateState` broken and put the fix in the wrong
-   layer. The limitation is still *pinned at the
+   layer.
+
+   **Constrains FIX-1258 — the predicate is the right place, and getting there requires splitting
+   intent first.** The *where* above is unchanged; what it cannot do is simply tighten the rule it
+   enforces today. `checkWriteVersion(row, expectedVersion)` takes **no operation intent**
+   (`resource-state-predicate.ts`), and by the time it runs the two cases are indistinguishable:
+   `runResourceCAS` derives `expectedVersion` as a literal `0` for the `create` intent and
+   `container.getVersion()` for `mutate`, which *is* `0` for a key never read or one whose cache
+   entry a delete evicted, so both collapse to the same value at that expression (`resource-cas.ts`;
+   the driver's header states the general form — *"by the time a value reaches the store the caller's
+   intent is gone"*). So refusing `0` against a tombstone outright would also refuse **explicit
+   recreation after a delete** — and that behaviour is **intentional prior art, tagged FIX-992**,
+   not incidental. It is pinned in **two** suites (*"classifies a create over another context's
+   delete as a create"*, `resource-cas-registry.test.ts`; *"…as created, not updated (FIX-992)"*,
+   `test/context/resource-registry.spec.ts`) and published as contract in
+   `docs/architecture/state-and-scopes.md` (*"`0` means no live row, so it is create-if-absent and a
+   tombstone satisfies it"*). **That documentation is correct as written and is not stale**, and a
+   naive predicate change would reverse a decision someone already made deliberately — those pinned
+   tests are the record of it, not obstacles to route around. **The constraint:** `create` keeps its
+   tombstone-accepting behaviour, a mutation that began at the absent-row seed is refused, and the
+   split happens **before the shared predicate**. **Which mechanism achieves that is FIX-1258's** —
+   this bounds the fix, it does not design it. Verified against `origin/main`; evidence in
+   [comment `5430745011`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430745011).
+
+   **Scope state already carries the vocabulary the resource side lacks** — a genuine asymmetry
+   between the two primitives, and one this epic hit through a defect rather than through
+   FIX-1154's map, which is why it is recorded in this theme. `checkScopeWriteVersion`
+   (`scope-write-predicate.ts`) has an **`"absent"` sentinel distinct from numeric `0`**, and its
+   comment names the exact problem: *"An absent record reads as version `0` — the pinned behaviour
+   that leaves `0` unable to mean 'must not exist'."* That is a precedent for the **shape** — a
+   distinct `ExpectedVersion` value carrying intent — and **not a value to copy across**. The
+   semantics are opposite where it counts: scope's `"absent"` *refuses* an existing record, where
+   resource `create` must keep *accepting* a tombstone; and `ResourceStateStore` already rejects
+   `"absent"` rather than aliasing it (`assertExpectedVersion`), precisely so the sentinel never
+   acquires a second meaning. **This epic does not unify the two `ExpectedVersion` vocabularies.**
+   Stating an asymmetry is this document's job; proposing the merger is the move theme 1 exists to
+   refuse, and a child that reads the precedent as "port `"absent"` to resources" has taken it. The limitation is still *pinned at the
    child* rather than left implicit — FIX-1154's characterization POC carries a row named
    *"CURRENT BEHAVIOUR (defect D5): a version-0 context REVIVES a tombstone"*
    (`spec-poc/FIX-1154-resource-mutation-verbs/policy-rows.poc.test.ts`, PR
@@ -488,7 +524,7 @@ expensive thing this epic has already paid for.
 | [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review · nothing about this issue is blocked. Its docs **publish** after FIX-1269 lands — a prose ordering, deliberately not a Linear blocker (theme 3) |
 | [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` on the resource handle. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, comparing shared declarations on `(scope, ref)` — the durable cell, not the accessor name | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
-| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | **A write issued after the delete does not revive the resource.** The condition is the **version the write begins with, not what the context observed** — a context that never saw the key and one whose held version the delete evicted both arrive at the create-if-absent seed of `0`, so a fix written for the never-observed case alone leaves the defect live. Same **held-then-lost** shape FIX-1259 fixes on the scope side (`related`). The ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
+| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | **A write issued after the delete does not revive the resource.** The condition is the **version the write begins with, not what the context observed** — a context that never saw the key and one whose held version the delete evicted both arrive at the create-if-absent seed of `0`, so a fix written for the never-observed case alone leaves the defect live. Same **held-then-lost** shape FIX-1259 fixes on the scope side (`related`). The ordinary first touch of a never-written resource is unchanged, **and so is explicit recreation after a delete** (FIX-992 behaviour, pinned in two suites; theme 1 constrains the fix) — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
 | [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. **The split is the right axis and is not sufficient on its own** — the constraint that goes with it, the measured evidence ([comment `5430501537`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430501537)) and the choice of mechanism are [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260)'s, on its issue and its PR | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
@@ -620,9 +656,8 @@ retraction taught something the themes do not already say, it earns a clause.
 - **Theme reversed (2026-08-22)** — the CAS policy table stays in `resource-cas.ts` and FIX-1154
   guards the trap export instead, because the doc already banks the discoverability gain.
 - **Epic review, rounds 1–2 (2026-08-22)** — §2 cut from seven themes to three, FIX-1158 renamed an
-  honest lodger, theme 2's policy-row claim marked unproven, the Tier 1 / Tier 2 guard added, the
-  return contract settled at epic altitude, the "7 vs 4 mutator gap" retired and the doc declared
-  converged, because the artifact had outgrown the work it coordinates.
+  honest lodger, theme 2's policy-row claim marked unproven, the Tier 1 / Tier 2 guard and the return
+  contract settled, and the doc declared converged, because it had outgrown the work it coordinates.
 - **Parity claim withdrawn to FIX-1154 (2026-08-22)** — the epic stopped asserting a mutator
   inventory at all, because it had narrowed the claim twice and been falsified both times.
 - **FIX-1258 filed; the tombstone row qualified (2026-08-25)** — the row is marked incomplete for
@@ -645,9 +680,9 @@ retraction taught something the themes do not already say, it earns a clause.
   theme 1 to be wrong while its conclusion held.)*
 - **Epic-classification fork decided (2026-08-25)** — it stays an epic with FIX-1158 an honest
   lodger, taken as an engineering call, because both outcomes are cheap and reversible.
-- **§3 removed (2026-08-25)** — *Shape of the whole* is omitted per the template (no end-state POC),
-  its two live pieces moved into themes 1 and 2, because a second carrier for decisions the themes
-  own is a drift generator — that section's `0` row had to be corrected twice.
+- **§3 removed (2026-08-25)** — *Shape of the whole* omitted per the template (no end-state POC), its
+  two live pieces moved into themes 1 and 2, because a second carrier for decisions the themes own is
+  a drift generator — that section's `0` row had been corrected twice.
 - **FIX-1155's mechanism corrected (2026-08-25)** — the in-memory queue serializes **same-context**
   writers and store CAS covers cross-context ones, because `withScopeLock` keys its FIFO on the
   `StateContainer` and cannot reach past it. *(**Four** — and the pattern worth carrying: every claim this
@@ -711,9 +746,9 @@ retraction taught something the themes do not already say, it earns a clause.
   bar** — in one day this was written three ways (index it as inactive, escalate it, settle it) and
   only the third is right. *(**Ten** — the second wrong claim about a **mutable external graph** this
   document only mirrors; the fix both times was to execute the query.)*
-- **FIX-1260's row inverted; its 43-line diagnosis left §4 (2026-08-26)** — the row described the
-  **defect** in the slot that tells an implementer what to build. The row and the diagnosis said the
-  same thing twice inside one section and contradicted each other **inside a single commit**.
+- **FIX-1260's row inverted (2026-08-26)** — the row described the **defect** in the slot that tells
+  an implementer what to build, so row and diagnosis said the same thing twice inside one section
+  and contradicted each other **inside a single commit**.
 - **FIX-1260's row split by direction (2026-08-26)** — *validate the candidate, store the candidate*
   is right for the write path and wrong for the reads: read normalization is how a historical row
   acquires a newly-defaulted field. *(**Eleven** — the decision survived, the **width** of the mechanism did
@@ -742,16 +777,11 @@ retraction taught something the themes do not already say, it earns a clause.
   above that**, because the checking effort goes into the claim being retracted, not the sentence
   replacing it.)*
 - **The commit anchor dropped; citations re-based on `origin/main` (2026-08-26)** — §1 had pinned
-  citations to `6aa1bea`, which is not a chosen anchor but **this branch's merge-base**: every
-  verification in this epic ran against the worktree checkout, and nobody checked that the checkout
-  matched the branch the work ships to. `main` had moved **267 commits**. Of 24 cited files **12 moved**;
-  **one claim's substance changed** and about **eleven line numbers** drifted while their substance
-  held — so §1 now states a rule instead of a commit (**cite by symbol; verify against
-  `origin/main`**), and the drifted pointers on moved files became symbols. Theme 1's whole CAS and
-  tombstone argument rests on six files, **none of which the gap touched**. *(Not a retraction but the
-  **widest** instance of the shape every retraction above shares — a claim stated at the width of the
-  specimen examined, the specimen here being **the checkout itself**. A pinned tree is also
-  unmaintainable: `main` moved again during this dispatch.)*
+  citations to `6aa1bea`, this branch's **merge-base**, so every verification ran against a checkout
+  `main` had left **267 commits** behind — 12 of 24 cited files had moved, one claim's substance had
+  changed. §1 now states the rule: **cite by symbol; verify against `origin/main`**. *(The widest
+  instance of the shape the retractions share — a claim stated at the width of the specimen
+  examined, here the checkout itself.)*
 - **The two-copy framing retracted (2026-08-26)** — `d20735e3` extracted a single shared
   `normalizeResourceState` (`resources/normalize-resource-state.ts`); at the anchor there were two
   definitions, one of them file-private to `resource-registry.ts`. On `main` there is **one function
@@ -759,14 +789,11 @@ retraction taught something the themes do not already say, it earns a clause.
   duplication, and its fix is a second function or an explicit parameter rather than a
   de-duplication. Duplication was never the finding. *(**Fifteen** — the one claim the 267-commit gap actually falsified.)*
 - **FIX-1260 rescoped by operation, not by call site (2026-08-26)** — a **third** write path exists:
-  `create` / `create({ replace: true })` persists `safeParse(initial).data`, and storing the candidate
-  there would break documented behaviour where **schema defaults fill partial creation input** — the
-  code says so in a comment. So "every resource write" was wrong in the other direction. The row now
-  states **when the candidate is authoritative** (the caller supplied a complete value) versus **when
-  the parse output is** (a partial, expecting defaults filled); `upsert` is one of each by branch.
-  *(**Sixteen** — the fourth re-scope of this claim, and each earlier one narrowed by **enumerating harder**.
-  Enumeration is what kept failing: a rule about operation semantics cannot be outrun by a call site
-  nobody listed.)*
+  `create` persists `safeParse(initial).data`, and storing the candidate there would break documented
+  behaviour where **schema defaults fill partial creation input**, so "every resource write" was wrong
+  in the other direction too; §4's row now states the axis and `upsert` is one of each by branch.
+  *(**Sixteen** — the fourth re-scope of this claim, each earlier one narrowing by **enumerating
+  harder**. A rule about operation semantics cannot be outrun by a call site nobody listed.)*
 - **`phase === 'DONE'` restored as a third release (2026-08-26)** — *the wrap predicate restated*,
   above, collapsed `merged` and `DONE` into "one release on two fields". `mergeDerivedPhase` returns early for any row
   carrying `subPrs` (*"multiPrPhase owns these"*), and `multiPrPhase` sets `DONE` on all-sub-PRs-merged
@@ -795,8 +822,15 @@ retraction taught something the themes do not already say, it earns a clause.
   and was never carried across, while FIX-1154's own POC had been classifying that path as D5. **A
   correction is not finished when the path it was found on is fixed.**)*
 - **FIX-1260's diagnosis dropped to its issue (2026-08-26)** — §4 keeps the row and the evidence
-  link; the POC narrative, the drift numbers, the seed derivation and the two mechanisms go to the
-  issue that owns the mechanism. Round 9 removed §4's `mayWrap` derivation and added this **in the
-  same commit** — one carrier out, another in — repeating *FIX-1269's implementation specifics
-  dropped to its spec* on a different child, pre-empting a review surface before its gate opened. §4
-  already said so, two paragraphs below the diagnosis. *(Fifth two-carriers removal.)*
+  link; the POC narrative, drift numbers, seed derivation and mechanisms go to the issue that owns
+  them. Round 9 removed §4's `mayWrap` derivation and added this **in the same commit** — one carrier
+  out, another in — pre-empting a review surface before its gate opened, two paragraphs below where
+  §4 already forbids it. *(Fifth two-carriers removal.)*
+- **FIX-1258's fix constrained: the predicate needs an intent split (2026-08-26)** — refusing `0`
+  against a tombstone outright would also refuse **explicit recreation after a delete** — FIX-992
+  behaviour, pinned in two suites and published. The intent is not missing, it is **discarded where
+  `runResourceCAS` derives `expectedVersion`**, so a mutation seeded at absent and a `create`
+  collapse to the same value before the predicate sees them. Theme 1 also records the asymmetry:
+  scope's `"absent"` is the **shape** the resource side lacks, **not a value to copy**, and the two
+  `ExpectedVersion` vocabularies stay separate. *(**Twenty** — the first correction to a fix this
+  document **specified** rather than to a description of shipped code.)*
