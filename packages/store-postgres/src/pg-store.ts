@@ -477,23 +477,26 @@ export function createPgRecordStore<
       if (path.length !== 1) {
         throw new Error(`pushToArray only supports depth-1 paths; received path of length ${path.length}`);
       }
-      const result = await runDeltaUpdate(
-        id,
-        statePath(path),
-        // Missing key (SQL NULL at the path) becomes the pushed values.
-        // A present array is concatenated. A present non-array is excluded
-        // by extraWhere so this expression never wraps a scalar.
-        "CASE WHEN data #> $1::text[] IS NULL THEN $2::jsonb ELSE (data #> $1::text[]) || $2::jsonb END",
-        [JSON.stringify(values)],
-        expectedVersion,
-        updatedAt,
-        "pushToArray",
-        "data #> $1::text[] IS NULL OR jsonb_typeof(data #> $1::text[]) = 'array'"
-      );
-      if (!result.ok) {
-        const current = result.conflict.currentValue as
+      const apply = () =>
+        runDeltaUpdate(
+          id,
+          statePath(path),
+          // Missing key (SQL NULL at the path) becomes the pushed values.
+          // A present array is concatenated. A present non-array is excluded
+          // by extraWhere so this expression never wraps a scalar.
+          "CASE WHEN data #> $1::text[] IS NULL THEN $2::jsonb ELSE (data #> $1::text[]) || $2::jsonb END",
+          [JSON.stringify(values)],
+          expectedVersion,
+          updatedAt,
+          "pushToArray",
+          "data #> $1::text[] IS NULL OR jsonb_typeof(data #> $1::text[]) = 'array'"
+        );
+
+      const throwIfPresentNonArray = (
+        current:
           | { state?: Record<string, unknown>; version: number }
-          | undefined;
+          | undefined
+      ): void => {
         if (
           current &&
           (expectedVersion === "any" || current.version === expectedVersion)
@@ -502,6 +505,29 @@ export function createPgRecordStore<
           if (existing !== undefined && !Array.isArray(existing)) {
             throw new Error(
               `pushToArray target at path[${path[0]}] is not an array (got ${typeof existing})`
+            );
+          }
+        }
+      };
+
+      let result = await apply();
+      if (!result.ok) {
+        throwIfPresentNonArray(
+          result.conflict.currentValue as
+            | { state?: Record<string, unknown>; version: number }
+            | undefined
+        );
+        // "any" missed because the field was a non-array at UPDATE time. If a
+        // concurrent writer has since made the shape valid, retry once so the
+        // push is not dropped as a conflict (runCommutative treats conflict
+        // as a silent no-op).
+        if (expectedVersion === "any") {
+          result = await apply();
+          if (!result.ok) {
+            throwIfPresentNonArray(
+              result.conflict.currentValue as
+                | { state?: Record<string, unknown>; version: number }
+                | undefined
             );
           }
         }

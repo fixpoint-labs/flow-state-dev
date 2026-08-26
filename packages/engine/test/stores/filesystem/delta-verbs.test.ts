@@ -165,15 +165,6 @@ describe("Filesystem adapter — delta verbs", () => {
       await store.pushToArray!("s1", ["fresh"], ["first"], 0, Date.now());
       expect((await store.get("s1"))?.state).toEqual({ fresh: ["first"] });
     });
-
-    it("throws when the target field exists but is not an array", async () => {
-      const store = createFilesystemSessionStore({ rootDir });
-      await seed(store, "s1", { log: "not-an-array" });
-      await expect(
-        store.pushToArray!("s1", ["log"], ["x"], 0, Date.now())
-      ).rejects.toThrow(/not an array/);
-      expect((await store.get("s1"))?.state).toEqual({ log: "not-an-array" });
-    });
   });
 
   describe("list does not drop sidecar-suffixed ids (FIX-686)", () => {

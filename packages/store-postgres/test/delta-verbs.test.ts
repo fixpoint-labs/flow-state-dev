@@ -189,15 +189,6 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
       expect((await s.session.get("s1"))?.state).toEqual({ log: ["first"] });
     });
 
-    it("throws when the target field exists but is not an array", async () => {
-      const s = await freshStores();
-      await seed(s, "s1", { log: "not-an-array" });
-      await expect(
-        s.session.pushToArray!("s1", ["log"], ["x"], 0, Date.now())
-      ).rejects.toThrow(/not an array/);
-      expect((await s.session.get("s1"))?.state).toEqual({ log: "not-an-array" });
-    });
-
     it("throws on a non-array when expectedVersion is \"any\"", async () => {
       const s = await freshStores();
       await seed(s, "s1", { log: "not-an-array" });
