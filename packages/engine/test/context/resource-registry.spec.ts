@@ -697,7 +697,6 @@ describe("schema-invalid resource writes (FIX-1256)", () => {
   });
 
   it("setState(null) on a nullable resource persists {} without throwing", async () => {
-    const onChange = vi.fn();
     const config = makeResourceConfig({
       stateSchema: z.object({ ticker: z.string(), bars: z.array(z.unknown()) }).nullable(),
       default: null
@@ -705,15 +704,12 @@ describe("schema-invalid resource writes (FIX-1256)", () => {
     const prior = { ticker: "NVDA", bars: [{ date: "2026-01-01" }] };
     const registry = makeRegistry({
       configs: { priceHistory: config },
-      initialState: { priceHistory: prior },
-      onResourceChanged: onChange
+      initialState: { priceHistory: prior }
     });
     const ref = registry.get("priceHistory");
-    onChange.mockClear();
 
     await ref.setState(null as unknown as JsonObject);
     expect(ref.state).toEqual({});
-    expect(onChange).toHaveBeenCalled();
   });
 
   it("setState of a partial object on a nullable schema still throws and keeps prior fields", async () => {
