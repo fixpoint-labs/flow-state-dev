@@ -394,12 +394,13 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-code" x="592" y="16" width="332" height="216" rx="5"/>
         <text class="t-lbl f-code" x="610" y="38">KNOWLEDGE</text>
         <text class="t-b" x="610" y="64">a bounded working set</text>
-        <text class="t-s" x="610" y="90">resources &#183; skills &#183; tools</text>
-        <text class="t-xs" x="610" y="116">ENGINEERING&#8217;S RFCS ARE NOT</text>
-        <text class="t-xs" x="610" y="134">MARKETING&#8217;S BRAND VOICE</text>
-        <text class="t-xs" x="610" y="160">ORG HOLDS WHAT ALL TEAMS NEED</text>
-        <text class="t-xs" x="610" y="178">SO IT IS WRITTEN ONCE</text>
-        <text class="t-xs" x="610" y="204">NOT KNOWLEDGE HUB &#8212; SECTION 8</text>
+        <text class="t-xs" x="610" y="82">A COLLECTION TOPICKED BY TEAM &#8212; WORKS TODAY</text>
+        <text class="t-s" x="610" y="108">resources &#183; skills &#183; tools</text>
+        <text class="t-xs" x="610" y="134">ENGINEERING&#8217;S RFCS ARE NOT</text>
+        <text class="t-xs" x="610" y="152">MARKETING&#8217;S BRAND VOICE</text>
+        <text class="t-xs" x="610" y="178">ORG HOLDS WHAT ALL TEAMS NEED</text>
+        <text class="t-xs" x="610" y="196">A NAME BOUNDS IT, NOT SECURITY</text>
+        <text class="t-xs" x="610" y="222">NOT KNOWLEDGE HUB &#8212; SECTION 8</text>
 
         <rect class="n-prop" x="592" y="248" width="332" height="238" rx="5"/>
         <text class="t-lbl" x="610" y="270">WORKERS</text>
@@ -418,8 +419,9 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </figure>
 
   <div class="note">
-    <span class="lbl">Layer 1 has no team scope, and that is the first real question this convention asks</span>
-    <p>A resource is scoped <code>session</code>, <code>user</code>, or <code>org</code> &#8212; <code>ResourceScope</code> in <code>packages/core/src/types/resource.ts</code>. There is no fourth value. So &#8220;Marketing&#8217;s brand voice&#8221; is either an org-scoped collection under a path convention, or a scope Layer&nbsp;1 does not have yet. The first costs nothing and leaks: any flow can read any team&#8217;s folder. The second is a substrate change asked for by a product that does not exist. <strong>Not settled here</strong> &#8212; section&nbsp;8 carries it.</p>
+    <span class="lbl">A team&#8217;s knowledge is a collection with the team as its topic &#8212; that already works</span>
+    <p>The convention needs no new scope to exist. <code>defineResourceCollection</code> already takes a <strong>parameterized pattern</strong> &#8212; <code>[team]/resources</code>, addressed with <code>{ team: "engineering" }</code> &#8212; or a wildcard prefix like <code>teams/engineering/*</code> (<code>packages/core/src/types/collection-patterns.ts</code>). That is enough to build the whole layout on today.</p>
+    <p>What an org-scoped collection does not give you is <strong>isolation</strong>: nothing stops one team&#8217;s worker reading another team&#8217;s instances. That is a <em>security</em> property, not a modeling blocker. A proper team scope may earn its place as a framework-level item later &#8212; section&nbsp;8 &#8212; and nothing waits on it.</p>
   </div>
 
   <div class="tw">
@@ -598,7 +600,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>Session as a conversation</td><td><span class="tag t-real">exists</span></td><td>A session record carries a <code>flowKind</code>. It is where a conversation lives. Layer&nbsp;1 already has this.</td></tr>
         <tr><td>A lead that holds a board, doers that claim</td><td><span class="tag t-real">exists</span></td><td>The task board and delegation already do this. A skill&#8217;s <code>agents:</code> map staffs seats and its body plans the board &#8212; <code>examples/guides/research-team</code>. What is missing is that the roster outlives the drain.</td></tr>
         <tr><td>Borrowing a shared specialist</td><td><span class="tag t-real">exists</span> thin</td><td>Name indirection is real: <code>agent-ref</code> resolves a registry name to an <code>Agent</code>. That is the borrow mechanism, used in exactly one place today.</td></tr>
-        <tr><td>Team as a durable working set</td><td><span class="tag t-prop">proposed</span></td><td>A function folder with its own knowledge and roster. Needs the scope question in section&nbsp;2 answered, because <code>ResourceScope</code> has no team value.</td></tr>
+        <tr><td>Team knowledge, stored</td><td><span class="tag t-real">exists</span></td><td>A collection topicked by team &#8212; <code>[team]/resources</code>, or a <code>teams/&lt;team&gt;/*</code> prefix. The storage half of a team needs nothing new (section&nbsp;2).</td></tr>
+        <tr><td>Team as a durable working set</td><td><span class="tag t-prop">proposed</span></td><td>The convention itself: a function folder whose roster outlives any one drain, and a default staffing answer. That is the proposed part &#8212; not the storage underneath it.</td></tr>
         <tr><td>Agent-owned channel</td><td><span class="tag t-prop">proposed</span></td><td>A session designated as the place you talk to that worker directly. Not a new primitive &#8212; a convention over a session.</td></tr>
       </tbody>
     </table>
@@ -694,7 +697,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-lbl" x="650" y="38">WORKFORCE-ONLY</text>
         <text class="t-xs" x="650" y="56">PRODUCT OPINION &#183; LATER</text>
         <text class="t-s" x="650" y="86">file convention (workforce/)</text>
-        <text class="t-s" x="650" y="108">team-scoped knowledge</text>
+        <text class="t-s" x="650" y="108">team-topicked knowledge</text>
         <text class="t-s" x="650" y="130">rosters &#183; shared specialists</text>
         <text class="t-s" x="650" y="152">agent-owned channels</text>
         <text class="t-s" x="650" y="174">Grok-Bot-like surface</text>
@@ -738,7 +741,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>Kitchen-sink / integration tests</td><td><span class="tag t-gone">unused</span></td><td>Kitchen-sink depends on the package and imports it in zero source files. No integration test touches it.</td></tr>
         <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It also says &#8220;There&#8217;s no cross-flow assignment.&#8221; The Conductor atlas records that as an unresolved contradiction, not as evidence either way.</td></tr>
         <tr><td><code>workforce/</code> file convention</td><td><span class="tag t-prop">proposed</span></td><td>The tree in section&nbsp;2. No such layout exists. <code>workforce.config</code> is a name on this page, not a file in the repo.</td></tr>
-        <tr><td>A team scope for resources</td><td><span class="tag t-gone">gap</span></td><td><code>ResourceScope</code> is <code>"session" | "user" | "org"</code> (<code>packages/core/src/types/resource.ts</code>). Nothing between a user and the whole org. Team knowledge needs a path convention on org scope, or a Layer&nbsp;1 change nobody has asked for yet.</td></tr>
+        <tr><td>Team-topicked collections</td><td><span class="tag t-real">exists</span></td><td><code>defineResourceCollection</code> validates parameterized patterns (<code>[team]/resources</code>, resolved with <code>{ team }</code>) and wildcard prefixes (<code>teams/&lt;team&gt;/*</code>) &#8212; <code>packages/core/src/types/collection-patterns.ts</code>. Enough to store a team&#8217;s working set now.</td></tr>
+        <tr><td>Isolation between teams</td><td><span class="tag t-gone">gap</span></td><td><code>ResourceScope</code> is <code>"session" | "user" | "org"</code> (<code>packages/core/src/types/resource.ts</code>), so a team topic is a naming boundary and not an enforced one. A security property to add deliberately &#8212; it blocks nothing here.</td></tr>
         <tr><td>Persistent identity, durable teams, surface</td><td><span class="tag t-prop">proposed</span></td><td>This page. Not a package. Not a D-n. Not scheduled.</td></tr>
       </tbody>
     </table>
@@ -775,9 +779,9 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </div>
 
   <div class="tension">
-    <h5>Team knowledge has no scope to live in</h5>
-    <p>The convention&#8217;s whole argument is that a worker carries its team&#8217;s working set and not the company&#8217;s. Layer&nbsp;1 offers <code>session</code>, <code>user</code>, <code>org</code> &#8212; nothing in between. A path convention on org-scoped collections gets the layout today and enforces nothing; a real team scope is a substrate change requested by a product that does not exist.</p>
-    <span class="ask">Do not ask for the scope now. Build the path convention first, and let a real team &#8212; one with knowledge another team must not read &#8212; be the thing that justifies a fourth scope. Being wrong costs a migration of resource keys, pre-1.0, with no persisted-row change implied.</span>
+    <h5>Team scope, if it comes, comes for security</h5>
+    <p>A team topic on a collection is a <em>naming</em> boundary. It holds the layout and it enforces nothing: a worker that can read the org can read every team&#8217;s folder. Making that boundary real means a framework-level team scope, and the argument for one is security &#8212; not the convention, which has enough to build with now.</p>
+    <span class="ask">Not a blocker and not this cycle. Build on team-topicked collections; let the first case where one team&#8217;s knowledge genuinely must be unreadable by another be what buys the scope. Being wrong costs a migration of resource keys, pre-1.0, with no persisted-row change implied.</span>
   </div>
 
   <div class="tension">
