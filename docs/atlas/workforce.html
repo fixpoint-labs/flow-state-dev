@@ -447,7 +447,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="channels">
   <div class="sec-head"><span class="sec-num">04</span><h2>Channels, teams, relay</h2></div>
-  <p class="lede">An agent can have its own sessions. Some of those are persistent channels for talking to it directly. Relay is how it talks to other channels or agents. Teams can be defined. All of this is proposed.</p>
+  <p class="lede">An agent can have its own sessions. Some of those are persistent channels for talking to it directly. Teams can be defined. How they talk is Relay &#8212; one Layer&nbsp;1 send door, status in section&nbsp;6. Channels and teams here are proposed.</p>
 
   <figure>
     <div class="fig-body">
@@ -503,7 +503,6 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>Session as a conversation</td><td><span class="tag t-real">exists</span></td><td>A session record carries a <code>flowKind</code>. It is where a conversation lives. Layer&nbsp;1 already has this.</td></tr>
         <tr><td>Agent-owned channel</td><td><span class="tag t-prop">proposed</span></td><td>A session designated as the place you talk to that agent directly. Not a new primitive &#8212; a convention over a session.</td></tr>
         <tr><td>Team</td><td><span class="tag t-prop">proposed</span></td><td>A defined set of persistent identities. Today a skill&#8217;s <code>agents:</code> map staffs a board seat for one drain. That is not a team that outlives the skill.</td></tr>
-        <tr><td>Relay</td><td><span class="tag t-real">exists</span> the door<br><span class="tag t-prop">proposed</span> Workforce use</td><td>Layer&nbsp;1 mail: address, send, no fan-out. Conductor&#8217;s this-cycle floor is fire-and-forget. Workforce talks through the same door later. Do not pull Workforce onto that spine.</td></tr>
       </tbody>
     </table>
   </div>
@@ -617,7 +616,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td>A session is owned by a workflow, not by an agent</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because Workforce&#8217;s channel <em>is</em> an agent-owned session.</td></tr>
         <tr><td>A role is a block; memory is where its resources live</td><td>Layer 1, already true</td><td>Both harnesses need this. Do not replace it with a second memory system.</td></tr>
-        <tr><td>Relay addresses a session, not a topic, and does not fan out</td><td>Layer 1, filed</td><td>Workforce talks to channels through the same door. A Conductor-shaped bus (issue, epic, phase) would have to be unwound.</td></tr>
+        <tr><td>Relay &#8212; one Layer&nbsp;1 send door</td><td>exists or already filed</td><td>Address, send, no fan-out. Filed this cycle as Conductor fire-and-forget. Not shipped code: no <code>packages/relay</code>, no <code>relay?</code> on <code>FlowDefinition</code>. Workforce talks through this same door later. A Conductor-shaped bus would have to be unwound.</td></tr>
         <tr><td>The coordinator stays small on purpose</td><td>Conductor</td><td>A Workforce surface may want a long relationship with one agent. That is a different product, not a rebuttal.</td></tr>
         <tr><td>Which layer Conductor&#8217;s roles sit on</td><td>Open in Conductor atlas, thread&nbsp;11</td><td>Do not settle it by adopting <code>@flow-state-dev/workforce</code> wholesale, or by forking a second materializer &#8220;for now.&#8221;</td></tr>
       </tbody>
