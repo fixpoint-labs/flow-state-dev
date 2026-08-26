@@ -103,8 +103,7 @@ One limit stated plainly: on the filesystem store the comparison is held per key
 After `patchState`, `setState`, or `updateState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same three methods and the same contract.
 
 ```ts
-import { defineResource, handler } from "@flow-state-dev/core";
-import { ValidationError } from "@flow-state-dev/engine";
+import { defineResource, handler, FlowError } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const taskResource = defineResource({
@@ -128,8 +127,7 @@ const bumpRetries = handler({
     try {
       await task.updateState((state) => ({ ...state, retries: -1 }));
     } catch (err) {
-      if (err instanceof ValidationError) {
-        err.code;      // "validation_error"
+      if (FlowError.isInstance(err) && err.code === "validation_error") {
         err.retryable; // false
         err.message;
         // Resource "task" write failed stateSchema validation at "retries": <issue>
@@ -140,7 +138,9 @@ const bumpRetries = handler({
 });
 ```
 
-A result that fails `stateSchema`, or that parses to a non-object, throws `ValidationError`. Stored state is the value from before the call. No `resource_change` is emitted.
+A result that fails `stateSchema`, or that parses to a non-null non-object, throws `ValidationError`. Stored state is the value from before the call. No `resource_change` is emitted.
+
+`setState(null)` on a `.nullable()` resource is not a schema failure. The store holds JSON objects, so that write persists as `{}` — the same cleared form an unwritten nullable single already surfaces as.
 
 The message is:
 

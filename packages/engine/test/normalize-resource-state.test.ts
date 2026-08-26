@@ -103,4 +103,19 @@ describe("parseResourceWriteState", () => {
       /parsed value is not a JSON object/
     );
   });
+
+  it("persists schema-valid null as {} — the documented nullable-single reset", () => {
+    const schema = z.object({ ticker: z.string() }).nullable();
+    expect(parseResourceWriteState(schema, null, "priceHistory")).toEqual({});
+  });
+
+  it("still throws when a nullable schema rejects a partial object", () => {
+    const schema = z.object({ ticker: z.string(), range: z.string() }).nullable();
+    expect(() => parseResourceWriteState(schema, { ticker: "NVDA" }, "priceHistory")).toThrow(
+      ValidationError
+    );
+    expect(() => parseResourceWriteState(schema, { ticker: "NVDA" }, "priceHistory")).toThrow(
+      /at "range"/
+    );
+  });
 });

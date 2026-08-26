@@ -695,6 +695,53 @@ describe("schema-invalid resource writes (FIX-1256)", () => {
     expect(ref.state).toEqual(initial);
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("setState(null) on a nullable resource persists {} without throwing", async () => {
+    const onChange = vi.fn();
+    const config = makeResourceConfig({
+      stateSchema: z.object({ ticker: z.string(), bars: z.array(z.unknown()) }).nullable(),
+      default: null
+    });
+    const prior = { ticker: "NVDA", bars: [{ date: "2026-01-01" }] };
+    const registry = makeRegistry({
+      configs: { priceHistory: config },
+      initialState: { priceHistory: prior },
+      onResourceChanged: onChange
+    });
+    const ref = registry.get("priceHistory");
+    onChange.mockClear();
+
+    await ref.setState(null as unknown as JsonObject);
+    expect(ref.state).toEqual({});
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it("setState of a partial object on a nullable schema still throws and keeps prior fields", async () => {
+    const onChange = vi.fn();
+    const config = makeResourceConfig({
+      stateSchema: z
+        .object({
+          classification: z.string(),
+          verdicts: z.array(z.unknown())
+        })
+        .nullable(),
+      default: null
+    });
+    const prior = { classification: "mixed", verdicts: [{ lensId: "quality-value" }] };
+    const registry = makeRegistry({
+      configs: { lensConvergence: config },
+      initialState: { lensConvergence: prior },
+      onResourceChanged: onChange
+    });
+    const ref = registry.get("lensConvergence");
+    onChange.mockClear();
+
+    await expect(
+      ref.setState({ classification: "convergent" } as JsonObject)
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(ref.state).toEqual(prior);
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
 
 describe("createScopeResourceRegistry — collections", () => {

@@ -59,8 +59,13 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
 
 /**
  * Parse a write result against `stateSchema`. Throws {@link ValidationError}
- * (`retryable: false`) when the result fails the schema or is not a JSON
- * object, so the CAS mutator never persists a replacement default.
+ * (`retryable: false`) when the result fails the schema or parses to a
+ * non-null non-object, so the CAS mutator never persists a replacement default.
+ *
+ * Schema-valid `null` is the documented reset for a `.nullable()` resource
+ * (`setState(null)`). The store holds `JsonObject`, so that write persists as
+ * `{}` — the same cleared form an unwritten nullable single already surfaces
+ * as. A schema-valid string or other non-object still throws.
  *
  * `resourceLabel` is the storage key (or accessor) named in the error.
  */
@@ -72,6 +77,12 @@ export function parseResourceWriteState(
   const parsed = stateSchema.safeParse(value);
   if (parsed.success && isJsonObject(parsed.data)) {
     return parsed.data;
+  }
+
+  // Cleared nullable: schema accepted null. Persist the store's empty object,
+  // not a default that would look like surviving data.
+  if (parsed.success && parsed.data == null) {
+    return {};
   }
 
   const issue = parsed.success ? undefined : parsed.error.issues[0];

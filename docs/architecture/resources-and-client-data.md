@@ -165,7 +165,7 @@ await plan.updateState((current) => ({
 }));
 ```
 
-A write whose result fails `stateSchema` throws `ValidationError` and leaves the stored state untouched. A read of a persisted single-resource value that no longer validates still falls back to the resource default — that is load-time recovery, not a write path. Collection-instance reads return the stored object as-is.
+A write whose result fails `stateSchema` throws `ValidationError` and leaves the stored state untouched. Schema-valid `null` on a `.nullable()` resource is the documented reset: the store holds JSON objects, so that write persists as `{}`. A read of a persisted single-resource value that no longer validates still falls back to the resource default — that is load-time recovery, not a write path. Collection-instance reads return the stored object as-is.
 
 `ctx.session.state`, `ctx.user.state`, and `ctx.org.state` survive — state slices are namespaces that multiple unrelated blocks contribute keys into and need scope tagging at the install site. Resources have identity, so they carry their scope with them.
 
