@@ -152,7 +152,7 @@ Resource "<storage-key>" write failed stateSchema validation[ at "<path>"]: <iss
 
 Collection `create` and `upsert` refuse an invalid initial or merged state. The instance is not created or patched.
 
-A read of a persisted value that does not validate resolves to a schema-valid default. The read does not throw.
+A read of a persisted single-resource value that does not validate resolves to a schema-valid default. The read does not throw. A collection-instance read returns the stored object as-is.
 
 The refusal applies to `ResourceRef`. Scope bags (`ctx.session.patchState` and the rest) are a different surface.
 
