@@ -48,7 +48,6 @@ import {
   claimDisposition,
   defineTaskCollection,
   isClaimable,
-  leaseLapsed,
   DEFAULT_MAX_ABANDONMENTS,
 } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -267,11 +266,18 @@ function seedMayReuse(
   // Checked after routing and budget, not before: a row running under another
   // assignee is somebody else's work at this id, not an idempotent hit.
   //
-  // `leaseLapsed` is false for an `in_progress` row with no lease at all, which
-  // lands in this arm too. That is the right side: no drain will take that row
-  // either, and a seed reporting it as started is honest about the row that
-  // exists.
-  if (row.status === "in_progress" && !leaseLapsed(row, now)) return true;
+  // **A LEASE, not merely "not lapsed" — and the distinction is one I got
+  // backwards.** `leaseLapsed` returns false for an `in_progress` row carrying
+  // no lease at all, so phrasing this arm in its terms admitted that row as
+  // "already running". It is the opposite: `isClaimable` rejects a lease-less
+  // row too, so nobody owns it and no drain will ever start it. Reporting it as
+  // started is the silent nothing-happened this whole predicate exists to stop.
+  //
+  // Written as a present, unexpired lease rather than as the negation of a
+  // helper whose null-handling belongs to a different question.
+  if (row.status === "in_progress" && row.leaseUntil != null && row.leaseUntil > now) {
+    return true;
+  }
 
   // **`() => undefined` resolves no dependency on purpose.** This conductor
   // files rows with none, so any row carrying one is not one it filed — and
@@ -292,7 +298,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     workspace: callerWorkspace,
     maxAttempts = 3,
     runTimeoutMs = 1_800_000,
-    phase = implementPhase(),
+    phase: callerPhase = implementPhase(),
     agent,
     ownership,
   } = options;
@@ -317,6 +323,20 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // guard above refuses rather than resolves. A host that retargets a symlink
   // under its own conductor is outside what this can defend.
   const workspace: WorkspaceConfig = Object.freeze({ ...callerWorkspace });
+  // **Its sibling, and the previous version of this guard covered only one of
+  // them.** `phase` is caller-owned validated configuration exactly as
+  // `workspace` is: `phase.phase` is checked below and then feeds the task id,
+  // the checkout path and both runtime phase guards. Retained by reference, a
+  // host could swap `implement` for `review` after construction and leave the
+  // implement prompt and completion check attached to rows both guards now
+  // accept — or move it to a value construction would have refused, which then
+  // fails only after a row is claimed and charged.
+  //
+  // Same rule-versus-instance failure this file keeps producing: the rule is
+  // "validated configuration is snapshotted", and I applied it to the field the
+  // report named. The two are written together now so a third cannot be missed
+  // the same way.
+  const phase: PhaseSpec = Object.freeze({ ...callerPhase });
 
   // Both ids, per epic, and neither substituting for the other.
   // The tenant is in BOTH ids for the same reason the epic is: `boardId`

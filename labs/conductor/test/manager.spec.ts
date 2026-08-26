@@ -2006,6 +2006,49 @@ describe("a row is only ours if its retry budget is ours too", () => {
     ).resolves.toMatchObject({ taskId: conductorTaskId("FIX-RUNNING", PHASE) });
   }, 20_000);
 
+  it("refuses an active-looking row that carries no lease", async () => {
+    // **`leaseLapsed` is false for an `in_progress` row with no lease, and I
+    // built the running arm on that helper.** Wrong side: `isClaimable` rejects
+    // a lease-less row too, so nobody owns it and no drain will ever start it.
+    // Reporting it as already running is the silent nothing-happened the whole
+    // predicate exists to stop — a shared-board writer or a legacy persisted row
+    // reaches this shape.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-NOLEASE", PHASE), {
+            id: conductorTaskId("FIX-NOLEASE", PHASE),
+            goal: "in_progress with nobody on it",
+            input: { issue: "FIX-NOLEASE", phase: PHASE },
+            // Everything else correct; no `leaseUntil` at all.
+            status: "in_progress",
+            attempts: 1,
+            assignee: "harness",
+            maxAttempts: 3,
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    await expect(live.call("seed", { issue: "FIX-NOLEASE", phase: PHASE })).rejects.toThrow();
+  }, 20_000);
+
   it("reuses a FINISHED row whose retry budget is not the configured one", async () => {
     // **The other side of the same rule, and the ordering is what makes it
     // true.** Every admission check asks whether a drain could run this row the
