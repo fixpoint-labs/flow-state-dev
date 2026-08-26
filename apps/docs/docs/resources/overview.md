@@ -33,7 +33,7 @@ const artifactResource = defineResource({
 
 `defineResource() requires an explicit scope of "session", "user", or "org" (got …)`
 
-The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations.
+The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations. A write through `patchState`, `setState`, or `updateState` persists only when the result satisfies `stateSchema` and is a JSON object. See [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes).
 
 Config options:
 
