@@ -30,6 +30,10 @@ import { z } from "zod";
 
 import { runResourceCAS } from "../../packages/engine/src/stores/resource-cas";
 import { createStateContainer } from "../../packages/engine/src/stores/state-container";
+import {
+  normalizeResourceDefault,
+  normalizeResourceState
+} from "../../packages/engine/src/resources/normalize-resource-state";
 import type { ExpectedVersion } from "../../packages/engine/src/stores/types";
 import { createScopePersist } from "../../packages/engine/src/stores/scope-persist";
 import { createFilesystemSessionStore } from "../../packages/engine/src/stores/filesystem/session-store";
@@ -239,4 +243,129 @@ describe("§11 deleteStateRecord — unchecked only where the adapter advertises
       expect(row?.expectedVersion).toBe("any");
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// 4. When is a first-touch invalid write a SILENT NO-OP? (round-26 claim)
+//
+// §11 scoped the exception to "a schema with no valid complete default". Review
+// argued the same no-op happens WITH a valid default, because the driver's
+// short-circuit compares the NORMALIZED result against the seed — and an invalid
+// candidate normalizes back to exactly that seed either way. If that holds, the
+// operative condition is "normalization equals the first-touch seed", and the
+// no-default case is one instance of it rather than the rule itself.
+//
+// Wired the way `resource-registry.ts` wires it: the container is seeded from
+// `normalizeResourceDefault` at version 0, and the mutator handed to the driver
+// is the caller's updater COMPOSED WITH `normalizeResourceState` — which is the
+// detail the whole claim turns on.
+// ---------------------------------------------------------------------------
+
+describe("§11 first-touch no-op — the condition is the seed, not the default", () => {
+  type Outcome = {
+    committed: boolean;
+    version: number;
+    persisted: boolean;
+    state: Record<string, unknown>;
+  };
+
+  /** First touch of a never-stored resource, exactly as the registry drives it. */
+  async function firstTouch(
+    config: { stateSchema: z.ZodTypeAny; default?: unknown },
+    updater: (s: Record<string, unknown>) => Record<string, unknown>,
+    stored?: { state: Record<string, unknown>; version: number }
+  ): Promise<Outcome> {
+    const cfg = config as unknown as Parameters<typeof normalizeResourceDefault>[0];
+    const seed = stored ? stored.state : normalizeResourceDefault(cfg);
+    const container = createStateContainer<Record<string, unknown>>(
+      seed as Record<string, unknown>,
+      stored ? stored.version : 0
+    );
+
+    let persisted = false;
+    const res = await runResourceCAS({
+      key: "k",
+      container,
+      // The registry's composition — `resource-registry.ts:664`.
+      mutator: async (current) =>
+        normalizeResourceState(cfg, updater(current as Record<string, unknown>)),
+      persist: async (next) => {
+        persisted = true;
+        return { ok: true, state: next, version: (stored?.version ?? 0) + 1 };
+      },
+      // Never-stored unless the test says otherwise.
+      reread: async () =>
+        stored ? { state: stored.state, version: stored.version } : undefined,
+      intent: "mutate"
+    });
+
+    return {
+      committed: res.committed,
+      version: res.version,
+      persisted,
+      state: res.state as Record<string, unknown>
+    };
+  }
+
+  // A schema WITH a valid complete default — the case §11 said was unaffected.
+  const withDefault = { stateSchema: z.object({ n: z.number().default(0) }) };
+  // A schema with NO valid complete default — the case §11 did name.
+  const noDefault = { stateSchema: z.object({ n: z.number() }) };
+
+  it("CLAIM: valid default + INVALID first write is a silent no-op — no row, no version", async () => {
+    // `{ n: "bad" }` fails `z.number()`, so `normalizeResourceState` falls back
+    // to `normalizeResourceDefault` = `{ n: 0 }` — byte-for-byte the seed the
+    // container already holds. The `deepEqual` at `resource-cas.ts:229` sees no
+    // change and returns before persisting. The schema HAVING a default is what
+    // makes seed and fallback identical, so a default does not protect against
+    // this — it is the thing that produces it.
+    const out = await firstTouch(withDefault, () => ({ n: "bad" }) as never);
+
+    expect(out.committed).toBe(false);
+    expect(out.version).toBe(0);
+    expect(out.persisted).toBe(false); // nothing ever reached a store
+    expect(out.state).toEqual({ n: 0 });
+  });
+
+  it("CONTROL: valid default + VALID first write DOES create — the harness can commit", async () => {
+    // Without this, the row above proves only that the wiring never writes.
+    const out = await firstTouch(withDefault, () => ({ n: 5 }));
+
+    expect(out.committed).toBe(true);
+    expect(out.version).toBe(1);
+    expect(out.persisted).toBe(true);
+    expect(out.state).toEqual({ n: 5 });
+  });
+
+  it("the no-default case behaves identically — one instance, not the rule", async () => {
+    // §11's stated exception. Same outcome, same mechanism: the fallback is
+    // `{}`, the seed is `{}`, they deep-equal. Nothing about it is special.
+    const out = await firstTouch(noDefault, () => ({ n: "bad" }) as never);
+
+    expect(out.committed).toBe(false);
+    expect(out.version).toBe(0);
+    expect(out.persisted).toBe(false);
+    expect(out.state).toEqual({});
+  });
+
+  it("BOUNDARY: on a row that EXISTS the same invalid write is D1's replacement", async () => {
+    // This is what makes "first touch" the operative word rather than "invalid".
+    // The seed is the stored state, the fallback is the default, the two differ,
+    // so the write commits — destroying `keep` and reporting success.
+    const cfg = {
+      stateSchema: z.object({
+        n: z.number().default(0),
+        keep: z.string().default("gone")
+      })
+    };
+    const out = await firstTouch(cfg, () => ({ n: "bad" }) as never, {
+      state: { n: 5, keep: "DO-NOT-LOSE" },
+      version: 3
+    });
+
+    expect(out.committed).toBe(true);
+    expect(out.version).toBe(4);
+    expect(out.persisted).toBe(true);
+    expect(out.state).toEqual({ n: 0, keep: "gone" }); // D1
+  });
 });
