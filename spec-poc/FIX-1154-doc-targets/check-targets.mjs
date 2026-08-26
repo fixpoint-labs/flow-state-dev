@@ -118,13 +118,24 @@
  * not drag in the 91 guarantee lines that would turn §11 back into an inventory,
  * and the engine README's nine stay exempt exactly as round 29 intended.
  *
+ * A TARGET WAS NEVER CHECKED TO EXIST — round 32
+ * Every assertion above runs candidate → §11: does the document say something
+ * about this page? Nothing ran §11 → filesystem: is the page this document is
+ * briefing still there? Round 30's own negative control proved the gap — renaming
+ * a target to a path that does not exist left the run green at 19 targets — and it
+ * was deferred then because a guard might have shifted the count §6's Size line
+ * cites. It does not: all 19 resolve on `origin/main` and in this checkout, so the
+ * guard changes nothing today and only catches drift from here. See
+ * `deadTargets` below for why it asserts rather than filters, and for the
+ * oracle's boundary.
+ *
  * RUN IT
  *   node spec-poc/FIX-1154-doc-targets/check-targets.mjs
  *
  * Exit 0 = every candidate is dispositioned, at every line it was selected on.
  * Exit 1 = at least one is not, a line-scoped ruling leaves a candidate line
- * unreached, the corpus itself is wrong, or some tracked prose is classified
- * neither way.
+ * unreached, a target path does not exist, the corpus itself is wrong, or some
+ * tracked prose is classified neither way.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -594,6 +605,53 @@ for (const { file, hits } of all) {
 
 console.log(`\ndocumentation targets: ${TARGETS.length}  (distinct EXTEND/QUALIFY paths — §6's Size line cites this)`);
 for (const t of TARGETS) console.log(`  ${t}`);
+
+/**
+ * A TARGET MUST RESOLVE TO A FILE THAT EXISTS — round 32.
+ *
+ * Everything above checks one direction: every CANDIDATE is named in §11. Nothing
+ * checked the other: that every path §11 names is a file that is still there. So a
+ * target could be a dead path and the run stayed green — confirmed by negative
+ * control in round 30, where renaming a target to a path that does not exist left
+ * the run green at 19 targets.
+ *
+ * That is not hypothetical on this branch. Round 31 alone moved 110 commits under
+ * it, and the round before found the engine's own sources had moved
+ * (`resources/resource-registry.ts` → `context/`, `context/resource-state-predicate.ts`
+ * → `stores/`). Documentation moves the same way, and a checker that cannot tell a
+ * MOVED target from a SATISFIED one reports a corpus pass over a file nobody can
+ * open.
+ *
+ * IT ASSERTS RATHER THAN FILTERS, deliberately. Dropping a dead path from the set
+ * would make the target count — the one figure §6's Size line does not write by
+ * hand — quietly shrink when a page is renamed, converting a loud failure into a
+ * silent one. This can only turn a green run red; it can never move a number. That
+ * property was the precondition for adding it at all: all 19 targets resolve today,
+ * on `origin/main` (`git ls-tree`) and in this checkout, so it changes nothing now
+ * and only catches drift from here.
+ *
+ * THE ORACLE'S BOUNDARY, per §10's evidence-marker rule. It is `TRACKED_PROSE` —
+ * this CHECKOUT's `git ls-files`, the same oracle `assertCorpus` and
+ * `assertTotalClassification` already trust. It therefore answers "does this path
+ * exist in the tree the checker is running against", NOT "does it exist on `main`".
+ * On this spec branch, whose tree is the 2e046e96 base, a target that moved on
+ * `main` afterwards still resolves here. That is the right oracle at the moment
+ * that matters — §8 step 1 runs this from a branch cut off current `main`, where
+ * the checkout IS main's documentation — and the wrong one for reasoning about
+ * `main` from this branch, which is what the Part II anchor note is for.
+ */
+const trackedSet = new Set(TRACKED_PROSE);
+const deadTargets = TARGETS.filter((t) => !trackedSet.has(t));
+
+if (deadTargets.length > 0) {
+  console.error(
+    `\n${deadTargets.length} target path(s) do not exist in this checkout. §11 is briefing a\n` +
+      `file nobody can open — it moved, was renamed, or the path is a typo. A moved target is\n` +
+      `indistinguishable from a satisfied one without this check:`
+  );
+  for (const t of deadTargets) console.error(`  ${t}`);
+  process.exit(1);
+}
 
 if (undispositioned.length > 0) {
   console.error(
