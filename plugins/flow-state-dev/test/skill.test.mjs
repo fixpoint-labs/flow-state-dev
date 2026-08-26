@@ -9,7 +9,8 @@
  * canonical through the exported comparison — never a second normalizer.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { assertCanonicalNextSteps } from "@flow-state-dev/fsdev";
 import { buildReport } from "../skills/install-fsd/detect/report.mjs";
@@ -202,6 +203,46 @@ describe("secrets never enter the transcript", () => {
     expect(text).toMatch(/--provider OPENAI_API_KEY/);
     expect(text).toMatch(/ANTHROPIC_API_KEY/);
     expect(text).toMatch(/GOOGLE_GENERATIVE_AI_API_KEY/);
+  });
+
+  it("the generate-token snippet does not treat [eval] as a dest", () => {
+    const text = skillText();
+    const destsLine = /const dests = process\.argv[\s\S]*?\.filter\(\(p\) => p !== "\[eval\]"\);/.exec(text);
+    expect(destsLine, "dests must take argv after -- and drop [eval]").not.toBeNull();
+    expect(text).not.toMatch(/const dests = process\.argv\.slice\(1\)/);
+
+    const destsFrom = (argv) =>
+      new Function("process", `${destsLine[0]}\nreturn dests;`)({ argv });
+
+    expect(destsFrom(["/usr/bin/node", "[eval]", "--", "/tmp/.env.local"])).toEqual([
+      "/tmp/.env.local",
+    ]);
+    expect(destsFrom(["/usr/bin/node", "--", "/tmp/.env.local"])).toEqual(["/tmp/.env.local"]);
+    expect(destsFrom(["/usr/bin/node", "[eval]"])).toEqual([]);
+    expect(destsFrom(["/usr/bin/node", "/tmp/.env.local"])).toEqual(["/tmp/.env.local"]);
+    expect(destsFrom(["/usr/bin/node", "[eval]", "--", "/tmp/.env.local"])).not.toContain("[eval]");
+  });
+
+  it("running the generate-token snippet writes the dest and never a file named [eval]", () => {
+    const text = skillText();
+    const snippet = /node --input-type=module -e '\n([\s\S]*?)\n' -- \$DESTS/.exec(text);
+    expect(snippet, "the generate-token -e script is extractable").not.toBeNull();
+
+    const root = makeTree({});
+    const dest = join(root, ".env.local");
+    const stdout = execFileSync(
+      process.execPath,
+      ["--input-type=module", "-e", snippet[1], "--", dest],
+      { encoding: "utf8", cwd: root },
+    );
+
+    expect(existsSync(join(root, "[eval]"))).toBe(false);
+    expect(readdirSync(root)).not.toContain("[eval]");
+    const body = readFileSync(dest, "utf8");
+    expect(body).toMatch(/^FSD_DEMO_TOKEN=[0-9a-f]{64}\n$/);
+    const value = body.slice("FSD_DEMO_TOKEN=".length).trim();
+    expect(stdout).not.toContain(value);
+    expect(stdout).not.toMatch(/console\.log\(\s*token\b/);
   });
 });
 

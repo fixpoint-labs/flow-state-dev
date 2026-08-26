@@ -137,7 +137,9 @@ node --input-type=module -e '
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
-const dests = process.argv.slice(1);
+const dests = process.argv
+  .slice(process.argv.includes("--") ? process.argv.indexOf("--") + 1 : 1)
+  .filter((p) => p !== "[eval]");
 const token = randomBytes(32).toString("hex");
 for (const dest of dests) {
   const existing = existsSync(dest) ? readFileSync(dest, "utf8") : "";
