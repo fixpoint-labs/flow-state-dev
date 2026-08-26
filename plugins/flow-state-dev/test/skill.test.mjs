@@ -140,6 +140,13 @@ describe("the instruction set names no file outside its host's allowlist", () =>
     expect(text).not.toMatch(/write (?:a |the )?root `app\//);
   });
 
+  it("states which shape the host got", () => {
+    const text = skillText();
+    expect(text).toMatch(/mounted-route/);
+    expect(text).toMatch(/second-process/);
+    expect(text).toMatch(/host\.topology/);
+  });
+
   it("writes fsdev.config.mts only when no config of any extension exists", () => {
     const text = skillText();
     expect(text).toMatch(/fsdev\.config\.mts/);

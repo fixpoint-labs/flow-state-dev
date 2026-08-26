@@ -85,7 +85,7 @@ Provider mapping — the answer decides the package, the env var, and the model 
 | provider    | package installed     | env var                         | `defaultModel`            |
 | ----------- | --------------------- | ------------------------------- | ------------------------- |
 | `openai`    | `@ai-sdk/openai`      | `OPENAI_API_KEY`                | `openai/gpt-5.4-mini`     |
-| `anthropic` | `@ai-sdk/anthropic`   | `ANTHROPIC_API_KEY`             | `anthropic/claude-sonnet-4.6` |
+| `anthropic` | `@ai-sdk/anthropic`   | `ANTHROPIC_API_KEY`             | `anthropic/claude-sonnet-4-6` |
 | `google`    | `@ai-sdk/google`      | `GOOGLE_GENERATIVE_AI_API_KEY`  | `google/gemini-2.5-flash` |
 
 Copy the templates in `${SKILL_DIR}/templates/` and substitute. The wiring shape is `${SKILL_DIR}/wiring-contract.md`.
