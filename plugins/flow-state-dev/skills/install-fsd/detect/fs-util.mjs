@@ -4,7 +4,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 /** Read a file, or `null` if it is absent or unreadable. Never throws. */
 export function readIfPresent(path) {
@@ -54,6 +54,18 @@ export function displayPath(path, root) {
 }
 
 /**
+ * Is `path` strictly inside `root` (not `root` itself)?
+ *
+ * Uses `relative()`, so Windows backslashes and a missing trailing separator do not matter.
+ * `startsWith(root + "/")` is false when `path` was built with `\\`, which is how a write-root
+ * containment check on Windows treated every file as outside and pointed the token at a sibling.
+ */
+export function isInside(root, path) {
+  const rel = relative(resolve(root), resolve(path));
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/**
  * Run a `git` command in `dir`. Returns `{ ok, stdout, code }` and never throws, because every
  * caller here is asking a question whose "no" is an ordinary answer (not a repository, file not
  * tracked, path not ignored) rather than a failure.
@@ -73,7 +85,10 @@ export function git(dir, args) {
 /** The repository root `git` reports for `dir`, or `null` outside a repository. */
 export function repositoryRoot(dir) {
   const result = git(dir, ["rev-parse", "--show-toplevel"]);
-  return result.ok && result.stdout.length > 0 ? result.stdout : null;
+  // `rev-parse --show-toplevel` prints `/` paths. `ancestorsFrom` uses `resolve()`, which is
+  // `\` on Windows — without `resolve()` here the two never `===` and the workspace search
+  // walks past the repository into an unrelated checkout.
+  return result.ok && result.stdout.length > 0 ? resolve(result.stdout) : null;
 }
 
 /**

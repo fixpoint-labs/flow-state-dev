@@ -202,8 +202,19 @@ export function classifySlot(slot, selectedExtension) {
 /** The major version a `next` dependency range asks for, or `null` when it is not a readable range. */
 export function nextMajorFrom(range) {
   if (typeof range !== "string") return null;
-  const match = /(\d+)\s*\./.exec(range.replace(/^[\^~>=<\s]*/, ""));
-  return match === null ? null : Number(match[1]);
+  // One major per `||` disjunct — not every `\d+\.` in the string, which would read the
+  // minor in `^15.4.0` as a second major and refuse every ordinary Next 15 range.
+  const majors = range.split("||").map((part) => {
+    const match = /(\d+)\s*\./.exec(part.replace(/^[\^~>=<\s]*/, ""));
+    return match === null ? null : Number(match[1]);
+  });
+  if (majors.length === 0 || majors.some((major) => major === null)) return null;
+  // `^15.0.0 || ^14.0.0` is a valid range the lockfile can satisfy with 14. The first major
+  // alone would call that host supported and let the adapter install fail after files land.
+  const below = majors.some((major) => major < NEXT_MINIMUM_MAJOR);
+  const atLeast = majors.some((major) => major >= NEXT_MINIMUM_MAJOR);
+  if (below && atLeast) return null;
+  return majors[0];
 }
 
 /**
@@ -275,8 +286,10 @@ export function resolveDevCommand(writeRoot, host) {
   if (chosen === null) return { script: null, command: null, port: null, url: null, needsSeparator: false };
 
   const [script, command] = chosen;
-  const portMatch = /(?:-p|--port)[= ](\d+)/.exec(command);
-  const port = portMatch === null ? null : Number(portMatch[1]);
+  const flagPort = /(?:-p|--port)[= ](\d+)/.exec(command);
+  const envPort = /(?:^|[\s;|&])PORT=(\d+)/.exec(command);
+  // Flags win when both are present — they are what `next dev` itself documents as overriding.
+  const port = flagPort !== null ? Number(flagPort[1]) : envPort !== null ? Number(envPort[1]) : null;
   const defaultPort = host === "next" ? 3000 : null;
   const effective = port ?? defaultPort;
   return {

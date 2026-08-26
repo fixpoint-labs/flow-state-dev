@@ -14,10 +14,12 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 import {
   DEMO_FLOW,
+  DEMO_TOKEN_KEY,
   GENERATED_MARKER,
   MOUNT,
   NODE_FLOOR,
   PROVIDER_KEYS,
+  SECRET_KEYS,
   SUPPORTED_PACKAGE_MANAGERS,
 } from "./constants.mjs";
 import { declaredFsdDependencies, moduleSystemOf, nodeStripsTypes } from "./next-project.mjs";
@@ -302,6 +304,24 @@ export function buildReport(targetDir, { env = process.env, nodeVersion = proces
   // --- Resolutions 9 and 10 --------------------------------------------------------------------
   const secrets = resolveSecrets(writeRoot, host.value, env);
   const secretFiles = resolveSecretFiles(writeRoot, secrets, { providerKey });
+  // Inherited `process.env` beats every file. An empty inherited value means both loaders ignore
+  // anything we write; generating into `.env.local` leaves the secret empty at runtime.
+  const inScopeSecrets = SECRET_KEYS.filter((key) => key === DEMO_TOKEN_KEY || key === providerKey);
+  for (const key of inScopeSecrets) {
+    const resolution = secrets[key];
+    if (resolution === undefined) continue;
+    const inheritedEmpty = [resolution.cli, resolution.next].some(
+      (answer) => answer !== null && answer.path === null && answer.status === "empty",
+    );
+    if (!inheritedEmpty) continue;
+    refusals.push(
+      refusal(
+        "inherited-secret-empty",
+        `${key} is set to empty in the inherited environment, so both loaders will ignore any file I write.`,
+        `Unset ${key} in this environment, then ask again.`,
+      ),
+    );
+  }
   for (const file of secretFiles) {
     if (file.tracked) {
       refusals.push(

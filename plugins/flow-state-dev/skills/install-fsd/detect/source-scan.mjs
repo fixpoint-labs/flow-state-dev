@@ -27,10 +27,11 @@
  * For a call's options (`createFlowState({ … })`), exactly one of:
  *   4. a single call in the file, given a direct object literal
  *
- * Within an accepted object, a setting's value is read only when it is a plain string literal or
- * a plain array of string literals. Everything else — a function export, a wrapper call like
- * `withMDX({…})`, a ternary, a spread, a computed value, two live assignments of one key — is
- * `undetermined`, and the caller refuses with the reason attached.
+ * Within an accepted object, a setting's value is read only when it is a **top-level** key
+ * whose value is a plain string literal or a plain array of string literals. A nested
+ * `basePath: false` on a redirect is not Next's `basePath`. Everything else — a function export,
+ * a wrapper call like `withMDX({…})`, a ternary, a spread, a computed value, two live assignments
+ * of one key — is `undetermined`, and the caller refuses with the reason attached.
  *
  * **Comments and string bodies are blanked before anything is searched**, so a value inside a
  * comment or an unrelated string is never mistaken for an assignment.
@@ -134,6 +135,9 @@ export function exportedObjectRegion(source) {
     // A second export of any kind means we cannot say which one runs.
     const exports = [...code.matchAll(/(?:module\s*\.\s*exports|export\s+default)\s*=?/g)];
     if (exports.length > 1) return { unreadable: `${exports.length} exports found; only one is readable` };
+    if (precededByControlFlow(code, direct.index)) {
+      return { unreadable: "the exported object is behind a conditional" };
+    }
     if (hasTopLevelSpread(code, start, end)) return { unreadable: "the exported object spreads in another value" };
     return { start, end };
   }
@@ -154,6 +158,9 @@ export function exportedObjectRegion(source) {
     const start = declaration.index + declaration[0].length - 1;
     const end = matchingBrace(code, start);
     if (end === -1) return { unreadable: "the exported object literal is not closed" };
+    if (precededByControlFlow(code, named.index)) {
+      return { unreadable: "the exported object is behind a conditional" };
+    }
     if (hasTopLevelSpread(code, start, end)) return { unreadable: "the exported object spreads in another value" };
     return { start, end };
   }
@@ -199,6 +206,42 @@ function hasTopLevelSpread(code, start, end) {
   return splitTopLevel(code.slice(start + 1, end)).some((part) => part.startsWith("..."));
 }
 
+/**
+ * Is the export at `index` the body of an `if` / `else` / `for` / `while` / `switch`?
+ *
+ * `if (process.env.CI) module.exports = { … }` is a legal CommonJS file and not an accepted
+ * shape: the assignment may not run, and reading it as the config is how a CI-only `basePath`
+ * becomes the mount URL on a laptop.
+ */
+function precededByControlFlow(code, index) {
+  let i = index;
+  const skipWs = () => {
+    while (i > 0 && /\s/.test(code[i - 1])) i--;
+  };
+  skipWs();
+  // `if (cond) { module.exports` — skip the block opener.
+  if (i > 0 && code[i - 1] === "{") {
+    i--;
+    skipWs();
+  }
+  // `if (cond) module.exports` / `if (cond) {` — skip the condition.
+  if (i > 0 && code[i - 1] === ")") {
+    let depth = 0;
+    for (i--; i >= 0; i--) {
+      if (code[i] === ")") depth++;
+      else if (code[i] === "(") {
+        if (depth === 0) break;
+        depth--;
+      }
+    }
+    if (i >= 0) i--;
+    skipWs();
+  }
+  let start = i;
+  while (start > 0 && /[A-Za-z]/.test(code[start - 1])) start--;
+  return /^(?:if|else|for|while|switch)$/.test(code.slice(start, i));
+}
+
 /** Index of the `}` closing the `{` at `open`, or -1. */
 function matchingBrace(code, open) {
   let depth = 0;
@@ -238,7 +281,13 @@ export function settingValue(source, key, region) {
   const pattern = new RegExp(`(^|[\\s{,;(])${key}\\s*:\\s*`, "g");
   const hits = [];
   let match;
-  while ((match = pattern.exec(scope)) !== null) hits.push(region.start + match.index + match[0].length);
+  while ((match = pattern.exec(scope)) !== null) {
+    const at = region.start + match.index + match[0].length;
+    // Nested objects (redirects, rewrites, experimental) carry their own keys. A flat search
+    // treats `basePath: false` on a redirect as Next's mount prefix and refuses a project whose
+    // top-level `basePath` is unset.
+    if (objectDepth(code, region.start, at) === 1) hits.push(at);
+  }
 
   if (hits.length === 0) return { raw: null, line: null };
   if (hits.length > 1) {
@@ -246,6 +295,24 @@ export function settingValue(source, key, region) {
     return { unreadable: `${key} is assigned ${hits.length} times (lines ${lines.join(", ")})` };
   }
   return { raw: valueAt(source, hits[0]), line: code.slice(0, hits[0]).split("\n").length };
+}
+
+/** Brace/bracket/paren depth at `at`, walking from `from` (the region's opening `{`). */
+function objectDepth(code, from, at) {
+  let depth = 0;
+  let quote = null;
+  for (let i = from; i < at; i++) {
+    const ch = code[i];
+    if (quote !== null) {
+      if (ch === "\\") i++;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+    else if (ch === "[" || ch === "{" || ch === "(") depth++;
+    else if (ch === "]" || ch === "}" || ch === ")") depth--;
+  }
+  return depth;
 }
 
 /** A plain array of string literals → its values. Anything else → `null`: we cannot read it. */

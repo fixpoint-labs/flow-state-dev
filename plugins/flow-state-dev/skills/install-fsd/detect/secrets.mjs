@@ -27,7 +27,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { CLI_ENV_FILE, DEMO_TOKEN_KEY, NEXT_DEV_ENV_FILES, SECRET_KEYS } from "./constants.mjs";
-import { ancestorsFrom, isIgnoredByGit, isTrackedByGit, readIfPresent } from "./fs-util.mjs";
+import { ancestorsFrom, isIgnoredByGit, isInside, isTrackedByGit, readIfPresent } from "./fs-util.mjs";
 import { parseAsCli, parseAsNextDev } from "./env-parsers.mjs";
 
 /** `absent` / `empty` / `non-empty` — the only three things this module will say about a value. */
@@ -165,7 +165,13 @@ function destinationsFor(key, resolution, { writeRoot, own, provenance }) {
     consulted.push(runtime);
 
     if (answer.status === "non-empty") {
-      const inWriteRoot = answer.path !== null && answer.path.startsWith(`${writeRoot}/`);
+      if (answer.path === null) {
+        // Inherited `process.env` beats every file. Reusing it and writing nothing is the only
+        // safe move: a generated `.env.local` is ignored by both loaders, and treating the
+        // shell's token as "another project's" scheduled exactly that write.
+        continue;
+      }
+      const inWriteRoot = isInside(writeRoot, answer.path);
       if (inWriteRoot) {
         // A file inside the write root already holding this value. It decides what this runtime
         // sees, so it must reach the tracked-git check — including `.env.development.local`,
@@ -187,8 +193,13 @@ function destinationsFor(key, resolution, { writeRoot, own, provenance }) {
       continue;
     }
 
-    if ((answer.status === "empty" || answer.status === "unreadable") && answer.path !== null) {
-      const inWriteRoot = answer.path.startsWith(`${writeRoot}/`);
+    if (answer.status === "empty" || answer.status === "unreadable") {
+      if (answer.path === null) {
+        // Inherited empty (or unreadable) cannot be overridden by a file. The report refuses;
+        // scheduling a destination would point a write at a file neither loader will read.
+        continue;
+      }
+      const inWriteRoot = isInside(writeRoot, answer.path);
       const why =
         answer.status === "empty"
           ? `${key} is an empty assignment here, and this is the line ${runtime} resolves`

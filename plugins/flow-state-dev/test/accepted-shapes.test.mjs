@@ -65,6 +65,12 @@ describe("the accepted-shape list, measured against configs real apps use", () =
     expect(refused.filter((name) => name.includes("wrapper"))).toHaveLength(4);
   });
 
+  it("hands off a conditional CommonJS export rather than reading the assignment that may not run", () => {
+    const source =
+      "if (process.env.CI) module.exports = { basePath: '/ci' }\nmodule.exports = { reactStrictMode: true }\n";
+    expect(exportedObjectRegion(source).unreadable).toEqual(expect.any(String));
+  });
+
   it("reads the setting correctly on every shape it accepts", () => {
     // Accepting a shape is worth nothing if the value read from it is wrong — the commented-out
     // case is the one that used to win.

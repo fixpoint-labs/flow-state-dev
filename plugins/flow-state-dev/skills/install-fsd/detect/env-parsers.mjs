@@ -85,8 +85,9 @@ export function parseAsNextDev(content) {
     const quote = value[0];
     value = value.replace(/^(['"`])([\s\S]*)\1$/gm, "$2");
     if (quote === '"') value = value.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
-    // Single quotes suppress expansion in dotenv's grammar; every other form is expanded.
-    vars.set(key, { value, expands: quote !== "'" && EXPANSION.test(value) });
+    // Quotes are already stripped. `@next/env`'s expand() then interpolates a bare `$VAR`
+    // regardless of how the line was quoted — `\$` is the only form that stays literal.
+    vars.set(key, { value, expands: EXPANSION.test(value) });
   }
   return vars;
 }
