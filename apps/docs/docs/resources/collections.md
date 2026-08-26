@@ -285,6 +285,44 @@ If the set is bounded and predictable (three artifact slots), a static resource 
 
 Collections can declare a `client` config to make their items visible to the frontend. This gives you React hooks for listing items, lazy-loading content, and performing CRUD operations. See [Client Access](/docs/resources/client-access) for the full reference.
 
+## Writable
+
+`writable` controls whether blocks can change an instance's state or content. Default `true`. Instance `patchState` / `setState` / `updateState`, collection `upsert` on an existing key, and instance `writeContent` all honor it.
+
+Set `writable: false` and those writes throw. The flag is collection-wide: every instance is covered.
+
+```ts
+import { defineResourceCollection, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const notes = defineResourceCollection({
+  pattern: "notes/**",
+  scope: "session",
+  stateSchema: z.object({ title: z.string().default("") }),
+  writable: false,
+});
+
+const updateNotes = handler({
+  name: "update-notes",
+  resources: { notes },
+  execute: async (_input, ctx) => {
+    const ref = await ctx.resources.notes.get("onboarding");
+
+    await ref.patchState({ title: "Onboarding" });
+    // throws Error: Resource "notes/onboarding" is read-only
+
+    await ref.writeContent("# Onboarding");
+    // throws Error: Resource "notes/onboarding" content is read-only
+  },
+});
+```
+
+State writes throw `Error` with message `Resource "<storageKey>" is read-only`. Content writes throw `Resource "<storageKey>" content is read-only`. `storageKey` is the resolved instance key, for example `notes/onboarding`.
+
+`create` (including `{ replace: true }`), `getOrCreate`, and `delete` on the collection handle are not gated by `writable`. `llmWritable` only gates the generic LLM content tools.
+
+External collections do not take `writable`. See [external collections](./external-collections.md).
+
 ## LLM access
 
 A content-bearing collection can opt into the generic content tools, the same way single resources do. Two flags, declared once on the collection and applied to every instance:
@@ -292,7 +330,7 @@ A content-bearing collection can opt into the generic content tools, the same wa
 - `llmReadable: true` — a generator can read instance content with `readResourceContentTool()`, and find it with `grepResourceContent` / `searchResources`.
 - `llmWritable: true` — a generator can overwrite an instance body with `writeResourceContentTool()`.
 
-Both default to `false`: a collection that doesn't opt in stays invisible to those tools. `llmWritable` is independent of `llmReadable` (the write tool gates on `llmWritable` alone), matching the single-resource contract.
+Both default to `false`: a collection that doesn't opt in stays invisible to those tools. The write tool requires `llmWritable`, not `llmReadable`. A `writable: false` collection still refuses the write. See [Writable](#writable).
 
 ```ts
 import { generator, readResourceContentTool, writeResourceContentTool } from "@flow-state-dev/core";
