@@ -1955,6 +1955,57 @@ describe("a row is only ours if its retry budget is ours too", () => {
     ).rejects.toThrow(/retry budget|not one this conductor filed|did not file/);
   }, 20_000);
 
+  it("reuses a row whose first run is still holding a live lease", async () => {
+    // **The seed contract's other end, and the one delegating to `isClaimable`
+    // broke.** That predicate answers "can a drain take this row NOW", and it
+    // withholds a live `in_progress` row on purpose — someone already has it.
+    // `seed` is asking a different question: does a row for this task exist and
+    // is it being worked. For a running row the answer is yes, and returning its
+    // stable id is the documented idempotent case.
+    //
+    // Delegating the whole question made a second seed for an issue whose first
+    // coding run was still going THROW, and made concurrent seeds
+    // timing-dependent: success depended on whether the first drain had claimed
+    // yet, which no caller can see.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-RUNNING", PHASE), {
+            id: conductorTaskId("FIX-RUNNING", PHASE),
+            goal: "already being worked",
+            input: { issue: "FIX-RUNNING", phase: PHASE },
+            // Claimed and live: a lease well into the future.
+            status: "in_progress",
+            leaseUntil: Date.now() + 600_000,
+            attempts: 1,
+            assignee: "harness",
+            maxAttempts: 3,
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    await expect(
+      live.call("seed", { issue: "FIX-RUNNING", phase: PHASE }),
+    ).resolves.toMatchObject({ taskId: conductorTaskId("FIX-RUNNING", PHASE) });
+  }, 20_000);
+
   it("reuses a FINISHED row whose retry budget is not the configured one", async () => {
     // **The other side of the same rule, and the ordering is what makes it
     // true.** Every admission check asks whether a drain could run this row the

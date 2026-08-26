@@ -48,6 +48,7 @@ import {
   claimDisposition,
   defineTaskCollection,
   isClaimable,
+  leaseLapsed,
   DEFAULT_MAX_ABANDONMENTS,
 } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -253,6 +254,25 @@ function seedMayReuse(
   if (task.maxAttempts !== maxAttempts) return false;
 
   const row = task as Task;
+
+  // **A row that is already RUNNING is already what the seed asked for.**
+  // `isClaimable` answers "can a drain take this now"; `seed` asks "does a row
+  // for this task already exist and is it being worked". A live `in_progress`
+  // row is the second and deliberately not the first — the substrate withholds
+  // it from claiming precisely because someone has it — so delegating the whole
+  // question to `isClaimable` made this conductor reject its own running row and
+  // turned concurrent seeds timing-dependent: whether the second call succeeded
+  // depended on whether the first drain had claimed yet.
+  //
+  // Checked after routing and budget, not before: a row running under another
+  // assignee is somebody else's work at this id, not an idempotent hit.
+  //
+  // `leaseLapsed` is false for an `in_progress` row with no lease at all, which
+  // lands in this arm too. That is the right side: no drain will take that row
+  // either, and a seed reporting it as started is honest about the row that
+  // exists.
+  if (row.status === "in_progress" && !leaseLapsed(row, now)) return true;
+
   // **`() => undefined` resolves no dependency on purpose.** This conductor
   // files rows with none, so any row carrying one is not one it filed — and
   // rather than assert that separately, the lookup that cannot satisfy a
