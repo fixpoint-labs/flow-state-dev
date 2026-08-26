@@ -858,3 +858,8 @@ retraction taught something the themes do not already say, it earns a clause.
 - **`ScopeStateHandle` never existed (2026-08-26)** — the scope-side verbs live on **`ScopeStateOps`**
   (`core/src/types/state.ts`), mixed into each `*ScopeHandle`; the name was cited twice as if real.
   *(**Twenty-two** — cite-by-symbol cannot catch a symbol that was never a symbol.)*
+- **FIX-992's scheduling references kept; paraphrase sweep clean (2026-08-26)** — *"next to FIX-992"*
+  names a **surface, not a slot**: D-6 stamped the phrase about an issue Done since 2026-08-06, and
+  Tier 2 extends the `ResourceStateStore` `expectedVersion` contract FIX-992 shipped. Theme 1's
+  retracted premise was swept for **paraphrase**, not just exact string — **zero**; the only
+  occurrence is still the deliberate quotation inside its own retraction.
