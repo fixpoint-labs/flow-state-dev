@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Workforce Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root {
+  --paper:      #F2F2EE;
+  --surface:    #FCFCFA;
+  --surface-2:  #E8E8E1;
+  --ink:        #191C21;
+  --ink-2:      #4C535B;
+  --ink-3:      #7A828B;
+  --rule:       #D5D4CB;
+  --rule-soft:  #E3E2D9;
+  --accent:     #3E4E8C;
+  --accent-2:   #2B386B;
+  --accent-soft:#E0E3F0;
+  --code:       #2C7C69;
+  --code-soft:  #DCEDE7;
+  --prose:      #A8761C;
+  --prose-soft: #F3E8D2;
+  --human:      #8C4A7D;
+  --human-soft: #F1E1EC;
+  --gone:       #A9544F;
+  --shadow:     0 1px 2px rgba(25,28,33,.06), 0 8px 24px -16px rgba(25,28,33,.28);
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Archivo", "IBM Plex Sans", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:#111417; --surface:#181C1F; --surface-2:#202528;
+    --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+    --rule:#2B3135; --rule-soft:#222728;
+    --accent:#8B9BD8; --accent-2:#A9B5E4; --accent-soft:#1B2140;
+    --code:#5DBBA1; --code-soft:#14302A;
+    --prose:#D9A44B; --prose-soft:#332612;
+    --human:#D392C0; --human-soft:#331F2D;
+    --gone:#DE8A84;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:#111417; --surface:#181C1F; --surface-2:#202528;
+  --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+  --rule:#2B3135; --rule-soft:#222728;
+  --accent:#8B9BD8; --accent-2:#A9B5E4; --accent-soft:#1B2140;
+  --code:#5DBBA1; --code-soft:#14302A;
+  --prose:#D9A44B; --prose-soft:#332612;
+  --human:#D392C0; --human-soft:#331F2D;
+  --gone:#DE8A84;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--sans); font-size: 16px; line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+.shell { display: grid; grid-template-columns: 236px minmax(0,1fr); max-width: 1240px; margin: 0 auto; }
+.rail { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+  padding: 34px 20px 40px 24px; border-right: 1px solid var(--rule); }
+.rail-mark { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: -.01em; line-height: 1.25; margin-bottom: 4px; }
+.rail-sub { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 22px; }
+.sib { font-family: var(--mono); font-size: 11px; color: var(--ink-3); line-height: 1.45; }
+.sib a { color: var(--accent); text-decoration: none; }
+.sib a:hover { text-decoration: underline; }
+.rail .sib { margin: -14px 0 20px; }
+.masthead .sib { margin: 16px 0 0; }
+.rail nav { display: flex; flex-direction: column; gap: 1px; }
+.rail nav a { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); text-decoration: none; padding: 3px 8px; border-radius: 3px; }
+.rail nav a:hover { color: var(--ink); background: var(--surface-2); }
+.rail nav a.grp { color: var(--ink-3); text-transform: uppercase; font-size: 10px; letter-spacing: .09em; margin-top: 16px; pointer-events: none; padding-left: 0; }
+main { padding: 34px 44px 120px; min-width: 0; }
+
+.masthead { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 40px; }
+.eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(32px, 5vw, 52px); line-height: 1.03; letter-spacing: -.028em; margin: 0 0 16px; text-wrap: balance; }
+.standfirst { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 64ch; margin: 0 0 20px; }
+.standfirst strong { color: var(--ink); font-weight: 600; }
+
+section { margin-bottom: 60px; scroll-margin-top: 20px; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: -.02em; line-height: 1.15; margin: 0; text-wrap: balance; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 22px; }
+.sec-num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: .06em; flex: none; padding-top: 2px; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: -.012em; margin: 34px 0 10px; }
+p { margin: 0 0 14px; max-width: 70ch; }
+.lede { color: var(--ink-2); font-size: 16.5px; max-width: 68ch; }
+ul, ol { max-width: 70ch; padding-left: 20px; margin: 0 0 14px; }
+li { margin-bottom: 5px; }
+code, .m { font-family: var(--mono); font-size: .875em; background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
+strong { font-weight: 600; }
+blockquote { margin: 16px 0; padding: 0 0 0 18px; border-left: 3px solid var(--rule); color: var(--ink-2); font-size: 15px; max-width: 68ch; }
+blockquote cite { display: block; margin-top: 6px; font-family: var(--mono); font-size: 10.5px; font-style: normal; color: var(--ink-3); letter-spacing: .04em; }
+
+pre.code { margin: 18px 0 24px; padding: 15px 18px; border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+  border-radius: 0 5px 5px 0; background: var(--surface); overflow-x: auto;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.62; color: var(--ink); box-shadow: var(--shadow); }
+pre.code i { color: var(--ink-3); font-style: normal; }
+pre.code b { color: var(--accent-2); font-weight: 600; }
+pre.code em { color: var(--code); font-style: normal; }
+
+figure { margin: 24px 0 28px; border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); overflow: hidden; box-shadow: var(--shadow); }
+.fig-body { padding: 22px 20px 12px; overflow-x: auto; }
+figure svg { display: block; width: 100%; max-width: 100%; height: auto; min-width: 620px; }
+figcaption { font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: var(--ink-2); padding: 11px 20px 13px; border-top: 1px solid var(--rule-soft); background: var(--surface-2); }
+figcaption b { color: var(--ink); font-weight: 600; }
+
+.tw { overflow-x: auto; margin: 18px 0 24px; border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 540px; }
+th { text-align: left; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-3); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--rule); background: var(--surface-2); white-space: nowrap; }
+td { padding: 9px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; line-height: 1.5; }
+tbody tr:last-child td { border-bottom: 0; }
+td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
+td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; white-space: nowrap; display: inline-block; font-weight: 500; }
+.t-code  { background: var(--code-soft);  color: var(--code); }
+.t-real  { background: var(--code-soft);  color: var(--code); }
+.t-prop  { background: var(--accent-soft);color: var(--accent-2); }
+.t-prose { background: var(--prose-soft); color: var(--prose); }
+.t-human { background: var(--human-soft); color: var(--human); }
+.t-gone  { background: var(--surface-2);  color: var(--gone); }
+.t-none  { background: var(--surface-2);  color: var(--ink-3); }
+
+.key { display: flex; flex-wrap: wrap; gap: 18px; margin: 16px 0 6px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+.key span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+.sw-solid { width: 15px; height: 11px; border-radius: 2px; display: inline-block; background: var(--surface); border: 1.2px solid var(--ink-3); }
+.sw-dash { width: 15px; height: 11px; border-radius: 2px; display: inline-block; background: var(--surface); border: 1.2px dashed var(--accent); }
+
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; margin: 18px 0 22px; border-radius: 0 4px 4px 0; }
+.note p { margin: 0; font-size: 14px; max-width: 66ch; }
+.note p + p { margin-top: 8px; }
+.note .lbl { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-2); display: block; margin-bottom: 4px; }
+
+.tension { border: 1px solid var(--rule); border-left: 3px solid var(--gone); border-radius: 0 5px 5px 0; background: var(--surface); padding: 14px 18px 16px; margin-bottom: 14px; }
+.tension h5 { font-family: var(--display); font-size: 15.5px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.01em; }
+.tension p { font-size: 14px; margin: 0 0 8px; color: var(--ink-2); max-width: 68ch; }
+.tension p:last-child { margin: 0; }
+.tension .ask { font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--surface-2); padding: 7px 10px; border-radius: 3px; display: block; margin-top: 8px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 14px; margin: 20px 0 26px; }
+.card { border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); padding: 14px 16px 16px; border-top: 3px solid var(--tc, var(--accent)); }
+.card h5 { font-family: var(--mono); font-size: 12px; margin: 0 0 3px; font-weight: 600; color: var(--ink); }
+.card .role { font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 8px; }
+.card p { font-size: 13px; margin: 0; color: var(--ink-2); line-height: 1.5; max-width: none; }
+
+.t   { fill: var(--ink); font-family: var(--sans); font-size: 12.5px; }
+.t-b { fill: var(--ink); font-family: var(--display); font-weight: 600; font-size: 13px; }
+.t-s { fill: var(--ink-2); font-family: var(--mono); font-size: 10px; }
+.t-xs{ fill: var(--ink-3); font-family: var(--mono); font-size: 9px; letter-spacing: .05em; }
+.t-lbl { fill: var(--ink-3); font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
+.t-api { fill: var(--ink-3); font-family: var(--mono); font-size: 10px; letter-spacing: .03em; }
+.f-accent { fill: var(--accent); }
+.f-code   { fill: var(--code); }
+.f-gone   { fill: var(--gone); }
+.f-human  { fill: var(--human); }
+.n-box { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
+.n-box2{ fill: var(--surface-2); stroke: var(--rule); stroke-width: 1.2; }
+.n-grp { fill: none; stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 3; }
+.n-prop{ fill: var(--surface); stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.n-code { fill: var(--code-soft); stroke: var(--code); stroke-width: 1.3; }
+.n-prose{ fill: var(--prose-soft); stroke: var(--prose); stroke-width: 1.3; }
+.n-human{ fill: var(--human-soft); stroke: var(--human); stroke-width: 1.4; }
+.ln { stroke: var(--ink-3); stroke-width: 1.2; fill: none; }
+.ln-soft { stroke: var(--rule); stroke-width: 1; fill: none; }
+.ln-gone { stroke: var(--gone); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 24px 22px; }
+  .rail nav { flex-direction: row; flex-wrap: wrap; gap: 4px 10px; }
+  .rail nav a.grp { display: none; }
+  main { padding: 26px 22px 80px; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+<aside class="rail">
+  <div class="rail-mark">The Workforce Atlas</div>
+  <div class="rail-sub">living design &middot; aug 2026</div>
+  <p class="sib">sibling · <a href="conductor.html">Conductor atlas</a></p>
+  <nav>
+    <a class="grp">Orientation</a>
+    <a href="#what">01 &middot; What Workforce is</a>
+    <a href="#layers">02 &middot; Layer 1 vs Layer 2</a>
+    <a href="#agent">03 &middot; Persistent Agent</a>
+    <a href="#channels">04 &middot; Channels, teams, relay</a>
+    <a href="#surface">05 &middot; Eventual surface</a>
+    <a href="#triangulate">06 &middot; Triangulate Conductor</a>
+    <a class="grp">The ground</a>
+    <a href="#exists">07 &middot; What exists today</a>
+    <a href="#open">08 &middot; Not this cycle</a>
+  </nav>
+</aside>
+
+<main>
+<header class="masthead">
+  <p class="eyebrow">Living design</p>
+  <h1>A general harness on the same substrate</h1>
+  <p class="standfirst">Workforce is the other intended FSD harness. Conductor is product-specific to software development. Workforce is <strong>general</strong>: a conventions layer so people get going on Layer&nbsp;1 primitives without inventing their own opinions. The roadmap intends both. This cycle ships Conductor. This page exists so we do not over-build Conductor-only.</p>
+  <div class="key">
+    <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
+    <span><i class="sw-dash"></i> proposed &#8212; design, not built</span>
+  </div>
+  <p class="sib">Sibling atlas: <a href="conductor.html">Conductor</a> &#8212; this-cycle priority. This page triangulates; it does not ship.</p>
+</header>
+
+<section id="what">
+  <div class="sec-head"><span class="sec-num">01</span><h2>What Workforce is</h2></div>
+  <p class="lede">An open-source, vendor-agnostic harness built as opinions on FSD blocks. Not a coding product. Not this cycle. Not a D-n.</p>
+
+  <div class="cards">
+    <div class="card" style="--tc: var(--code)">
+      <h5>Today</h5><span class="role">a thin package</span>
+      <p>Named agents, a registry, and materialization into a block. One example uses it. That is the whole of the shipped surface.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Intended</h5><span class="role">layer 2 conventions</span>
+      <p>Opinions on how to use Layer&nbsp;1, so advanced-user-only is not the only way in. Infinitely extensible because every opinion is still a block.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Eventually</h5><span class="role">a grok-bot-like surface</span>
+      <p>Persistent agents with their own memory, brought into any session. Some sessions are channels for talking to an agent directly. Teams can be defined.</p>
+    </div>
+    <div class="card" style="--tc: var(--ink-3)">
+      <h5>Not</h5><span class="role">this-cycle conductor</span>
+      <p>Does not ride Relay fire-and-forget or the harness-manager proof. Does not rewrite the objective. Conductor stays the priority.</p>
+    </div>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Two intended harnesses on one Layer 1 substrate. At the bottom, a solid Layer 1 band listing the existing primitives: four block kinds, flows and actions, sessions, resources and collections, capabilities, the task board, and skills. Above it sit two dashed product boxes. On the left, Conductor: product-specific to software development, a meta-harness that drives coding harnesses, this-cycle priority. On the right, Workforce: general, a conventions layer, not this cycle. Both boxes sit on the same substrate; neither invents new Layer 1 primitives.">
+        <rect class="n-code" x="16" y="248" width="908" height="88" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="270">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS</text>
+        <text class="t-b" x="34" y="296">four block kinds &#183; flows &#183; sessions &#183; resources &#183; capabilities</text>
+        <text class="t-s" x="34" y="318">task board &#183; skills &#183; detached children &#183; the Agent type in core</text>
+
+        <path class="ln" d="M248,248 L248,214"/>
+        <path class="ln" d="M692,248 L692,214"/>
+
+        <rect class="n-prop" x="16" y="26" width="446" height="188" rx="5"/>
+        <text class="t-lbl" x="34" y="48">THIS CYCLE</text>
+        <text class="t-b f-accent" x="34" y="76">Conductor</text>
+        <text class="t-s" x="34" y="100">product-specific to software development</text>
+        <text class="t-xs" x="34" y="128">A META-HARNESS THAT DRIVES CODING HARNESSES</text>
+        <text class="t-xs" x="34" y="148">SESSION OWNED BY THE WORKFLOW</text>
+        <text class="t-xs" x="34" y="168">ROLES ARE BLOCKS &#183; WORK LIVES IN RESOURCES</text>
+        <text class="t-b f-accent" x="34" y="196">priority. the atlas that ships.</text>
+
+        <rect class="n-prop" x="478" y="26" width="446" height="188" rx="5"/>
+        <text class="t-lbl" x="496" y="48">ROADMAP &#183; NOT THIS CYCLE</text>
+        <text class="t-b f-accent" x="496" y="76">Workforce</text>
+        <text class="t-s" x="496" y="100">general &#8212; opinions so people get going</text>
+        <text class="t-xs" x="496" y="128">A CONVENTIONS LAYER ON THE SAME BLOCKS</text>
+        <text class="t-xs" x="496" y="148">AN AGENT IS A PERSISTENT IDENTITY</text>
+        <text class="t-xs" x="496" y="168">SESSION IS A CHANNEL, NOT THE AGENT</text>
+        <text class="t-b f-accent" x="496" y="196">triangulates. does not ship.</text>
+      </svg>
+    </div>
+    <figcaption><b>One substrate, two harnesses.</b> Conductor is the coding-product opinion. Workforce is the general one. Both are Layer&nbsp;2 in the Eve / Grok&nbsp;Bot / Claude&nbsp;Work sense: they add opinions so Layer&nbsp;1 is not advanced-user-only. Neither is allowed to invent a new primitive.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 220" role="img" aria-label="Three analog pairs for what Workforce is relative to a product-specific coding surface. Left pair: Eve sitting on Vercel. Centre pair: Grok Bot sitting on Cursor Build. Right pair: Claude Work sitting on Claude Code. Under each pair, Workforce sitting on Conductor. The top box in each pair is the general conventions surface; the bottom box is the product-specific or platform surface.">
+        <rect class="n-grp" x="16" y="16" width="292" height="188" rx="5"/>
+        <text class="t-lbl" x="162" y="38" text-anchor="middle">PLATFORM</text>
+        <rect class="n-prop" x="36" y="52" width="252" height="52" rx="4"/>
+        <text class="t-b f-accent" x="162" y="74" text-anchor="middle">Eve</text>
+        <text class="t-xs" x="162" y="92" text-anchor="middle">GENERAL / OPINIONATED</text>
+        <path class="ln" d="M162,104 L162,118"/>
+        <rect class="n-code" x="36" y="118" width="252" height="52" rx="4"/>
+        <text class="t-b f-code" x="162" y="140" text-anchor="middle">Vercel</text>
+        <text class="t-xs" x="162" y="158" text-anchor="middle">THE PLATFORM</text>
+        <text class="t-xs" x="162" y="188" text-anchor="middle">OPINIONS ON A SUBSTRATE</text>
+
+        <rect class="n-grp" x="324" y="16" width="292" height="188" rx="5"/>
+        <text class="t-lbl" x="470" y="38" text-anchor="middle">BUILD SURFACE</text>
+        <rect class="n-prop" x="344" y="52" width="252" height="52" rx="4"/>
+        <text class="t-b f-accent" x="470" y="74" text-anchor="middle">Grok Bot</text>
+        <text class="t-xs" x="470" y="92" text-anchor="middle">GENERAL AGENT</text>
+        <path class="ln" d="M470,104 L470,118"/>
+        <rect class="n-code" x="344" y="118" width="252" height="52" rx="4"/>
+        <text class="t-b f-code" x="470" y="140" text-anchor="middle">Cursor Build</text>
+        <text class="t-xs" x="470" y="158" text-anchor="middle">CODING-SPECIFIC</text>
+        <text class="t-xs" x="470" y="188" text-anchor="middle">SAME FAMILY, DIFFERENT JOB</text>
+
+        <rect class="n-grp" x="632" y="16" width="292" height="188" rx="5"/>
+        <text class="t-lbl" x="778" y="38" text-anchor="middle">CLAUDE</text>
+        <rect class="n-prop" x="652" y="52" width="252" height="52" rx="4"/>
+        <text class="t-b f-accent" x="778" y="74" text-anchor="middle">Claude Work</text>
+        <text class="t-xs" x="778" y="92" text-anchor="middle">GENERAL WORK</text>
+        <path class="ln" d="M778,104 L778,118"/>
+        <rect class="n-code" x="652" y="118" width="252" height="52" rx="4"/>
+        <text class="t-b f-code" x="778" y="140" text-anchor="middle">Claude Code</text>
+        <text class="t-xs" x="778" y="158" text-anchor="middle">CODING HARNESS</text>
+        <text class="t-xs" x="778" y="188" text-anchor="middle">WORK VS CODE</text>
+      </svg>
+    </div>
+    <figcaption><b>The analog, not the architecture.</b> Workforce is to Conductor as Eve is to Vercel, Grok&nbsp;Bot to Cursor&nbsp;Build, Claude&nbsp;Work to Code. A general conventions surface beside a product-specific coding one. Both ours; both on FSD. Conductor is the Code/Build this cycle.</figcaption>
+  </figure>
+</section>
+
+<section id="layers">
+  <div class="sec-head"><span class="sec-num">02</span><h2>Layer 1 vs Layer 2</h2></div>
+  <p class="lede">Layer&nbsp;1 has substrate opinions only. How you use them is up to you, which is why it is powerful and advanced-user-only. Layer&nbsp;2 has opinions so people get going. Workforce was conceived as that layer.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. The bottom solid band is Layer 1, existing primitives with almost no product opinion: handler, generator, sequencer, router; defineFlow and actions; a session that carries a flowKind; resources and collections scoped session, user, or org; capabilities; the task board and skills runtime; the Agent structural type in core. The middle dashed band is Layer 2 conventions: named agents, personas, a registry, materialize-into-a-block — the thin package that exists today — plus proposed opinions, persistent identity, channels, teams, a default way to staff work. The top dashed band is product harnesses that consume both layers: Conductor this cycle, a Grok-Bot-like Workforce surface later. Arrows show product harnesses sitting on conventions sitting on substrate.">
+        <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
+        <text class="t-lbl" x="34" y="38">PRODUCT HARNESSES &#8212; PROPOSED AS PRODUCTS, NOT NEW PRIMITIVES</text>
+        <rect class="n-box" x="34" y="52" width="420" height="48" rx="4"/>
+        <text class="t-b" x="48" y="72">Conductor</text>
+        <text class="t-xs" x="48" y="88">SDLC META-HARNESS &#183; THIS CYCLE</text>
+        <rect class="n-prop" x="470" y="52" width="434" height="48" rx="4"/>
+        <text class="t-b f-accent" x="484" y="72">Workforce surface</text>
+        <text class="t-xs" x="484" y="88">GROK-BOT-LIKE &#183; NOT THIS CYCLE</text>
+
+        <path class="ln" d="M470,116 L470,132"/>
+
+        <rect class="n-prop" x="16" y="132" width="908" height="128" rx="5"/>
+        <text class="t-lbl" x="34" y="154">LAYER 2 &#8212; CONVENTIONS / OPINIONS</text>
+        <rect class="n-code" x="34" y="168" width="280" height="72" rx="4"/>
+        <text class="t-s f-code" x="48" y="190">exists, thin</text>
+        <text class="t-xs" x="48" y="210">defineAgent &#183; registry</text>
+        <text class="t-xs" x="48" y="226">materializeAgent &#183; definePersona</text>
+        <rect class="n-prop" x="330" y="168" width="574" height="72" rx="4"/>
+        <text class="t-s f-accent" x="344" y="190">proposed opinions</text>
+        <text class="t-xs" x="344" y="210">PERSISTENT IDENTITY &#183; AGENT-OWNED CHANNELS &#183; TEAMS</text>
+        <text class="t-xs" x="344" y="226">A DEFAULT WAY TO STAFF WORK SO AUTHORS ARE NOT ON THEIR OWN</text>
+
+        <path class="ln" d="M470,260 L470,276"/>
+
+        <rect class="n-code" x="16" y="276" width="908" height="122" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="298">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS &#183; DO NOT INVENT HERE</text>
+        <text class="t-s" x="34" y="322">handler &#183; generator &#183; sequencer &#183; router</text>
+        <text class="t-s" x="34" y="340">defineFlow / actions &#183; session carries flowKind &#183; resources (session / user / org)</text>
+        <text class="t-s" x="34" y="358">capabilities &#183; task board &#183; skills runtime &#183; startDetached</text>
+        <text class="t-s" x="34" y="376">Agent type in core &#8212; a named participant, not yet a persistent identity</text>
+      </svg>
+    </div>
+    <figcaption><b>Opinions sit on primitives.</b> Layer&nbsp;1 is the framework: four block kinds, flows, sessions, scoped resources, capabilities, the board, skills. Layer&nbsp;2 packages those into a way to start. Product harnesses consume both. A new box on this figure is an opinion or a product, never a fifth block kind.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th></th><th>Layer 1</th><th>Layer 2</th></tr></thead>
+      <tbody>
+        <tr><td>What it is</td><td>Substrate. Composable primitives with almost no product opinion.</td><td>Conventions. A default way to use the substrate.</td></tr>
+        <tr><td>Who it is for</td><td>Authors who will compose their own harness.</td><td>Authors who want to get going, and still extend everything.</td></tr>
+        <tr><td>What it must not do</td><td>Absorb one product&#8217;s knowledge. That is tenet&nbsp;4.</td><td>Invent a primitive the substrate does not have. Compose, or file a Layer&nbsp;1 gap.</td></tr>
+        <tr><td>Extensibility</td><td>Infinite, if you will write the opinions yourself.</td><td>Infinite the same way: every opinion is still a block, so you replace it.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="agent">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Persistent Agent</h2></div>
+  <p class="lede">An Agent does not live on a session, a channel, or even a Flow. It is a persistent identity with its own memory, brought into any session. The session is a channel. The agent is who walks into it.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 400" role="img" aria-label="Two readings of Agent, side by side. On the left, what exists: an Agent is a named reusable participant, persona plus model plus tools, registered once and materialized into a generator block inside a flow. It has no resources field and no notion of scope. Memory reaches it only through usesCapabilities. One example staffs a skill seat this way. On the right, the proposed Workforce reading: a persistent identity sits above any session. Its memory travels with it. Three sessions are channels it can enter, including one marked as its own persistent channel. The identity is the same box in all three. Dashed borders mark the right side as proposed.">
+        <rect class="n-grp" x="16" y="16" width="446" height="348" rx="5"/>
+        <text class="t-lbl" x="34" y="38">TODAY &#8212; EXISTS</text>
+        <text class="t-b" x="34" y="64">a named participant</text>
+
+        <rect class="n-code" x="34" y="80" width="410" height="72" rx="4"/>
+        <text class="t-b f-code" x="48" y="104">Agent</text>
+        <text class="t-xs" x="48" y="122">PERSONA + MODEL + TOOLS</text>
+        <text class="t-xs" x="48" y="138">NO RESOURCES FIELD &#183; NO SCOPE</text>
+
+        <path class="ln" d="M239,152 L239,172"/>
+
+        <rect class="n-box" x="34" y="172" width="410" height="88" rx="4"/>
+        <text class="t-s" x="48" y="196">materializeAgent &#8594; a block</text>
+        <text class="t-xs" x="48" y="216">WORKER SHAPE FOR A BOARD SEAT</text>
+        <text class="t-xs" x="48" y="232">STANDALONE SHAPE FOR A FLOW ACTION</text>
+        <text class="t-xs" x="48" y="248">LIVES INSIDE THE FLOW THAT INVOKED IT</text>
+
+        <text class="t-xs" x="34" y="290">MEMORY REACHES IT ONLY THROUGH usesCapabilities</text>
+        <text class="t-xs" x="34" y="308">usesSkills IS RESERVED. contextMode HONORS ONLY inline</text>
+        <text class="t-b f-code" x="34" y="340">a definition, not an identity that persists</text>
+
+        <rect class="n-grp" x="478" y="16" width="446" height="348" rx="5"/>
+        <text class="t-lbl" x="496" y="38">WORKFORCE &#8212; PROPOSED</text>
+        <text class="t-b f-accent" x="496" y="64">a persistent identity</text>
+
+        <rect class="n-prop" x="496" y="80" width="410" height="56" rx="4"/>
+        <text class="t-b f-accent" x="510" y="104">Agent + its memory</text>
+        <text class="t-xs" x="510" y="122">TRAVELS. NOT TIED TO ONE FLOW.</text>
+
+        <path class="ln" d="M568,136 L568,156"/>
+        <path class="ln" d="M701,136 L701,156"/>
+        <path class="ln" d="M834,136 L834,156"/>
+
+        <rect class="n-box" x="496" y="156" width="122" height="70" rx="4"/>
+        <text class="t-s" x="508" y="178">session A</text>
+        <text class="t-xs" x="508" y="196">A CHANNEL</text>
+        <text class="t-xs" x="508" y="212">BROUGHT IN</text>
+
+        <rect class="n-box" x="629" y="156" width="122" height="70" rx="4"/>
+        <text class="t-s" x="641" y="178">session B</text>
+        <text class="t-xs" x="641" y="196">ANOTHER FLOW</text>
+        <text class="t-xs" x="641" y="212">SAME AGENT</text>
+
+        <rect class="n-prop" x="762" y="156" width="144" height="70" rx="4"/>
+        <text class="t-s f-accent" x="774" y="178">its channel</text>
+        <text class="t-xs" x="774" y="196">AGENT-OWNED</text>
+        <text class="t-xs" x="774" y="212">TALK TO IT DIRECTLY</text>
+
+        <text class="t-xs" x="496" y="254">THE IDENTITY IS THE SAME BOX IN EVERY CHANNEL</text>
+        <text class="t-xs" x="496" y="272">A SESSION IS WHERE A CONVERSATION LIVES</text>
+        <text class="t-xs" x="496" y="290">THE AGENT IS WHO IS SPEAKING, IN ANY OF THEM</text>
+        <text class="t-b f-accent" x="496" y="340">the agent walks in. the session does not own it.</text>
+      </svg>
+    </div>
+    <figcaption><b>Session is a channel, not the agent.</b> Today an Agent is a reusable definition that becomes a block inside a flow. The intended Workforce reading is stronger: the same identity, with its memory, enters any session, and may hold sessions of its own. The left is shipped. The right is not.</figcaption>
+  </figure>
+
+  <div class="note">
+    <span class="lbl">Do not read Conductor&#8217;s architect as this already existing</span>
+    <p>The Conductor atlas already says agents and sessions are not bound together, and that what a role knows is where its resources live. That is a Layer&nbsp;1 reading, and it is true of scoped resources today. It is not a persistent-identity runtime. <code>Agent</code> still has no <code>resources</code> field and no scope. Org-scoped memory for a role is a design on a young surface, not a Workforce feature that shipped.</p>
+  </div>
+</section>
+
+<section id="channels">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Channels, teams, relay</h2></div>
+  <p class="lede">An agent can have its own sessions. Some of those are persistent channels for talking to it directly. Relay is how it talks to other channels or agents. Teams can be defined. All of this is proposed.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 380" role="img" aria-label="Proposed Workforce topology. In the centre, a persistent agent identity with its own memory. Three channels hang off it: a Slack channel, a web session, and an agent-owned persistent channel. To the right, a second agent in a team with the first. Dashed relay arrows connect the first agent to the second agent and to a Conductor session, labelled as Layer 1 relay used as a door, not as a Workforce product feature. A team box groups the two agents. Everything except the Layer 1 session and resource primitives is dashed.">
+        <rect class="n-prop" x="300" y="16" width="340" height="86" rx="5"/>
+        <text class="t-lbl" x="318" y="38">PERSISTENT IDENTITY &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="318" y="62">Agent &#8220;analyst&#8221;</text>
+        <text class="t-xs" x="318" y="82">OWN MEMORY &#183; NOT A SESSION</text>
+
+        <path class="ln" d="M380,102 L200,148"/>
+        <path class="ln" d="M470,102 L470,148"/>
+        <path class="ln" d="M560,102 L740,148"/>
+
+        <rect class="n-prop" x="16" y="148" width="248" height="72" rx="4"/>
+        <text class="t-s f-accent" x="30" y="170">channel &#183; slack</text>
+        <text class="t-xs" x="30" y="188">A SESSION IT WAS BROUGHT INTO</text>
+        <text class="t-xs" x="30" y="204">TALK TO THE TEAM, AGENT PRESENT</text>
+
+        <rect class="n-prop" x="346" y="148" width="248" height="72" rx="4"/>
+        <text class="t-s f-accent" x="360" y="170">channel &#183; web</text>
+        <text class="t-xs" x="360" y="188">ANOTHER SESSION, SAME AGENT</text>
+        <text class="t-xs" x="360" y="204">MEMORY ALREADY THERE</text>
+
+        <rect class="n-prop" x="676" y="148" width="248" height="72" rx="4"/>
+        <text class="t-s f-accent" x="690" y="170">its own channel</text>
+        <text class="t-xs" x="690" y="188">AGENT-OWNED SESSION</text>
+        <text class="t-xs" x="690" y="204">TALK TO IT DIRECTLY</text>
+
+        <rect class="n-grp" x="16" y="248" width="578" height="110" rx="5"/>
+        <text class="t-lbl" x="34" y="270">A TEAM &#183; PROPOSED</text>
+        <rect class="n-prop" x="34" y="284" width="250" height="54" rx="4"/>
+        <text class="t-s" x="48" y="306">analyst</text>
+        <text class="t-xs" x="48" y="322">SAME IDENTITY AS ABOVE</text>
+        <rect class="n-prop" x="300" y="284" width="274" height="54" rx="4"/>
+        <text class="t-s" x="314" y="306">synthesizer</text>
+        <text class="t-xs" x="314" y="322">A SECOND PERSISTENT IDENTITY</text>
+
+        <rect class="n-box" x="616" y="248" width="308" height="110" rx="5"/>
+        <text class="t-lbl" x="634" y="270">RELAY &#183; LAYER 1 DOOR</text>
+        <text class="t-s" x="634" y="296">how an agent talks to</text>
+        <text class="t-xs" x="634" y="316">ANOTHER CHANNEL</text>
+        <text class="t-xs" x="634" y="332">ANOTHER AGENT</text>
+        <text class="t-xs" x="634" y="348">A CONDUCTOR SESSION, IF ASKED</text>
+      </svg>
+    </div>
+    <figcaption><b>Topology, not a spec.</b> Channels are sessions the agent is in. One of them may be its own. A team is a named set of identities, not a flow. Relay is the Layer&nbsp;1 send door Conductor is already building &#8212; Workforce would use it, not fork it. Nothing in this figure is a shipped Workforce feature.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Piece</th><th>Status</th><th>What it is, narrowly</th></tr></thead>
+      <tbody>
+        <tr><td>Session as a conversation</td><td><span class="tag t-real">exists</span></td><td>A session record carries a <code>flowKind</code>. It is where a conversation lives. Layer&nbsp;1 already has this.</td></tr>
+        <tr><td>Agent-owned channel</td><td><span class="tag t-prop">proposed</span></td><td>A session designated as the place you talk to that agent directly. Not a new primitive &#8212; a convention over a session.</td></tr>
+        <tr><td>Team</td><td><span class="tag t-prop">proposed</span></td><td>A defined set of persistent identities. Today a skill&#8217;s <code>agents:</code> map staffs a board seat for one drain. That is not a team that outlives the skill.</td></tr>
+        <tr><td>Relay</td><td><span class="tag t-prop">proposed</span></td><td>Layer&nbsp;1 mail: address, send, no fan-out. Conductor&#8217;s this-cycle floor is fire-and-forget. Workforce talks through the same door later. Do not pull Workforce onto that spine.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="surface">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Eventual surface</h2></div>
+  <p class="lede">Something you can talk to the way you talk to Grok&nbsp;Bot: an agent you already know, reachable from more than one place, remembering what it already knows. Open source. Vendor-agnostic. Built on blocks, so you replace any piece.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 300" role="img" aria-label="A proposed eventual surface. A person reaches the same persistent agent from Slack, a web app, and a CLI. The agent holds memory and can relay to a teammate or into a Conductor session. Under the surface, a thin band reminds that every piece is still a Layer 1 block, so the surface is a convention, not a sealed product. The whole figure is dashed.">
+        <rect class="n-human" x="16" y="16" width="140" height="72" rx="4"/>
+        <text class="t-b f-human" x="30" y="42">you</text>
+        <text class="t-xs" x="30" y="62">ONE PERSON</text>
+
+        <path class="ln" d="M156,52 L196,52"/>
+        <path class="ln" d="M156,52 L196,20"/>
+        <path class="ln" d="M156,52 L196,84"/>
+
+        <rect class="n-prop" x="196" y="8" width="150" height="36" rx="4"/>
+        <text class="t-s" x="210" y="30">slack</text>
+        <rect class="n-prop" x="196" y="50" width="150" height="36" rx="4"/>
+        <text class="t-s" x="210" y="72">web</text>
+        <rect class="n-prop" x="196" y="92" width="150" height="36" rx="4"/>
+        <text class="t-s" x="210" y="114">cli</text>
+
+        <path class="ln" d="M346,70 L390,70"/>
+
+        <rect class="n-prop" x="390" y="28" width="240" height="88" rx="5"/>
+        <text class="t-b f-accent" x="406" y="54">the same agent</text>
+        <text class="t-xs" x="406" y="74">MEMORY TRAVELS WITH IT</text>
+        <text class="t-xs" x="406" y="92">NOT A NEW SESSION EACH TIME</text>
+
+        <path class="ln" d="M630,52 L674,28"/>
+        <path class="ln" d="M630,70 L674,70"/>
+        <path class="ln" d="M630,88 L674,112"/>
+
+        <rect class="n-prop" x="674" y="8" width="250" height="40" rx="4"/>
+        <text class="t-s" x="688" y="32">teammate agent</text>
+        <rect class="n-box" x="674" y="54" width="250" height="40" rx="4"/>
+        <text class="t-s" x="688" y="78">relay &#8594; another channel</text>
+        <rect class="n-box" x="674" y="100" width="250" height="40" rx="4"/>
+        <text class="t-s" x="688" y="124">relay &#8594; a Conductor session</text>
+
+        <rect class="n-code" x="16" y="168" width="908" height="108" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="190">UNDER THE SURFACE &#8212; STILL LAYER 1</text>
+        <text class="t-s" x="34" y="214">every door is a flow action. every memory is a resource. every send is relay.</text>
+        <text class="t-xs" x="34" y="236">OSS &#183; VENDOR-AGNOSTIC &#183; SWAP THE MODEL, THE CHANNEL ADAPTER, THE AGENT</text>
+        <text class="t-b f-code" x="34" y="258">the surface is a convention. it is not a sealed product.</text>
+      </svg>
+    </div>
+    <figcaption><b>What &#8220;like Grok&nbsp;Bot&#8221; has to mean here.</b> Reachable from more than one door. The agent is the thing you have a relationship with, not the tab you opened. Built as composition, so a vendor or a model is a binding, not a soul. Proposed. No UI, no adapter, no identity runtime exists for this.</figcaption>
+  </figure>
+</section>
+
+<section id="triangulate">
+  <div class="sec-head"><span class="sec-num">06</span><h2>Triangulate Conductor</h2></div>
+  <p class="lede">Same Layer&nbsp;1 primitives. Different opinions. The point of this page is the split: what must stay shared so Workforce is still possible, and what Conductor may own as a product.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 360" role="img" aria-label="A three-column split. Centre column, solid: shared Layer 1 that both harnesses consume — blocks, flows, sessions, scoped resources, capabilities, task board, skills, the Agent type, and Relay as a send door. Left column, dashed: Conductor-only opinions — session owned by the workflow, SDLC phases, harness manager, worktrees, issue and epic as the unit of work. Right column, dashed: Workforce-only opinions — persistent identity, agent-owned channels, teams, a Grok-Bot-like surface. A note under the centre: do not bake a Conductor opinion into Layer 1 just because it ships first.">
+        <rect class="n-prop" x="16" y="16" width="292" height="300" rx="5"/>
+        <text class="t-lbl" x="34" y="38">CONDUCTOR-ONLY</text>
+        <text class="t-xs" x="34" y="56">PRODUCT OPINION &#183; THIS CYCLE</text>
+        <text class="t-s" x="34" y="86">session owned by the workflow</text>
+        <text class="t-s" x="34" y="108">SDLC phases as the job</text>
+        <text class="t-s" x="34" y="130">harness manager</text>
+        <text class="t-s" x="34" y="152">worktrees / coding harnesses</text>
+        <text class="t-s" x="34" y="174">issue &#215; epic as the unit</text>
+        <text class="t-s" x="34" y="196">coordinator stays small</text>
+        <text class="t-xs" x="34" y="230">FINE TO BE THIS SPECIFIC</text>
+        <text class="t-xs" x="34" y="248">AS LONG AS IT STAYS HERE</text>
+        <text class="t-b f-accent" x="34" y="286">do not lift these into core</text>
+
+        <rect class="n-code" x="324" y="16" width="292" height="300" rx="5"/>
+        <text class="t-lbl f-code" x="342" y="38">MUST STAY SHARED</text>
+        <text class="t-xs" x="342" y="56">LAYER 1 &#183; EXISTS OR ALREADY FILED</text>
+        <text class="t-s" x="342" y="86">four block kinds</text>
+        <text class="t-s" x="342" y="108">flows, actions, sessions</text>
+        <text class="t-s" x="342" y="130">scoped resources</text>
+        <text class="t-s" x="342" y="152">capabilities</text>
+        <text class="t-s" x="342" y="174">task board &#183; skills</text>
+        <text class="t-s" x="342" y="196">Agent type in core</text>
+        <text class="t-s" x="342" y="218">Relay as a send door</text>
+        <text class="t-xs" x="342" y="248">A SESSION CAN BE EITHER</text>
+        <text class="t-xs" x="342" y="266">WORKFLOW-OWNED OR AGENT-OWNED</text>
+        <text class="t-b f-code" x="342" y="286">the substrate stays mute</text>
+
+        <rect class="n-prop" x="632" y="16" width="292" height="300" rx="5"/>
+        <text class="t-lbl" x="650" y="38">WORKFORCE-ONLY</text>
+        <text class="t-xs" x="650" y="56">PRODUCT OPINION &#183; LATER</text>
+        <text class="t-s" x="650" y="86">persistent identity</text>
+        <text class="t-s" x="650" y="108">agent-owned channels</text>
+        <text class="t-s" x="650" y="130">teams as identities</text>
+        <text class="t-s" x="650" y="152">Grok-Bot-like surface</text>
+        <text class="t-s" x="650" y="174">default conventions</text>
+        <text class="t-s" x="650" y="196">vendor-agnostic bindings</text>
+        <text class="t-xs" x="650" y="230">DO NOT BUILD THESE</text>
+        <text class="t-xs" x="650" y="248">ON THE CONDUCTOR SPINE</text>
+        <text class="t-b f-accent" x="650" y="286">leave the door unused</text>
+      </svg>
+    </div>
+    <figcaption><b>The fork this page is for.</b> Conductor may own &#8220;a session belongs to the workflow.&#8221; Layer&nbsp;1 may not. A session already carries a <code>flowKind</code> and nothing more binding than that. If this cycle bakes workflow-ownership into the substrate so an agent cannot later own a channel, Workforce is designed out by accident. Relay stays a mute send door for the same reason.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Claim</th><th>Whose opinion</th><th>What being wrong costs</th></tr></thead>
+      <tbody>
+        <tr><td>A session is owned by a workflow, not by an agent</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because Workforce&#8217;s channel <em>is</em> an agent-owned session.</td></tr>
+        <tr><td>A role is a block; memory is where its resources live</td><td>Layer 1, already true</td><td>Both harnesses need this. Do not replace it with a second memory system.</td></tr>
+        <tr><td>Relay addresses a session, not a topic, and does not fan out</td><td>Layer 1, filed</td><td>Workforce talks to channels through the same door. A Conductor-shaped bus (issue, epic, phase) would have to be unwound.</td></tr>
+        <tr><td>The coordinator stays small on purpose</td><td>Conductor</td><td>A Workforce surface may want a long relationship with one agent. That is a different product, not a rebuttal.</td></tr>
+        <tr><td>Which layer Conductor&#8217;s roles sit on</td><td>Open in Conductor atlas, thread&nbsp;11</td><td>Do not settle it by adopting <code>@flow-state-dev/workforce</code> wholesale, or by forking a second materializer &#8220;for now.&#8221;</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="exists">
+  <div class="sec-head"><span class="sec-num">07</span><h2>What exists today</h2></div>
+  <p class="lede">A package, a type, and one example. The Conductor atlas already called this surface thin and unfinished. That reading still holds. Nothing below is a harness.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
+      <tbody>
+        <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>A named participant: persona, model, tools, optional <code>outputSchema</code> and <code>usesCapabilities</code>. No <code>resources</code> field. No scope. <code>usesSkills</code> is RESERVED. <code>contextMode</code> documents that only <code>"inline"</code> is honored. <code>packages/core/src/types/agent.ts</code></td></tr>
+        <tr><td><code>defineAgent</code> / registry / <code>materializeAgent</code></td><td><span class="tag t-real">exists</span></td><td>Validate a config, hold it in a <code>Map</code>, turn it into a worker-shaped or standalone generator. This is the useful half of the package.</td></tr>
+        <tr><td><code>agentBlock</code></td><td><span class="tag t-real">exists</span></td><td>Shorthand for the standalone shape. Used nowhere outside the workforce package.</td></tr>
+        <tr><td><code>definePersona</code></td><td><span class="tag t-real">exists</span></td><td>Sugar over <code>defineResource</code> / <code>defineResourceCollection</code>. Collection default scope is <code>org</code>. Used nowhere outside the package.</td></tr>
+        <tr><td><code>createWorkforceCapability</code></td><td><span class="tag t-none">stub</span></td><td>A <code>// TODO</code> that returns <code>defineCapability({ name: "workforce" })</code> after a duplicate-name check. No DevTool listing. No presets.</td></tr>
+        <tr><td><code>examples/guides/research-team</code></td><td><span class="tag t-real">exists</span></td><td>The only caller. One <code>defineAgent</code> + registry + <code>materializeAgent</code> seats a skill via <code>agent-ref</code>. Inline persona, session scope, a single flow. None of the three things a persistent-identity design leans on.</td></tr>
+        <tr><td>Kitchen-sink / integration tests</td><td><span class="tag t-gone">unused</span></td><td>Kitchen-sink depends on the package and imports it in zero source files. No integration test touches it.</td></tr>
+        <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It also says &#8220;There&#8217;s no cross-flow assignment.&#8221; The Conductor atlas records that as an unresolved contradiction, not as evidence either way.</td></tr>
+        <tr><td>Persistent identity, channels, teams, surface</td><td><span class="tag t-prop">proposed</span></td><td>This page. Not a package. Not a D-n. Not scheduled.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="lbl">The package is Layer 2 sugar, not the harness</span>
+    <p><code>@flow-state-dev/workforce</code> is documented as agent registry and materialization. CLAUDE.md still calls it &#8220;Layer&nbsp;2 on orchestration.&#8221; That is the original conception. What landed is the first cut of the conventions &#8212; name a participant, look it up, turn it into a block &#8212; without the identity, the channels, or the surface. Read every &#8220;Workforce&#8221; claim in a Conductor discussion against this inventory, not against the intended harness.</p>
+  </div>
+</section>
+
+<section id="open">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Not this cycle</h2></div>
+  <p class="lede">Held on purpose. The work that would make Workforce real is not on the Conductor spine, and it does not get a design on this page just because the thought exists.</p>
+
+  <div class="tension">
+    <h5>This is not a ship, and it is not a D-n</h5>
+    <p>Conductor is the cycle: Relay fire-and-forget, the harness-manager proof, the parked row. Workforce is a second intended harness so that cycle does not harden a coding-only substrate. Updating this atlas is the work. Implementing the harness is not.</p>
+  </div>
+
+  <div class="tension">
+    <h5>Do not pull Workforce onto Relay + LAB-139</h5>
+    <p>Relay is a Layer&nbsp;1 door both products will want. Building it as Conductor&#8217;s question channel is correct for this cycle. Building Workforce channels on top of that spine this cycle is how a second product lands as a parasite of the first.</p>
+  </div>
+
+  <div class="tension">
+    <h5>Which layer Conductor&#8217;s roles sit on stays Conductor&#8217;s thread</h5>
+    <p>The Conductor atlas already holds this open (thread&nbsp;11): adopt the workforce wrapper, or move &#8220;materialize a role as a block&#8221; down into orchestration. This page does not settle it. The inventory in section&nbsp;7 is the evidence that thread is weighing &#8212; a thin, almost-unexercised wrapper &#8212; not a reason to start the harness.</p>
+  </div>
+
+  <div class="tension">
+    <h5>Knowledge Hub stays held</h5>
+    <p>Active-memory, process-the-inbox, a place an agent keeps what it knows across channels &#8212; that thought is real and later. It is not a section on this page and it is not a design for a held issue. Memory, when Workforce is built, will be resources the identity carries. The substrate for that already exists. The product does not.</p>
+  </div>
+
+  <div class="tension">
+    <h5>Named participant versus persistent identity</h5>
+    <p>Today&#8217;s <code>Agent</code> is a definition you materialize. The intended Agent is an identity that persists. Growing the type to look like the second, before a product needs it, is how Layer&nbsp;1 absorbs a Workforce opinion. Leave the type until a build that is actually staffing persistent identities has to say what field is missing.</p>
+    <span class="ask">When that build exists, the first question is still &#8220;is this a resource the agent brings, or a new field on Agent?&#8221; &#8212; and the cheaper answer is usually the resource.</span>
+  </div>
+
+  <div class="note" style="margin-top:26px">
+    <span class="lbl">The one-sentence version</span>
+    <p>Workforce is the general FSD harness: Layer&nbsp;2 opinions on Layer&nbsp;1 blocks, eventually a Grok-Bot-like surface of persistent agents, channels, teams, and relay. Today it is a thin registry. This cycle belongs to Conductor. Keep the substrate mute enough that the second harness is still possible.</p>
+  </div>
+</section>
+
+</main>
+</div>
+</body>
+</html>

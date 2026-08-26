@@ -18,7 +18,10 @@ issue identifiers; anything under `apps/docs/` is published and may not.
 ## Contents
 
 - `conductor.html` — the Conductor meta-harness: what it is, how a run works,
-  and the threads still open.
+  and the threads still open. GitHub Pages entry (`index.html` redirects here).
+- `workforce.html` — the other intended harness: Layer 2 conventions on the
+  same substrate, persistent agents, not this cycle. Triangulates so Conductor
+  does not harden a coding-only Layer 1.
 
 Note, not a task: the framework architecture atlas
 (`docs/internal/framework-atlas.html`, on its own branch) is the same kind of
