@@ -55,6 +55,7 @@ export const SUFFICIENT_SPINE: ValuationSpineState = {
   },
   valuationMethod: "ev-multiples",
   evidenceBasis: "sufficient",
+  periodDisclosure: null,
 };
 
 /** A reward-to-risk figure with `evidenceBasis: "sufficient"`. */
@@ -73,10 +74,21 @@ export const SUFFICIENT_REWARD_TO_RISK: RewardToRiskState = {
 
 /** All four primary financial payloads present + available (`source` ≠
  *  "unavailable") → `criticalDataThin` is false. Built from the schema-valid
- *  empty payloads with the `source` tag flipped to a fixture read. */
+ *  empty payloads with the `source` tag flipped to a fixture read.
+ *
+ *  The fundamentals payload additionally carries a MEASURED market cap. Flipping
+ *  the source tag alone is no longer enough (FIX-1063 decision 3): a fundamentals
+ *  read with no market cap is thin evidence regardless of its tag, which is
+ *  precisely the sparse-but-successful shape the gate now catches. A helper
+ *  named `availableFinancials` has to be genuinely available, not merely
+ *  tagged so. */
 export function availableFinancials(): FinancialsDataState {
   return {
-    fundamentals: { ...emptyPayload("get_fundamentals", ARGS), source: "fixture" },
+    fundamentals: {
+      ...emptyPayload("get_fundamentals", ARGS),
+      source: "fixture",
+      marketCap: 2_950,
+    },
     balanceSheet: { ...emptyPayload("get_balance_sheet", ARGS), source: "fixture" },
     incomeStatement: { ...emptyPayload("get_income_statement", ARGS), source: "fixture" },
     cashflow: { ...emptyPayload("get_cashflow", ARGS), source: "fixture" },

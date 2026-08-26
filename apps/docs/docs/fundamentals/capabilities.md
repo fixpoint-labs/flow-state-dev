@@ -100,9 +100,9 @@ Each capability documents the config it accepts. See [authoring open config](/do
 Some capabilities require configuration. They're exposed as factories — call the function to get a configured capability:
 
 ```ts
-import { storageCapability } from "@flow-state-dev/tools/storage";
+import { createSkillsCapability } from "@flow-state-dev/orchestration";
 
-uses: [storageCapability("session")]
+uses: [createSkillsCapability({ scope: "session" })]
 ```
 
 Parameterization is a real decision: a capability scoped to `"session"` and one scoped to `"user"` install into different state surfaces. If you switch the parameter, anything that depended on it has to switch too.
@@ -152,7 +152,7 @@ The axes where this flows:
 | Capability field | Where it appears in `ctx` |
 |---|---|
 | `sessionStateSchema` | `ctx.session.state` |
-| `sessionResourceSchemas` / `sessionResources` | `ctx.session.resources.*` |
+| `resources` | `ctx.resources.*` |
 | `targetStateSchemas` | `ctx.targets.*` |
 | `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
 | `stateSchema` | `ctx.self.state` |
@@ -204,6 +204,6 @@ For a fully-bundled multi-tier capability — resources, context, tools, and dep
 
 ## When to reach for one
 
-If a capability exists for what you need — memory, MCP, skills, storage — use it. The point of the abstraction is that you don't have to learn the internals to install one.
+If a capability exists for what you need — memory, MCP, skills — use it. The point of the abstraction is that you don't have to learn the internals to install one.
 
 If you find yourself wiring the same combination of resources, state, and tools into three different blocks, that's a signal you might want to author one. See [Authoring capabilities](/docs/advanced/capabilities-authoring) for how `defineCapability` works under the hood.

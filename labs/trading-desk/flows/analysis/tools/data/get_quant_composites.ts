@@ -12,6 +12,7 @@ import { loadFixture } from "../runtime/fixtures";
 import { fetchEdgarFinancialsHistory } from "@/lib/providers/edgar";
 import { fetchYahooFinancialsHistory } from "@/lib/providers/yahoo";
 import type { FinancialPeriod } from "@/lib/providers/financials-history";
+import { consecutivePeriodPair } from "@/lib/providers/financial-period";
 import { emptyPayload } from "../empty-payloads";
 import { altmanZDoublePrime, piotroskiFScore, type StatementPeriod } from "./composite-math";
 import { pickMode, toolInputSchemas, toolOutputSchemas, type ToolInput, type ToolOutput } from "../schemas";
@@ -62,11 +63,21 @@ async function fetchLive(
 
   if (periods.length === 0) return emptyPayload("get_quant_composites", input);
 
+  // The change-based Piotroski criteria compare two periods, so they get two
+  // CONSECUTIVE ones or none (FIX-1113). Taking `periods[1]` unconditionally
+  // published a two-year change as one year's on a filer with a gap year — the
+  // labels read fine and the arithmetic is wrong. One accessor decides
+  // adjacency for every two-period comparison the desk makes.
+  const pair = consecutivePeriodPair(periods.map((p) => p.endDate));
   const current = toStatementPeriod(periods[0]);
-  const prior = periods.length >= 2 ? toStatementPeriod(periods[1]) : null;
+  const prior =
+    pair != null && pair.anchor === periods[0].endDate
+      ? (periods.find((p) => p.endDate === pair.prior) ?? null)
+      : null;
+  const priorPeriod = prior == null ? null : toStatementPeriod(prior);
 
   const altman = altmanZDoublePrime(current);
-  const piotroski = piotroskiFScore(current, prior);
+  const piotroski = piotroskiFScore(current, priorPeriod);
 
   const coverageNotes: string[] = [];
   if (altman?.missingInputs.length) {
@@ -75,8 +86,12 @@ async function fetchLive(
   if (altman == null) {
     coverageNotes.push("Altman Z'' could not be computed (insufficient core data).");
   }
-  if (prior == null) {
-    coverageNotes.push("Piotroski: prior-period data unavailable; change-based criteria are null.");
+  if (priorPeriod == null) {
+    coverageNotes.push(
+      periods.length >= 2
+        ? "Piotroski: no consecutive prior period (a gap in the filing history); change-based criteria are null."
+        : "Piotroski: prior-period data unavailable; change-based criteria are null.",
+    );
   }
   coverageNotes.push(
     `Piotroski: ${piotroski.computable} of 9 criteria computable, ${piotroski.score} passed.`,

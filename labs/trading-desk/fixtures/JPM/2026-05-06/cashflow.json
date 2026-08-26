@@ -1,6 +1,7 @@
 {
   "ticker": "JPM",
   "asOf": "2026-03-31",
+  "periodEnd": "2025-12-31",
   "operating": 28.0,
   "investing": -120.0,
   "financing": 95.0,

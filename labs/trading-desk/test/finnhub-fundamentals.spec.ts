@@ -125,3 +125,58 @@ describe("fetchFinnhubFundamentals marketCap normalization", () => {
     expect(out.marketCap).toBeCloseTo(2950, 1);
   });
 });
+
+/**
+ * The sparse-but-successful path (FIX-1063) — the most common of the four
+ * producer paths this issue fixed, and the only one with NOTHING else marking
+ * the gap: the request succeeds, the payload is tagged `finnhub`, and Finnhub
+ * simply left fields out. Both directions are pinned in one place, because
+ * getting either wrong is a real-money defect and the two fixes pull opposite
+ * ways.
+ */
+describe("fetchFinnhubFundamentals absence vs. measured zero", () => {
+  it("reports null for every field a successful response omitted", async () => {
+    // A 200 with an empty `metric` object and no market cap — no failure, no
+    // `unavailable` tag, nothing at all to tell a reader these were not read.
+    mockFetch({ metric: {} });
+    const out = await fetchFinnhubFundamentals({ ticker: "NVDA", date: "2026-05-06" });
+    expect(out.source).toBe("finnhub");
+    expect(out.marketCap).toBeNull();
+    expect(out.priceToSales).toBeNull();
+    expect(out.returnOnEquity).toBeNull();
+    expect(out.operatingMargin).toBeNull();
+    expect(out.grossMargin).toBeNull();
+  });
+
+  it("keeps a genuinely measured zero as zero", async () => {
+    // A break-even company: Finnhub REPORTED 0% operating margin and a zero
+    // ROE. These are measurements. The `!== 0` helpers that (correctly) null a
+    // zero P/E would erase them, which is why the adapter keys on absence.
+    mockFetch({
+      marketCapitalization: 1000,
+      metric: {
+        roeTTM: 0,
+        operatingMarginTTM: 0,
+        grossMarginTTM: 0,
+        psTTM: 0,
+      },
+    });
+    const out = await fetchFinnhubFundamentals({ ticker: "BRK.B", date: "2026-05-06" });
+    expect(out.returnOnEquity).toBe(0);
+    expect(out.operatingMargin).toBe(0);
+    expect(out.grossMargin).toBe(0);
+    expect(out.priceToSales).toBe(0);
+    // …while a zero P/E stays null: non-physical for a going concern (FIX-692).
+    expect(out.trailingPE).toBeNull();
+  });
+
+  it("reports a negative margin unchanged — nothing here keys on sign", async () => {
+    mockFetch({
+      marketCapitalization: 1000,
+      metric: { roeTTM: -12.5, operatingMarginTTM: -8 },
+    });
+    const out = await fetchFinnhubFundamentals({ ticker: "LOSS", date: "2026-05-06" });
+    expect(out.returnOnEquity).toBeCloseTo(-0.125, 5);
+    expect(out.operatingMargin).toBeCloseTo(-0.08, 5);
+  });
+});

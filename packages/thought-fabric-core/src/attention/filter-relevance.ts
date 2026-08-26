@@ -161,10 +161,3 @@ export function filterRelevance<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     }
   })
 }
-
-export {
-  DEFAULT_CRITERIA as filterRelevanceDefaultCriteria,
-  filterInputSchema as filterRelevanceInputSchema,
-  hardOutputSchema as filterRelevanceHardOutputSchema,
-  softOutputSchema as filterRelevanceSoftOutputSchema
-}

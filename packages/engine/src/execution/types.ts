@@ -3,7 +3,6 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
-  ActionConfig,
   ActionCore,
   BlockDefinition,
   FlowInstance,
@@ -172,15 +171,6 @@ export type RunActionOptions<
    * {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
-};
-
-export type RunActionResolved<
-  TFlow extends FlowInstance = FlowInstance,
-  TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
-> = {
-  action: ActionConfig;
-  requestId: string;
-  startedAtMs: number;
 };
 
 /**

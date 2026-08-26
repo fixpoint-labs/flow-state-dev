@@ -16,22 +16,50 @@ Output shape (TradeProposal):
   - label:    short title, e.g. "Trade proposal"
   - headline: one sentence stating the proposed trade in plain terms
   - rating:   exactly one of "long" | "short" | "flat"
-  - metrics:  { direction, size, stop, target, conviction } (string values)
+  - metrics:  { direction, size, conviction } (string values)
       direction:  one of "long | short | flat"
       size:       % of NAV with unit (e.g. "1.4%")
-      stop:       stop-loss price (e.g. "$132")
-      target:     price target (e.g. "$185")
       conviction: 0.0–1.0 string (e.g. "0.62")
+      The price levels are NOT part of this row — the desk fills them in from
+      your typed level fields below, so they can never disagree with them.
   - body: array of sections in this order:
       1. "Reading the thesis"  — what the InvestmentThesis says you should act on.
       2. "Proposal"            — the trade itself: direction, size, levels.
       3. "Why this size"       — sizing rationale grounded in conviction and risk.
-      4. "Exit discipline"     — when to take target, when to stop, what invalidates.
+      4. "Exit discipline"     — when to take target, when to stop, what
+         invalidates. On a `flat` proposal this section is what would bring you
+         back: what a move below your reassess level would mean, and what a move
+         above your invalidate level would prove.
 
   - direction:            enum "long | short | flat"
   - sizePct:              number 0.0–10.0 (% of NAV)
-  - stopPrice:            number — the dollar price that triggers a stop
-  - targetPrice:          number — the dollar price that triggers a take-profit
+  - Price levels — TWO pairs, and your `direction` decides which pair you fill.
+      Fill one pair and set the other pair's two fields to null. The desk drops
+      whatever does not match your direction, so a level filed under the wrong
+      name is a level you lose, not a level that gets renamed.
+
+      REQUIRED: always fill BOTH fields of your direction's pair with real
+      numbers. All four fields accept null so the pair you are NOT using can be
+      null — that is not permission to leave your own pair empty. Levels are the
+      most useful thing a proposal carries, and a `flat` call is no exception:
+      they are what tells the reader when to look at this name again.
+
+      On a LONG or SHORT proposal, fill the trade pair:
+      - stopPrice:            number — the dollar price that triggers a stop
+      - targetPrice:          number — the dollar price that triggers a take-profit
+      - reassessBelowPrice:   null
+      - invalidateAbovePrice: null
+
+      On a FLAT proposal there is no position, so there is no stop and no
+      target. Fill the monitoring pair instead — the two levels you would
+      actually watch while standing aside:
+      - reassessBelowPrice:   number — below this price, the name is cheap
+          enough to be worth another look
+      - invalidateAbovePrice: number — above this price, standing aside was
+          wrong (the breakout you chose not to own)
+      - stopPrice:            null
+      - targetPrice:          null
+
   - holdingPeriod:        one of "days | weeks | months | quarters"
   - invalidationCriteria: array of short concrete strings — signals that
       would kill this thesis if observed (e.g. "weekly close below $115",
@@ -48,8 +76,8 @@ Output shape (TradeProposal):
 
 If a `<valuationSpine>` block is present, note that its `fairValue` AND its
 `Intrinsic value (DCF)` are company-level figures in $B (a fair market cap),
-NOT share prices — never use either as a numeric anchor for `targetPrice` or
-`stopPrice`. The spine carries two intrinsic-value methods: justified-PE (which
+NOT share prices — never use either as a numeric anchor for ANY of the four
+price levels. The spine carries two intrinsic-value methods: justified-PE (which
 abstains on high-growth names) and a multi-stage DCF (which abstains on
 financials / negative-FCF), so a high-growth name now gets a DCF margin of
 safety where fair value reads n/a. Use the `consensus margin of safety`
@@ -63,7 +91,7 @@ requires sustained hyper-growth). When every value method reads n/a, the
 models' assumptions don't fit this name — lean on `expectedReturn` and do not
 invent a substitute valuation from scratch.
 
-If the thesis is neutral and you do not see an asymmetric setup, propose `direction: "flat"`, `sizePct: 0`, with a coherent rationale rather than a degenerate output. `flat` is a real and acceptable proposal. Even for `flat`, emit valid `stopPrice` / `targetPrice` levels you would change your mind at.
+If the thesis is neutral and you do not see an asymmetric setup, propose `direction: "flat"`, `sizePct: 0`, with a coherent rationale rather than a degenerate output. `flat` is a real and acceptable proposal. A `flat` proposal still records the two levels you would change your mind at — as `reassessBelowPrice` / `invalidateAbovePrice`, never as a stop and a target.
 </system>
 
 <user>

@@ -41,6 +41,7 @@ import { skillFileKey } from "./collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute } from "./skill-md";
 import { taskTools as taskToolsCapability } from "./task-tools-capability";
+import { resolveCatalogTools } from "../shared/resolve-catalog-tools";
 
 /**
  * Dependencies for materializing a skill's agents into board workers.
@@ -238,7 +239,12 @@ export async function materializeWorker(
   const usesTaskTools = spec.tools?.includes("taskTools") ?? false;
   const taskToolsCap = deps.boardTaskTools ?? taskToolsCapability;
   const catalogToolKeys = spec.tools?.filter((t) => t !== "taskTools");
-  const tools = resolveTools(agentKey, catalogToolKeys, deps.catalog);
+  const tools = resolveCatalogTools(
+    agentKey,
+    catalogToolKeys,
+    deps.catalog,
+    "skills",
+  );
 
   // Model resolution: per-agent `model:` wins, then the deps' default, then a
   // neutral `"intent/chat"` fallback so a delegation skill works out of the box.
@@ -306,30 +312,6 @@ async function resolvePromptBody(
   }
   const content = (await ref.readContent()) ?? "";
   return stripFrontmatter(content);
-}
-
-/**
- * Resolve an agent's `tools:` array against the catalog. Additive-not-
- * restrictive: unknown keys warn and drop rather than throw.
- */
-function resolveTools(
-  agentKey: string,
-  toolKeys: readonly string[] | undefined,
-  catalog: Record<string, GeneratorTool>,
-): GeneratorTool[] {
-  if (!toolKeys || toolKeys.length === 0) return [];
-  const out: GeneratorTool[] = [];
-  for (const key of toolKeys) {
-    // BP-031: `key` is model-supplied — own-property guard (FIX-965, same as FIX-943).
-    if (!Object.hasOwn(catalog, key)) {
-      console.warn(
-        `[skills] agent "${agentKey}": unknown tool "${key}" — skipped`,
-      );
-      continue;
-    }
-    out.push(catalog[key]!);
-  }
-  return out;
 }
 
 /** Build the per-invocation user turn from the substrate's TaskWorkerInput. */

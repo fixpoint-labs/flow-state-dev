@@ -133,7 +133,7 @@ function traderStructuredOutput() {
       label: "Trade proposal",
       headline: "Long NVDA, half-position.",
       rating: "long" as const,
-      metrics: { direction: "long", size: "1.4%", stop: "$132", target: "$185", conviction: "0.62" },
+      metrics: { direction: "long", size: "1.4%", conviction: "0.62" },
       body: [
         { h: "Reading the thesis", p: "Constructive.", items: null },
         { h: "Proposal", p: "Long 1.4% NAV.", items: null },
@@ -144,6 +144,8 @@ function traderStructuredOutput() {
       sizePct: 1.4,
       stopPrice: 132,
       targetPrice: 185,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
       holdingPeriod: "months" as const,
       invalidationCriteria: ["weekly close below $132"],
       dependsOn: ["AI cap-ex cycle length"],

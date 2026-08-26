@@ -5,8 +5,14 @@
  *   - `pending` → loud-badge "awaiting upstream phases" card.
  *   - `writing` → `WritingSkeleton`.
  *   - `published` AND `agentName === "portfolioManager"` → `PmHero` (P5).
+ *   - `published` AND a phase-2b lens agent → `LensCard`.
+ *   - `published` AND `agentName === "trader"` → `TraderProposalCard` (P3).
+ *   - `published` AND a phase-4 risk agent → `RiskCritiqueCard` (P4).
  *   - `published` otherwise → `ThesisHeader` + `ThesisBody`.
  *   - `error` → red marker + error message.
+ *
+ * The three dedicated-renderer arms route off the registry-derived sets in
+ * `memo-renderer-routing.ts`, never a hand-maintained list.
  *
  * Live status is derived from the memos collection itself: the collection
  * opts into `client: { live: true }` (FIX-739), so `useResourceCollectionList`
@@ -57,16 +63,23 @@ import { ThesisBody } from "./thesis-body";
 import { PmHero } from "./pm-hero";
 import { ReportThesisPanel } from "./report-thesis-panel";
 import { LensCard } from "./lens-card";
+import { TraderProposalCard } from "./trader-proposal-card";
+import { RiskCritiqueCard } from "./risk-critique-card";
+import {
+  LENS_AGENTS,
+  RISK_AGENTS,
+  TRADER_AGENTS,
+} from "./memo-renderer-routing";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
 import { ReportSummary } from "@/components/summary/report-summary";
+import { ReportProvenanceBanner } from "@/components/summary/report-provenance-notice";
 import { agentsWithTranscriptRows } from "@/components/transcript/transcript-rows";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
   COLLECTION_KEY_TO_SHORT,
-  LENS_IDS,
-  PHASE_2B_MEMO_KEYS,
+  PHASE_3_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
   shortNameForAgent,
   type AgentName,
@@ -74,6 +87,10 @@ import {
 } from "@/flows/analysis/registry";
 import type { MemoStatus } from "@/flows/analysis/resources";
 import { memosCollection } from "@/flows/analysis/resources";
+import {
+  buildTradeLevelModel,
+  storedTradeLevelsFrom,
+} from "@/flows/analysis/lib/trade-levels";
 import type { ClientDataOf } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
@@ -85,13 +102,6 @@ type ThesesPaneProps = {
    *  then shows no jump control. */
   onJumpToTranscript?: (agent: AgentName) => void;
 };
-
-/** The four phase-2b lens agents, derived READ-ONLY from the Slice-5
- *  `PHASE_2B_MEMO_KEYS` registry. A `published` memo for one of these agents
- *  renders as a dedicated `LensCard` rather than the generic memo doc. */
-const LENS_AGENTS: ReadonlySet<AgentName> = new Set(
-  LENS_IDS.map((id) => PHASE_2B_MEMO_KEYS[id].agentName),
-);
 
 /** Order memos are expected to publish in. Auto-follow walks back-to-front. */
 const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
@@ -302,6 +312,13 @@ export function ThesesPane({
           </button>
           <TabSwitch tab={tab} onPick={handlePickTab} />
         </div>
+        {/* ABOVE the Theses/Summary conditional, so the disclosure is gated
+            only on the report being pre-fix. Inside the Summary branch it was
+            invisible to a reader whose sticky tab choice kept them on Theses —
+            precisely the readers looking at memos built on fabricated zeros. */}
+        <div className="mb-4 empty:mb-0">
+          <ReportProvenanceBanner session={session} />
+        </div>
         {tab === "summary" ? (
           <ReportSummary session={session} />
         ) : selectedAgent === null ? (
@@ -470,6 +487,30 @@ function MemoDoc({
     return <LensCard agent={agent} data={data} />;
   }
 
+  // FIX-1061 — the trader and the four risk memos carry structured fields the
+  // generic renderer never drew. Both cards take `onJumpToTranscript`: it is
+  // the only navigation affordance a memo header has, and re-routing five memos
+  // would silently delete it.
+  if (TRADER_AGENTS.has(agent)) {
+    return (
+      <TraderProposalCard
+        agent={agent}
+        data={data}
+        onJumpToTranscript={onJumpToTranscript}
+      />
+    );
+  }
+
+  if (RISK_AGENTS.has(agent)) {
+    return (
+      <RiskCritiqueCard
+        agent={agent}
+        data={data}
+        onJumpToTranscript={onJumpToTranscript}
+      />
+    );
+  }
+
   return (
     <article className="flex flex-col gap-5">
       <ThesisHeader
@@ -504,6 +545,23 @@ function PmHeroWithScenarios({
     "memos",
     PHASE_5_MEMO_KEYS.scenarioForecast.collectionKey,
   );
+
+  // FIX-780 — the hero's level chips are named from the TRADER's stance and
+  // typed levels, not from the PM's stored `metrics` keys. On a report reopened
+  // after the fact there is no commit to correct them, and a pre-fix PM record
+  // carries `stop` / `target` whatever the desk actually decided — so reading the
+  // stored keys showed a stop-loss on a stand-aside call. Same collection, same
+  // hook as the scenario memo above.
+  const { item: traderItem } = useResourceCollectionItem<MemoClientData>(
+    session,
+    "memos",
+    PHASE_3_MEMO_KEYS.trader.collectionKey,
+  );
+  const levels = useMemo(() => {
+    const td = traderItem?.clientData ?? null;
+    if (td === null) return null;
+    return buildTradeLevelModel(storedTradeLevelsFrom(td));
+  }, [traderItem]);
   const scenarioStrip = useMemo(() => {
     if (scenarioItem === null) return null;
     const sd = scenarioItem.clientData ?? null;
@@ -549,6 +607,9 @@ function PmHeroWithScenarios({
       mandateDecision={data?.mandateDecision ?? null}
       policyDecision={data?.policyDecision ?? null}
       evidenceDecision={data?.evidenceDecision ?? null}
+      levels={levels}
+      ratingUnanchored={data?.ratingUnanchored ?? null}
+      periodDisclosure={data?.periodDisclosure ?? null}
       />
     </div>
   );

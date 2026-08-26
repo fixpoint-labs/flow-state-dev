@@ -10,6 +10,7 @@
 import { z } from "zod";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { remoteAgentTaskHandleSchema, type RemoteAgentTaskHandle } from "../shared/handle";
+import type { ObservedFileOpKind, ObservedGapKind, ObservedOutcome } from "./work-collections";
 
 /** Terminal result subtype reported by the SDK's `result` message. */
 export type SdkResultSubtype =
@@ -94,6 +95,17 @@ export type SdkMessageLike =
       type: "user";
       session_id?: string;
       parent_tool_use_id?: string | null;
+      /**
+       * The tool's full structured Output object — a MESSAGE-level sibling of
+       * the content blocks below, not a field on one. The two carry different
+       * things and must not be conflated: `content[].tool_result.content` is the
+       * prose string shown to the model ("File created successfully at: …"),
+       * while this carries the declared Output (`filePath`, `structuredPatch`,
+       * `task.id`, …). Optional and untyped on purpose — it is absent on older
+       * messages and its shape is the vendor's, so every read of it is a
+       * tolerated probe rather than a contract (BP-030).
+       */
+      tool_use_result?: unknown;
       message?: {
         content?: Array<{
           type: "tool_result";
@@ -174,6 +186,80 @@ export type TranslatedEvent =
   | { kind: "subagent_open"; callId: string; name: string }
   /** A sub-agent finished. `callId` matches its `subagent_open`. */
   | { kind: "subagent_close"; callId: string; output: unknown; isError: boolean }
+  /**
+   * The run's file tools touched a path. Framework vocabulary: by the time this
+   * exists the tool names are gone, which is what keeps the vendor mapping to
+   * one site. Emitted twice per mutation — once when the call is seen
+   * (`outcome: "pending"`) and once when its result settles it.
+   */
+  | {
+      kind: "file_op_observed";
+      /**
+       * The tool call this belongs to. The RECORD is keyed by subject (the
+       * path), but mutations are per call, and two calls can be in flight on
+       * one path at once. Without this the recorder cannot tell whose
+       * settlement it is holding, and the earlier call's result settles a row
+       * that a later, still-unfinished call is also using — hiding an
+       * unresolved mutation behind an `applied`.
+       */
+      callId: string;
+      /**
+       * The path as the run addressed it AT CALL TIME; the recorder
+       * canonicalizes it into the row's key. Stable across the attempt and its
+       * settlement, which is what keeps one operation to one row.
+       */
+      path: string;
+      /**
+       * The path the harness reported instead, present on a settlement only
+       * when it differs from {@link path} as a raw string. Not a second key —
+       * the recorder canonicalizes both and, if they still differ, records the
+       * divergence as a gap rather than silently keying under either.
+       */
+      resolvedPath?: string;
+      op: ObservedFileOpKind;
+      outcome: ObservedOutcome;
+    }
+  /**
+   * The run's own to-do list moved. `itemId` is the harness's id for the item,
+   * recovered from its create result — never inferred from call order, because
+   * the ids are not positional. `title` rides the create; `status` rides an
+   * update the harness confirmed, and is deliberately absent on a rejected one.
+   */
+  | {
+      kind: "plan_item_observed";
+      /** The tool call this belongs to. See `file_op_observed`'s `callId`. */
+      callId: string;
+      itemId: string;
+      title?: string;
+      status?: string;
+      /**
+       * The status the harness says the item held BEFORE this move, when it
+       * reports one. Authoritative: it is the only source for the prior status
+       * on a first move, because a create result carries no status at all and
+       * a recorder deriving it from what it has seen can only produce nothing.
+       */
+      previousStatus?: string;
+      outcome: ObservedOutcome;
+    }
+  /**
+   * A mutation this package RECOGNISED and could not record. Emitted by
+   * translation when a known tool's call carries nothing to key on, and by the
+   * recorder when a key or a write fails.
+   *
+   * A tool we never claimed to record does NOT produce one of these: absence
+   * there is the designed answer, and calling it a gap would bury the real ones.
+   */
+  | {
+      kind: "work_gap_observed";
+      /**
+       * Which record this gap stands in for. Named `subject` here only because
+       * `kind` is the union's discriminant; it lands on the row AS `kind`,
+       * which is what a reader keys off.
+       */
+      subject: ObservedGapKind;
+      reason: string;
+      rawPath?: string;
+    }
   /** A transient system/lifecycle notice (init, compaction). */
   | { kind: "status"; message: string }
   /** A terminal error outcome from the SDK result. */
@@ -215,6 +301,12 @@ export interface ClaudeAgentQueryOptions {
   maxTurns?: number;
   resume?: string;
   includePartialMessages?: boolean;
+  /**
+   * The directory the run works in. The SDK's own file tools address paths
+   * relative to it, and the block keys its record of what the run touched there
+   * too — see `ClaudeCodeAgentOptions.cwd`, which is canonical for both halves.
+   */
+  cwd?: string;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
 }

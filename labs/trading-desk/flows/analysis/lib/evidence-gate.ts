@@ -39,6 +39,9 @@ export type EvidenceVerdict = "sufficient" | "insufficient-evidence";
  *  or `source: "unavailable"` means the underwriting-critical input was not obtained. */
 type SourcedPayload = { source?: string } | null | undefined;
 
+/** The fundamentals payload, plus the one field this gate reads off it. */
+type SourcedFundamentals = (SourcedPayload & { marketCap?: number | null }) | null | undefined;
+
 /**
  * DETERMINISTIC missing-substrate signal — the third evidence layer. True when ANY
  * of the four primary financial payloads is absent or `source: "unavailable"`.
@@ -47,11 +50,20 @@ type SourcedPayload = { source?: string } | null | undefined;
  * leave the spine `sufficient` — any one missing must still gate new exposure.
  * Derived from the tool markers only, NEVER the LLM `dataQuality`/`evidenceBasis`.
  * Pure, so the writer and (later) the eval recompute it identically.
+ *
+ * A FUNDAMENTALS READ WITH NO MARKET CAP IS ALSO THIN (FIX-1063, decision 3), even
+ * under a LIVE source tag. This is the sparse-but-successful path: the provider
+ * answered, the tag says `finnhub`/`yahoo`, and nothing else in the payload marks
+ * the gap — so the `source` check above cannot see it. Without a market cap the
+ * entire valuation set (enterprise value, price-to-book, every EV multiple, the
+ * DCF's margin of safety) is unmeasurable, which is the definition of too thin to
+ * add real money against. The valuation module's own nulls would carry most of
+ * these indirectly, but "mostly" is not a real-money gate.
  */
 export function deriveCriticalDataThin(
   fin:
     | {
-        fundamentals?: SourcedPayload;
+        fundamentals?: SourcedFundamentals;
         incomeStatement?: SourcedPayload;
         balanceSheet?: SourcedPayload;
         cashflow?: SourcedPayload;
@@ -60,8 +72,10 @@ export function deriveCriticalDataThin(
     | undefined,
 ): boolean {
   const unavailable = (s: SourcedPayload) => s == null || s.source === "unavailable";
+  const fundamentals = fin?.fundamentals;
   return (
-    unavailable(fin?.fundamentals) ||
+    unavailable(fundamentals) ||
+    fundamentals?.marketCap == null ||
     unavailable(fin?.incomeStatement) ||
     unavailable(fin?.balanceSheet) ||
     unavailable(fin?.cashflow)

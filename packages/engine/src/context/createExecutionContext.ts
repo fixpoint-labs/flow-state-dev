@@ -109,13 +109,13 @@ import {
   loadDeclaredScopeContent,
   loadDeclaredResourceState,
   filterFlowLevelEager,
-  isCollectionConfig,
   normalizeStateDefault,
   type LazyLoadOutcome,
   type ScopeLazyLoad,
   type ResourceChangeDelta,
   type ResourceSeamChangeType,
 } from "./resource-registry";
+import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
 
 
@@ -457,11 +457,13 @@ export async function createExecutionContext<
   // value exists.
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
-  // any scope without a `persist` callback). Plumbed through to every
-  // ScopeStateOpsOptions so the lock branch can fire
-  // ScopeMutationTimeoutError instead of hanging the request. External-
-  // store scopes still receive the option but ignore it — runWithCAS
-  // owns its own retry/timeout semantics.
+  // any scope without a `persist` callback). Plumbed through to those
+  // scopes so the lock branch can fire ScopeMutationTimeoutError instead
+  // of hanging the request. Deliberately NOT handed to any persist-backed
+  // scope: the timeout rejects the caller without cancelling the mutation,
+  // so applying it to a durable write lets an abandoned closure land on the
+  // store after the request has already terminalized. `applyMutation`
+  // enforces that too — this is the call site staying honest about it.
   const resolvedMutationTimeoutMs =
     flow.request?.mutationTimeoutMs ?? 30_000;
   // FIX-435: resources live in a single flat `flow.resources` map. Each
@@ -472,14 +474,24 @@ export async function createExecutionContext<
     string,
     (ResourceConfig | ResourceCollectionConfig) & { scope: "session" | "user" | "org" }
   >;
-  const sessionResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
-  const userResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
-  const orgResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  // Null-prototype: every map below is keyed by an author-supplied ACCESSOR
+  // name. On a plain `{}` an accessor of `__proto__` writes through the
+  // inherited setter — and because a resource definition is an object, that
+  // REPLACES the map's prototype instead of adding a key, so the accessor
+  // vanishes from `Object.entries` and every later miss resolves against the
+  // definition. Inherited names (`toString`, `constructor`, …) are the same
+  // hazard read-side. Nothing here needs `Object.prototype`.
+  const sessionResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> =
+    Object.create(null);
+  const userResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> =
+    Object.create(null);
+  const orgResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> =
+    Object.create(null);
   /**
    * accessor → scope mapping so the flat ctx.resources registry can route
    * gets/lists across all three per-scope registries below.
    */
-  const accessorScope: Record<string, "session" | "user" | "org"> = {};
+  const accessorScope: Record<string, "session" | "user" | "org"> = Object.create(null);
 
   for (const [accessor, def] of Object.entries(flatFlowResources)) {
     const scope = def.scope;
@@ -1956,6 +1968,7 @@ export async function createExecutionContext<
       : 0;
 
   const requestOps = createScopeStateOps(requestContainer, {
+    serialize: true,
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
       stores.request,
@@ -2446,7 +2459,11 @@ export async function createExecutionContext<
   // FIX-435: build the flat ctx.resources registry by merging the per-scope
   // registries. A resource's accessor key routes to the registry that owns
   // its intrinsic scope. `get()` and `list()` mirror the merged surface.
-  const flatResourcesHandles: Record<string, AnyResourceRef> = {};
+  // Null-prototype for the same reason as the per-scope config maps above:
+  // this is the map `ctx.resources.get()` reads, so an inherited member would
+  // come back as a function where a `ResourceRef` is expected instead of the
+  // honest "not registered" error.
+  const flatResourcesHandles: Record<string, AnyResourceRef> = Object.create(null);
   for (const [accessor, scope] of Object.entries(accessorScope)) {
     let registry: ResourceRegistry<Record<string, AnyResourceRef>> | undefined;
     if (scope === "session") registry = sessionResources as ResourceRegistry<Record<string, AnyResourceRef>>;

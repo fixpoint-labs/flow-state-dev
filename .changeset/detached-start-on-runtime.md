@@ -1,6 +1,6 @@
 ---
 "@flow-state-dev/engine": patch
-"@flow-state-dev/cli": patch
+"@flow-state-dev/fsdev": patch
 ---
 
 A runtime can now start background work without an HTTP router in front of it, so `fsdev run`, `fsdev chat`, and a `worker-only` process can each launch a workstream instead of only a server being able to (FIX-1077).

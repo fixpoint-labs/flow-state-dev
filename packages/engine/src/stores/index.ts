@@ -6,7 +6,7 @@ import { createFilesystemActiveRequestRegistry } from "./filesystem/active-reque
 import { createFilesystemCheckpointStore } from "./filesystem/checkpoint-store";
 import { createFilesystemContentStore } from "./filesystem/content-store";
 import { createFilesystemResourceStateStore } from "./filesystem/resource-state-store";
-import { createFilesystemProjectStore } from "./filesystem/org-store";
+import { createFilesystemOrgStore } from "./filesystem/org-store";
 import { createFilesystemRequestStore } from "./filesystem/request-store";
 import { createFilesystemSessionStore } from "./filesystem/session-store";
 import { createFilesystemTraceStore } from "./filesystem/trace-store";
@@ -23,7 +23,7 @@ export type {
   ResourceStateConflict,
   ResourceStateRow
 } from "./resource-state-predicate";
-import { createInMemoryProjectStore } from "./memory/org-store";
+import { createInMemoryOrgStore } from "./memory/org-store";
 import { createInMemoryRequestStore } from "./memory/request-store";
 import { createInMemorySessionStore } from "./memory/session-store";
 import {
@@ -102,7 +102,7 @@ export {
   createFilesystemCheckpointStore,
   createFilesystemContentStore,
   createFilesystemResourceStateStore,
-  createFilesystemProjectStore,
+  createFilesystemOrgStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemSuspensionStore,
@@ -115,7 +115,7 @@ export {
   createInMemoryResourceStateStore,
   toBareState,
   toBareStates,
-  createInMemoryProjectStore,
+  createInMemoryOrgStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
   createInMemoryTraceStore,
@@ -184,7 +184,7 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
     session: createInMemorySessionStore(),
     request: createInMemoryRequestStore(),
     user: createInMemoryUserStore(),
-    org: createInMemoryProjectStore(),
+    org: createInMemoryOrgStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
     content: createInMemoryContentStore(),
     resourceState: createInMemoryResourceStateStore(),
@@ -232,7 +232,7 @@ export function createFilesystemStores(
     user: createFilesystemUserStore({
       rootDir: path.join(options.rootDir, "users")
     }),
-    org: createFilesystemProjectStore({
+    org: createFilesystemOrgStore({
       rootDir: path.join(options.rootDir, "projects")
     }),
     activeRequests: createFilesystemActiveRequestRegistry({

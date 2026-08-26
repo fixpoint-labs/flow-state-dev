@@ -12,6 +12,7 @@ import { createRoundRobinContributions } from "@flow-state-dev/patterns/round-ro
 import { z } from "zod";
 import { lensConvergenceStateSchema } from "./agents/lenses/lens-convergence-resource";
 import { ratingSchema } from "./lib/rating-engine";
+import { periodDisclosureSchema } from "./lib/valuation-spine";
 
 /** Memo lifecycle states. The Phase 1 sub-sequencer pre-creates each memo
  *  in `pending`, transitions to `writing` when the analyst generator starts,
@@ -204,8 +205,16 @@ export const memoStateSchema = z.object({
   // Read by Phase 4+ to reason about the proposed trade.
   direction: z.enum(["long", "short", "flat"]).nullable().default(null),
   sizePct: z.number().nullable().default(null),
+  // FIX-780 — two stance-specific pairs of price levels, and a memo carries at
+  // most one of them: the trade pair on a directional call, the monitoring pair
+  // on a flat one. The trader's commit handler enforces that (`levelsForStance`);
+  // every reader names them through `lib/trade-levels.ts` rather than
+  // hard-coding "stop" / "target". A memo written before FIX-780 has no
+  // monitoring keys at all — reads must tolerate the missing key, not just null.
   stopPrice: z.number().nullable().default(null),
   targetPrice: z.number().nullable().default(null),
+  reassessBelowPrice: z.number().nullable().default(null),
+  invalidateAbovePrice: z.number().nullable().default(null),
   holdingPeriod: z
     .enum(["days", "weeks", "months", "quarters"])
     .nullable()
@@ -370,6 +379,12 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   ratingClamped: z.boolean().nullable().default(null),
+  // FIX-1113 — true when the envelope was WITHHELD because the three statements
+  // could not be placed at one fiscal period, so the clamp never ran and the
+  // rating above is the model's own, unbounded. A disclosure, not a suppression:
+  // the rating still publishes. `periodDisclosure` names the three periods.
+  ratingUnanchored: z.boolean().nullable().default(null),
+  periodDisclosure: periodDisclosureSchema.nullable().default(null),
   ratingOverrideReason: z.string().nullable().default(null),
   absoluteRating: z.enum(["Buy", "Hold", "Sell"]).nullable().default(null),
   relativeRating: z

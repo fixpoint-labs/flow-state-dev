@@ -41,6 +41,12 @@ import {
   type DecisionSnapshotState,
 } from "../../decision-snapshot-resource";
 import { clampRatingToBand } from "../../lib/rating-engine";
+import {
+  hasTradeStance,
+  levelsForStance,
+  withoutLevelMetrics,
+  type TradeStance,
+} from "../../lib/trade-levels";
 import { clampTargetWeight, computeMandateGates } from "../../lib/mandate-gates";
 import { computePolicyGate } from "../../lib/policy-gate";
 import { computeEvidenceGate, deriveCriticalDataThin } from "../../lib/evidence-gate";
@@ -54,6 +60,7 @@ import {
   type EvidenceDecision,
 } from "../../resources";
 import { financialsDataResource } from "../../financials-data-resource";
+import { normalizeLegacyFinancials } from "../../tools/runtime/normalize-legacy-financials";
 import { sessionStateSchema } from "../../state";
 import { valuationSpineResource, type ValuationSpineState } from "../../valuation-spine-resource";
 import {
@@ -119,11 +126,19 @@ export const commitPortfolioManagerMemo = handler({
           dependsOn?: string[] | null;
           stopPrice?: number | null;
           targetPrice?: number | null;
+          reassessBelowPrice?: number | null;
+          invalidateAbovePrice?: number | null;
           sizePct?: number | null;
           holdingPeriod?: DecisionSnapshotState["holdingPeriod"];
         }
       | undefined;
     const traderDirection = traderState?.direction;
+    // Narrowed ONCE here so the stance is a `TradeStance` everywhere below — the
+    // snapshot's `direction` field and the `levelsForStance` gate read the same
+    // value, and neither needs a cast.
+    const traderStance: TradeStance = hasTradeStance(traderDirection)
+      ? traderDirection
+      : null;
 
     // Lineage enforcement: every dependency the trader named must be
     // dispositioned by the PM — carried forward as a live judgment or
@@ -162,6 +177,16 @@ export const commitPortfolioManagerMemo = handler({
     let ratingOverrideReason: string | null = decision.ratingOverrideReason || null;
     let absoluteRating: "Buy" | "Hold" | "Sell" | null = null;
     let relativeRating: "Overweight" | "Equal Weight" | "Underweight" | null = null;
+
+    // FIX-1113 — the envelope is WITHHELD when the three statements could not be
+    // placed at one fiscal period. The clamp below then never runs, so
+    // `finalRating` stays the model's own value, UNBOUNDED. That is fail-open by
+    // construction: withholding the envelope removes the bound, not the rating.
+    // Nothing here can put the bound back — the inputs it needed were never
+    // computed — so the honesty is carried by DISCLOSING it on the record
+    // instead, and by the run marker that makes the frequency answerable.
+    const periodDisclosure = spine?.periodDisclosure ?? null;
+    const ratingUnanchored = periodDisclosure != null;
 
     if (spine?.envelope) {
       const clamped = clampRatingToBand(
@@ -329,7 +354,15 @@ export const commitPortfolioManagerMemo = handler({
     // can't default it to a wrong value (BP-030). Distinct from the `currentWeightPct`
     // echo above, which is a display partial-sum that coerces unpriced lots to 0.
     const scopedTickerWeightPct = householdTickerWeight(portfolio, tickerUpper);
-    const criticalDataThin = deriveCriticalDataThin(ctx.resources.financialsData?.state);
+    // The SECOND persisted-`financialsData` read boundary (FIX-1063). This one
+    // is not reachable from the spine's normalization: the PM commit reads the
+    // resource directly, so a resumed pre-fix session lands here without ever
+    // passing `compute-spine.ts`. Without it the evidence gate would score a
+    // legacy fabricated `marketCap: 0` as a measured market cap and let the
+    // desk add to a position on data it never had.
+    const criticalDataThin = deriveCriticalDataThin(
+      normalizeLegacyFinancials(ctx.resources.financialsData?.state),
+    );
     const preGateEvidenceTargetPct = targetWeightPct;
     const evidence = computeEvidenceGate({
       spineEvidenceBasis: spine?.evidenceBasis ?? null,
@@ -367,12 +400,30 @@ export const commitPortfolioManagerMemo = handler({
     // the one the desk stands behind). Untouched when no clamp fired (preserve the
     // model's own precision/format).
     const sizeWasClamped = targetWeightPct < decision.portfolioFit.targetWeightPct;
-    const displayMetrics = sizeWasClamped
+    const sizedMetrics = sizeWasClamped
       ? {
           ...decision.metrics,
           size: `${Number.isInteger(targetWeightPct) ? targetWeightPct : targetWeightPct.toFixed(1)}%`,
         }
       : decision.metrics;
+
+    // The PM's memo carries NO price levels. They were only ever the trader's,
+    // copied in for display — and the desk supports the PM departing from the
+    // trader (it derives `agreesWithTrader` to record exactly that), so a PM
+    // Hold could carry a stop and a target, and a PM Buy could carry monitoring
+    // levels. Deriving them from the trader made the numbers right and left them
+    // filed under the wrong participant's decision.
+    //
+    // Attributing that at each consumer does not generalise: the hero can label
+    // them "trader proposal", but `formatMemoBlock` serializes this whole memo
+    // into the Phase 6 auditor's prompt under the heading "Portfolio decision"
+    // and has nowhere to put a label. So the levels leave the DATA. Anything
+    // that wants them reads the trader memo, which is what every corrected
+    // surface now does.
+    //
+    // This also strips the stale pair off a pre-FIX-780 PM record, whose old
+    // schema required `metrics.stop` / `metrics.target` on every stance.
+    const displayMetrics = withoutLevelMetrics(sizedMetrics);
 
     // Validate the LLM's suggested account LABEL against the real account list.
     // A hallucinated / absent label (or no portfolio) resolves to "" — never
@@ -407,6 +458,8 @@ export const commitPortfolioManagerMemo = handler({
         metrics: displayMetrics,
         decisionSummary: decision.decisionSummary,
         finalRating,
+        ratingUnanchored,
+        periodDisclosure,
         decisionConfidence: decision.decisionConfidence,
         acceptedAdjustments: decision.acceptedAdjustments,
         keyDependencies: decision.keyDependencies,
@@ -474,17 +527,42 @@ export const commitPortfolioManagerMemo = handler({
       ticker: ctx.session.state.ticker,
       asOfDate: ctx.session.state.date,
       finalRating, // post-clamp value computed above
+      // ...except when there was no clamp to apply — see the derivation above.
+      ratingUnanchored,
+      periodDisclosure,
       decisionConfidence: decision.decisionConfidence,
       decisionSummary: decision.decisionSummary,
-      direction:
-        traderDirection === "long" ||
-        traderDirection === "short" ||
-        traderDirection === "flat"
-          ? traderDirection
-          : null,
+      direction: traderStance,
       entryPrice: null, // TODO(outcome-tracking): source from price-history resource
-      stopPrice: traderState?.stopPrice ?? null,
-      targetPrice: traderState?.targetPrice ?? null,
+      // FIX-780 — the four level fields pass through the WRITE half of the rule
+      // (`levelsForStance`) rather than being mirrored verbatim, because THIS IS
+      // A WRITE and its field names are claims: `stopPrice` asserts "the desk's
+      // stop".
+      //
+      // The trader's own commit applies the same gate, so for any run written
+      // after FIX-780 this is a no-op and the snapshot still equals the memo. It
+      // is NOT a no-op for a session written BEFORE the fix and resumed into
+      // Phase 5: that memo predates the gate, so a flat record carries its two
+      // monitoring levels in `stopPrice` / `targetPrice`. Mirroring verbatim
+      // copied that mislabeling into a durable record, and out through
+      // `run-summary` and `adopt-thesis` — which turns `snapshot.stopPrice` into
+      // a standing-thesis stop and a "Price through the stop level" TRIPWIRE.
+      // That is the defect escaping the report and becoming persistent user data
+      // with an alert attached, on a position the desk declined to take.
+      //
+      // The gate drops the pair the stance cannot carry, so a legacy flat record
+      // records no levels at all here. The numbers are not lost — the trader memo
+      // still holds them and the report renders them captioned and unlabeled —
+      // but they never enter a NAMED field again. Nothing in the old record says
+      // which number was which, so re-filing them as `reassessBelowPrice` would
+      // be the same guess wearing a stored value's authority that the legacy
+      // display rule already refuses.
+      ...levelsForStance(traderStance, {
+        stopPrice: traderState?.stopPrice,
+        targetPrice: traderState?.targetPrice,
+        reassessBelowPrice: traderState?.reassessBelowPrice,
+        invalidateAbovePrice: traderState?.invalidateAbovePrice,
+      }),
       sizePct: traderState?.sizePct ?? null,
       holdingPeriod: traderState?.holdingPeriod ?? null,
       // Risk-mandate decision (FIX-752) — the FIX-614 sensitivity-benchmark
@@ -524,6 +602,14 @@ export const commitPortfolioManagerMemo = handler({
       decisionConfidence: decision.decisionConfidence,
       summary: decision.decisionSummary.slice(0, 160),
       decidedAt,
+      // FIX-1113 — mirrors the memo's own field so the Past Reports LIST can
+      // badge an unanchored rating without loading per-session state.
+      ratingUnanchored,
+      // FIX-1113 — the reason `ratingUnanchored` fires. Carried alongside the
+      // boolean so the list can render a reason-specific tooltip via the
+      // shared `disclosurePrintShape` classifier rather than a row re-stating
+      // one specific cause as if it were the only one.
+      periodDisclosure,
     };
     await ctx.session.setMetadata({
       metadata: { decision: decisionMeta, reportStatus: "complete" },

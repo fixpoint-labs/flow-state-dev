@@ -109,18 +109,19 @@ export function createRequestStoreConformanceTests(
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const liveTolerance = Math.max(pollIntervalMs * 3, 200);
 
-  describe(`${name} (RequestStore subscribeToEvents conformance)`, () => {
-    async function withStore(
-      run: (store: RequestStore) => Promise<void>
-    ): Promise<void> {
-      const store = await createStore();
-      try {
-        await run(store);
-      } finally {
-        if (cleanup !== undefined) await cleanup(store);
-      }
+  /** Run one case against a fresh store, cleaning it up even when the case throws. */
+  async function withStore(
+    run: (store: RequestStore) => Promise<void>
+  ): Promise<void> {
+    const store = await createStore();
+    try {
+      await run(store);
+    } finally {
+      if (cleanup !== undefined) await cleanup(store);
     }
+  }
 
+  describe(`${name} (RequestStore subscribeToEvents conformance)`, () => {
     it("catch-up phase yields events strictly greater than fromSequence", async () => {
       await withStore(async (store) => {
         for (let i = 1; i <= 5; i += 1) {
@@ -375,17 +376,6 @@ export function createRequestStoreConformanceTests(
   });
 
   describe(`${name} (RequestStore same-request item persistence conformance)`, () => {
-    async function withStore(
-      run: (store: RequestStore) => Promise<void>
-    ): Promise<void> {
-      const store = await createStore();
-      try {
-        await run(store);
-      } finally {
-        if (cleanup !== undefined) await cleanup(store);
-      }
-    }
-
     // A get-returns-merged check across a same-request continuation (FIX-811).
     // The runtime persists incrementally via `persistItems` AND writes the
     // merged set onto the record at each transition via `set`; both adapter
@@ -456,17 +446,6 @@ export function createRequestStoreConformanceTests(
   });
 
   describe(`${name} (RequestStore countItems conformance)`, () => {
-    async function withStore(
-      run: (store: RequestStore) => Promise<void>
-    ): Promise<void> {
-      const store = await createStore();
-      try {
-        await run(store);
-      } finally {
-        if (cleanup !== undefined) await cleanup(store);
-      }
-    }
-
     it("returns 0 for an unknown request", async () => {
       await withStore(async (store) => {
         expect(await store.countItems("req_count_missing")).toBe(0);
@@ -519,17 +498,6 @@ export function createRequestStoreConformanceTests(
   });
 
   describe(`${name} (RequestStore abort-intent conformance)`, () => {
-    async function withStore(
-      run: (store: RequestStore) => Promise<void>
-    ): Promise<void> {
-      const store = await createStore();
-      try {
-        await run(store);
-      } finally {
-        if (cleanup !== undefined) await cleanup(store);
-      }
-    }
-
     /** Seed an `in_progress` record with no abort intent. */
     async function seed(
       store: RequestStore,

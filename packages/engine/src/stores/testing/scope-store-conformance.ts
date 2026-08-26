@@ -295,6 +295,69 @@ export function createScopeStoreConformanceTests(
       });
     });
 
+    describe("pushToArray value-type contract", () => {
+      // Missing → []; existing array → append; any present non-array
+      // (scalar, null) → throw, and the record is left alone. Memory already
+      // keeps this; SQLite historically replaced the scalar and Postgres
+      // wrapped it. These four cases are what makes the adapters swappable.
+
+      it("treats a missing field as an empty array", async () => {
+        await withStore(async (store) => {
+          if (store.pushToArray === undefined) return;
+          await store.set("s1", makeSession("s1", 0, {}), "absent");
+
+          const result = await store.pushToArray("s1", ["log"], ["first"], 0, Date.now());
+
+          expect(result.ok).toBe(true);
+          expect((await store.get("s1"))?.state).toEqual({ log: ["first"] });
+        });
+      });
+
+      it("appends onto an existing array", async () => {
+        await withStore(async (store) => {
+          if (store.pushToArray === undefined) return;
+          await store.set("s1", makeSession("s1", 0, { log: ["a"] }), "absent");
+
+          const result = await store.pushToArray("s1", ["log"], ["b", "c"], 0, Date.now());
+
+          expect(result.ok).toBe(true);
+          expect((await store.get("s1"))?.state).toEqual({ log: ["a", "b", "c"] });
+        });
+      });
+
+      it("throws when the existing value is a scalar, leaving the record untouched", async () => {
+        await withStore(async (store) => {
+          if (store.pushToArray === undefined) return;
+          await store.set("s1", makeSession("s1", 0, { log: "scalar" }), "absent");
+
+          await expect(
+            store.pushToArray("s1", ["log"], ["x"], 0, Date.now())
+          ).rejects.toThrow(/not an array/);
+
+          const fetched = await store.get("s1");
+          expect(fetched?.state).toEqual({ log: "scalar" });
+          expect(fetched?.version).toBe(0);
+        });
+      });
+
+      it("throws when the existing value is null, leaving the record untouched", async () => {
+        // null is a present value, not a missing one. Missing is the absent
+        // key (undefined after parse); that case is the empty-array path above.
+        await withStore(async (store) => {
+          if (store.pushToArray === undefined) return;
+          await store.set("s1", makeSession("s1", 0, { log: null }), "absent");
+
+          await expect(
+            store.pushToArray("s1", ["log"], ["x"], 0, Date.now())
+          ).rejects.toThrow(/not an array/);
+
+          const fetched = await store.get("s1");
+          expect(fetched?.state).toEqual({ log: null });
+          expect(fetched?.version).toBe(0);
+        });
+      });
+    });
+
     describe.runIf(createSharedPair !== undefined)("across two connections", () => {
       async function withPair(
         fn: (a: ScopeStoreUnderTest, b: ScopeStoreUnderTest) => Promise<void>

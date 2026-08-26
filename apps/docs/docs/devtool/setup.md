@@ -10,12 +10,12 @@ How to get the DevTool running against your own flows.
 ## Prerequisites
 
 You need:
-- `@flow-state-dev/cli` installed (provides the `fsdev` command)
+- the `@flow-state-dev/fsdev` package installed (it provides the `fsdev` command)
 - `@flow-state-dev/devtool` installed (provides the pre-built UI assets)
 - At least one flow definition in a conventional location
 
 ```bash
-pnpm add -D @flow-state-dev/cli @flow-state-dev/devtool
+pnpm add -D @flow-state-dev/fsdev @flow-state-dev/devtool
 ```
 
 ## Project structure

@@ -15,7 +15,7 @@
 
 import { runForTest } from '@flow-state-dev/testing'
 import { describe, it, expect } from 'vitest'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import {
   workingMemoryStateSchema,
 } from '../src/working-memory.js'
@@ -52,7 +52,7 @@ const DAY = 1000 * 60 * 60 * 24
 
 function createMockSemRef(
   initialState?: Partial<SemanticMemoryState>,
-): ResourceHandle<SemanticMemoryState> {
+): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
@@ -69,12 +69,12 @@ function createMockSemRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceHandle<SemanticMemoryState>
+  } as ResourceRef<SemanticMemoryState>
 }
 
 function createMockEpRef(
   initialState?: Partial<EpisodicMemoryState>,
-): ResourceHandle<EpisodicMemoryState> {
+): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = {
     episodes: [],
     totalEncoded: 0,
@@ -90,12 +90,12 @@ function createMockEpRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
 function createMockWmRef(
   initialState?: Partial<WorkingMemoryState>,
-): ResourceHandle<WorkingMemoryState> {
+): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = {
     entries: [],
     currentTurn: 0,
@@ -111,12 +111,12 @@ function createMockWmRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
 function createMockSysRef(
   initialState?: Partial<MemorySystemState>,
-): ResourceHandle<MemorySystemState> {
+): ResourceRef<MemorySystemState> {
   let state: MemorySystemState = {
     lastProcessedIndex: -1,
     episodicWritesSinceLastConsolidation: 0,
@@ -134,12 +134,12 @@ function createMockSysRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: memorySystemStateSchema, writable: true },
-  } as ResourceHandle<MemorySystemState>
+  } as ResourceRef<MemorySystemState>
 }
 
 function createMockJanitorRef(
   initialState?: Partial<JanitorState>,
-): ResourceHandle<JanitorState> {
+): ResourceRef<JanitorState> {
   let state: JanitorState = {
     lastRunTurn: 0,
     totalRuns: 0,
@@ -158,7 +158,7 @@ function createMockJanitorRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: janitorStateSchema, writable: true },
-  } as ResourceHandle<JanitorState>
+  } as ResourceRef<JanitorState>
 }
 
 function createMockResources(refs: Record<string, any>) {

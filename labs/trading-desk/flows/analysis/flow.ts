@@ -77,6 +77,12 @@ const analysisFlow = defineFlow({
         "userThesis",
         "userThesisRationale",
         "userThesisWarning",
+        // The data-honesty contract stamp (FIX-1063), read by the Summary
+        // alongside the stop fields above. This list is an explicit allow-list:
+        // WITHOUT this entry the stamp never reaches the client and every
+        // report renders as pre-fix — a silent failure that looks exactly like
+        // the feature working.
+        "dataHonestyContractVersion",
       ],
     },
   },

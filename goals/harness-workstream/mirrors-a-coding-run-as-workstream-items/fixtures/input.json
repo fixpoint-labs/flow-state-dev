@@ -1,0 +1,8 @@
+{
+  "topic": "kestrel-ledger",
+  "outputFileName": "kestrel-ledger.txt",
+  "marker": "ORBIT-SEVEN-KESTREL",
+  "secondLine": "compiled by the harness workstream",
+  "secondRunFileName": "kestrel-ledger-reprise.txt",
+  "planItemCount": 2
+}

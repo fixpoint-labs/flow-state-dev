@@ -20,7 +20,7 @@ import { createClient } from "@flow-state-dev/client";
 const client = createClient({
   flowKind: "my-app",
   userId: "devuser",
-  baseUrl: "/api/flows",  // default
+  // baseUrl: "https://api.example.com",  // only when the API is on another origin
 });
 
 const { requestId } = await client.sendAction("chat", { message: "Hello!" });
@@ -51,7 +51,7 @@ Create a session management client.
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "/api/flows" });
+const sessions = createSessionClient();
 
 const list = await sessions.list();
 const detail = await sessions.get(sessionId);
@@ -156,7 +156,7 @@ Create a client for the request-recovery surface — sweep stale active-request 
 ```ts
 import { createRecoveryClient } from "@flow-state-dev/client";
 
-const recovery = createRecoveryClient({ baseUrl: "/api" });
+const recovery = createRecoveryClient();
 
 // Sweep stale entries for one user; returns the requests this call
 // transitioned from `in_progress` to `interrupted`.

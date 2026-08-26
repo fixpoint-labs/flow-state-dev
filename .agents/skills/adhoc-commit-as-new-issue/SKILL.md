@@ -76,7 +76,7 @@ Type mapping:
 - Tests only → `test`
 - Docs only → `docs`
 
-Scope: the primary affected package (e.g., `server`, `core`, `cli`, `thought-fabric`).
+Scope: the primary affected package (e.g., `engine`, `core`, `cli`, `thought-fabric`).
 
 ### Step 6: Push and Open PR
 

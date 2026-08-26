@@ -1,11 +1,11 @@
-# @flow-state-dev/cli
+# @flow-state-dev/fsdev
 
 **The developer interface. Run flows, execute blocks, inspect definitions — all from the terminal.**
 
 ## Installation
 
 ```bash
-pnpm add -g @flow-state-dev/cli
+pnpm add -g @flow-state-dev/fsdev
 ```
 
 ```bash
@@ -48,11 +48,8 @@ Options:
 | `-m, --model <model>` | Override model for generator blocks run in this process |
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
-| `--seed-user <json\|path>` | Seed user-level state |
-| `--seed-project <json\|path>` | Seed project-level state |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
-| `--format <format>` | Output format (default: `json`) |
 | `--quiet` | Suppress `[flow-state] *` runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug \| info \| warn \| error` (default: `info`) |
 | `--capture <path>` | Write the full structured run output to a JSON file (additive with stdout) |
@@ -382,12 +379,36 @@ import {
   isBlockDefinition,
   parseInputArg,
   formatOutput,
-} from "@flow-state-dev/cli";
+} from "@flow-state-dev/fsdev";
 
-import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/cli";
+import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/fsdev";
 ```
 
 `discoverFlows` accepts an `onImportFailed` callback in its options object, invoked with a `FlowImportFailure` (`filePath`, `message`, `cause`) for each module that throws during import. Discovery continues with remaining modules; without the callback, failures are skipped silently.
+
+### The next-steps block
+
+Tools that wire FSD into a project — a scaffolder, or a coding assistant following an install skill — print the same closing paragraph: which servers now exist, what each is for, which ports they land on, and the caveats that come with them. That text is authored once here.
+
+```ts
+import {
+  CANONICAL_NEXT_STEPS,
+  renderNextSteps,
+  assertCanonicalNextSteps,
+} from "@flow-state-dev/fsdev";
+
+renderNextSteps({
+  topology: "mounted-route", // or "second-process"
+  packageManager: "pnpm", // npm | pnpm | yarn
+  devScript: "serve",
+  devUrl: "http://localhost:4000",
+  mountPath: "/api/flows",
+});
+```
+
+`CANONICAL_NEXT_STEPS` is the source: one text with two conditional branches and six named placeholders. A tool embeds it verbatim in its own source, renders the branch its host shape needs, and calls `assertCanonicalNextSteps` on its embedded copy from its own tests — that is what keeps two tools from drifting apart on what they tell a developer. Embed **both** branches even if you only ever render one; the comparison reads the whole block.
+
+`renderNextSteps` throws rather than printing an unfilled placeholder, and refuses a package manager it has no command forms for. The `second-process` branch needs neither a dev script nor a mount path, so a project without one is not an error. `devScript` is shell-quoted when it needs to be, so a script name carrying a space or a metacharacter still renders as one argument.
 
 ## Dependencies
 
@@ -400,9 +421,9 @@ import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/
 ## Scripts
 
 ```bash
-pnpm --filter @flow-state-dev/cli build
-pnpm --filter @flow-state-dev/cli typecheck
-pnpm --filter @flow-state-dev/cli test
+pnpm --filter @flow-state-dev/fsdev build
+pnpm --filter @flow-state-dev/fsdev typecheck
+pnpm --filter @flow-state-dev/fsdev test
 ```
 
 ## Architecture reference

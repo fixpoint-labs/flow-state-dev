@@ -91,19 +91,21 @@ describe("get_social_sentiment leaf routes", () => {
     expect(typeof out.score7d).toBe("number");
   });
 
-  it("unavailable route returns a zeroed schema-valid payload", async () => {
+  it("unavailable route returns a schema-valid payload with no fabricated readings", async () => {
     const out = await unavailableExecute(
       { ticker: "NVDA", date: "2026-05-06" },
       ctx("live"),
     );
     expect(out.source).toBe("unavailable");
     expect(out.ticker).toBe("NVDA");
-    expect(out.score7d).toBe(0);
-    expect(out.positive).toBe(0);
-    expect(out.negative).toBe(0);
-    expect(out.neutral).toBe(0);
-    // `null` rather than `0` — we can't measure short interest off X
-    // chatter, and a fabricated 0 would read as "no shorts" to the analyst.
+    // `null`, not `0` (FIX-1063). No provider answered, so nothing was read —
+    // and a 0 sentiment score is a REAL reading (balanced chatter) that the
+    // analyst would act on. The same reasoning `shortInterestPct` has carried
+    // since it was written now covers the whole payload.
+    expect(out.score7d).toBeNull();
+    expect(out.positive).toBeNull();
+    expect(out.negative).toBeNull();
+    expect(out.neutral).toBeNull();
     expect(out.shortInterestPct).toBeNull();
     expect(out.posts).toEqual([]);
   });

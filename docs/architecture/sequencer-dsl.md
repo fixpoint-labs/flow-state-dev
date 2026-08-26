@@ -497,7 +497,7 @@ const pipeline = sequencer({ name: "pipeline" })
   .step(blockWithSessionResources)     // collects session resources
   .parallel({
     a: blockWithUserResources,         // collects user resources
-    b: blockWithProjectResources,      // collects project resources
+    b: blockWithOrgResources,          // collects org-scoped resources
   })
   .rescue([{ block: recoveryBlock }]); // collects rescue block resources
 

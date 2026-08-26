@@ -15,12 +15,12 @@ import {
   normalizeScopeResourceContent,
   resolveStringContentTemplates,
   filterFlowLevelEager,
-  isCollectionConfig,
   normalizeStateDefault
 } from "../../src/context/resource-registry";
+import { isCollectionConfig } from "../../src/resources/is-collection-config";
 import { runResourceCAS, type ResourceCASIntent } from "../../src/stores/resource-cas";
 import { createStateContainer } from "../../src/stores/state-container";
-import { ResourceDeletedError } from "../../src/errors/flow-error";
+import { ResourceDeletedError, ValidationError } from "../../src/errors/flow-error";
 import type { ExpectedVersion, SetResult } from "../../src/stores/types";
 import {
   checkWriteVersion,
@@ -608,6 +608,138 @@ describe("createScopeResourceRegistry — static resources", () => {
   });
 });
 
+/**
+ * FIX-1256: a write whose result fails `stateSchema` must throw *and* leave
+ * stored state untouched. A test that only checks the exception passes
+ * against a throw-after-reset, which is the actual failure — the silent
+ * replacement wipes fields the caller never touched.
+ */
+describe("schema-invalid resource writes (FIX-1256)", () => {
+  const schema = z.object({
+    n: z.number().nonnegative(),
+    keep: z.string()
+  });
+  const initial = { n: 5, keep: "DO-NOT-LOSE" };
+  const wipedDefault = { n: 0, keep: "schema-default" };
+
+  const writers: Array<{
+    name: string;
+    write: (ref: {
+      patchState: (updates: Partial<typeof initial>) => Promise<void>;
+      setState: (next: typeof initial) => Promise<void>;
+      updateState: (updater: (s: typeof initial) => typeof initial) => Promise<void>;
+    }) => Promise<void>;
+  }> = [
+    { name: "patchState", write: (ref) => ref.patchState({ n: -1 }) },
+    { name: "setState", write: (ref) => ref.setState({ n: -1, keep: "DO-NOT-LOSE" }) },
+    { name: "updateState", write: (ref) => ref.updateState((s) => ({ ...s, n: -1 })) }
+  ];
+
+  for (const { name, write } of writers) {
+    it(`single resource ${name} throws and leaves other fields untouched`, async () => {
+      const onChange = vi.fn();
+      const config = makeResourceConfig({
+        stateSchema: schema,
+        default: wipedDefault
+      });
+      const registry = makeRegistry({
+        configs: { counter: config },
+        initialState: { counter: { ...initial } },
+        onResourceChanged: onChange
+      });
+      const ref = registry.get("counter");
+      onChange.mockClear();
+
+      await expect(write(ref)).rejects.toBeInstanceOf(ValidationError);
+      expect(ref.state).toEqual(initial);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it(`collection instance ${name} throws and leaves other fields untouched`, async () => {
+      const onChange = vi.fn();
+      const nsConfig = makeCollectionConfig("items/*", { stateSchema: schema });
+      const registry = makeRegistry({
+        configs: { items: nsConfig },
+        initialState: { "items/doc1": { ...initial } },
+        onResourceChanged: onChange
+      });
+      const ref = await (registry as any).items.get("doc1");
+      onChange.mockClear();
+
+      await expect(write(ref)).rejects.toBeInstanceOf(ValidationError);
+      expect(ref.state).toEqual(initial);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+  }
+
+  it("updateState throws on a type-coerced result and does not wipe keep", async () => {
+    // Ordinary caller argument, no refinement: `5 + "5"` concatenates to
+    // `"55"`, the schema rejects the object, and today's fallback replaces
+    // the whole resource with its default.
+    const onChange = vi.fn();
+    const config = makeResourceConfig({
+      stateSchema: z.object({ n: z.number(), keep: z.string() }),
+      default: wipedDefault
+    });
+    const registry = makeRegistry({
+      configs: { counter: config },
+      initialState: { counter: { ...initial } },
+      onResourceChanged: onChange
+    });
+    const ref = registry.get("counter");
+    onChange.mockClear();
+
+    await expect(
+      ref.updateState((s) => ({ ...s, n: (s as { n: number }).n + ("5" as unknown as number) }))
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(ref.state).toEqual(initial);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("setState(null) on a nullable resource persists {} without throwing", async () => {
+    const config = makeResourceConfig({
+      stateSchema: z.object({ ticker: z.string(), bars: z.array(z.unknown()) }).nullable(),
+      default: null
+    });
+    const prior = { ticker: "NVDA", bars: [{ date: "2026-01-01" }] };
+    const registry = makeRegistry({
+      configs: { priceHistory: config },
+      initialState: { priceHistory: prior }
+    });
+    const ref = registry.get("priceHistory");
+
+    await ref.setState(null as unknown as JsonObject);
+    expect(ref.state).toEqual({});
+  });
+
+  it("setState of a partial object on a nullable schema still throws and keeps prior fields", async () => {
+    const onChange = vi.fn();
+    const config = makeResourceConfig({
+      stateSchema: z
+        .object({
+          classification: z.string(),
+          verdicts: z.array(z.unknown())
+        })
+        .nullable(),
+      default: null
+    });
+    const prior = { classification: "mixed", verdicts: [{ lensId: "quality-value" }] };
+    const registry = makeRegistry({
+      configs: { lensConvergence: config },
+      initialState: { lensConvergence: prior },
+      onResourceChanged: onChange
+    });
+    const ref = registry.get("lensConvergence");
+    onChange.mockClear();
+
+    await expect(
+      ref.setState({ classification: "convergent" } as JsonObject)
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(ref.state).toEqual(prior);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
 describe("createScopeResourceRegistry — collections", () => {
   it("create() adds an instance and get() retrieves it", async () => {
     const nsConfig = makeCollectionConfig("items/*", {
@@ -733,6 +865,61 @@ describe("createScopeResourceRegistry — collections", () => {
     expect(onUpdated.mock.calls[0][0]).toBe("items/doc1");
   });
 
+  it("refuses an instance write when the collection is writable: false (FIX-1261)", async () => {
+    // A collection declared read-only must refuse the same instance-state
+    // path a single resource already refuses. Without this, writable:false
+    // type-checks (or is now a real field) and then silently succeeds.
+    const onUpdated = vi.fn();
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number() }).passthrough(),
+      onInstanceUpdated: onUpdated
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": { v: 1 } },
+      onResourceChanged: onChange
+    });
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+    await expect(ref.patchState({ v: 99 })).rejects.toThrow(/read-only/);
+    expect(ref.state).toEqual({ v: 1 });
+    expect(onUpdated).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("create and delete still work on a writable: false collection (FIX-1261)", async () => {
+    // writable gates instance writes, not collection-handle membership.
+    // A guard accidentally placed on create/delete would stay green on the
+    // refuse-patch / accept-patch pair alone.
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number().default(0) }).passthrough()
+    });
+    const registry = makeRegistry({ configs: { items: nsConfig } });
+    const created = await (registry as any).items.create("doc1", { v: 1 });
+    expect(created.state).toEqual({ v: 1 });
+    await (registry as any).items.delete("doc1");
+    expect(await (registry as any).items.getOptional("doc1")).toBeUndefined();
+  });
+
+  it("accepts an instance write on a collection that does not set writable: false (FIX-1261)", async () => {
+    // The complementary half: omitting the flag (the normal collection)
+    // must still persist. A guard that refused every collection would
+    // pass the refusal test and still be wrong.
+    const nsConfig = makeCollectionConfig("items/*", {
+      stateSchema: z.object({ v: z.number() }).passthrough()
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": { v: 1 } }
+    });
+    const ref = await (registry as any).items.get("doc1");
+    await ref.patchState({ v: 2 });
+    expect(ref.state).toEqual({ v: 2 });
+  });
+
   it("instance updateState aborts cleanly when the updater throws (FIX-951)", async () => {
     // Pins the contract the task substrate's advisory write-backs rely on to
     // decline a write atomically. The updater runs inside the per-key write
@@ -791,6 +978,20 @@ describe("createScopeResourceRegistry — collections", () => {
     // marker (4th arg) routing the reaction to `contentUpdated` (FIX-843).
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated", undefined, { contentWrite: true });
+  });
+
+  it("writeContent throws for a writable: false collection (FIX-1261)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", { writable: false });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": {} },
+      onResourceChanged: onChange
+    });
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+    await expect(ref.writeContent("fail")).rejects.toThrow(/read-only/);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("instance setState replaces state and fires onInstanceUpdated", async () => {

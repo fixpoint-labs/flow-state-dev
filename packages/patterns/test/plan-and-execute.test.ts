@@ -1342,7 +1342,6 @@ describe("plan-and-execute pattern", () => {
       expect(exports.planAndExecute).toBeDefined();
       expect(exports.planAndExecuteStateSchema).toBeDefined();
       expect(exports.PlanSchema).toBeDefined();
-      expect(exports.PlanStepSchema).toBeDefined();
       expect(exports.PlanTaskSchema).toBeDefined();
       expect(exports.planAndExecuteInputSchema).toBeDefined();
       expect(exports.iterationOutputSchema).toBeDefined();

@@ -30,5 +30,5 @@ serverless function alive for background work via `waitUntil`.
 
 Requires Next.js 15 or later (for the stable async `params` contract).
 
-See the [Server Setup guide](https://flow-state.dev/docs/server/setup) for the
+See the [Engine setup](https://flow-state.dev/docs/server/setup) guide for the
 full `createFlowState` reference.

@@ -189,7 +189,6 @@ export type {
   ResourceScope,
   AnyResourceRef,
   ResourceRef,
-  ResourceHandle,
   ResourceRefOptions,
   ResourceRegistry,
   StateOf

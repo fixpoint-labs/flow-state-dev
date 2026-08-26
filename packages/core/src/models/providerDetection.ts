@@ -1,4 +1,4 @@
-import type { GatewayConfig } from "./types";
+import { providerNames, type GatewayConfig } from "./types";
 
 // ---------------------------------------------------------------------------
 // Standard env var mappings
@@ -10,13 +10,11 @@ const DEFAULT_ENV_VARS: Record<string, string> = {
   google: "GOOGLE_GENERATIVE_AI_API_KEY",
 };
 
-const GATEWAY_ENV_VARS: Record<string, string> = {
+/** Env-var name that supplies the API key for each known gateway. */
+export const GATEWAY_ENV_VARS: Record<string, string> = {
   vercel: "AI_GATEWAY_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
 };
-
-/** All major providers that gateways support. */
-const GATEWAY_SUPPORTED_PROVIDERS = ["anthropic", "openai", "google"] as const;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,7 +71,7 @@ export function detectAvailableProviders(config: {
         const key = gwConfig.apiKey ?? (envVar ? env[envVar] : undefined);
         if (!key) continue;
 
-        for (const provider of GATEWAY_SUPPORTED_PROVIDERS) {
+        for (const provider of providerNames) {
           if (!available.has(provider)) {
             available.set(provider, {
               provider,
@@ -86,7 +84,7 @@ export function detectAvailableProviders(config: {
         }
       } else if (entry !== null && entry !== undefined) {
         // Raw gateway instance — mark all providers as available
-        for (const provider of GATEWAY_SUPPORTED_PROVIDERS) {
+        for (const provider of providerNames) {
           if (!available.has(provider)) {
             available.set(provider, {
               provider,
@@ -107,7 +105,7 @@ export function detectAvailableProviders(config: {
     const key = env[envVar];
     if (!key) continue;
 
-    for (const provider of GATEWAY_SUPPORTED_PROVIDERS) {
+    for (const provider of providerNames) {
       if (!available.has(provider)) {
         available.set(provider, {
           provider,

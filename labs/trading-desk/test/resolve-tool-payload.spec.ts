@@ -31,6 +31,7 @@ const liveBalanceSheet = (ticker: string): BalanceSheet => ({
   source: "edgar",
   ticker,
   asOf: "2026-06-01",
+  periodEnd: "2026-06-01",
   totalAssets: 100,
   totalLiabilities: 40,
   totalEquity: 60,

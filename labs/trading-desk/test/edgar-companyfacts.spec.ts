@@ -15,6 +15,7 @@ import {
   type EdgarCompanyFacts,
 } from "../lib/providers/edgar-companyfacts";
 import { altmanZDoublePrime } from "../flows/analysis/tools/data/composite-math";
+import { statementSetDisclosure } from "../flows/analysis/lib/statement-set-period";
 
 import rawAapl from "./__fixtures__/edgar-companyfacts-aapl.json";
 
@@ -156,6 +157,377 @@ describe("mapEdgarCompanyFacts — missing tags map to null, not 0", () => {
     expect(incomeStatement.revenue).toBeNull();
     expect(incomeStatement.grossProfit).toBeNull();
     expect(cashflow.freeCashFlow).toBeNull();
+  });
+});
+
+describe("mapEdgarCompanyFacts — total debt: a single leg is not zero-filled (review round 6, P1)", () => {
+  // `LongTermDebtNoncurrent` / `LongTermDebtCurrent` / `LongTermDebt` are
+  // themselves anchor-discovery tags, so every fixture here also carries
+  // `Assets` at the intended anchor to keep the anchor choice unambiguous
+  // and independent of which debt tags are present.
+  const anchorEnd = "2025-12-31";
+  const priorYear = "2024-12-31";
+
+  function debtFixture(opts: {
+    noncurrent?: number;
+    current?: number;
+    currentAt?: string;
+    combined?: number;
+  }): EdgarCompanyFacts {
+    const usGaap: Record<string, { units: { USD: Array<Record<string, unknown>> } }> = {
+      Assets: { units: { USD: [{ end: anchorEnd, val: 400e9, form: "10-K", fp: "FY", fy: 2025 }] } },
+    };
+    if (opts.noncurrent != null) {
+      usGaap.LongTermDebtNoncurrent = {
+        units: { USD: [{ end: anchorEnd, val: opts.noncurrent, form: "10-K", fp: "FY", fy: 2025 }] },
+      };
+    }
+    if (opts.current != null) {
+      usGaap.LongTermDebtCurrent = {
+        units: {
+          USD: [{ end: opts.currentAt ?? anchorEnd, val: opts.current, form: "10-K", fp: "FY", fy: 2025 }],
+        },
+      };
+    }
+    if (opts.combined != null) {
+      usGaap.LongTermDebt = {
+        units: { USD: [{ end: anchorEnd, val: opts.combined, form: "10-K", fp: "FY", fy: 2025 }] },
+      };
+    }
+    return { cik: 1, entityName: "Test", facts: { "us-gaap": usGaap } };
+  }
+
+  it("THE BUG: noncurrent at the anchor, current only in a PRIOR year -> total debt is null, not the noncurrent figure alone", () => {
+    const { balanceSheet } = mapEdgarCompanyFacts(
+      debtFixture({ noncurrent: 50e9, current: 8e9, currentAt: priorYear }),
+      "TEST",
+      "2026-05-06",
+    );
+    expect(balanceSheet.periodEnd).toBe(anchorEnd);
+    expect(balanceSheet.totalDebt).toBeNull();
+    // Naming what a regression would look like: the noncurrent leg alone.
+    expect(balanceSheet.totalDebt).not.toBeCloseTo(50, 1);
+  });
+
+  it("control: both legs present at the anchor still sums", () => {
+    const { balanceSheet } = mapEdgarCompanyFacts(
+      debtFixture({ noncurrent: 50e9, current: 8e9 }),
+      "TEST",
+      "2026-05-06",
+    );
+    expect(balanceSheet.totalDebt).toBeCloseTo(58, 1);
+  });
+
+  it("control: an explicit tagged zero for one leg still yields a real figure, not null", () => {
+    // A filer that tags `LongTermDebtCurrent: 0` (has none, said so) is not the
+    // same shape as one who never tagged it at all — `valueAtB` must tell them
+    // apart, since a fact entry exists here with a real (zero) value.
+    const { balanceSheet } = mapEdgarCompanyFacts(
+      debtFixture({ noncurrent: 50e9, current: 0 }),
+      "TEST",
+      "2026-05-06",
+    );
+    expect(balanceSheet.totalDebt).toBeCloseTo(50, 1);
+    expect(balanceSheet.totalDebt).not.toBeNull();
+  });
+
+  it("control: a combined-only filer (no split tags at the anchor) still resolves via LongTermDebt", () => {
+    const { balanceSheet } = mapEdgarCompanyFacts(
+      debtFixture({ combined: 60e9 }),
+      "TEST",
+      "2026-05-06",
+    );
+    expect(balanceSheet.totalDebt).toBeCloseTo(60, 1);
+  });
+});
+
+describe("mapEdgarCompanyFacts — a quarterly filing cannot become the annual anchor (review round 6, P2)", () => {
+  it("THE BUG: a 10-Q instant with no fp, dated after the last 10-K, is not selected as the anchor", () => {
+    const tenK = "2024-12-31";
+    const tenQAfter = "2025-03-31"; // newer than the 10-K, but a quarter-end
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: tenK, val: 400e9, form: "10-K", fp: "FY", fy: 2024 },
+                // No `fp` at all — the exact shape that slipped past a check
+                // that only ever looked at `fp`.
+                { end: tenQAfter, val: 420e9, form: "10-Q" },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(tenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("control: a 10-K with no fp at all is still selected as the anchor over an older 10-Q", () => {
+    // Otherwise the fix reads as "reject everything undated" rather than
+    // "reject known quarterly forms."
+    const olderTenQ = "2023-12-31";
+    const newerTenK = "2024-12-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: olderTenQ, val: 300e9, form: "10-Q" },
+                { end: newerTenK, val: 400e9, form: "10-K" }, // no `fp`
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(newerTenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+});
+
+describe("mapEdgarCompanyFacts — an instant fact needs AFFIRMATIVE annual evidence, not absence of a denylisted form (Codex review, FIX-1113)", () => {
+  it("THE BUG: an 8-K instant with no fp, dated after the last 10-K, is not selected as the anchor", () => {
+    // `QUARTERLY_FORMS` rejected `10-Q`/`10-Q/A` by name and admitted every
+    // other form by default — including an 8-K, an S-1, a 424B4, or any form
+    // this codebase has never seen. Our own fixtures carry 8-K, S-1/A, and
+    // 424B4 (`git grep '"form"'`), so this is not a hypothetical.
+    const tenK = "2024-12-31";
+    const eightKAfter = "2025-03-31"; // newer than the 10-K, not an annual filing
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: tenK, val: 400e9, form: "10-K", fp: "FY", fy: 2024 },
+                // No `fp` at all, and a form no denylist named.
+                { end: eightKAfter, val: 420e9, form: "8-K" },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(tenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("control: a 10-K with no fp at all is still selected (the form allowlist alone is enough)", () => {
+    const olderEightK = "2023-12-31";
+    const newerTenK = "2024-12-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: olderEightK, val: 300e9, form: "8-K" },
+                { end: newerTenK, val: 400e9, form: "10-K" }, // no `fp`
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(newerTenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("control: fp: \"FY\" wins regardless of form (a filer whose form we don't recognize)", () => {
+    const olderTenK = "2023-12-31";
+    const newerUnknownForm = "2024-12-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: olderTenK, val: 300e9, form: "10-K", fp: "FY" },
+                // A form this codebase has never seen, but fp says FY.
+                { end: newerUnknownForm, val: 400e9, form: "NT 10-K", fp: "FY" },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(newerUnknownForm);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("control: a 10-Q with no fp still fails to win the anchor (unchanged from the prior fix)", () => {
+    const tenK = "2024-12-31";
+    const tenQAfter = "2025-03-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: tenK, val: 400e9, form: "10-K", fp: "FY", fy: 2024 },
+                { end: tenQAfter, val: 420e9, form: "10-Q" },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(tenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("an entry with NEITHER form NOR fp carries no affirmative annual evidence and is rejected", () => {
+    const tenK = "2024-12-31";
+    const undocumented = "2025-03-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: tenK, val: 400e9, form: "10-K", fp: "FY", fy: 2024 },
+                { end: undocumented, val: 420e9 }, // neither field present
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(tenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+});
+
+describe("mapEdgarCompanyFacts — periodEnd only stamps a statement that actually carries figures (Codex review, FIX-1113)", () => {
+  it("THE BUG: a response with income figures but no balance-sheet tags at all leaves balanceSheet.periodEnd null", () => {
+    const anchor = "2024-09-28";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          // Income statement has a real figure at the anchor.
+          Revenues: { units: { USD: [
+            { start: "2023-10-01", end: anchor, val: 391e9, form: "10-K", fp: "FY" },
+          ] } },
+          // No Assets / StockholdersEquity / CashAndCashEquivalentsAtCarryingValue /
+          // LongTermDebt* tags at all — the balance sheet has nothing.
+        },
+      },
+    };
+    const { incomeStatement, balanceSheet, cashflow } = mapEdgarCompanyFacts(
+      facts,
+      "TEST",
+      "2026-05-06",
+    );
+    expect(incomeStatement.periodEnd).toBe(anchor);
+    expect(incomeStatement.revenue).toBeCloseTo(391, 0);
+    // The anchor is still chosen response-wide (from the income figure) and
+    // still governs what date any figure would be READ at — it is only the
+    // LABEL that must not attach to a statement with nothing to attach it to.
+    expect(balanceSheet.periodEnd).toBeNull();
+    expect(balanceSheet.totalAssets).toBeNull();
+    // Cashflow has no tags either in this fixture — same expectation.
+    expect(cashflow.periodEnd).toBeNull();
+  });
+
+  it("control: a fully-populated response still stamps all three statements", () => {
+    const { incomeStatement, balanceSheet, cashflow } = aapl();
+    expect(incomeStatement.periodEnd).not.toBeNull();
+    expect(balanceSheet.periodEnd).not.toBeNull();
+    expect(cashflow.periodEnd).not.toBeNull();
+  });
+
+  it("control: a statement whose figures are all explicitly zero still gets stamped — zero is not absent", () => {
+    const anchor = "2024-09-28";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Revenues: { units: { USD: [
+            { start: "2023-10-01", end: anchor, val: 0, form: "10-K", fp: "FY" },
+          ] } },
+        },
+      },
+    };
+    const { incomeStatement } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(incomeStatement.periodEnd).toBe(anchor);
+    expect(incomeStatement.revenue).toBe(0);
+  });
+
+  it("control: fixture-mode reading of this mapper's output (no ladder observations) still reports coherent, not stale", () => {
+    // NOT a reproduction of the ladder trap Codex traced — that requires an
+    // actual `PeriodObservation` (`observedNewest` populated), which fixture
+    // mode never carries (`statementSetDisclosure`'s own doc: "a statement
+    // that never ran the live ladder... has no observation"). Without one,
+    // `settledForLessThanSeen` returns false unconditionally
+    // (`observedNewest == null` short-circuits it), so this scenario could
+    // not have exercised part (a) even before this fix — feeding the OLD
+    // buggy mapper's output through here would have passed too, since a
+    // wrongly-stamped cashflow.periodEnd equal to the SAME response-wide
+    // anchor as income/balance also satisfies part (b)'s mutual-agreement
+    // check trivially. See `financial-period.spec.ts`'s
+    // "the ladder trap this fix removes" for the test that actually
+    // reproduces the misclassification (with `observedNewest` populated,
+    // the shape the live ladder — not fixture mode — produces) and traces
+    // it back to `periodEnd`.
+    //
+    // What this test DOES confirm: the fix does not disturb the ordinary
+    // fixture-mode path — a genuinely absent cashflow statement, now
+    // correctly labeled `periodEnd: null`, is still read as coherent
+    // (figureless and skipped in part (b)), not as a new kind of failure.
+    const anchor = "2024-09-28";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Revenues: { units: { USD: [
+            { start: "2023-10-01", end: anchor, val: 391e9, form: "10-K", fp: "FY" },
+          ] } },
+          Assets: { units: { USD: [
+            { end: anchor, val: 364e9, form: "10-K", fp: "FY" },
+          ] } },
+          // Cashflow has no tags at all — genuinely absent, not stale.
+        },
+      },
+    };
+    const mapped = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    const disclosure = statementSetDisclosure({
+      incomeStatement: mapped.incomeStatement,
+      balanceSheet: mapped.balanceSheet,
+      cashflow: mapped.cashflow,
+      incomeStatementPeriodObservation: undefined,
+      balanceSheetPeriodObservation: undefined,
+      cashflowPeriodObservation: undefined,
+    });
+    expect(disclosure).toBeNull();
   });
 });
 
@@ -320,5 +692,30 @@ describe("mapEdgarFinancialsHistory — ifrs-full (foreign private issuers, e.g.
     const periods = mapEdgarFinancialsHistory(both);
     // us-gaap FY2024 totalAssets is 364; ifrs is 204.
     expect(periods[0].totalAssets).toBeCloseTo(364, 0);
+  });
+
+  it("a 20-F with no fp at all is still selected over a non-annual form (this codebase's own confirmed annual form, Codex review FIX-1113)", () => {
+    // 20-F is a real, already-supported form in this mapper (this fixture, this
+    // describe block) — it belongs in the annual-form allowlist alongside 10-K.
+    const olderEightK = "2023-06-30";
+    const newerTwentyF = "2023-12-31";
+    const facts: EdgarCompanyFacts = {
+      facts: {
+        "ifrs-full": {
+          Assets: {
+            units: {
+              USD: [
+                { end: olderEightK, val: 300e9, form: "8-K" },
+                { end: newerTwentyF, val: 400e9, form: "20-F" }, // no `fp`
+              ],
+            },
+          },
+        },
+      },
+    };
+    const periods = mapEdgarFinancialsHistory(facts);
+    expect(periods).toHaveLength(1);
+    expect(periods[0].endDate).toBe(newerTwentyF);
+    expect(periods[0].totalAssets).toBeCloseTo(400, 0);
   });
 });

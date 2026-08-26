@@ -1,17 +1,30 @@
 ---
 sidebar_position: 1
-title: "CLI"
+title: CLI
+sidebar_label: Overview
 ---
 
 # CLI
 
-`@flow-state-dev/cli` provides the `fsdev` command. Run flows and blocks from the terminal without a running server. Useful for development, testing, and automation.
+The CLI is how you run the engine from the terminal. The command is `fsdev`. Install `@flow-state-dev/fsdev` and you can run a flow, isolate a block, hold a chat, or start the DevTool, without standing up a Next.js app first.
 
-## What it is
+## Commands
 
-The CLI executes flows and blocks in-process. No HTTP server, no SSE, no network. It uses the same runtime and stores as the server package, but invoked directly from your shell. Output streams as NDJSON to stdout. That in-process model covers `fsdev run` and `fsdev block`; `fsdev dev` and `fsdev serve` start HTTP servers. See the [CLI API Reference](/docs/api/cli) and the [Deployment overview](/guides/deployment).
+| Command | What it does |
+|---------|--------------|
+| `fsdev run <flow> <action>` | Run one action in-process. NDJSON on stdout. |
+| `fsdev block <file>` | Run one block through the test harness. |
+| `fsdev chat [flow] [action]` | Interactive multi-turn session in the terminal. |
+| `fsdev dev` | HTTP + DevTool UI on localhost. |
+| `fsdev serve` | Production HTTP + MCP. No DevTool. |
+| `fsdev benchmark <file>` | Score a `defineBenchmark` file. |
+| `fsdev ui add <name>` | Install a component from the UI registry. |
 
-This page is about running *your own* flows locally with `fsdev`. To dispatch a coding task to a Claude Code *cloud* session from inside a flow, see [Claude Code remote dispatch](/docs/tools/claude-code-cli).
+Flags, NDJSON events, and exit codes live in the [CLI API](/docs/api/cli).
+
+`run`, `block`, and `chat` call the engine in-process: no HTTP server and no SSE. That is the Flow State transport only — a generator still calls its model provider over the network and still needs that provider's key. `dev` and `serve` start a host. See [Engine setup](/docs/server/setup) and [Deployment](/guides/deployment).
+
+This page is about running *your own* flows locally. To dispatch a coding task to a Claude Code *cloud* session from inside a flow, see [Claude Code remote dispatch](/docs/tools/claude-code-cli).
 
 ## When to use it
 
@@ -31,7 +44,7 @@ Session reuse: pass `--session <id>` to continue an existing session. State from
 
 ## Running blocks
 
-`fsdev block <file>` runs a single block with the test harness. Provide input via `-i` or `-f`. The block executes in isolation; no flow context, no session unless you seed it. Output includes success/failure, schema validation results, and execution duration. Ideal for unit-testing block logic.
+`fsdev block <file>` runs a single block with the test harness. Provide input via `-i` or `-f`. The block executes in isolation: no flow context and no session. Output includes success/failure, schema validation results, and execution duration. Ideal for unit-testing block logic.
 
 ## Flow discovery
 
@@ -59,7 +72,9 @@ You get a line on stderr at each dispatch that loses the override:
 
 ## State seeding
 
-`--seed-session`, `--seed-user`, and `--seed-org` let you start with specific state for debugging. Pass inline JSON or a file path. The seeded state is merged into the scopes before execution. Handy for reproducing issues that depend on prior state.
+On `fsdev run`, `--seed-session` lets you start with specific session state for debugging. Pass inline JSON or a file path. The seeded fields are merged into session state before execution. Handy for reproducing issues that depend on prior session state.
+
+Session is the only scope you can seed.
 
 ## Background work
 
@@ -122,5 +137,5 @@ Shutdown treats it as in-process work, so the process waits for it the way it wa
 
 - [Agent Dev Loop](./agent-dev-loop.md) — The recommended edit → `fsdev run` → read NDJSON loop, with worked examples and `jq` recipes. If you're iterating on a flow, start here.
 - [Interactive Chat](./interactive-chat.md) — Hold a live, multi-turn session over your flows with `fsdev chat`.
-- [CLI API Reference](/docs/api/cli) — Full command reference, NDJSON event types, programmatic API, exit codes.
+- [CLI API](/docs/api/cli) — Full command reference, NDJSON event types, programmatic API, exit codes.
 - [Development Tips](/guides/development-tips) — Workflow patterns for using the CLI in daily development.

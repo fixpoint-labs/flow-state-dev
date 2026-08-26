@@ -20,6 +20,7 @@
  */
 import type { MemoState } from "@/flows/analysis/resources";
 import type { ValuationSpineState } from "@/flows/analysis/valuation-spine-resource";
+import type { PeriodDisclosure } from "@/flows/analysis/lib/valuation-spine";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
@@ -58,14 +59,37 @@ export type DecisionSummary = {
   absoluteRating: MemoState["absoluteRating"];
   /** The PM's call relative to the benchmark. Null when unpublished. */
   relativeRating: MemoState["relativeRating"];
+  /**
+   * True when the rating envelope was WITHHELD (FIX-1113) because the three
+   * financial statements could not be placed at one fiscal period — the
+   * clamp above never ran, so `finalRating` is the model's own, unbounded
+   * value. A disclosure, not a suppression: the rating still publishes.
+   * `periodDisclosure` names which periods and why. Report surfaces must
+   * render this alongside the rating rather than showing an unclamped call
+   * with no marker.
+   */
+  ratingUnanchored: MemoState["ratingUnanchored"];
+  periodDisclosure: PeriodDisclosure | null;
 } | null;
 
-/** The trade levels (from the trader memo). Null when no trader memo. */
+/**
+ * The trade levels (from the trader memo). Null when no trader memo.
+ *
+ * All four price levels are carried raw; NOTHING here decides what they are
+ * called. That is `buildTradeLevelModel`'s job (`flows/analysis/lib/trade-levels`),
+ * which every display site reads so the summary list, the chart legend, the
+ * decision one-liner and the desk's own prompts can never disagree (FIX-780).
+ */
 export type TradeLevels = {
   direction: "long" | "short" | "flat" | null;
   sizePct: number | null;
   stopPrice: number | null;
   targetPrice: number | null;
+  /** Flat runs only; null on a directional run and on any record written
+   *  before FIX-780 (where the key is absent from storage entirely). */
+  reassessBelowPrice: number | null;
+  /** Flat runs only; see {@link TradeLevels.reassessBelowPrice}. */
+  invalidateAbovePrice: number | null;
   holdingPeriod: MemoState["holdingPeriod"];
   invalidationCriteria: string[] | null;
 } | null;
@@ -305,6 +329,8 @@ export function buildReportSummary(
               : null,
           absoluteRating: pm.absoluteRating,
           relativeRating: pm.relativeRating,
+          ratingUnanchored: pm.ratingUnanchored,
+          periodDisclosure: pm.periodDisclosure,
         }
       : null;
 
@@ -317,6 +343,11 @@ export function buildReportSummary(
           sizePct: trader.sizePct,
           stopPrice: trader.stopPrice,
           targetPrice: trader.targetPrice,
+          // `?? null` because a memo stored before FIX-780 has no monitoring
+          // keys at all: the read yields `undefined`, which the typed shape
+          // would otherwise carry into the components as a third state.
+          reassessBelowPrice: trader.reassessBelowPrice ?? null,
+          invalidateAbovePrice: trader.invalidateAbovePrice ?? null,
           holdingPeriod: trader.holdingPeriod,
           invalidationCriteria: trader.invalidationCriteria,
         }
@@ -350,8 +381,11 @@ export function buildReportSummary(
   };
 
   // Factor scores (valuation spine). The spine's component scores are ~0..100.
+  // `setupScore` is null when the spine WITHHELD its cross-statement outputs
+  // (FIX-1113) — the strip renders its own gap note rather than four zeroes,
+  // which is the same absent-stays-absent rule as every other read here.
   const factorScores: FactorScores =
-    spine !== null
+    spine?.setupScore != null
       ? {
           value: spine.setupScore.value,
           quality: spine.setupScore.quality,

@@ -17,6 +17,7 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import { taskBoard, goalSeekLoop, type Verdict } from "@flow-state-dev/orchestration/task-board";
 import { createSeedTasksFromPlan } from "../shared/planning-entry";
+import { pickTaskCapOverrides } from "../shared/task-caps";
 import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
 
 export type { SubTaskErrorStrategy } from "./schemas";
@@ -71,7 +72,6 @@ export interface ParallelTasksConfig<
    * How to handle individual sub-task failures.
    * - `skip` (default): exclude failed sub-tasks; pass completed results to synthesizer
    * - `fail`: abort entire coordination on any failure
-   * - `retry`: not supported — treated as `skip` with a one-time construction warning
    */
   onSubTaskError?: SubTaskErrorStrategy;
 
@@ -97,7 +97,17 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     outputSchema,
   } = config;
 
-  if (onSubTaskError === "retry") {
+  // Deliberately still checked for a value the type no longer permits (FIX-1210).
+  // Dropping `"retry"` from `SubTaskErrorStrategy` withdrew a *type-level*
+  // affordance; it did not make this coercion dead. An untyped JS caller, a TS
+  // caller crossing an untyped config boundary, or anyone reaching for `as any`
+  // can still land here with `"retry"` — and their failed sub-tasks are silently
+  // dropped while they believe retries were requested. The warn is the only
+  // signal those callers get, so it stays. Do not "simplify" it away.
+  //
+  // Not a throw: rejecting a previously-accepted value at construction time is a
+  // runtime behaviour change, and behaviour changes get their own PR.
+  if ((onSubTaskError as string) === "retry") {
     console.warn(
       `[flow-state-dev] parallelTasks "${name}": onSubTaskError="retry" is not supported ` +
       `and will be treated as "skip". Remove the option to suppress this warning.`
@@ -121,13 +131,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // who legitimately needs a bigger board must be able to say so. Unset falls
     // through to the 500/100 defaults, and `board.caps` is what the seed writer
     // is handed, so the two can never disagree.
-    ...(config.maxTotalRetries !== undefined
-      ? { maxTotalRetries: config.maxTotalRetries }
-      : {}),
-    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
-    ...(config.maxEnqueuedTasks !== undefined
-      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
-      : {}),
+    ...pickTaskCapOverrides(config),
     workers: worker,
     concurrency: maxConcurrency,
     dispatcher: "fifo",

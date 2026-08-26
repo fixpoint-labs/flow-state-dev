@@ -53,12 +53,17 @@ export function computeExpectedReturn(args: {
   const fcf = cf.freeCashFlow;
   const netIncome = is_.netIncome;
 
-  if (fcf != null && fcf > 0 && marketCap > 0) {
-    shareholderYield = fcf / marketCap;
-    basis = "fcf";
-  } else if (netIncome != null && netIncome > 0 && marketCap > 0) {
-    shareholderYield = netIncome / marketCap + divYield;
-    basis = "earnings";
+  // An unobserved market cap yields no shareholder yield at all — the previous
+  // zero-filled cap made this branch fall through to `basis: "none"` by
+  // accident; now it does so by contract (FIX-1063).
+  if (marketCap != null && marketCap > 0) {
+    if (fcf != null && fcf > 0) {
+      shareholderYield = fcf / marketCap;
+      basis = "fcf";
+    } else if (netIncome != null && netIncome > 0) {
+      shareholderYield = netIncome / marketCap + divYield;
+      basis = "earnings";
+    }
   }
 
   // Sustainable growth: min(revenueGrowth, retention × ROE), capped
@@ -67,8 +72,16 @@ export function computeExpectedReturn(args: {
   const revenueGrowth = is_.yoyRevenueGrowth;
 
   if (revenueGrowth != null) {
+    // The retention term needs BOTH a measured ROE and a measured market cap
+    // (it prices the dividend against the cap). Either unobserved → fall back
+    // to revenue growth alone rather than a retention figure built on a
+    // fabricated input.
     const retentionROE =
-      roe > 0 && netIncome != null && netIncome > 0
+      roe != null &&
+      roe > 0 &&
+      marketCap != null &&
+      netIncome != null &&
+      netIncome > 0
         ? (1 - divYield * marketCap / netIncome) * roe
         : null;
 

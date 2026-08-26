@@ -250,11 +250,11 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 
 ## Conformance
 
-`@flow-state-dev/testing` exports a conformance suite. Run it against
+`@flow-state-dev/testing/conformance` exports a conformance suite. Run it against
 your adapter and you've validated the contract:
 
 ```ts
-import { createInboundTransportConformanceTests } from "@flow-state-dev/testing";
+import { createInboundTransportConformanceTests } from "@flow-state-dev/testing/conformance";
 
 createInboundTransportConformanceTests({
   name: "myAdapter",
@@ -267,4 +267,4 @@ createInboundTransportConformanceTests({
 });
 ```
 
-The HTTP adapter is the first conforming implementation.
+`createMockTransportHost` is on the same subpath, for adapter tests that build a host themselves.

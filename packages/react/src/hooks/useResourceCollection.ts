@@ -82,9 +82,6 @@ export type UseResourceCollectionResult<TClient = unknown> = {
   wrap: (raw: { topic: string; clientData?: unknown; content?: string }) => CollectionItemHandle<TClient>;
 };
 
-/** @deprecated keep for soft back-compat with callers reading `CollectionItem`. */
-export type CollectionItem = CollectionItemHandle;
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

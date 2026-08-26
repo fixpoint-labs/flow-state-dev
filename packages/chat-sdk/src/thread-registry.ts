@@ -45,11 +45,6 @@ export function clearThreadForRequest(requestId: string): void {
   registry.delete(requestId);
 }
 
-/** Exposed for tests to assert no leaks. */
-export function _registrySize(): number {
-  return registry.size;
-}
-
 function maybeSweep(): void {
   const now = Date.now();
   if (now - lastSweepAt < 60_000) return;

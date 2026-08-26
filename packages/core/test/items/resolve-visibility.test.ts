@@ -6,7 +6,7 @@
  */
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { ContinuationItem, OutputItem, ItemVisibility } from "../../src/items/types";
-import { resolveItemVisibility } from "../../src/items/resolve-visibility";
+import { resolveItemVisibility } from "../../src/items";
 
 const baseProv = {
   blockName: "test",

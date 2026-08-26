@@ -105,6 +105,386 @@ a live handle across requests rather than a parallel store. The default provider
 is thin because the SDK resumes cheaply by id; pass your own to hold a heavier
 resource (an open connection, for example).
 
+### Turning it off for background work
+
+A **workstream** is a child session dedicated to one background job, running
+outside the request that started it. If you dispatch the agent into one, set
+`detached: true`:
+
+```ts
+const agent = claudeCodeAgent({ detached: true });
+```
+
+Each job is then one run. Nothing is written to session state, and no prior SDK
+conversation is resumed — a second job addressed to the same workstream begins a
+new agent run. What the run did is still recorded: the workstream's own item
+stream holds its messages, reasoning, and tool calls in order, which is what you
+read the run back from.
+
+**The session id does not disappear.** The option governs session state and
+automatic resume, not the run's own result: the handle the block returns still
+carries the SDK `sessionId` it observed. When the agent runs as a task-board
+worker, that handle is the worker's output, and the board writes the output onto
+the task when it settles — so the id is persisted there. Worth knowing if you are
+reasoning about data retention, or if you plan to resume a run by hand later.
+
+The option is also required rather than optional there. Background workers share
+one flow, so two of them declaring the same session-state key would overwrite
+each other, and the task board refuses to build a background worker that declares
+session state.
+
+That refusal sees the worker block and the blocks composed inside it. It does
+**not** see a session-state schema contributed by a capability, which reaches a
+block through a separate channel that leaves no mark on the block itself. So a
+worker can be accepted while still carrying session state that way. If you attach
+this agent as a capability, pass the option there too — it takes the same one:
+
+```ts
+createClaudeCodeAgentCapability({ detached: true });
+```
+
+See [Background work](../server/background-work.md) for how a workstream is set
+up and read back.
+
+## Where the run works
+
+By default the agent runs in whatever directory your server process is running
+in. That is fine when the run is editing scratch files. It stops being fine the
+moment two runs need to work on different copies of something, or a run needs to
+work on a checkout that is not the one the server lives in.
+
+`cwd` gives a run its own directory:
+
+```ts
+import { mkdir, mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
+
+const CHECKOUT_ROOT = "/var/agent-checkouts";
+
+const agent = claudeCodeAgent({
+  cwd: async () => {
+    // `mkdtemp` creates the unique leaf, not the parent — it fails ENOENT if
+    // the root is not already there, which on a fresh machine it is not.
+    await mkdir(CHECKOUT_ROOT, { recursive: true });
+    return mkdtemp(join(CHECKOUT_ROOT, "run-"));
+  },
+  // A fresh directory per run only makes sense with a fresh conversation.
+  // See below.
+  detached: true,
+});
+```
+
+It is a function rather than a string on purpose. A flow is built once and then
+serves many runs, so a fixed directory would be the wrong shape — this resolves
+per run, just before the agent starts, and can return a promise as it does here.
+
+**A throwaway directory and a resumed conversation do not go together**, which
+is why `detached: true` is part of this example rather than an aside. By
+default the agent keeps conversation state and hands the SDK a `resume` handle
+from the previous run in the same session. Pair that with `mkdtemp` and the
+second invocation resumes a conversation that was created in a directory that
+no longer has anything to do with the tree it now runs in — the agent picks up
+mid-task in an empty checkout. Either start fresh each run, as here, or keep a
+stable directory when you want resume. A per-run directory with resume left on
+is the combination that surprises people.
+
+Two things follow the directory. The run's file tools address relative paths
+inside it. And the record of what the run touched, if you have `recordWork` on
+(below), is keyed there as well — so `src/a.ts` written by a run in one checkout
+and `src/a.ts` written by a run in another are two entries, not one.
+
+A working directory is not a sandbox. The run can still address an absolute path
+outside it, and that operation is recorded at the path it actually reached. The
+file record is a log of what the run's tools did, not a fence around where they
+may go.
+
+### Reusing a directory across runs
+
+The example above throws its directory away. Sometimes you want the opposite —
+runs that belong together sharing a checkout, so a second attempt picks up where
+the first stopped. That means building the path out of a value, and it is worth
+being careful about which value and how.
+
+```ts
+import { mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { isAbsolute, join, relative } from "node:path";
+
+function segment(value: string | undefined): string {
+  // Absence is `0`; a present value is `1` followed by a SHA-256 digest of its
+  // UTF-16 code units. Exactly 65 characters whatever the id's length, which
+  // is what keeps a long session id from overflowing the 255-character
+  // filename limit.
+  //
+  // Digest the CODE UNITS, not the UTF-8 bytes. UTF-8 cannot represent a lone
+  // surrogate, so hashing `value` directly maps "\ud800", "\ud801" and a
+  // literal "�" onto one digest — a collision anyone can produce on purpose.
+  return value === undefined
+    ? "0"
+    : `1${createHash("sha256").update(Buffer.from(value, "utf16le")).digest("hex")}`;
+}
+
+function checkoutFor(tenantId: string | undefined, key: string): string {
+  const dir = join(CHECKOUT_ROOT, segment(tenantId), segment(key));
+  // Belt and braces. Encoding already makes escape impossible; this costs a
+  // line and fails loudly if the encoding is ever swapped for something weaker.
+  const rel = relative(CHECKOUT_ROOT, dir);
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
+  }
+  return dir;
+}
+```
+
+`checkoutFor` derives a path and nothing more — deriving is pure and testable,
+provisioning is the resolver's job. Wire both halves of the identity in, and
+create the directory before handing it over:
+
+```ts
+const agent = claudeCodeAgent({
+  cwd: async (_input, ctx) => {
+    const dir = checkoutFor(
+      ctx.session.identity.tenantId,
+      ctx.session.identity.id,
+    );
+    // The SDK spawns a process into this directory, so it has to exist —
+    // Node fails the spawn with ENOENT otherwise. `recursive` is what makes
+    // reuse work: the second run finds the first run's tree instead of
+    // erroring on a directory that is already there.
+    await mkdir(dir, { recursive: true });
+    return dir;
+  },
+});
+```
+
+A reused checkout is shared mutable state, so the last thing to wire up is what
+happens when two runs for the same session overlap. Actions run concurrently
+unless you say otherwise, and the resolver above creates the directory without
+claiming it — so both runs get the same tree and their edits and Git operations
+race in it.
+
+Declare a [concurrency policy](../advanced/concurrency-policies.md) on the
+action that runs the agent:
+
+```ts
+defineFlow({
+  kind: "coding",
+  actions: {
+    // `queue` serializes on the session — the same value the checkout is
+    // derived from, so one run finishes in the tree before the next starts.
+    // `reject` instead if a second request should be dropped rather than
+    // waited on.
+    implement: { block: codingPipeline, concurrency: "queue" },
+  },
+});
+```
+
+The two keys lining up is the point: derive the checkout from the session and
+arbitrate on the session.
+
+**A policy arbitrates dispatches, so be precise about what that does and does not
+cover.** Three ways two runs can end up in one checkout, and this closes one of
+them:
+
+- **Two requests, one session.** Covered. That is what the policy is for.
+- **Two agent invocations inside one dispatch.** Not covered. A generator's tool
+  calls in a single model step run concurrently, so if you expose this block as
+  a model-facing tool through the agent capability, the model can call it twice
+  in one step and both invocations land in the same directory — inside one
+  dispatch, where the policy never sees them. Give the agent a per-run directory
+  (the `mkdtemp` example above) when the model can invoke it, and keep the
+  reused checkout for one agent step per run.
+- **Two workers, one session.** Not covered. The arbiter is a map in the running
+  process, so routing execution to external workers leaves both able to land in
+  one checkout. That needs a lock in shared storage, which is beyond what this
+  recipe gives you.
+
+So the recipe is safe for a single-instance host running the agent as a step,
+one invocation per dispatch. Outside that, derive a fresh directory per run.
+
+Encoding rather than validating is the whole point, and it is worth being
+explicit about why. A validating grammar has to enumerate every way a string can
+misbehave as a path, and that list is longer than it looks: separators and `..`
+are the obvious two, but Windows also strips trailing dots (so `acme` and `acme.`
+are one directory), reserves `CON`, `PRN`, `AUX`, `NUL`, `COM1`…`LPT9` as device
+names that cannot be directories at all, and folds case. Every one of those is a
+value two different tenants could hold.
+
+A derived segment sidesteps the whole list: its output alphabet contains
+nothing any filesystem treats specially, and two distinct ids do not share a
+directory.
+
+**Hash the code units, not the UTF-8 bytes.** A JavaScript string is a sequence
+of UTF-16 code units, and not every such sequence is valid Unicode: a *lone
+surrogate* like `"\ud800"` is a perfectly legal JS string that JSON will carry
+to your server. UTF-8 has no representation for one, so anything that transcodes
+through it — `Buffer.from(value, "utf8")`, or passing the string straight to
+`createHash().update()` — substitutes the replacement character, and `"\ud800"`,
+`"\ud801"` and a literal `"�"` all come out identical. Three distinct session
+ids, one working tree. Hashing the code units has no such gap, because it
+consumes what the string actually is rather than a translation of it.
+
+**And the output has to be bounded, which is why this is a digest rather than a
+reversible encoding.** Filenames stop at 255 characters. Any encoding that
+preserves its input grows with it — hex of UTF-16 code units runs to four
+characters each, so a 64-character session id produced a 257-character
+component and `mkdir` failed with `ENAMETOOLONG`. Ids that long are ordinary,
+and no retry can shorten one. A digest is a fixed 65 characters for every
+input.
+
+That trade is worth stating plainly, because it is a real one:
+
+| | Reversible encoding | Digest |
+|---|---|---|
+| Distinctness | provable | collision-resistant |
+| Length | grows with the id | fixed |
+| Readable | yes — you can decode it | no |
+
+Distinct ids give distinct directories in both cases; the digest rests on
+SHA-256 rather than on arithmetic. That is not a failure mode this system will
+meet, and it buys the bound. What it costs is legibility — the path no longer
+tells you whose checkout it is.
+
+**The one thing not to do is truncate.** Cutting a reversible encoding to fit
+would map two long ids onto one segment, which is the collision this example
+spent three rounds eliminating — reintroduced to fix a length. Bound it by
+construction or refuse the value; never by trimming.
+
+Give each value its own segment; concatenating them into one string brings back
+the ambiguity the tenant is there to remove.
+
+**Encode whether a value is there, not just what it is.** A missing tenant is
+tempting to fill in with a stand-in — `tenantId ?? "default"` — but a stand-in
+is a value some tenant may legitimately hold, and then an un-tenanted host and
+that tenant address one directory and edit each other's tree. The tag does the
+same job without the collision: absence has its own encoding no present value
+can produce. The same tag keeps every segment non-empty, which matters because
+`join` discards an empty one, so a run keyed on an empty id would quietly land
+a level up.
+
+The tenant to use is `ctx.session.identity.tenantId` — the authenticated value
+the server resolved. It is deliberately separate from
+`ctx.session.identity.id`, which stays the bare session id the caller passed:
+two tenants can hold the same one, which is why the framework namespaces its
+own session storage by tenant and why a path built from the session alone puts
+both tenants in one checkout.
+
+If your key is already something you control and know to be safe — a numeric job
+id, a UUID — the encoding is close to a no-op and you can skip it. Encode by
+default anyway: the moment the key starts coming from somewhere else, the rules
+you would have to remember are a list nobody finishes.
+
+Prefer a key your own code assigned over one that arrived with the request.
+
+## Recording what the run did
+
+The item stream tells you what the agent said. `recordWork: true` also records
+what it did, as ordinary state you can query afterwards.
+
+Entries follow the run's [working directory](#where-the-run-works) when you set
+one, so the paths you read back describe the checkout the run was actually
+given.
+
+```ts
+const agent = claudeCodeAgent({
+  detached: true,
+  recordWork: true,
+});
+```
+
+It is off by default. Turned on, the agent declares three **resource
+collections** — a resource collection is a keyed set of small state records the
+framework stores and serves for you — and writes into them as the run goes:
+
+| Collection | One entry per |
+|---|---|
+| `observed-file-ops` | path the run's file-writing and file-editing tools touched: how it was touched, when, and whether the attempt applied |
+| `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
+| `observed-gaps` | thing the recorder understood and could not record, with the reason and which record it stands in for |
+
+Entries are keyed as `<requestId>/<invocation>`. A workstream can host several
+runs over its life, and a single request can itself run the agent more than once
+— a generator holding it as a tool can call it repeatedly — so both halves are
+needed to keep one run's answer from becoming somebody else's.
+
+### Reading it back
+
+Both records come back over the resource route, one page at a time. Scope the
+read with `topicPrefix`, and follow `nextCursor` while one is returned:
+
+```
+GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
+
+{ "items": [
+  { "topic": "<requestId>/<invocation>/work/repo/src/checkout.ts",
+    "storageKey": "observed-file-ops/<requestId>/<invocation>/work/repo/src/checkout.ts",
+    "clientData": { "lastKind": "edited", "outcome": "applied",
+                    "lastTouchedAt": 1787021400123, "appliedCount": 2 } }
+] }
+```
+
+Prefixing with the request id gives you everything that request did; adding the
+invocation narrows it to one run.
+
+Each row's payload is on `clientData`. `outcome` has three values, not two:
+`pending` while a mutation has been seen and not yet settled, then `applied` or
+`failed`. A run that is killed mid-flight leaves its unsettled entries as
+`pending`, which is the honest answer about a write nobody confirmed.
+
+`appliedCount` sits beside it and counts confirmations, not attempts. Each
+operation is recorded twice, once when the call is seen and once when its
+result arrives, so a count of everything recorded would report double the work
+the run did. `outcome` describes only the last settlement, which is why a
+separate count is worth having: it says how many of a path's touches actually
+landed. Read `0` and `null` differently. `0` means the run touched the path and
+nothing applied. `null` means the row was written before the field existed.
+
+The plan record reads the same way, from `observed-plan`. A to-do item's status
+is the harness's own word for it, and stays empty until the harness reports one.
+
+### What the file record is, and what it isn't
+
+It is a log of the file operations you saw the agent's file tools perform. It is
+not an index of everything that changed on disk. A run that edits a file through
+the shell — a `sed -i`, a redirect, a `mv`, a formatter — makes no file-tool
+call, so nothing is recorded and that file does not appear. If you need an
+authoritative list of what changed, compare the working tree yourself.
+
+Paths are recorded, contents are not. The record points at your source; it does
+not hold a second copy of it.
+
+### Gaps
+
+Recording never interferes with the run. Anything the recorder cannot handle is
+skipped, the run carries on, and the skip lands in `observed-gaps` with the
+reason and the raw path where there was one.
+
+That collection is the difference between "this file was never touched" and "we
+saw it and could not record it". Read it alongside the other two whenever a
+record looks thinner than you expected.
+
+Each gap row carries a `kind` — `file`, `plan`, or `run` — saying which record
+it stands in for. Match on that rather than on the wording of `reason`: a gap
+for a mutation with nothing to key on has no path to identify it by, and the
+reason text is prose meant for a person.
+
+### The plan is not a work queue
+
+A run's to-do list goes into its own record, deliberately separate from the task
+board that dispatched the run. An agent that decides mid-run to do five more
+things writes five to-do items and starts nothing. Picking one up is a separate,
+deliberate act.
+
+Attaching the agent as a capability takes the same option, and needs it — the
+capability declares the collections itself:
+
+```ts
+createClaudeCodeAgentCapability({ detached: true, recordWork: true });
+```
+
+See [Resource collections](../resources/collections.md) for how collections are
+stored, paged, and made visible to clients.
+
 ## Tool approval
 
 By default the agent governs its own tools through the SDK's `permissionMode`. To

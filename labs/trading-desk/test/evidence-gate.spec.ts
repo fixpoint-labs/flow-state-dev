@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeEvidenceGate,
+  deriveCriticalDataThin,
   type EvidenceGateInput,
 } from "../flows/analysis/lib/evidence-gate";
 
@@ -161,5 +162,58 @@ describe("computeEvidenceGate — downward-only", () => {
     );
     expect(r.targetWeightPct).toBe(1);
     expect(r.sizeClamped).toBe(false);
+  });
+});
+
+/**
+ * `deriveCriticalDataThin` — the deterministic missing-substrate signal.
+ *
+ * FIX-1063 decision 3 widened it: a fundamentals read with no market cap is
+ * thin evidence EVEN UNDER A LIVE SOURCE TAG. That is the sparse-but-successful
+ * path, where the provider answered and nothing in the payload marks the gap,
+ * so the `source` check alone cannot see it. Without a market cap the entire
+ * valuation set is unmeasurable, which is the definition of too thin to add
+ * real money against.
+ */
+describe("deriveCriticalDataThin — the market-cap check (FIX-1063)", () => {
+  const present = (over: Record<string, unknown> = {}) => ({
+    fundamentals: { source: "finnhub", marketCap: 2950, ...over },
+    incomeStatement: { source: "edgar" },
+    balanceSheet: { source: "edgar" },
+    cashflow: { source: "edgar" },
+  });
+
+  it("is false when all four payloads are available and the market cap is measured", () => {
+    expect(deriveCriticalDataThin(present())).toBe(false);
+  });
+
+  it("is TRUE when a live-tagged fundamentals payload carries no market cap", () => {
+    // The gate the epic asked for. Tagged `finnhub`, fetch succeeded, market
+    // cap absent — this is the shape that used to sail through as sufficient
+    // evidence and authorize adding to a position.
+    expect(deriveCriticalDataThin(present({ marketCap: null }))).toBe(true);
+  });
+
+  it("is TRUE when the field is missing from the payload entirely (legacy shape)", () => {
+    const fin = present();
+    delete (fin.fundamentals as Record<string, unknown>).marketCap;
+    expect(deriveCriticalDataThin(fin)).toBe(true);
+  });
+
+  it("keeps a MEASURED zero market cap out of the gate's absence branch", () => {
+    // A literal 0 is a value, not a gap — the gate keys on `== null`, not on
+    // falsiness, matching the rule everywhere else in this change.
+    expect(deriveCriticalDataThin(present({ marketCap: 0 }))).toBe(false);
+  });
+
+  it("still fires on the original source-tag conditions", () => {
+    // The pre-existing behaviour is unchanged — this is an added condition,
+    // not a replacement.
+    expect(deriveCriticalDataThin(present({ source: "unavailable" }))).toBe(true);
+    expect(
+      deriveCriticalDataThin({ ...present(), cashflow: { source: "unavailable" } }),
+    ).toBe(true);
+    expect(deriveCriticalDataThin({ ...present(), balanceSheet: null })).toBe(true);
+    expect(deriveCriticalDataThin(null)).toBe(true);
   });
 });

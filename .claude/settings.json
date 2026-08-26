@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Bash(git commit*)",
+            "prompt": "Pre-commit docs audit for the @flow-state-dev implementation repo.\n\nA git commit is about to run. Hook input: $ARGUMENTS\n\n1. Inspect staged changes: run `git diff --cached --stat` and (if size permits) `git diff --cached`.\n2. Flag the diff as dev-facing if it touches any of:\n   - Public exports under packages/*/src/** (new or changed)\n   - New capabilities, block kinds, CLI commands, React hooks, env vars, or config keys\n   - New package entrypoints, new packages under packages/, or new subpath exports (e.g. @thought-fabric/core/<domain>)\n3. Check whether the SAME staged commit updates:\n   - packages/<pkg>/README.md for public API changes in that package\n   - apps/docs/** for concepts, guides, or APIs end users reference\n   - .changeset/*.md for user-facing release notes (internal-only → empty changeset or omit)\n4. If the staged changes are confined to docs/specs/** (a create-spec spec-document PR — its accompanying docs and changeset land later at implementation time), OR if the diff is internal only (refactors, tests, bug fixes without public-API impact), OR if appropriate docs are already staged, respond with exactly: OK.\n5. Otherwise produce a concise advisory under 150 words in this shape:\n\n## Docs check\nChange: <one-sentence summary of the dev-facing change>\nLikely missing:\n- <path> — <one-line reason>\n- <path> — <one-line reason>\n\n(BP-009/BP-022: document user-facing changes in the same change set. Non-blocking advisory — changesets are recommended when warranted, not mandatory for internal fixes.)\n\nDo NOT block the commit. Do NOT call unrelated tools. Keep output terse.",
+            "timeout": 90,
+            "statusMessage": "Auditing staged diff for docs gaps"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'exec bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/docs-check.sh\"'",
+            "timeout": 5000,
+            "statusMessage": "BP-009 docs advisory (optional; strict via FSD_DOCS_CHECK_STRICT=1)"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(node .claude/*)",
+      "mcp__Claude_Code_Remote__send_later",
+      "mcp__Claude_Code_Remote__create_trigger",
+      "mcp__Claude_Code_Remote__update_trigger",
+      "mcp__Claude_Code_Remote__list_triggers",
+      "mcp__Claude_Code_Remote__subscribe_pr_activity",
+      "mcp__Claude_Code_Remote__unsubscribe_pr_activity"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}

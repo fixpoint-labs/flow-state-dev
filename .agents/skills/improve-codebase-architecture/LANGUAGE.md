@@ -69,13 +69,13 @@ The architectural overlay above coexists with FSD's primary domain vocabulary. W
 | **store adapter** | a literal **adapter** at a real seam | `StoreRegistry` interface (sessions / state / resources / etc.). Two adapters today (`@flow-state-dev/store-sqlite` + in-memory) = real seam, not hypothetical. |
 | **flow** | the **top-level module** | Actions + scope schemas + resources + capabilities. The flow's `actions` map is its external interface to callers (`fsdev run`, server routes, client). |
 | **action** | an **entry point on a flow** | `inputSchema`, the root block it dispatches to, side-effects on declared scopes. |
-| **scope** (request / session / user / project) | a **lifetime contract**, not a module | Not a module itself, but determines how a module's state mutations propagate. |
-| **item** (message / reasoning / block_output / component / etc.) | the **wire format** at the streaming seam | Item types are part of the streaming contract documented in `docs/architecture/items.md` and `docs/architecture/streaming.md`. Changing the item taxonomy is a cross-cutting change that ripples through server, client, react, and all renderers. |
+| **scope** (request / session / user / org) | a **lifetime contract**, not a module | Not a module itself, but determines how a module's state mutations propagate. |
+| **item** (message / reasoning / block_output / component / etc.) | the **wire format** at the streaming seam | Item types are part of the streaming contract documented in `docs/architecture/items.md` and `docs/architecture/streaming.md`. Changing the item taxonomy is a cross-cutting change that ripples through engine, client, react, and all renderers. |
 | **provider** (e.g. Vercel AI SDK) | a **true-external dependency** behind a seam | Currently single-provider in Phase 1; the seam exists for future providers. |
 
 ### Practical rules for suggestions
 
 - A "block" stays a block in suggestions — don't rename it "the X module." Say "the X handler" / "the X generator" and add the architectural framing alongside ("…which is currently a shallow module whose interface is nearly as complex as its body").
 - A capability is the FSD answer to "I keep plumbing the same tools + context + resources into many blocks." When suggesting one, frame it explicitly: "Extract a capability — this is FSD's mechanism for collapsing repeated wiring into a deep module."
-- The boundary between `@flow-state-dev/engine` and `@flow-state-dev/client` is a *real* seam (server must never depend on client/react per package-boundary rules). Don't propose refactors that would cross it.
+- The boundary between `@flow-state-dev/engine` and `@flow-state-dev/client` is a *real* seam (engine must never depend on client/react per package-boundary rules). Don't propose refactors that would cross it.
 - The boundary between `@flow-state-dev/client` and `@flow-state-dev/react` is a *real* seam (react wraps client; no transport logic in react). Same rule.

@@ -11,7 +11,7 @@ export { cloneValue } from "./clone";
 export { mapLimit } from "./concurrency";
 export { deepEqual, looseDeepEqual } from "./deep-equal";
 export { deepMerge } from "./deep-merge";
-export { warnDeprecated, __resetDeprecationWarningsForTests } from "./deprecation";
+export { __resetDeprecationWarningsForTests } from "./deprecation";
 export { sanitizeToolName, ensureUniqueAlias, computeToolAliases } from "./tool-name";
 export {
   transientSlot,
@@ -37,3 +37,4 @@ export {
   type UpdateOutcome,
   type UpdateStateRunner,
 } from "./update-state-with";
+export { toError } from "./to-error";

@@ -243,6 +243,51 @@ describe("buildReportSummary — decision", () => {
     );
     expect(summary.decision?.primaryScenario).toBeNull();
   });
+
+  // FIX-1113 — the desk withholds the rating envelope (never the rating) when
+  // the three statements do not share a fiscal period, and marks the record
+  // with `ratingUnanchored` + `periodDisclosure`. The PM memo already carries
+  // both fields (`writer.ts`); the aggregate must carry them through to the
+  // report surfaces rather than stopping at the stored resource.
+  it("carries ratingUnanchored + periodDisclosure through to the decision summary", () => {
+    const disclosure = {
+      reason: "periods-disagree" as const,
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({
+            finalRating: "Buy",
+            ratingUnanchored: true,
+            periodDisclosure: disclosure,
+          }),
+        ],
+      ]),
+      null,
+    );
+    expect(summary.decision?.ratingUnanchored).toBe(true);
+    expect(summary.decision?.periodDisclosure).toEqual(disclosure);
+  });
+
+  it("leaves ratingUnanchored false and periodDisclosure null on an ordinary anchored decision", () => {
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({ finalRating: "Buy", ratingUnanchored: false, periodDisclosure: null }),
+        ],
+      ]),
+      null,
+    );
+    expect(summary.decision?.ratingUnanchored).toBe(false);
+    expect(summary.decision?.periodDisclosure).toBeNull();
+  });
 });
 
 describe("buildReportSummary — conviction strip", () => {
@@ -602,6 +647,25 @@ describe("buildReportSummary — trade invalidation criteria (FIX-1060)", () => 
     );
     expect(summary.trade).not.toBeNull();
     expect(summary.trade?.invalidationCriteria).toBeNull();
+  });
+
+  /**
+   * FIX-780 / BP-030. The `memo()` helper above deliberately does NOT list the
+   * two monitoring-level fields, so this memo is the shape a report stored
+   * before FIX-780 actually has: the keys are ABSENT, not null. The aggregate
+   * must hand the components the `null` they type against — an `undefined`
+   * leaking through is a third state every downstream null-check would miss.
+   */
+  it("normalizes a pre-FIX-780 trader memo's absent monitoring keys to null", () => {
+    const legacy = memo({ direction: "flat", stopPrice: 320, targetPrice: 195 });
+    expect("reassessBelowPrice" in legacy).toBe(false);
+
+    const summary = buildReportSummary(mapOf([["trader", legacy]]), null);
+    expect(summary.trade?.reassessBelowPrice).toBeNull();
+    expect(summary.trade?.invalidateAbovePrice).toBeNull();
+    // The record itself is untouched — relabeled, never re-interpreted.
+    expect(summary.trade?.stopPrice).toBe(320);
+    expect(summary.trade?.targetPrice).toBe(195);
   });
 });
 

@@ -6,7 +6,7 @@ sidebar_position: 3
 
 Static resources have a fixed name you declare up front: `plan`, `artifacts`, `preferences`. Resource collections handle the case where you don't know how many instances you'll need. An AI managing a set of files, accumulating observations per topic, or creating workspaces on the fly — these are collection problems.
 
-A collection defines a shared schema and a key pattern. Instances are created and destroyed at runtime. The **property name** you assign in `sessionResources` is how you access it at runtime — not the pattern string.
+A collection defines a shared schema and a key pattern. Instances are created and destroyed at runtime. The **property name** you assign in `resources` is how you access it at runtime — not the pattern string.
 
 For a set your app already owns — rows in your own database or behind your API — see [external collections](./external-collections.md): a read-through, read-only variant that keeps the app as the source of truth instead of copying data into the framework.
 
@@ -15,6 +15,7 @@ import { defineResourceCollection } from "@flow-state-dev/core";
 
 const filesCollection = defineResourceCollection({
   pattern: "files/**",
+  scope: "session",
   stateSchema: z.object({ language: z.string().default("text") }),
   maxInstances: 200,
   eviction: "lru",
@@ -23,10 +24,10 @@ const filesCollection = defineResourceCollection({
 // Register under any property name:
 const fileManager = handler({
   name: "file-manager",
-  sessionResources: { files: filesCollection },
-  //                   ^^^^^ this is the access key
+  resources: { files: filesCollection },
+  //            ^^^^^ this is the access key
   execute: async (_input, ctx) => {
-    const files = ctx.session.resources.files;  // ← access via property name
+    const files = ctx.resources.files;  // ← access via property name
     await files.create("readme.md", { language: "markdown" });
   },
 });
@@ -46,7 +47,7 @@ The pattern string determines which keys a collection can hold.
 
 ## Runtime API
 
-Collection entries on scope resource registries are `ResourceCollectionRef` instances.
+Collection entries on `ctx.resources` are `ResourceCollectionRef` instances.
 
 ### Core operations
 
@@ -54,7 +55,7 @@ The lookups (`get`, `getOptional`, `list`, `count`) return Promises, so `await` 
 
 ```ts
 execute: async (input, ctx) => {
-  const files = ctx.session.resources.files;
+  const files = ctx.resources.files;
 
   // Create a new instance — returns a ResourceRef
   const ref = await files.create("readme.md", { language: "markdown" });
@@ -77,7 +78,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. The `state` getter on a resolved ref is synchronous — you await the lookup, not the read of an already-resolved ref.
+Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. `patchState`, `setState`, and `updateState` refuse a result that fails `stateSchema`; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). The `state` getter on a resolved ref is synchronous — you await the lookup, not the read of an already-resolved ref.
 
 Each returned ref also carries `path`, `scope`, and `uri` fields for identity — see [Resource identity](./overview#resource-identity-path-scope-and-uri) for details.
 
@@ -91,7 +92,7 @@ Two additional operations cover the recurring "is the instance already there?" p
 
 ```ts
 execute: async (input, ctx) => {
-  const files = ctx.session.resources.files;
+  const files = ctx.resources.files;
 
   // Replace-or-create: overwrites existing state, creates if missing.
   // `setState` semantics — Zod `.default(null)` fills nullables, so a
@@ -123,6 +124,8 @@ The four "if-exists / if-missing" patterns:
 | `getOrCreate(k, init?)` | returns as-is | creates |
 | `upsert(k, update, createOnly?)` | patches | creates with `{ ...createOnly, ...update }` |
 
+`create` and `upsert` refuse an initial or merged state that fails `stateSchema`. The instance is not created or patched.
+
 Both new operations fire the right lifecycle hooks: `onInstanceUpdated` on the replace/patch branch, `onInstanceCreated` on the create branch. `maxInstances` is only checked when adding a new instance — replacing or patching an existing one never trips the guard.
 
 ### Parameterized patterns
@@ -132,14 +135,15 @@ When a pattern has `[name]` segments, pass an object key instead of a string:
 ```ts
 const topicNotes = defineResourceCollection({
   pattern: "[topic]/notes",
+  scope: "session",
   stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
 });
 
 // Register under any property name:
-sessionResources: { notes: topicNotes }
+resources: { notes: topicNotes }
 
 // At runtime:
-const notes = ctx.session.resources.notes;
+const notes = ctx.resources.notes;
 const ref = await notes.create({ topic: "react" }, { entries: [] });
 // Storage key: "react/notes"
 
@@ -199,6 +203,7 @@ Set `prefetchMode: "lazy"` to defer loading:
 ```ts
 const docs = defineResourceCollection({
   pattern: "docs/**",
+  scope: "session",
   stateSchema: z.object({ title: z.string().default("") }),
   prefetchMode: "lazy",
 });
@@ -227,6 +232,7 @@ Collections support per-instance hooks for logging, side effects, or cleanup:
 ```ts
 defineResourceCollection({
   pattern: "files/**",
+  scope: "session",
   stateSchema: fileSchema,
   onInstanceCreated: (key, state, ctx) => {
     ctx.log(`Created: ${key}`);
@@ -251,16 +257,16 @@ Collections work with block-level resource declarations the same way static reso
 ```ts
 const fileManager = handler({
   name: "file-manager",
-  sessionResources: { files: filesCollection },
+  resources: { files: filesCollection },
   execute: async (_input, ctx) => {
-    await ctx.session.resources.files.create("output.md", {
+    await ctx.resources.files.create("output.md", {
       language: "markdown",
     });
   },
 });
 ```
 
-Sequencers collect collection declarations from child blocks. `defineFlow` merges them into scope configs. Two blocks declaring different collection refs for the same name will throw at build time. Same ref instance, no conflict.
+Sequencers collect collection declarations from child blocks. `defineFlow` merges them into the flow's `resources` map. Two blocks declaring different collection refs for the same name will throw at build time. Same ref instance, no conflict.
 
 ## Storage model
 
@@ -281,6 +287,44 @@ If the set is bounded and predictable (three artifact slots), a static resource 
 
 Collections can declare a `client` config to make their items visible to the frontend. This gives you React hooks for listing items, lazy-loading content, and performing CRUD operations. See [Client Access](/docs/resources/client-access) for the full reference.
 
+## Writable
+
+`writable` controls whether blocks can change an instance's state or content. Default `true`. Instance `patchState` / `setState` / `updateState`, collection `upsert` on an existing key, and instance `writeContent` all honor it.
+
+Set `writable: false` and those writes throw. The flag is collection-wide: every instance is covered.
+
+```ts
+import { defineResourceCollection, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const notes = defineResourceCollection({
+  pattern: "notes/**",
+  scope: "session",
+  stateSchema: z.object({ title: z.string().default("") }),
+  writable: false,
+});
+
+const updateNotes = handler({
+  name: "update-notes",
+  resources: { notes },
+  execute: async (_input, ctx) => {
+    const ref = await ctx.resources.notes.get("onboarding");
+
+    await ref.patchState({ title: "Onboarding" });
+    // throws Error: Resource "notes/onboarding" is read-only
+
+    await ref.writeContent("# Onboarding");
+    // throws Error: Resource "notes/onboarding" content is read-only
+  },
+});
+```
+
+State writes throw `Error` with message `Resource "<storageKey>" is read-only`. Content writes throw `Resource "<storageKey>" content is read-only`. `storageKey` is the resolved instance key, for example `notes/onboarding`.
+
+`create` (including `{ replace: true }`), `getOrCreate`, and `delete` on the collection handle are not gated by `writable`. `llmWritable` only gates the generic LLM content tools.
+
+External collections do not take `writable`. See [external collections](./external-collections.md).
+
 ## LLM access
 
 A content-bearing collection can opt into the generic content tools, the same way single resources do. Two flags, declared once on the collection and applied to every instance:
@@ -288,7 +332,7 @@ A content-bearing collection can opt into the generic content tools, the same wa
 - `llmReadable: true` — a generator can read instance content with `readResourceContentTool()`, and find it with `grepResourceContent` / `searchResources`.
 - `llmWritable: true` — a generator can overwrite an instance body with `writeResourceContentTool()`.
 
-Both default to `false`: a collection that doesn't opt in stays invisible to those tools. `llmWritable` is independent of `llmReadable` (the write tool gates on `llmWritable` alone), matching the single-resource contract.
+Both default to `false`: a collection that doesn't opt in stays invisible to those tools. The write tool requires `llmWritable`, not `llmReadable`. A `writable: false` collection still refuses the write. See [Writable](#writable).
 
 ```ts
 import { generator, readResourceContentTool, writeResourceContentTool } from "@flow-state-dev/core";
@@ -306,15 +350,15 @@ const editor = generator({
   model: "openai/gpt-5.4-mini",
   prompt: "Edit notes on request. Read the current body before rewriting it.",
   tools: [readResourceContentTool(), writeResourceContentTool()],
-  sessionResources: { notes },
+  resources: { notes },
 });
 ```
 
-The tools address an instance by its scope-qualified uri (`session/notes/onboarding`), so a result from [`globResources` or `grepResourceContent`](/docs/resources/searching) feeds straight into a read or write. Before this, every content-bearing collection had to hand-roll its own read/write tool blocks; now they keep only their domain-specific logic.
+The tools address an instance by its scope-qualified uri (`session/notes/onboarding`), so a result from [`globResources` or `grepResourceContent`](/docs/resources/searching) feeds straight into a read or write. A collection that opts in uses those generic content tools; declare collection-specific tools for domain logic they do not cover.
 
 ## Lazy state by default
 
-Collection state is fetched on demand. The session snapshot no longer carries every item's state — that approach broke down once collections grew past a few dozen items, and shared (org-scoped) collections made the bloat unworkable across sessions.
+Collection state is fetched on demand. For each client-visible collection, the snapshot includes `count`. If you set `prefetchWindow`, it also includes an inline window of items. Clients fetch a page when they need one.
 
 What the snapshot carries for each client-visible collection:
 
@@ -328,8 +372,6 @@ resources: {
   }
 }
 ```
-
-There's no `items` map anymore. Clients fetch a page when they need one.
 
 ### Listing items from a client
 
@@ -385,6 +427,7 @@ For small, always-needed collections, the snapshot can carry the first N items i
 ```ts
 defineResourceCollection({
   pattern: "artifacts/**",
+  scope: "session",
   stateSchema: artifactSchema,
   client: {
     state: { read: true },
@@ -400,19 +443,9 @@ Ordering is by **lexicographic storage key**, not by recency. There's no per-ite
 
 The default is `0` (no prefetched window).
 
-### Server-side projections still work
+### Server-side projections
 
-Scope-level `clientData` functions that call `collection.list()` continue to work. Lazy snapshots changed what the server *emits*, not what it *loads* — the full `persisted` map is still available to the projection function.
-
-### Migration from earlier versions
-
-The old snapshot carried `resources[scope][ref].items` as a record of every item's `clientData`. That field is gone except via an internal escape hatch that's removed before the next minor release. To migrate:
-
-1. Replace `useResourceCollection({ items, actions })` destructure with `useResourceCollectionList(session, ref, { limit })` for paginated rendering, or call `list()` directly from `useResourceCollection` for custom flows.
-2. Add `client: { state: { read: true } }` to any collection whose per-item `clientData` should remain visible to clients. State is gated separately from content now.
-3. If you relied on `Object.keys(items).length` for a count, read the always-emitted `count` field from the snapshot.
-
-See the changelog entry for the per-version detail.
+Scope-level `client.derived` functions that call `collection.list()` load the full persisted map. The snapshot is what the client sees; the projection function is not limited to it.
 
 ## See also
 

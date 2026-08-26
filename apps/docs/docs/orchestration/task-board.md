@@ -91,12 +91,17 @@ Exits when one of the following is true on a worker's `checkBoard` iteration:
 - **Drained** — no `pending`, `in_progress`, or `awaiting_review` tasks remain.
 - **Blocked** — no task is `in_progress` or `awaiting_review`, and no `pending` task has all of its `deps` `completed`. Nothing is claimable, and no in-flight work is left to change the dep graph.
 
+Both checks ignore tasks sitting in `awaiting_review` when the board sets [`onReview: "exit"`](#waiting-on-a-person-onreview).
+
 The final `task-board-meta` item carries a `terminationReason` field saying which case it was:
 
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 - `"handed-off"` — every task still outstanding is running in a Workstream. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a worker declared `dispatch: { mode: "detached" }` reports it, and `counts.in_progress` is how many are still running.
+- `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.awaiting_review` is how many tasks are parked.
+
+Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. A refused retry outranks all of them.
 
 A delegation board's `runBoard` tool reports a `status` of its own, and the two count different things. `terminationReason` asks whether every task succeeded. `runBoard`'s `status` asks whether any task is still outstanding, so a board whose only problem is one errored task reads `"blocked-by-failures"` here and `"drained"` there. See [Delegation](../skills/delegation.md) for the coordinator's side.
 
@@ -107,7 +112,8 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
   data: {
     collectionId: "echo",
     status: "completed",
-    terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted" | "handed-off"
+    terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted"
+                                          //  | "handed-off" | "parked-for-review"
     maxTotalRetries: 50,
     counts: {
       total: 2,
@@ -124,13 +130,15 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
 }
 ```
 
-The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other two are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, and `"handed-off"` only when every outstanding task is one a Workstream is holding.
+The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other three are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, `"handed-off"` only when every outstanding task is one a Workstream is holding, and `"parked-for-review"` only when the board stopped because it was told not to wait on a review.
 
 ### `"complete"`
 
 Exits only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. Use it when a pending task with a non-`completed` dep is a transient state: something outside the worker pool will eventually mark the dep complete (an external service, an HITL approval pumping a queue).
 
 A board in this mode never decides on its own that it is stuck. If a dep will never resolve, each worker keeps cycling until it hits `maxIterations` (default `10000`, counted per worker). Pick the mode when the board really is supposed to wait.
+
+A task parked for review keeps this mode's loop alive, and [`onReview: "exit"`](#waiting-on-a-person-onreview) cannot change that. A board that sets both is refused when you build it.
 
 ### `"wait"`
 
@@ -152,6 +160,79 @@ Most boards leave `onIdle` alone. Override when:
 
 - You're modeling a board that legitimately waits on an external pump (use `"complete"`).
 - You're building a session-scoped board that lives across many drains (use `"wait"` + `shouldExit`).
+
+## Waiting on a person: `onReview`
+
+A worker can park a task with `awaitReview` when it needs a human to look at something. By default the board treats that task the way it treats any other unfinished work: the drain stays open, and so does the request that started it, waiting for someone to move the task out of `awaiting_review`.
+
+That is the right default when the answer arrives in seconds. It is the wrong one when it arrives tomorrow, and the way it goes wrong is worth knowing. Nothing shortens the wait, but it does end: each worker stops after `maxIterations` (default `10000`), which on the default poll interval is most of a day. The task is left parked, and the board reports `terminationReason: "blocked-by-failures"` — on a board where nothing failed. The same item's `counts.awaiting_review` says a task is parked, so the payload contradicts itself, and a monitor watching the reason sees a failure every time somebody is asked a question.
+
+`onReview: "exit"` says the board should not wait:
+
+```ts
+const board = taskBoard({
+  name: "reviews",
+  collection: reviewLedger,   // defineTaskCollection — required for this mode
+  workers,
+  onReview: "exit",
+});
+```
+
+With that set, a task in `awaiting_review` is not counted as work the drain waits on. Once parked tasks are the only thing left, the drain finishes, the request that started it returns, and the completion item says `terminationReason: "parked-for-review"`. The task itself is untouched: parked, on the board, and durable.
+
+### Picking it back up
+
+A resume moves the task back to `pending`. `tasks` is the board's task list, which any block reaches through the board's capability. See [Commanding the board with its capability](#commanding-the-board-with-its-capability):
+
+```ts
+const tasks = await ctx.cap.reviews.tasks();
+await tasks.resumeFromReview("draft-42", "approved, ship it");
+```
+
+The second argument is feedback for whoever picks the task up. It reaches the worker as `input.feedback` on the next attempt. A task that has never been reviewed has no `feedback`, so a worker can branch on it.
+
+**A resume re-queues the task. It does not start anything.** Nothing is watching the board on your behalf, so a resumed task sits in `pending` until something drains the board again: a later turn from the user, a scheduled action, or a background job. If you resume a task and nothing happens, this is why. Run the drain:
+
+```ts
+// Later, in a new request:
+await runAction({
+  flow,
+  actionName: "drain-reviews",
+  input: {},
+  userId,
+  sessionId, // the session whose task list holds the parked task
+  stores,
+  runtimeConfig: {},
+});
+```
+
+**The later drain has to reach the same task list**, and that is the part this
+call does not make obvious. A collection declared `scope: "session"` lives in one
+session, so the drain has to name it. Leave `sessionId` out and nothing
+complains: the runtime starts a fresh session, the drain resolves an empty task
+list, reports that it drained, and never sees the parked task. A `user`- or
+`org`-scoped collection spans every session that principal has, so it does not
+need this.
+
+`flow` and `stores` are the ones you already built; [Running a flow by
+hand](/docs/advanced/manual-flow-execution) covers assembling them outside the
+HTTP transport, which is where a scheduled or background drain runs.
+
+Whichever drain gets there first claims the task and runs it to completion, exactly as if it had been queued that moment.
+
+### What the mode requires
+
+Every requirement below is checked when you build the board. Get one wrong and `taskBoard()` throws, naming the problem and the change to make:
+
+- **A durable collection** — one built with `defineTaskCollection`. The parked task has to outlive the drain that let go of it, or there is nothing for a later drain to come back to.
+- **The default `onIdle`.** `"complete"` and `"wait"` are both refused. If you need a wait-mode board to stop on parked tasks, put that rule in `shouldExit`.
+- **An explicit `id` on every entry in `initialTasks`.** This mode makes a second drain the normal case, and each drain re-runs the seed step. Seed entries with ids are matched against what is already on the board and skipped; an entry without one is added again every time, so the board grows a duplicate task on every pass.
+
+### What it does not change
+
+The task lifecycle is the same under either setting. A parked task sits in `awaiting_review`, `awaitReview` and `resumeFromReview` move it in and out, and `onReview` decides only whether the drain counts it while it sits there.
+
+The setting is board-wide. A board cannot park one task as "release the request" and another as "hold it".
 
 ## Cascade-skipping dep-blocked tasks
 
@@ -431,7 +512,11 @@ const board = taskBoard({
 
 For a custom or externally-managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`.
 
-If you write that ref by hand, `complete` and `fail` have to accept and honor the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't: a two-argument `complete(id, output)` satisfies the interface structurally, and JavaScript drops the extra argument without a word. The board passes those options on every write-back, so a result landing on a task someone else already settled is declined rather than thrown. A ref that ignores them throws instead, and that error fails the whole drain rather than the one task, leaving every task the board hadn't claimed yet unrun. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
+If you write that ref by hand, `complete` and `fail` should accept and honor the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't: a two-argument `complete(id, output)` satisfies the interface structurally, and JavaScript drops the extra argument without a word. The board passes those options on every write-back, so a result landing on a task someone else already settled is declined rather than thrown.
+
+A ref that ignores them throws instead, and the board contains that throw: it drops the late result and keeps draining. One misbehaving write-back costs one task, not every task the board hadn't claimed yet.
+
+Containment is not a substitute for the guards, though, and it is worth being clear about why. It fires on a throw. A stale write the state machine happens to permit — a worker reporting success on a task another worker has since taken over — doesn't throw. It commits, and it overwrites the result the current holder is about to record. Nothing outside your store can catch that, because the decision belongs inside the write. So honor the guards for the sake of your data; the board's survival is already covered. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
 
 Write provenance is the one part you can skip. Maintaining it correctly means reproducing a bounded receipt log and its eviction flag, and the mutator that does that is internal to the two built-in backings — not a documented extension point today. A hand-written ref that leaves `revision`, `writeLog`, and `writeLogTruncated` unset is not wrong for it: callers asking [whether their write landed](task-substrate.md#telling-whether-your-write-landed) get `undefined`, which means "cannot tell", not "your write did not land".
 
@@ -457,6 +542,7 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 ## See also
 
+- [Configuration](./configuration) — every `taskBoard` field, including defaults.
 - [Task substrate](./task-substrate.md) — the `Task` record, the status state machine, and the collection API underneath.
 - [GoalSeekLoop](./goal-seek-loop) — a config-driven, judge-gated loop over the board's drain.
 - [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection; see [The durability boundary](../advanced/block-state#the-durability-boundary) for what survives a resume.

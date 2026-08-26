@@ -306,6 +306,66 @@ describe("computeSetupScore", () => {
     });
     expect(ss.evidenceBasis).toBe("thin");
   });
+
+  /**
+   * The momentum trap (FIX-1063), in BOTH of its shapes.
+   *
+   * The old gate was `if (technicals)` — a merely PRESENT payload counted as a
+   * momentum reading. That is wrong in two different ways, and the second is
+   * the one a naive fix leaves live because the payload looks populated.
+   *
+   * The stakes are not just the sub-score: `componentCount` feeds
+   * `evidenceBasis`, and the FIX-781 evidence gate caps NEW EXPOSURE on thin
+   * evidence. A phantom momentum component can carry a run over the
+   * `componentCount >= 3` line to "sufficient" — authorizing the desk to add
+   * to a position on a momentum reading that was never taken.
+   */
+  const scoreWithTechnicals = (technicals: {
+    trend?: string | null;
+    sma50?: number | null;
+    sma200?: number | null;
+  } | null) =>
+    computeSetupScore({
+      expectedReturn: computeExpectedReturn(nvdaStatements),
+      marginOfSafety: 0.1,
+      // Exactly two OTHER components, so componentCount lands on 2 or 3 purely
+      // on whether momentum counted — the boundary the evidence gate reads.
+      quantComposites: null,
+      factorRanks: { compositeFactorPercentile: 60 },
+      technicals,
+      valuation: null,
+    });
+
+  it("a fully unavailable indicator payload contributes no momentum component", () => {
+    // Every field null. The old code scored 50 − 10 = 40 here: two null moving
+    // averages fell into the `else` branch and were read as a DEATH CROSS on a
+    // name with no price data at all.
+    const ss = scoreWithTechnicals({ trend: null, sma50: null, sma200: null });
+    expect(ss.momentum).toBeNull();
+    expect(ss.evidenceBasis).toBe("thin");
+  });
+
+  it("a 50-199 bar history contributes no momentum component (the partial case)", () => {
+    // `sma50` is a real measured number; `sma200` and `trend` are not
+    // computable yet. No directional branch fires, so the old code recorded a
+    // neutral 50 and still incremented componentCount — a fabricated neutral
+    // momentum reading that also bought the run an evidence component.
+    const ss = scoreWithTechnicals({ trend: null, sma50: 128.4, sma200: null });
+    expect(ss.momentum).toBeNull();
+    expect(ss.evidenceBasis).toBe("thin");
+  });
+
+  it("still scores momentum when there IS a reading — either half suffices", () => {
+    // The narrowing is along the "was it measured" axis only. A measured trend
+    // with no 200-day average still counts, and so does a complete cross with
+    // no trend label — otherwise this would be a behaviour cut, not a fix.
+    expect(scoreWithTechnicals({ trend: "up", sma50: 128.4, sma200: null }).momentum)
+      .not.toBeNull();
+    expect(scoreWithTechnicals({ trend: null, sma50: 128.4, sma200: 120.1 }).momentum)
+      .not.toBeNull();
+    expect(scoreWithTechnicals({ trend: "up", sma50: 128.4, sma200: 120.1 }).evidenceBasis)
+      .toBe("sufficient");
+  });
 });
 
 // ── Rating Engine ───────────────────────────────────────────────────
@@ -532,15 +592,15 @@ describe("FIX-778 regression — low-payout growth envelope", () => {
       technicals: nvdaIndicators,
       valuation: computeValuation(nvdaStatements as any),
     });
-    expect(spine.fairValue.available).toBe(false);
-    expect(spine.fairValue.marginOfSafety).toBeNull();
-    expect(spine.envelope.absoluteRating).toBe("Buy");
-    expect(spine.envelope.ceiling).toBe("Buy");
+    expect(spine.fairValue!.available).toBe(false);
+    expect(spine.fairValue!.marginOfSafety).toBeNull();
+    expect(spine.envelope!.absoluteRating).toBe("Buy");
+    expect(spine.envelope!.ceiling).toBe("Buy");
     // The old defect printed "margin of safety -13902% < 25%" here — an absurd
     // 4+-digit figure from the collapsed justified-PE. The legitimate FIX-807
     // DCF consensus (−165%) is a real 3-digit read and must be allowed; only the
     // absurd magnitude is the defect signal.
-    expect(spine.envelope.rationale).not.toMatch(/-\d{4,}%/);
+    expect(spine.envelope!.rationale).not.toMatch(/-\d{4,}%/);
   });
 });
 
@@ -619,8 +679,8 @@ describe("buildValuationSpine", () => {
       valuation: computeValuation(nvdaStatements as any),
     });
     expect(spine.ticker).toBe("NVDA");
-    expect(spine.envelope.implied).toBeDefined();
-    expect(spine.expectedReturn.basis).toBe("fcf");
+    expect(spine.envelope!.implied).toBeDefined();
+    expect(spine.expectedReturn!.basis).toBe("fcf");
     expect(spine.valuationMethod).toBe("ev-multiples");
   });
 
@@ -670,7 +730,7 @@ describe("formatRatingEnvelope", () => {
       technicals: nvdaIndicators,
       valuation: computeValuation(nvdaStatements as any),
     });
-    const text = formatRatingEnvelope(spine.envelope);
+    const text = formatRatingEnvelope(spine.envelope!);
     expect(text).toContain("<ratingEnvelope>");
     expect(text).toContain("Absolute rating");
     expect(text).toContain("Relative rating");
@@ -699,43 +759,43 @@ describe("FIX-807 — DCF + triangulation wired into the spine", () => {
   const jpm = buildSpine("JPM", jpmStatements, "Financial Services", jpmQuantComposites, jpmFactorRanks, jpmIndicators);
 
   it("NVDA: DCF fills the value axis justified-PE abstained on, single-method triangulation", () => {
-    expect(nvda.fairValue.available).toBe(false); // justified-PE still abstains
-    expect(nvda.dcf.available).toBe(true);
-    expect(nvda.dcf.marginOfSafety).toBeCloseTo(-1.654, 3);
-    expect(nvda.triangulation.divergence).toBe("single-method");
-    expect(nvda.triangulation.methodsUsed).toEqual(["dcf"]);
+    expect(nvda.fairValue!.available).toBe(false); // justified-PE still abstains
+    expect(nvda.dcf!.available).toBe(true);
+    expect(nvda.dcf!.marginOfSafety).toBeCloseTo(-1.654, 3);
+    expect(nvda.triangulation!.divergence).toBe("single-method");
+    expect(nvda.triangulation!.methodsUsed).toEqual(["dcf"]);
   });
 
   it("NVDA: absolute Buy gate stays anchored to justified-PE — Buy preserved (FIX-778)", () => {
     // The conservative DCF reads NVDA −165% on intrinsic value, but the hard gate
     // is return-anchored, so NVDA stays Buy-capable (Open Q1: soft-only).
-    expect(nvda.envelope.absoluteRating).toBe("Buy");
-    expect(nvda.envelope.implied).toBe("Buy");
+    expect(nvda.envelope!.absoluteRating).toBe("Buy");
+    expect(nvda.envelope!.implied).toBe("Buy");
     // The consensus number is surfaced in the rationale (not in the gate).
-    expect(nvda.envelope.rationale).toContain("consensus margin of safety");
+    expect(nvda.envelope!.rationale).toContain("consensus margin of safety");
   });
 
   it("AAPL: value sub-score reflects the more-bearish triangulated MoS, implied rating unchanged", () => {
-    expect(aapl.triangulation.divergence).toBe("divergent");
+    expect(aapl.triangulation!.divergence).toBe("divergent");
     // Value sub-score routed through the consensus (−62%) vs justified-PE alone (−22.6%):
     const peOnly = computeSetupScore({
-      expectedReturn: aapl.expectedReturn,
-      marginOfSafety: aapl.fairValue.marginOfSafety, // justified-PE only
+      expectedReturn: aapl.expectedReturn!,
+      marginOfSafety: aapl.fairValue!.marginOfSafety, // justified-PE only
       quantComposites: aaplQuantComposites,
       factorRanks: aaplFactorRanks,
       technicals: aaplIndicators,
       valuation: computeValuation(aaplStatements as any),
     });
-    expect(aapl.setupScore.value!).toBeLessThan(peOnly.value!); // triangulation is strictly more bearish
+    expect(aapl.setupScore!.value!).toBeLessThan(peOnly.value!); // triangulation is strictly more bearish
     // …but the shift is bounded and does NOT flip the implied rating.
-    expect(aapl.envelope.implied).toBe("Hold");
+    expect(aapl.envelope!.implied).toBe("Hold");
   });
 
   it("JPM (financial): DCF abstains with a structured reason, triangulation unavailable", () => {
-    expect(jpm.dcf.available).toBe(false);
-    expect(jpm.dcf.unavailableReason).toBe("financial-sector");
-    expect(jpm.triangulation.divergence).toBe("unavailable");
-    expect(jpm.triangulation.marginOfSafety).toBeNull();
+    expect(jpm.dcf!.available).toBe(false);
+    expect(jpm.dcf!.unavailableReason).toBe("financial-sector");
+    expect(jpm.triangulation!.divergence).toBe("unavailable");
+    expect(jpm.triangulation!.marginOfSafety).toBeNull();
   });
 
   it("formatter surfaces the DCF + triangulation + reverse-DCF lines to the prompt", () => {
@@ -765,7 +825,7 @@ describe("FIX-807 — DCF + triangulation wired into the spine", () => {
     // The flag is a defensive guard the production constants (15% stage-1 cap,
     // 6.5% rate floor, conservative linear fade) keep below 0.85 — so assert the
     // RENDERING against a spine whose DCF leg carries the flag.
-    const flagged = { ...nvda, dcf: { ...nvda.dcf, reliability: "tv-dominated" as const } };
+    const flagged = { ...nvda, dcf: { ...nvda.dcf!, reliability: "tv-dominated" as const } };
     expect(formatValuationSpine(flagged)).toContain("⚠ terminal-value-dominated");
   });
 });
@@ -780,7 +840,7 @@ describe("FIX-807 — resource backward compatibility", () => {
     expect(parsed.triangulation).toBeNull();
     // The rest of the spine still round-trips.
     expect(parsed.ticker).toBe("NVDA");
-    expect(parsed.envelope.absoluteRating).toBe("Buy");
+    expect(parsed.envelope!.absoluteRating).toBe("Buy");
   });
 
   it("a current spine round-trips through the schema with the new blocks populated", () => {
@@ -803,5 +863,72 @@ describe("FIX-807 — resource backward compatibility", () => {
     // The rest of the spine still renders.
     expect(text).toContain("Expected return:");
     expect(text).toContain("Setup score:");
+  });
+});
+
+describe("formatValuationSpine — withheld, divergent-stale with an unknown printed period (Codex review, FIX-1113)", () => {
+  // `observedNewest` is the SET-WIDE FRONTIER (review round 4 — the max
+  // across every offending statement, not the first match), so a sentence
+  // that reads it must not imply it belongs to one specific statement. On a
+  // MIXED shape — one statement returns no period having observed nothing,
+  // a DIFFERENT statement settled for less than what it saw — the frontier
+  // is the second statement's own sighting. The old wording ("did not
+  // return a period at all, even though the desk's own resolution observed
+  // one (seen) while resolving it") attributed that sighting to the FIRST
+  // statement, which is false: that statement observed nothing at all.
+  const withheldSpine = (periodDisclosure: {
+    reason: "settled-for-less-than-seen";
+    income: string | null;
+    balance: string | null;
+    cashflow: string | null;
+    observedNewest: string | null;
+  }) => ({
+    ticker: "TEST",
+    asOf: "2026-05-06",
+    expectedReturn: null,
+    fairValue: null,
+    dcf: null,
+    triangulation: null,
+    setupScore: null,
+    envelope: null,
+    valuationMethod: "ev-multiples" as const,
+    evidenceBasis: "thin" as const,
+    periodDisclosure,
+  });
+
+  it("THE BUG: does not attribute the frontier sighting to the statement that returned no period", () => {
+    // income returned nothing and observed nothing (a genuinely absent
+    // statement); balance is the one that actually settled for less than it
+    // saw. The frontier (observedNewest) is balance's own sighting.
+    const text = formatValuationSpine(
+      withheldSpine({
+        reason: "settled-for-less-than-seen",
+        income: null,
+        balance: "2025-06-30",
+        cashflow: "2025-06-30",
+        observedNewest: "2025-09-27", // belongs to balance, not income
+      }),
+    );
+    expect(text).toContain("did not return a period at all");
+    // The old coupling phrase claimed the null-returning statement itself
+    // observed the frontier "while resolving it" — removed, not reworded.
+    expect(text).not.toContain("while resolving it");
+    // The two facts still both appear, stated independently.
+    expect(text).toContain("2025-09-27");
+    expect(text).toContain("Separately");
+  });
+
+  it("control: uniform-stale wording is untouched (already impersonal — 'the desk saw', not 'it saw')", () => {
+    const text = formatValuationSpine(
+      withheldSpine({
+        reason: "settled-for-less-than-seen",
+        income: "2024-09-28",
+        balance: "2024-09-28",
+        cashflow: "2024-09-28",
+        observedNewest: "2025-09-27",
+      }),
+    );
+    expect(text).toContain("agree on a fiscal period");
+    expect(text).toContain("2025-09-27");
   });
 });

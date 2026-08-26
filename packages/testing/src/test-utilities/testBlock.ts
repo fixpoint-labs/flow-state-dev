@@ -3,6 +3,7 @@ import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
 import type { OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
+import { asRecord } from "../internal/json-helpers";
 import { createTestContext } from "../runtime/createTestContext";
 import type {
   BlockInput,
@@ -10,14 +11,6 @@ import type {
   TestBlockOptions,
   TestBlockResult
 } from "./types";
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, unknown>;
-}
 
 
 function inferSequencerStateFromChanges(stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>): Record<string, unknown> {
@@ -124,6 +117,10 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
           : inferSequencerStateFromChanges(runtime.stateChanges)
     },
     stateChanges: [...runtime.stateChanges, ...itemStateChanges],
+    // The registry the run actually wrote through, not a copy — a test asserting
+    // on written rows reads them here instead of hand-rolling a context and
+    // dispatching `execute` directly, which would skip `executeBlock` above.
+    resources: (runtime.ctx.resources ?? {}) as Record<string, unknown>,
     meta: {
       durationMs: Date.now() - startedAt,
       blockName: block.name,

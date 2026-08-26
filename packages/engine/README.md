@@ -335,13 +335,14 @@ const router = createFlowApiRouter({ registry });
 
 // Testing: in-memory (fast, no cleanup)
 const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+```
 
-// Runtime safety guards (optional)
-const guardedRouter = createFlowApiRouter({
+Pass `maxResponseBufferSize` to cap how large a live SSE response the router buffers:
+
+```ts
+const router = createFlowApiRouter({
   registry,
   maxResponseBufferSize: 10_000,
-  maxConcurrentStreams: 1_000,
-  staleStreamTtlMs: 300_000,
 });
 ```
 
@@ -509,7 +510,8 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 - `createFilesystemStores` — Persistent stores for local development (not for production load; use SQLite or Postgres in production)
 - `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
 - `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
-- Scope store factories and CAS/state ops
+- `createInMemoryOrgStore` / `createFilesystemOrgStore` — Org scope store adapters, implementing `OrgStore`. The filesystem adapter keeps org records under `{rootDir}/projects/`.
+- Session, user, and request scope store factories, and CAS/state ops
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request
@@ -835,14 +837,17 @@ The DevTool's Resources panel uses this surface. `fsdev dev` enables it automati
 
 See [Debug vs client state](https://flow-state.dev/docs/devtool/debug-vs-client-state) for the full mental model.
 
-## State mutations: two-tier model
+## State mutations
 
-Every state mutator (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) routes through one of two paths inside the runtime, picked by whether the scope has a `persist` callback:
+Every state mutator (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) picks a persist posture and a concurrency driver:
 
 - **In-memory scopes** — target state, sequencer state, and any scope without a `persist` bridge. Mutations serialize through a per-`StateContainer` FIFO queue (`withScopeLock`). Concurrent mutators run one at a time in submission order; there is no version check, no retry, and no `ConcurrentModificationError`. Reads are still synchronous against `container.read()`.
-- **External-store scopes** — `request`, `session`, `user`, `org` scopes bridged through `persist` (filesystem, sqlite, postgres). Mutations use the optimistic `runWithCAS` retry loop because a remote authority can advance the version underneath the local cache. `ConcurrentModificationError` still surfaces on retry exhaustion at this boundary.
+- **Request scope** — persists each write (so `/continue` can restore it) and serializes through `withScopeLock`, with the same version-checked `runWithCAS` underneath. Serialized writers each read a current version, so a wide same-run fan-out never conflicts and never spends a retry; the retry budget stays for the one writer the queue cannot order, a recovery continuation running against the same request record. `ConcurrentModificationError` surfaces on retry exhaustion.
+- **Session, user, and org scopes** — bridged through `persist` (filesystem, sqlite, postgres) and the optimistic `runWithCAS` retry loop, because a remote authority can advance the version underneath the local cache. `ConcurrentModificationError` still surfaces on retry exhaustion at this boundary.
 
 `flow.request.mutationTimeoutMs` (default `30_000`, set to `Infinity` to disable) bounds the worst-case wait for any in-memory mutation. When a mutator's queue wait + execution exceeds the budget, the call rejects with `ScopeMutationTimeoutError` instead of hanging the request indefinitely.
+
+The budget covers in-memory scopes only. It is not applied to any scope that persists — request scope included. The timeout rejects the caller without cancelling the mutation, so a write that outran it would still reach the store afterwards, landing on a record the runtime may already have finished with. A bounded error is worth having where the only casualty is the caller; it is not worth having where the casualty is the stored record.
 
 ```ts
 defineFlow({
@@ -899,6 +904,6 @@ pnpm --filter @flow-state-dev/engine test
 
 ## Architecture reference
 
-- [Server Setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
+- [Engine setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
 - [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — Retry, rescue, side chains
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

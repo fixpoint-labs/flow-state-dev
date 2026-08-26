@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { applyOffsetLimit } from "../shared";
+import { applyOffsetLimit, assertMaxDepthTwo } from "../shared";
 import { sortByUpdatedAtDesc } from "../../utils/sort";
 import type { ExpectedVersion, SetResult } from "../types";
 import {
@@ -236,7 +236,7 @@ export type FilesystemRecordStore<
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<T>>;
-  /** Append to a depth-1 `state` array; missing/non-array → replace (CAS). */
+  /** Append to a depth-1 `state` array; missing → []; present non-array → throw. */
   pushToArray<T extends TRecord>(
     id: string,
     path: string[],
@@ -495,6 +495,11 @@ export function createFilesystemRecordStore<
         expectedVersion,
         (current) => {
           const existing = current.state?.[path[0]];
+          if (existing !== undefined && !Array.isArray(existing)) {
+            throw new Error(
+              `pushToArray target at path[${path[0]}] is not an array (got ${typeof existing})`
+            );
+          }
           const baseline = Array.isArray(existing) ? existing : [];
           return {
             ...current,
@@ -555,12 +560,4 @@ export function createFilesystemRecordStore<
   };
 
   return record;
-}
-
-function assertMaxDepthTwo(path: string[], verb: string): void {
-  if (path.length < 1 || path.length > 2) {
-    throw new Error(
-      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
-    );
-  }
 }

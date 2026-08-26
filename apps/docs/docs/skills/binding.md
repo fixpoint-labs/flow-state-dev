@@ -133,6 +133,7 @@ The reader is a per-step context function. The generator re-runs it before every
 
 ## Where to next
 
+- **[Configuration](../orchestration/configuration)** — every `createSkillsLibrary` and `skills.with` field.
 - **[Activation paths](./activation)** — up-front matching vs mid-flow, the tier behavior, and the matcher.
 - **[Authoring skills](./authoring)** — the `SKILL.md` frontmatter and body format.
 - **[Block state](/docs/advanced/block-state)** — the request-scoped, block-namespaced state the default binding uses.

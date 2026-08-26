@@ -6,7 +6,6 @@
 
 import {
   generator,
-  type GeneratorTool,
   type MaterializeAgentFn,
   type MaterializeAgentOptions,
   type Agent,
@@ -17,29 +16,10 @@ import { z } from "zod";
 import {
   workerInputSchema,
   buildUserMessage,
+  resolveCatalogTools,
   taskTools as taskToolsCapability,
 } from "@flow-state-dev/orchestration";
 import { resolveAgentPersona } from "./resolve-persona";
-
-function resolveCatalogTools(
-  agentName: string,
-  toolKeys: readonly string[] | undefined,
-  catalog: Record<string, GeneratorTool>,
-): GeneratorTool[] {
-  if (!toolKeys || toolKeys.length === 0) return [];
-  const out: GeneratorTool[] = [];
-  for (const key of toolKeys) {
-    // BP-031: `key` is model-supplied — own-property guard (FIX-965, same as FIX-943).
-    if (!Object.hasOwn(catalog, key)) {
-      console.warn(
-        `[workforce] agent "${agentName}": unknown tool "${key}" — skipped`,
-      );
-      continue;
-    }
-    out.push(catalog[key]!);
-  }
-  return out;
-}
 
 function resolveCapabilities(
   agentName: string,
@@ -86,7 +66,12 @@ function buildAgentGenerator(
   const toolKeys = opts.overrides?.tools ?? agent.allowedTools;
   const usesTaskTools = toolKeys?.includes("taskTools") ?? false;
   const catalogKeys = toolKeys?.filter((t) => t !== "taskTools");
-  const tools = resolveCatalogTools(agent.name, catalogKeys, opts.catalog);
+  const tools = resolveCatalogTools(
+    agent.name,
+    catalogKeys,
+    opts.catalog,
+    "workforce",
+  );
 
   const resolvedUses = resolveCapabilities(
     agent.name,

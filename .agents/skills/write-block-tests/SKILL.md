@@ -320,11 +320,12 @@ function makeMockExecutor(responses: string[]) {
 
 #### G. Resource Tests
 
-For blocks that declare `sessionResources`:
+For blocks that declare `resources`:
 
 ```typescript
 it("accesses session resources", async () => {
   const resource = defineResource({
+    scope: "session",
     stateSchema: z.object({ items: z.array(z.string()).default([]) }),
     writable: true
   });
@@ -333,10 +334,10 @@ it("accesses session resources", async () => {
     name: "resource-user",
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { myResource: resource },
+    resources: { myResource: resource },
     execute: async (input, ctx) => {
-      const current = ctx.session.resources.myResource.state;
-      await ctx.session.resources.myResource.patchState({
+      const current = ctx.resources.myResource.state;
+      await ctx.resources.myResource.patchState({
         items: [...current.items, "new"]
       });
       return { added: true };

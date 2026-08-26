@@ -391,6 +391,35 @@ function clampingSpine(): ValuationSpineState {
     },
     valuationMethod: "equity-multiples",
     evidenceBasis: "thin",
+    periodDisclosure: null,
+  };
+}
+
+/** A valuation spine that WITHHELD its cross-statement outputs (FIX-1113)
+ *  because the three financial statements could not be placed at one fiscal
+ *  period. `envelope: null` is the mechanism: `commitPortfolioManagerMemo`
+ *  never clamps without it, so the PM's raw rating publishes unbounded and
+ *  the commit must mark `ratingUnanchored` on the reports-index row. */
+function withheldSpine(): ValuationSpineState {
+  return {
+    ticker: "NVDA",
+    asOf: "2026-05-06",
+    expectedReturn: null,
+    fairValue: null,
+    dcf: null,
+    triangulation: null,
+    setupScore: null,
+    envelope: null,
+    valuationMethod: "equity-multiples",
+    evidenceBasis: "thin",
+    periodDisclosure: {
+      reason: "periods-disagree",
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    },
   };
 }
 
@@ -556,6 +585,86 @@ describe("PM commit writes snapshot + reports-index metadata", () => {
     const md = (session?.metadata ?? {}) as Record<string, unknown>;
     const decision = md.decision as { finalRating?: string } | undefined;
     expect(decision?.finalRating).toBe("Hold");
+  });
+
+  // FIX-1113 — the reports-index row is one of the three visible surfaces a
+  // reader can meet an unanchored rating on (the others are the Summary
+  // decision header and the PM's detailed memo). Before this fix
+  // `ratingUnanchored` reached the memo and the decision snapshot but never
+  // the reports-index metadata the Past Reports LIST reads.
+  it("marks the reports-index row ratingUnanchored when the spine withheld its envelope", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "commit-spine-withheld";
+    await preSeedSessionWithTuple(stores, sessionId);
+
+    const result = await testFlow({
+      flow: commitFlow,
+      action: "commitPm",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: portfolioDecision("Buy"),
+      seed: {
+        session: {
+          state: baseSessionState,
+          resources: {
+            "memos/p5/portfolio-manager": seededPmMemo(),
+            "memos/p3/trader": seededTraderMemo(),
+            valuationSpine: withheldSpine(),
+          },
+        },
+      },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe("completed");
+
+    // The PM's own rating is unbounded (no envelope to clamp against) and
+    // publishes as emitted — "Buy" — but the reports-index row must say so.
+    const session = await stores.session.get(sessionId);
+    const md = (session?.metadata ?? {}) as Record<string, unknown>;
+    const decision = md.decision as
+      | {
+          finalRating?: string;
+          ratingUnanchored?: boolean;
+          periodDisclosure?: { reason?: string } | null;
+        }
+      | undefined;
+    expect(decision?.finalRating).toBe("Buy");
+    expect(decision?.ratingUnanchored).toBe(true);
+    // The reports-index row must carry WHY, not just THAT — a list row that
+    // only has the boolean cannot render a reason-specific tooltip and must
+    // not guess at one.
+    expect(decision?.periodDisclosure?.reason).toBe("periods-disagree");
+  });
+
+  it("records ratingUnanchored: false on an ordinary anchored run (no legacy-metadata surprise)", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "commit-spine-anchored";
+    await preSeedSessionWithTuple(stores, sessionId);
+
+    const result = await testFlow({
+      flow: commitFlow,
+      action: "commitPm",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: portfolioDecision("Overweight"),
+      seed: {
+        session: {
+          state: baseSessionState,
+          resources: {
+            "memos/p5/portfolio-manager": seededPmMemo(),
+            "memos/p3/trader": seededTraderMemo(),
+          },
+        },
+      },
+    });
+    expect(result.error).toBeUndefined();
+
+    const session = await stores.session.get(sessionId);
+    const md = (session?.metadata ?? {}) as Record<string, unknown>;
+    const decision = md.decision as { ratingUnanchored?: boolean } | undefined;
+    expect(decision?.ratingUnanchored).toBe(false);
   });
 });
 

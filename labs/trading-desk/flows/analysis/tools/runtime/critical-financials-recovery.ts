@@ -79,7 +79,9 @@ export interface RecoveryCtx {
   resolveModel: (modelId: string, blockName?: string) => ExtractModel;
   resources: {
     financialsData: {
-      patchState(updates: { recoveryAudit: RecoveryAudit }): Promise<void>;
+      // `loadStatementWithRecovery` writes its per-statement period observation
+      // through the same ref (FIX-1113), hence the widened update shape.
+      patchState(updates: Record<string, unknown>): Promise<void>;
     };
   };
   /** The request abort signal. Threaded into the SEC discovery/prospectus

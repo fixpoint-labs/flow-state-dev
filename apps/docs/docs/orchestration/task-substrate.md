@@ -179,6 +179,18 @@ await tasks.complete(task.id, output, {
 
 `ifAllowed` asks whether the task can take this write right now. It declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else recorded, and when the state machine has no transition from the task's current status to the one the call targets.
 
+`refuseWhenParked` is a third guard, for the caller reporting the result of its own run. It declines with reason `parked` when the task is sitting in `awaiting_review`, and it is worth having because nothing else refuses that write: `awaiting_review` is a status your attempt still owns, and both `awaiting_review → completed` and `awaiting_review → errored` are legal moves. So a worker that parked the task it was holding and then finished would settle it a moment later and erase the review — and if the task carries `maxAttempts`, a failure would re-queue it for another worker while the person is still being asked. Pass it on `complete` and `fail` when the work you are reporting is your own:
+
+```ts
+await tasks.complete(task.id, output, {
+  ifAllowed: true,
+  claim,
+  refuseWhenParked: true, // a review I asked for outranks my result
+});
+```
+
+It is opt-in because settling a parked task is otherwise legitimate: a review that comes back rejected is recorded as `fail`, and a coordinator ending one calls `complete` or `cancel` with no claim at all. Neither passes this, and neither changes.
+
 A legal status transition is necessary but not sufficient. A verb that owns a single edge runs only from that edge's source status, so a call can be refused where the [status diagram](#the-status-state-machine) shows a line. The paths back to `pending` each have their own verb:
 
 | Returning a task to `pending` from | Call |
@@ -213,9 +225,11 @@ Every lifecycle and field-mutation method resolves to the same shape, so one che
 
 ```ts
 type TaskWriteDeclineReason =
+  | "immutable-assignee"
   | "terminal"
   | "not-my-task"
   | "disallowed"
+  | "parked"
   | "lost-claim";
 
 type TaskWriteOutcome =
@@ -226,12 +240,14 @@ type TaskWriteOutcome =
 
 `recorded` means a field changed and a `task-change` item went out. `unchanged` means the task already held the state you asked for, so nothing was written and no item was emitted. `declined` means the write was refused: `status` is the status the task was in when it was refused, and `reason` says which condition stopped it.
 
+- `immutable-assignee` — the board runs work in a background workstream, where a task's assignee is fixed once it is admitted. Reassigning it is refused whatever status the task is in.
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
+- `parked` — you passed `refuseWhenParked` and the task is sitting in `awaiting_review`. This is not a lost claim: nobody took the task from you, and a person is deciding what happens to it. The two ask for opposite responses, which is why they are separate reasons — `lost-claim` means re-claim the task and redo the work, `parked` means do neither, because the work is done.
 - `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it, or its lease ran out while it was still `in_progress`.
 
-When more than one condition applies, `reason` reports the first that holds in that order: `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
+When more than one condition applies, `reason` reports the first that holds in that order: `immutable-assignee`, then `terminal`, then `not-my-task`, then `disallowed`, then `parked`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
 
 A decline is a value, not an error. Nothing throws, nothing is written, and discarding the return value compiles:
 
@@ -264,6 +280,8 @@ A `TaskCollectionRef` of your own has to do three things:
 3. Refuse any ticketed write whose lease has already run out, or a worker that lost its task can still write to it.
 
 A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than restating the rule.
+
+It also has to take the trailing options argument on every write and evaluate the guards inside its own atomic section. A two-argument `complete(id, output)` satisfies the interface structurally and JavaScript drops the third argument in silence, so nothing tells you it isn't happening. A board on such a ref still finishes: where an unguarded write throws and a guarded one would have declined, the board drops that result and drains the rest of its tasks. Survival is all that buys you. The guards are what keep a late worker from overwriting a settlement somebody recorded deliberately, and a stale write the state machine happens to permit never throws at all, so nothing outside your store sees it.
 
 Your ref also exposes `now()`, the clock it stamps and judges leases against. `() => Date.now()` is the right answer unless you have a reason for another. Compare leases against `collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
 

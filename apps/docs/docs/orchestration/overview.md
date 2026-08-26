@@ -53,8 +53,8 @@ A drain runs inside the request that mounted it, so every worker's task finishes
 
 ## Start here
 
-- **[Task board](./task-board)** — the primitive, its config, and its termination modes.
-- **[GoalSeekLoop](./goal-seek-loop)** — a config-driven loop over the board that keeps re-draining until a judge says done. `planAndExecute` and `parallelTasks` are both built on it.
+- **[Task board](./task-board)** — the primitive, its termination modes, and when to reach for it.
+- **[Configuration](./configuration)** — field catalog for `taskBoard`, `goalSeekLoop`, `defineAgent`, and `skills.with`.
 - **[Build a research team](/guides/building-a-research-team)** — a guide that goes from an empty flow to a running multi-agent board, both the code-first and agent-first way.
 - **[Task substrate](./task-substrate)** — the `Task` and `TaskCollection` contracts underneath it all.
 

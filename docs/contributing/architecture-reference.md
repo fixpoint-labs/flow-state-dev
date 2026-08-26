@@ -58,7 +58,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Scopes and State
 
-- Hierarchy: `request → session → user → project` → [State and Scopes](../architecture/state-and-scopes.md)
+- Hierarchy: `request → session → user → org` → [State and Scopes](../architecture/state-and-scopes.md)
 - State ops (atomic): `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
 - Session metadata: `ctx.session.setMetadata({ title?, description?, tags?, metadata? })` — first-class fields, emits `session.metadata.changed` SSE event
 - CAS + bounded retries for concurrency safety
@@ -120,10 +120,10 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 | `contracts` | Zero-dep shared layer (item taxonomy + leaf types) | Imports no workspace package; declares no dependencies (guarded). `core` re-exports it |
 | `core` | Isomorphic builders/types/items | No platform-specific code; value-imports `contracts` |
 | `engine` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
-| `client` | Transport + session/request APIs | No dependency on server or react |
+| `client` | Transport + session/request APIs | No dependency on engine or react |
 | `react` | Hooks/renderers only | Wraps client; no transport logic |
-| `testing` | Deterministic harnesses + mocks | Uses core + server |
-| `cli` | Run/inspect/scaffold flows | Uses core + server + testing |
+| `testing` | Deterministic harnesses + mocks | Uses core + engine |
+| `cli` | Run/inspect/scaffold flows | Uses core + engine + testing |
 | `apps/devtool` | Inspector app | Public APIs only (client + react) |
 
 → [Architecture Overview](../architecture/overview.md)
@@ -150,13 +150,14 @@ Purposes and default models live in the catalog — don't restate them here.
 ## Resources and Client Data
 
 - Concrete resources are persisted, attached to scopes
-- `clientData` entries are derived views — every entry is client-visible (no `client: true/false` toggle)
-- Each `clientData` compute function receives only its own scope's state and resources (single-scope context)
+- Scope state is server-private by default; each scope's `client` block declares what crosses — `expose` (verbatim state fields) and `derived` (computed projections). Both land at `snapshot.clientData.<scope>.<name>`
+- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
+- Each `derived` compute function receives only its own scope's state and resources (single-scope context)
 - Generator context uses `contextFn()` for typed scope access, not raw state dumps
 - `defineResource()` for portable resource declarations
-- Blocks declare resources via `sessionResources`, `userResources`, `projectResources` (using `defineResource()` values)
+- Blocks and flows declare resources via a flat `resources` map (using `defineResource()` values); each resource's `scope` (`"session"` | `"user"` | `"org"`) routes storage. Access at runtime is `ctx.resources.<key>`
 - Sequencers collect `declaredResources` from all child blocks automatically
-- `defineFlow` merges block-declared resources into flow scope configs; flow-level wins over block-level
+- `defineFlow` merges block-declared resources into the flow's `resources` map; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
 - Collection snapshots emit `count` always and `prefetched` when `prefetchWindow > 0`; per-item `clientData` is gated by `client.state.read`. Lazy reads via `GET /sessions/:id/resources/:ref` and a flow-static manifest at `GET /sessions/:id/manifest` (FIX-427).
 

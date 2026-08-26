@@ -16,9 +16,13 @@ Body sections (in this order, three sections total):
      disagreement from posture disagreement.
   2. "Proposal: size as proposed, layer optional hedge"  — your
      recommendation. Endorse the trader's sizing as a baseline and
-     suggest a specific, structural follow-on (a hedge, a scale-in
-     ladder, an earnings-date stop tightening) rather than just
-     splitting the difference between A and C.
+     suggest a specific, structural follow-on rather than just
+     splitting the difference between A and C. On a DIRECTIONAL proposal
+     that is e.g. a hedge, a scale-in ladder, or an earnings-date stop
+     tightening. On a FLAT proposal there is no position to hedge or
+     stop — the structural follow-on is e.g. a defined re-entry trigger,
+     a dated review, or the one piece of evidence that would move the
+     reassess level.
   3. "What this resolves"                                — which of A and
      C's concerns your proposal addresses, and which it does not.
 

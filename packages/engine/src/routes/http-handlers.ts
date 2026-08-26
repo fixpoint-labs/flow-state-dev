@@ -5,13 +5,13 @@
  * domain-specific modules: session-routes, action-routes, stream-routes,
  * and state-routes.
  */
+import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
 import { detectInterruptedRequests } from "../execution/request-recovery";
-import { normalizeRouteError } from "../utils/normalize-route-error";
 import {
   parseFlowRoute,
   type ParsedFlowRoute
@@ -136,8 +136,6 @@ export type CreateFlowRouteHandlersOptions = {
    * buffering). See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
-  maxConcurrentStreams?: number;
-  staleStreamTtlMs?: number;
   onError?: (error: Error, context: { method: string; path: string }) => void;
   /**
    * Host-level fallback resolver. Per-flow `authentication.resolvePrincipal`
@@ -225,13 +223,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     debugAllowAnonymousLocal: options.debugAllowAnonymousLocal,
     debugCountLimit: options.debugCountLimit
   });
-  // FIX-569: the legacy active-streams registry (and its `maxConcurrentStreams`
-  // / `staleStreamTtlMs` knobs) is gone. Live tail is owned by the store
-  // interface; long-running flows are no longer at risk of registry eviction.
-  // The options remain on `CreateFlowRouteHandlersOptions` for source-compat
-  // but have no effect.
-  void options.maxConcurrentStreams;
-  void options.staleStreamTtlMs;
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
 
   // Resolve the host-level SSE heartbeat default once, then thread the
@@ -670,7 +661,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       return jsonResponse(404, { error: "Route not found" });
     } catch (error) {
-      const normalized = normalizeRouteError(error);
+      const normalized = toError(error, "Unknown route error");
       options.onError?.(normalized, {
         method: request.method.toUpperCase(),
         path: bootstrapPath

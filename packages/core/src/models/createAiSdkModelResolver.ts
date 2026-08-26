@@ -15,6 +15,7 @@ import type {
 } from "../types";
 import { makeSchemaStrict } from "./makeSchemaStrict";
 import { applyCaching } from "./caching";
+import { asRecord } from "./as-record";
 import { sanitizeToolName, ensureUniqueAlias } from "../helpers/tool-name";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
@@ -22,14 +23,6 @@ export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 // ---------------------------------------------------------------------------
 // Internal helpers — normalise AI SDK result shapes into framework types
 // ---------------------------------------------------------------------------
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-
-  return value as Record<string, unknown>;
-}
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -256,20 +249,17 @@ function normalizeFinishReason(value: unknown): string | undefined {
   return typeof record.unified === "string" ? record.unified : undefined;
 }
 
+/**
+ * Reads the structured output off an AI SDK result. `output` is a lazy
+ * getter that throws when the call produced no structured output, so the
+ * read stays guarded — callers treat "no structured output" as undefined.
+ */
 function normalizeStructuredOutput(value: Record<string, unknown>): unknown {
-  const keys = ["experimental_output", "experimentalOutput", "output"] as const;
-  for (const key of keys) {
-    try {
-      const candidate = (value as Record<string, unknown>)[key];
-      if (candidate !== undefined) {
-        return candidate;
-      }
-    } catch {
-      // Some AI SDK result getters throw when no structured output exists.
-    }
+  try {
+    return value.output;
+  } catch {
+    return undefined;
   }
-
-  return undefined;
 }
 
 function asProviderMetadata(
@@ -553,10 +543,7 @@ function normalizeSteps(
       toolCalls: normalizeToolCalls(record.toolCalls, toolNameMap),
       toolResults: normalizeToolResults(record.toolResults, toolNameMap),
       finishReason: normalizeFinishReason(record.finishReason),
-      usage: normalizeUsage(
-        record.usage,
-        record.providerMetadata ?? record.experimental_providerMetadata
-      )
+      usage: normalizeUsage(record.usage, record.providerMetadata)
     });
   }
 

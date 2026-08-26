@@ -376,6 +376,11 @@ export function createSQLiteRecordStore<
       }
       return runDelta(id, path, expectedVersion, updatedAt, "pushToArray", (_current, record, p) => {
         const existing = record.state[p[0]];
+        if (existing !== undefined && !Array.isArray(existing)) {
+          throw new Error(
+            `pushToArray target at path[${p[0]}] is not an array (got ${typeof existing})`
+          );
+        }
         record.state[p[0]] = Array.isArray(existing) ? [...existing, ...values] : [...values];
       });
     },

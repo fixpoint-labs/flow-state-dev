@@ -22,9 +22,16 @@
  *   external pump to mark deps complete.
  *
  *   `awaiting_review` keeps the loop alive in both modes above
- *   (FIX-443 §10.1) — the worker's preceding `.waitForCondition`
- *   blocks until an external actor transitions the task back to
- *   `pending` (or to a terminal state).
+ *   (FIX-443 §10.1) while `onReview` is on its default `"hold"`: the
+ *   worker's preceding `.waitForCondition` blocks until an external
+ *   actor transitions the task back to `pending` (or to a terminal
+ *   state).
+ *
+ *   `onReview: "exit"` (FIX-1234) is the second knob, and it changes
+ *   that answer for the default `onIdle` only — the mode is refused at
+ *   construction on `complete` and on `wait`. There, parked rows are
+ *   excused from the counts, so the drain returns and leaves the row
+ *   parked for a later drain to claim once it is resumed.
  *
  * - `wait`: never exit on idle. Defers to the user-supplied
  *   `shouldExit` predicate, evaluated once per iteration. Without
@@ -44,7 +51,7 @@ import {
   taskBoardWorkerStateSchema,
   type CheckBoardOutput,
 } from "../schemas";
-import { boardQuiescence } from "../quiescence";
+import { classifyBoard } from "../quiescence";
 import type { RunsElsewhere } from "../shared";
 
 export interface CheckBoardOptions {
@@ -54,11 +61,17 @@ export interface CheckBoardOptions {
   shouldExit?: (collection: TaskCollectionRef) => boolean;
   /**
    * Rows a Workstream is running (FIX-982). Forwarded verbatim to
-   * `boardQuiescence`, which is the only thing that reads it — this block
+   * `classifyBoard`, which is the only thing that reads it — this block
    * keeps mapping the verdict straight onto its `reason` and holds no second
    * opinion about what counts as in-flight.
    */
   runsElsewhere?: RunsElsewhere;
+  /**
+   * The board declared `onReview: "exit"` (FIX-1234). Forwarded verbatim, on
+   * the same terms as `runsElsewhere`: the classifier owns what it means, and
+   * this block only carries the answer out.
+   */
+  excuseParked?: boolean;
 }
 
 export function createCheckBoard(options: CheckBoardOptions) {
@@ -68,6 +81,7 @@ export function createCheckBoard(options: CheckBoardOptions) {
     onIdle,
     shouldExit,
     runsElsewhere,
+    excuseParked,
   } = options;
 
   return handler({
@@ -85,13 +99,25 @@ export function createCheckBoard(options: CheckBoardOptions) {
       // One classifier, shared with the worker's idle-wait predicate
       // (FIX-990). Each terminal verdict is this block's exit `reason`
       // verbatim, so the mapping carries no second opinion of its own.
-      const verdict = boardQuiescence(collection, {
+      const { verdict, excusedParked } = classifyBoard(collection, {
         onIdle,
         ...(shouldExit !== undefined ? { shouldExit } : {}),
         ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
+        ...(excuseParked !== undefined ? { excuseParked } : {}),
       });
       if (verdict !== "continue") {
-        return { shouldContinue: false, reason: verdict };
+        // FIX-1234: the exit reason is recorded HERE, where the drain decides
+        // to stop, and travels to the completion item on this output. The
+        // completion item runs after the pool and re-reads the collection, so a
+        // resume landing in that window would show it a `pending` row and it
+        // would report a successful review exit as a failure. The key is
+        // omitted entirely when nothing was excused, so a board on the default
+        // `onReview` emits exactly the output it always did.
+        return {
+          shouldContinue: false,
+          reason: verdict,
+          ...(excusedParked ? { excusedParked: true } : {}),
+        };
       }
       return { shouldContinue: true, reason: claimed ? "claimed" : "idle" };
     },

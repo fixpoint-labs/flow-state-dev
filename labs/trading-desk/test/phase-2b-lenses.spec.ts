@@ -167,7 +167,7 @@ function phase3to5Mocks() {
       script: [{
         structuredOutput: {
           label: "Trade proposal", headline: "Long.", rating: "long" as const,
-          metrics: { direction: "long", size: "1.4%", stop: "$132", target: "$185", conviction: "0.62" },
+          metrics: { direction: "long", size: "1.4%", conviction: "0.62" },
           body: [
             { h: "Reading", p: "x.", items: null },
             { h: "Proposal", p: "x.", items: null },
@@ -175,6 +175,7 @@ function phase3to5Mocks() {
             { h: "Exit", p: "x.", items: null },
           ],
           direction: "long" as const, sizePct: 1.4, stopPrice: 132, targetPrice: 185,
+          reassessBelowPrice: null, invalidateAbovePrice: null,
           holdingPeriod: "months" as const, invalidationCriteria: ["x"], dependsOn: ["AI cap-ex cycle length"],
           citations: null,
         },

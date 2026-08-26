@@ -35,9 +35,12 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Scope: Flows — live vs fixture data.
 - Rule:
   - When a flow supports `dataSource: "fixture"` and `"live"`, the live path must never silently substitute fixture data when a provider fails or lacks a tool.
-  - On total failure, return an empty schema-valid payload tagged with a `source: "unavailable"` sentinel — the analyst LLM sees explicit zeros/empty arrays and treats the field as missing signal, not bearish/bullish.
+  - On total failure, return an empty schema-valid payload tagged with a `source: "unavailable"` sentinel — the analyst LLM sees `null` for every unobserved figure (empty arrays for collections) and treats the field as missing signal, not bearish/bullish.
+  - **A figure the code did not observe is `null`, never `0`.** The rule is *unobserved → null*, not *falsy → null*: a genuinely measured zero — a real 0% operating margin, a company with no debt — stays `0`. This applies to a PARTIAL answer too, not just a total failure: a read that answers for six of nine series nulls the three it missed, even though its `source` tag still names the live provider.
+  - **The same rule governs status and provenance fields, not only numbers.** A verdict field must only ever describe work that actually happened. A status that reads `"verified"` when all that happened is that a code path executed turns a provider outage into a completed check that found nothing — the same fabrication one layer up.
+  - Switching a signal off *loudly* is a design choice; switching it off *silently* is a defect. A marker that travels with the payload to its reader is honest degradation; a value indistinguishable from a real one is not.
   - Surface the provenance in the UI (transcript pill / status indicator) so coverage gaps are visible.
-- Why: Fixture data served as live silently corrupts the model's reasoning — "no data" is a recoverable signal, "wrong data labeled right" is not.
+- Why: Fixture data served as live silently corrupts the model's reasoning — "no data" is a recoverable signal, "wrong data labeled right" is not. A fabricated zero is the same failure wearing a decimal point: it enters the arithmetic as a measurement, so a market cap nobody fetched makes every valuation multiple read cheap on a name we know nothing about.
 
 ### BP-021: Tool blocks declare `cacheable` deliberately
 

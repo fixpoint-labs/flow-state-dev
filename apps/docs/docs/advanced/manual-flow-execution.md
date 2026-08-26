@@ -63,7 +63,7 @@ const result = await runAction({
   sessionId: "nightly-digest",
   source: "manual", // recorded on the request; defaults to "http"
   stores,
-  runtimeConfig: {}, // modelResolver, settings, logger, … (optional)
+  runtimeConfig: {}, // required; modelResolver, settings, logger, … all optional within it
   onItem: (item) => console.log(item.type, item.id)
 });
 

@@ -14,15 +14,15 @@ If you're new to the framework, read this first. It explains what the pieces are
 Everything executable in flow-state-dev is a block. There are exactly four kinds:
 
 - **Handler** — Pure logic. Validates input, transforms data, mutates state. No LLM. Think of it as a function that can read and write scope state. Handlers are silent by default: they don't emit messages or components unless you call `ctx.emit.message()` or similar.
-- **Generator** — LLM calls. The framework handles prompt assembly, tool loops, streaming, and output parsing. This is where AI happens. Generators automatically emit messages, reasoning traces, and tool call items as the model produces them.
+- **Generator** — LLM calls. The framework handles prompt assembly, tool loops, streaming, and output parsing. Set `itemVisibility` when those streamed messages should reach the client or the next-turn history.
 - **Sequencer** — Composes blocks into pipelines. Chains steps, runs them in parallel, adds error recovery. The composition primitive. A sequencer is itself a block, so you can nest sequencers inside other sequencers or pass them to routers.
 - **Router** — Selects one block at runtime based on input or state. Mode switching, intent routing, conditional flows. The router's `execute` function returns the block to run. The framework then executes that block with the router's input.
 
-All blocks share the same contract: input in, output out. Any block composes with any other. No special cases. This uniformity is deliberate: you don't need different composition rules for "AI blocks" vs "logic blocks."
+All blocks share the same contract: input in, output out. Any block composes with any other. You do not need different composition rules for model calls versus ordinary functions.
 
 ## 2. Sequencers compose blocks
 
-A sequencer replaces the agent-vs-workflow split you see in other frameworks. You don't choose between "agentic" and "deterministic." You chain blocks. Each step's output becomes the next step's input.
+A sequencer chains blocks. Each step's output becomes the next step's input.
 
 ```ts
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
@@ -32,7 +32,7 @@ const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
 
 The order matters. In this example, the generator produces the response. The counter runs after, incrementing session state. Because it has no transformation, we attach it with `.tap()` so the assistant message flows through as the pipeline's result. Data flows in one direction.
 
-Sequencers also support conditional steps (`stepIf`), parallelism (`parallel`), loops (`doUntil`, `doWhile`), and error recovery (`rescue`). You can branch to different blocks based on conditions. The key idea: composition is the primary abstraction, not "agent" vs "workflow."
+Sequencers also support conditional steps (`stepIf`), parallelism (`parallel`), loops (`doUntil`, `doWhile`), and error recovery (`rescue`). You can branch to different blocks based on conditions.
 
 ## 3. Flows tie it together
 
@@ -40,7 +40,7 @@ A flow is the deployable unit. It bundles blocks, state, and client visibility i
 
 - **`kind`** — The identifier. Becomes the URL path (`/api/flows/hello-chat/...`). Clients use this to target the right flow.
 - **`actions`** — Entry points. Each action maps to a root block. When a client calls `sendAction("chat", { message: "Hi" })`, the framework looks up the "chat" action, validates the input, and runs its block.
-- **State schemas** — For request, session, user, and project scopes. Blocks declare partial schemas; the flow merges them into full scope contracts.
+- **State schemas** — For request, session, user, and org scopes. Blocks declare partial schemas; the flow merges them into full scope contracts.
 - **Resources** — Named, typed data stores attached to scopes. Blocks can declare resource dependencies; the flow wires them up.
 - **`client` block** — The privacy gateway. Each scope's `client` block declares what state crosses to the browser via `expose` (verbatim field names) and `derived` (computed projections). State without a `client` entry stays on the server.
 
@@ -80,13 +80,13 @@ Four nested levels, each with typed atomic operations:
 | Request | Single action run        |
 | Session | Across requests (a conversation) |
 | User    | Across sessions for a user |
-| Project | Shared across users      |
+| Org     | Shared across users in an org |
 
-Request scope exists only for the duration of one action. Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Project scope is shared across users: team config, shared resources.
+Request scope exists only for the duration of one action. Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Org scope is shared across users: team config, shared resources.
 
 Blocks declare partial schemas: they only specify the fields they read or write. A counter block doesn't need to know about preferences. The framework merges these declarations at the flow level. This keeps blocks portable and self-documenting.
 
-Operations like `incState` and `pushState` are CAS-guarded. Concurrent requests won't lose updates. Each write is atomic. The framework handles version conflicts and retries internally.
+Concurrent `incState` and `pushState` calls do not lose updates. Each write is atomic.
 
 ## 6. Items are the data model
 
@@ -94,7 +94,7 @@ Every output in the framework is a typed item: messages, reasoning, tool calls, 
 
 Items are the durable record of what happened. They have a lifecycle: `in_progress` → `completed` (or `failed`, `incomplete`). Content streams within items via delta events. A message item might receive many `content.delta` events before it's finalized.
 
-Item types determine audience routing. Some types go to the client UI (messages, components, status). Some go only to the LLM (context, tool results). Some are internal (block_output for devtools). You don't configure this per block; the framework routes by type.
+Item types determine audience routing. Some types go to the client UI (messages, components, status). Some go only to the LLM (context, tool results). Some are internal (block_output for DevTool). A generator's `itemVisibility` then decides whether its auto-emitted messages reach the client, the next-turn history, both, or neither.
 
 ## 7. Streaming happens automatically
 
@@ -113,7 +113,7 @@ You describe the runtime with `createFlowState`, passing your flows and where st
 - **FlowProvider** — Sets `flowKind` and `userId` context. Wraps your app or a section of it. Registers custom renderers for item types (messages, reasoning, components). Nested providers merge renderers; child keys override parent.
 - **useFlow** — Session lifecycle. Create sessions, switch between them, track the active one. With `autoCreateSession: true`, creates a session on mount if none exists. Returns `sessions`, `activeSessionId`, `createSession()`, `selectSession()`.
 - **useSession** — Connects to the SSE stream for a session. Delivers items in real time. Provides `sendAction` and `isStreaming`. Configure `items.visibility` to filter which items appear (e.g. "ui" for client-visible only). Re-renders when items change, streaming status changes, or the session detail updates.
-- **useClientData** — Reads the latest state snapshot. Only sees what the flow's `clientData` entries expose. Specify which keys to subscribe to: `{ session: ["messageCount", "mode"] }`. Refetches after `request.completed` and when state invalidation events arrive.
+- **useClientData** — Reads the latest state snapshot. Only sees what each scope's `client.expose` / `client.derived` entries expose. Specify which keys to subscribe to: `{ session: ["messageCount", "mode"] }`. Refetches after `request.completed` and when state invalidation events arrive.
 
 The hooks subscribe to the right streams and re-render when data changes. You don't manage connections manually. The client package handles HTTP, SSE, reconnection, and cursor-based resume.
 
@@ -121,7 +121,7 @@ The hooks subscribe to the right streams and re-render when data changes. You do
 
 The testing harness uses mocked generators. No real LLM calls. No network. Same contracts as production: validation, session resolution, block execution, state persistence, lifecycle hooks.
 
-You run flows and blocks in an isolated runtime with in-memory stores. Seed state with `seed.session`, `seed.user`, or `seed.project` to simulate specific scenarios. Tests stay fast and reproducible.
+You run flows and blocks in an isolated runtime with in-memory stores. Seed state with `seed.session`, `seed.user`, or `seed.org` to simulate specific scenarios. Tests stay fast and reproducible.
 
 `testFlow` returns the full result: items, session state, request metadata. Assert on what matters: item types and content, final state values, error messages. For blocks in isolation, use `testBlock` from the same package. It runs a single block with optional scope seeding and mocked dependencies. Both use the same execution engine as production; only the stores and model resolution differ.
 
@@ -133,6 +133,7 @@ You run flows and blocks in an isolated runtime with in-memory stores. Seed stat
 - [Flows and Actions](/docs/fundamentals/flows) — Flow definition, actions, lifecycle
 - [State and Scopes](/docs/fundamentals/state-and-scopes) — Scope hierarchy, partial schemas, CAS
 - [Streaming](/docs/streaming/overview) — Items, content model, resume semantics
-- [Server Setup](/docs/server/setup) — Registry, router, model resolution
+- [Engine setup](/docs/server/setup) — Registry, router, model resolution
+- [Flow options](/docs/configuration/flow), [Runtime options](/docs/configuration/runtime) — field catalogs next to those concepts. [Configuration map](/docs/configuration/overview) is the index.
 - [React Integration](/docs/client/react) — Hooks, renderers, clientData
 - [Testing](/docs/testing/overview) — Test harness, mocks, seeding

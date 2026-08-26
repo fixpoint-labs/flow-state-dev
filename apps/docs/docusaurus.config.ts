@@ -126,6 +126,7 @@ const config: Config = {
           title: "Docs",
           items: [
             { label: "Introduction", to: "/docs/intro" },
+            { label: "Installation", to: "/docs/getting-started/installation" },
             { label: "Quick Start", to: "/docs/getting-started/quick-start" },
             { label: "Fundamentals", to: "/docs/fundamentals/overview" },
           ],
@@ -134,10 +135,15 @@ const config: Config = {
           title: "Learn",
           items: [
             {
+              label: "Anatomy of a Flow",
+              to: "/guides/anatomy-of-a-flow",
+            },
+            {
               label: "Building a Chat App",
               to: "/guides/building-a-chat-app",
             },
-            { label: "Server Setup", to: "/docs/server/setup" },
+            { label: "Engine setup", to: "/docs/server/setup" },
+            { label: "Dev tools", to: "/docs/cli/overview" },
           ],
         },
         {

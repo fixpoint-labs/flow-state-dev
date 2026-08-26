@@ -90,15 +90,13 @@ server-only on every one.
 **How far claim safety reaches.** Both backings are compare-and-swap with retry. The
 state backings mutate through `atomicState`; the resource backing mutates through
 `ResourceRef.updateState`, which chains writes per key within one execution context
-and then persists at the version that context read — so a claim written against a
+and then persists at the version that context read. A claim written against a
 stale read is refused and re-applied against the state that won, rather than
-overwriting it. Two workers contending for one task can no longer both land a write.
+overwriting it. Two workers contending for one task cannot both land a write.
 
-Two limits worth stating. On the filesystem store the comparison is held per key
-within a single process, so a durable collection fanned across replicas wants SQLite
-or Postgres underneath it. And this is storage-level safety: it stops a claim write
-from being silently lost, which is the part that used to be missing, but the claim
-protocol built on top is its own concern.
+The filesystem store is safe inside one process. A durable collection shared
+across replicas needs SQLite or Postgres. A stale write is refused, not
+overwritten.
 
 **Freshness is scoped to one request.** Every ref resolved over the same collection
 inside a request sees the same tasks, so a task added through any of them is
@@ -127,15 +125,33 @@ the check and the write. A declined write is skipped and never throws; the call
 reports it on the returned `TaskWriteOutcome`. Omit the argument and the methods
 throw on an illegal transition.
 
+A `TaskCollectionRef` you write yourself is a supported extension point, and a ref
+that drops the options argument — a two-parameter `complete(id, output)` satisfies
+the interface structurally — no longer takes a board down with an advisory
+write-back conflict. The substrate's
+own write-backs contain a throw they can attribute to a decline a conforming store
+would have made before committing: the late result is dropped and the drain
+continues. The guarantee is board survival, not equivalence. It fires on a throw,
+so a stale write the state machine happens to permit still commits and still
+clobbers, and no error a store never raises can be contained. Everything else —
+a store outage on a task the worker still holds, a write that committed and then
+failed on the way out — propagates unchanged. The qualifier is load-bearing: when
+the task was *already* settled or displaced before the call, the seam cannot tell
+an outage apart from the decline a conforming store would have made, and contains
+it. Don't build an alerting path on an error the substrate may drop.
+
 Every mutation method except `claim` and `reclaim` resolves to a
 `TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
 emitted), `unchanged` (the task already held the state asked for, nothing written),
 or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task` /
-`disallowed` / `lost-claim`, resolved in that precedence order) and the `status`
-the task was in when the write was refused. `immutable-assignee` means the board
-runs detached work, where the assignee is fixed at admission; `not-my-task` means
-the ticket names a different task, a different collection, or an id since reused;
-`lost-claim` means it names the right task but a claim that has moved on. A
+`disallowed` / `parked` / `lost-claim`, resolved in that precedence order) and the
+`status` the task was in when the write was refused. `immutable-assignee` means the
+board runs detached work, where the assignee is fixed at admission; `not-my-task`
+means the ticket names a different task, a different collection, or an id since
+reused; `parked` means the caller passed `refuseWhenParked` and the task is in
+`awaiting_review` — nobody took it, so unlike `lost-claim` the answer is not to
+re-claim and redo; `lost-claim` means it names the right task but a claim that has
+moved on. A
 decline never throws, and discarding the return value is supported. `cancel` is
 advisory whether or not options are passed: cancelling a settled task declines
 with reason `terminal`.
@@ -266,7 +282,12 @@ single uniform worker or a
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
-`onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
+`onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`),
+`onReview` (`"hold"` default | `"exit"` — whether a task parked with `awaitReview`
+keeps the drain open, or is excused from the in-flight counts so the drain returns
+and leaves it parked for a later one to claim once it is resumed; `"exit"` needs a
+`defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`,
+and is refused at construction otherwise), `initialTasks`,
 `onError`, `maxIterations` (per-worker claim-loop cap, default 10000), the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
 refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.
@@ -552,6 +573,26 @@ caller's history.
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `active` / `allowed` / `activeState` surface and
 [Delegation](https://flow-state.dev/docs/skills/delegation) for the `agents:` shape.
+
+### resolveCatalogTools
+
+```ts
+import { resolveCatalogTools } from "@flow-state-dev/orchestration";
+```
+
+`resolveCatalogTools(agentKey, toolKeys, catalog, logPrefix)` resolves an
+agent's `tools:` list against a tool catalog and returns `GeneratorTool[]`.
+`agentKey` is the agent name quoted in the warning text; `toolKeys` is the
+agent's declared `tools:` list (`readonly string[] | undefined`); `catalog` is
+the available tools keyed by name (`Record<string, GeneratorTool>`); and
+`logPrefix` is the bracket tag the warning carries (`"skills"`,
+`"workforce"`). An empty or absent `toolKeys` returns `[]`. An unknown key
+warns (`[skills] agent "x": unknown tool "y" — skipped`) and is dropped rather
+than throwing, so one bad key in a user-authored `SKILL.md` does not take down
+the agent; only own properties count, so a key like `constructor` misses. It
+lives on the package root because the skills worker-materializer and
+`@flow-state-dev/workforce` both need this lookup and the miss path has to stay
+identical between them.
 
 ## Documentation
 

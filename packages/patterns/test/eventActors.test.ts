@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
-import { testBlock } from "@flow-state-dev/testing";
+import { handler, sequencer } from "@flow-state-dev/core";
+import { testBlock, testItems } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   createEventActorsWorkspace,
@@ -164,6 +164,85 @@ describe("eventActors", () => {
 
     expect(result.error).toBeNull();
     expect(seen).toEqual([{ type: "request", topic: "query", body: "hi" }]);
+
+    // Same BP-014 contract as the response-auditor capture-context test, and
+    // asserted the same way. All four of the pattern's state-only steps return
+    // nothing, so each trace carries an empty inline output; a partial echo
+    // would leave a defined value here and fail. `-append` is the one of the
+    // four that flow authors can import and compose themselves, so its echo is
+    // the one a remixed pipeline would have seen. The length check is what
+    // keeps a suffix that stops matching from turning its case vacuously green.
+    for (const suffix of ["-append", "-stash", "-spawn-initial", "-reemit"]) {
+      const traces = testItems(result.items)
+        .blockOutputs()
+        .filter((trace) => trace.blockName.endsWith(suffix));
+      expect(traces.length).toBeGreaterThan(0);
+      for (const trace of traces) {
+        expect(trace.output).toBeDefined();
+        expect(trace.output!.kind).toBe("inline");
+        expect((trace.output as { kind: "inline"; value: unknown }).value).toBeUndefined();
+      }
+    }
+  });
+
+  it("appends nothing and produces no output when the entry is a duplicate", async () => {
+    const rec = handler({
+      name: "rec",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: () => ({ ok: true }),
+    });
+
+    const a = actor({ name: "a", watch: ["request:**"], block: rec });
+    const { emit, workspace } = buildEventActors({ name: "test-dup", actors: [a] });
+
+    // Reads the workspace back once the pattern has run. `testBlock` surfaces
+    // items and scope state, not resource state, so the count the duplicate
+    // skip is supposed to hold flat is only observable from inside a block
+    // that shares the run's resource registry.
+    const readEntryCount = handler({
+      name: "read-entry-count",
+      inputSchema: z.any(),
+      outputSchema: z.object({ entryCount: z.number() }),
+      resources: { eventedActors: workspace },
+      execute: (_input, ctx) => ({
+        entryCount: (
+          (ctx.resources as Record<string, any>).eventedActors.state
+            .entries as unknown[]
+        ).length,
+      }),
+    });
+
+    const seed = { type: "request", topic: "query", body: "hi" };
+    const result = await testBlock(
+      sequencer({ name: "test-dup-probe", inputSchema: z.any() })
+        .step(emit)
+        .step(readEntryCount),
+      {
+        input: seed,
+        // Pre-seeded with the same (type, topic), so `-append` takes its
+        // duplicate-skip early return. That path also returns nothing, so it
+        // needs its own assertion — the success path above cannot cover it.
+        session: { resources: { eventedActors: { entries: [seed] } } },
+      }
+    );
+
+    expect(result.error).toBeNull();
+
+    // The skip is a skip, not just a silent trace: the workspace still holds
+    // the single seeded entry. Without this, an `-append` that wrote the
+    // duplicate and returned nothing would still pass the assertions below.
+    expect(result.output).toEqual({ entryCount: 1 });
+
+    const traces = testItems(result.items)
+      .blockOutputs()
+      .filter((trace) => trace.blockName.endsWith("-append"));
+    expect(traces.length).toBeGreaterThan(0);
+    for (const trace of traces) {
+      expect(trace.output).toBeDefined();
+      expect(trace.output!.kind).toBe("inline");
+      expect((trace.output as { kind: "inline"; value: unknown }).value).toBeUndefined();
+    }
   });
 
   it("only dispatches actors whose watch matches", async () => {
