@@ -64,9 +64,9 @@ import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 // shortcut.
 const WORKSTREAM_SOURCE = "workstream";
 
-const USER_ID = "u_settle_lab139";
-const RESOURCE_KEY = "settle-lab139-ledger";
-const BOARD_NAME = "settle-lab139-board";
+const USER_ID = "u_review_park_suspend";
+const RESOURCE_KEY = "review-park-suspend-ledger";
+const BOARD_NAME = "review-park-suspend-board";
 
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
@@ -109,7 +109,7 @@ function buildScenario() {
   // `taskBoard()` returns) so both the worker AND the probe action can resolve
   // the same resource without a construction-order cycle.
   const ledgerAccessCap = defineCapability({
-    name: "settle-lab139-ledger-access",
+    name: "review-park-suspend-ledger-access",
     resources: { [RESOURCE_KEY]: ledger },
   });
 
@@ -202,13 +202,13 @@ function buildScenario() {
   });
 
   const flow = defineFlow({
-    kind: "settle-lab139-flow",
+    kind: "review-park-suspend-flow",
     actions: {
       start: { block: board.drain },
       probe: { block: probe },
       bump: { block: bump },
     },
-  })({ id: "settle-lab139-flow" });
+  })({ id: "review-park-suspend-flow" });
 
   return { flow };
 }
