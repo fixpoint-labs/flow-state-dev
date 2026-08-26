@@ -136,6 +136,11 @@ commits land on another is the kind of agreement where every layer is wrong toge
   and the refusal costs a valid task an attempt — `attempts` is incremented inside the claim write,
   so it is spent before any guard can run. Give the second phase its own `epic` value. The seed
   error says so, and a test pins both halves.
+
+  **And give it its own host.** A second conductor registers cleanly — the two carry distinct
+  flow ids — but the engine resolves a flow by kind alone, so the second instance is never the
+  one a request reaches. Dispatching by instance id is framework work; until it exists, one
+  conductor per host.
 - **No third outcome.** "Made progress but is not finished" would have to settle the row either
   done (dishonest) or waiting (a status nothing here has a use for). A run that asks a person for a
   decision, and the inbox it waits in, are LAB-139's.

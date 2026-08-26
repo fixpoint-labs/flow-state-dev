@@ -28,8 +28,20 @@
  * the coordinate key — so two epic boards under one user sharing a collection
  * id and differing only in `boardId` would operate on the same rows, and one
  * epic's drain could claim or settle another's. Both ids are needed and neither
- * substitutes for the other: `boardId` partitions routing, the collection
- * identity partitions storage.
+ * substitutes for the other: `boardId` names the board within a flow instance,
+ * the collection identity partitions storage.
+ *
+ * **A named limit: a second instance registers, but nothing can address it.**
+ * Two conductors carry two distinct flow ids, which is what keeps the registry
+ * from rejecting the second registration — but no dispatch path resolves BY
+ * that id. `FlowRegistry.get(kind, id?)` is called with one argument
+ * everywhere in the engine (the HTTP action, session, stream, resume, state and
+ * resource routes; the webhook route; the in-process dispatcher; the transport
+ * host), and a kind-only lookup answers with the first instance registered
+ * under that kind. So a second epic's conductor receives nothing: requests for
+ * it land on the first, where the tenant gate or the phase guard refuses them.
+ * Two epics need two hosts until dispatch carries an instance id, and making it
+ * carry one is framework work rather than lab work.
  *
  * ## Why `status` is an action and not a route
  *
