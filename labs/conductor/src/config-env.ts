@@ -229,8 +229,12 @@ export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
  * this guard was added to move forward. What the guard claims is that the root
  * can HOLD checkouts, so it has to create one and take it away again.
  *
- * The probe is removed in a `finally`: a guard that litters the checkout root
- * with its own leftovers on every construction is worse than the gap it closes.
+ * The probe is removed on the next line, with nothing between the two — a guard
+ * that litters the checkout root with its own leftovers on every construction is
+ * worse than the gap it closes. **If a check is ever added between the create
+ * and the remove**, the removal has to move into a `finally` first: today there
+ * is no window for a throw to leak the probe, and that is a property of there
+ * being no statement there rather than of the removal being protected.
  */
 export function assertCheckoutRootUsable(root: string, variable = "workspace.root"): void {
   try {
