@@ -60,6 +60,55 @@ const COMPLETING_PR_STATES = new Set(["OPEN", "MERGED"]);
  * run did not open. Rejected rather than trusted, for the same reason a missing
  * `state` is: an answer we cannot attribute must not complete a task.
  */
+/**
+ * How many rows the completion probe asks `gh` for.
+ *
+ * **Explicit because the default is 30 and this is an existential question.**
+ * The listing is `--state all`, and CLOSED is the state that accumulates
+ * without bound — every abandoned attempt on this branch leaves one. So the row
+ * that counts can be pushed off a defaulted page by rows that never counted,
+ * and the probe then reports a finished run as unfinished: re-pended, retried,
+ * budget spent, and nothing says why.
+ */
+const PR_LIST_LIMIT = 100;
+
+/**
+ * The probe's answer, or a refusal when the page cannot support one.
+ *
+ * **A saturated page is not evidence of absence.** If the listing came back
+ * full and nothing in it counts, the answer is unknown rather than no — the
+ * matching pull request may simply be on the next page. Both outcomes re-pend
+ * the row, so the difference is not the row's fate but whether anybody can tell
+ * what happened: a silent `false` is indistinguishable from a run that really
+ * did not finish, which is the substitution this lab exists to remove.
+ *
+ * A match short-circuits, so a full page that DOES contain a completing pull
+ * request answers normally — saturation only matters when the answer would
+ * otherwise be no.
+ */
+export function readCompletion(
+  stdout: string,
+  inRepo: string,
+  limit: number = PR_LIST_LIMIT,
+): boolean {
+  if (hasCompletingPr(stdout, inRepo)) return true;
+  let rows: unknown;
+  try {
+    rows = JSON.parse(stdout || "[]");
+  } catch {
+    return false;
+  }
+  if (Array.isArray(rows) && rows.length >= limit) {
+    throw new Error(
+      `[conductor] the completion check listed ${rows.length} pull requests for this ` +
+        `branch — its whole page — and none of them counts. That is not evidence there ` +
+        `is none: a completing pull request may be on a page this listing never asked ` +
+        `for. Refusing rather than reporting a finished run as unfinished.`,
+    );
+  }
+  return false;
+}
+
 export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
   let rows: unknown;
   try {
@@ -222,6 +271,8 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       "all",
       "--json",
       "number,state,headRepository,headRepositoryOwner",
+      "--limit",
+      String(PR_LIST_LIMIT),
       "-R",
       repo.selector,
     ],
@@ -235,7 +286,7 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       maxBuffer: 4 * 1024 * 1024,
     },
   );
-  return hasCompletingPr(stdout, repo.ownerRepo);
+  return readCompletion(stdout, repo.ownerRepo);
 }
 
 /**

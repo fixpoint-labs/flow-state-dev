@@ -2,7 +2,7 @@
  * The completion check's state rule, and the seed's identity.
  */
 import { describe, expect, it } from "vitest";
-import { hasCompletingPr, repoSlugFromRemote } from "../src/implement";
+import { hasCompletingPr, readCompletion, repoSlugFromRemote } from "../src/implement";
 import {
   branchFor,
   checkoutPathFor,
@@ -137,6 +137,42 @@ describe("the done-condition — which pull requests count", () => {
     // `/`, so these stay refused exactly as they were.
     expect(repoSlugFromRemote("/srv/git/[repo]:x")).toBeUndefined();
     expect(repoSlugFromRemote("[not-a-host]")).toBeUndefined();
+  });
+
+  it("refuses a saturated page rather than reporting a finished run as unfinished", () => {
+    const closed = (n: number) =>
+      JSON.stringify(
+        Array.from({ length: n }, (_, i) => ({
+          number: i + 1,
+          state: "CLOSED",
+          headRepository: { name: "repo" },
+          headRepositoryOwner: { login: "owner" },
+        })),
+      );
+
+    // A full page of rows that do not count is not evidence that none exists —
+    // the completing one may be on a page this listing never asked for. The
+    // default `gh` limit is 30 and CLOSED is the state that accumulates without
+    // bound, so this is reachable by ordinary use rather than by contrivance.
+    expect(() => readCompletion(closed(4), "owner/repo", 4)).toThrow(/whole page/);
+
+    // **Short of saturation the answer stands.** A refusal that fired on any
+    // no-match would turn every unfinished run into an error, which is the
+    // opposite failure and would pass a test written only for the line above.
+    expect(readCompletion(closed(3), "owner/repo", 4)).toBe(false);
+
+    // And a full page that DOES contain a completing pull request answers
+    // normally: saturation only matters when the answer would otherwise be no.
+    const saturatedButDone = JSON.stringify([
+      ...JSON.parse(closed(3)),
+      {
+        number: 99,
+        state: "MERGED",
+        headRepository: { name: "repo" },
+        headRepositoryOwner: { login: "owner" },
+      },
+    ]);
+    expect(readCompletion(saturatedButDone, "owner/repo", 4)).toBe(true);
   });
 
   it("refuses a transport `gh` cannot query, rather than naming a plausible host", () => {
