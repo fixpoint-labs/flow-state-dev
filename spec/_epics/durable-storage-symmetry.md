@@ -77,8 +77,8 @@ the honest description of it.**
   by events** rather than by a decision.
 - **FIX-1207** (overlapping collection keyspaces slip past the cross-flow check) is
   FIX-1158's **spun-off remainder** — scope deliberately excluded from that bug and blocked
-  on it. At Backlog and **not in the active set**; carried in §4 so the set is complete. It
-  changes no theme and adds no decision at this altitude.
+  on it. **Unparented and out of the index** (§4). It changes no theme and adds no decision
+  at this altitude.
 - **FIX-1258** (a deleted resource revived by a request that never saw it) is the version-`0`
   hole in theme 1's tombstone row — found by FIX-1154's spec review and reproduced on the real
   path. **Not in the active set**, on the reasoning that kept FIX-1155 out and spun FIX-1207
@@ -87,10 +87,10 @@ the honest description of it.**
   set. **FIX-1155 is the worked example** — held out on exactly this reasoning, and it shipped
   anyway (#1388).
 
-**The active set is FIX-1154 and FIX-1269.** The FIX-1158 lodger and FIX-1155 have both
-shipped; FIX-1207 and FIX-1258 are carried in §4 so the record is complete, FIX-1259 has left it
-(unparented), and **FIX-1260's membership is an open owner question** (§5). **None of them is
-active work — but a parented one still gates wrap** (§4).
+**The active set is FIX-1154 and FIX-1269.** The FIX-1158 lodger and FIX-1155 have both shipped.
+**All four surfaced bugs leave the set** — FIX-1259 and FIX-1207 already unparented, FIX-1258 and
+FIX-1260 settled the same way and pending the write (§5). Until those two land they are still
+children, and **a parented child gates wrap** (§4).
 
 Whether this is an epic at all — rather than one issue and a standalone bug — was asked twice by
 review and is **decided: it stays an epic** (§5, resolved), as an engineering call because both
@@ -437,7 +437,6 @@ expensive thing this epic has already paid for.
 | [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` on the resource handle. API symmetry only: **wins no contention**, adds no store-interface surface. *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(active set; added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo *(not in the active set; **gates wrap while parented** — note below)* |
-| [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) | Cross-flow validation compares exact refs, so overlapping collection keyspaces slip through — the scope excluded from FIX-1158, filed separately | **bug** | — | — | Backlog *(blocked by FIX-1158; not in the active set; **gates wrap while parented** — note below)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
@@ -452,16 +451,17 @@ here has no way to know the framing was tried.*
 **What actually gates wrap — and it is not this table.** The coordinator's wrap predicate
 requires **every issue in its row set to be Linear-terminal** (`done` / `closed` / `cancelled` /
 `duplicate` / `dropped` / `won't do`), and that row set is built from the **Linear parent→children
-query** plus any explicitly carried members — not from this index. Executed against the current
-states, five children fail it: FIX-1154 (In Spec Review), FIX-1269 (Todo), FIX-1207 (Backlog),
-FIX-1258 (Todo) and FIX-1260 (Todo). The first two are the active set and will become terminal on
-their own. **The other three are parented bugs nobody is scheduling — and this document used to
-say wrap did not wait on them. It does.** "Not in the active set" is a statement about *dispatch*;
-it buys nothing at the wrap gate. A carried bug either gets **unparented** — linked `relates-to`,
-as FIX-1259 just was — or it **holds the epic open** until someone closes it. Prose cannot
-exempt it. *(Evidence: `TERMINAL_LINEAR` and `mayWrap` in
+query** plus any explicitly carried members — not from this index. Executed against the seven
+current children, four fail it: **FIX-1154** (In Spec Review), **FIX-1269** (Todo), **FIX-1258**
+(Todo) and **FIX-1260** (Todo). The first two are the active set and will become terminal on their
+own. **The other two are parented bugs nobody is scheduling — and this document used to say wrap
+did not wait on them. It does.** "Not in the active set" is a statement about *dispatch*; it buys
+nothing at the wrap gate. Such a bug either gets **unparented** — linked `relates-to` — or it
+**holds the epic open** until someone closes it. Prose cannot exempt it. **That is the settled
+disposition for both** (§5): unparent, pending the Linear write. FIX-1259 and FIX-1207 have
+already left this way. *(Evidence: `TERMINAL_LINEAR` and `mayWrap` in
 [`.agents/workflows/epic-wake.js`](../../.agents/workflows/epic-wake.js), with the regex lifted
-from source and run against all eight parented children rather than read off the page.)*
+from source and run against the parent→children set rather than read off the page.)*
 
 **Surfaced by this epic, owned elsewhere — two live defects on `main`, neither fixed here.**
 FIX-1154's spec review promoted two findings from *gaps in a proposed guard* to *defects
@@ -486,64 +486,48 @@ here because a reader who sees the epic's characterization rows asserting today'
 needs to know those rows are tracked work, not an epic deliverable. Whether any of them delays
 wrap is decided by the Linear graph, not by that sentence — see the wrap note above.*
 
-> **Flagged, not settled — the doc and Linear still disagree about one issue.**
-> **FIX-1260** (the transforming-schema drift) is **parented under FIX-1157 in Linear**, which is
-> what makes an issue a member ([`orchestration.md`](../../docs/contributing/orchestration.md)
-> → the epic is the parent), but this document does not carry it as one — not even as a carried
-> inactive row, because **indexing it is itself an answer to the question.** The question is the
-> owner's and it is open: §5 carries it as a live fork. Re-parenting is destructive and Linear
-> allows a single parent, so **nothing edits the graph** until it is decided. Recorded here so
-> the next reader finds the disagreement instead of trusting whichever surface they opened.
+> **Three issues are leaving this index, and two of the writes have landed.** All four bugs the
+> epic surfaced get the same disposition — **unparent, link `relates-to`** — on the boundary rule
+> that epic membership is not a severity queue (§5, settled).
 >
-> **FIX-1259 is the mirror case, and it has left the index** — this one *is* settled, by Linear
-> rather than by this document. It has been **unparented from FIX-1157**, set **Backlog**,
-> related to **FIX-1000**, and banner-marked *"leftover, do not re-parent"*. It is therefore
-> **not a member**, and §4 — a list of this epic's issues — is the wrong surface for it. **Do not
-> re-parent it.** None of that moves theme 1: the version-`0` scope hole is still real, still
-> FIX-1259's to fix, and the retraction that reopened it still stands — the reviving writer is a
-> **held-then-lost** one handed `0` by the retry path, not a first-touch writer, so refusing it
-> costs first touch nothing.
+> **Landed: FIX-1259 and FIX-1207.** FIX-1259 was unparented, set **Backlog**, related to
+> **FIX-1000** and banner-marked *"leftover, do not re-parent"*. FIX-1207 followed. Neither is a
+> member, so §4 — a list of this epic's issues — is the wrong surface for either. **Do not
+> re-parent them.**
+>
+> **Pending: FIX-1258 and FIX-1260.** Both are still parented under FIX-1157, so both are still
+> indexed above and both still **gate wrap** (wrap note). Their rows stay until the writes land —
+> removing a row while Linear still says "child" is the same mistake in the other direction. Note
+> that **FIX-1260 has never had a row**; the disagreement between the two surfaces predates this
+> and is what §5's entry settles.
+>
+> None of this moves theme 1: the version-`0` scope hole is still real, still FIX-1259's to fix,
+> and the retraction that reopened it still stands — the reviving writer is a **held-then-lost**
+> one handed `0` by the retry path, not a first-touch writer, so refusing it costs first touch
+> nothing.
 
 ## 5. Open cross-cutting questions
 
-**One live fork, and it is the owner's.** The resolved entries below it are kept in full rather
-than only on the epic PR — the PR closes when the epic wraps; this document outlives it.
+**No live fork remains.** The entries below are kept in full rather than only on the epic PR —
+the PR closes when the epic wraps; this document outlives it.
 
-- **Does FIX-1260 belong to this epic, or should it be unparented?** *(Live. Raised by review as
-  an internal contradiction between §4 and this section — correctly: this section previously
-  declared no fork while §4 held one open.)*
+- **~~Does FIX-1260 belong to this epic?~~** *Settled: **it does not — unparent it**, linked
+  `relates-to`, the same shape as FIX-1259 and FIX-1207. Pending only the Linear write, which is
+  the Linear Manager's.* **Not an owner question, and it must not be sent up as one:** parentage
+  is *organization*, which sits below the decision bar — the owner sets objectives, not the shape
+  of the issue graph. An earlier pass in this round put it to the owner as a live fork; that was
+  wrong, and so was the pass before it that tried to settle it by carrying FIX-1260 as a "flagged
+  inactive row" in §4 (a carried row is still an index entry, and indexing it answers the
+  question).
 
-  **Plain terms.** A resource whose schema rewrites its own input on save quietly stores
-  something different from what the caller wrote — and the function that does it exists in two
-  independent copies, so fixing one leaves the other. It is **parented under this epic in
-  Linear**, which is what membership means; this document has never listed it as a member.
-  Nobody has decided which surface is right, and **indexing it here would decide it** — so §4
-  states the disagreement instead.
-
-  **The trade-off.** Keeping it makes this epic's boundary *"correctness bugs we found while
-  looking"*, which is how a set stops being a set — the same reasoning that held FIX-1155,
-  FIX-1207, FIX-1258 and FIX-1259 out, and FIX-1155 shipped anyway on its own merits. It also
-  means the epic cannot wrap until somebody schedules and closes it. Unparenting costs one Linear
-  write and makes the two surfaces agree. *(FIX-1207 and FIX-1258 are **not** part of this fork —
-  their membership is settled and they are indexed. They do share the wrap consequence, so
-  whatever unblocks wrap has to reach them too; that is a scheduling question, not this one.)*
-
-  **My recommendation: unparent it** (link `relates-to`, exactly as FIX-1259 was). It ships
-  independently and no theme depends on it. This epic *surfaced* the defect (§4, above); it does
-  not *coordinate* the fix — and coordination is the only thing epic membership buys. **The wrap
-  predicate makes this more than bookkeeping:** while FIX-1260 is parented and non-terminal it
-  **holds this epic open** (§4's wrap note), so "keep it parented but don't work on it" is not
-  one of the available answers.
-
-  **What would change my mind.** If a theme or a child's spec turns out to depend on the
-  normalizer fix — most plausibly FIX-1154's map, if a row cannot be stated truthfully while the
-  defect stands — then it is coordination work and belongs in the set.
-
-  **What being wrong costs.** Low either way, and **reversible in the direction I am
-  recommending**: FIX-1260 has no competing parent, so if unparenting proves wrong it can be
-  re-parented later without detaching it from anything. Getting it wrong the other way is the
-  expensive one — the epic wraps with a boundary nobody can restate, and a future reader cannot
-  tell which of its issues were coordinated and which were merely noticed.
+  The reasoning is the boundary rule this epic has now applied five times: **epic membership is
+  not a severity queue.** FIX-1260 ships independently, no theme depends on it, and this epic
+  *surfaced* the defect rather than coordinating the fix — coordination is the only thing
+  membership buys. **The wrap predicate makes it more than bookkeeping:** while it is parented and
+  non-terminal it holds the epic open (§4's wrap note), so "parented but unscheduled" was never an
+  available state. **FIX-1258 has the same disposition and the same pending write.** Reversible if
+  wrong — neither has a competing parent, so either can be re-parented later without detaching it
+  from anything.
 
 - **~~Does this epic finish with the task-board fan-out crash still live?~~** *Resolved by
   events, not by a decision: **FIX-1155 shipped** — PR
@@ -750,4 +734,14 @@ than only on the epic PR — the PR closes when the epic wraps; this document ou
   `deleteField`'s exclusion was worse — "removing a record is a lifecycle op" describes a verb
   that removes a **record**, and `deleteField` removes a value inside `state`. Scoping the verb
   set is FIX-1267's; the epic stopped pre-empting it.
+- **All four surfaced bugs unparented; FIX-1260 settled without the owner (2026-08-26)** — one
+  disposition for FIX-1259, FIX-1207, FIX-1258 and FIX-1260: **unparent, link `relates-to`**, on
+  the boundary rule that epic membership is not a severity queue. The first two writes have
+  landed and their rows are gone; the last two are pending and keep their rows and their wrap
+  gate until then. **The lesson is where the question went, not what it answered.** In one day
+  this paragraph was written three ways — index it as inactive, put it to the owner as a live
+  fork, settle it — and only the third is right, because **parentage is organization and sits
+  below the owner-decision bar.** Indexing it decided a question that was open; escalating it
+  spent the owner's attention on the shape of an issue graph. A document is not the place to
+  resolve a pending decision, and not every pending decision is the owner's.
 
