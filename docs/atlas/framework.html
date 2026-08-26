@@ -1045,10 +1045,11 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <p class="lede">A flow is the unit of deployment: it binds blocks to entry points, declares the state scopes they may touch, and decides what any of it is allowed to show a client.</p>
 
   <p>The concept that unifies the entry points is <code>ActionCore</code> — the executable unit plus its execution policy, independent of how it is addressed or authorized. Two address forms build on it, and the runtime records both identically.</p>
+  <p>A third form exists and is easy to miss because it is not addressed at all. A dispatch stamped <code>source: "workstream"</code> resolves <strong>terminally</strong> to the framework-assembled <code>flow.workstream</code> core: <code>resolveActionCore</code> returns it before the <code>flow.actions[actionName]</code> lookup, so detached re-entry can never fall through to a caller-addressed action even when it carries an action name. That is a security boundary, not an optimisation — auditing action resolution against the two forms below alone misses it.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 900 296" role="img" aria-label="Diagram showing ActionCore at the centre, reached by two address forms: caller-addressed actions in flow.actions via HTTP and MCP, and event-addressed transport bindings carrying the core inline from webhook, chat and scheduled sources; both converge on resolveActionCore and the same execution pipeline.">
+      <svg viewBox="0 0 900 296" role="img" aria-label="Diagram showing ActionCore at the centre, reached by two address forms: caller-addressed actions in flow.actions via HTTP and MCP, and event-addressed transport bindings carrying the core inline from webhook, chat and scheduled sources; both converge on resolveActionCore and the same execution pipeline. A third, detached form is described in the text: a workstream-sourced dispatch resolves terminally to flow.workstream and never reaches this lookup.">
         <defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
         <marker id="a6a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker></defs>
 
@@ -1107,7 +1108,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <tbody>
       <tr><td><code>kind</code> / <code>requireUser</code></td><td>Flow type identity and whether a user principal is mandatory.</td></tr>
       <tr><td><code>actions</code></td><td>Caller-addressed entry points. The flow's public API.</td></tr>
-      <tr><td><code>session</code> / <code>user</code> / <code>org</code></td><td>Per-scope <code>stateSchema</code>, <code>resources</code>, and a <code>client</code> projection block.</td></tr>
+      <tr><td><code>session</code> / <code>user</code> / <code>org</code></td><td>Per-scope <code>stateSchema</code> and a <code>client</code> projection block. Resources are <em>not</em> declared here — <code>session.resources</code> and friends are gone, replaced by the flat map below.</td></tr>
       <tr><td><code>resources</code></td><td>Flat map of <code>DefinedResource</code>s; scope is intrinsic to each definition.</td></tr>
       <tr><td><code>tools</code></td><td>Flow-level tool configuration available to generators beneath it.</td></tr>
       <tr><td>transport blocks</td><td><code>chat</code>, <code>webhooks</code>, <code>schedules</code>, <code>voice</code>, <code>mcp</code> — each validated at registration.</td></tr>
@@ -1344,7 +1345,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
 <section id="execution">
   <div class="sec-head"><span class="sec-num">13</span><h2>Execution and errors</h2></div>
-  <p class="lede">A request is async by design: the POST returns 202 immediately, execution runs in the background, and the client watches it over SSE — then refetches the snapshot for the authoritative answer.</p>
+  <p class="lede">A request is async by design: execution runs in the background and the client watches it over SSE, then refetches the snapshot for the authoritative answer.</p>
+  <p>The POST has two shapes. Ask for the stream inline — <code>Accept: text/event-stream</code>, which is what the client's <code>sendActionStream</code> sends — and the route returns <strong>200 with the live SSE stream as the body</strong>, keeping execution and streaming on one function instance. That mode is what makes the serverless hosts work. Otherwise it returns <strong>202</strong> with a request id and the client attaches to the stream separately. Same execution either way; only the response differs.</p>
 
   <figure>
     <div class="fig-body">
@@ -1742,7 +1744,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
 <section id="memory">
   <div class="sec-head"><span class="sec-num">19</span><h2>Memory</h2></div>
-  <p class="lede">Four tiers, each independent and opt-in, composed by one factory and installed with one capability. Working-only is a real configuration.</p>
+  <p class="lede">Four tiers, composed by one factory and installed with one capability. Working-only is a real configuration.</p>
+  <p>"Independent" holds for the per-tier capabilities in <code>capabilities.ts</code> — <code>workingMemoryCapability</code> and friends install alone. It does <em>not</em> hold for the composed <code>createMemoryCapability</code> surface, where the storage tiers are dependency-ordered and validated at build: working is the base, <strong>semantic requires episodic</strong>, <strong>digest requires semantic</strong>. Both violations throw. Digest-only and semantic-only are not configurations.</p>
 
   <div class="tw"><table>
     <thead><tr><th>Tier</th><th>Scope</th><th>Holds</th><th>Mechanics</th></tr></thead>
