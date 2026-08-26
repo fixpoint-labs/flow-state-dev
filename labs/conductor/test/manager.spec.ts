@@ -1855,6 +1855,39 @@ describe("the phase's own precondition is refused at the same door", () => {
     expect(Object.isFrozen(retained)).toBe(true);
   });
 
+  it("lets one host run two conductors, which the README tells you to do", async () => {
+    // **A startup blocker on the documented setup.** The instance id was the
+    // constant `"default"`, on the reasoning that a conductor is one board per
+    // epic so there is nothing to choose. True of one conductor, false of the
+    // host: `createFlowState` registers every flow it is given and the registry
+    // rejects a duplicate `(kind, id)`, so the SECOND conductor threw and the
+    // host could not start.
+    //
+    // Not exotic — the README says a second phase needs its own `epic`, so
+    // anyone following it builds exactly this.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+    const { createFlowState, inMemoryStores } = await import("@flow-state-dev/engine");
+
+    const repo = mkdtempSync(join(tmpdir(), "conductor-two-"));
+    seedRepo(repo);
+    const root = mkdtempSync(join(tmpdir(), "conductor-two-root-"));
+    const workspace = { root, sourceRepo: repo, baseRef: "main" };
+    const phase = implementPhase({ prExists: () => true });
+
+    const first = conductorFlow({ epic: "epic-one", workspace, phase });
+    const second = conductorFlow({ epic: "epic-two", workspace, phase });
+    expect(first.flow.id).not.toBe(second.flow.id);
+
+    expect(() =>
+      createFlowState({
+        flows: { one: first.flow, two: second.flow },
+        stores: { test: { primary: inMemoryStores() } },
+        defaultProfile: "test",
+      } as never),
+    ).not.toThrow();
+  });
+
   it("refuses a host where `gh` cannot be run", async () => {
     // The probe's OTHER unstated precondition. A valid `origin` gets the
     // conductor all the way to a paid coding run on a host with no `gh`, and
