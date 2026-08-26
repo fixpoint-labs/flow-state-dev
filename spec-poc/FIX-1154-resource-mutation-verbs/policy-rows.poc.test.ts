@@ -65,7 +65,7 @@ import {
 import { createSQLiteStores } from "../../packages/store-sqlite/src";
 import { createInternalResponseEmitter } from "../../packages/engine/src/streaming/response-emitter";
 import { isRetryableError } from "../../packages/engine/src/execution/retry";
-import { FlowError } from "../../packages/engine/src/errors/flow-error";
+import { FlowError, ValidationError } from "../../packages/engine/src/errors/flow-error";
 
 /** Local stand-in for the framework's `JsonObject` — the POC never leaves this file. */
 type PocState = Record<string, unknown>;
@@ -710,8 +710,17 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     //
     // The memory store keeps `Infinity` (it clones with `structuredClone`); a
     // JSON-backed adapter stores `null`, which then fails the schema on the next
-    // durable read and lands in D1's replacement. Nothing throws on either side,
-    // so the two deployments simply hold different data from the same call.
+    // durable read. Nothing throws on either side, so the two deployments simply
+    // hold different data from the same call.
+    //
+    // ROUND 33 — WHERE STEP 3 GOES WAS RE-LABELLED. It used to say "lands in
+    // D1's replacement". D1 is fixed (#1469) and this is not it: the WRITE path
+    // now throws on an invalid candidate, but the READ path still substitutes
+    // (`normalizeResourceState` is documented read-path-only). So the reader is
+    // handed the default, and step 4's write-back persists it as a VALID
+    // candidate. The chain is intact; the write-path fix moved who performs the
+    // destroying write, from the runtime to the caller. Assertions unchanged —
+    // they were always about observed state, which is why they still hold.
     //
     // ROUND 23: the durable half of this row used to be
     // `JSON.parse(JSON.stringify(state))` — this file's own arithmetic, not a
@@ -781,7 +790,7 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     }
   });
 
-  it("row: a transform loses the row only when its input side rejects its own output", async () => {
+  it("row: a transform whose input side rejects its own output is REFUSED — the row survives", async () => {
     // The row that separates the CONDITION from the UNIVERSAL. An earlier draft
     // of the spec generalized this to "every call on a transforming schema
     // refuses", which is false, and it had propagated into the published docs
@@ -791,24 +800,40 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     // Both schemas below are type-changing and both expose `n: number`, so from
     // outside they are indistinguishable. What differs is whether a candidate
     // built from the schema's own output survives a trip back through its INPUT
-    // side — and only that decides whether the row survives.
+    // side — and only that decides what the caller sees.
+    //
+    // REVERSED BY #1469 (`47869f9c`), re-run round 33. Part 1 used to assert
+    // D1's replacement: `keep` came back as `"schema-default"` and the call
+    // reported success. `parseResourceWriteState` now THROWS on the same
+    // candidate, so the observable flips from silent data loss to a terminal
+    // refusal — and the live row is what survives instead of being overwritten.
+    // The CONDITION the row was written to establish is unchanged: only the
+    // re-parse-rejecting schema is affected, and part 2 is still the control.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
 
-    // 1. Input wants a string. The candidate `{n: 1}` does not re-parse, and
-    //    the write path's response to an invalid candidate is to replace the
-    //    whole state with the schema default — defect D1, reached through an
-    //    ordinary normalizing schema. Assert the STATE, not an absence of throw:
-    //    nothing throws here either way.
+    // 1. Input wants a string. The candidate `{n: 1}` does not re-parse, so the
+    //    write is refused at the mutator, before the CAS driver compares
+    //    anything. Assert BOTH halves: the error, and that the row it would
+    //    have replaced is untouched.
     const refusingRef = ctx.resources.refusing as unknown as MutableRef;
     await refusingRef.updateState((s) => ({ ...s, keep: "DO-NOT-LOSE" }));
-    await incrementVia(refusingRef, { n: 1 });
-    const afterRefusing = (await readRow(stores, "refusing"))?.state as {
-      n: number;
-      keep: string;
-    };
-    // `keep` was live data. It is gone, and the call reported success.
-    expect(afterRefusing.keep).toBe("schema-default");
+    const beforeRefusing = await readRow(stores, "refusing");
+
+    const refusal = await incrementVia(refusingRef, { n: 1 }).then(
+      () => undefined,
+      (e: unknown) => e
+    );
+    expect(refusal).toBeInstanceOf(ValidationError);
+    // Terminal, not transient — the contrast with D6's misclassified refusals.
+    expect(isRetryableError(refusal as Error, { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 })).toBe(
+      false
+    );
+
+    const afterRefusing = await readRow(stores, "refusing");
+    // `keep` was live data. It is still there, and the version did not move.
+    expect((afterRefusing?.state as { keep: string }).keep).toBe("DO-NOT-LOSE");
+    expect(afterRefusing?.version).toBe(beforeRefusing?.version);
 
     // 2. Input accepts a number OR a string. The same candidate re-parses, so
     //    the write lands and the row is intact. The negative control: the
@@ -1043,14 +1068,22 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect((await readRow(stores, "bag"))?.state).toBeUndefined();
   });
 
-  it("data loss: a STRING delta does not throw at all — it RESETS THE ROW and reports success", async () => {
-    // The worst row in this file, and the one that shows why the delta has to
-    // be validated BEFORE the arithmetic rather than caught after it.
+  it("data loss CLOSED: a STRING delta is now REFUSED — the row it used to reset survives", async () => {
+    // This was "the worst row in this file": `0 + "5"` concatenates rather than
+    // throwing, the candidate `{n:"05"}` failed the schema, and the write path
+    // replaced the WHOLE state with the schema default — silently, and
+    // successfully — taking an unrelated field holding real data with it.
     //
-    // `0 + "5"` does not throw; it concatenates. The candidate `{n:"05"}` then
-    // fails the schema, and the write path's response to an invalid candidate
-    // is to REPLACE THE WHOLE STATE WITH THE SCHEMA DEFAULT — silently, and
-    // successfully. An unrelated field holding real data is collateral.
+    // REVERSED BY #1469 (`47869f9c`), re-run round 33. The arithmetic hazard is
+    // unchanged (`0 + "5"` still concatenates, and nothing validates the delta
+    // before it), but the invalid candidate it produces is now refused instead
+    // of substituted. So the delta is still unvalidated and the call still
+    // fails — what changed is that it fails LOUDLY and the row is intact.
+    //
+    // Kept rather than retired: the row's subject is what a caller observes
+    // when an untyped delta reaches the arithmetic, and that is still a
+    // behaviour worth pinning — it is the before/after pair that makes the fix
+    // legible, and it is the row §11's brief is written from.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
     const ref = ctx.resources.bag as unknown as MutableRef;
@@ -1061,14 +1094,20 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     const before = await readRow(stores, "bag");
     expect(before?.state).toMatchObject({ n: 5, keep: "DO-NOT-LOSE" });
 
-    // No rejection. The call resolves.
-    await expect(incrementVia(ref, { n: "5" } as never)).resolves.toBeUndefined();
+    const caught = await incrementVia(ref, { n: "5" } as never).then(
+      () => undefined,
+      (e: unknown) => e
+    );
+    expect(caught).toBeInstanceOf(ValidationError);
+    // The message names the failing path, so a caller can act on it. This is
+    // the half that makes it a rejection rather than a bare failure.
+    expect((caught as Error).message).toMatch(/stateSchema validation at "n"/);
 
     const after = await readRow(stores, "bag");
-    // The counter is back to its default AND the untouched field is destroyed.
-    expect(after?.state).toMatchObject({ n: 0, keep: "schema-default" });
-    // ...and the version advanced, so this was a real write, not a no-op.
-    expect(after?.version).toBeGreaterThan(before?.version as number);
+    // Both fields survive, including the one that used to be collateral...
+    expect(after?.state).toMatchObject({ n: 5, keep: "DO-NOT-LOSE" });
+    // ...and the version did NOT advance, so nothing reached a store.
+    expect(after?.version).toBe(before?.version);
   });
 
   it("row 5: a field the callback OMITS comes back at its schema DEFAULT, not absent", async () => {
@@ -1095,22 +1134,38 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     expect((await readRow(stores, "counter"))?.state).toEqual({ n: 6, log: [] });
   });
 
-  it("row: a first touch on a schema with NO valid complete default is a NO-OP, not a throw", async () => {
-    // §9 asserted this row THROWS and landed it in D1. Both halves were wrong,
-    // and the second contradicted D1 itself (which never throws). Nothing on
-    // this path throws: `normalizeResourceState` falls back to
-    // `normalizeResourceDefault`, that bottoms out at `{}`, and `{}` equals the
-    // `{}` the write started from — so the driver verifies a no-op and writes
-    // nothing at all. The failure mode is silence, not an error.
+  it("row: a first touch on a schema with NO valid complete default now THROWS, not a silent no-op", async () => {
+    // The most-revised row in this suite, and worth reading as a sequence.
+    // §9 first asserted it THROWS and landed it in D1 — both halves wrong at
+    // the time, and the second contradicted D1 itself (which never threw).
+    // Round 26 corrected it to a silent no-op: `normalizeResourceState` fell
+    // back to `normalizeResourceDefault`, that bottomed out at `{}`, and `{}`
+    // equalled the `{}` the write started from, so the driver verified a no-op
+    // and wrote nothing. The failure mode was silence.
+    //
+    // REVERSED BY #1469 (`47869f9c`), re-run round 33 — and note WHICH way.
+    // The original "it throws" is now the observable, but NOT for the reason
+    // that draft gave: it throws because `parseResourceWriteState` refuses the
+    // candidate outright, not because it landed in D1. The mechanism the
+    // no-op rested on is gone with it — an invalid candidate never reaches the
+    // driver's deep-equal, so the seed comparison cannot be what decides this
+    // row any more. That is the whole normalization-versus-seed axis, and it
+    // is retired rather than re-cut (see §10).
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_nodefault");
     const ref = ctx.resources.noDefault as unknown as MutableRef;
 
-    await expect(
-      ref.updateState((s) => ({ ...s, n: toNumber(s.n) + 1 }))
-    ).resolves.toBeUndefined();
+    const caught = await ref
+      .updateState((s) => ({ ...s, n: toNumber(s.n) + 1 }))
+      .then(
+        () => undefined,
+        (e: unknown) => e
+      );
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect((caught as Error).message).toMatch(/stateSchema validation at "required"/);
 
-    // No row was created. No version. No error anyone could act on.
+    // Still no row — the outcome the caller's data sees is unchanged. What
+    // changed is that they are now told.
     expect(await readRow(stores, "noDefault")).toBeUndefined();
 
     // The boundary: an updater that DOES supply every required field is

@@ -559,7 +559,13 @@ const looksLikePath = (s) => s.includes("/") && /\.mdx?$/.test(s);
 
 function targets() {
   const lines = section11.split("\n");
-  const stopAt = lines.findIndex((l) => /Deliberately left alone/.test(l));
+  // Anchor on the BOLD list heading, not on the phrase. Round 33: §11 gained a
+  // prose mention of the left-alone list ~160 lines above the list itself, and
+  // the loose pattern stopped the scan there — so every QUALIFY sub-bullet in
+  // the back half of the section silently stopped counting as a target. The
+  // count did not move when a target was added, which is the failure mode a
+  // derived count exists to prevent, occurring inside the deriver.
+  const stopAt = lines.findIndex((l) => /\*\*Deliberately left alone\*\*/.test(l));
   const end = stopAt === -1 ? lines.length : stopAt;
   const found = new Set();
   for (let i = 0; i < end; i++) {

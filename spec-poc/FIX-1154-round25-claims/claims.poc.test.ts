@@ -19,16 +19,7 @@
  *     Zod strips the property first, no adapter ever sees it.
  *  3. §11 said `deleteStateRecord` persists at `expectedVersion: "any"`. That is
  *     conditional on the adapter advertising the native verb.
- *  4. §9/§11 scoped the silent first-touch no-op to a schema with no valid
- *     complete default (round 26: false — the condition is the seed), and then
- *     to whether a row exists (round 28: also false). Group 4 drives the single
- *     handle's composition; group 4b drives the REAL registry and settles what
- *     the axis is, what the collection handle does instead, and how far it
- *     reaches. Round 30 adds the axis's OTHER side: §11 stated the replacement
- *     observables universally ("every existing single…", "every existing
- *     collection row…"), which contradicts the same section's rule two lines
- *     above — a live row already holding its own fallback takes no write and no
- *     version bump.
+ *  4. RE-CUT ROUND 33 — see below.
  *  5. D6's replay predicate required `retryableErrors` unset or empty. A
  *     non-empty allowlist containing a matching class replays it too.
  *
@@ -36,6 +27,24 @@
  * `createScopePersist` over the real memory and filesystem scope stores, and
  * (group 4b) `createExecutionContext` with the shipped collection handle. No
  * mocked stores anywhere.
+ *
+ * ROUND 33 — WHAT MOVED, AND WHAT THE RUN ITSELF SHOWED
+ * #1469 (`47869f9c`) made both resource handles parse a write result through
+ * one shared `parseResourceWriteState`, which THROWS instead of substituting a
+ * default. Groups 1, 2, 3 and 5 are untouched by it and still pass. Group 4 is
+ * RETIRED and group 4b is re-cut; their own headers carry the detail.
+ *
+ * The re-run is the point, not the edit. Ten rows across this file and
+ * `../FIX-1154-resource-mutation-verbs/` went red, all on one cause — and
+ * group 4, the only group that hand-composed the registry instead of driving
+ * it, stayed GREEN while the real-registry rows beside it failed. A harness
+ * that reproduces the code under test cannot notice when the code under test
+ * changes. That is this suite's own §10 lesson, arriving one layer down.
+ *
+ * These files are run from the spec branch AFTER `origin/main` was merged into
+ * it, so the engine source they import is `main`'s. Before that merge the
+ * branch's base was 178 commits behind and a green run here would have been
+ * evidence about the base, not about the product.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,7 +59,7 @@ import {
   normalizeResourceState
 } from "../../packages/engine/src/resources/normalize-resource-state";
 import { isRetryableError } from "../../packages/engine/src/execution/retry";
-import { FlowError } from "../../packages/engine/src/errors/flow-error";
+import { FlowError, ValidationError } from "../../packages/engine/src/errors/flow-error";
 import {
   defineFlow,
   defineResource,
@@ -291,157 +300,57 @@ describe("§11 deleteStateRecord — unchecked only where the adapter advertises
 });
 
 // ---------------------------------------------------------------------------
-// 4. When is a first-touch invalid write a SILENT NO-OP? (round-26 claim)
+// 4. RETIRED — round 33. "When is a first-touch invalid write a SILENT NO-OP?"
 //
-// §11 scoped the exception to "a schema with no valid complete default". Review
-// argued the same no-op happens WITH a valid default, because the driver's
-// short-circuit compares the NORMALIZED result against the seed — and an invalid
-// candidate normalizes back to exactly that seed either way. If that holds, the
-// operative condition is "normalization equals the first-touch seed", and the
-// no-default case is one instance of it rather than the rule itself.
+// This group hand-composed the registry's mutator to settle whether the no-op
+// turned on the SEED or on the schema's DEFAULT. Its answer (the seed) was
+// right for `2e046e96`, and it is now unreachable: #1469 (`47869f9c`) made the
+// registry compose `parseResourceWriteState`, which THROWS on an invalid
+// candidate before `runResourceCAS` compares anything. There is no longer a
+// normalized-result-versus-seed comparison on the invalid path to have a
+// condition about.
 //
-// Wired the way `resource-registry.ts` wires it: the container is seeded from
-// `normalizeResourceDefault` at version 0, and the mutator handed to the driver
-// is the caller's updater COMPOSED WITH `normalizeResourceState` — which is the
-// detail the whole claim turns on.
+// RETIRED RATHER THAN REWRITTEN, and the reason is the finding. Re-run against
+// `main` this group stayed GREEN while group 4b, which drives the real
+// registry, went red on every equivalent row. It passed because it executes
+// this author's hand-written copy of a composition that no longer ships — the
+// exact "neighbour of the claim" trap its own header warned about, turned on
+// itself. A harness that reproduces the code under test cannot notice when the
+// code under test changes. Rewriting it to compose `parseResourceWriteState`
+// would only re-assert "it throws", which group 4b now establishes on the real
+// path with no hand-composition at all.
+//
+// -4 rows here. With group 4b's own re-cut (-2 retired, +3 added) the suite
+// moves 45 -> 42. §10 quotes the runner's line rather than this arithmetic.
 // ---------------------------------------------------------------------------
 
-describe("§11 first-touch no-op — the condition is the seed, not the default", () => {
-  type Outcome = {
-    committed: boolean;
-    version: number;
-    persisted: boolean;
-    state: Record<string, unknown>;
-  };
-
-  /** First touch of a never-stored resource, exactly as the registry drives it. */
-  async function firstTouch(
-    config: { stateSchema: z.ZodTypeAny; default?: unknown },
-    updater: (s: Record<string, unknown>) => Record<string, unknown>,
-    stored?: { state: Record<string, unknown>; version: number }
-  ): Promise<Outcome> {
-    const cfg = config as unknown as Parameters<typeof normalizeResourceDefault>[0];
-    const seed = stored ? stored.state : normalizeResourceDefault(cfg);
-    const container = createStateContainer<Record<string, unknown>>(
-      seed as Record<string, unknown>,
-      stored ? stored.version : 0
-    );
-
-    let persisted = false;
-    const res = await runResourceCAS({
-      key: "k",
-      container,
-      // The registry's composition — `resource-registry.ts:664`.
-      mutator: async (current) =>
-        normalizeResourceState(cfg, updater(current as Record<string, unknown>)),
-      persist: async (next) => {
-        persisted = true;
-        return { ok: true, state: next, version: (stored?.version ?? 0) + 1 };
-      },
-      // Never-stored unless the test says otherwise.
-      reread: async () =>
-        stored ? { state: stored.state, version: stored.version } : undefined,
-      intent: "mutate"
-    });
-
-    return {
-      committed: res.committed,
-      version: res.version,
-      persisted,
-      state: res.state as Record<string, unknown>
-    };
-  }
-
-  // A schema WITH a valid complete default — the case §11 said was unaffected.
-  const withDefault = { stateSchema: z.object({ n: z.number().default(0) }) };
-  // A schema with NO valid complete default — the case §11 did name.
-  const noDefault = { stateSchema: z.object({ n: z.number() }) };
-
-  it("CLAIM: valid default + INVALID first write is a silent no-op — no row, no version", async () => {
-    // `{ n: "bad" }` fails `z.number()`, so `normalizeResourceState` falls back
-    // to `normalizeResourceDefault` = `{ n: 0 }` — byte-for-byte the seed the
-    // container already holds. The `deepEqual` at `resource-cas.ts:229` sees no
-    // change and returns before persisting. The schema HAVING a default is what
-    // makes seed and fallback identical, so a default does not protect against
-    // this — it is the thing that produces it.
-    const out = await firstTouch(withDefault, () => ({ n: "bad" }) as never);
-
-    expect(out.committed).toBe(false);
-    expect(out.version).toBe(0);
-    expect(out.persisted).toBe(false); // nothing ever reached a store
-    expect(out.state).toEqual({ n: 0 });
-  });
-
-  it("CONTROL: valid default + VALID first write DOES create — the harness can commit", async () => {
-    // Without this, the row above proves only that the wiring never writes.
-    const out = await firstTouch(withDefault, () => ({ n: 5 }));
-
-    expect(out.committed).toBe(true);
-    expect(out.version).toBe(1);
-    expect(out.persisted).toBe(true);
-    expect(out.state).toEqual({ n: 5 });
-  });
-
-  it("the no-default case behaves identically — one instance, not the rule", async () => {
-    // §11's stated exception. Same outcome, same mechanism: the fallback is
-    // `{}`, the seed is `{}`, they deep-equal. Nothing about it is special.
-    const out = await firstTouch(noDefault, () => ({ n: "bad" }) as never);
-
-    expect(out.committed).toBe(false);
-    expect(out.version).toBe(0);
-    expect(out.persisted).toBe(false);
-    expect(out.state).toEqual({});
-  });
-
-  it("BOUNDARY: on a row that EXISTS the same invalid write is D1's replacement", async () => {
-    // This is what makes "first touch" the operative word rather than "invalid".
-    // The seed is the stored state, the fallback is the default, the two differ,
-    // so the write commits — destroying `keep` and reporting success.
-    const cfg = {
-      stateSchema: z.object({
-        n: z.number().default(0),
-        keep: z.string().default("gone")
-      })
-    };
-    const out = await firstTouch(cfg, () => ({ n: "bad" }) as never, {
-      state: { n: 5, keep: "DO-NOT-LOSE" },
-      version: 3
-    });
-
-    expect(out.committed).toBe(true);
-    expect(out.version).toBe(4);
-    expect(out.persisted).toBe(true);
-    expect(out.state).toEqual({ n: 0, keep: "gone" }); // D1
-  });
-});
-
 // ---------------------------------------------------------------------------
-// 4b. Which axis actually decides it — driven through the REAL registry
+// 4b. What an invalid write does now — driven through the REAL registry
 //
-// Round 26 re-cut §9/§11 on "row exists vs first touch". Round 28 says that
-// axis is wrong too. Both earlier cuts were stated at the width of the single
-// resource, which is the only handle the group above drives.
+// RE-CUT ROUND 33, against `main` at `b8837e2a`. Every row in this group used
+// to pin the normalization-versus-seed axis: an invalid candidate normalized to
+// a fallback, `resource-cas.ts` short-circuited when that fallback equalled
+// what the container held, and the two handles answered differently because the
+// normalizer was two copies with two different fallbacks (single ->
+// `normalizeResourceDefault`, collection -> a bare `{}`).
 //
-// The mechanism is one line — `resource-cas.ts:229` short-circuits when
-// normalization returns what the container ALREADY HOLDS — and the two handles
-// answer it differently because the normalizer is two copies with two
-// different fallbacks (§7b):
+// #1469 (`47869f9c`) removed the premise. Both handles now call ONE shared
+// `parseResourceWriteState` inside the mutator — `resource-registry.ts:677`
+// (`persistResourceState`) and `:696` (`persistNamespaceInstanceState`) — and it
+// THROWS `ValidationError` (`retryable: false`) rather than returning a
+// substitute. So there is no fallback to compare, no short-circuit to reach,
+// and no divergence between the handles. The axis is retired, not re-cut.
 //
-//   single      seed(no row) = normalizeResourceDefault(config)   (:1494)
-//               invalid      = normalizeResourceDefault(config)   (normalize-resource-state.ts:50)
-//               the SAME FUNCTION — equal by construction
-//
-//   collection  seed(no row) = stateSchema.safeParse({})          (:712-713)
-//               invalid      = bare {}                            (:680)
-//               two different expressions — equal only by coincidence
+// What these rows pin instead is the new observable, in every position the old
+// ones covered, because "it throws" is only half the claim — the other half is
+// that the row it would have overwritten is still there, at its old version.
 //
 // Everything below goes through `createExecutionContext` and the shipped
-// collection handle. Nothing here hand-composes the registry: the group above
-// does that, and a hand-composed harness can only ever execute this author's
-// READING of the composition — the neighbour trap §10 records eight times.
+// collection handle. Nothing here hand-composes the registry, and group 4's
+// retirement note says why that now matters more than it did.
 // ---------------------------------------------------------------------------
 
-describe("§9/§11 axis — normalization vs what the container holds, not row-existence", () => {
+describe("§9/§11 — an invalid write is refused on BOTH handles, and the row survives", () => {
   const schemaWithDefaults = z.object({
     n: z.number().default(0),
     keep: z.string().default("seed")
@@ -470,6 +379,16 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
     stateSchema: z.object({ n: z.number() })
   });
 
+  // Accepts the object, a bare string, OR null — so one resource reaches both
+  // of `parseResourceWriteState`'s non-object branches: the null it maps to
+  // `{}`, and the schema-VALID non-object it refuses anyway.
+  const nullable = defineResource({
+    scope: "session",
+    ref: "nullable",
+    stateSchema: z.union([schemaWithDefaults, z.string()]).nullable(),
+    default: { n: 0, keep: "seed" }
+  });
+
   const makeCtx = (stores: StoreRegistry, requestId: string) =>
     createExecutionContext({
       flow: defineFlow({
@@ -479,7 +398,7 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
             inputSchema: z.string(),
             block: handler({
               name: "noop",
-              resources: { tasks, single, strict },
+              resources: { tasks, single, strict, nullable },
               execute: () => "ok"
             })
           }
@@ -495,9 +414,16 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
   const readRow = (stores: StoreRegistry, key: string) =>
     stores.resourceState.get("session", "sess_1", key);
 
-  it("CLAIM: a collection row's invalid write lands {} — every field gone, schema defaults included", async () => {
-    // The collection normalizer substitutes a BARE `{}` (`:680`). Nothing
-    // survives — not the untouched field, not the fields the schema defaults.
+  /** Run an invalid write and hand back whatever it threw (or `undefined`). */
+  const refusalFrom = (write: Promise<unknown>) =>
+    write.then(
+      () => undefined,
+      (e: unknown) => e
+    );
+
+  it("an EXISTING collection row: refused, and every field survives", async () => {
+    // Was: "lands {} — every field gone, schema defaults included". The
+    // collection's bare-`{}` substitution is gone with the shared write parse.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "r_coll");
     await (ctx.resources.tasks as never as CollectionHandle).create("t1", {
@@ -507,40 +433,79 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
     expect((await readRow(stores, "tasks/t1"))?.state).toEqual({ n: 5, keep: "DO-NOT-LOSE" });
 
     const inst = await (ctx.resources.tasks as never as CollectionHandle).get("t1");
-    await inst.updateState(() => ({ n: "bad" }) as never);
+    const caught = await refusalFrom(inst.updateState(() => ({ n: "bad" }) as never));
 
+    expect(caught).toBeInstanceOf(ValidationError);
+    // The storage KEY is what the error names on this handle, not the accessor.
+    expect((caught as Error).message).toMatch(/^Resource "tasks\/t1" write failed/);
     const after = await readRow(stores, "tasks/t1");
-    expect(after?.state).toEqual({}); // NOT `{ n: 0, keep: "seed" }`
-    expect(after?.version).toBe(2); // committed, and reported success
+    expect(after?.state).toEqual({ n: 5, keep: "DO-NOT-LOSE" }); // NOT {}
+    expect(after?.version).toBe(1); // NOT 2 — nothing was committed
   });
 
-  it("CONTRAST: the same schema and the same write on a SINGLE lands the schema DEFAULT", async () => {
-    // D1 as §7b states it. The pair is the point: same schema, same candidate,
-    // two different survivors — so "what the schema declares" cannot be the axis.
+  it("an EXISTING single: refused identically — the handle split is CLOSED", async () => {
+    // Was the CONTRAST row: same schema, same candidate, two different
+    // survivors (`{}` vs the schema default), which was §7b's "the normalizer
+    // is two copies" hazard made visible. Both handles now route through one
+    // `parseResourceWriteState`, so the pair that used to differ is identical —
+    // and THAT is the row worth keeping, as the evidence the hazard closed.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "r_single");
     const ref = ctx.resources.single as never as MutableRef;
     await ref.updateState(() => ({ n: 5, keep: "DO-NOT-LOSE" }));
 
-    await ref.updateState(() => ({ n: "bad" }) as never);
+    const caught = await refusalFrom(ref.updateState(() => ({ n: "bad" }) as never));
 
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect((caught as Error).message).toMatch(/^Resource "single" write failed/);
     const after = await readRow(stores, "single");
-    expect(after?.state).toEqual({ n: 0, keep: "seed" }); // the default, not {}
-    expect(after?.version).toBe(2);
+    expect(after?.state).toEqual({ n: 5, keep: "DO-NOT-LOSE" }); // not the default
+    expect(after?.version).toBe(1);
   });
 
-  it("the first-touch no-op is a SINGLE-side guarantee — seed and fallback are one function", async () => {
-    // Never-persisted single, invalid first write: `normalizeResourceState`
-    // falls back to exactly what the container was seeded with, the deep-equal
-    // fires, and nothing reaches a store. This is round 26's claim on the real
-    // path rather than on a composed harness.
+  it("the refusal is TERMINAL — the contrast with D6's misclassified refusals", async () => {
+    // Worth its own row because the whole D6 cluster is about a refusal that
+    // no retry can fix being classified as one a retry might. The new write
+    // refusal gets that right: `ValidationError` is a `FlowError` carrying
+    // `retryable: false`, which `isRetryableError` stops at its FlowError
+    // branch whatever the block's policy says.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_terminal");
+    const ref = ctx.resources.single as never as MutableRef;
+    await ref.updateState(() => ({ n: 5, keep: "DO-NOT-LOSE" }));
+
+    const caught = (await refusalFrom(
+      ref.updateState(() => ({ n: "bad" }) as never)
+    )) as Error;
+
+    expect(caught).toBeInstanceOf(FlowError);
+    // Even the permissive allowlist that replays D6's refusals stops here.
+    expect(
+      isRetryableError(caught, { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 })
+    ).toBe(false);
+    expect(
+      isRetryableError(caught, {
+        maxAttempts: 3,
+        baseDelayMs: 0,
+        maxDelayMs: 0,
+        retryableErrors: [Error]
+      })
+    ).toBe(false);
+  });
+
+  it("a NEVER-STORED single: refused too — the silent first touch is gone", async () => {
+    // Was "a SINGLE-side guarantee — seed and fallback are one function": the
+    // invalid first write normalized back to exactly the seed, the deep-equal
+    // fired, and nothing reached a store. The caller was told nothing.
+    // Now they are told, and the store is still untouched.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "r_first");
 
-    await expect(
+    const caught = await refusalFrom(
       (ctx.resources.single as never as MutableRef).updateState(() => ({ n: "bad" }) as never)
-    ).resolves.toBeUndefined();
+    );
 
+    expect(caught).toBeInstanceOf(ValidationError);
     expect(await readRow(stores, "single")).toBeUndefined();
   });
 
@@ -570,11 +535,16 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
     expect(await readRow(stores, "tasks/t2")).toBeUndefined();
   });
 
-  it("BOUNDARY: a held ref whose row was deleted recreates it holding {}", async () => {
-    // The one reachable place where the collection's seed is the schema default
-    // and its fallback is `{}`: after `delete`, the cache entry is gone, so
-    // `readState()` takes the `safeParse({})` branch (:712-713) while the write
-    // still returns `{}`. They differ, so the write commits.
+  it("BOUNDARY: a held ref whose row was deleted is refused — no {} row is recreated", async () => {
+    // Was "recreates it holding {}": after `delete` the seed became
+    // `safeParse({})` while the invalid write still returned `{}`, they
+    // differed, and the write committed an empty row onto a tombstone. The
+    // refusal now stops it before the tombstone branch is reached at all — so
+    // this path no longer creates anything.
+    //
+    // Read this row WITH the control below it: the two together are what keep
+    // D5 correctly attributed. The revival is the tombstone branch, not the
+    // normalizer, so closing the normalizer half must NOT read as closing D5.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "r_del");
     const handle = ctx.resources.tasks as never as CollectionHandle;
@@ -583,9 +553,10 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
     await handle.delete("t3");
     expect(await readRow(stores, "tasks/t3")).toBeUndefined();
 
-    await inst.updateState(() => ({ n: "bad" }) as never);
+    const caught = await refusalFrom(inst.updateState(() => ({ n: "bad" }) as never));
 
-    expect((await readRow(stores, "tasks/t3"))?.state).toEqual({});
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect(await readRow(stores, "tasks/t3")).toBeUndefined(); // still nothing
   });
 
   it("CONTROL: a VALID write on that same ref recreates it too — so the revival is D5, only the {} is the normalizer", async () => {
@@ -605,11 +576,11 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
     expect((await readRow(stores, "tasks/t4"))?.state).toEqual({ n: 9, keep: "seed" });
   });
 
-  it("a collection whose safeParse({}) FAILS is a no-op — the two fallbacks coincide at {}", async () => {
-    // So "collection" is not the axis either. With a required field,
-    // `readState()` falls through to `{}`, the invalid write returns `{}`, the
-    // deep-equal fires, and nothing is written. The divergence is between the
-    // two FALLBACKS, not between the two handles.
+  it("a collection whose safeParse({}) FAILS: refused as well — one rule, no special cases", async () => {
+    // Was "a no-op — the two fallbacks coincide at {}", kept then to show that
+    // "collection" was not the axis either. It now makes a simpler point: the
+    // schema shape that used to change the outcome no longer changes anything,
+    // because the refusal happens before any fallback is chosen.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "r_strict");
     const handle = ctx.resources.strict as never as CollectionHandle;
@@ -617,61 +588,72 @@ describe("§9/§11 axis — normalization vs what the container holds, not row-e
     const inst = await handle.get("s1");
     await handle.delete("s1");
 
-    await inst.updateState(() => ({ n: "bad" }) as never);
+    const caught = await refusalFrom(inst.updateState(() => ({ n: "bad" }) as never));
 
+    expect(caught).toBeInstanceOf(ValidationError);
     expect(await readRow(stores, "strict/s1")).toBeUndefined();
   });
 
   // -------------------------------------------------------------------------
-  // Round 30. The axis above says "equal -> nothing is written", and §11 then
-  // stated the two observables UNIVERSALLY ("every existing single is replaced
-  // by its defaults", "every existing collection row by {}"). Both are the
-  // DIFFERENT-fallback case. When a live row already HOLDS what normalization
-  // returns, the same call is a verified no-op — no write, no version bump.
+  // Round 30's two rows are RETIRED here (-2). They existed to falsify §11's
+  // universal phrasing ("every existing single is replaced by its defaults",
+  // "every existing collection row by {}") by showing a row that already HELD
+  // the fallback took no write. There is no replacement left to be universal
+  // about, so the exception has nothing to be an exception to.
   //
-  // These are not the first-touch rows above. There the row does not exist;
-  // here it exists, at a version, and still nothing happens. That is what makes
-  // the universal phrasing wrong rather than merely imprecise.
+  // What replaces them is the positive form, which is one row rather than two:
+  // the outcome no longer depends on what the row currently holds. That is
+  // worth pinning because it is exactly the state-dependence a docs page would
+  // otherwise have to describe, and §11's brief now says there is none.
   // -------------------------------------------------------------------------
-  it("a single ALREADY AT its defaults is a no-op — not 'replaced by its defaults'", async () => {
+  it("the outcome does NOT depend on what the row already holds — no state-dependent case left", async () => {
     const stores = createInMemoryStores();
-    const ctx = await makeCtx(stores, "r_single_at_default");
+    const ctx = await makeCtx(stores, "r_at_default");
     const ref = ctx.resources.single as never as MutableRef;
 
-    // Land a row that differs, then bring it back TO the defaults, so the row
-    // genuinely exists at a version and equals what the fallback would return.
+    // Bring the row to exactly the schema defaults, so it holds what the old
+    // fallback would have substituted — the case that used to be a silent
+    // no-op while a differing row took a destructive write.
     await ref.updateState(() => ({ n: 5, keep: "DO-NOT-LOSE" }));
     await ref.updateState(() => ({ n: 0, keep: "seed" }));
     const before = await readRow(stores, "single");
     expect(before?.state).toEqual({ n: 0, keep: "seed" });
     expect(before?.version).toBe(2);
 
-    await ref.updateState(() => ({ n: "bad" }) as never);
+    const caught = await refusalFrom(ref.updateState(() => ({ n: "bad" }) as never));
 
+    // Same refusal as the row holding different data, two tests above.
+    expect(caught).toBeInstanceOf(ValidationError);
     const after = await readRow(stores, "single");
     expect(after?.state).toEqual({ n: 0, keep: "seed" });
-    expect(after?.version).toBe(2); // NOT 3 — the write never reached a store
+    expect(after?.version).toBe(2);
   });
 
-  it("a collection row ALREADY HOLDING {} is a no-op — the second invalid write does nothing", async () => {
+  it("the ONE write that still clears state: schema-valid null persists as {}", async () => {
+    // Not a defect and not an exception to the rule above — the rule is about
+    // candidates the schema REJECTS. A `.nullable()` resource ACCEPTS null, so
+    // `setState(null)` is a valid write, and `parseResourceWriteState` maps it
+    // to `{}` because the store holds `JsonObject`. Pinned because it is the
+    // only remaining path where a write empties a row, and §11's brief has to
+    // say so or a reader will read "invalid writes are refused" as "nothing
+    // can clear my state".
     const stores = createInMemoryStores();
-    const ctx = await makeCtx(stores, "r_coll_at_empty");
-    const handle = ctx.resources.tasks as never as CollectionHandle;
-    await handle.create("t5", { n: 5, keep: "DO-NOT-LOSE" });
-    const inst = await handle.get("t5");
+    const ctx = await makeCtx(stores, "r_nullable");
+    const ref = ctx.resources.nullable as never as MutableRef;
 
-    // First invalid write: fallback {} differs from the stored row, so it lands.
-    await inst.updateState(() => ({ n: "bad" }) as never);
-    const before = await readRow(stores, "tasks/t5");
-    expect(before?.state).toEqual({});
-    expect(before?.version).toBe(2);
+    await ref.updateState(() => ({ n: 5, keep: "DO-NOT-LOSE" }));
+    expect((await readRow(stores, "nullable"))?.state).toEqual({ n: 5, keep: "DO-NOT-LOSE" });
 
-    // Second: the row already IS {}, which is exactly what the fallback returns.
-    await inst.updateState(() => ({ n: "bad" }) as never);
+    await ref.updateState(() => null as never);
 
-    const after = await readRow(stores, "tasks/t5");
+    const after = await readRow(stores, "nullable");
     expect(after?.state).toEqual({});
-    expect(after?.version).toBe(2); // NOT 3 — reachable in ordinary retry traffic
+    expect(after?.version).toBe(2); // a real, committed write
+
+    // The boundary: a schema-valid NON-object that is not null still throws,
+    // so "valid parse" is not by itself the admitting condition.
+    const caught = await refusalFrom(ref.updateState(() => "cleared" as never));
+    expect(caught).toBeInstanceOf(ValidationError);
   });
 });
 
