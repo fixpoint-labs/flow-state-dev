@@ -68,11 +68,36 @@
  * says which it is. The oracle is `git ls-files` again, for the same reason: it
  * knows what is ours, rather than what we remembered to list.
  *
+ * THE PREDICATE WAS NARROW, AND THE DISPOSITION WAS FILE-WIDE — round 29
+ * Rounds 24 and 26 both fixed the CORPUS: once for reaching too far, once for
+ * reaching too narrow. Round 29's three misses were on a corpus that already
+ * reached them, which retires the conclusion the evolution log had drawn from
+ * that streak ("the predicates have been right since round 20").
+ *
+ * `docs/architecture/resource-collections.md:97` and its verbatim twin
+ * `apps/docs/docs/resources/collections.md:81` say a collection instance
+ * "supports the same operations as a static resource" and then list them. Once
+ * FIX-1269 adds `incState` / `pushState` to `ResourceRef` — which is what a
+ * collection instance IS (`types/resource-collection.ts:195-222`) — both lists
+ * are wrong. Neither page carries one word of guarantee vocabulary, so neither
+ * was ever a candidate: the rule selects on VOCABULARY, and an enumeration has
+ * only a SHAPE. That is predicate (c) below.
+ *
+ * The third, `apps/docs/docs/resources/client-access.md:514`, is worse, because
+ * the check reported it settled. Its one guarantee line is `:444`; §11 ruled on
+ * `resources/client-access.md:444` in the deliberately-left-alone list; and
+ * `isDispositioned` matches the FILE — so a ruling about one line settled all
+ * 579 of them, and the enumeration 70 lines further down was never read by
+ * anyone. A FILE DISPOSITIONED AT A LINE IS NOT A FILE DISPOSITIONED, hence the
+ * coverage check at the bottom.
+ *
  * RUN IT
  *   node spec-poc/FIX-1154-doc-targets/check-targets.mjs
  *
- * Exit 0 = every candidate is dispositioned. Exit 1 = at least one is not, the
- * corpus itself is wrong, or some tracked prose is classified neither way.
+ * Exit 0 = every candidate is dispositioned, at every line it was selected on.
+ * Exit 1 = at least one is not, a line-scoped ruling leaves a candidate line
+ * unreached, the corpus itself is wrong, or some tracked prose is classified
+ * neither way.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -160,6 +185,50 @@ const MUTATOR =
  * recording — so it is widened here, on the run that exposed it.
  */
 const SUBJECT = /scope state|state layer|state mutator|scope write|state write/i;
+
+/**
+ * PREDICATE (c) — an exhaustive enumeration of a handle's write surface. Round 29.
+ *
+ * (a) and (b) both select on GUARANTEE vocabulary. A page that merely LISTS
+ * what a handle can do, making no concurrency claim at all, carries none of it
+ * and can never be a candidate — however many times the rule is re-run over
+ * however wide a corpus. Three such pages were found by review:
+ * `docs/architecture/resource-collections.md:97`,
+ * `apps/docs/docs/resources/collections.md:81` (the same sentence verbatim) and
+ * `apps/docs/docs/resources/client-access.md:514`. Two of them assert *"the same
+ * operations as a static resource"* and then enumerate them — an identity claim,
+ * which is an enumeration that inherits its target's defects. FIX-1269 adds two
+ * methods to `ResourceRef`, and collection instances are handed that same ref
+ * (`types/resource-collection.ts:195-222`), so all three go wrong the day it lands.
+ *
+ * The mechanical signature is a line naming two or more DISTINCT write-surface
+ * verbs: one verb is a mention, several in a row is a list. Like (a) and (b) this
+ * decides candidacy, not correctness — a human still rules on whether the list is
+ * closed (`block-state.md:148` ends in an explicit `...`) and whether it is even
+ * the right handle (the scope-handle lists are not FIX-1269's surface).
+ *
+ * `updateState` is in this set and NOT in `MUTATOR` above: the resource surface's
+ * own callback verb was invisible to the rule that selects pages about the
+ * resource surface.
+ */
+const WRITE_SURFACE = [
+  "patchState",
+  "setState",
+  "updateState",
+  "incState",
+  "pushState",
+  "setStateRecord",
+  "deleteStateRecord",
+  "atomicState",
+];
+
+function enumeratesWriteSurface(line) {
+  let named = 0;
+  for (const verb of WRITE_SURFACE) {
+    if (new RegExp(`\\b${verb}\\b`).test(line) && ++named >= 2) return true;
+  }
+  return false;
+}
 
 /**
  * Never traversed. `statSync` follows symlinks and pnpm's `node_modules` is a
@@ -291,18 +360,27 @@ const CORPUS = corpusFiles();
 assertCorpus(CORPUS);
 
 /**
- * A candidate: carries guarantee language AND is about scope state — either by
- * naming a mutator or by naming the subject.
+ * A candidate, under either half of the rule:
+ *   (a)/(b) — carries guarantee language AND is about scope state, either by
+ *             naming a mutator or by naming the subject;
+ *   (c)     — enumerates a handle's write surface, guarantee language or not.
+ *
+ * The two halves are unioned per LINE, so a file can be a candidate for one and
+ * carry hits from both — which is exactly `client-access.md`, whose only (a) hit
+ * is `:444` and whose (c) hit is `:514`.
  */
 function candidates() {
   const found = [];
   for (const file of CORPUS) {
     const text = readFileSync(file, "utf8");
-    if (!MUTATOR.test(text) && !SUBJECT.test(text)) continue;
+    const aboutScopeState = MUTATOR.test(text) || SUBJECT.test(text);
     const hits = text
       .split("\n")
       .map((line, i) => [i + 1, line])
-      .filter(([, line]) => GUARANTEE.test(line));
+      .filter(
+        ([, line]) =>
+          (aboutScopeState && GUARANTEE.test(line)) || enumeratesWriteSurface(line)
+      );
     if (hits.length === 0) continue;
     found.push({ file: path.relative(repoRoot, file), hits });
   }
@@ -326,6 +404,56 @@ function isDispositioned(file) {
   if (section11.includes(file)) return true;
   const route = file.replace(/^apps\/docs\/(docs\/)?/, "").replace(/\.mdx?$/, "");
   return section11.includes(route);
+}
+
+/** The two ways §11 refers to a page: the repo path, and the bare docs-site route. */
+function keysFor(file) {
+  return [file, file.replace(/^apps\/docs\/(docs\/)?/, "").replace(/\.mdx?$/, "")];
+}
+
+/**
+ * A FILE DISPOSITIONED AT A LINE IS NOT A FILE DISPOSITIONED — round 29.
+ *
+ * `isDispositioned` matches on the file, so `resources/client-access.md:444` in
+ * the deliberately-left-alone list — a ruling written about one line, and true of
+ * it — reported the whole 560-line page as settled. The enumeration at `:514` was
+ * never looked at by anyone, and the check said so every round.
+ *
+ * So: every mention of a page in §11 either cites line numbers or does not.
+ *   - No line cited anywhere  → a whole-file ruling, deliberate, honoured as is.
+ *   - Lines cited             → the ruling reaches those lines and no further,
+ *                               and every candidate hit must fall inside them.
+ *
+ * TARGETS ARE EXEMPT, and that is not a loophole: a target's brief owns the page
+ * it is briefing, and §11 cites lines inside a target to point the writer at
+ * them, not to bound what the brief covers. Applying line coverage there would
+ * turn §11 back into the inventory it refuses to be — the engine README alone
+ * carries nine guarantee lines the brief legitimately does not enumerate.
+ *
+ * Returns `null` for a whole-file ruling, otherwise the set of cited lines.
+ */
+function citedLines(file) {
+  const cited = new Set();
+  let wholeFile = false;
+  for (const key of keysFor(file)) {
+    let i = 0;
+    while ((i = section11.indexOf(key, i)) !== -1) {
+      // Accept `path.md:12`, `path:12,19`, `path:12-14` — and the bare path.
+      const m = section11
+        .slice(i + key.length, i + key.length + 48)
+        .match(/^(?:\.mdx?)?:(\d+(?:\s*[-,]\s*\d+)*)/);
+      if (m) {
+        for (const part of m[1].split(",")) {
+          const [from, to] = part.trim().split("-").map(Number);
+          for (let n = from; n <= (to ?? from); n++) cited.add(n);
+        }
+      } else {
+        wholeFile = true;
+      }
+      i += key.length;
+    }
+  }
+  return wholeFile ? null : cited;
 }
 
 /**
@@ -402,4 +530,30 @@ if (undispositioned.length > 0) {
   process.exit(1);
 }
 
-console.log("\nEvery candidate is dispositioned in §11.");
+// Line-level coverage for everything §11 rules on WITHOUT briefing it as a target.
+const targetSet = new Set(TARGETS);
+const uncovered = [];
+for (const { file, hits } of all) {
+  if (targetSet.has(file)) continue;
+  const cited = citedLines(file);
+  if (cited === null) continue; // deliberate whole-file ruling
+  const missed = hits.filter(([lineNo]) => !cited.has(lineNo));
+  if (missed.length > 0) uncovered.push({ file, cited, missed });
+}
+
+if (uncovered.length > 0) {
+  console.error(
+    `\n${uncovered.length} page(s) are ruled on at specific lines, but carry candidate ` +
+      `lines those rulings do not reach. A file dispositioned at a line is not a file\n` +
+      `dispositioned — extend the citation, or make it a target:`
+  );
+  for (const { file, cited, missed } of uncovered) {
+    console.error(`  ${file}  (§11 cites ${[...cited].sort((a, b) => a - b).join(", ")})`);
+    for (const [lineNo, line] of missed) {
+      console.error(`    :${lineNo}: ${line.trim().slice(0, 132)}`);
+    }
+  }
+  process.exit(1);
+}
+
+console.log("\nEvery candidate is dispositioned in §11, at every line it was selected on.");
