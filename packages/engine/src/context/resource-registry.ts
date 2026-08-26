@@ -50,6 +50,7 @@ import type { ResourceCASIntent } from "../stores/resource-cas";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import {
   ConcurrentModificationError,
+  FlowError,
   ResourceAlreadyExistsError,
   ResourceDeletedError
 } from "../errors/flow-error";
@@ -664,7 +665,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     seed: JsonObject
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (config.writable === false) {
-      throw new Error(`Resource "${name}" is read-only`);
+      throw new FlowError(`Resource "${name}" is read-only`, {
+        code: "resource_read_only",
+        retryable: false
+      });
     }
 
     return options.mutateResourceKey(
@@ -1641,7 +1645,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         if (config.writable === false) {
-          throw new Error(`Resource "${resourceName}" content is read-only`);
+          throw new FlowError(`Resource "${resourceName}" content is read-only`, {
+            code: "resource_read_only",
+            retryable: false
+          });
         }
 
         await options.persistResourceContentKey(storageKey, content);
