@@ -311,6 +311,18 @@ echo '[]'
     expect(() =>
       phase.validate?.({ root: a, sourceRepo: a, baseRef: "main" } as never),
     ).not.toThrow();
+
+    // **And the same repository spelled differently is still the same
+    // repository.** Identity folds case in this module, and a byte comparison
+    // would refuse a second clone whose remote differs only in casing — which
+    // passes both assertions above while breaking a configuration that works.
+    const c = mkdtempSync(join(tmpdir(), "conductor-pin-c-"));
+    dirs.push(c);
+    seedRepo(c);
+    setOrigin(c, "https://GITHUB.com/One/Repo.git");
+    expect(() =>
+      phase.validate?.({ root: c, sourceRepo: c, baseRef: "main" } as never),
+    ).not.toThrow();
   });
 
   it("keeps a port only when it is the API's port", () => {

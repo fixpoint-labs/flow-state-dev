@@ -474,7 +474,14 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
             // multi-conductor setup, and both pins are the same value. Only a
             // second, DIFFERENT repository is ambiguous, and it is ambiguous in
             // the direction that settles a board from the wrong place.
-            if (pinned !== undefined && pinned.selector !== repo.selector) {
+            // `sameRepo`, not `!==`: this module already decided that repository
+            // identity folds case, and its doc says why — a remote's spelling
+            // varies while the repository does not. Two clones of one repository
+            // differing only in legal casing are the same pin, and a byte
+            // comparison would refuse the second conductor as though it named
+            // somewhere else. Fifth rule on this branch that lived a few lines
+            // away and was rewritten rather than called.
+            if (pinned !== undefined && !sameRepo(pinned.selector, repo.selector)) {
               throw new Error(
                 `[conductor] this implement phase was already pinned to ` +
                   `"${pinned.selector}" and is now being built against ` +

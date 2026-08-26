@@ -347,6 +347,18 @@ await runGoal(async () => {
       phase: fixture.phase,
     });
     const preexistingPrs = prNumbersFor(sourceRepo, snapshotBranch);
+    // **Pinned here, before the agent exists.** The final assertion below used
+    // to read `origin` from the checkout after the run — and a linked worktree
+    // shares that config with the repository it was cut from, so the agent can
+    // move it. The product path now pins at construction; this independent
+    // verifier was the other half of that same rule, and only one half got it.
+    const pinnedRepo = repoSlugFromRemote(
+      execFileSync("git", ["remote", "get-url", "origin"], {
+        cwd: sourceRepo,
+        encoding: "utf8",
+        timeout: NETWORK_CALL_TIMEOUT_MS,
+      }),
+    );
 
     await call("seed", { issue: fixture.issue, phase: fixture.phase });
 
@@ -479,15 +491,12 @@ await runGoal(async () => {
           // halves of the answer. Reading the remote with `git` puts it outside
           // that environment. Imported rather than restated — this is the
           // fourth rule on this branch that lived in `src` and was missed here.
-          const remote = execFileSync("git", ["remote", "get-url", "origin"], {
-            cwd: checkout,
-            encoding: "utf8",
-            timeout: NETWORK_CALL_TIMEOUT_MS,
-          });
-          const repo = repoSlugFromRemote(remote);
+          // The identity snapshotted before dispatch, never re-read here: the
+          // agent has run by now and `origin` is something it can change.
+          const repo = pinnedRepo;
           if (repo === undefined) {
             failures.push(
-              `could not name the repository behind ${checkout}, so the pull-request ` +
+              `could not name the repository behind ${sourceRepo}, so the pull-request ` +
                 `check could not be pinned to it`,
             );
           } else {
