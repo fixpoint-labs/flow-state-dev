@@ -978,7 +978,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
 <section id="dsl">
   <div class="sec-head"><span class="sec-num">08</span><h2>The sequencer DSL</h2></div>
-  <p class="lede">Twenty-four methods on <code>SequencerDefinition</code> — the twenty-two composition operations below, plus <code>.connectInput()</code> and <code>.validate()</code>, which wire and check rather than compose. Every operation produces a typed <code>BlockValue</code> on the trace, so the execution tree stays reconstructable no matter how the pipeline branches.</p>
+  <p class="lede">The fluent surface comes in three parts: the twenty-two <strong>composition operations</strong> below, declared on <code>SequencerDefinition</code>; two <strong>wiring and checking</strong> methods beside them (<code>.connectInput()</code>, <code>.validate()</code>); and whatever <code>BlockDefinition</code> contributes by inheritance, since a sequencer is a block — <code>.connectOutput()</code>, <code>.mapModelOutput()</code>, <code>.asTool()</code> among them. A single total is not worth quoting: it depends on where you draw the line between declared and inherited, which is why this section stopped claiming one. Every operation produces a typed <code>BlockValue</code> on the trace, so the execution tree stays reconstructable no matter how the pipeline branches.</p>
 
   <div class="dsl">
     <div class="dsl-grp" style="--gc:var(--k-sequencer)">
@@ -1654,7 +1654,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 760 250" role="img" aria-label="Task status state machine: pending claims into in_progress or is parked as blocked; in_progress may submit to awaiting_review, re-pend on a failure while retries remain, or go terminal as completed, errored or cancelled; awaiting_review returns to pending for rework or resolves to completed.">
+      <svg viewBox="0 0 760 250" role="img" aria-label="Task status state machine: pending claims into in_progress or is parked as blocked; in_progress may submit to awaiting_review, re-pend on a failure while retries remain, or go terminal as completed, errored or cancelled; awaiting_review returns to pending for rework or resolves to completed, and may also settle as cancelled or errored.">
         <defs><marker id="a15" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
 
         <rect class="n-grp" x="546" y="24" width="152" height="200" rx="6"/>
@@ -1697,6 +1697,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
         <path class="ln" d="M390,116 L470,116 L470,58 L556,58" marker-end="url(#a15)"/>
         <text class="t-xs" x="408" y="110">success</text>
+        <text class="t-xs" x="320" y="243" text-anchor="middle">awaiting_review also settles directly to cancelled or errored — four legal exits, not two</text>
         <path class="ln" d="M390,126 L556,124" marker-end="url(#a15)"/>
         <text class="t-xs" x="478" y="138">budget spent</text>
         <path class="ln" d="M390,140 L442,140 L442,192 L556,192" marker-end="url(#a15)"/>
@@ -1757,7 +1758,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     </tbody>
   </table></div>
 
-  <p>Two cross-cutting mechanisms give the system its shape. A <strong>hygiene janitor</strong> runs a periodic pass — semantic confidence decay, episodic eviction — on by default and disableable with <code>hygiene: false</code>. And every memory carries a <strong>subject</strong>: the primary user is <code>user</code>, and other people mentioned get their own subject, assigned at extraction and carried through every tier, so consolidation never merges facts across people.</p>
+  <p>Two cross-cutting mechanisms give the system its shape. A <strong>hygiene janitor</strong> runs a periodic pass — semantic confidence decay, episodic eviction — on by default and disableable with <code>hygiene: false</code>. And every <em>durable</em> memory carries a <strong>subject</strong>: the primary user is <code>user</code>, and other people mentioned get their own subject, assigned at extraction and carried from episodic memory onward, so consolidation never merges facts across people. Working memory is the exception: <code>workingMemoryEntrySchema</code> has no <code>subject</code> field, and the capture path drops it on the <code>add()</code> before carrying it into the episodic and semantic writes — so subject-aware filtering and cross-subject dedup are not available in the working tier.</p>
   <p>The package ships four per-tier capability factories plus one composed <code>createMemoryCapability</code>, a recall-tool surface with pluggable strategies, and a context formatter per tier. It depends only on <code>core</code>.</p>
 </section>
 
@@ -1773,7 +1774,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <div class="card"><h5>mcp</h5><span class="role">client side</span><p>A connection manager, tool filtering, enrichment and context injection — FSD as an MCP <em>consumer</em>, distinct from the <code>mcp</code> package which makes FSD an MCP <em>server</em>.</p></div>
     <div class="card"><h5>claude-code</h5><span class="role">separate package</span><p>Dispatches cloud coding tasks through the local <code>claude</code> CLI. Ships both a CLI capability and an SDK capability.</p></div>
   </div>
-  <p>Every tool is a block, so a tool participates in tracing, retry, rescue, and the tool cache exactly like any other unit of work — and a generator can be a tool of another generator without a special case.</p>
+  <p>Every <em>framework</em> tool is a block, so it participates in tracing, retry, rescue, and the tool cache exactly like any other unit of work — and a generator can be a tool of another generator without a special case.</p>
+  <p>The exception is worth knowing before you rely on the guarantee. A generator's <code>providerTools</code> slot takes <code>providerTool()</code> wrappers, which are opaque handles around a raw AI SDK tool: passed straight through, executed <strong>server-side by the provider</strong>, never compiled into a block and never routed through <code>executeBlock</code>. Provider-native web search is the common case. Those calls appear in the item stream by name, but none of the block-level machinery applies to them.</p>
 </section>
 
 <section id="transports">
