@@ -36,13 +36,19 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../../../labs/conductor/src/flow.ts";
+import {
+  conductorFlow,
+  CONDUCTOR_FLOW_KIND,
+} from "../../../labs/conductor/src/flow.ts";
 import {
   hasCompletingPr,
   repoSlugFromRemote,
   implementPhase,
 } from "../../../labs/conductor/src/implement.ts";
-import { branchFor, isStrictlyInside } from "../../../labs/conductor/src/workspace.ts";
+import {
+  branchFor,
+  isStrictlyInside,
+} from "../../../labs/conductor/src/workspace.ts";
 import {
   positiveIntFromEnv,
   requireSourceRepo,
@@ -52,7 +58,6 @@ import {
   NETWORK_CALL_TIMEOUT_MS,
 } from "../../../labs/conductor/src/exec.ts";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
-
 
 interface Fixture {
   issue: string;
@@ -119,7 +124,18 @@ function prNumbersFor(repoDir: string, branch: string): Set<number> {
   if (repo === undefined) return new Set();
   const listed = execFileSync(
     "gh",
-    ["pr", "list", "--head", branch, "--state", "all", "--json", "number", "-R", repo.selector],
+    [
+      "pr",
+      "list",
+      "--head",
+      branch,
+      "--state",
+      "all",
+      "--json",
+      "number",
+      "-R",
+      repo.selector,
+    ],
     { cwd: repoDir, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
   );
   const rows = JSON.parse(listed || "[]") as Array<{ number?: unknown }>;
@@ -137,7 +153,11 @@ function prNumbersFor(repoDir: string, branch: string): Set<number> {
  * produce one — and mixing them would let a change to either quietly weaken the
  * other.
  */
-function hasNewCompletingPr(stdout: string, inRepo: string, before: Set<number>): boolean {
+function hasNewCompletingPr(
+  stdout: string,
+  inRepo: string,
+  before: Set<number>,
+): boolean {
   const rows = JSON.parse(stdout || "[]") as Array<{ number?: unknown }>;
   return rows.some((row) => {
     const n = row.number;
@@ -177,138 +197,155 @@ await runGoal(async () => {
   const workspaceRoot = join(scratch, "checkouts");
   const dbFile = join(scratch, "goal.sqlite");
 
-  const { createFlowState } = await import("@flow-state-dev/engine");
-  const { runAction } = await import("@flow-state-dev/engine");
-  const { sqliteStores } = await import("@flow-state-dev/store-sqlite");
-
-  // Bounded like every other child process this lab spawns. Local git is fast
-  // until it is not — an NFS stall or an index lock hangs it, and an unbounded
-  // hang here never reaches `finally`, so the runtime is never disposed and the
-  // scratch tree is never removed. Same rule, same reason as the `gh` probe.
-  const baseRef = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-    cwd: sourceRepo,
-    encoding: "utf8",
-    timeout: GIT_TIMEOUT_MS,
-  }).trim();
-
-  const built = conductorFlow({
-    epic: fixture.epic,
-    workspace: { root: workspaceRoot, sourceRepo, baseRef },
-    maxAttempts: MAX_ATTEMPTS,
-    runTimeoutMs: RUN_TIMEOUT_MS,
-    // The real implement phase, with its real `gh`-backed done-condition. Only
-    // the prompt's job text comes from the held-out fixture.
-    phase: {
-      ...implementPhase(),
-      buildPrompt: (run) =>
-        [
-          `Issue ${run.issue}.`,
-          "",
-          fixture.job,
-          "",
-          `You are working in ${run.workspacePath}, on branch ${run.branch}.`,
-          ...(run.feedback === undefined
-            ? []
-            : ["", "The last attempt stopped for this reason:", run.feedback]),
-        ].join("\n"),
-    },
-    agent: {
-      allowedTools: ["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
-      // `acceptEdits`, not `bypassPermissions`: the latter maps to
-      // `--dangerously-skip-permissions`, which the CLI refuses outright when
-      // the process has root privileges, and the refusal arrives as a bare
-      // "process exited with code 1" that reads like a broken dispatch.
-      permissionMode: "acceptEdits",
-      maxTurns: 40,
-      systemPrompt:
-        "You are a coding agent working on one small, self-contained change in the " +
-        "repository you have been placed in. Make the change, commit it, and open a " +
-        "pull request for the branch you are on.",
-    },
-  });
-
-  function neverResolvesAModel(): never {
-    throw new Error(
-      "conductor declares no generator actions — the coding run goes through the " +
-        "Claude Code Agent SDK, which resolves its own model.",
-    );
-  }
-
-  const state = createFlowState({
-    flows: { [CONDUCTOR_FLOW_KIND]: built.flow },
-    modelResolver: Object.assign(neverResolvesAModel, {
-      resolveId: neverResolvesAModel,
-    }) as never,
-    stores: { prod: { primary: sqliteStores({ filename: dbFile }) } },
-    defaultProfile: "prod",
-    // The finding, not a workaround: the default is tuned to a serverless
-    // SIGTERM grace period rather than to a coding run, so an in-process host
-    // must raise it past its longest expected run or a shutdown kills one.
-    detachedDrainTimeoutMs: built.drainBudgetMs,
-    logger: silentLogger,
-  } as never);
-
-  const sessionId = `sess_conductor_goal_${Date.now()}`;
-  const runtime = await (state as { getRuntime(): Promise<{
-    stores: unknown;
-    runtimeConfig: object;
-  }> }).getRuntime();
-
-  const call = async <T,>(action: string, input: unknown): Promise<T> => {
-    const result = (await runAction({
-      flow: built.flow as never,
-      actionName: action as never,
-      input: input as never,
-      userId: USER_ID,
-      sessionId,
-      stores: runtime.stores as never,
-      runtimeConfig: { ...runtime.runtimeConfig } as never,
-    })) as { output?: unknown; error?: unknown };
-    if (result.error != null) {
-      throw new Error(`conductor "${action}" failed: ${JSON.stringify(result.error)}`);
-    }
-    return result.output as T;
-  };
-
-  const readRow = async (): Promise<StatusRow | undefined> => {
-    const { rows } = await call<{ rows: StatusRow[] }>("status", { issue: fixture.issue });
-    return rows[0];
-  };
-
-  // **What was already there before this run touched anything.**
+  // **Everything past the scratch directory is inside this `try`.** Creating it
+  // is the first irreversible act here, and every step after it can fail: the
+  // dynamic imports, the base-ref query, `conductorFlow` refusing the remote or
+  // `gh`, and the runtime construction itself. A throw from any of them is
+  // caught by `runGoal`, which exits — so anything left outside this boundary
+  // leaks the whole tree, once per failed run.
   //
-  // The branch is a pure function of the durable task, so a second invocation of
-  // this check against the same fixture derives the SAME branch — and the pull
-  // request the previous invocation opened is still OPEN in `sourceRepo`. The
-  // scratch database and checkout are fresh, so nothing else carries over, and a
-  // clean no-op agent then satisfies the completion check on somebody else's
-  // work. The goal would report its outcome proved without this run having
-  // proved it: precisely the silent wrong success the whole lab exists to
-  // remove, re-entering through the check that certifies its absence.
-  //
-  // So the pull requests that exist BEFORE the run are recorded, and the
-  // assertion at the end demands one that is not among them.
-  // **The board's COLLECTION identity, not the bare epic.** The manager builds
-  // its location with `epic: boardCollectionId` — `conductor-tasks--t0--<epic>`,
-  // not `<epic>` — so a snapshot keyed on `fixture.epic` inspects a branch no run
-  // ever uses. It comes back empty every time, and the assertion it feeds then
-  // passes unconditionally: a guard against a false pass that is itself a false
-  // pass. `conductorFlow` returns the value; the first version derived a
-  // plausible one instead of asking for the real one.
-  const snapshotBranch = branchFor({
-    principal: { userId: USER_ID },
-    epic: built.collectionId,
-    issue: fixture.issue,
-    phase: fixture.phase,
-  });
+  // `state` is declared here rather than where it is built, because `finally`
+  // has to dispose it whether or not construction ever got that far. That is
+  // the reason the boundary could not simply be moved statement by statement.
+  let state: unknown;
   let row: StatusRow | undefined;
   try {
-    // **Inside the `try`, not before it.** This shells out to `gh`, so an
-    // unauthenticated or offline host throws here — and a throw before the
-    // `try` is caught by `runGoal`, which exits. The runtime, the SQLite file
-    // and the scratch directory are all already created by this point, so the
-    // `finally` that removes them never runs and every failed attempt leaves
-    // another copy behind.
+    const { createFlowState } = await import("@flow-state-dev/engine");
+    const { runAction } = await import("@flow-state-dev/engine");
+    const { sqliteStores } = await import("@flow-state-dev/store-sqlite");
+
+    // Bounded like every other child process this lab spawns. Local git is fast
+    // until it is not — an NFS stall or an index lock hangs it, and an unbounded
+    // hang here never reaches `finally`, so the runtime is never disposed and the
+    // scratch tree is never removed. Same rule, same reason as the `gh` probe.
+    const baseRef = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: sourceRepo,
+      encoding: "utf8",
+      timeout: GIT_TIMEOUT_MS,
+    }).trim();
+
+    const built = conductorFlow({
+      epic: fixture.epic,
+      workspace: { root: workspaceRoot, sourceRepo, baseRef },
+      maxAttempts: MAX_ATTEMPTS,
+      runTimeoutMs: RUN_TIMEOUT_MS,
+      // The real implement phase, with its real `gh`-backed done-condition. Only
+      // the prompt's job text comes from the held-out fixture.
+      phase: {
+        ...implementPhase(),
+        buildPrompt: (run) =>
+          [
+            `Issue ${run.issue}.`,
+            "",
+            fixture.job,
+            "",
+            `You are working in ${run.workspacePath}, on branch ${run.branch}.`,
+            ...(run.feedback === undefined
+              ? []
+              : [
+                  "",
+                  "The last attempt stopped for this reason:",
+                  run.feedback,
+                ]),
+          ].join("\n"),
+      },
+      agent: {
+        allowedTools: ["Read", "Edit", "Write", "Bash", "Grep", "Glob"],
+        // `acceptEdits`, not `bypassPermissions`: the latter maps to
+        // `--dangerously-skip-permissions`, which the CLI refuses outright when
+        // the process has root privileges, and the refusal arrives as a bare
+        // "process exited with code 1" that reads like a broken dispatch.
+        permissionMode: "acceptEdits",
+        maxTurns: 40,
+        systemPrompt:
+          "You are a coding agent working on one small, self-contained change in the " +
+          "repository you have been placed in. Make the change, commit it, and open a " +
+          "pull request for the branch you are on.",
+      },
+    });
+
+    function neverResolvesAModel(): never {
+      throw new Error(
+        "conductor declares no generator actions — the coding run goes through the " +
+          "Claude Code Agent SDK, which resolves its own model.",
+      );
+    }
+
+    state = createFlowState({
+      flows: { [CONDUCTOR_FLOW_KIND]: built.flow },
+      modelResolver: Object.assign(neverResolvesAModel, {
+        resolveId: neverResolvesAModel,
+      }) as never,
+      stores: { prod: { primary: sqliteStores({ filename: dbFile }) } },
+      defaultProfile: "prod",
+      // The finding, not a workaround: the default is tuned to a serverless
+      // SIGTERM grace period rather than to a coding run, so an in-process host
+      // must raise it past its longest expected run or a shutdown kills one.
+      detachedDrainTimeoutMs: built.drainBudgetMs,
+      logger: silentLogger,
+    } as never);
+
+    const sessionId = `sess_conductor_goal_${Date.now()}`;
+    const runtime = await (
+      state as {
+        getRuntime(): Promise<{
+          stores: unknown;
+          runtimeConfig: object;
+        }>;
+      }
+    ).getRuntime();
+
+    const call = async <T,>(action: string, input: unknown): Promise<T> => {
+      const result = (await runAction({
+        flow: built.flow as never,
+        actionName: action as never,
+        input: input as never,
+        userId: USER_ID,
+        sessionId,
+        stores: runtime.stores as never,
+        runtimeConfig: { ...runtime.runtimeConfig } as never,
+      })) as { output?: unknown; error?: unknown };
+      if (result.error != null) {
+        throw new Error(
+          `conductor "${action}" failed: ${JSON.stringify(result.error)}`,
+        );
+      }
+      return result.output as T;
+    };
+
+    const readRow = async (): Promise<StatusRow | undefined> => {
+      const { rows } = await call<{ rows: StatusRow[] }>("status", {
+        issue: fixture.issue,
+      });
+      return rows[0];
+    };
+
+    // **What was already there before this run touched anything.**
+    //
+    // The branch is a pure function of the durable task, so a second invocation of
+    // this check against the same fixture derives the SAME branch — and the pull
+    // request the previous invocation opened is still OPEN in `sourceRepo`. The
+    // scratch database and checkout are fresh, so nothing else carries over, and a
+    // clean no-op agent then satisfies the completion check on somebody else's
+    // work. The goal would report its outcome proved without this run having
+    // proved it: precisely the silent wrong success the whole lab exists to
+    // remove, re-entering through the check that certifies its absence.
+    //
+    // So the pull requests that exist BEFORE the run are recorded, and the
+    // assertion at the end demands one that is not among them.
+    // **The board's COLLECTION identity, not the bare epic.** The manager builds
+    // its location with `epic: boardCollectionId` — `conductor-tasks--t0--<epic>`,
+    // not `<epic>` — so a snapshot keyed on `fixture.epic` inspects a branch no run
+    // ever uses. It comes back empty every time, and the assertion it feeds then
+    // passes unconditionally: a guard against a false pass that is itself a false
+    // pass. `conductorFlow` returns the value; the first version derived a
+    // plausible one instead of asking for the real one.
+    const snapshotBranch = branchFor({
+      principal: { userId: USER_ID },
+      epic: built.collectionId,
+      issue: fixture.issue,
+      phase: fixture.phase,
+    });
     const preexistingPrs = prNumbersFor(sourceRepo, snapshotBranch);
 
     await call("seed", { issue: fixture.issue, phase: fixture.phase });
@@ -336,7 +373,9 @@ await runGoal(async () => {
     for (;;) {
       row = await readRow();
       if (row === undefined) {
-        failures.push("the board has no row for this issue-phase — seeding did not file one");
+        failures.push(
+          "the board has no row for this issue-phase — seeding did not file one",
+        );
         break;
       }
       if (row.status !== "in_progress" && row.status !== "pending") break;
@@ -372,7 +411,9 @@ await runGoal(async () => {
           failures.push("the run record carries no harness session id");
         }
         if (row.run.costUsd === null) {
-          failures.push("the run record carries no cost — the harness reported none");
+          failures.push(
+            "the run record carries no cost — the harness reported none",
+          );
         }
         if (row.run.workspacePath === null) {
           failures.push("the run record carries no checkout path");
@@ -398,11 +439,15 @@ await runGoal(async () => {
                 `check configured (${workspaceRoot})`,
             );
           }
-          const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-            timeout: GIT_TIMEOUT_MS,
-            cwd: checkout,
-            encoding: "utf8",
-          }).trim();
+          const head = execFileSync(
+            "git",
+            ["rev-parse", "--abbrev-ref", "HEAD"],
+            {
+              timeout: GIT_TIMEOUT_MS,
+              cwd: checkout,
+              encoding: "utf8",
+            },
+          ).trim();
           if (head !== row.run.branch) {
             failures.push(
               `the checkout is on "${head}" while the row records "${row.run.branch}"`,
@@ -460,7 +505,11 @@ await runGoal(async () => {
                 "-R",
                 repo.selector,
               ],
-              { cwd: checkout, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
+              {
+                cwd: checkout,
+                encoding: "utf8",
+                timeout: NETWORK_CALL_TIMEOUT_MS,
+              },
             );
             // **The snapshot has to be of the branch the run actually used.**
             // Derived before the run from values this script composes itself, so
@@ -481,7 +530,9 @@ await runGoal(async () => {
               failures.push(
                 `no open or merged pull request exists for branch "${row.run.branch}"`,
               );
-            } else if (!hasNewCompletingPr(prs, repo.ownerRepo, preexistingPrs)) {
+            } else if (
+              !hasNewCompletingPr(prs, repo.ownerRepo, preexistingPrs)
+            ) {
               // A completing pull request exists and every one of them was
               // already there before this run started. The check would pass on
               // the previous invocation's artifact.
@@ -501,7 +552,7 @@ await runGoal(async () => {
     // — removing the tree and the SQLite files underneath it produces a cascade
     // of follow-on failures that look like the finding and are not, and leaves
     // the runtime's resources open. Disposal drains the detached work first.
-    await (state as unknown as { dispose?: () => Promise<void> }).dispose?.();
+    await (state as { dispose?: () => Promise<void> } | undefined)?.dispose?.();
     rmSync(scratch, { recursive: true, force: true });
   }
 
