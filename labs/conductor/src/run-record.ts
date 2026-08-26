@@ -333,9 +333,14 @@ export async function writeRunRow(
  *   board's new failure count and this row cannot disagree about which run
  *   they describe.
  *
- * Ordering it before the prompt is safe: the previous failure's reason reaches
- * the next attempt through the board's own `feedback` field, never through this
- * row.
+ * Ordering it before the prompt is safe **only because nothing reads this row
+ * for previous-attempt data.** That was not true when the claim was first
+ * written: the implement prompt read `sessionId` off the row to name the last
+ * attempt's harness session, and the clear meant it always saw `null`. The
+ * carry-forward a phase needs now arrives on `PhaseRunContext` — the failure
+ * reason from the board's own `feedback`, the previous session captured by the
+ * manager before this write. A phase reading this row for anything the clear
+ * touches is the same defect returning.
  */
 export async function openRunRow(
   ctx: BlockContext,

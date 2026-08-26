@@ -11,9 +11,16 @@
  * after a successful verdict, because a run can open the pull request and then
  * exhaust its turn budget.
  */
-import { readRunRow, runTopic } from "./run-record";
+import { execFileSync } from "node:child_process";
 import type { PhaseRunContext, PhaseSpec, PromptRunContext } from "./manager";
-import { NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
+import type { WorkspaceConfig } from "./workspace";
+import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
+import {
+  GIT_SUFFIX,
+  REMOTE_VIA_SCP,
+  REMOTE_VIA_URL,
+  TRAILING_SLASHES,
+} from "./patterns";
 
 export interface ImplementPhaseOptions {
   /**
@@ -45,8 +52,15 @@ const COMPLETING_PR_STATES = new Set(["OPEN", "MERGED"]);
  * the rule is the part that can be wrong, and the part a reviewer needs pinned.
  * Tolerates a row with no `state` by rejecting it (BP-030): an answer we cannot
  * classify must not complete a task.
+ *
+ * **`inRepo` is the repository the run worked in**, and a row whose head lives
+ * anywhere else is rejected however green its state. `gh`'s `--head` filter
+ * matches a branch NAME, so a fork's branch carrying this run's name comes back
+ * in the same listing; counting it would settle the row on a pull request the
+ * run did not open. Rejected rather than trusted, for the same reason a missing
+ * `state` is: an answer we cannot attribute must not complete a task.
  */
-export function hasCompletingPr(stdout: string): boolean {
+export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
   let rows: unknown;
   try {
     rows = JSON.parse(stdout || "[]");
@@ -54,9 +68,106 @@ export function hasCompletingPr(stdout: string): boolean {
     return false;
   }
   if (!Array.isArray(rows)) return false;
-  return rows.some((row) =>
-    COMPLETING_PR_STATES.has(String((row as { state?: unknown } | null)?.state)),
-  );
+  return rows.some((row) => {
+    const r = row as {
+      state?: unknown;
+      headRepository?: { name?: unknown } | null;
+      headRepositoryOwner?: { login?: unknown } | null;
+    } | null;
+    if (!COMPLETING_PR_STATES.has(String(r?.state))) return false;
+    if (inRepo === undefined) return true;
+    const owner = r?.headRepositoryOwner?.login;
+    const name = r?.headRepository?.name;
+    // Either field missing is unattributable, so it does not count.
+    if (typeof owner !== "string" || typeof name !== "string") return false;
+    return sameRepo(`${owner}/${name}`, inRepo);
+  });
+}
+
+/**
+ * Do two `owner/name` spellings name one GitHub repository?
+ *
+ * **Case-folded, because GitHub's are.** Owner and repository names are
+ * case-insensitive there: a remote spelled `Fixpoint-Labs/Flow-State-Dev`
+ * reaches the same repository as `fixpoint-labs/flow-state-dev`, and `gh -R`
+ * accepts either. The API answers in ONE canonical casing regardless, so an
+ * exact comparison against the remote's spelling rejects every pull request the
+ * run actually opened — a successful run reported unfinished, retried, and its
+ * budget spent. The same harm the attribution check itself was added to prevent,
+ * arriving through the check.
+ *
+ * Folded with `toLowerCase()` rather than a locale-aware fold: these are ASCII
+ * identifiers, and a locale-sensitive one would make the answer depend on the
+ * host's locale.
+ */
+function sameRepo(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/**
+ * `host/owner/name` from a git remote URL, in the form `gh -R` accepts.
+ *
+ * **The host is part of the answer, not decoration.** Reducing
+ * `git@ghe.acme:owner/repo.git` to `owner/repo` sends the listing to
+ * github.com (or wherever `GH_HOST` points) instead of the Enterprise host the
+ * checkout actually came from — so a real pull request is missed, or a
+ * same-named one on another host settles the task. `gh` documents `-R` as
+ * `[HOST/]OWNER/REPO` precisely so this can be said.
+ *
+ * Handles the two spellings a checkout carries: `scheme://host/owner/name` and
+ * `user@host:owner/name`, with or without `.git`.
+ *
+ * **Undefined is a refusal, not a fallback.** A remote with no host — a local
+ * path, a relative clone — is not a repository `gh` can be pointed at, and a
+ * remote we cannot name is one we cannot pin the listing to. A host `gh` does
+ * not serve is left to fail loudly at the call rather than being guessed at
+ * here; what must never happen is silently querying a DIFFERENT host.
+ */
+export interface RemoteRepo {
+  /** For `gh -R`, which documents `[HOST/]OWNER/REPO`. */
+  selector: string;
+  /** For attribution: what a PR row's `headRepositoryOwner/headRepository` spells. */
+  ownerRepo: string;
+}
+
+export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
+  // **Trailing slashes come off BEFORE `.git`, not after.** `…/repo.git/` left
+  // the suffix in place, so the selector named a repository called `repo.git`
+  // and every pull request for `repo` was missed — a successful run reported
+  // unfinished, retried, budget spent. Fourth spelling this parser has been
+  // wrong about, after the host, the port and the casing.
+  const trimmed = url.trim().replace(TRAILING_SLASHES, "").replace(GIT_SUFFIX, "");
+  // `scheme://[user@]host/owner/name`
+  // The port is part of the HOST, captured with it. Matching it and throwing it
+  // away sent an Enterprise checkout on `:8443` to the same hostname on 443 — a
+  // different server, quietly, which is the one outcome this function's own
+  // doc says must never happen. It was matched only so it could not be mistaken
+  // for the first path segment; dropping it was the bug.
+  // A bracketed IPv6 literal is ONE host, colons and all. Without the first
+  // alternative the host class stops at the literal's first colon and the whole
+  // URL fails to parse — which since the startup preflight consumes this parser
+  // is no longer a probe that returns false, it is a conductor that refuses to
+  // build on a remote `gh` can query perfectly well.
+  const viaUrl = REMOTE_VIA_URL.exec(trimmed);
+  const viaScp = REMOTE_VIA_SCP.exec(trimmed);
+  const parsed = viaUrl ?? viaScp;
+  if (parsed === null) return undefined;
+  const [, host, rest] = parsed;
+  const segments = rest.split("/").filter((part) => part.length > 0);
+  if (segments.length < 2) return undefined;
+  // The last two are owner and name; anything before is a path prefix some
+  // hosts allow and `gh` does not, so it is refused rather than dropped.
+  if (segments.length > 2) return undefined;
+  // **Two values, named, because they are not interchangeable and I shipped them
+  // as if they were.** `-R` wants the host; a PR row's head identity is
+  // `owner/repo` with no host, so comparing the selector against it rejects
+  // every matching pull request and a successful run exhausts its retries.
+  // Returning one string made passing the wrong one a typo rather than a type
+  // error, and the typo is exactly what happened.
+  return {
+    selector: `${host}/${segments[0]}/${segments[1]}`,
+    ownerRepo: `${segments[0]}/${segments[1]}`,
+  };
 }
 
 /**
@@ -68,11 +179,52 @@ export function hasCompletingPr(stdout: string): boolean {
  * `--state all` is still passed, deliberately: the alternative — asking only for
  * open ones — would miss a run that opened a PR and had it merged before the
  * verdict was read. The state is requested and judged here instead.
+ *
+ * **`--head` matches a branch NAME, not a branch.** `gh` documents it as a
+ * head-branch filter and does not accept `<owner>:<branch>`, so a pull request
+ * opened from a FORK whose head branch happens to carry this run's name is
+ * returned by this listing. Accepting it would complete a clean agent run that
+ * never opened a pull request at all — a stranger's branch settling our row as
+ * done, which is the silent wrong success this phase exists to detect. So the
+ * head repository is requested and checked: only a pull request whose head is
+ * in the repository the run worked in counts.
+ *
+ * **The repository is taken from git, not from `gh`, and then pinned with
+ * `-R`.** `GH_REPO` in the host's environment redirects every `gh` command that
+ * would otherwise work from the local checkout — so asking `gh` which
+ * repository this is and then asking `gh` for its pull requests lets ONE
+ * process-level override redirect both halves of the comparison, which then
+ * agree with each other about the wrong repository. Reading the remote with
+ * `git` puts the answer outside `gh`'s environment, and passing it back as `-R`
+ * stops the listing drifting to another one.
  */
 async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
+  const { stdout: originStdout } = await run(
+    "git",
+    ["remote", "get-url", "origin"],
+    {
+      cwd: ctx.workspacePath,
+      timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+      signal: ctx.ctx.signal,
+    },
+  );
+  const repo = repoSlugFromRemote(originStdout.trim());
+  if (repo === undefined) return false;
+
   const { stdout } = await run(
     "gh",
-    ["pr", "list", "--head", ctx.branch, "--state", "all", "--json", "number,state"],
+    [
+      "pr",
+      "list",
+      "--head",
+      ctx.branch,
+      "--state",
+      "all",
+      "--json",
+      "number,state,headRepository,headRepositoryOwner",
+      "-R",
+      repo.selector,
+    ],
     {
       cwd: ctx.workspacePath,
       // Bounded twice. Without either, a listing that never answers holds the
@@ -83,7 +235,69 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       maxBuffer: 4 * 1024 * 1024,
     },
   );
-  return hasCompletingPr(stdout);
+  return hasCompletingPr(stdout, repo.ownerRepo);
+}
+
+/**
+ * Refuse a configuration the completion probe cannot run under.
+ *
+ * **The probe's unstated preconditions, moved to startup.** `prExistsViaGh`
+ * needs two things the rest of the conductor never touches: an `origin` remote
+ * it can name a repository from, and a runnable `gh`. Neither is checked
+ * anywhere else, and both fail AFTER the paid agent run — the rescue re-pends
+ * the row, the next attempt runs the agent again, and it fails identically,
+ * until the retry budget is gone. A permanent configuration error charged once
+ * per retry is exactly what the guards beside this one exist to stop.
+ *
+ * Order matters: the remote is checked first, because "no origin" is the more
+ * specific diagnosis and a host missing `gh` usually knows it.
+ *
+ * **What this deliberately does NOT check is authentication.** `gh auth status
+ * --hostname H` would catch a host with no usable credentials, and that failure
+ * has the same shape as these. It is left out because it makes flow
+ * construction depend on a live API call: a network hiccup at startup would
+ * become a permanent refusal to build the conductor at all, which is a worse
+ * failure than the one being prevented. It could not promise much anyway —
+ * credentials valid at construction can expire before the probe runs.
+ */
+function assertCompletionProbeUsable(workspace: WorkspaceConfig): void {
+  let url: string;
+  try {
+    url = execFileSync("git", ["remote", "get-url", "origin"], {
+      cwd: workspace.sourceRepo,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+      timeout: GIT_TIMEOUT_MS,
+    }).trim();
+  } catch {
+    throw new Error(
+      `[conductor] ${workspace.sourceRepo} has no "origin" remote. The implement phase's ` +
+        `completion check reads it to find this branch's pull request, and it runs after ` +
+        `the agent — so without one every attempt pays for a full coding run and then ` +
+        `fails permanently. Add an "origin" remote, or supply your own \`prExists\`.`,
+    );
+  }
+  if (repoSlugFromRemote(url) === undefined) {
+    throw new Error(
+      `[conductor] the "origin" remote of ${workspace.sourceRepo} is "${url}", which does ` +
+        `not name a host and repository the completion check can query. Same cost as a ` +
+        `missing remote: a paid run per attempt, then a permanent failure.`,
+    );
+  }
+  try {
+    // Availability only. `--version` neither authenticates nor reaches the
+    // network, so this answers "can the probe's binary be executed here" and
+    // nothing else — which is the half of the precondition that is permanent
+    // and knowable at startup.
+    execFileSync("gh", ["--version"], { stdio: "ignore", timeout: GIT_TIMEOUT_MS });
+  } catch {
+    throw new Error(
+      `[conductor] the \`gh\` CLI could not be run. The implement phase's completion ` +
+        `check shells out to it to find this branch's pull request, and it runs after the ` +
+        `agent — so on a host without \`gh\` every attempt pays for a full coding run and ` +
+        `then fails permanently. Install \`gh\`, or supply your own \`prExists\`.`,
+    );
+  }
 }
 
 /** Build the implement phase. */
@@ -92,15 +306,25 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
 
   return {
     phase: "implement",
-    // Empty, and that is not an oversight. The prompt below reads this issue's
-    // run row, but `runs` is the MANAGER's collection — always declared, and
+    // **Only when the built-in probe is the one that will run.** A caller who
+    // supplies `prExists` has replaced the thing that reads `origin`, so
+    // demanding one would refuse a configuration that works — and the tests,
+    // which stub the probe against repositories that have no remote at all, are
+    // the proof that this distinction is load-bearing rather than theoretical.
+    ...(options.prExists === undefined ? { validate: assertCompletionProbeUsable } : {}),
+    // Empty, and that is not an oversight: this phase reads no collection of its
+    // own. It does not read the run record either — everything it needs about
+    // the previous attempt arrives on `PhaseRunContext`, because that row
+    // describes the attempt now running and has already been cleared by the
+    // time a prompt is built.
+    //
+    // `runs` is the MANAGER's collection regardless — always declared, and
     // reserved, because a phase re-declaring it would replace the manager's own
     // and send its bookkeeping somewhere `status` never reads. `readable` is for
     // collections a phase brings of its own.
     readable: {},
 
-    async buildPrompt(ctx: PromptRunContext): Promise<string> {
-      const previous = await readRunRow(ctx.ctx, runTopic(ctx.epic, ctx.issue, ctx.phase));
+    buildPrompt(ctx: PromptRunContext): string {
       const lines = [
         `Implement Linear issue ${ctx.issue}.`,
         "",
@@ -160,8 +384,12 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
         lines.push("", "Continue on those answers.");
       }
 
-      if (previous?.sessionId != null) {
-        lines.push("", `The previous run's harness session was ${previous.sessionId}.`);
+      // From the MANAGER, not from the run record. The record's `sessionId`
+      // describes the attempt now running, and this attempt's opening write
+      // cleared it before a prompt could be built — so reading it here always
+      // saw `null` and the previous session was silently never named.
+      if (ctx.previousSessionId !== undefined) {
+        lines.push("", `The previous run's harness session was ${ctx.previousSessionId}.`);
       }
 
       return lines.join("\n");

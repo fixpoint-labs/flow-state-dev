@@ -733,6 +733,61 @@ describe("createScopeResourceRegistry — collections", () => {
     expect(onUpdated.mock.calls[0][0]).toBe("items/doc1");
   });
 
+  it("refuses an instance write when the collection is writable: false (FIX-1261)", async () => {
+    // A collection declared read-only must refuse the same instance-state
+    // path a single resource already refuses. Without this, writable:false
+    // type-checks (or is now a real field) and then silently succeeds.
+    const onUpdated = vi.fn();
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number() }).passthrough(),
+      onInstanceUpdated: onUpdated
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": { v: 1 } },
+      onResourceChanged: onChange
+    });
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+    await expect(ref.patchState({ v: 99 })).rejects.toThrow(/read-only/);
+    expect(ref.state).toEqual({ v: 1 });
+    expect(onUpdated).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("create and delete still work on a writable: false collection (FIX-1261)", async () => {
+    // writable gates instance writes, not collection-handle membership.
+    // A guard accidentally placed on create/delete would stay green on the
+    // refuse-patch / accept-patch pair alone.
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number().default(0) }).passthrough()
+    });
+    const registry = makeRegistry({ configs: { items: nsConfig } });
+    const created = await (registry as any).items.create("doc1", { v: 1 });
+    expect(created.state).toEqual({ v: 1 });
+    await (registry as any).items.delete("doc1");
+    expect(await (registry as any).items.getOptional("doc1")).toBeUndefined();
+  });
+
+  it("accepts an instance write on a collection that does not set writable: false (FIX-1261)", async () => {
+    // The complementary half: omitting the flag (the normal collection)
+    // must still persist. A guard that refused every collection would
+    // pass the refusal test and still be wrong.
+    const nsConfig = makeCollectionConfig("items/*", {
+      stateSchema: z.object({ v: z.number() }).passthrough()
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": { v: 1 } }
+    });
+    const ref = await (registry as any).items.get("doc1");
+    await ref.patchState({ v: 2 });
+    expect(ref.state).toEqual({ v: 2 });
+  });
+
   it("instance updateState aborts cleanly when the updater throws (FIX-951)", async () => {
     // Pins the contract the task substrate's advisory write-backs rely on to
     // decline a write atomically. The updater runs inside the per-key write
@@ -791,6 +846,20 @@ describe("createScopeResourceRegistry — collections", () => {
     // marker (4th arg) routing the reaction to `contentUpdated` (FIX-843).
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith("items/doc1", "updated", undefined, { contentWrite: true });
+  });
+
+  it("writeContent throws for a writable: false collection (FIX-1261)", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", { writable: false });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": {} },
+      onResourceChanged: onChange
+    });
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+    await expect(ref.writeContent("fail")).rejects.toThrow(/read-only/);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("instance setState replaces state and fires onInstanceUpdated", async () => {

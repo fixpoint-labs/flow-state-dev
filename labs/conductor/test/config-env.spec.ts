@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   assertBaseRefExists,
   MAX_TIMER_MS,
@@ -28,6 +29,12 @@ afterEach(() => {
   delete process.env.CONDUCTOR_REPO;
   delete process.env.CONDUCTOR_TEST_MS;
 });
+
+function nested(dir: string): string {
+  const inner = join(dir, "packages", "thing");
+  execFileSync("mkdir", ["-p", inner]);
+  return inner;
+}
 
 function repo(): string {
   const dir = mkdtempSync(join(tmpdir(), "conductor-cfg-"));
@@ -102,6 +109,53 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     process.env.CONDUCTOR_REPO = theirs;
 
     expect(requireSourceRepo()).toBe(theirs);
+  });
+
+  it("refuses this repository even when the process runs from outside any repo", () => {
+    // The guard identified the dispatcher by `process.cwd()` alone, so a host
+    // started anywhere outside its checkout — a service unit, a container whose
+    // WORKDIR is not the source tree, a process launched from `/` — produced an
+    // undefined identity. And an undefined identity is not a near miss here:
+    // the guard only refuses on a MATCH, so it silently did nothing, in a
+    // deployment shape that is ordinary rather than exotic.
+    //
+    // This module's own file does not move when the process's directory does,
+    // so it is consulted too. Pointed at the repository this test file lives
+    // in, the guard must refuse however far away the process is standing.
+    const elsewhere = mkdtempSync(join(tmpdir(), "conductor-not-a-repo-"));
+    dirs.push(elsewhere);
+    process.chdir(elsewhere);
+    // The repository holding the conductor's own source — the one a run must
+    // never be aimed at, and the one `cwd` no longer knows about.
+    // Derived from this file, not from `cwd` — which is the whole point.
+    process.env.CONDUCTOR_REPO = dirname(fileURLToPath(import.meta.url));
+
+    expect(() => requireSourceRepo()).toThrow(/same repository/);
+  });
+
+  it("carries the whole rule to a differently-named variable", () => {
+    // The goal runner reads `GOAL_CONDUCTOR_REPO`, so it could only reuse
+    // `assertDistinctRepository` and kept its own copy of the absent-check.
+    // Parameterising the NAME is what lets it reuse both — which is the fix for
+    // the class, not for the two rules that were missed.
+    const dir = repo();
+    process.chdir(nested(dir));
+    process.env.GOAL_CONDUCTOR_REPO = dir;
+
+    // Same repository, reached through the other variable: still refused, and
+    // the message names the variable the operator actually set.
+    expect(() => requireSourceRepo("GOAL_CONDUCTOR_REPO")).toThrow(
+      /GOAL_CONDUCTOR_REPO.*same repository/s,
+    );
+
+    delete process.env.GOAL_CONDUCTOR_REPO;
+    expect(() => requireSourceRepo("GOAL_CONDUCTOR_REPO")).toThrow(
+      /GOAL_CONDUCTOR_REPO is not set/,
+    );
+
+    // And the default is unchanged, so the dispatcher's call site still works.
+    process.env.CONDUCTOR_REPO = dir;
+    expect(() => requireSourceRepo()).toThrow(/CONDUCTOR_REPO.*same repository/s);
   });
 
   it("refuses an absent one rather than defaulting", () => {

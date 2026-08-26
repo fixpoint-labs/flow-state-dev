@@ -2,13 +2,13 @@
  * The completion check's state rule, and the seed's identity.
  */
 import { describe, expect, it } from "vitest";
-import { hasCompletingPr } from "../src/implement";
+import { hasCompletingPr, repoSlugFromRemote } from "../src/implement";
 import {
-  conductorTaskId,
   branchFor,
   checkoutPathFor,
   type RunLocation,
   type RunPrincipal,
+  conductorTaskId,
   encodeSegment,
 } from "../src/workspace";
 
@@ -37,6 +37,183 @@ describe("the done-condition — which pull requests count", () => {
     // only for open ones would have missed.
     expect(hasCompletingPr(JSON.stringify([{ number: 1, state: "OPEN" }]))).toBe(true);
     expect(hasCompletingPr(JSON.stringify([{ number: 2, state: "MERGED" }]))).toBe(true);
+  });
+
+  it("refuses a completing PR whose head is in another repository", () => {
+    // `gh pr list --head` matches a branch NAME. A fork can carry a branch with
+    // this run's name, and its OPEN or MERGED pull request comes back in the
+    // same listing — settling a clean agent run that never opened one. A
+    // stranger's branch completing our row is the silent wrong success this
+    // check exists to detect, so the head repository is compared.
+    const mine = "fixpoint-labs/flow-state-dev";
+    const fromAFork = JSON.stringify([
+      {
+        number: 9,
+        state: "MERGED",
+        headRepository: { name: "flow-state-dev" },
+        headRepositoryOwner: { login: "someone-else" },
+      },
+    ]);
+    expect(hasCompletingPr(fromAFork, mine)).toBe(false);
+
+    const fromMine = JSON.stringify([
+      {
+        number: 10,
+        state: "OPEN",
+        headRepository: { name: "flow-state-dev" },
+        headRepositoryOwner: { login: "fixpoint-labs" },
+      },
+    ]);
+    expect(hasCompletingPr(fromMine, mine)).toBe(true);
+  });
+
+  it("keeps the host, because `-R` without one goes to the wrong server", () => {
+    // Reducing an Enterprise remote to `owner/repo` sends the listing to
+    // github.com (or `GH_HOST`) instead of the host the checkout came from — a
+    // real PR missed, or a same-named one elsewhere settling the task. `gh`
+    // documents `-R` as `[HOST/]OWNER/REPO` so this can be said explicitly.
+    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git")?.selector).toBe(
+      "github.com/fixpoint-labs/flow-state-dev",
+    );
+    expect(repoSlugFromRemote("git@github.com:fixpoint-labs/flow-state-dev.git")?.selector).toBe(
+      "github.com/fixpoint-labs/flow-state-dev",
+    );
+    expect(repoSlugFromRemote("git@ghe.acme:owner/repo.git")?.selector).toBe("ghe.acme/owner/repo");
+
+    // **The port is part of the host.** This assertion previously demanded
+    // `ghe.acme/owner/repo` for a `:8443` remote — a test pinning the defect,
+    // written while I was thinking about whether the port could be mistaken for
+    // a path segment and not about where the query would land. Dropping it
+    // points `gh -R` at the same hostname on 443, which is a different server.
+    expect(repoSlugFromRemote("https://ghe.acme:8443/owner/repo")?.selector).toBe(
+      "ghe.acme:8443/owner/repo",
+    );
+    // And the port belongs ONLY to the selector: a pull request row's head
+    // identity is `owner/name`, with no host and no port to compare against.
+    expect(repoSlugFromRemote("https://ghe.acme:8443/owner/repo")?.ownerRepo).toBe("owner/repo");
+
+    // **A trailing slash is not part of the name.** The strip order used to be
+    // `.git` then slashes, so `…/repo.git/` kept its suffix and named a
+    // repository called `repo.git` — `gh -R` then found no pull requests for
+    // `repo`, and a finished run was reported unfinished and retried until the
+    // budget ran out. `git remote add` accepts the URL exactly as typed, so this
+    // is a spelling a real remote can carry.
+    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git/")?.selector)
+      .toBe("github.com/fixpoint-labs/flow-state-dev");
+    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git//")?.ownerRepo)
+      .toBe("fixpoint-labs/flow-state-dev");
+    expect(repoSlugFromRemote("git@github.com:fixpoint-labs/flow-state-dev.git/")?.selector).toBe(
+      "github.com/fixpoint-labs/flow-state-dev",
+    );
+  });
+
+  it("keeps a bracketed IPv6 host whole", () => {
+    // **Fifth spelling, and the first whose cost the startup preflight raised.**
+    // An unparseable remote used to make the completion probe answer false — a
+    // finished run reported unfinished. Now that construction refuses a remote it
+    // cannot name, the same gap refuses to build a conductor whose remote `gh`
+    // can query: `-R '[2001:db8::1]/owner/repo'` reaches that host's API.
+    //
+    // The host class stopped at the literal's first colon, so all three
+    // spellings returned undefined. IPv4 parsed fine, which is why nothing here
+    // noticed.
+    expect(repoSlugFromRemote("https://[2001:db8::1]/owner/repo.git")?.selector).toBe(
+      "[2001:db8::1]/owner/repo",
+    );
+    expect(repoSlugFromRemote("https://[2001:db8::1]/owner/repo.git")?.ownerRepo).toBe(
+      "owner/repo",
+    );
+    // The port stays attached to the bracketed host, as it does for a name.
+    expect(repoSlugFromRemote("https://[2001:db8::1]:8443/owner/repo")?.selector).toBe(
+      "[2001:db8::1]:8443/owner/repo",
+    );
+    // And the scp-like spelling, which the report did not reach and which failed
+    // for the same reason.
+    expect(repoSlugFromRemote("git@[2001:db8::1]:owner/repo.git")?.selector).toBe(
+      "[2001:db8::1]/owner/repo",
+    );
+
+    // **The bracket class must not open a door for a local path.** It excludes
+    // `/`, so these stay refused exactly as they were.
+    expect(repoSlugFromRemote("/srv/git/[repo]:x")).toBeUndefined();
+    expect(repoSlugFromRemote("[not-a-host]")).toBeUndefined();
+  });
+
+  it("hands the selector and the attribution to their own callers", () => {
+    // These are NOT interchangeable, and shipping them as one string made
+    // passing the wrong one a typo rather than a type error — which is exactly
+    // what happened: `-R` got the host (right) and the attribution check got the
+    // host too (never matches), so every completing pull request was rejected
+    // and a successful run would have burned its whole retry budget.
+    //
+    // Asserted as a round trip through the pair, because the defect lived in the
+    // JOIN between two things that were each individually correct.
+    const repo = repoSlugFromRemote("git@ghe.acme:owner/repo.git");
+    expect(repo?.selector).toBe("ghe.acme/owner/repo");
+    expect(repo?.ownerRepo).toBe("owner/repo");
+
+    const matching = JSON.stringify([
+      {
+        number: 1,
+        state: "OPEN",
+        headRepository: { name: "repo" },
+        headRepositoryOwner: { login: "owner" },
+      },
+    ]);
+    // The attribution field accepts it; the selector field does not. That
+    // asymmetry is the bug, pinned.
+    expect(hasCompletingPr(matching, repo?.ownerRepo)).toBe(true);
+    expect(hasCompletingPr(matching, repo?.selector)).toBe(false);
+  });
+
+  it("attributes a row whose casing differs from the remote's", () => {
+    // GitHub owner and repository names are case-INSENSITIVE, and the API
+    // answers in one canonical casing whatever the remote spells. So a checkout
+    // cloned from `Fixpoint-Labs/Flow-State-Dev` reaches the same repository,
+    // `gh -R` accepts it — and an exact comparison then rejects every pull
+    // request the run actually opened, reporting a successful run unfinished and
+    // spending its retries. The same harm the attribution check was added to
+    // prevent, arriving through the check: a second door on the rule I closed
+    // one door of last round.
+    const remote = repoSlugFromRemote("git@github.com:Fixpoint-Labs/Flow-State-Dev.git");
+    expect(remote?.ownerRepo).toBe("Fixpoint-Labs/Flow-State-Dev");
+
+    const canonical = JSON.stringify([
+      {
+        number: 1442,
+        state: "OPEN",
+        headRepository: { name: "flow-state-dev" },
+        headRepositoryOwner: { login: "fixpoint-labs" },
+      },
+    ]);
+    expect(hasCompletingPr(canonical, remote?.ownerRepo)).toBe(true);
+
+    // The fold must not become a wildcard: a DIFFERENT repository is still
+    // refused however it is cased, which is the rule the fold is bending.
+    expect(hasCompletingPr(canonical, "Someone-Else/Flow-State-Dev")).toBe(false);
+  });
+
+  it("refuses a remote it cannot name, rather than guessing one", () => {
+    // Undefined is a refusal, not a fallback: a remote we cannot name is a
+    // repository we cannot pin the listing to, and an unpinned listing is the
+    // thing this reading exists to prevent.
+    expect(repoSlugFromRemote("")).toBeUndefined();
+    expect(repoSlugFromRemote("not-a-url")).toBeUndefined();
+    // A local path is not a repository `gh` can be pointed at.
+    expect(repoSlugFromRemote("/srv/git/repo")).toBeUndefined();
+    expect(repoSlugFromRemote("../sibling")).toBeUndefined();
+    // A deeper path is a shape `gh -R` does not accept; refused rather than
+    // silently trimmed to its last two segments.
+    expect(repoSlugFromRemote("https://gitlab.com/group/sub/repo")).toBeUndefined();
+  });
+
+  it("refuses a row it cannot attribute to a repository", () => {
+    // Same reasoning as the missing `state` case above (BP-030): an answer we
+    // cannot classify must not complete a task, and one we cannot ATTRIBUTE is
+    // the same problem wearing a different field.
+    expect(
+      hasCompletingPr(JSON.stringify([{ number: 11, state: "MERGED" }]), "owner/repo"),
+    ).toBe(false);
   });
 
   it("takes the branch when any row counts, even beside a closed one", async () => {
@@ -95,7 +272,7 @@ describe("the board task's identity", () => {
       // literal here would only pin how the digest happens to be computed
       // today. What this asserts is the SHAPE — untenanted tag, principal,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/FIX-1219--implement`,
+      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${conductorTaskId("FIX-1219", "implement")}`,
     );
   });
 });

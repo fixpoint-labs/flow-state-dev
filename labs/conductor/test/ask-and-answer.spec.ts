@@ -15,8 +15,9 @@
  */
 import { describe, expect, it, afterEach } from "vitest";
 import type { ResolveClaudeAgent, SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { conductorFlow } from "../src/flow";
 import { questionFingerprint, questionTopic } from "../src/inbox";
 import type { AnswerOutput } from "../src/answer";
@@ -24,6 +25,7 @@ import {
   createConductorHarness,
   sdkResult,
   type ConductorHarness,
+  seedRepo,
 } from "./harness";
 
 const ISSUE = "FIX-1166";
@@ -199,10 +201,20 @@ describe("the park — a detached worker's own hold survives its normal return",
   it("constructs the board with the option alongside the ledger, onIdle and seeding", async () => {
     // Behaviour 21. All three park-exit refusals are construction-time throws,
     // so the regression is that the flow cannot be built at all.
+    // **A real repository, because construction now validates one.** This used
+    // to pass `/tmp/nowhere`, which was fine when nothing checked it. The base
+    // branch since refuses a `sourceRepo` that is not a git repository — a
+    // permanent configuration error caught before a row is claimed and charged.
+    // The behaviour under test is the board's park-exit options, so the
+    // workspace only has to be valid, not special.
+    const repo = mkdtempSync(join(tmpdir(), "conductor-construction-"));
+    seedRepo(repo);
+    const root = mkdtempSync(join(tmpdir(), "conductor-construction-root-"));
+
     expect(() =>
       conductorFlow({
         epic: "construction-check",
-        workspace: { root: "/tmp/nowhere", sourceRepo: "/tmp/nowhere", baseRef: "main" },
+        workspace: { root, sourceRepo: repo, baseRef: "main" },
       }),
     ).not.toThrow();
   });

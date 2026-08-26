@@ -25,6 +25,7 @@
  * is never fed at all leaves nothing, and only a check outside it can tell that
  * from a run that did nothing.
  */
+import { realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import type {
@@ -131,10 +132,15 @@ const DEFAULT_FLUSH_INTERVAL_MS = 1_000;
  * - **The leading separator is dropped**, because the normalizer strips it
  *   anyway and keeping it would make one path two spellings of one key.
  *
- * `cwd` is expected already normalized — non-empty and symlink-resolved. The
- * empty-string branch is defence-in-depth for a direct caller; the single
- * normalization point is {@link ClaudeCodeAgentOptions.cwd}, which is also
- * canonical for why the SDK forward and this key must be one value.
+ * `cwd` is expected already normalized — non-empty and symlink-resolved, which
+ * both public doors now guarantee by construction:
+ * {@link normalizeWorkingDirectory} runs at {@link createWorkRecorder} and at
+ * {@link ClaudeCodeAgentOptions.cwd}. The empty-string branch below stays as
+ * defence-in-depth for a direct call to this exported helper, which is a third
+ * door and the only one that cannot normalize — it is called per file event,
+ * so a `realpathSync` here would be filesystem IO on the hot path.
+ * {@link ClaudeCodeAgentOptions.cwd} remains canonical for why the SDK forward
+ * and this key must be one value.
  */
 export function canonicalFilePathKey(rawPath: string, cwd?: string): string {
   const absolute =
@@ -171,17 +177,68 @@ interface PendingPlanEntry {
  * Writes are buffered per key and flushed on an interval, so a path touched
  * repeatedly costs one write per window rather than one per event.
  */
+/**
+ * Reduce a working directory to the ONE value every consumer uses, or
+ * `undefined`. Two normalizations, each closing a way two consumers could
+ * disagree while both looked correct.
+ *
+ * **Empty string means unset.** `""` is not nullish, so it survives the SDK's
+ * own `cwd ?? default` and reaches the child-process spawner — where Node
+ * silently falls back to the process directory rather than failing. The key
+ * helper already read `""` as unset, so the two agreed by a coincidence of two
+ * different fallbacks rather than by construction, and anything consuming `cwd`
+ * without spawning (a session key, a project root) has no such coincidence to
+ * lean on.
+ *
+ * **Symlinks resolve to the physical path.** `path.resolve` is purely lexical,
+ * so the recorder would key `/link/src/a.ts` while the spawned SDK process —
+ * whose `process.cwd()` is the physical directory — reports `/real/src/a.ts`.
+ * The divergence check compares the two, sees a mismatch, and writes a gap
+ * instead of settling the row, leaving an ordinary write permanently `pending`.
+ * Measured against a real symlinked directory, not assumed.
+ *
+ * A path that cannot be resolved is handed back as written: the invariant still
+ * holds (every consumer sees one value), and an unusable directory is left to
+ * fail where it should, in the SDK.
+ *
+ * **It lives here, beside the recorder, because this is the lower of the two
+ * public doors.** {@link ClaudeCodeAgentOptions.cwd} normalizes what a resolver
+ * returns, but {@link createWorkRecorder} is exported too — so a caller
+ * building a recorder directly reached the symlink bug without ever passing
+ * through the agent. Normalizing at both entry points makes the precondition
+ * {@link canonicalFilePathKey} documents true by construction rather than by
+ * the caller having read the docs.
+ */
+export function normalizeWorkingDirectory(
+  cwd: string | undefined,
+): string | undefined {
+  if (cwd === undefined || cwd === "") return undefined;
+  try {
+    return realpathSync(cwd);
+  } catch {
+    return cwd;
+  }
+}
+
 export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   const {
     runId,
     files,
     plan,
     gaps,
-    cwd,
+    cwd: rawCwd,
     flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS,
     onSkipped,
     now = Date.now,
   } = options;
+
+  // Normalized here as well as at the agent's resolver, because this function
+  // is exported: a direct caller passing a symlinked checkout would otherwise
+  // key every row against the link spelling while the spawned process reports
+  // the physical path, and every ordinary write would sit permanently
+  // `pending` behind a false divergence. Idempotent on an already-normalized
+  // value, so the agent path pays one extra `realpathSync` per run.
+  const cwd = normalizeWorkingDirectory(rawCwd);
 
   const pendingFiles = new Map<string, PendingFileEntry>();
   const pendingPlan = new Map<string, PendingPlanEntry>();

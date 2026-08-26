@@ -108,8 +108,6 @@ export function throwingAgent(
       seen.prompts.push(String(args.prompt));
       seen.cwds.push(args.options?.cwd);
       throw new Error(message);
-      // eslint-disable-next-line no-unreachable
-      yield undefined as never;
     },
   });
 }
@@ -186,6 +184,12 @@ export interface HarnessOptions {
   resolveClaudeAgent: ResolveClaudeAgent;
   /** Overrides the implement phase's done-condition. Default: satisfied. */
   isDone?: PhaseSpec["isDone"];
+  /**
+   * Overrides the configured phase NAME. Lets a test restart a conductor over
+   * durable rows with the phase spelled differently — which is how a casing
+   * mismatch between config and stored row actually arises.
+   */
+  phaseName?: string;
   maxAttempts?: number;
   epic?: string;
   /** Build the conductor for this tenant. The request still resolves untenanted. */
@@ -205,7 +209,24 @@ export function seedRepo(dir: string): void {
   git("init", "--initial-branch=main", ".");
   git("config", "user.email", "conductor@example.test");
   git("config", "user.name", "Conductor Test");
-  git("commit", "--allow-empty", "-m", "root");
+  // **A stand-in repository has tracked content, because a real one does.**
+  // These fixtures committed nothing, so every worktree cut from them had zero
+  // tracked files — which makes a half-populated checkout indistinguishable from
+  // a complete one (`git ls-files --deleted` is empty either way), and that
+  // distinction is what the provisioning marker is now corroborated against.
+  // Another fixture that had drifted from the thing it stands for.
+  writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
+  git("add", "tracked.txt");
+  git("commit", "-m", "root");
+  // **A stand-in source repository has an `origin`, because a real one does.**
+  // The implement phase's completion probe reads it, and `conductorFlow` now
+  // refuses a source repo without one — a guard that exists because the failure
+  // otherwise lands after a paid agent run, once per retry. These fixtures had
+  // no remote at all, so every flow built here was one the probe could not have
+  // run against; the specs passed only because the probe is stubbed. Nothing
+  // resolves this URL: the phase's `gh` call is replaced in every test that
+  // reaches it.
+  git("remote", "add", "origin", "https://github.com/fixpoint-labs/conductor-fixture.git");
 }
 
 export function createConductorHarness(options: HarnessOptions): ConductorHarness {
@@ -219,6 +240,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   const phase: PhaseSpec = {
     ...base,
     ...(options.isDone !== undefined ? { isDone: options.isDone } : {}),
+    ...(options.phaseName !== undefined ? { phase: options.phaseName } : {}),
   };
 
   // Derived, not spelled out. The manager enforces
@@ -234,9 +256,15 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   const provisionTimeoutMs = options.provisionTimeoutMs ?? 10_000;
   const staleAfterMs =
     options.ownership?.staleAfterMs ?? runTimeoutMs + provisionTimeoutMs + 1_000;
+  const pollMs = options.ownership?.pollMs ?? 25;
   const ownership = {
-    waitMs: options.ownership?.waitMs ?? staleAfterMs,
-    pollMs: options.ownership?.pollMs ?? 25,
+    // **Strictly past the stale window, by one poll.** The manager requires it,
+    // and it derived `staleAfterMs` exactly — which is the configuration the
+    // manager now refuses, because a wait that ENDS when the lock becomes
+    // eligible times out instead of taking over. The fixture had the same defect
+    // the production default did.
+    waitMs: options.ownership?.waitMs ?? staleAfterMs + pollMs,
+    pollMs,
     staleAfterMs,
   };
 

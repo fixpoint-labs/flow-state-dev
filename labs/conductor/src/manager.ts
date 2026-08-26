@@ -51,6 +51,7 @@ import { MAX_TIMER_MS } from "./config-env";
 import {
   RUNS,
   openRunRow,
+  readRunRow,
   runRecordCollection,
   runTopic,
   writeRunRow,
@@ -69,6 +70,8 @@ import {
   withdrawQuestion,
 } from "./inbox";
 import {
+  conductorTaskId,
+  sameSegment,
   acquireCheckout,
   branchFor,
   checkoutPathFor,
@@ -91,6 +94,15 @@ export interface PhaseRunContext {
   /** The run's own checkout. */
   workspacePath: string;
   branch: string;
+  /**
+   * The harness session the LAST attempt used, or `undefined` on attempt 1.
+   *
+   * Supplied by the manager, captured before this attempt's opening write
+   * cleared it. A phase must not read it off the run record: that row describes
+   * the attempt now running, and the clear has already been applied by the time
+   * a phase builds its prompt.
+   */
+  previousSessionId?: string;
   /**
    * Why the LAST attempt stopped, as the board captured it when `fail()`
    * re-pended the row. This — not the run record — is the carry-forward:
@@ -141,6 +153,16 @@ export interface PhaseSpec {
   /**
    * Has the job actually been done? Re-evaluated now, and consulted ONLY after
    * a successful verdict — never as an alternative route to completion.
+   *
+   * **The two carry-forward fields are prompt-time only: `feedback` and
+   * `previousSessionId` are absent here, deliberately and always.** They
+   * describe the attempt BEFORE this one, which is what a prompt needs and what
+   * a done-condition has no use for — the question is whether the job is done
+   * now, not how the last attempt went. `feedback` is also not reachable at this
+   * point: it arrives on the worker's input, and the verdict handler is handed
+   * the run's own result instead. A phase whose done-condition genuinely needs
+   * either wants them put on the manager's state first; do that when such a
+   * phase exists rather than plumbing a field nothing reads.
    */
   isDone(run: PhaseRunContext): boolean | Promise<boolean>;
   /**
@@ -148,6 +170,24 @@ export interface PhaseSpec {
    * reads them under. The manager declares them so `ctx.resources` resolves.
    */
   readable: Record<string, DeclaredResourceEntry>;
+  /**
+   * What this phase needs from the workspace, checked before anything is
+   * claimed. Throws to refuse; absent means the phase needs nothing.
+   *
+   * **A phase's own preconditions are configuration, and configuration is
+   * refused at startup.** The other guards at that door — the repository, the
+   * base ref, the numbers — protect a *task* from paying for a shell typo: the
+   * row is claimed, the attempt is charged, and the failure is permanent, so
+   * every retry spends itself on it. A precondition belonging to the phase has
+   * exactly that shape and could not use that door, because only the phase knows
+   * what it needs and only the flow holds the workspace.
+   *
+   * The implement phase's completion probe reads the source repository's
+   * `origin`; a checkout whose GitHub remote is called something else fails it
+   * AFTER the paid agent run, once per retry. That is the case this exists for,
+   * and it is why the hook takes the workspace rather than being a boolean.
+   */
+  validate?(workspace: WorkspaceConfig): void;
 }
 
 /** How the manager is wired to its board and its host. */
@@ -229,6 +269,11 @@ const managerStateSchema = z.object({
   attempt: z.number().nullable().default(null),
   workspacePath: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
+  /**
+   * The harness session the LAST attempt used, captured before this attempt's
+   * opening write clears it. See `openRun`.
+   */
+  previousSessionId: z.string().nullable().default(null),
 });
 
 /** The manager's own result. Two outcomes; there is deliberately no third. */
@@ -430,6 +475,39 @@ function managerState(ctx: BlockContext): z.infer<typeof managerStateSchema> {
  * is a longer worst-case shutdown wait, which is bounded and visible, instead of
  * a cancelled run, which is neither.
  */
+/**
+ * Run `work`, and reject if it has not settled within `ms`.
+ *
+ * **The timer never outlives the call.** A bare `setTimeout` race leaks a
+ * pending timer per invocation — harmless once, and this runs on every settled
+ * attempt of every row, so the handles accumulate on a long-lived dispatcher and
+ * hold the event loop open past a shutdown that is otherwise finished.
+ *
+ * The bounded work is not cancelled, because nothing here can cancel it: the
+ * hook is somebody else's function. What this buys is that the *worker* stops
+ * waiting and the row settles, which is the property the drain budget rests on.
+ */
+export async function withDeadline<T>(
+  work: () => Promise<T>,
+  ms: number,
+  what: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new ConductorAttemptFailed(`${what} did not answer within ${ms}ms`)),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export function conductorDrainBudgetMs(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
@@ -439,7 +517,10 @@ export function conductorDrainBudgetMs(options: {
     options.ownershipWaitMs +
     (options.provisionTimeoutMs ?? GIT_TIMEOUT_MS) +
     options.runTimeoutMs +
-    NETWORK_CALL_TIMEOUT_MS;
+    // The completion check AND the prompt builder. Both are public hooks, both
+    // are bounded by this constant, and the budget has to reserve time for each
+    // — a bound the budget does not account for is as wrong as no bound.
+    NETWORK_CALL_TIMEOUT_MS * 2;
 
   // `* 4 / 3` clears a reserve of up to a quarter; the flat minute dwarfs the
   // small absolute cap that binds instead on tiny budgets.
@@ -502,7 +583,12 @@ export function resolveOwnership(options: {
     // exit that neither completes nor fails the row, and that third outcome is
     // exactly what this spec defers to LAB-139. So the bound moves instead: it
     // costs latency on a genuinely wedged tree and no design change.
-    waitMs: options.ownership?.waitMs ?? maxLockHeldMs + 300_000,
+    // **Strictly longer than the stale window, by at least one poll.** See the
+    // check below for why equal is not enough; the default has to satisfy the
+    // rule it is the reference for.
+    waitMs:
+      options.ownership?.waitMs ??
+      maxLockHeldMs + 300_000 + (options.ownership?.pollMs ?? 1_000),
     pollMs: options.ownership?.pollMs ?? 1_000,
     // Past the longest legitimate hold — the run's deadline AND the
     // provisioning that precedes it — so a lock is declared stale only once no
@@ -519,11 +605,30 @@ export function resolveOwnership(options: {
   // checkout — obligation B violated by configuration rather than by a race.
   // Refused at construction because there is no runtime moment at which the
   // mistake announces itself.
-  if (ownership.waitMs < ownership.staleAfterMs) {
+  // **Strictly longer, and by at least one poll — equal is a boundary that never
+  // resolves.** `acquireCheckout` tests `age > staleAfterMs`, so a waiter whose
+  // wait EQUALS the stale window reaches its deadline at the exact moment the
+  // lock becomes eligible and times out instead of taking over. The defaults
+  // were equal, so this was not an exotic override: the ordinary configuration
+  // charged a coding retry for a dead holder it was about to be allowed to
+  // reclaim.
+  //
+  // One poll interval of headroom, because eligibility is only observed on a
+  // poll: a wait that ends between two passes is a wait that never looked.
+  //
+  // What this does NOT fix, stated so nobody reads more into it: a lock created
+  // AFTER the waiter started can always age past the waiter's deadline. That
+  // holder is fresh rather than dead, so timing out is the correct answer there
+  // — the guarantee bought here is for a lock the waiter found already held.
+  const minimumWaitMs = ownership.staleAfterMs + ownership.pollMs;
+  if (ownership.waitMs < minimumWaitMs) {
     throw new Error(
-      `[conductor] ownership.waitMs (${ownership.waitMs}ms) must be at least ` +
-        `ownership.staleAfterMs (${ownership.staleAfterMs}ms): a shorter wait gives up on a ` +
-        `dead holder's lock before it is stale-eligible, and spends a retry doing it.`,
+      `[conductor] ownership.waitMs (${ownership.waitMs}ms) must exceed ` +
+        `ownership.staleAfterMs (${ownership.staleAfterMs}ms) by at least one poll ` +
+        `interval (${ownership.pollMs}ms), so at least ${minimumWaitMs}ms: a lock becomes ` +
+        `stale-eligible only once its age is STRICTLY past the window, and eligibility is ` +
+        `only observed on a poll. A wait that ends at or before that point gives up on a ` +
+        `dead holder's lock it was about to be allowed to take, and spends a retry doing it.`,
     );
   }
 
@@ -669,11 +774,40 @@ export function harnessManager(options: ManagerOptions) {
       // Refused here as well as at `seed`, because a task can reach this board
       // by any route that can write a row, and this is where the wrong
       // semantics would actually execute.
-      if (phaseName !== phase.phase) {
+      // **Compared canonically, because the identity it guards is.** A durable
+      // row outlives the process that filed it, so a restart with the phase
+      // spelled differently — `IMPLEMENT` for `implement` — meets rows already
+      // on the board. `conductorTaskId` folds case, so those are the SAME task,
+      // the same checkout and the same branch; a raw comparison here called them
+      // different and refused, after `wake` had claimed the row and charged it.
+      // Once per wake, until a valid task's budget was gone, for a mismatch its
+      // own identity says does not exist.
+      if (!sameSegment(phaseName, phase.phase)) {
         throw new ConductorAttemptFailed(
           `[conductor] task ${input.taskId} is a "${phaseName}" row on a manager ` +
             `configured for "${phase.phase}". Refusing rather than running ` +
             `${phase.phase}'s prompt and completion check against it.`,
+        );
+      }
+
+      // **And the row's ID must be the one its payload derives**, for the same
+      // reason and by the same route. The board capability this flow returns
+      // lets a sibling or outer block add a row with an ID of its choosing, and
+      // every partition below — checkout, branch, run topic — is built from the
+      // PAYLOAD. Two rows carrying one `{ issue, phase }` under two different
+      // IDs therefore both pass every guard here and land on one tree, one
+      // branch and one run record: duplicate paid model work on a single
+      // artifact, one run's record overwritten by the other, and either run's
+      // pull request satisfying the other's completion check. "Separate trees
+      // pushing one ref is not isolation" is the rule `branchFor` states; this
+      // is the same collapse reached through the row id instead.
+      const canonicalId = conductorTaskId(issue, phaseName);
+      if (input.taskId !== canonicalId) {
+        throw new ConductorAttemptFailed(
+          `[conductor] task ${input.taskId} carries the payload for ${canonicalId}. ` +
+            `Refusing: the checkout, the branch and the run record are all derived from ` +
+            `that payload, so a second row under a different id would run the same work ` +
+            `in the same tree.`,
         );
       }
 
@@ -718,6 +852,24 @@ export function harnessManager(options: ManagerOptions) {
         workspacePath,
         branch,
       });
+
+      // **Read the previous attempt's session BEFORE opening clears it.**
+      //
+      // `openRunRow` applies the attempt-scoped clear, which sets `sessionId`
+      // to null — correctly, since the field describes the attempt now running
+      // and this one has not reported yet. But the next attempt's prompt wants
+      // to name the session the last one used, and reading the row after the
+      // clear always saw `null`. A rule and a reader that were each right on
+      // their own.
+      //
+      // Captured here and carried on the manager's own state, so the phase is
+      // handed the value rather than reaching into a record whose lifetime it
+      // would have to know about. That is why `PhaseRunContext` gained a field
+      // instead of `implement.ts` moving its read earlier: the same collision
+      // is unavailable to the next phase that wants carry-forward.
+      const previousSessionId =
+        (await readRunRow(ctx as BlockContext, topic))?.sessionId ?? null;
+      await ctx.sequencer!.patchState({ previousSessionId });
 
       // **Refusal stops the attempt.** The row can be reclaimed between the
       // runner's start gate and this call, and a discarded refusal let the
@@ -795,6 +947,9 @@ export function harnessManager(options: ManagerOptions) {
         workspacePath: state.workspacePath!,
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
+        ...(state.previousSessionId != null
+          ? { previousSessionId: state.previousSessionId }
+          : {}),
         ctx: ctx as BlockContext,
         answers,
         // The prompt is the only place this path is named, which is what makes
@@ -803,7 +958,23 @@ export function harnessManager(options: ManagerOptions) {
         askMarkerPath: askMarkerPath(state.workspacePath!, input.attempts),
       };
 
-      const prompt = await phase.buildPrompt(run);
+      // **Bounded for the same reason the completion check is.** This await
+      // happens after the row is claimed and opened and before the agent's own
+      // deadline starts, so an unbounded hook leaves the row `in_progress` with
+      // nothing to settle it — past the budget a host sized its shutdown from.
+      // `isDone` was bounded and this was not, which is the same enumeration
+      // failure the rest of this branch keeps producing: two public hooks, one
+      // rule, one of them carried through.
+      //
+      // Unlike `isDone`, the derived budget did NOT already reserve time here,
+      // so `conductorDrainBudgetMs` gains the term. A bound the budget does not
+      // account for would make the advertised number wrong in the other
+      // direction, which is the defect being fixed, inverted.
+      const prompt = await withDeadline(
+        async () => phase.buildPrompt(run),
+        NETWORK_CALL_TIMEOUT_MS,
+        `the ${state.phase} phase's prompt builder`,
+      );
 
       // **Ownership first, then provisioning.** Validating the worktree and
       // then waiting for the lock leaves a window in which the displaced
@@ -959,15 +1130,27 @@ export function harnessManager(options: ManagerOptions) {
 
       // ── Arm 1: succeeded AND done ──────────────────────────────────────────
       if (succeeded) {
-        const done = await phase.isDone({
-          epic: boardCollectionId,
-          issue: state.issue!,
-          phase: state.phase!,
-          attempt: identity.attempt,
-          workspacePath: state.workspacePath!,
-          branch: state.branch!,
-          ctx: ctx as BlockContext,
-        });
+        // **Bounded, because the whole-worker budget already says it is.**
+        // `conductorDrainBudgetMs` reserves `NETWORK_CALL_TIMEOUT_MS` for this
+        // step. `isDone` is a public seam, so another phase's check was
+        // unbounded and could outlive the budget a host sized its shutdown
+        // from, leaving the row `in_progress` with nothing to settle it. The
+        // bound is the constant the budget already spends, so it makes the
+        // advertised number true rather than adding one.
+        const done = await withDeadline(
+          async () =>
+            phase.isDone({
+              epic: boardCollectionId,
+              issue: state.issue!,
+              phase: state.phase!,
+              attempt: identity.attempt,
+              workspacePath: state.workspacePath!,
+              branch: state.branch!,
+              ctx: ctx as BlockContext,
+            }),
+          NETWORK_CALL_TIMEOUT_MS,
+          `the ${state.phase} phase's completion check`,
+        );
         if (done) {
           // The run answered its own question on the way to finishing. Withdrawn
           // rather than deleted, so a late answer against it is reported back.

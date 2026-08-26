@@ -117,6 +117,10 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
           : inferSequencerStateFromChanges(runtime.stateChanges)
     },
     stateChanges: [...runtime.stateChanges, ...itemStateChanges],
+    // The registry the run actually wrote through, not a copy — a test asserting
+    // on written rows reads them here instead of hand-rolling a context and
+    // dispatching `execute` directly, which would skip `executeBlock` above.
+    resources: (runtime.ctx.resources ?? {}) as Record<string, unknown>,
     meta: {
       durationMs: Date.now() - startedAt,
       blockName: block.name,

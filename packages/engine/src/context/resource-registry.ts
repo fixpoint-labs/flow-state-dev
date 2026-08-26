@@ -50,6 +50,7 @@ import type { ResourceCASIntent } from "../stores/resource-cas";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import {
   ConcurrentModificationError,
+  FlowError,
   ResourceAlreadyExistsError,
   ResourceDeletedError
 } from "../errors/flow-error";
@@ -556,7 +557,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     externalResourceContext?: ExternalResourceContext;
   }
 ): ResourceRegistry<TResources> {
-  const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
+  // Null-prototype: keyed by author-supplied accessor names, and this is the
+  // map `get()` below reads. On a plain `{}` an accessor of `__proto__` would
+  // replace the map's prototype rather than add a key, and an accessor sharing
+  // a name with an `Object.prototype` member would resolve to that builtin
+  // instead of throwing "not registered".
+  const handles = Object.create(null) as Record<
+    string,
+    ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>
+  >;
   const configs = options.configs ?? {};
 
   // Serialize mutating writes per storage key. A resource write is a
@@ -656,7 +665,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     seed: JsonObject
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (config.writable === false) {
-      throw new Error(`Resource "${name}" is read-only`);
+      throw new FlowError(`Resource "${name}" is read-only`, {
+        code: "resource_read_only",
+        retryable: false
+      });
     }
 
     return options.mutateResourceKey(
@@ -673,6 +685,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     mutate: (current: JsonObject) => JsonObject | Promise<JsonObject>,
     seed: JsonObject
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
+    if (nsConfig.writable === false) {
+      throw new Error(`Resource "${storageKey}" is read-only`);
+    }
+
     return options.mutateResourceKey(
       storageKey,
       async (current) => {
@@ -827,6 +843,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof raw === "string" ? raw : null;
       },
       async writeContent(content: string): Promise<void> {
+        if (nsConfig.writable === false) {
+          throw new Error(`Resource "${storageKey}" content is read-only`);
+        }
+
         await options.persistResourceContentKey(storageKey, content);
         // A content write carries no state delta. Fire the seam as "updated" (so
         // the FIX-739 client projection refreshes unchanged) with a `contentWrite`
@@ -1633,7 +1653,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         if (config.writable === false) {
-          throw new Error(`Resource "${resourceName}" content is read-only`);
+          throw new FlowError(`Resource "${resourceName}" content is read-only`, {
+            code: "resource_read_only",
+            retryable: false
+          });
         }
 
         await options.persistResourceContentKey(storageKey, content);

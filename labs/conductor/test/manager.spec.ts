@@ -11,10 +11,17 @@
  * trusted either would certify nothing.
  */
 import { describe, expect, it, afterEach } from "vitest";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireCheckout, encodeSegment } from "../src/workspace";
+import { acquireCheckout, conductorTaskId, encodeSegment } from "../src/workspace";
 import {
   createConductorHarness,
   USER_ID,
@@ -24,6 +31,7 @@ import {
   sdkResult,
   throwingAgent,
   type ConductorHarness,
+  seedRepo,
 } from "./harness";
 
 type StatusRow = {
@@ -63,6 +71,26 @@ afterEach(() => {
   live?.dispose();
   live = undefined;
 });
+
+/**
+ * A real repository for the flows built below.
+ *
+ * `conductorFlow` refuses a `sourceRepo` that is not a git repository, and
+ * refuses one that IS the dispatcher's own — the guard the env door has always
+ * applied, now applied at the programmatic door too. Before that, these specs
+ * built flows against paths like `/tmp/x` that no repository ever occupied, and
+ * nothing objected. One repo for the file rather than one per test: the checks
+ * are the thing under test elsewhere, and here it just has to be real.
+ */
+let sharedRepoPath: string | undefined;
+function sharedRepo(): string {
+  if (sharedRepoPath === undefined) {
+    const dir = mkdtempSync(join(tmpdir(), "conductor-flow-repo-"));
+    seedRepo(dir);
+    sharedRepoPath = dir;
+  }
+  return sharedRepoPath;
+}
 
 async function readStatus(h: ConductorHarness): Promise<StatusRow> {
   const { rows } = await h.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
@@ -167,10 +195,10 @@ describe("the manager — the verdict at each exit", () => {
     // The run was given a checkout that is not the server's directory, and the
     // row records the one it was given.
     expect(seen.cwds[0]).toBe(row.run?.workspacePath);
-    expect(row.run?.workspacePath).toContain(`${ISSUE}--${PHASE}`);
+    expect(row.run?.workspacePath).toContain(conductorTaskId(ISSUE, PHASE));
     // Principal- and epic-namespaced: two users, or two epics, never share a ref.
     expect(row.run?.branch).toBe(
-      `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${ISSUE}--${PHASE}`,
+      `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${conductorTaskId(ISSUE, PHASE)}`,
     );
   });
 
@@ -355,6 +383,35 @@ describe("the manager — what carries across an attempt", () => {
   });
 });
 
+describe("what the retry is told about the last attempt", () => {
+  it("names the previous harness session in attempt 2's prompt", async () => {
+    // The collision: `openRunRow` applies the attempt-scoped clear, which nulls
+    // `sessionId` — correctly, since it describes the attempt now running. But
+    // the prompt read that same field to name the LAST attempt's session, and
+    // the clear runs first, so it always saw `null` and the line was silently
+    // never emitted. A rule and a reader that were each right alone.
+    //
+    // Asserted on the PROMPT the agent actually received, not on the row: the
+    // row is exactly the thing that was misleading here.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => false,
+      maxAttempts: 3,
+    });
+
+    await seedAndDrain(live);
+    expect(seen.prompts).toHaveLength(1);
+    // Attempt 1 has nothing to carry, so it must NOT invent a session line.
+    expect(seen.prompts[0]).not.toMatch(/previous run's harness session/);
+
+    await wakeAndSettle(live);
+
+    expect(seen.prompts).toHaveLength(2);
+    expect(seen.prompts[1]).toMatch(/The previous run's harness session was sess_stub\./);
+  });
+});
+
 describe("the manager — the deadline", () => {
   it("aborts the run and re-pends the row when the wall clock runs out", async () => {
     // The fourth exit, and the one a three-exit suite quietly omits. The
@@ -402,7 +459,7 @@ describe("the manager — contention, and what it must not cost", () => {
       ownership: { waitMs: 5_000, pollMs: 20, staleAfterMs: 4_000 },
     });
 
-    const checkout = join(live.workspaceRoot, `${ISSUE}--${PHASE}`);
+    const checkout = join(live.workspaceRoot, conductorTaskId(ISSUE, PHASE));
     const held = await acquireCheckout(checkout, "a displaced attempt", {
       waitMs: 1_000,
       pollMs: 20,
@@ -523,13 +580,61 @@ describe("the flow — seeding twice", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Named, not merely equal — see the concurrent case below.
-    expect(first.taskId).toBe(`${ISSUE}--${PHASE}`);
+    expect(first.taskId).toBe(conductorTaskId(ISSUE, PHASE));
     expect(second.taskId).toBe(first.taskId);
 
     const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
     expect(rows).toHaveLength(1);
     expect(seen.prompts).toHaveLength(1);
   });
+
+  it("refuses a row at this id whose payload describes something else", async () => {
+    // Idempotent has to mean "this row IS the one asked for", not "a row exists
+    // at that id". The board is a shared collection and this flow already
+    // assumes a task can reach it by any route that can write a row — so a row
+    // filed at this id with a foreign payload was reported as a successful seed
+    // while the task asked for was never filed. The next drain then claims the
+    // foreign row, charges it an attempt, and the manager's id guard refuses it:
+    // a silent nothing-happened, paid for out of somebody else's retry budget.
+    //
+    // Staged by corrupting the payload through the ledger the board actually
+    // reads, rather than by asserting on the comparison in isolation — the
+    // defect is that `seed` never looked, so the check has to run from `seed`.
+    let corrupted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], {
+        prompts: [],
+        cwds: [],
+      }),
+      isDone: async (run) => {
+        if (!corrupted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId(ISSUE, PHASE), {
+            input: { issue: "FIX-SOMEONE-ELSE", phase: PHASE },
+          });
+          corrupted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+
+    // Waited on the corruption itself rather than on settlement: rewriting the
+    // payload is exactly what makes this row invisible to `status`, so `settle`
+    // would poll for a row it can no longer find.
+    const deadline = Date.now() + 8_000;
+    while (!corrupted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(corrupted, "the drain never reached the completion check").toBe(true);
+
+    await expect(live.call("seed", { issue: ISSUE, phase: PHASE })).rejects.toThrow(
+      /does not describe/,
+    );
+  }, 20_000);
 
   it("returns one row when the seeds are CONCURRENT", async () => {
     // **The interleaving the sequential test cannot reach.** That one awaits the
@@ -569,7 +674,7 @@ describe("the flow — seeding twice", () => {
     // the id exists and equals the derived identity before asserting agreement —
     // a check that cannot tell one row from no rows is not a check.
     for (const id of ids) {
-      expect(id).toBe(`${ISSUE}--${PHASE}`);
+      expect(id).toBe(conductorTaskId(ISSUE, PHASE));
     }
     expect(new Set(ids).size).toBe(1);
 
@@ -671,6 +776,188 @@ describe("a failed attempt releases the tree", () => {
   });
 });
 
+describe("the git inputs are validated at the programmatic door too", () => {
+  // The door was already identified — the block above re-checks every NUMERIC
+  // option here for exactly the reason stated there. What did not happen is
+  // asking which OTHER rules use the same door. Two did, and the repository
+  // guard is the one that matters: `fsdev.config.ts` and the goal runner both
+  // refuse a `sourceRepo` that is the dispatcher's own repository, and a caller
+  // reaching `conductorFlow` directly passed through neither.
+  //
+  // That is not a hardening nicety. It is obligation A — a run drives ANOTHER
+  // repository rather than editing the thing that dispatched it — and this was
+  // the last door open on it.
+  const base = { epic: "git-inputs-epic", workspace: { root: "/tmp/g", baseRef: "main" } };
+
+  it("refuses the repository this process is itself running from", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    // `process.cwd()` during the suite IS the dispatcher's repository, which is
+    // what makes this the real case rather than a staged one.
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: process.cwd() } }),
+    ).toThrow(/is the repository this process is itself running from/);
+  });
+
+  it("refuses a source repo that is not a git repository at all", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    const empty = mkdtempSync(join(tmpdir(), "conductor-not-repo-"));
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: empty } }),
+    ).toThrow(/not a git repository/);
+  });
+
+  it("refuses a base ref the repository does not have, naming the option", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    // The message must name `workspace.baseRef`, not `CONDUCTOR_BASE_REF`: a
+    // caller who never set an environment variable would go looking in the
+    // wrong place, which is the two-thirds-of-a-rule failure this file keeps
+    // finding.
+    expect(() =>
+      conductorFlow({
+        ...base,
+        workspace: { ...base.workspace, sourceRepo: sharedRepo(), baseRef: "no-such-ref" },
+      }),
+    ).toThrow(/workspace\.baseRef "no-such-ref" does not resolve/);
+  });
+
+  it("refuses an empty tenant rather than deriving one every request is refused against", async () => {
+    // `tenantSegment` spends `undefined` on untenanted, so `""` derives a
+    // TENANTED identity — while `runPrincipal` and the HTTP extractor both read
+    // an empty tenant as untenanted. The conductor builds, and then the gate
+    // refuses every seed, wake and status against it.
+    //
+    // Refused rather than normalized to `undefined`: normalizing would collapse
+    // a config that says it is tenanted onto the untenanted identity, which is
+    // the aliasing the partition exists to prevent.
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({
+        ...base,
+        tenant: "",
+        workspace: { ...base.workspace, sourceRepo: sharedRepo() },
+      }),
+    ).toThrow(/tenant is an empty string/);
+
+    // An OMITTED tenant is the untenanted conductor and stays legal — the point
+    // is that the two are different, not that tenancy is now mandatory.
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: sharedRepo() } }),
+    ).not.toThrow();
+  });
+
+  it("refuses a relative workspace root, which one task can resolve two ways", async () => {
+    // `checkoutPathFor` resolves the root against `process.cwd()`. Relative, the
+    // checkout for one DURABLE task therefore depends on where the process is
+    // standing when the attempt runs — so a long-lived host that changes
+    // directory between attempts sends the retry to a different, empty tree,
+    // while the uncommitted work the retry prompt tells it to continue from sits
+    // in the first one. Nothing errors; the derivation is stable per directory
+    // and stably wrong across two.
+    //
+    // The file used to ask for an absolute root in a comment and call this case
+    // unguarded. An unenforced convention is what every other guard at this door
+    // replaced.
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({
+        ...base,
+        workspace: { ...base.workspace, root: "checkouts", sourceRepo: sharedRepo() },
+      }),
+    ).toThrow(/workspace\.root is relative/);
+
+    // `./` is the same mistake wearing a prefix that looks deliberate.
+    expect(() =>
+      conductorFlow({
+        ...base,
+        workspace: { ...base.workspace, root: "./checkouts", sourceRepo: sharedRepo() },
+      }),
+    ).toThrow(/workspace\.root is relative/);
+  });
+
+  it("refuses a relative source repo, which the identity check cannot pin either", async () => {
+    // The guard above shipped covering `root` and not its sibling — the same
+    // rule-versus-instance failure this describe block is named for, committed
+    // while adding a guard against it. Both fields are paths, both are used
+    // later, and only one was carried through.
+    //
+    // The harm here is worse than a lost checkout. `assertDistinctRepository`
+    // resolves a relative `sourceRepo` against the working directory it is
+    // called in, so it can clear a path that later resolves — from a different
+    // directory — to the dispatcher's OWN repository. The guard says yes about
+    // one repository and `git worktree add` runs against another, which is the
+    // exact outcome that check exists to make impossible.
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: "../somewhere" } }),
+    ).toThrow(/workspace\.sourceRepo is relative/);
+
+    // And the refusal comes BEFORE the identity check, so the message names the
+    // real problem rather than reporting on a path it resolved by accident.
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: "." } }),
+    ).toThrow(/workspace\.sourceRepo is relative/);
+  });
+
+  it("still builds on a repository and ref that are real", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: sharedRepo() } }),
+    ).not.toThrow();
+  });
+});
+
+describe("numeric options are validated at the programmatic door too", () => {
+  // The env door got this two rounds ago. `conductorFlow` is EXPORTED, so a
+  // host reaches the same values without passing through `positiveIntFromEnv` —
+  // and `NaN` fails every downstream comparison silently, surviving
+  // `resolveOwnership` and surfacing at `AbortSignal.timeout` only after the row
+  // is claimed and the checkout provisioned. One attempt charged per retry for a
+  // permanent misconfiguration.
+  //
+  // Fixing the door that was reported and not the other door onto the same rule
+  // is the class this branch kept repeating; this pins both shut.
+  const base = {
+    epic: "numeric-epic",
+    workspace: { root: "/tmp/n", sourceRepo: sharedRepo(), baseRef: "main" },
+  };
+
+  it("refuses every numeric option a timer would reject later", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    for (const bad of [Number.NaN, -1, 1.5, 0, 2_147_483_648]) {
+      expect(() => conductorFlow({ ...base, runTimeoutMs: bad }), `runTimeoutMs ${bad}`)
+        .toThrow(/positive whole number/);
+      expect(() => conductorFlow({ ...base, maxAttempts: bad }), `maxAttempts ${bad}`)
+        .toThrow(/positive whole number/);
+      expect(
+        () =>
+          conductorFlow({
+            ...base,
+            workspace: { ...base.workspace, provisionTimeoutMs: bad },
+          }),
+        `provisionTimeoutMs ${bad}`,
+      ).toThrow(/positive whole number/);
+    }
+  });
+
+  it("refuses a bad ownership bound, which reaches the same timers", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({
+        ...base,
+        ownership: { waitMs: Number.NaN, pollMs: 10, staleAfterMs: 5_000_000 },
+      }),
+    ).toThrow(/ownership\.waitMs/);
+  });
+
+  it("still builds on the values a host legitimately passes", async () => {
+    // The guard must leave the product working.
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({ ...base, runTimeoutMs: 60_000, maxAttempts: 2 }),
+    ).not.toThrow();
+  });
+});
+
 describe("the drain budget covers the whole worker", () => {
   // The defect: `detachedDrainTimeoutMs` was `runTimeoutMs`, the agent step
   // alone. A worker also waits for the lock, provisions, and probes for the PR —
@@ -685,7 +972,7 @@ describe("the drain budget covers the whole worker", () => {
       epic: "budget-epic",
       workspace: {
         root: "/tmp/conductor-budget",
-        sourceRepo: "/tmp/conductor-budget-repo",
+        sourceRepo: sharedRepo(),
         baseRef: "main",
         ...(workspace ?? {}),
       },
@@ -768,13 +1055,45 @@ describe("the manager — the stale window is refused at construction", () => {
     ).toThrow(/longest a live attempt can hold the lock/);
   });
 
-  it("accepts a stale window past the whole legitimate hold", async () => {
+  it("refuses a wait that merely EQUALS the stale window", async () => {
+    // **This assertion is the inverse of the one it replaces, and the old one
+    // was the defect.** `acquireCheckout` tests `age > staleAfterMs`, so a
+    // waiter whose wait equals the window reaches its deadline at the exact
+    // moment the lock becomes eligible and times out instead of taking over —
+    // charging a coding retry for a dead holder it was about to be allowed to
+    // reclaim. The previous version of this test asserted that configuration was
+    // ACCEPTED, and the production defaults were equal too, so this was the
+    // ordinary path rather than an exotic override.
+    expect(() =>
+      createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+        runTimeoutMs: 30_000,
+        provisionTimeoutMs: 1_000,
+        ownership: { waitMs: 90_000, staleAfterMs: 90_000, pollMs: 25 },
+      }),
+    ).toThrow(/by at least one poll interval/);
+
+    // One poll short is still short — the boundary is where this went wrong, so
+    // the boundary is what is pinned.
+    expect(() =>
+      createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+        runTimeoutMs: 30_000,
+        provisionTimeoutMs: 1_000,
+        ownership: { waitMs: 90_024, staleAfterMs: 90_000, pollMs: 25 },
+      }),
+    ).toThrow(/by at least one poll interval/);
+  });
+
+  it("accepts a wait one poll past the stale window", async () => {
+    // The guard must not become an outage: exactly one poll of headroom is the
+    // rule, so exactly one poll of headroom has to be legal.
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     const h = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
       runTimeoutMs: 30_000,
       provisionTimeoutMs: 1_000,
-      ownership: { waitMs: 90_000, staleAfterMs: 90_000 },
+      ownership: { waitMs: 90_025, staleAfterMs: 90_000, pollMs: 25 },
     });
     h.dispose();
   });
@@ -827,7 +1146,7 @@ describe("the flow — one board, one phase", () => {
             >;
           }
         ).resources[COLLECTION_ID];
-        const taskId = `${ISSUE}--${PHASE}`;
+        const taskId = conductorTaskId(ISSUE, PHASE);
         const row = (await ledger.getOptional(taskId))?.state as { input?: unknown };
         await ledger.upsert(taskId, {
           ...row,
@@ -851,6 +1170,32 @@ describe("the flow — one board, one phase", () => {
     // to fence a write against yet, and the board is the honest witness.
     expect(seen.prompts).toHaveLength(1);
     expect(after.feedback).toMatch(/configured for "implement"/);
+  });
+
+});
+
+describe("status finds the row seeding would have reused", () => {
+  it("matches an issue filter that differs only in case", async () => {
+    // Identity derivation folds case, so `seed({ issue: "fix-1219" })` returns
+    // the SAME row as `seed({ issue: "FIX-1219" })` — deliberately, because the
+    // filesystem cannot tell those two apart either. The status filter compared
+    // raw strings, so the row seeding kept reusing was invisible to a status
+    // call spelled the other way: an empty listing for a task that exists and
+    // is running, which is the silent partial answer this lab exists to remove.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+    });
+    await seedAndDrain(live);
+
+    const asSeeded = (await live.call("status", { issue: ISSUE })) as { rows: unknown[] };
+    const otherCase = (await live.call("status", {
+      issue: ISSUE.toLowerCase(),
+    })) as { rows: unknown[] };
+
+    expect(asSeeded.rows).toHaveLength(1);
+    // The property: the two spellings are one row, exactly as seeding treats them.
+    expect(otherCase.rows).toHaveLength(asSeeded.rows.length);
   });
 });
 
@@ -906,7 +1251,7 @@ describe("the ledger is partitioned by tenant", () => {
   // status and retry accounting shared.
   const base = {
     epic: "shared-epic",
-    workspace: { root: "/tmp/conductor-tenants", sourceRepo: "/tmp/x", baseRef: "main" },
+    workspace: { root: "/tmp/conductor-tenants", sourceRepo: sharedRepo(), baseRef: "main" },
     runTimeoutMs: 30_000,
   };
 
@@ -957,7 +1302,12 @@ describe("the ledger is partitioned by tenant", () => {
 
   it("accepts any tenant id and keeps distinct ones distinct", async () => {
     const { conductorFlow } = await import("../src/flow");
-    for (const bad of ["../escape", "a/b", "..", "", "with space"]) {
+    // `""` is deliberately NOT in this list. It is refused a few describes up,
+    // and for a reason that has nothing to do with encoding: `tenantSegment`
+    // already spends `undefined` on untenanted, so an empty tenant is the one
+    // value the encoding cannot express. The ENCODER still handles it, and
+    // `workspace.spec.ts` asserts that where it belongs.
+    for (const bad of ["../escape", "a/b", "..", "with space"]) {
       // Encoded, not validated — every tenant id is usable, and distinct ones
       // stay distinct. That is the property; a grammar was the old answer.
       expect(conductorFlow({ ...base, tenant: bad }).collectionId).not.toBe(
@@ -1200,7 +1550,754 @@ describe("the ledger is partitioned by tenant", () => {
         undefined,
         OTHER,
       );
-      expect(taskId).toBe(`${ISSUE}--${PHASE}`);
+      expect(taskId).toBe(conductorTaskId(ISSUE, PHASE));
     });
   });
+});
+
+describe("the completion check is bounded", () => {
+  it("gives up on a hook that never answers, and leaves no timer behind", async () => {
+    const { withDeadline } = await import("../src/manager");
+
+    // The gap this closes: `conductorDrainBudgetMs` sums four terms and spends
+    // `NETWORK_CALL_TIMEOUT_MS` on the completion check — a number taken from the
+    // built-in probe, which bounds its own `gh` call. `isDone` is a public seam,
+    // so any other phase's check was unbounded and could outlive the budget a
+    // host sized its shutdown from, leaving the row `in_progress` with nothing
+    // left to settle it.
+    await expect(withDeadline(() => new Promise(() => {}), 20, "the check")).rejects.toThrow(
+      /did not answer within 20ms/,
+    );
+
+    // **And the timer is cleared on the winning path.** A bare `Promise.race`
+    // leaks one pending timer per call; this runs on every settled attempt of
+    // every row, so on a long-lived dispatcher the handles accumulate and hold
+    // the event loop open past a shutdown that is otherwise finished. Asserted
+    // by racing the process's own emptiness: a leaked 60s timer would keep this
+    // `setImmediate` chain alive well past the resolve.
+    const before = process.getActiveResourcesInfo?.().filter((r) => r === "Timeout").length ?? 0;
+    await withDeadline(async () => "fast", 60_000, "the check");
+    const after = process.getActiveResourcesInfo?.().filter((r) => r === "Timeout").length ?? 0;
+    expect(after).toBeLessThanOrEqual(before);
+  });
+});
+
+describe("status attributes a run record to the row that owns it", () => {
+  it("reports no run for a row whose id does not derive from its payload", async () => {
+    // The board capability can file a row under any id. The manager refuses to
+    // EXECUTE one whose id and payload disagree — which is what makes this
+    // reachable rather than theoretical: the malformed row sits there
+    // permanently, and `status` derived the run topic from the payload alone.
+    // So a row filed under a junk id while carrying a real task's
+    // `{ issue, phase }` was narrated with that task's session, cost, checkout
+    // and outcome. Every field real, every field attributed to the wrong task.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          // A second row, under a NON-canonical id, carrying the real task's
+          // payload. `status` filters by issue, so it comes back in the listing
+          // beside the genuine one.
+          await ledger.upsert("not-the-canonical-id", {
+            id: "not-the-canonical-id",
+            goal: "a row filed under an id its payload does not derive",
+            input: { issue: ISSUE, phase: PHASE },
+            status: "pending",
+            attempts: 0,
+            assignee: "harness",
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    // Not `seedAndDrain`: its helper reads `rows[0]`, and planting a second row
+    // for this issue makes that ambiguous. Waited on the genuine row by id.
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const canonical = conductorTaskId(ISSUE, PHASE);
+    const deadline = Date.now() + 10_000;
+    let rows: StatusRow[] = [];
+    for (;;) {
+      ({ rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE }));
+      const mine = rows.find((r) => r.taskId === canonical);
+      // Polled to `completed` rather than to "not in_progress": right after
+      // `seed` returns the row is briefly `pending` and unclaimed, which a
+      // not-in_progress test reads as a settlement that has not happened.
+      if (mine?.status === "completed") break;
+      if (mine !== undefined && mine.status !== "pending" && mine.status !== "in_progress") {
+        throw new Error(`settled unexpectedly: ${JSON.stringify(mine)}`);
+      }
+      if (Date.now() >= deadline) throw new Error(`never settled: ${JSON.stringify(rows)}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(rows.find((r) => r.taskId === canonical)?.status).toBe("completed");
+    const impostor = rows.find((r) => r.taskId === "not-the-canonical-id");
+    expect(impostor, "the planted row should be listed").toBeDefined();
+    // Listed — a caller asking what is on the board should see it exists — but
+    // carrying nothing about a run it does not own.
+    expect(impostor?.run).toBeNull();
+
+    // And the genuine row is unaffected: this must not become a blanket refusal
+    // that hides real records.
+    expect(rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE))?.run?.sessionId).toBe(
+      "sess_stub",
+    );
+  }, 20_000);
+});
+
+describe("status survives a row whose identity cannot be derived at all", () => {
+  it("returns the listing instead of throwing on one malformed neighbour", async () => {
+    // `conductorTaskId` VALIDATES the owned-segment grammar and raises on a
+    // violation. The identity predicate checked the field types and stopped
+    // there — so a persisted row carrying `{ issue: "FIX.1" }` did not fail the
+    // predicate, it failed the whole `status` call, hiding every valid row
+    // behind one bad neighbour on the surface whose job is to say what is on the
+    // board.
+    //
+    // Enumerating one way the derivation can fail and missing the other is the
+    // same shape as the defects this predicate was extracted to prevent.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert("malformed-identity-row", {
+            id: "malformed-identity-row",
+            goal: "a row whose payload violates the owned-segment grammar",
+            // A dot is legal in the schema (it is just a string) and illegal in
+            // the grammar, which is precisely the gap.
+            input: { issue: ISSUE, phase: "imp.lement" },
+            status: "pending",
+            attempts: 0,
+            assignee: "harness",
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const canonical = conductorTaskId(ISSUE, PHASE);
+    const deadline = Date.now() + 10_000;
+    let rows: StatusRow[] = [];
+    for (;;) {
+      // The unfiltered read is the one that broke: it visits every row, so the
+      // malformed one is reached whatever the caller asked about.
+      ({ rows } = await live.call<{ rows: StatusRow[] }>("status", {}));
+      if (rows.find((r) => r.taskId === canonical)?.status === "completed") break;
+      if (Date.now() >= deadline) throw new Error(`never settled: ${JSON.stringify(rows)}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    // The malformed row is listed, with nothing claimed about a run it cannot
+    // be shown to own — and the valid row beside it is unaffected.
+    expect(rows.find((r) => r.taskId === "malformed-identity-row")?.run).toBeNull();
+    expect(rows.find((r) => r.taskId === canonical)?.run?.sessionId).toBe("sess_stub");
+  }, 20_000);
+});
+
+describe("a phase spelled differently is the same phase", () => {
+  it("does not charge a durable row for a casing change in the config", async () => {
+    // A row is durable and outlives the process that filed it. Restart the
+    // conductor with the phase spelled `IMPLEMENT` and it meets rows already on
+    // the board carrying `implement` — and `conductorTaskId` FOLDS case, so
+    // those are the same task, the same checkout and the same branch.
+    //
+    // A raw comparison in the guard called them different, and did so after
+    // `wake` had claimed the row: the attempt is charged, once per wake, until a
+    // valid task's budget is gone, for a mismatch its own identity says does not
+    // exist. That is the exact failure class this lab was built to remove,
+    // arriving through a guard.
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: () => true,
+    });
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    await settle(live);
+    live.dispose();
+
+    // The restart: same board, same durable rows, phase spelled in caps.
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: () => true,
+      phaseName: PHASE.toUpperCase(),
+    });
+
+    // Seeding the lower-case spelling is accepted, not refused as a foreign
+    // phase — the guard at the seed door is the sibling of the one reported,
+    // and it was raw too.
+    await expect(live.call("seed", { issue: ISSUE, phase: PHASE })).resolves.toBeDefined();
+    const row = await settle(live);
+    expect(row.status).toBe("completed");
+  }, 20_000);
+});
+
+describe("the phase's own precondition is refused at the same door", () => {
+  it("refuses a source repo the completion probe could not read a remote from", async () => {
+    // The implement phase's probe runs `git remote get-url origin` AFTER the
+    // paid agent run. A repository whose GitHub remote is called `upstream` is
+    // perfectly valid and fails it — and the rescue re-pends the row, so the
+    // next attempt runs the agent again and fails identically, until the retry
+    // budget is gone. A permanent configuration error charged once per retry is
+    // what every other guard at this door exists to stop; this one could not use
+    // that door, because only the phase knows what it needs.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+
+    const noOrigin = mkdtempSync(join(tmpdir(), "conductor-no-origin-"));
+    seedRepo(noOrigin);
+    execFileSync("git", ["remote", "remove", "origin"], { cwd: noOrigin, stdio: "pipe" });
+    execFileSync(
+      "git",
+      ["remote", "add", "upstream", "https://github.com/fixpoint-labs/x.git"],
+      { cwd: noOrigin, stdio: "pipe" },
+    );
+
+    expect(() =>
+      conductorFlow({
+        epic: "remote-epic",
+        workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
+        phase: implementPhase(),
+      }),
+    ).toThrow(/has no "origin" remote/);
+
+    // **And the guard is scoped to the probe that needs it.** A caller who
+    // supplies `prExists` has replaced the thing that reads `origin`, so
+    // demanding one would refuse a configuration that works.
+    expect(() =>
+      conductorFlow({
+        epic: "remote-epic",
+        workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
+        phase: implementPhase({ prExists: () => true }),
+      }),
+    ).not.toThrow();
+  });
+
+  it("refuses an origin it could not name a repository from", async () => {
+    // Same cost, later and more confusingly: a remote that parses to nothing is
+    // a listing the probe cannot pin, so it fails after the run just as a
+    // missing one does.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+
+    const localRemote = mkdtempSync(join(tmpdir(), "conductor-local-remote-"));
+    seedRepo(localRemote);
+    execFileSync("git", ["remote", "set-url", "origin", "/srv/git/mirror"], {
+      cwd: localRemote,
+      stdio: "pipe",
+    });
+
+    expect(() =>
+      conductorFlow({
+        epic: "remote-epic",
+        workspace: { root: "/tmp/remote-epic", sourceRepo: localRemote, baseRef: "main" },
+        phase: implementPhase(),
+      }),
+    ).toThrow(/does not name a host and repository/);
+  });
+
+  it("does not follow the caller's workspace object after construction", async () => {
+    // **A guard that can be walked around after the fact is not a guard.** The
+    // caller's `workspace` object was retained by reference, so a host could
+    // repoint `sourceRepo` — at the dispatcher's own repository, say — once
+    // `conductorFlow` had returned, and every later attempt would run against a
+    // location `assertDistinctRepository` never saw.
+    //
+    // **Observed through `phase.validate`,** which is handed the exact object
+    // the conductor retains. An earlier version of this test asserted that a
+    // second construction from the mutated object throws — which it does either
+    // way, because that call re-validates from scratch. It passed against the
+    // defect. This one reads the retained object directly.
+    const { conductorFlow } = await import("../src/flow");
+
+    const repo = mkdtempSync(join(tmpdir(), "conductor-snapshot-"));
+    seedRepo(repo);
+    const root = mkdtempSync(join(tmpdir(), "conductor-snapshot-root-"));
+    const mutable = { root, sourceRepo: repo, baseRef: "main" };
+
+    let retained: { root: string; sourceRepo: string; baseRef: string } | undefined;
+    conductorFlow({
+      epic: "snapshot-epic",
+      workspace: mutable,
+      phase: {
+        phase: "implement",
+        readable: {},
+        buildPrompt: () => "p",
+        isDone: () => true,
+        validate: (w) => {
+          retained = w as { root: string; sourceRepo: string; baseRef: string };
+        },
+      },
+    });
+    expect(retained, "validate was never called").toBeDefined();
+
+    // The host mutates its own object afterwards.
+    mutable.sourceRepo = "/definitely/not/a/repository";
+    mutable.root = "/tmp/somewhere-else";
+
+    // The conductor's copy is untouched by that.
+    expect(retained!.sourceRepo).toBe(repo);
+    expect(retained!.root).toBe(root);
+    // And frozen, so the same hole cannot be reopened from inside the module.
+    expect(Object.isFrozen(retained)).toBe(true);
+  });
+
+  it("refuses a host where `gh` cannot be run", async () => {
+    // The probe's OTHER unstated precondition. A valid `origin` gets the
+    // conductor all the way to a paid coding run on a host with no `gh`, and
+    // only the completion listing afterwards discovers it — so the rescue
+    // re-pends and the next attempt buys the same failure again, until the
+    // retry budget is spent. Same shape as the missing remote, same door.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+
+    const repo = mkdtempSync(join(tmpdir(), "conductor-no-gh-"));
+    seedRepo(repo);
+
+    // **`PATH` is set in BOTH directions rather than read.** A test that just
+    // asserted the throw would pass here (this sandbox has no `gh`) and fail on
+    // a developer machine that does — a fixture whose answer depends on the host
+    // is not a fixture. A directory holding `git` and nothing else makes "no
+    // `gh`" true everywhere, and the suite-wide shim in `test/setup.ts` makes
+    // the opposite true everywhere.
+    //
+    // `git` has to stay reachable: the guards ahead of this one shell out to it
+    // to check the repository and the base ref, so a genuinely empty `PATH`
+    // fails earlier and the assertion below would be reading the wrong refusal.
+    const gitOnly = mkdtempSync(join(tmpdir(), "conductor-git-only-path-"));
+    symlinkSync(
+      execFileSync("which", ["git"], { encoding: "utf8" }).trim(),
+      join(gitOnly, "git"),
+    );
+    const realPath = process.env["PATH"];
+    process.env["PATH"] = gitOnly;
+    try {
+      expect(() =>
+        conductorFlow({
+          epic: "gh-epic",
+          workspace: { root: "/tmp/gh-epic", sourceRepo: repo, baseRef: "main" },
+          phase: implementPhase(),
+        }),
+      ).toThrow(/`gh` CLI could not be run/);
+    } finally {
+      process.env["PATH"] = realPath;
+    }
+
+    // And the positive arm, on the same repository, so the refusal above is
+    // attributable to `gh` and not to anything else about this configuration.
+    expect(() =>
+      conductorFlow({
+        epic: "gh-epic",
+        workspace: { root: "/tmp/gh-epic", sourceRepo: repo, baseRef: "main" },
+        phase: implementPhase(),
+      }),
+    ).not.toThrow();
+
+    // **And the guard is scoped to the probe that needs it**, as the remote
+    // guard beside it is: a caller who supplies `prExists` never shells out to
+    // `gh`, so demanding it would refuse a configuration that works.
+    process.env["PATH"] = gitOnly;
+    try {
+      expect(() =>
+        conductorFlow({
+          epic: "gh-epic",
+          workspace: { root: "/tmp/gh-epic", sourceRepo: repo, baseRef: "main" },
+          phase: implementPhase({ prExists: () => true }),
+        }),
+      ).not.toThrow();
+    } finally {
+      process.env["PATH"] = realPath;
+    }
+  });
+});
+
+describe("a row is only ours if its routing is ours too", () => {
+  it("refuses an existing row at this id that is assigned elsewhere", async () => {
+    // The id/payload check answers "is this the same task". It does not answer
+    // "would we have filed this row" — `assignee` is a separate immutable
+    // routing input, so a pre-created row with the right payload under another
+    // assignee passed as an idempotent seed. The board claim charges an attempt
+    // before dispatch, and dispatch then finds no worker declared for that
+    // assignee: the requested coding run is billed or stranded without ever
+    // launching, and the seed reported success.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-OTHER", PHASE), {
+            id: conductorTaskId("FIX-OTHER", PHASE),
+            goal: "filed by somebody else's worker",
+            input: { issue: "FIX-OTHER", phase: PHASE },
+            status: "pending",
+            attempts: 0,
+            // Everything correct except the routing.
+            assignee: "someone-else",
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    // Seeding the planted issue must NOT report it as filed: the id and payload
+    // agree, and the row still is not one this conductor can run.
+    await expect(live.call("seed", { issue: "FIX-OTHER", phase: PHASE })).rejects.toThrow(
+      /assignee other than "harness"/,
+    );
+  }, 20_000);
+});
+
+describe("a row is only ours if its retry budget is ours too", () => {
+  it("refuses an existing row filed without the configured retry budget", async () => {
+    // `maxAttempts` is not decoration and its ABSENCE is not "the default": the
+    // substrate is single-attempt without it. A row pre-created with the right
+    // id, payload and assignee but no budget is accepted as an idempotent seed
+    // and drained under a retry policy the conductor never configured — the
+    // first failed coding run goes terminal on a board built for retries, which
+    // is the exact economics decision 1 is priced on.
+    //
+    // Unlike `assignee`, this one really is immutable through `updateTask`
+    // (which patches priority, metadata, assignee and labels), so checking it
+    // says something about the row for its whole life.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-NOBUDGET", PHASE), {
+            id: conductorTaskId("FIX-NOBUDGET", PHASE),
+            goal: "filed with no retry budget",
+            input: { issue: "FIX-NOBUDGET", phase: PHASE },
+            status: "pending",
+            attempts: 0,
+            assignee: "harness",
+            // `maxAttempts` deliberately absent — everything else is correct.
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    await expect(
+      live.call("seed", { issue: "FIX-NOBUDGET", phase: PHASE }),
+    ).rejects.toThrow(/retry budget|not one this conductor filed|did not file/);
+  }, 20_000);
+
+  it("reuses a row whose first run is still holding a live lease", async () => {
+    // **The seed contract's other end, and the one delegating to `isClaimable`
+    // broke.** That predicate answers "can a drain take this row NOW", and it
+    // withholds a live `in_progress` row on purpose — someone already has it.
+    // `seed` is asking a different question: does a row for this task exist and
+    // is it being worked. For a running row the answer is yes, and returning its
+    // stable id is the documented idempotent case.
+    //
+    // Delegating the whole question made a second seed for an issue whose first
+    // coding run was still going THROW, and made concurrent seeds
+    // timing-dependent: success depended on whether the first drain had claimed
+    // yet, which no caller can see.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-RUNNING", PHASE), {
+            id: conductorTaskId("FIX-RUNNING", PHASE),
+            goal: "already being worked",
+            input: { issue: "FIX-RUNNING", phase: PHASE },
+            // Claimed and live: a lease well into the future.
+            status: "in_progress",
+            leaseUntil: Date.now() + 600_000,
+            attempts: 1,
+            assignee: "harness",
+            maxAttempts: 3,
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    await expect(
+      live.call("seed", { issue: "FIX-RUNNING", phase: PHASE }),
+    ).resolves.toMatchObject({ taskId: conductorTaskId("FIX-RUNNING", PHASE) });
+  }, 20_000);
+
+  it("refuses an active-looking row that carries no lease", async () => {
+    // **`leaseLapsed` is false for an `in_progress` row with no lease, and I
+    // built the running arm on that helper.** Wrong side: `isClaimable` rejects
+    // a lease-less row too, so nobody owns it and no drain will ever start it.
+    // Reporting it as already running is the silent nothing-happened the whole
+    // predicate exists to stop — a shared-board writer or a legacy persisted row
+    // reaches this shape.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-NOLEASE", PHASE), {
+            id: conductorTaskId("FIX-NOLEASE", PHASE),
+            goal: "in_progress with nobody on it",
+            input: { issue: "FIX-NOLEASE", phase: PHASE },
+            // Everything else correct; no `leaseUntil` at all.
+            status: "in_progress",
+            attempts: 1,
+            assignee: "harness",
+            maxAttempts: 3,
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    await expect(live.call("seed", { issue: "FIX-NOLEASE", phase: PHASE })).rejects.toThrow();
+  }, 20_000);
+
+  it("reuses a FINISHED row whose retry budget is not the configured one", async () => {
+    // **The other side of the same rule, and the ordering is what makes it
+    // true.** Every admission check asks whether a drain could run this row the
+    // way the seed promises. No drain will ever run a terminal row — so a retry
+    // policy that can never be applied to it is not grounds for refusing it.
+    //
+    // Checking policy before the terminal case meant a durable board restarted
+    // under a different `maxAttempts` threw on re-seeding an issue it had
+    // already finished, which contradicts the documented idempotency and the
+    // public promise that a second seed returns the existing row. A host cannot
+    // re-seed its way out of it either: the budget on a finished row is history.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-FINISHED", PHASE), {
+            id: conductorTaskId("FIX-FINISHED", PHASE),
+            goal: "finished under another budget",
+            input: { issue: "FIX-FINISHED", phase: PHASE },
+            // Terminal, and filed under a budget this conductor is not running.
+            status: "completed",
+            attempts: 1,
+            assignee: "harness",
+            maxAttempts: 99,
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    // Reused, not refused, and it is the same row rather than a new one.
+    await expect(
+      live.call("seed", { issue: "FIX-FINISHED", phase: PHASE }),
+    ).resolves.toMatchObject({ taskId: conductorTaskId("FIX-FINISHED", PHASE) });
+  }, 20_000);
+});
+
+describe("status attribution does not depend on the retry policy", () => {
+  it("keeps reporting a run for a row whose retry budget is not the configured one", async () => {
+    // A durable board outlives the process that filed its rows, so a host
+    // restarted with a different `maxAttempts` meets rows still carrying the
+    // budget they were filed with — while their id, payload and run topic are
+    // unchanged. Attribution has nothing to do with retry policy, so a `status`
+    // that compares it hides the session, checkout, cost and outcome of every
+    // pre-restart run behind `run: null`.
+    //
+    // That is not hypothetical: it is what broadening the shared predicate for
+    // SEED ADMISSION did to this read-only join, one commit after the goal check
+    // argued the same separation in the other direction.
+    //
+    // Staged by moving the budget on a settled row rather than by restarting the
+    // harness — each harness builds its own store, so a "restart" would lose the
+    // durable rows this is about. The property under test is the same either
+    // way: identity unchanged, policy different, record still attributed.
+    let moved = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      maxAttempts: 3,
+      isDone: async (run) => {
+        if (!moved) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId(ISSUE, PHASE), { maxAttempts: 5 });
+          moved = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 10_000;
+    let rows: StatusRow[] = [];
+    for (;;) {
+      ({ rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE }));
+      const mine = rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE));
+      if (moved && mine !== undefined && mine.status !== "in_progress") break;
+      if (Date.now() >= deadline) throw new Error(`never settled: ${JSON.stringify(rows)}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const mine = rows.find((r) => r.taskId === conductorTaskId(ISSUE, PHASE));
+    expect(mine?.attempts, "the budget really did move off the configured one").toBeDefined();
+    // The record is still attributed: the identity never moved, only the policy.
+    expect(mine?.run?.sessionId).toBe("sess_stub");
+  }, 20_000);
+});
+
+describe("the phase name is an identity segment, refused at construction", () => {
+  it("refuses a phase name that cannot become a task id, path or branch", async () => {
+    // `epic` was validated where the board id is built; the phase name was
+    // validated nowhere. Both feed `conductorTaskId`, the checkout path and the
+    // branch — so a conductor configured with `review.v2` constructed without
+    // complaint and then threw from every `seed`.
+    //
+    // The expensive door is the other one: a matching row written straight to
+    // the shared board is CLAIMED and charged before the manager reaches the
+    // same failure. A permanent configuration error, paid once per retry.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+    const base = implementPhase({ prExists: () => true });
+    const workspace = { root: "/tmp/phase-name", sourceRepo: sharedRepo(), baseRef: "main" };
+
+    for (const bad of ["review.v2", "", "a/b", "..", "with space", "ends-in.lock"]) {
+      expect(() =>
+        conductorFlow({ epic: "phase-name-epic", workspace, phase: { ...base, phase: bad } }),
+      ).toThrow(/not a usable identity segment/);
+    }
+
+    // And a legal one still builds — the guard must not become an outage, and
+    // case is folded rather than refused (see the casing test above).
+    expect(() =>
+      conductorFlow({
+        epic: "phase-name-epic",
+        workspace,
+        phase: { ...base, phase: "REVIEW_v2" },
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("a reused row must be one a drain can actually claim", () => {
+  it("refuses an existing row carrying an unresolved dependency", async () => {
+    // The row is correct in every field `seed` SETS — id, payload, assignee,
+    // retry budget — and carries a `deps` entry `seed` never sets at all.
+    // `depsSatisfied` then keeps it permanently unclaimable, so `seed` reports
+    // filed and the coding run simply never happens: no error, no attempt, no
+    // work, and nothing on the board says why.
+    //
+    // This is the field that showed the previous framing was wrong. Checking
+    // against "the `addTask` call this mirrors" can only ever see fields seed
+    // writes, and is blind by construction to ones it leaves at their default
+    // for a foreign writer to fill in.
+    let planted = false;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: async (run) => {
+        if (!planted) {
+          const ledger = (run.ctx as unknown as {
+            resources: Record<string, { upsert(k: string, u: unknown): Promise<unknown> }>;
+          }).resources[COLLECTION_ID];
+          await ledger.upsert(conductorTaskId("FIX-BLOCKED", PHASE), {
+            id: conductorTaskId("FIX-BLOCKED", PHASE),
+            goal: "filed with a dependency this conductor never sets",
+            input: { issue: "FIX-BLOCKED", phase: PHASE },
+            status: "pending",
+            attempts: 0,
+            assignee: "harness",
+            maxAttempts: 3,
+            deps: ["something-that-was-never-filed"],
+            createdAt: 1,
+            updatedAt: 1,
+          });
+          planted = true;
+        }
+        return true;
+      },
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    const deadline = Date.now() + 8_000;
+    while (!planted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(planted, "the drain never reached the completion check").toBe(true);
+
+    await expect(
+      live.call("seed", { issue: "FIX-BLOCKED", phase: PHASE }),
+    ).rejects.toThrow(/dependencies that would keep it unclaimable/);
+  }, 20_000);
 });

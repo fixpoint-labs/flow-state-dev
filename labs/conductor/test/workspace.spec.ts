@@ -2,7 +2,14 @@
  * The run's checkout — where it is, how it is made, and who holds it.
  */
 import { describe, expect, it, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +23,7 @@ import {
   type RunPrincipal,
   type WorkspaceConfig,
   encodeSegment,
+  isStrictlyInside,
 } from "../src/workspace";
 import { seedRepo } from "./harness";
 
@@ -109,7 +117,7 @@ describe("provisioning", () => {
       // literal here would only pin how the digest happens to be computed
       // today. What this asserts is the SHAPE — untenanted tag, principal,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/FIX-1219--implement`,
+      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${conductorTaskId("FIX-1219", "implement")}`,
     );
   });
 
@@ -133,9 +141,89 @@ describe("provisioning", () => {
     );
     expect(existsSync(join(checkout.path, "wip.txt"))).toBe(true);
   });
+
+  it("does not report a deleted branch when the probe itself failed", async () => {
+    // The branch check was a blanket `catch { return false }`, so a probe that
+    // timed out, could not spawn git, or met an unreadable repository answered
+    // the same as a ref that is genuinely gone.
+    //
+    // Both readings of that `false` are wrong. Here on the reuse path the caller
+    // announces a branch someone deleted, sending whoever reads it after a
+    // deletion that never happened; on the fresh path it takes `worktree add -b`
+    // and collides with the branch that does exist. Either way the attempt is
+    // charged for an infrastructure failure — the category error the ownership
+    // wait goes out of its way to refuse, arriving through a `catch`.
+    //
+    // The branch here is NOT deleted. Only the probe is broken: the source repo
+    // is pointed at a directory git cannot read as a repository, which is one of
+    // the real shapes (exit 128, unkilled) rather than a hand-made error object.
+    const config = workspace();
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    writeFileSync(join(checkout.path, "wip.txt"), "half done");
+
+    const notARepo = mkdtempSync(join(tmpdir(), "conductor-not-a-repo-"));
+    dirs.push(notARepo);
+    const broken = { ...config, sourceRepo: notARepo };
+
+    const failure = await provisionCheckout(broken, at("FIX-1219", "implement")).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+
+    expect(failure).toBeDefined();
+    expect(failure?.message).toMatch(/could not determine whether branch/);
+    // The load-bearing half: it must NOT claim a deletion. A wrong cause here is
+    // worse than a bare failure, because it reads as actionable.
+    expect(failure?.message).not.toMatch(/no longer exists/);
+    // The real reason survives rather than being flattened into the verdict.
+    expect(failure?.cause).toBeDefined();
+    expect(existsSync(join(checkout.path, "wip.txt"))).toBe(true);
+  });
 });
 
 const bounds = { waitMs: 2_000, pollMs: 10, staleAfterMs: 60_000 };
+
+describe("the containment rule guarding the only recursive removal", () => {
+  // `provisionCheckout` clears a half-created tree — a directory git left behind
+  // when `worktree add` was killed mid-run. That is a recursive `rmSync`, and the
+  // only thing standing between it and the wrong directory is this predicate.
+  //
+  // It was a `startsWith(`${root}/`)` prefix test. Each case below is a way a
+  // prefix test answers wrongly, and the two refusal cases are the ones that
+  // matter most: a refusal here leaves the partial tree in place, so every later
+  // attempt meets it again and spends a retry on it.
+
+  it("accepts an ordinary checkout under the root", () => {
+    expect(isStrictlyInside("/ws/FIX-1--implement", "/ws")).toBe(true);
+    expect(isStrictlyInside("/ws/nested/deeper", "/ws")).toBe(true);
+  });
+
+  it("refuses the root itself rather than clearing every checkout in it", () => {
+    // The prefix test short-circuited on equality and let this through, so a
+    // caller arriving with the root as its checkout path would have had
+    // `rmSync(root, { recursive: true })` run against the directory holding
+    // every other checkout. The guard exists for exactly the caller that does
+    // not exist yet, which is the caller it admitted.
+    expect(isStrictlyInside("/ws", "/ws")).toBe(false);
+  });
+
+  it("accepts a child when the root is the filesystem root", () => {
+    // `${root}/` is `//` here, which no resolved absolute path starts with, so
+    // the prefix test refused every child of a `/` root.
+    expect(isStrictlyInside("/anything", "/")).toBe(true);
+  });
+
+  it("refuses a sibling whose name merely starts with the root", () => {
+    expect(isStrictlyInside("/ws-elsewhere/tree", "/ws")).toBe(false);
+  });
+
+  it("refuses a path that climbs out, and keeps one that only looks like it", () => {
+    expect(isStrictlyInside("/elsewhere", "/ws")).toBe(false);
+    // `..` is a segment, not a prefix. A directory named `..conductor` is an
+    // ordinary child, and comparing the string prefix would have refused it.
+    expect(isStrictlyInside("/ws/..conductor", "/ws")).toBe(true);
+  });
+});
 
 describe("a cancelled attempt stops waiting for the tree", () => {
   it("gives up the wait instead of polling out the whole window", async () => {
@@ -197,6 +285,79 @@ describe("a cancelled attempt stops waiting for the tree", () => {
 
     expect(existsSync(`${checkout}.lock`)).toBe(false);
   });
+
+  it("honours waitMs even when the poll interval is larger than it", async () => {
+    // The bound in the error message, and the one the drain budget is sized
+    // from, is `waitMs`. The loop checked the deadline and THEN slept a whole
+    // `pollMs`, so a poll interval larger than what remained overshot by the
+    // difference — and disposal, which accounts only for `waitMs`, could expire
+    // while acquisition was still sleeping.
+    //
+    // Cancellation is a different exit and is covered above; this is ordinary
+    // expiry, which needs the clock rather than the signal.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-overshoot-"));
+    dirs.push(dir);
+    const checkout = join(dir, "tree");
+    const held = await acquireCheckout(checkout, "the holder", {
+      waitMs: 1_000,
+      pollMs: 10,
+      staleAfterMs: 600_000,
+    });
+
+    const startedAt = Date.now();
+    await expect(
+      acquireCheckout(checkout, "the waiter", {
+        waitMs: 30,
+        pollMs: 2_000,
+        staleAfterMs: 600_000,
+      }),
+    ).rejects.toThrow(/waited 30ms/);
+    const elapsed = Date.now() - startedAt;
+
+    // Generous against a slow runner, and still far inside the 2s the
+    // uncapped sleep would have taken.
+    expect(elapsed).toBeLessThan(1_000);
+
+    held.release();
+  });
+
+  it("observes the signal without waiting out the poll interval", async () => {
+    // The two tests above both run at `pollMs: 10`, so they pass whether or not
+    // the sleep itself is abortable — ten milliseconds of lag is invisible. That
+    // makes the responsiveness of the wait a function of `pollMs`, which is a
+    // caller-set public option: at a large but perfectly valid interval, a
+    // cancelled attempt keeps a replacement waiting for the whole interval.
+    //
+    // So this one sets `pollMs` far past any tolerable delay. The waiter reaches
+    // the sleep, and from there the ONLY thing that can end the call inside the
+    // assertion is `abort` waking the sleep — the poll interval and the deadline
+    // are both ten minutes out.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-cancel3-"));
+    dirs.push(dir);
+    const checkout = join(dir, "tree");
+    const held = await acquireCheckout(checkout, "the holder", {
+      waitMs: 1_000,
+      pollMs: 10,
+      staleAfterMs: 600_000,
+    });
+
+    const controller = new AbortController();
+    const startedAt = Date.now();
+    const waiting = acquireCheckout(
+      checkout,
+      "the waiter",
+      { waitMs: 600_000, pollMs: 600_000, staleAfterMs: 600_000 },
+      Date.now,
+      controller.signal,
+    );
+
+    setTimeout(() => controller.abort(), 50);
+    await expect(waiting).rejects.toThrow(/was cancelled/);
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+
+    expect(existsSync(`${checkout}.lock`)).toBe(true);
+    held.release();
+  });
 });
 
 describe("a relative workspace root still lands in one place", () => {
@@ -237,6 +398,242 @@ describe("a relative workspace root still lands in one place", () => {
     } finally {
       process.chdir(previous);
     }
+  });
+});
+
+describe("a half-created checkout does not brick every retry", () => {
+  // Measured with a real `SIGTERM` to `git worktree add`, which is exactly how
+  // the provisioning budget ends it: the target is left present, partly
+  // populated, and WITHOUT `.git`. The next attempt then took the create arm
+  // again and git refused with `fatal: '<path>' already exists` — on both arms,
+  // since the killed run also leaves the branch behind — and `worktree prune`
+  // did not clear it, because the leftover is a tree rather than bookkeeping.
+  // So the whole remaining retry budget went on a leftover no retry could fix.
+
+  it("recreates a checkout whose creation was interrupted", async () => {
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const path = checkoutPathFor(config, location);
+
+    // The exact leftover shape: the directory, some content, no `.git`, and the
+    // marker the provision wrote before calling `worktree add`. The marker is
+    // part of the shape rather than test scaffolding — it is what makes this an
+    // interrupted provision rather than a directory of unknown origin.
+    mkdirSync(join(path, "src"), { recursive: true });
+    writeFileSync(join(path, "src", "partial.ts"), "half written");
+    writeFileSync(`${path}.provisioning`, "");
+    expect(existsSync(join(path, ".git"))).toBe(false);
+
+    const checkout = await provisionCheckout(config, location);
+
+    expect(checkout.created).toBe(true);
+    expect(existsSync(join(checkout.path, ".git"))).toBe(true);
+    // The leftover is gone rather than merged into the new tree.
+    expect(existsSync(join(checkout.path, "src", "partial.ts"))).toBe(false);
+  });
+
+  it("recreates it even when the interrupted run left the branch behind", () => {
+    // The arm the retry actually takes. A killed `worktree add -b` still
+    // creates the ref, so the next attempt goes down the "branch exists" path —
+    // which failed on the leftover directory in exactly the same way.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const path = checkoutPathFor(config, location);
+    const branch = branchFor(location);
+
+    execFileSync("git", ["branch", branch, "main"], { cwd: config.sourceRepo, stdio: "pipe" });
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, "leftover"), "x");
+    writeFileSync(`${path}.provisioning`, "");
+
+    return expect(provisionCheckout(config, location)).resolves.toMatchObject({
+      created: true,
+      branch,
+    });
+  });
+
+  it("recreates a marked checkout whose tree agrees it is half-built", async () => {
+    // **This assertion is the inverse of the one it replaces, and the reason is
+    // a measurement.** The old rule made `.git` the witness that provisioning
+    // finished, so a marked checkout carrying `.git` was reused and the marker
+    // cleared on the way past.
+    //
+    // `git worktree add` killed mid-checkout does not respect that rule. Killing
+    // one against a 400-file repository left `.git` present, HEAD on the
+    // expected branch, the worktree registered — and 241 files populated with
+    // 401 staged deletions in the index. The old rule hands exactly that to the
+    // agent, whose first commit then deletes the 159 files the checkout never
+    // received.
+    //
+    // So `.git` alone does not authorise reuse. Neither does the marker alone
+    // authorise deletion: it sits in the workspace root, where the coding agent
+    // can write it. What authorises deletion is the two of them AGREEING — a
+    // marker, and a tree that independently reports tracked files missing. That
+    // combination is a provision that did not finish, and recreating it costs a
+    // provision and can lose nothing. The case where they disagree is the test
+    // below.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+
+    // The half-finished add, staged as it actually looks: `.git` and the branch
+    // are real and a TRACKED FILE IS MISSING from the working tree, which is
+    // what a killed `worktree add` leaves behind and what `git ls-files
+    // --deleted` reports. The marker alone is no longer enough — it is writable
+    // by anything with access to the workspace root, the coding agent included —
+    // so the tree has to agree that it is half-built.
+    //
+    // **Only a deletion.** An earlier version of this fixture also wrote an
+    // untracked file, which a killed `worktree add` cannot leave — it writes
+    // tracked files and stops. Staging content here made the fixture describe a
+    // tree that does not occur, and it now disqualifies itself, which is the
+    // point of the second condition.
+    rmSync(join(first.path, "tracked.txt"));
+    writeFileSync(`${first.path}.provisioning`, "");
+
+    const second = await provisionCheckout(config, location);
+    expect(second.created).toBe(true);
+    expect(existsSync(`${first.path}.provisioning`)).toBe(false);
+    // The tree was rebuilt rather than handed on with a file missing.
+    expect(readFileSync(join(second.path, "tracked.txt"), "utf8")).toBe(
+      "content the checkout should carry\n",
+    );
+
+    // And what the old test was protecting still holds, by a better route: the
+    // marker cannot survive to re-arm a later deletion, because this provision
+    // acted on it. A subsequent `.git` removal is refused, not cleared.
+    writeFileSync(join(second.path, "uncommitted.txt"), "the last attempt's work");
+    rmSync(join(second.path, ".git"), { recursive: true, force: true });
+    await expect(provisionCheckout(config, location)).rejects.toThrow(
+      /no record of an interrupted provision/,
+    );
+    expect(readFileSync(join(second.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+  });
+
+  it("refuses a marked checkout holding work, even with a tracked file deleted", async () => {
+    // **The corroborator on its own is not enough, and this is the case that
+    // shows it.** `git ls-files --deleted` reports index-present, worktree-absent
+    // files — and an agent that deletes or renames a tracked file during ordinary
+    // implementation work produces exactly that reading. Pair it with a marker
+    // the agent can write and the guard against losing carry-forward work becomes
+    // a way to lose it.
+    //
+    // So a deletion is believed only in a tree that holds nothing else. Here the
+    // tree has both: a deleted tracked file AND an agent's uncommitted work, which
+    // is a shape a killed `worktree add` cannot produce.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+
+    rmSync(join(first.path, "tracked.txt"));
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+    writeFileSync(`${first.path}.provisioning`, "");
+
+    await expect(provisionCheckout(config, location)).rejects.toThrow(
+      /says a provision was interrupted, but the checkout/,
+    );
+    // The load-bearing assertion: the work is still there.
+    expect(readFileSync(join(first.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+  });
+
+  it("refuses a marked checkout whose tree is complete", async () => {
+    // **The forged marker.** The marker is a file in the workspace root, beside
+    // the checkout, and the coding agent has a shell — so it can create one at
+    // any point, including in a tree holding a whole attempt's work. Believing it
+    // on its own means a recursive delete of exactly what the reuse design exists
+    // to protect.
+    //
+    // Here the two signals disagree: a marker says a provision was interrupted,
+    // and the tree says every tracked file is present. Deleting would destroy work
+    // that is definitely real to honour a marker that might not be; reusing would
+    // ignore a marker that might be. So neither happens — the operator is told,
+    // and the tree is left exactly as it was found.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+
+    writeFileSync(`${first.path}.provisioning`, "");
+
+    await expect(provisionCheckout(config, location)).rejects.toThrow(
+      /says a provision was interrupted, but the checkout/,
+    );
+    // The load-bearing assertions: nothing was deleted, and the marker was not
+    // quietly cleared either — a refusal that consumed the evidence would let the
+    // next attempt sail past into a reuse this one just declined to make.
+    expect(readFileSync(join(first.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+    expect(readFileSync(join(first.path, "tracked.txt"), "utf8")).toBe(
+      "content the checkout should carry\n",
+    );
+    expect(existsSync(`${first.path}.provisioning`)).toBe(true);
+  });
+
+  it("keeps a tree whose `.git` went missing without an interrupted provision", async () => {
+    // The inference this branch used to make was `no .git` → `nobody ever worked
+    // here`. That does not hold: the run holds an agent with shell access, so
+    // removing or renaming `.git` inside its own checkout is reachable — a
+    // cleanup script, or an agent deciding to start over. The tree then looks
+    // exactly like an interrupted provision while holding real uncommitted work,
+    // and clearing it destroys the thing the whole reuse design is priced on.
+    //
+    // Staged on a REAL checkout rather than a hand-made directory, because the
+    // point is that a genuine tree can reach this state.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+
+    // The agent removes its own `.git`. Provisioning is long finished, so there
+    // is no marker — which is exactly what separates this from the case above.
+    rmSync(join(first.path, ".git"), { recursive: true, force: true });
+    expect(existsSync(`${first.path}.provisioning`)).toBe(false);
+
+    await expect(provisionCheckout(config, location)).rejects.toThrow(
+      /no record of an interrupted provision/,
+    );
+    // The load-bearing assertion: the work is still there.
+    expect(readFileSync(join(first.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+  });
+
+  it("still refuses to clear a real checkout", async () => {
+    // The guard rail on the rule. `.git` is the witness that git finished
+    // setup, so a tree that HAS it is a usable checkout holding the last
+    // attempt's work — and this module never resets one. Provisioning it again
+    // must return it untouched.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    writeFileSync(join(first.path, "uncommitted.txt"), "the last attempt's work");
+
+    const second = await provisionCheckout(config, location);
+
+    expect(second.created).toBe(false);
+    expect(readFileSync(join(second.path, "uncommitted.txt"), "utf8")).toBe(
+      "the last attempt's work",
+    );
+  });
+
+  it("refuses to clear anything outside the workspace root", async () => {
+    // A guard on a destructive call. The path is derived under `config.root`,
+    // and this keeps that true for a future caller that arrives another way.
+    const config = workspace();
+    const outside = mkdtempSync(join(tmpdir(), "conductor-outside-"));
+    dirs.push(outside);
+    mkdirSync(join(outside, "t0"), { recursive: true });
+
+    await expect(
+      provisionCheckout({ ...config, root: join(config.root, "..", "elsewhere") }, {
+        ...at("FIX-1219", "implement"),
+      }),
+    ).resolves.toBeDefined();
   });
 });
 
@@ -284,6 +681,33 @@ describe("provisioning is bounded as ONE operation", () => {
     await expect(
       provisionCheckout(config, at("FIX-1219", "implement"), steppingClock(50_000)),
     ).rejects.toThrow(/provisioning exceeded its budget/);
+  });
+
+  it("draws a FRESH budget for the marker probe's second command", async () => {
+    // The marker-recovery probe runs two git commands — `ls-files --deleted`,
+    // then `status --porcelain`. Both were handed ONE snapshot of the remaining
+    // time, so together they could hold the lock for twice what
+    // `provisionTimeoutMs` promises. The stale threshold is derived from that
+    // same number, so the overrun is exactly long enough for a replacement to
+    // declare this attempt dead and take the checkout while it is still probing.
+    //
+    // Staged on the path that reaches the probe: a real checkout, a tracked file
+    // removed, and the marker beside it. The clock is stepped so the budget
+    // survives the first command and is gone by the second — which a per-call
+    // snapshot would have funded in full.
+    const config = { ...workspace(), provisionTimeoutMs: 60_000 };
+    const location = at("FIX-1219", "implement");
+    const first = await provisionCheckout(config, location);
+    rmSync(join(first.path, "tracked.txt"));
+    writeFileSync(`${first.path}.provisioning`, "");
+
+    await expect(
+      provisionCheckout(config, location, steppingClock(35_000)),
+    ).rejects.toThrow(/provisioning exceeded its budget/);
+
+    // And the tree is still there: a probe that ran out of budget answered
+    // nothing, so nothing was cleared on the strength of it.
+    expect(existsSync(join(first.path, ".git"))).toBe(true);
   });
 
   it("still provisions when the budget covers the whole operation", async () => {
@@ -344,6 +768,29 @@ describe("obligation B — one live attempt per tree", () => {
     await expect(
       acquireCheckout(path, "attempt#2", { waitMs: 60, pollMs: 10, staleAfterMs: 60_000 }),
     ).rejects.toThrow(/still held/);
+  });
+
+  it("raises a permanently unreadable lock instead of spinning on it", async () => {
+    // The retry that skipped its own bound. The catch around the stat-and-read
+    // took EVERY error as "it was released, try again" and `continue`d — past
+    // the deadline check and past the only `await` in the loop. For a
+    // DISAPPEARANCE that is right; for a permanent read failure it is a
+    // synchronous infinite loop: `wx` fails EEXIST, the read throws again, and
+    // nothing yields. The deadline never fires, cancellation is never observed,
+    // and the dispatcher's event loop is held by a wait advertising a bound it
+    // can no longer honour.
+    //
+    // A directory at the lock path is the cheapest way to stage a read that
+    // cannot succeed on any pass; `EACCES` from a lock owned by another uid is
+    // the same shape and the likelier one in production.
+    const config = workspace();
+    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    mkdirSync(`${path}.lock`, { recursive: true });
+
+    // Rejects with the filesystem's own error, NOT the "still held" bound
+    // message: nobody holds this lock. Waiting `waitMs` out first would buy
+    // nothing and then blame a holder that does not exist.
+    await expect(acquireCheckout(path, "attempt#1", bounds)).rejects.toThrow(/EISDIR|EACCES/);
   });
 
   it("takes a lock no live attempt could still be holding", async () => {
@@ -651,6 +1098,109 @@ describe("two epics on one issue-phase are isolated too", () => {
   });
 });
 
+describe("the identity rule — the digest cannot be made to collide on purpose", () => {
+  // **A width assertion passes happily while four inputs share one output**, so
+  // this asserts DISTINCTNESS over inputs chosen to break the transcoding step.
+  //
+  // `encodeSegment` hashed through UTF-8, which has no representation for a
+  // lone surrogate — so `Buffer.from`/`update` substituted U+FFFD BEFORE the
+  // hash ran. Measured: `\ud800`, `\ud801`, `\udfff` and a literal `\ufffd`
+  // produced ONE digest, hence one checkout and one lock for four distinct
+  // caller-supplied identifiers.
+  //
+  // Not the collision the digest's safety argument covers. That argument is
+  // about SHA-256 and it holds; this was a collision upstream of the hash,
+  // deliberate and trivially reproducible by anyone who can supply an id.
+  const HOSTILE = ["\ud800", "\ud801", "\udfff", "\ufffd", "😀"];
+
+  it("gives distinct digests to inputs UTF-8 cannot tell apart", () => {
+    const digests = HOSTILE.map((v) => encodeSegment(v));
+    expect(new Set(digests).size).toBe(HOSTILE.length);
+  });
+
+  it("encodes the empty string like any other input", () => {
+    // `conductorFlow` refuses an empty TENANT, but that is a config rule about
+    // present-versus-absent, not a limit of the encoder. Asserted here so the
+    // encoder keeps its empty-string case when the config door takes the value
+    // away from the other test.
+    expect(encodeSegment("")).toMatch(/^h[0-9a-f]{64}$/);
+    expect(encodeSegment("")).not.toBe(encodeSegment("x"));
+  });
+
+  it("keeps a valid astral pair distinct from the surrogates it is made of", () => {
+    // The guard on the fix: distinctness must not be bought by mangling valid
+    // input. `😀` is exactly `\ud83d\ude00`, so an encoder that mishandled
+    // pairs could make this collide with its own halves.
+    expect(encodeSegment("😀")).not.toBe(encodeSegment("\ud83d"));
+    expect(encodeSegment("😀")).not.toBe(encodeSegment("\ude00"));
+    expect(encodeSegment("😀")).toBe(encodeSegment("\ud83d\ude00"));
+  });
+
+  it("separates the whole derivation, not just the digest", () => {
+    // The digest is one component; what matters is that two hostile principals
+    // do not land on one tree, one branch, or one lock.
+    const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
+    const paths = HOSTILE.map((userId) =>
+      checkoutPathFor(config, at("FIX-1", "implement", { principal: { userId } })),
+    );
+    const branches = HOSTILE.map((userId) =>
+      branchFor(at("FIX-1", "implement", { principal: { userId } })),
+    );
+    expect(new Set(paths).size).toBe(HOSTILE.length);
+    expect(new Set(branches).size).toBe(HOSTILE.length);
+  });
+});
+
+describe("the identity rule — case cannot split one tree in two", () => {
+  const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
+
+  it("resolves one checkout for ids that differ only in case", () => {
+    // On a case-INSENSITIVE filesystem (macOS, Windows) `FIX-1` and `fix-1` are
+    // the same directory, while the grammar accepted both and used them
+    // verbatim — so the board held two distinct task ids whose checkouts and
+    // locks were one tree. The second task inherits the first's work, or fails
+    // the strict branch comparison over and over and spends its attempts.
+    //
+    // Folded rather than refused, and that is NOT the truncation call inverted.
+    // Truncation maps two LEGITIMATELY distinct values onto one, creating a
+    // collision that did not exist. Folding maps two values the filesystem
+    // ALREADY treats as identical onto one — it does not create the collision,
+    // it makes the identity agree with the storage that has to hold it. And no
+    // single canonical case could be required instead: real issue keys are
+    // upper (`FIX-1219`) and phases are lower (`implement`).
+    expect(conductorTaskId("FIX-1", "implement")).toBe(conductorTaskId("fix-1", "IMPLEMENT"));
+    expect(checkoutPathFor(config, at("FIX-1", "implement"))).toBe(
+      checkoutPathFor(config, at("fix-1", "IMPLEMENT")),
+    );
+    expect(branchFor(at("FIX-1", "implement"))).toBe(branchFor(at("fix-1", "IMPLEMENT")));
+  });
+
+  it("leaves no derived identity carrying upper case at all", () => {
+    // The property, over every derivation rather than the three spelled above:
+    // a case-folding filesystem cannot split what it cannot see a difference
+    // in, so nothing we derive may depend on case.
+    const location = at("FIX-1219", "Implement", { epic: "Conductor-Tasks-Alpha" });
+    for (const derived of [
+      conductorTaskId("FIX-1219", "Implement"),
+      checkoutPathFor(config, location),
+      branchFor(location),
+    ]) {
+      expect(derived).toBe(derived.toLowerCase());
+    }
+  });
+
+  it("keeps distinct ids distinct once folded", () => {
+    // Folding must not become the collision it prevents: values that differ by
+    // more than case still have to separate.
+    expect(conductorTaskId("FIX-1", "implement")).not.toBe(
+      conductorTaskId("FIX-2", "implement"),
+    );
+    expect(checkoutPathFor(config, at("FIX-1", "implement"))).not.toBe(
+      checkoutPathFor(config, at("FIX-11", "implement")),
+    );
+  });
+});
+
 describe("the identity rule — injective, and safe for every consumer", () => {
   const config = { root: "/w", sourceRepo: "/r", baseRef: "main" };
 
@@ -753,4 +1303,80 @@ describe("the identity rule — injective, and safe for every consumer", () => {
       expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
   });
+});
+
+describe("a reused checkout has to belong to the repository the config names", () => {
+  it("refuses a tree cut from another repository, however right the branch looks", async () => {
+    // The path is derived from the epic, principal and task — NOT from
+    // `sourceRepo`. So a persistent workspace root outlives a change to it: the
+    // old checkout sits at the same path, carrying the same deterministic branch
+    // name, and both branch checks pass. The run is then handed a tree belonging
+    // to the repository the operator moved off, and commits and opens its pull
+    // request there.
+    const first = workspace();
+    const location = at("FIX-1219", "implement");
+    const made = await provisionCheckout(first, location);
+    expect(made.created).toBe(true);
+
+    // Same root, same task, different source repository — and the branch name is
+    // deterministic, so it exists in both.
+    const second = workspace();
+    const moved: WorkspaceConfig = { ...second, root: first.root };
+    execFileSync("git", ["branch", branchFor(location)], { cwd: moved.sourceRepo, stdio: "pipe" });
+
+    await expect(provisionCheckout(moved, location)).rejects.toThrow(/does not belong to/);
+
+    // And it is REFUSED, not cleared: the tree may hold the previous
+    // configuration's uncommitted work, and nothing in this module resets.
+    expect(existsSync(join(made.path, ".git"))).toBe(true);
+  });
+
+  it("still accepts a sibling worktree of the right repository", async () => {
+    // Compared on the git common dir, so the guard must not fire on a checkout
+    // that IS this repository reached another way — which is the shape every
+    // provisioned checkout has, since `worktree add` makes exactly that.
+    const config = workspace();
+    const location = at("FIX-1219", "implement");
+    const made = await provisionCheckout(config, location);
+    const again = await provisionCheckout(config, location);
+    expect(again.created).toBe(false);
+    expect(again.path).toBe(made.path);
+  });
+});
+
+describe("the poll sleep observes a signal that already aborted", () => {
+  it("returns immediately rather than waiting out the interval", async () => {
+    // `abort` fires once. A signal aborted before the listener existed never
+    // replays it, so arming the listener alone sleeps the whole poll interval on
+    // a cancellation that had already happened — a shutdown that waits, and a
+    // lost claim whose recovery is delayed past what the loop advertises.
+    //
+    // Staged through `acquireCheckout`, not on the helper: the window is between
+    // the loop's own cancellation check and the sleep it then arms.
+    const config = workspace();
+    const path = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const held = await acquireCheckout(path, "the holder", bounds);
+    const control = new AbortController();
+
+    // A poll interval far longer than the test's patience, so waiting it out is
+    // distinguishable from returning on the abort.
+    const waiting = acquireCheckout(
+      path,
+      "the waiter",
+      { waitMs: 60_000, pollMs: 30_000, staleAfterMs: 60_000 },
+      Date.now,
+      control.signal,
+    ).catch((err: Error) => err);
+
+    // Let the waiter reach its first sleep, then abort.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    control.abort();
+
+    const started = Date.now();
+    const outcome = await waiting;
+    expect(outcome).toBeInstanceOf(Error);
+    // Well under one poll interval. Without the check this waits 30s.
+    expect(Date.now() - started).toBeLessThan(5_000);
+    held.release();
+  }, 20_000);
 });

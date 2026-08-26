@@ -7,6 +7,10 @@
  * board would mean racing a lease renewal to reproduce it.
  */
 import { describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { seedRepo } from "./harness";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { conductorFlow } from "../src/flow";
 import { joinIdentity, tenantSegment } from "../src/workspace";
@@ -236,7 +240,12 @@ describe("the run record — the clearing rule", () => {
 
 describe("the manager — a phase cannot claim the manager's own collections", () => {
   const EPIC = "reserved-test";
-  const workspace = { root: "/tmp/conductor-reserved", sourceRepo: "/tmp/x", baseRef: "main" };
+  // A real repository, because `conductorFlow` now refuses one that is not —
+  // the same guard the env door has always applied, carried to the programmatic
+  // door. These specs used to build flows against a path no repository occupied.
+  const sourceRepo = mkdtempSync(join(tmpdir(), "conductor-runrec-repo-"));
+  seedRepo(sourceRepo);
+  const workspace = { root: "/tmp/conductor-reserved", sourceRepo, baseRef: "main" };
 
   /** Build a conductor whose phase declares `readable`, and nothing else. */
   const withReadable = (readable: Record<string, unknown>) => () =>

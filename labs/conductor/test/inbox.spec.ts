@@ -55,9 +55,15 @@ describe("the inbox key — issue-first, attempt-keyed, hash-named", () => {
   it("is one contiguous range per issue-phase, and reads back into its parts", () => {
     const topic = topicFor("which path?", 2);
     expect(topic.startsWith(questionTopicPrefix(ISSUE, PHASE))).toBe(true);
+    // **Folded, not preserved — and the fold is the point.** `assertSafeSegment`
+    // canonicalises case, so seeding `FIX-1166` and `fix-1166` is one task. The
+    // inbox key is built from the same grammar and inherits that: were it to
+    // keep the caller's spelling, one task's questions would split across two
+    // prefixes and `listQuestions` would show half of them. This expectation
+    // predates the fold; it is the assertion that was stale, not the key.
     expect(parseQuestionTopic(topic)).toEqual({
-      issue: ISSUE,
-      phase: PHASE,
+      issue: ISSUE.toLowerCase(),
+      phase: PHASE.toLowerCase(),
       attempt: 2,
       fingerprint: questionFingerprint("which path?"),
     });

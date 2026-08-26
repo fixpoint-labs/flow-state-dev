@@ -93,8 +93,14 @@ function compareObjectShapes(a: ZodTypeAny, b: ZodTypeAny): CompatibilityResult 
   const keysA = Object.keys(shapeA);
   const keysB = Object.keys(shapeB);
 
+  // Own-key tests, never `in`: a state schema may legitimately declare a field
+  // named `toString` / `constructor` / `valueOf`, and `in` would find the
+  // Object.prototype member on the OTHER shape and compare a builtin function
+  // against a real Zod type — reporting a conflict between two schemas that
+  // merely have disjoint fields. It also made the comparison asymmetric, since
+  // an inherited hit silently dropped the field from the disjoint report.
   for (const key of keysA) {
-    if (!(key in shapeB)) continue;
+    if (!Object.hasOwn(shapeB, key)) continue;
     const result = compareZodSchemas(shapeA[key]!, shapeB[key]!);
     if (result.kind === "incompatible") {
       return {
@@ -108,8 +114,8 @@ function compareObjectShapes(a: ZodTypeAny, b: ZodTypeAny): CompatibilityResult 
     }
   }
 
-  const onlyInA = keysA.filter((k) => !(k in shapeB));
-  const onlyInB = keysB.filter((k) => !(k in shapeA));
+  const onlyInA = keysA.filter((k) => !Object.hasOwn(shapeB, k));
+  const onlyInB = keysB.filter((k) => !Object.hasOwn(shapeA, k));
   if (onlyInA.length > 0 || onlyInB.length > 0) {
     warnings.push(`disjoint fields: A-only [${onlyInA.join(", ")}] B-only [${onlyInB.join(", ")}]`);
   }
