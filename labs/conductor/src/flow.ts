@@ -44,7 +44,13 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import {
+  claimDisposition,
+  defineTaskCollection,
+  isClaimable,
+  DEFAULT_MAX_ABANDONMENTS,
+} from "@flow-state-dev/orchestration/tasks";
+import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   RUNS,
@@ -185,70 +191,77 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  * that had just claimed to be complete. The question is not "does this match
  * what we would have written" but "can this be drained as promised".
  *
- * - `assignee` — which worker a drain routes to. Wrong, and the claim charges an
- *   attempt and then finds no worker declared.
- * - `maxAttempts` — the retry budget, and **absent means single-attempt**, not
- *   "the default". A row filed without it turns the first failed coding run
- *   terminal on a conductor configured for retries.
- * - `deps` — a dependency that is missing or not `completed` makes the row
- *   permanently unclaimable (`depsSatisfied`). `seed` reports filed and the run
- *   simply never happens: no error, no attempt, no work.
+ * **Drainability is ASKED, not re-derived.** Six review rounds found six
+ * separate inputs to "can a drain run this" — assignee, retry budget, `deps`,
+ * `blocked`, `awaiting_review`, and a spent abandonment allowance — because this
+ * function was enumerating, field by field, a question the substrate already
+ * answers. `@flow-state-dev/orchestration/tasks` says so at the export:
+ * `isClaimable` is THE admission predicate, and "a caller implementing
+ * `TaskCollectionRef` itself should read it too rather than write a fourth
+ * copy." This was the fourth copy. It now reads the original, and the class of
+ * finding ends rather than the latest instance of it.
  *
- * - `status`, which carries three different answers and is therefore read
- *   FIRST, before any of the above. `completed`, `errored` and `cancelled` are
- *   terminal: no drain will ever run them, so every check in the list is moot
- *   and identity alone admits the row — the ordinary idempotent case, and the
- *   public promise that a second seed returns the existing one. `blocked` and
- *   `awaiting_review` are parked: the row exists, will never be claimed, and
- *   `seed` says filed while nothing runs. `pending` and a lapsed `in_progress`
- *   are the only ones a drain can take, and only those are held to the list.
+ * What remains here is only what the substrate cannot know:
  *
- * The ORDER is load-bearing, not stylistic. Asking about the retry budget before
- * the terminal case refused a finished row filed under a different `maxAttempts`
- * — a policy that could never be applied to it used as grounds to reject it,
- * contradicting this very paragraph.
+ * - `rowOwnsItsIdentity` — is this row the task the caller asked for. The
+ *   substrate has no opinion; the id is this conductor's derivation.
+ * - `assignee` — which worker a drain routes to. Claimable and still useless:
+ *   the claim charges an attempt and then finds no worker declared.
+ * - `maxAttempts` — this conductor's retry budget, and **absent means
+ *   single-attempt**, not "the default". A row filed without it turns the first
+ *   failed coding run terminal on a conductor configured for retries.
+ *
+ * And two questions delegated whole:
+ *
+ * - `isClaimable` — the status and lease arm (`pending`, or `in_progress` with a
+ *   lapsed lease) and `depsSatisfied`. This subsumes the parked statuses and the
+ *   dependency check that used to be spelled out here.
+ * - `claimDisposition` — **admission is not dispatch.** A lapsed row whose
+ *   abandonment allowance is spent is admitted by `isClaimable` and then settled
+ *   `errored` by the claim write instead of being handed to a worker. `seed`
+ *   would report filed and no coding run would ever start.
+ *
+ * The terminal case is read FIRST and is the one status arm still spelled out
+ * here, because it inverts the rest: `completed`, `errored` and `cancelled` are
+ * not claimable, and must be admitted anyway — that is the ordinary idempotent
+ * case and the public promise that a second seed returns the existing row.
+ * Asking about the retry budget before it refused a finished row filed under a
+ * different `maxAttempts`, using a policy that could never be applied to it as
+ * grounds for rejection.
  *
  * `priority` and `labels` decide order and nothing else, and are model-patchable
  * besides.
  *
- * `assignee` is model-patchable through `updateTask` while `maxAttempts` and
- * `deps` are not — so this is a statement about the row as filed, and only the
- * latter two are guarantees about it afterwards.
+ * `assignee` is model-patchable through `updateTask` while `maxAttempts` is not
+ * — so this is a statement about the row as filed, and only the latter is a
+ * guarantee about it afterwards.
  */
 const TERMINAL_STATUSES = new Set(["completed", "errored", "cancelled"]);
-const PARKED_STATUSES = new Set(["blocked", "awaiting_review"]);
 
 function seedMayReuse(
-  task: {
-    id: string;
-    input?: unknown;
-    assignee?: unknown;
-    maxAttempts?: unknown;
-    deps?: unknown;
-    status?: unknown;
-  },
+  task: { id: string; input?: unknown; assignee?: unknown; maxAttempts?: unknown },
   maxAttempts: number,
+  now: number = Date.now(),
 ): boolean {
   if (!rowOwnsItsIdentity(task)) return false;
 
-  // **A finished row is reused on identity alone**, and the order is the whole
-  // point. Every check below asks whether a drain could run this row the way the
-  // seed promises — and no drain will ever run a terminal row, so a policy it
-  // can never apply cannot be grounds for refusing it. Asking first meant a
-  // `completed` row filed under a different retry budget was rejected, which
-  // contradicted both this function's own doc and the public promise that a
-  // second seed returns the existing row.
-  if (TERMINAL_STATUSES.has(task.status as string)) return true;
+  // Terminal first, because it inverts everything below: a finished row is not
+  // claimable and is admitted anyway.
+  if (TERMINAL_STATUSES.has((task as { status?: unknown }).status as string)) return true;
 
   if (task.assignee !== ASSIGNEE) return false;
   if (task.maxAttempts !== maxAttempts) return false;
-  // Absent or empty is what this conductor files; anything else gates the claim.
-  if (Array.isArray(task.deps) ? task.deps.length > 0 : task.deps !== undefined) return false;
-  // Parked: not claimable, not terminal. `awaiting_review` is `blocked`'s
-  // sibling here and was not reported — the set is what matters, not the
-  // instance.
-  if (PARKED_STATUSES.has(task.status as string)) return false;
-  return true;
+
+  const row = task as Task;
+  // **`() => undefined` resolves no dependency on purpose.** This conductor
+  // files rows with none, so any row carrying one is not one it filed — and
+  // rather than assert that separately, the lookup that cannot satisfy a
+  // dependency makes `depsSatisfied` say it.
+  if (!isClaimable(row, () => undefined, now)) return false;
+  // Admission is not dispatch. `DEFAULT_MAX_ABANDONMENTS` is the same constant
+  // the board's own claim path and wake probe use; nothing configures it per
+  // board, so reading it here cannot drift from what the claim will decide.
+  return claimDisposition(row, now, DEFAULT_MAX_ABANDONMENTS) === "claim";
 }
 
 /** Build the conductor flow for one epic. */

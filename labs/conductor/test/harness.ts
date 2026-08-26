@@ -67,8 +67,6 @@ export function throwingAgent(
       seen.prompts.push(String(args.prompt));
       seen.cwds.push(args.options?.cwd);
       throw new Error(message);
-      // eslint-disable-next-line no-unreachable
-      yield undefined as never;
     },
   });
 }

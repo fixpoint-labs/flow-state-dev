@@ -47,6 +47,7 @@ import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import { identityFromCommonDir } from "./config-env";
+import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./patterns";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {
@@ -83,7 +84,7 @@ export interface Checkout {
   created: boolean;
 }
 
-/**
+/*
  * **The identity rule, stated once because it has been re-learned four times.**
  *
  * Every string this module derives — a task id, a collection id, a board id, a
@@ -111,8 +112,9 @@ export interface Checkout {
  * Two mechanisms serve the one rule, chosen by who owns the identifier:
  *
  * - Identifiers **we** issue (epics, issue keys, phase names) are *validated*
- *   against {@link OWNED_SEGMENT}. The grammar is ours to set, a malformed
- *   issue key is a real signal, and the value stays readable in a path.
+ *   against `OWNED_SEGMENT` (in `./patterns`, with the grammar's own rationale).
+ *   The grammar is ours to set, a malformed issue key is a real signal, and the
+ *   value stays readable in a path.
  * - Identifiers **someone else** issues (user ids, tenant ids) are *encoded*
  *   by {@link encodeSegment}. See its note for why a grammar is the wrong
  *   instrument there.
@@ -120,7 +122,6 @@ export interface Checkout {
  * Both outputs are free of {@link IDENTITY_DELIMITER}, which is what makes the
  * join injective — the frame is a sequence no component can forge.
  */
-const OWNED_SEGMENT = /^[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*$/;
 
 /**
  * How long one of our own segments may be.
@@ -197,9 +198,10 @@ export function joinIdentity(...parts: string[]): string {
  * frame. What it may still never do is anything a path or a git ref forbids.
  *
  * `joinIdentity`'s output satisfies this by construction; this exists for the
- * identities that arrive from elsewhere already built.
+ * identities that arrive from elsewhere already built. The grammar itself is
+ * `DERIVED_IDENTITY` in `./patterns`, beside `OWNED_SEGMENT` so the single `+`
+ * that separates them is visible rather than looking like a typo.
  */
-const DERIVED_IDENTITY = /^[A-Za-z0-9]+(?:[_-]+[A-Za-z0-9]+)*$/;
 
 export function assertDerivedIdentity(label: string, value: string): string {
   // Folded for the same reason `assertSafeSegment` is: this value becomes a

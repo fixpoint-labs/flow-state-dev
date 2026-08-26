@@ -15,6 +15,12 @@ import { execFileSync } from "node:child_process";
 import type { PhaseRunContext, PhaseSpec } from "./manager";
 import type { WorkspaceConfig } from "./workspace";
 import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
+import {
+  GIT_SUFFIX,
+  REMOTE_VIA_SCP,
+  REMOTE_VIA_URL,
+  TRAILING_SLASHES,
+} from "./patterns";
 
 export interface ImplementPhaseOptions {
   /**
@@ -130,7 +136,7 @@ export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
   // and every pull request for `repo` was missed — a successful run reported
   // unfinished, retried, budget spent. Fourth spelling this parser has been
   // wrong about, after the host, the port and the casing.
-  const trimmed = url.trim().replace(/\/+$/, "").replace(/\.git$/, "");
+  const trimmed = url.trim().replace(TRAILING_SLASHES, "").replace(GIT_SUFFIX, "");
   // `scheme://[user@]host/owner/name`
   // The port is part of the HOST, captured with it. Matching it and throwing it
   // away sent an Enterprise checkout on `:8443` to the same hostname on 443 — a
@@ -142,16 +148,8 @@ export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
   // URL fails to parse — which since the startup preflight consumes this parser
   // is no longer a probe that returns false, it is a conductor that refuses to
   // build on a remote `gh` can query perfectly well.
-  const viaUrl =
-    /^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:[^@/]+@)?(\[[^\]/]+\](?::\d+)?|[^/:]+(?::\d+)?)\/(.+)$/.exec(
-      trimmed,
-    );
-  // `[user@]host:owner/name` — scp-like, and NOT a path (`/tmp/x:y` has a slash
-  // before the colon, so it is excluded by the host pattern).
-  // Bracketed here too: `git@[2001:db8::1]:owner/repo` is how scp-like syntax
-  // spells an IPv6 host, and it was refused for the same reason. The bracket
-  // class excludes `/`, so a local path still cannot reach this branch.
-  const viaScp = /^(?:[^@/]+@)?(\[[^\]/]+\]|[A-Za-z0-9._-]+):(?!\/)(.+)$/.exec(trimmed);
+  const viaUrl = REMOTE_VIA_URL.exec(trimmed);
+  const viaScp = REMOTE_VIA_SCP.exec(trimmed);
   const parsed = viaUrl ?? viaScp;
   if (parsed === null) return undefined;
   const [, host, rest] = parsed;
