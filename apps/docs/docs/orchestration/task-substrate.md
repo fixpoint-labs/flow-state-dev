@@ -281,6 +281,8 @@ A `TaskCollectionRef` of your own has to do three things:
 
 A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than restating the rule.
 
+It also has to take the trailing options argument on every write and evaluate the guards inside its own atomic section. A two-argument `complete(id, output)` satisfies the interface structurally and JavaScript drops the third argument in silence, so nothing tells you it isn't happening. A board on such a ref still finishes: where an unguarded write throws and a guarded one would have declined, the board drops that result and drains the rest of its tasks. Survival is all that buys you. The guards are what keep a late worker from overwriting a settlement somebody recorded deliberately, and a stale write the state machine happens to permit never throws at all, so nothing outside your store sees it.
+
 Your ref also exposes `now()`, the clock it stamps and judges leases against. `() => Date.now()` is the right answer unless you have a reason for another. Compare leases against `collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
 
 ### Telling whether your write landed
