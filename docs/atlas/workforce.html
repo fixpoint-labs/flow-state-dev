@@ -238,7 +238,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Eventually</h5><span class="role">a grok-bot-like surface</span>
-      <p>You talk to the engineering manager you already know. That identity has memory, sits on a team with a chief of staff and a copy editor, and can be reached from more than one channel.</p>
+      <p>You talk to the engineering manager you already know. That identity lives on Engineering, has memory, and can be reached from more than one channel. Marketing is a different team. The copy editor lives there.</p>
     </div>
     <div class="card" style="--tc: var(--ink-3)">
       <h5>Not</h5><span class="role">this-cycle conductor</span>
@@ -347,7 +347,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="330" y="168" width="280" height="72" rx="4"/>
         <text class="t-s f-accent" x="344" y="190">knowledge</text>
         <text class="t-xs" x="344" y="210">RESOURCES &#183; SKILLS &#183; TOOLS</text>
-        <text class="t-xs" x="344" y="226">WHAT THE STAFF KNOWS</text>
+        <text class="t-xs" x="344" y="226">WHAT A TEAM KNOWS</text>
         <rect class="n-prop" x="624" y="168" width="280" height="72" rx="4"/>
         <text class="t-s f-accent" x="638" y="190">workers</text>
         <text class="t-xs" x="638" y="210">TEAMS &#183; IDENTITIES</text>
@@ -368,53 +368,55 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 460" role="img" aria-label="Proposed Workforce file convention. A dashed tree: workforce contains teams, automations, pipelines, org-level resources, skills, tools, workers, and workforce.config. Under teams, a staff team repeats resources, skills, tools, and workers. The staff workers folder lists engineering manager, data science manager, marketing manager, chief of staff, and copy editor. A side key marks resources, skills, and tools as the knowledge-management component, and teams plus workers as the workers component. The whole tree is proposed, a starting point, not a shipped layout.">
-        <rect class="n-prop" x="16" y="16" width="560" height="428" rx="5"/>
+      <svg viewBox="0 0 940 500" role="img" aria-label="Proposed Workforce file convention. A dashed tree: workforce contains teams, automations, pipelines, org-level resources, skills, tools, workers, and workforce.config. Teams are functional: engineering, marketing, and product. Each team repeats resources, skills, tools, and workers. Engineering holds the engineering manager. Marketing holds the marketing manager and the copy editor. Product holds the product manager. Chief of staff sits at org-level workers because that job spans teams. A side key marks resources, skills, and tools as the knowledge-management component, and teams plus workers as the workers component. The whole tree is proposed, a starting point, not a shipped layout.">
+        <rect class="n-prop" x="16" y="16" width="560" height="468" rx="5"/>
         <text class="t-lbl" x="34" y="38">FILE CONVENTION &#183; PROPOSED &#183; STARTING POINT</text>
         <text class="t-s" x="34" y="68">workforce/</text>
         <text class="t-s" x="50" y="90">teams/</text>
-        <text class="t-s" x="66" y="112">staff/</text>
-        <text class="t-s f-code" x="82" y="134">resources/</text>
-        <text class="t-xs" x="280" y="134">brand voice, briefs, calendar</text>
-        <text class="t-s f-code" x="82" y="156">skills/</text>
-        <text class="t-s f-code" x="82" y="178">tools/</text>
-        <text class="t-s f-accent" x="82" y="200">workers/</text>
-        <text class="t-xs" x="98" y="222">engineering-manager</text>
-        <text class="t-xs" x="98" y="240">data-science-manager</text>
-        <text class="t-xs" x="98" y="258">marketing-manager</text>
-        <text class="t-xs" x="98" y="276">chief-of-staff</text>
-        <text class="t-xs" x="98" y="294">copy-editor</text>
-        <text class="t-s" x="50" y="322">automations/</text>
-        <text class="t-s" x="50" y="344">pipelines/</text>
-        <text class="t-s f-code" x="50" y="366">resources/ &#183; skills/ &#183; tools/</text>
-        <text class="t-xs" x="280" y="366">ORG-LEVEL KNOWLEDGE</text>
-        <text class="t-s f-accent" x="50" y="388">workers/</text>
-        <text class="t-xs" x="280" y="388">ORG-LEVEL IDENTITIES</text>
-        <text class="t-s" x="50" y="416">workforce.config</text>
+        <text class="t-s f-accent" x="66" y="112">engineering/</text>
+        <text class="t-xs" x="82" y="130">resources/ &#183; skills/ &#183; tools/</text>
+        <text class="t-xs" x="82" y="148">workers/ engineering-manager</text>
+        <text class="t-s f-accent" x="66" y="174">marketing/</text>
+        <text class="t-xs" x="82" y="192">resources/ &#183; skills/ &#183; tools/</text>
+        <text class="t-xs" x="82" y="210">workers/ marketing-manager, copy-editor</text>
+        <text class="t-s f-accent" x="66" y="236">product/</text>
+        <text class="t-xs" x="82" y="254">resources/ &#183; skills/ &#183; tools/</text>
+        <text class="t-xs" x="82" y="272">workers/ product-manager</text>
+        <text class="t-s" x="50" y="300">automations/ &#183; pipelines/</text>
+        <text class="t-s f-code" x="50" y="326">resources/ &#183; skills/ &#183; tools/</text>
+        <text class="t-xs" x="280" y="326">ORG-LEVEL KNOWLEDGE</text>
+        <text class="t-s f-accent" x="50" y="352">workers/ chief-of-staff</text>
+        <text class="t-xs" x="280" y="352">SPANS TEAMS, NOT A TEAM</text>
+        <text class="t-s" x="50" y="382">workforce.config</text>
+        <text class="t-xs" x="50" y="412">A TEAM IS ENGINEERING, MARKETING, PRODUCT</text>
+        <text class="t-xs" x="50" y="430">NOT A FOLDER NAMED STAFF</text>
+        <text class="t-xs" x="50" y="456">DATA SCIENCE IS ANOTHER TEAM, SAME SHAPE</text>
 
         <rect class="n-code" x="592" y="16" width="332" height="196" rx="5"/>
         <text class="t-lbl f-code" x="610" y="38">KNOWLEDGE</text>
-        <text class="t-b" x="610" y="64">what the staff knows</text>
+        <text class="t-b" x="610" y="64">what that team knows</text>
         <text class="t-s" x="610" y="90">resources &#183; skills &#183; tools</text>
         <text class="t-xs" x="610" y="116">SAME FOLDERS AT ORG AND TEAM</text>
-        <text class="t-xs" x="610" y="134">TEAM FOLDERS ARE SCOPE</text>
-        <text class="t-xs" x="610" y="152">NOT A NEW PRIMITIVE</text>
+        <text class="t-xs" x="610" y="134">ENGINEERING&#8217;S RESOURCES</text>
+        <text class="t-xs" x="610" y="152">ARE NOT MARKETING&#8217;S</text>
         <text class="t-xs" x="610" y="180">NOT KNOWLEDGE HUB</text>
         <text class="t-xs" x="610" y="198">THAT STAYS HELD, SECTION 8</text>
 
-        <rect class="n-prop" x="592" y="228" width="332" height="216" rx="5"/>
+        <rect class="n-prop" x="592" y="228" width="332" height="256" rx="5"/>
         <text class="t-lbl" x="610" y="250">WORKERS</text>
         <text class="t-b f-accent" x="610" y="276">who does the work</text>
         <text class="t-s" x="610" y="302">teams &#183; workers</text>
-        <text class="t-xs" x="610" y="328">A TEAM IS A FOLDER OF IDENTITIES</text>
-        <text class="t-xs" x="610" y="346">PLUS THE KNOWLEDGE THEY SHARE</text>
-        <text class="t-xs" x="610" y="372">WORKERS OR AGENTS</text>
-        <text class="t-xs" x="610" y="390">NAMING IS OPEN</text>
-        <text class="t-xs" x="610" y="416">AUTOMATIONS AND PIPELINES</text>
-        <text class="t-xs" x="610" y="434">ARE CONVENTIONS OVER FLOWS</text>
+        <text class="t-xs" x="610" y="328">A TEAM IS A FUNCTION</text>
+        <text class="t-xs" x="610" y="346">PLUS THE KNOWLEDGE IT SHARES</text>
+        <text class="t-xs" x="610" y="372">COPY EDITOR LIVES ON MARKETING</text>
+        <text class="t-xs" x="610" y="390">NOT NEXT TO THE ENG MANAGER</text>
+        <text class="t-xs" x="610" y="416">WORKERS OR AGENTS</text>
+        <text class="t-xs" x="610" y="434">NAMING IS OPEN</text>
+        <text class="t-xs" x="610" y="460">AUTOMATIONS AND PIPELINES</text>
+        <text class="t-xs" x="610" y="478">ARE CONVENTIONS OVER FLOWS</text>
       </svg>
     </div>
-    <figcaption><b>The convention that demonstrates the layer.</b> Knowledge and workers, at org and again under each team. <code>staff/</code> is a real office, not an abstract analyst pair. Folders map onto Layer&nbsp;1 resources, skills, tools, and agents &#8212; the opinion is the layout, not a new primitive. Starting point. Not a shipped tree. Not a Knowledge Hub design.</figcaption>
+    <figcaption><b>The convention that demonstrates the layer.</b> Teams are functions &#8212; Engineering, Marketing, Product &#8212; each with its own knowledge and workers. A folder named <code>staff/</code> would be the whole company, which is not a team. Chief of staff sits at org <code>workers/</code> because the job spans teams. Starting point. Not a shipped tree. Not a Knowledge Hub design.</figcaption>
   </figure>
 
   <div class="tw">
@@ -502,65 +504,60 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="channels">
   <div class="sec-head"><span class="sec-num">04</span><h2>Channels, teams, relay</h2></div>
-  <p class="lede">A team is a folder of real jobs, plus the knowledge they share. Channels are how you reach them. How they talk to each other is Relay &#8212; one Layer&nbsp;1 send door, status in section&nbsp;6. The team and its channels here are proposed.</p>
+  <p class="lede">A team is a function &#8212; Engineering, Marketing, Product &#8212; plus the knowledge that function shares. Channels are how you reach a team or one of its people. How teams talk to each other is Relay &#8212; one Layer&nbsp;1 send door, status in section&nbsp;6. The teams and channels here are proposed.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="Proposed staff team. Five persistent identities in a staff team: engineering manager, data science manager, marketing manager, chief of staff, and copy editor. Below them a knowledge strip for shared team resources. Three channels: Slack, a launch review, and the engineering manager's own channel. A Layer 1 Relay door at the side is how they talk, status in section 6. The whole figure is dashed except the Relay door box.">
-        <rect class="n-prop" x="16" y="16" width="908" height="38" rx="4"/>
-        <text class="t-lbl" x="34" y="40">TEAM staff/ &#183; PROPOSED</text>
+      <svg viewBox="0 0 940 430" role="img" aria-label="Three proposed functional teams. Engineering holds the engineering manager and engineering knowledge. Marketing holds the marketing manager and the copy editor, plus brand knowledge. Product holds the product manager and roadmap knowledge. Chief of staff sits at org scope, not on a team. Channels: Engineering Slack, a launch review that borrows people from two teams, and the engineering manager's own channel. Relay is the one Layer 1 door between teams, status in section 6.">
+        <rect class="n-prop" x="16" y="16" width="292" height="150" rx="4"/>
+        <text class="t-lbl" x="28" y="36">engineering/</text>
+        <text class="t-s f-accent" x="28" y="60">engineering manager</text>
+        <text class="t-xs" x="28" y="80">OWN CHANNEL</text>
+        <text class="t-s f-code" x="28" y="108">resources/</text>
+        <text class="t-xs" x="28" y="126">RFCS &#183; ON-CALL &#183; HIRING BAR</text>
+        <text class="t-xs" x="28" y="148">NOT BRAND VOICE</text>
 
-        <rect class="n-prop" x="16" y="66" width="172" height="70" rx="4"/>
-        <text class="t-s f-accent" x="28" y="90">eng manager</text>
-        <text class="t-xs" x="28" y="108">SHIP AND STAFF</text>
-        <text class="t-xs" x="28" y="124">OWN CHANNEL</text>
+        <rect class="n-prop" x="324" y="16" width="292" height="150" rx="4"/>
+        <text class="t-lbl" x="336" y="36">marketing/</text>
+        <text class="t-s f-accent" x="336" y="60">marketing manager</text>
+        <text class="t-s f-accent" x="336" y="80">copy editor</text>
+        <text class="t-s f-code" x="336" y="108">resources/</text>
+        <text class="t-xs" x="336" y="126">BRAND VOICE &#183; CALENDAR</text>
+        <text class="t-xs" x="336" y="148">NOT THE RFC FOLDER</text>
 
-        <rect class="n-prop" x="200" y="66" width="172" height="70" rx="4"/>
-        <text class="t-s f-accent" x="212" y="90">data science mgr</text>
-        <text class="t-xs" x="212" y="108">EVIDENCE</text>
-        <text class="t-xs" x="212" y="124">MODELS AND READS</text>
+        <rect class="n-prop" x="632" y="16" width="292" height="150" rx="4"/>
+        <text class="t-lbl" x="644" y="36">product/</text>
+        <text class="t-s f-accent" x="644" y="60">product manager</text>
+        <text class="t-xs" x="644" y="80">ROADMAP OWNER</text>
+        <text class="t-s f-code" x="644" y="108">resources/</text>
+        <text class="t-xs" x="644" y="126">ROADMAP &#183; PRDS</text>
+        <text class="t-xs" x="644" y="148">NOT CAMPAIGNS</text>
 
-        <rect class="n-prop" x="384" y="66" width="172" height="70" rx="4"/>
-        <text class="t-s f-accent" x="396" y="90">marketing mgr</text>
-        <text class="t-xs" x="396" y="108">LAUNCH AND VOICE</text>
-        <text class="t-xs" x="396" y="124">CAMPAIGNS</text>
+        <rect class="n-box" x="16" y="180" width="908" height="40" rx="4"/>
+        <text class="t-s" x="28" y="205">org workers/ &#183; chief of staff &#8212; spans teams, so not a fourth team named staff</text>
 
-        <rect class="n-prop" x="568" y="66" width="172" height="70" rx="4"/>
-        <text class="t-s f-accent" x="580" y="90">chief of staff</text>
-        <text class="t-xs" x="580" y="108">ROUTES THE WORK</text>
-        <text class="t-xs" x="580" y="124">ACROSS THE TEAM</text>
+        <rect class="n-prop" x="16" y="234" width="292" height="72" rx="4"/>
+        <text class="t-s f-accent" x="28" y="256">channel &#183; #engineering</text>
+        <text class="t-xs" x="28" y="274">THAT TEAM&#8217;S ROOM</text>
+        <text class="t-xs" x="28" y="290">NOT MARKETING&#8217;S</text>
 
-        <rect class="n-prop" x="752" y="66" width="172" height="70" rx="4"/>
-        <text class="t-s f-accent" x="764" y="90">copy editor</text>
-        <text class="t-xs" x="764" y="108">THE LAST READ</text>
-        <text class="t-xs" x="764" y="124">BEFORE IT SHIPS</text>
+        <rect class="n-prop" x="324" y="234" width="292" height="72" rx="4"/>
+        <text class="t-s f-accent" x="336" y="256">channel &#183; launch review</text>
+        <text class="t-xs" x="336" y="274">ENG + MARKETING + PRODUCT</text>
+        <text class="t-xs" x="336" y="290">BORROWED INTO ONE ROOM</text>
 
-        <rect class="n-code" x="16" y="150" width="908" height="56" rx="4"/>
-        <text class="t-lbl f-code" x="34" y="170">TEAM KNOWLEDGE &#183; staff/resources</text>
-        <text class="t-s" x="34" y="192">brand voice &#183; research briefs &#183; campaign calendar &#183; hiring bar</text>
+        <rect class="n-prop" x="632" y="234" width="292" height="72" rx="4"/>
+        <text class="t-s f-accent" x="644" y="256">channel &#183; talk to eng mgr</text>
+        <text class="t-xs" x="644" y="274">THEIR OWN SESSION</text>
+        <text class="t-xs" x="644" y="290">NOT THE TEAM CHANNEL</text>
 
-        <rect class="n-prop" x="16" y="220" width="280" height="72" rx="4"/>
-        <text class="t-s f-accent" x="30" y="242">channel &#183; slack</text>
-        <text class="t-xs" x="30" y="260">THE TEAM IS PRESENT</text>
-        <text class="t-xs" x="30" y="276">CHIEF OF STAFF ROUTES</text>
-
-        <rect class="n-prop" x="310" y="220" width="280" height="72" rx="4"/>
-        <text class="t-s f-accent" x="324" y="242">channel &#183; launch review</text>
-        <text class="t-xs" x="324" y="260">ENG MGR + MARKETING</text>
-        <text class="t-xs" x="324" y="276">SAME IDENTITIES, OTHER ROOM</text>
-
-        <rect class="n-prop" x="604" y="220" width="320" height="72" rx="4"/>
-        <text class="t-s f-accent" x="618" y="242">channel &#183; talk to eng mgr</text>
-        <text class="t-xs" x="618" y="260">THEIR OWN SESSION</text>
-        <text class="t-xs" x="618" y="276">NOT THE TEAM CHANNEL</text>
-
-        <rect class="n-box" x="16" y="308" width="908" height="88" rx="4"/>
-        <text class="t-lbl" x="34" y="330">RELAY &#183; ONE LAYER 1 DOOR &#183; STATUS IN SECTION 6</text>
-        <text class="t-s" x="34" y="354">how the copy editor sends a line to marketing, or the chief of staff pings a Conductor session</text>
-        <text class="t-xs" x="34" y="376">NOT A SECOND RELAY. NOT A WORKFORCE PRODUCT. THE SAME SEND DOOR.</text>
+        <rect class="n-box" x="16" y="320" width="908" height="88" rx="4"/>
+        <text class="t-lbl" x="28" y="342">RELAY &#183; ONE LAYER 1 DOOR &#183; STATUS IN SECTION 6</text>
+        <text class="t-s" x="28" y="366">how Marketing&#8217;s copy editor sends a line to Product, or the chief of staff pings a Conductor session</text>
+        <text class="t-xs" x="28" y="388">NOT A SECOND RELAY. NOT A WORKFORCE PRODUCT. THE SAME SEND DOOR.</text>
       </svg>
     </div>
-    <figcaption><b>A team, not two abstracts.</b> Five jobs that outlive any one session, plus the knowledge folder they share. Channels are rooms those people walk into. Relay is how a message leaves a room &#8212; one Layer&nbsp;1 door, not a second bus. Proposed.</figcaption>
+    <figcaption><b>Three teams, not one office.</b> Each function keeps its own people and its own knowledge. A launch review is a channel that borrows identities; it does not merge the teams. Relay is how a message leaves one team for another &#8212; one Layer&nbsp;1 door, not a second bus. Proposed.</figcaption>
   </figure>
 
   <div class="tw">
@@ -569,7 +566,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td>Session as a conversation</td><td><span class="tag t-real">exists</span></td><td>A session record carries a <code>flowKind</code>. It is where a conversation lives. Layer&nbsp;1 already has this.</td></tr>
         <tr><td>Agent-owned channel</td><td><span class="tag t-prop">proposed</span></td><td>A session designated as the place you talk to that agent directly. Not a new primitive &#8212; a convention over a session.</td></tr>
-        <tr><td>Team</td><td><span class="tag t-prop">proposed</span></td><td>A folder of jobs plus the knowledge they share &#8212; <code>staff/workers</code> and <code>staff/resources</code>. Today a skill&#8217;s <code>agents:</code> map staffs a board seat for one drain. That is not a team that outlives the skill.</td></tr>
+        <tr><td>Team</td><td><span class="tag t-prop">proposed</span></td><td>A function folder &#8212; <code>engineering/</code>, <code>marketing/</code>, <code>product/</code> &#8212; of jobs plus the knowledge that function shares. Today a skill&#8217;s <code>agents:</code> map staffs a board seat for one drain. That is not a team that outlives the skill.</td></tr>
       </tbody>
     </table>
   </div>
@@ -665,7 +662,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="650" y="56">PRODUCT OPINION &#183; LATER</text>
         <text class="t-s" x="650" y="86">file convention (workforce/)</text>
         <text class="t-s" x="650" y="108">knowledge folders</text>
-        <text class="t-s" x="650" y="130">staff teams of identities</text>
+        <text class="t-s" x="650" y="130">functional teams</text>
         <text class="t-s" x="650" y="152">agent-owned channels</text>
         <text class="t-s" x="650" y="174">Grok-Bot-like surface</text>
         <text class="t-s" x="650" y="196">vendor-agnostic bindings</text>
@@ -708,7 +705,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>Kitchen-sink / integration tests</td><td><span class="tag t-gone">unused</span></td><td>Kitchen-sink depends on the package and imports it in zero source files. No integration test touches it.</td></tr>
         <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It also says &#8220;There&#8217;s no cross-flow assignment.&#8221; The Conductor atlas records that as an unresolved contradiction, not as evidence either way.</td></tr>
         <tr><td><code>workforce/</code> file convention</td><td><span class="tag t-prop">proposed</span></td><td>The tree in section&nbsp;2. No such layout exists. <code>workforce.config</code> is a name on this page, not a file in the repo.</td></tr>
-        <tr><td>Persistent identity, staff teams, surface</td><td><span class="tag t-prop">proposed</span></td><td>This page. Not a package. Not a D-n. Not scheduled.</td></tr>
+        <tr><td>Persistent identity, functional teams, surface</td><td><span class="tag t-prop">proposed</span></td><td>This page. Not a package. Not a D-n. Not scheduled.</td></tr>
       </tbody>
     </table>
   </div>
@@ -740,7 +737,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="tension">
     <h5>Knowledge Hub stays held</h5>
-    <p>The <code>resources/</code> and <code>skills/</code> folders in the section&nbsp;2 tree are the knowledge-management half of the convention &#8212; what the staff knows, scoped at org or team. That is not Knowledge Hub. Active-memory, process-the-inbox, a product for that knowledge, stays held. Not a section here, not a design for a held issue.</p>
+    <p>The <code>resources/</code> and <code>skills/</code> folders in the section&nbsp;2 tree are the knowledge-management half of the convention &#8212; what Engineering knows, or Marketing, scoped at org or team. That is not Knowledge Hub. Active-memory, process-the-inbox, a product for that knowledge, stays held. Not a section here, not a design for a held issue.</p>
   </div>
 
   <div class="tension">
