@@ -870,9 +870,20 @@ export function conductorFlow(options: ConductorFlowOptions) {
     },
   });
 
-  // Instantiated here rather than by the caller: a conductor is one board per
-  // epic, so there is exactly one instance and nothing to choose.
-  const flow = defineConductor({ id: "default" });
+  // **The instance id is the BOARD's identity, not a constant.** "One board per
+  // epic, so there is nothing to choose" is true of a single conductor and was
+  // written as if it were true of the host. It is not: `createFlowState`
+  // registers every flow it is given and `FlowRegistry.register` rejects a
+  // duplicate `(kind, id)`, so a second conductor — which the README tells you
+  // to build, since a second phase needs its own `epic` — threw at construction
+  // and the host could not start at all.
+  //
+  // `boardId` already carries `(tenant, epic)` through the owned-segment
+  // grammar, so it is unique exactly where the board is and needs no new
+  // derivation. Lookup by kind alone is unaffected: `FlowRegistry.get(kind)`
+  // falls back to the first instance of that kind, which is what the CLI path
+  // (`fsdev run conductor status`) uses.
+  const flow = defineConductor({ id: boardId });
 
   // **The host's shutdown budget, derived rather than guessed.** Exposed
   // because only this module knows all four terms a worker spends, and a host
