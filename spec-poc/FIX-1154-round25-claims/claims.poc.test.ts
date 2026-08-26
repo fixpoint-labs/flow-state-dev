@@ -54,10 +54,6 @@ import { z } from "zod";
 
 import { runResourceCAS } from "../../packages/engine/src/stores/resource-cas";
 import { createStateContainer } from "../../packages/engine/src/stores/state-container";
-import {
-  normalizeResourceDefault,
-  normalizeResourceState
-} from "../../packages/engine/src/resources/normalize-resource-state";
 import { isRetryableError } from "../../packages/engine/src/execution/retry";
 import { FlowError, ValidationError } from "../../packages/engine/src/errors/flow-error";
 import {

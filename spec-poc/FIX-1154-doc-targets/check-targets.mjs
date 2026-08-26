@@ -557,18 +557,42 @@ function citedLinesAnywhere(file) {
  */
 const looksLikePath = (s) => s.includes("/") && /\.mdx?$/.test(s);
 
-function targets() {
-  const lines = section11.split("\n");
-  // Anchor on the BOLD list heading, not on the phrase. Round 33: §11 gained a
-  // prose mention of the left-alone list ~160 lines above the list itself, and
-  // the loose pattern stopped the scan there — so every QUALIFY sub-bullet in
-  // the back half of the section silently stopped counting as a target. The
-  // count did not move when a target was added, which is the failure mode a
-  // derived count exists to prevent, occurring inside the deriver.
-  const stopAt = lines.findIndex((l) => /\*\*Deliberately left alone\*\*/.test(l));
-  const end = stopAt === -1 ? lines.length : stopAt;
+/**
+ * THE SCAN IS NOT BOUNDED BY THE LEFT-ALONE HEADING — round 34.
+ *
+ * Round 33 anchored this scan on the phrase "Deliberately left alone" and used it
+ * as a STOP: everything above it was scanned, everything below discarded. §11 then
+ * gained a prose mention of that list ~167 lines above the list itself, the scan
+ * stopped at the mention, and every QUALIFY sub-bullet in the back half silently
+ * stopped counting. Round 33's fix tightened the pattern to the BOLD form, which
+ * worked only because the prose mention happens to be italic and the heading
+ * happens to be bold. That is typography, not structure: the identical failure
+ * returns the day someone bolds a sentence that names the list — a natural thing
+ * to write, and the very edit that caused it the first time.
+ *
+ * So the stop is gone. Measured before removing it: the left-alone entries are
+ * prose runs of backticked paths, never bullets, so bounding the scan excluded
+ * NOTHING — 20 targets with the stop, 20 without, while the round-33 loose anchor
+ * reproduces the 19. The bound was pure downside: its only reachable effect was to
+ * drop targets.
+ *
+ * The heading is still read, but now it VALIDATES instead of bounding:
+ *   1. exactly one line-leading bold heading must exist — zero or several means
+ *      the region is ambiguous and the count below is not trustworthy;
+ *   2. no target-shaped bullet may appear after it — if a left-alone entry is ever
+ *      rewritten as `- \`path\``, that is caught and named rather than silently
+ *      inflating the one figure §6 does not write by hand.
+ *
+ * Net: this deriver can no longer under-count silently in either direction. Both
+ * checks are fatal and fire BEFORE any number is printed, because a count derived
+ * over an ambiguous region should not be shown at all — §10's rule about a green
+ * result from a check aimed at a neighbour of the claim.
+ */
+const LEFT_ALONE_HEADING = /^\s*\*\*Deliberately left alone\*\*/;
+
+function scanTargets(lines, from, to) {
   const found = new Set();
-  for (let i = 0; i < end; i++) {
+  for (let i = from; i < to; i++) {
     const line = lines[i];
     // Top-level EXTEND bullets: `- **EXTEND** \`path\``
     const extend = line.match(/^- \*\*EXTEND\*\* `([^`]+)`/);
@@ -583,6 +607,39 @@ function targets() {
       if (looksLikePath(p)) found.add(p);
     }
   }
+  return found;
+}
+
+function targets() {
+  const lines = section11.split("\n");
+  const headings = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (LEFT_ALONE_HEADING.test(lines[i])) headings.push(i);
+  }
+
+  if (headings.length !== 1) {
+    console.error(
+      `\n§11 must carry exactly one line-leading "**Deliberately left alone**" heading; ` +
+        `found ${headings.length}.\nThe target count is derived against that boundary, so an ` +
+        `absent or duplicated heading makes the\ncount unverifiable. Restore the single bold ` +
+        `heading (a mid-sentence mention must not lead a line).`
+    );
+    process.exit(1);
+  }
+
+  const found = scanTargets(lines, 0, lines.length);
+  const pastHeading = scanTargets(lines, headings[0], lines.length);
+
+  if (pastHeading.size > 0) {
+    console.error(
+      `\n${pastHeading.size} target-shaped bullet(s) appear AFTER "Deliberately left alone".\n` +
+        `A path left alone is not a target, but written as a bullet it counts as one and inflates\n` +
+        `§6's Size line. Write it as prose like its neighbours, or move it into a QUALIFY brief:`
+    );
+    for (const p of [...pastHeading].sort()) console.error(`  ${p}`);
+    process.exit(1);
+  }
+
   return [...found].sort();
 }
 
@@ -632,7 +689,7 @@ for (const t of TARGETS) console.log(`  ${t}`);
  * would make the target count — the one figure §6's Size line does not write by
  * hand — quietly shrink when a page is renamed, converting a loud failure into a
  * silent one. This can only turn a green run red; it can never move a number. That
- * property was the precondition for adding it at all: all 19 targets resolve today,
+ * property was the precondition for adding it at all: all 20 targets resolve today,
  * on `origin/main` (`git ls-tree`) and in this checkout, so it changes nothing now
  * and only catches drift from here.
  *
