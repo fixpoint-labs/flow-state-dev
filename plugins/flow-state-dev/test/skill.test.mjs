@@ -10,9 +10,9 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { assertCanonicalNextSteps } from "@flow-state-dev/fsdev";
+import { assertCanonicalNextSteps, renderNextSteps } from "@flow-state-dev/fsdev";
 import { buildReport } from "../skills/install-fsd/detect/report.mjs";
 import { cleanupTrees, makeTree, nextManifest } from "./helpers.mjs";
 
@@ -24,6 +24,22 @@ const contractPath = join(skillDir, "wiring-contract.md");
 
 function skillText() {
   return readFileSync(skillPath, "utf8");
+}
+
+/** Destinations an `-e` snippet takes: after `--` when present, else skip argv[0], drop `[eval]`. */
+function destsFromSnippet(snippet, argv) {
+  const destsLine = /const dests = process\.argv[\s\S]*?\.filter\(\(p\) => p !== "\[eval\]"\);/.exec(snippet);
+  expect(destsLine, "dests must take argv after -- and drop [eval]").not.toBeNull();
+  return new Function("process", `${destsLine[0]}\nreturn dests;`)({ argv });
+}
+
+/** The body of the `-e` fence whose script contains `marker`. */
+function evalSnippetContaining(marker) {
+  const matches = skillText().matchAll(/node --input-type=module -e '\n([\s\S]*?)\n' -- [^\n]+/g);
+  for (const match of matches) {
+    if (match[1].includes(marker)) return match[1];
+  }
+  return null;
 }
 
 function contractText() {
@@ -207,12 +223,11 @@ describe("secrets never enter the transcript", () => {
 
   it("the generate-token snippet does not treat [eval] as a dest", () => {
     const text = skillText();
-    const destsLine = /const dests = process\.argv[\s\S]*?\.filter\(\(p\) => p !== "\[eval\]"\);/.exec(text);
-    expect(destsLine, "dests must take argv after -- and drop [eval]").not.toBeNull();
+    const snippet = evalSnippetContaining("randomBytes");
+    expect(snippet, "the generate-token -e script is extractable").not.toBeNull();
     expect(text).not.toMatch(/const dests = process\.argv\.slice\(1\)/);
 
-    const destsFrom = (argv) =>
-      new Function("process", `${destsLine[0]}\nreturn dests;`)({ argv });
+    const destsFrom = (argv) => destsFromSnippet(snippet, argv);
 
     expect(destsFrom(["/usr/bin/node", "[eval]", "--", "/tmp/.env.local"])).toEqual([
       "/tmp/.env.local",
@@ -224,15 +239,14 @@ describe("secrets never enter the transcript", () => {
   });
 
   it("running the generate-token snippet writes the dest and never a file named [eval]", () => {
-    const text = skillText();
-    const snippet = /node --input-type=module -e '\n([\s\S]*?)\n' -- \$DESTS/.exec(text);
+    const snippet = evalSnippetContaining("randomBytes");
     expect(snippet, "the generate-token -e script is extractable").not.toBeNull();
 
     const root = makeTree({});
     const dest = join(root, ".env.local");
     const stdout = execFileSync(
       process.execPath,
-      ["--input-type=module", "-e", snippet[1], "--", dest],
+      ["--input-type=module", "-e", snippet, "--", dest],
       { encoding: "utf8", cwd: root },
     );
 
@@ -263,6 +277,60 @@ describe("the skill's embedded next-steps block equals canonical", () => {
     expect(text).toMatch(/from "@flow-state-dev\/fsdev"/);
     expect(text).toMatch(/packageManager\.value/);
     expect(text).toMatch(/host\.topology/);
+  });
+
+  it("the renderNextSteps snippet does not treat [eval] as the report path", () => {
+    const snippet = evalSnippetContaining("renderNextSteps");
+    expect(snippet, "the renderNextSteps -e script is extractable").not.toBeNull();
+    expect(snippet).not.toMatch(/readFileSync\(process\.argv\[1\]/);
+
+    const destsFrom = (argv) => destsFromSnippet(snippet, argv);
+    const report = "/tmp/report.json";
+
+    expect(destsFrom(["/usr/bin/node", "[eval]", "--", report])).toEqual([report]);
+    expect(destsFrom(["/usr/bin/node", "--", report])).toEqual([report]);
+    expect(destsFrom(["/usr/bin/node", "[eval]"])).toEqual([]);
+    expect(destsFrom(["/usr/bin/node", report])).toEqual([report]);
+    expect(destsFrom(["/usr/bin/node", "[eval]", "--", report])).not.toContain("[eval]");
+  });
+
+  it("running the renderNextSteps dests line reads the report and never a file named [eval]", () => {
+    const snippet = evalSnippetContaining("renderNextSteps");
+    expect(snippet, "the renderNextSteps -e script is extractable").not.toBeNull();
+
+    const root = makeTree({});
+    const reportPath = join(root, "report.json");
+    const decoy = join(root, "[eval]");
+    writeFileSync(
+      reportPath,
+      JSON.stringify({
+        host: { topology: "mounted-route" },
+        packageManager: { value: "pnpm" },
+        devCommand: { script: "dev", url: "http://localhost:3000" },
+        mount: { path: "/api/fsd" },
+      }),
+    );
+    writeFileSync(decoy, "not-json");
+
+    const dests = destsFromSnippet(snippet, [process.execPath, "[eval]", "--", reportPath]);
+    expect(dests).toEqual([reportPath]);
+    expect(dests).not.toContain("[eval]");
+
+    const report = JSON.parse(readFileSync(dests[0], "utf8"));
+    const stdout = renderNextSteps({
+      topology: report.host.topology,
+      packageManager: report.packageManager.value,
+      devScript: report.devCommand.script ?? undefined,
+      devUrl: report.devCommand.url ?? undefined,
+      mountPath: report.mount.path ?? undefined,
+    });
+
+    expect(stdout).toMatch(/Next steps/);
+    expect(stdout).toMatch(/pnpm run/);
+    expect(stdout).toMatch(/\/api\/fsd/);
+    expect(stdout).not.toMatch(/FSD_DEMO_TOKEN=/);
+    expect(stdout).not.toMatch(/OPENAI_API_KEY=/);
+    expect(readFileSync(decoy, "utf8")).toBe("not-json");
   });
 
   it("fails on a copy with the second-process branch trimmed", () => {

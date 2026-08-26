@@ -182,7 +182,10 @@ Save the latest detection report to a temp file (it carries no secret values). A
 node --input-type=module -e '
 import { readFileSync } from "node:fs";
 import { renderNextSteps } from "@flow-state-dev/fsdev";
-const report = JSON.parse(readFileSync(process.argv[1], "utf8"));
+const dests = process.argv
+  .slice(process.argv.includes("--") ? process.argv.indexOf("--") + 1 : 1)
+  .filter((p) => p !== "[eval]");
+const report = JSON.parse(readFileSync(dests[0], "utf8"));
 process.stdout.write(renderNextSteps({
   topology: report.host.topology,
   packageManager: report.packageManager.value,
