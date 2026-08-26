@@ -81,6 +81,7 @@ import {
   resolveOwnership,
   type RequestIdentityContext,
   type PhaseSpec,
+  type PhaseRunContext,
 } from "./manager";
 import { implementPhase } from "./implement";
 import {
@@ -445,7 +446,23 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // The phase's own preconditions, at the same door and for the same reason —
   // see `PhaseSpec.validate`. Last, because a phase's requirements are stated in
   // terms of a repository the checks above have already established is real.
-  phase.validate?.(workspace);
+  // **Captured, not left in the phase.** What `validate` learns belongs to THIS
+  // conductor; a phase that stored it on itself would hand it to the next one.
+  const validated = phase.validate?.(workspace);
+
+  // The phase the manager actually runs: this conductor's `validated` bound
+  // into every run context, by a closure that belongs to this construction and
+  // nothing else. Two conductors from one `PhaseSpec` get two wrappers, so
+  // neither can reach the other's value — which is the property the phase
+  // could not give itself, since the snapshot above copies function references
+  // and not what they close over.
+  const runPhase: PhaseSpec =
+    validated === undefined
+      ? phase
+      : Object.freeze({
+          ...phase,
+          isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
+        });
 
   if (tenant === "") {
     throw new Error(
@@ -520,7 +537,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     boardCollectionId: collectionId,
     boardCollection: tasks,
     tenant,
-    phase,
+    phase: runPhase,
     workspace,
     runTimeoutMs,
     ...(agent !== undefined ? { agent } : {}),

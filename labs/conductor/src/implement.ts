@@ -436,27 +436,16 @@ function assertCompletionProbeUsable(workspace: WorkspaceConfig): RemoteRepo {
 
 /** Build the implement phase. */
 export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
-  // **Filled by `validate`, which runs at construction — before any dispatch,
-  // and long before the agent exists to repoint anything.** A `let` rather than
-  // a parameter because the validated identity is produced by the same check
-  // that proves the probe can run at all, and re-deriving it in the caller
-  // would be a second reading of a value that can differ from the first.
-  //
-  // A caller that builds this spec and never validates keeps `options.repo` —
-  // `undefined` unless they passed one — and the probe falls back to reading
-  // `origin` at run time, which is the behaviour with the hole in it.
-  //
-  // **The pin is per SPEC, and a spec handed to two conductors would share
-  // it.** `conductorFlow` snapshots the phase with a spread, which copies the
-  // function references and not what they close over, so the second
-  // construction's `validate` would overwrite the first's pin and the first
-  // conductor's probe would then query the second's repository. Refused below
-  // rather than tolerated: this pin exists precisely so the probe cannot be
-  // pointed somewhere else, and a fix that could itself repoint it would be
-  // worth less than nothing.
-  let pinned = options.repo;
+  // **Nothing is stored on the spec.** `validate` returns the identity it
+  // checked and `conductorFlow` binds it into this conductor's run contexts as
+  // `validated`, so a spec handed to two conductors carries no state either
+  // could reach. Storing it here instead produced three defects in as many
+  // rounds — shared between conductors, retained by a construction that then
+  // failed, and a comparison written to paper over both.
   const prExists =
-    options.prExists ?? ((ctx: PhaseRunContext) => prExistsViaGh(ctx, pinned));
+    options.prExists ??
+    ((ctx: PhaseRunContext) =>
+      prExistsViaGh(ctx, (ctx.validated as RemoteRepo | undefined) ?? options.repo));
 
   return {
     phase: "implement",
@@ -467,32 +456,11 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
     // the proof that this distinction is load-bearing rather than theoretical.
     ...(options.prExists === undefined
       ? {
-          validate: (workspace: WorkspaceConfig): void => {
-            const repo = assertCompletionProbeUsable(workspace);
-            // Re-validating with the SAME repository is the ordinary case and
-            // is a no-op: two epics on one source repository is the documented
-            // multi-conductor setup, and both pins are the same value. Only a
-            // second, DIFFERENT repository is ambiguous, and it is ambiguous in
-            // the direction that settles a board from the wrong place.
-            // `sameRepo`, not `!==`: this module already decided that repository
-            // identity folds case, and its doc says why — a remote's spelling
-            // varies while the repository does not. Two clones of one repository
-            // differing only in legal casing are the same pin, and a byte
-            // comparison would refuse the second conductor as though it named
-            // somewhere else. Fifth rule on this branch that lived a few lines
-            // away and was rewritten rather than called.
-            if (pinned !== undefined && !sameRepo(pinned.selector, repo.selector)) {
-              throw new Error(
-                `[conductor] this implement phase was already pinned to ` +
-                  `"${pinned.selector}" and is now being built against ` +
-                  `"${repo.selector}". One \`implementPhase()\` cannot serve two ` +
-                  `conductors on different repositories — the pin is per phase, so the ` +
-                  `second would silently repoint the first's completion check. Call ` +
-                  `\`implementPhase()\` once per conductor.`,
-              );
-            }
-            pinned = repo;
-          },
+          // Returns the identity rather than keeping it: see
+          // {@link PhaseSpec.validate}. Pure, so a construction that fails a
+          // later check leaves nothing behind for the retry to trip over.
+          validate: (workspace: WorkspaceConfig): RemoteRepo =>
+            assertCompletionProbeUsable(workspace),
         }
       : {}),
     // Empty, and that is not an oversight: this phase reads no collection of its
