@@ -418,10 +418,20 @@ below the themes had both gone stale against the code that merged.
    anyway its §8 rule is the fallback — state the absence at writing time rather than publish a
    surface that does not exist.
 
+   **The fallback's restore has an owner: whichever child lands second.** Stating the absence
+   writes a paragraph that FIX-1269's merge then falsifies, and nothing else here assigned the
+   correction — so the epic could wrap with the architecture doc still describing the gap this
+   cycle closes. **FIX-1154 owns it by default**, since it owns the comparison half. **If FIX-1154
+   publishes first, FIX-1269 owns it** — a one-paragraph correction of a statement its own merge
+   made false, not a transfer of FIX-1154's documentation scope. It re-cuts nothing: the FIX-1269 /
+   FIX-1154 boundary, FIX-1154's §11 target set and the corpus checker are unchanged, FIX-1154 is
+   not split, and Decision 3 is not reopened.
+
    **The prerequisite binds the conceptual half only, and FIX-1269 still documents what it ships.**
    JSDoc on the new exports, or a one-line README method entry, travels with FIX-1269's PR as
    ordinary implementer hygiene — it is **not** the architecture/guide corpus, not §11, and not a
-   reason to thin FIX-1154's target set. The carve-out is stated because without it an implementer
+   reason to thin FIX-1154's target set. *(The contingent restore above is the one exception, and
+   only in the branch where FIX-1154 published the absence first.)* The carve-out is stated because without it an implementer
    reading "FIX-1269 precedes FIX-1154's documentation" can conclude they are forbidden from
    documenting their own exports, which the prerequisite was never about. That FIX-1269's methods
    merge before the comparison paragraph publishes is the **accepted cost of Decision 3**, not a
@@ -430,8 +440,10 @@ below the themes had both gone stale against the code that merged.
 
    **This ordering is prose and stays prose. Do not encode it as a Linear blocker, and do not
    split FIX-1154 to make an encoding possible.** The lifecycle carries **one phase and one
-   `blockedBy` per issue row**, and a `blockedBy` parks the *whole* row
-   (`.agents/workflows/epic-wake.js:216`, `:1256-1280`) — so a blocker would park FIX-1154's map
+   `blockedBy` per issue row**, and a `blockedBy` parks the *whole* row — `pendingAction` returns
+   `null` on it and `allocate` diverts the row into its `blocked` bucket before any dispatch
+   ([`epic-wake.js`](../../.agents/workflows/epic-wake.js), by symbol for the reason §4 gives)
+   — so a blocker would park FIX-1154's map
    half too, which is the opposite of what Decision 3 asked for. The encoding for "half an issue
    waits" does not exist, and that is fine: a child issue is not reshaped to fit a status table.
    The next reader who notices the gap should read this paragraph, not add the blocker.
@@ -472,7 +484,7 @@ expensive thing this epic has already paid for.
 | [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` on the resource handle. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, comparing shared declarations on `(scope, ref)` — the durable cell, not the accessor name | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
-| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
+| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. **The split is the right axis and is not sufficient on its own — the scoping note below states the constraint that goes with it.** | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; notes below)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
@@ -484,44 +496,49 @@ An empty Spec PR cell on a `bug` row is correct, not a gap.*
 epic's most expensive finding — see* Rejected framings *in §2 — and a reader who cannot see it
 here has no way to know the framing was tried.*
 
-**What actually gates wrap — the Linear graph, not this table.** The coordinator's wrap predicate
-requires every issue in its row set to be `linearTerminal || merged || phase === 'DONE'` — **three
-independent releases, and no disjunct is redundant.** A row is released by **Linear going
-terminal** (`done` / `closed` / `cancelled` / `duplicate` / `dropped` / `won't do`); by **its PR
-merging**, the ordinary case for a fix that lands before the board catches up; or by
-**`phase === 'DONE'`**, which a **multi-PR** row reaches on its own terms — `mergeDerivedPhase`
-returns early for any row carrying `subPrs` (*"multiPrPhase owns these"*), and `multiPrPhase` sets
-`DONE` once every sub-PR has merged **and** the assembled goal passed, never consulting the
-top-level `merged` flag. On a single-PR row those last two are one release on two fields, kept in
-step by `mergeDerivedPhase`; on a multi-PR row they are not. That row set is built from the
-**Linear parent→children query** plus any explicitly carried members — not from this index. Leaving
-a child out of the table exempts nothing: a non-terminal sub-issue the carried rows omit is
-**discovered** from the same scan and entered as a row, so the index and the predicate cannot
-disagree for long. FIX-1259 and FIX-1207 are not children and are not counted.
+**This index exempts nothing, and it is not the wrap predicate.** Wrap, routing and dispatch are
+decided by [`.agents/workflows/epic-wake.js`](../../.agents/workflows/epic-wake.js), run against the
+**Linear parent→children query**. That script is the authoritative carrier and this section no
+longer restates it: a copied predicate has been carried here three times and corrected three times,
+and a second carrier of executable semantics goes stale the moment the workflow changes. Two
+consequences a reader here does need. A non-terminal child **left out of this table is discovered
+from that scan and entered as a row**, so omission exempts nothing. And a parented child is
+**dispatched, routed and gated on the same terms as any other** — so **FIX-1258 and FIX-1260 are
+eligible for dispatch on the next approved wake, and this epic cannot wrap until they are fixed or
+cancelled.** FIX-1259 and FIX-1207 are not children, so they are neither dispatched nor counted; the
+boundary rule (§5) decides *membership*, never what happens to a child once it is one. Anything
+finer — which conditions release a row, what parks one — is read from the workflow, not from here.
 
-**Parentage binds the lifecycle, not only the gate — this document cannot promise that a child
-stays undispatched.** A discovered child enters the table from that same scan; every refresh
-re-derives its route from the Linear category, so a Bug lands on the direct route at
-`NEEDS_IMPLEMENTATION` and needs no spec and no approval; and `allocate` then dispatches every
-actionable unblocked row up to the concurrency cap once the epic is approved. There is no state for *parented but held back*: the only things that park a row are a
-Linear-terminal state, an open `blockedBy`, or an unanswered human blocker — and none of the three
-is something prose here can assert. So **FIX-1258 and FIX-1260 are eligible for dispatch on the
-next approved wake**, and **this epic cannot wrap until they are fixed or cancelled.** That is not
-a scope expansion: staying parented already meant both, and what is being dropped is only the claim
-that they sat outside it. The boundary rule still decides **membership** — it is why FIX-1259 and
-FIX-1207 are not children at all — never what happens to a child once it is one.
+**FIX-1260's operation split is necessary and not sufficient — it is the right axis, scoped as a
+carve-out rather than a one-line guard.** Settled empirically on the real path, not read: with the
+row's rule applied, a schema carrying a **non-idempotent `.transform()`** still drifts **one
+transform per mutation**, monotonic and unbounded. The load-bearing fact is the seed. On the
+**common, non-conflict path** the mutator is seeded from the **normalized read cache** — `readState`
+reads the per-request live map that `loadDeclaredResourceState` → `normalizeScopeResources` →
+`normalizeResourceState` fills once per execution context, transform included — and **not** from the
+raw stored row; `runResourceCAS`'s conflict re-read, which commits the store's raw value, is the
+exception rather than a mitigation. So storing the candidate removes one transform of two. The
+**exposure is `.transform()` alone**: `.default()` and `.catch()` do not re-fire once the field is
+populated and showed no drift, and the **creation** half of the split is genuinely unaffected as the
+row claims — `create` / `create({ replace: true })` drifted none across repeated replaces.
 
-*(Evidence: `TERMINAL_LINEAR`, the `discovered` filter, `mayWrap`, `routeFor`, `isDirectRoute` →
-`{action: 'implement'}` in `pendingAction`, and the `blockedBy` / `advance` path in `allocate`, all
-in [`.agents/workflows/epic-wake.js`](../../.agents/workflows/epic-wake.js) — read from source and
-run against the parent→children set rather than off the page. **No tally of what is currently
-non-terminal is kept here:** the State column above is the projection, and a count beside it drifts
-the moment any child moves.)*
+**The constraint, stated once, for FIX-1260 to resolve.** *Reads keep `parsed.data`* — required, so
+a historical row acquires a newly-defaulted field on load — and *mutation writes store the candidate*
+cannot both hold for such a schema, because the candidate's untouched fields are inherited from that
+transformed read. Two mechanisms are in bounds and **the choice is FIX-1260's, not this epic's**: a
+carve-out for non-idempotent `.transform()` schemas (flagged, forbidden, or required to be
+idempotent), or seeding the mutator from the **raw stored row** on the write path, separate from the
+request-scoped hydrate cache — wider than the row scopes today. **This is a constraint to resolve
+inside FIX-1260, not a licence to widen.** It does not justify a third rule or a third primitive,
+and it reopens neither theme 1 nor D-6. Evidence — the measured drift table and its controls — is on
+this PR as comment
+[`5430501537`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430501537).
 
 *Why FIX-1259 and FIX-1207 have no row here while FIX-1258 and FIX-1260 do — the boundary rule and
-the disposition each of the four surfaced bugs got — is recorded once, in §5. How FIX-1260's defect
-works belongs to that issue and its PR, not to this index: §4 is a projection of the coordinator's
-status table, and nothing refreshes a diagnosis parked inside it.*
+the disposition each of the four surfaced bugs got — is recorded once, in §5. The two notes above
+state FIX-1260's **scope** and stop there: how the defect works, and which mechanism closes it,
+belong to that issue and its PR. §4 is a projection of the coordinator's status table, and nothing
+refreshes a diagnosis parked inside it.*
 
 ## 5. Open cross-cutting questions
 
@@ -776,3 +793,16 @@ retraction taught something the themes do not already say, it earns a clause.
   genuinely independent, and collapsing it invites a later edit to delete a disjunct and strand
   completed rows. *(**Seventeen** — the fifth about our own tooling, the second **produced by a correction**, and
   the sharpest: the disqualifying sentence sat **one line below** the one that entry quoted.)*
+- **FIX-1260's split confirmed necessary and *not sufficient* (2026-08-26)** — a POC on the real path
+  measured **+1 transform per mutation surviving the rule** (from +2): the mutator is seeded from the
+  **normalized read cache**, not the raw stored row. The **axis holds**; §4 carries the constraint and
+  FIX-1260 picks the mechanism. *(**Eighteen** — the first settled by **running it**, and the first
+  where only **sufficiency** was wrong; every earlier entry retracted a mechanism *description*.)*
+- **§4's executable-lifecycle derivation removed (2026-08-26)** — wrap, discovery, routing and
+  allocation are read from `epic-wake.js` rather than restated; *omission exempts nothing* and the two
+  children holding wrap open stay. The log is the argument: this copy was corrected **three times**,
+  so the retraction records stay while the derivation goes. *(Fourth two-carriers removal.)*
+- **Theme 3's fallback given an owner (2026-08-26)** — whichever child lands **second** corrects the
+  comparison paragraph, so **FIX-1269** owns the restore if FIX-1154 publishes the absence first.
+  Unowned, the epic wraps with the architecture doc still describing the gap it closed. Boundary,
+  §11 and Decision 3 untouched.
