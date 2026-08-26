@@ -1742,6 +1742,52 @@ describe("the phase's own precondition is refused at the same door", () => {
     ).toThrow(/does not name a host and repository/);
   });
 
+  it("does not follow the caller's workspace object after construction", async () => {
+    // **A guard that can be walked around after the fact is not a guard.** The
+    // caller's `workspace` object was retained by reference, so a host could
+    // repoint `sourceRepo` — at the dispatcher's own repository, say — once
+    // `conductorFlow` had returned, and every later attempt would run against a
+    // location `assertDistinctRepository` never saw.
+    //
+    // **Observed through `phase.validate`,** which is handed the exact object
+    // the conductor retains. An earlier version of this test asserted that a
+    // second construction from the mutated object throws — which it does either
+    // way, because that call re-validates from scratch. It passed against the
+    // defect. This one reads the retained object directly.
+    const { conductorFlow } = await import("../src/flow");
+
+    const repo = mkdtempSync(join(tmpdir(), "conductor-snapshot-"));
+    seedRepo(repo);
+    const root = mkdtempSync(join(tmpdir(), "conductor-snapshot-root-"));
+    const mutable = { root, sourceRepo: repo, baseRef: "main" };
+
+    let retained: { root: string; sourceRepo: string; baseRef: string } | undefined;
+    conductorFlow({
+      epic: "snapshot-epic",
+      workspace: mutable,
+      phase: {
+        phase: "implement",
+        readable: {},
+        buildPrompt: () => "p",
+        isDone: () => true,
+        validate: (w) => {
+          retained = w as { root: string; sourceRepo: string; baseRef: string };
+        },
+      },
+    });
+    expect(retained, "validate was never called").toBeDefined();
+
+    // The host mutates its own object afterwards.
+    mutable.sourceRepo = "/definitely/not/a/repository";
+    mutable.root = "/tmp/somewhere-else";
+
+    // The conductor's copy is untouched by that.
+    expect(retained!.sourceRepo).toBe(repo);
+    expect(retained!.root).toBe(root);
+    // And frozen, so the same hole cannot be reopened from inside the module.
+    expect(Object.isFrozen(retained)).toBe(true);
+  });
+
   it("refuses a host where `gh` cannot be run", async () => {
     // The probe's OTHER unstated precondition. A valid `origin` gets the
     // conductor all the way to a paid coding run on a host with no `gh`, and

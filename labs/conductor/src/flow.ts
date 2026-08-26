@@ -269,13 +269,34 @@ export function conductorFlow(options: ConductorFlowOptions) {
   const {
     epic,
     tenant,
-    workspace,
+    workspace: callerWorkspace,
     maxAttempts = 3,
     runTimeoutMs = 1_800_000,
     phase = implementPhase(),
     agent,
     ownership,
   } = options;
+
+  // **Validate what is retained, and retain a copy.** The caller's object was
+  // held by reference, so a programmatic host could mutate `root`, `sourceRepo`
+  // or `baseRef` after this function returned and every later attempt would use
+  // locations nothing had checked. `assertDistinctRepository` is the guard that
+  // stops a coding agent being pointed at the repository that dispatched it —
+  // a guard that can be walked around after the fact is not one.
+  //
+  // Frozen as well as copied so the same hole cannot be reopened from inside
+  // this module. The snapshot is shallow, which is all the shape needs: every
+  // field is a string or a number.
+  //
+  // **The paths are NOT canonicalized here**, which is the other half of the
+  // report and is declined deliberately. Resolving symlinks would make this
+  // builder disagree with `checkoutPathFor`, which is exported and which the
+  // goal runner and the tests call directly against the same config — one
+  // conductor deriving two different checkout paths for one task is a worse
+  // failure than the one being closed, and it is the reason the relative-path
+  // guard above refuses rather than resolves. A host that retargets a symlink
+  // under its own conductor is outside what this can defend.
+  const workspace: WorkspaceConfig = Object.freeze({ ...callerWorkspace });
 
   // Both ids, per epic, and neither substituting for the other.
   // The tenant is in BOTH ids for the same reason the epic is: `boardId`
