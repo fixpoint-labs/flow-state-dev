@@ -194,6 +194,20 @@ describe("the write barrier and the two phases", () => {
     expect(text).toMatch(/refusals/);
     expect(text).toMatch(/stop/i);
   });
+
+  it("preflight refuses only authored-whole files, not existing append or secret targets", () => {
+    const text = skillText();
+    const preflight = /4\. \*\*PREFLIGHT[\s\S]*?(?=\n5\. )/.exec(text);
+    expect(preflight, "step 4 is the allowlist preflight").not.toBeNull();
+    expect(preflight[0]).toMatch(/authored-whole/);
+    expect(preflight[0]).toMatch(/config, flow, and the mount pair/);
+    expect(preflight[0]).toMatch(/`\.gitignore`/);
+    expect(preflight[0]).toMatch(/`\.env\.local`/);
+    expect(preflight[0]).toMatch(/`AGENTS\.md`/);
+    expect(preflight[0]).toMatch(/does \*\*not\*\* refuse the run/);
+    expect(preflight[0]).toMatch(/any other authored-whole file of theirs/);
+    expect(preflight[0]).not.toMatch(/anything else of theirs/);
+  });
 });
 
 describe("secrets never enter the transcript", () => {
@@ -212,6 +226,8 @@ describe("secrets never enter the transcript", () => {
     expect(text).toMatch(/secretFiles/);
     expect(text).toMatch(/FSD_DEMO_TOKEN/);
     expect(text).toMatch(/\.env\.local/);
+    expect(text).toMatch(/including reuse dests/);
+    expect(text).toMatch(/Do not mint a second one/);
   });
 
   it("re-runs detection with --provider after the developer chooses one", () => {
@@ -258,6 +274,58 @@ describe("secrets never enter the transcript", () => {
     expect(stdout).not.toContain(value);
     expect(stdout).not.toMatch(/console\.log\(\s*token\b/);
   });
+
+  it("the generate-token snippet copies a reused dest onto a generate dest and never prints it", () => {
+    const snippet = evalSnippetContaining("randomBytes");
+    expect(snippet, "the generate-token -e script is extractable").not.toBeNull();
+
+    const root = makeTree({});
+    const reused = join(root, ".env.development.local");
+    const generate = join(root, ".env.local");
+    const existing = "already-reused-demo-token";
+    writeFileSync(reused, `FSD_DEMO_TOKEN=${existing}\n`);
+
+    const stdout = execFileSync(
+      process.execPath,
+      ["--input-type=module", "-e", snippet, "--", reused, generate],
+      { encoding: "utf8", cwd: root },
+    );
+
+    expect(readFileSync(reused, "utf8")).toBe(`FSD_DEMO_TOKEN=${existing}\n`);
+    expect(readFileSync(generate, "utf8")).toBe(`FSD_DEMO_TOKEN=${existing}\n`);
+    expect(stdout).not.toContain(existing);
+    expect(stdout).not.toMatch(/console\.log\(\s*token\b/);
+    expect(readdirSync(root)).not.toContain("[eval]");
+  });
+
+  it("the generate-token snippet refuses when two dests already disagree, without printing either value", () => {
+    const snippet = evalSnippetContaining("randomBytes");
+    expect(snippet, "the generate-token -e script is extractable").not.toBeNull();
+
+    const root = makeTree({});
+    const first = join(root, ".env.development.local");
+    const second = join(root, ".env.local");
+    const a = "first-demo-token-value";
+    const b = "second-demo-token-value";
+    writeFileSync(first, `FSD_DEMO_TOKEN=${a}\n`);
+    writeFileSync(second, `FSD_DEMO_TOKEN=${b}\n`);
+
+    try {
+      execFileSync(process.execPath, ["--input-type=module", "-e", snippet, "--", first, second], {
+        encoding: "utf8",
+        cwd: root,
+      });
+      expect.fail("expected the snippet to refuse when dests disagree");
+    } catch (err) {
+      expect(err.status).toBe(1);
+      const output = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+      expect(output).toMatch(/refusing to write a second one/);
+      expect(output).not.toContain(a);
+      expect(output).not.toContain(b);
+    }
+    expect(readFileSync(first, "utf8")).toBe(`FSD_DEMO_TOKEN=${a}\n`);
+    expect(readFileSync(second, "utf8")).toBe(`FSD_DEMO_TOKEN=${b}\n`);
+  });
 });
 
 describe("the skill's embedded next-steps block equals canonical", () => {
@@ -277,6 +345,16 @@ describe("the skill's embedded next-steps block equals canonical", () => {
     expect(text).toMatch(/from "@flow-state-dev\/fsdev"/);
     expect(text).toMatch(/packageManager\.value/);
     expect(text).toMatch(/host\.topology/);
+  });
+
+  it("presents fsdev dev and fsdev serve as alternatives on second-process", () => {
+    const text = skillText();
+    const afterRender = text.slice(text.indexOf("' -- \"$REPORT_JSON\""));
+    const instruction = afterRender.slice(0, afterRender.indexOf("<!-- next-steps:canonical -->"));
+    expect(instruction).toMatch(/Verify one server path/);
+    expect(instruction).toMatch(/alternatives/);
+    expect(instruction).toMatch(/Run one of them, not both/);
+    expect(instruction).not.toMatch(/Run every command that output printed/);
   });
 
   it("the renderNextSteps snippet does not treat [eval] as the report path", () => {

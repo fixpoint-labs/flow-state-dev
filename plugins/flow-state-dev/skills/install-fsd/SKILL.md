@@ -71,22 +71,22 @@ Every refusal is decided from state you have not modified. No refusal may origin
    ```
 
    Use `ANTHROPIC_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` when they chose that provider. Exit `1` here is a new refusal — **stop**. Read this report from here on.
-4. **PREFLIGHT every path on this host's allowlist.**
+4. **PREFLIGHT every authored-whole path** — config, flow, and the mount pair. `.gitignore`, `.env.local`, and `AGENTS.md` are append/secret targets: an existing file of theirs does **not** refuse the run. They follow the append/fill rules in steps 5–6 and Phase 2.
    - For a mount path, test the whole slot in `routeSlots` — every enabled extension, not just the one you picked.
    - absent → will write
    - ours (`fsd:generated` marker matches) → will rewrite
    - their `fsdev.config.*` → not a collision; skip writing a config
-   - anything else of theirs → **refuse the whole run**, name every such path
+   - any other authored-whole file of theirs → **refuse the whole run**, name every such path
 5. **EVALUATE the credential question without touching anything.** Detection already asked git. If `secretFiles` names a file with `tracked: true`, the report refused. If a destination has `ignored: false` and the planned `.gitignore` section (`.env.local` and `.fsdev/`) would not cover that path, **stop** — do not write a secret git would commit. Do not re-check by editing their tree.
 6. **DECIDE what each `secretFiles` destination needs**, from `secrets` and the `reasons` on that file — never by printing a value.
    - Provider key (`secrets` row for the chosen env var):
      - `non-empty` anywhere → write nothing for that key
      - `empty` → leave that line; you will ask them to fill it
      - `absent` → you will append `KEY=` with an empty value on the destination named for that key
-   - `FSD_DEMO_TOKEN` is generated. Act on **every** `secretFiles` entry whose `reasons` name it:
-     - reason says the value will be reused → write nothing there
-     - reason says an empty assignment is the line a runtime resolves → fill that existing line
-     - reason says it will be generated here → append one assignment
+   - `FSD_DEMO_TOKEN` is **one** value across every `secretFiles` entry whose `reasons` name it:
+     - any dest already has a value → that is the token; fill/generate dests receive a copy. Do not mint a second one
+     - two dests already have different values → **stop**
+     - none has a value → generate one and write it to every fill/generate dest
    - Never a second assignment for a key that already appears. **Never print** the token, never echo it, never read it back into this conversation.
 7. **State the plan:** one line per file, created or appended. Then wait for the developer to accept.
 
@@ -130,7 +130,7 @@ One delimited section, created when the file is absent, appended when it is pres
 
 `.env.local` is **not** on the delimited-section list. Follow the Phase 1 decision.
 
-**Generate `FSD_DEMO_TOKEN` without ever printing it.** Pass every destination Phase 1 decided you will write or fill. One token is generated and reused across those files. A destination whose reason said reuse is not in this list.
+**Generate `FSD_DEMO_TOKEN` without ever printing it.** Pass every destination whose `reasons` name it, including reuse dests. The script converges on one value: it copies an existing assignment if any dest already has one, otherwise it generates. It refuses if two dests already disagree. It does not print the token.
 
 ```bash
 node --input-type=module -e '
@@ -140,15 +140,32 @@ import { randomBytes } from "node:crypto";
 const dests = process.argv
   .slice(process.argv.includes("--") ? process.argv.indexOf("--") + 1 : 1)
   .filter((p) => p !== "[eval]");
-const token = randomBytes(32).toString("hex");
+function readAssignment(existing) {
+  const m = /(?:^|\n)FSD_DEMO_TOKEN=([^\r\n]*)/.exec(existing);
+  return m ? m[1] : null;
+}
+let token = null;
 for (const dest of dests) {
   const existing = existsSync(dest) ? readFileSync(dest, "utf8") : "";
-  if (/(?:^|\n)FSD_DEMO_TOKEN=[^\r\n]+/.test(existing)) {
+  const value = readAssignment(existing);
+  if (value) {
+    if (token !== null && token !== value) {
+      console.error("FSD_DEMO_TOKEN already has different values in two destinations; refusing to write a second one.");
+      process.exit(1);
+    }
+    token = value;
+  }
+}
+if (token === null) token = randomBytes(32).toString("hex");
+for (const dest of dests) {
+  const existing = existsSync(dest) ? readFileSync(dest, "utf8") : "";
+  const value = readAssignment(existing);
+  if (value) {
     console.log("FSD_DEMO_TOKEN already has a value in one destination; left that file alone.");
     continue;
   }
   mkdirSync(dirname(dest), { recursive: true });
-  if (/(?:^|\n)FSD_DEMO_TOKEN=(?:\r?\n|$)/.test(existing) || /(?:^|\n)FSD_DEMO_TOKEN=\r?$/.test(existing)) {
+  if (value === "") {
     writeFileSync(dest, existing.replace(/(^|\n)FSD_DEMO_TOKEN=(?=\r?\n|$)/, "$1FSD_DEMO_TOKEN=" + token));
     console.log("Filled an empty FSD_DEMO_TOKEN line.");
     continue;
@@ -196,7 +213,9 @@ process.stdout.write(renderNextSteps({
 ' -- "$REPORT_JSON"
 ```
 
-Run every command that output printed. The source you embed in this skill (below) is what `renderNextSteps` starts from. Keep it, so the exported comparison can still prove this copy has not drifted.
+Verify one server path. On `mounted-route`, run the host `dev` command and `fsdev run` to confirm the demo. `fsdev dev` is the DevTool in a second process — start it only if they want the inspector. On `second-process`, `fsdev dev` and `fsdev serve` are **alternatives**: `dev` is the API and the DevTool in one process; `serve` is the same API without the DevTool. Run one of them, not both, then `fsdev run`. Do not background both. Two FSD servers on `.fsdev/data` can each accept the same write.
+
+The source you embed in this skill (below) is what `renderNextSteps` starts from. Keep it, so the exported comparison can still prove this copy has not drifted.
 
 <!-- next-steps:canonical -->
 Next steps
