@@ -8,7 +8,14 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -245,6 +252,23 @@ describe("the checkout root — refused at startup, not once per retry", () => {
     const fresh = join(dir, "deep", "checkouts");
     expect(() => assertCheckoutRootUsable(fresh)).not.toThrow();
     expect(existsSync(fresh)).toBe(true);
+  });
+
+  it("leaves nothing behind after proving the root can hold a checkout", () => {
+    // Existing as a directory is not the question the guard answers — a
+    // read-only mount satisfies `mkdirSync` because there is nothing to create.
+    // So the guard creates a child and removes it, and this pins the removal:
+    // a probe left behind would put a `.conductor-probe-*` directory into the
+    // checkout root on every construction, beside the real checkouts.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-root-"));
+    dirs.push(dir);
+    const before = readdirSync(dir);
+
+    assertCheckoutRootUsable(dir);
+    assertCheckoutRootUsable(dir);
+    assertCheckoutRootUsable(dir);
+
+    expect(readdirSync(dir)).toEqual(before);
   });
 });
 

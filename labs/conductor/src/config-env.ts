@@ -9,7 +9,7 @@
  */
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -221,10 +221,25 @@ export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
  * throws when the path or any ancestor is a file. Checking `statSync` first
  * would answer a question about the moment before the answer is used, and would
  * still leave a missing root to fail later.
+ *
+ * **And a probe child, because existing as a directory is not the question.**
+ * `mkdirSync` on a root that is already there creates nothing, so it succeeds
+ * against a read-only mount or a directory an ACL denies — certifying a root
+ * that then fails at the first `acquireCheckout`, which is the whole failure
+ * this guard was added to move forward. What the guard claims is that the root
+ * can HOLD checkouts, so it has to create one and take it away again.
+ *
+ * The probe is removed in a `finally`: a guard that litters the checkout root
+ * with its own leftovers on every construction is worse than the gap it closes.
  */
 export function assertCheckoutRootUsable(root: string, variable = "workspace.root"): void {
   try {
     mkdirSync(root, { recursive: true });
+    // `mkdtemp` rather than a fixed name: two conductors constructed at once
+    // must not collide on the probe, and a collision would read as a root that
+    // cannot hold checkouts when it can.
+    const probe = mkdtempSync(path.join(root, ".conductor-probe-"));
+    rmSync(probe, { recursive: true, force: true });
   } catch (error) {
     throw new Error(
       `[conductor] ${variable} "${root}" cannot hold checkouts: ` +
