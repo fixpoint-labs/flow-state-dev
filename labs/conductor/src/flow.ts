@@ -85,6 +85,7 @@ import {
 import { implementPhase } from "./implement";
 import {
   assertBaseRefExists,
+  assertCheckoutRootUsable,
   assertDistinctRepository,
   assertPositiveInt,
 } from "./config-env";
@@ -421,6 +422,10 @@ export function conductorFlow(options: ConductorFlowOptions) {
 
   assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
+  // The remaining half of the same rule. The two lines above reach the
+  // filesystem with `sourceRepo`, so an unusable one fails here; `root` had
+  // only its spelling checked, and its failure landed after a claim instead.
+  assertCheckoutRootUsable(workspace.root, "workspace.root");
 
   // **The phase NAME is an identity segment, and `epic` was the only one being
   // validated here.** Both feed `conductorTaskId`, the checkout path and the

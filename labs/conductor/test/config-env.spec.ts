@@ -8,12 +8,13 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertBaseRefExists,
+  assertCheckoutRootUsable,
   MAX_TIMER_MS,
   positiveIntFromEnv,
   repositoryIdentity,
@@ -206,6 +207,44 @@ describe("the base ref — refused at startup, not once per retry", () => {
         stdio: "pipe",
       }),
     ).not.toThrow();
+  });
+});
+
+describe("the checkout root — refused at startup, not once per retry", () => {
+  it("refuses a root that is a regular file", () => {
+    // `sourceRepo` has two guards that reach the filesystem, so an unusable one
+    // fails here. `root` had only its spelling checked — and its failure lands
+    // in `acquireCheckout`, which runs AFTER the claim. Every attempt then
+    // fails identically before the agent runs, spending the whole budget on a
+    // host misconfiguration.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-root-"));
+    dirs.push(dir);
+    const asFile = join(dir, "not-a-directory");
+    writeFileSync(asFile, "");
+
+    expect(() => assertCheckoutRootUsable(asFile)).toThrow(/cannot hold checkouts/);
+    // And a root UNDER a file, which is the same failure one level up — the
+    // spelling is absolute and every ancestor check that stops at the leaf
+    // would pass it.
+    expect(() => assertCheckoutRootUsable(join(asFile, "checkouts"))).toThrow(
+      /cannot hold checkouts/,
+    );
+  });
+
+  it("accepts a root that exists, and creates one that does not", () => {
+    // The guard must not become an outage. An existing directory is accepted
+    // rather than refused as already-present, and a missing one is created —
+    // checking without creating would leave the ordinary first-run case to fail
+    // later, which is the failure being removed.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-root-"));
+    dirs.push(dir);
+
+    expect(() => assertCheckoutRootUsable(dir)).not.toThrow();
+    expect(() => assertCheckoutRootUsable(dir)).not.toThrow();
+
+    const fresh = join(dir, "deep", "checkouts");
+    expect(() => assertCheckoutRootUsable(fresh)).not.toThrow();
+    expect(existsSync(fresh)).toBe(true);
   });
 });
 

@@ -9,7 +9,7 @@
  */
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -203,6 +203,39 @@ export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
  * `workspace.baseRef`, and an error naming an environment variable the caller
  * never set sends them looking in the wrong place.
  */
+/**
+ * Refuse a checkout root the host cannot hold checkouts under.
+ *
+ * **The one workspace path with no filesystem preflight.** `sourceRepo` gets
+ * two — {@link assertDistinctRepository} and {@link assertBaseRefExists} both
+ * run `git` with it as `cwd`, so a path that is not a usable directory fails
+ * at construction. `root` was checked only for being spelled absolutely, and a
+ * root that names a regular file (or sits under one) is not discovered until
+ * `acquireCheckout` tries to create descendants beneath it — which happens
+ * AFTER the claim. The row is charged an attempt, the next attempt fails
+ * identically, and a permanent host misconfiguration eats the whole retry
+ * budget without the agent ever running.
+ *
+ * **Created, not merely inspected**, because the two are the same syscall here:
+ * `mkdirSync` with `recursive` succeeds on a directory that already exists and
+ * throws when the path or any ancestor is a file. Checking `statSync` first
+ * would answer a question about the moment before the answer is used, and would
+ * still leave a missing root to fail later.
+ */
+export function assertCheckoutRootUsable(root: string, variable = "workspace.root"): void {
+  try {
+    mkdirSync(root, { recursive: true });
+  } catch (error) {
+    throw new Error(
+      `[conductor] ${variable} "${root}" cannot hold checkouts: ` +
+        `${error instanceof Error ? error.message : String(error)}. Each run cuts a fresh ` +
+        `worktree beneath it, and that happens after the task is claimed — so an unusable ` +
+        `root spends the whole retry budget on a host misconfiguration without ever ` +
+        `running the agent.`,
+    );
+  }
+}
+
 export function assertBaseRefExists(
   repo: string,
   baseRef: string,
