@@ -45,8 +45,8 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      # `docs/atlas` is uploaded as the site root, so the atlas serves at
-      # /conductor.html and the index.html beside it redirects there.
+      # `docs/atlas` is uploaded as the site root, so each atlas serves at
+      # /<name>.html and the index.html beside them lists what is there.
       - name: Upload atlas
         uses: actions/upload-pages-artifact@v3
         with:

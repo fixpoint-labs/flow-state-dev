@@ -19,7 +19,7 @@ issue identifiers; anything under `apps/docs/` is published and may not.
 
 - `conductor.html` — the Conductor meta-harness: what it is, how a run works,
   and the threads still open.
-
-Note, not a task: the framework architecture atlas
-(`docs/internal/framework-atlas.html`, on its own branch) is the same kind of
-artifact and would belong here.
+- `framework.html` — the framework architecture atlas: every package and
+  system in `@flow-state-dev`, how they compose, and the open refactor
+  questions. Its counts are measured against a commit rather than maintained,
+  so read them as of the branch that last touched it.
