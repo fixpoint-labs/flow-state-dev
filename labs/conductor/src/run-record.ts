@@ -217,12 +217,13 @@ export interface AttemptIdentity {
 }
 
 /**
- * A task row as this module reads it. Structural: only the two fields the fence
- * consults, so nothing here depends on the substrate's `Task` type.
+ * A task row as this module reads it. Structural: only the three fields the
+ * fence consults, so nothing here depends on the substrate's `Task` type.
  */
 interface ClaimView {
   status?: string;
   attempts?: number;
+  leaseUntil?: number | null;
 }
 
 /**
@@ -234,6 +235,37 @@ interface ClaimView {
  * the substrate's own `ATTEMPT_OWNED_STATUSES` rather than guessing at it.
  */
 const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "awaiting_review"]);
+
+/**
+ * The substrate's lease rule, mirrored here for the same reason
+ * {@link ATTEMPT_OWNED_STATUSES} is: this file reads the board through a
+ * structural interface and does not import the `Task` type.
+ *
+ * **Why the fence needs it as well as the status.** The substrate refuses a
+ * settlement on a lapsed lease exactly as it refuses one on a lost claim —
+ * both return `"lost-claim"`. A fence that mirrors only the status half admits
+ * the write the substrate would reject, and the two then disagree in the one
+ * direction that matters: the board row stays open while the run record reads
+ * `succeeded`. That disagreement is the lying status row this lab exists to
+ * remove, so the conjunct is taken from the same rule rather than reasoned
+ * about separately.
+ *
+ * Only `in_progress` rows can lapse. A parked (`awaiting_review`) row is
+ * waiting on a person, not on a lease, so its writes still apply — which is the
+ * behaviour the substrate has too.
+ *
+ * **The clock is the wall clock, and that is a limit.** A lease is a
+ * comparison, and a comparison needs one clock; the board collection's own is
+ * the right one. It is not reachable here — the fence reads the board as a
+ * plain resource collection, which exposes no `now()`. The board's clock
+ * defaults to `Date.now` and this lab injects no other, so today the two agree.
+ * If one is ever injected, this comparison is what breaks: a live attempt would
+ * read as lapsed and a lapsed one as live.
+ */
+function leaseHasLapsed(claim: ClaimView, now: number): boolean {
+  if (claim.status !== "in_progress") return false;
+  return claim.leaseUntil != null && claim.leaseUntil <= now;
+}
 
 /**
  * Write one attempt's fields onto its issue-phase row — or refuse, if this
@@ -258,8 +290,9 @@ const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "awaiting_review"]);
  * since the moment it was made — `attempts` was incremented inside the claim
  * write, before anything was dispatched. An attempt is live exactly when the
  * board's counter still matches the one it was handed AND the row is in a
- * status an attempt owns. Same-attempt progress is permitted by equality, so
- * the live attempt writes freely.
+ * status an attempt owns AND its lease has not lapsed — the same three the
+ * substrate settles on. Same-attempt progress is permitted by equality, so the
+ * live attempt writes freely.
  *
  * The row-local check is kept underneath as a monotonic backstop for the window
  * where the board read itself could be stale. Neither is sufficient alone.
@@ -303,6 +336,7 @@ export async function writeRunRow(
   if (claim === undefined) return "refused";
   if (claim.attempts !== identity.attempt) return "refused";
   if (!ATTEMPT_OWNED_STATUSES.has(String(claim.status))) return "refused";
+  if (leaseHasLapsed(claim, Date.now())) return "refused";
 
   const existing = (await runs.getOptional(identity.topic))?.state as
     | RunRecordState

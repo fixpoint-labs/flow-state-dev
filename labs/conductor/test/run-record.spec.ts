@@ -201,6 +201,60 @@ describe("the run record — obligation A", () => {
 
     expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("refused");
   });
+
+  it("refuses a write once this attempt's lease has lapsed", async () => {
+    // The substrate refuses a SETTLEMENT on a lapsed lease exactly as it
+    // refuses one on a lost claim — both are `"lost-claim"`. A fence that took
+    // only the status half would admit the write the substrate rejects, and the
+    // two would then disagree in the one direction that matters: an open board
+    // row beside a run record reading `succeeded`.
+    //
+    // Note the counter and the status both still MATCH here. The lease is the
+    // only thing separating this attempt from a live one, which is what makes
+    // this the conjunct rather than a restatement of the two above.
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+
+    await board.upsert(TASK, claimed(1));
+    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await board.upsert(TASK, { ...claimed(1), leaseUntil: Date.now() - 1_000 });
+
+    expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("refused");
+  });
+
+  it("still applies a write while the lease is live", async () => {
+    // The other half of the same rule. A refusal condition that fires on every
+    // row would pass the test above while breaking every real run, so the
+    // live-lease case is asserted rather than assumed.
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+
+    await board.upsert(TASK, { ...claimed(1), leaseUntil: Date.now() + 60_000 });
+    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+
+    expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("applied");
+  });
+
+  it("still applies a write to a PARKED row whose lease is in the past", async () => {
+    // A row waiting on a person is not waiting on a lease, and the substrate's
+    // own predicate returns false for anything that is not `in_progress`. A
+    // mirror that dropped that guard would refuse every write from an answered
+    // run — the exact surface LAB-139 builds on.
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+
+    await board.upsert(TASK, claimed(1));
+    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await board.upsert(TASK, {
+      ...claimed(1, "awaiting_review"),
+      leaseUntil: Date.now() - 1_000,
+    });
+
+    expect(await writeRunRow(ctx, identity(1), { reason: "asked" })).toBe("applied");
+  });
 });
 
 describe("the run record — the clearing rule", () => {
