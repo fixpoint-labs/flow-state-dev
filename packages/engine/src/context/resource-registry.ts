@@ -56,7 +56,8 @@ import {
 import { resourceStorageKeys } from "../resources/storage-keys";
 import {
   normalizeResourceDefault,
-  normalizeResourceState
+  normalizeResourceState,
+  parseResourceWriteState
 } from "../resources/normalize-resource-state";
 import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
@@ -655,7 +656,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
    * `mutate` is the op's intent, not a finished value: it is re-run against
    * refreshed state on every retry, which is what lets two contexts patching
    * different fields both land instead of the second clobbering the first.
-   * Normalization happens inside the mutator so a retry re-normalizes too.
+   * Schema parse happens inside the mutator so a retry re-validates too.
    */
   const persistResourceState = async (
     name: string,
@@ -669,7 +670,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
     return options.mutateResourceKey(
       name,
-      async (current) => normalizeResourceState(config, await mutate(current)),
+      async (current) => parseResourceWriteState(config.stateSchema, await mutate(current), name),
       { seed }
     );
   };
@@ -683,10 +684,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     return options.mutateResourceKey(
       storageKey,
-      async (current) => {
-        const parsed = nsConfig.stateSchema.safeParse(await mutate(current));
-        return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
-      },
+      async (current) =>
+        parseResourceWriteState(nsConfig.stateSchema, await mutate(current), storageKey),
       { seed }
     );
   };
@@ -1240,13 +1239,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           }
 
           // Patch branch: merge `update` over existing state, validate the
-          // merged shape explicitly, then persist. We validate (rather
-          // than rely on `persistNamespaceInstanceState`'s safeParse-with-
-          // empty-fallback) so a bad `update` throws loudly — matching the
-          // create branch's behavior. Without this, an invalid `update`
-          // would silently overwrite the resource with `{}` on the patch
-          // branch but throw on the create branch — an asymmetry that
-          // makes caller bugs hard to detect.
+          // merged shape explicitly, then persist. Persist also rejects an
+          // invalid result; the check here names the op as upsert so the
+          // diagnostic matches the create branch.
           //
           // The merge runs INSIDE the mutator so a CAS retry re-merges
           // `update` over the winner's state rather than re-applying a merge

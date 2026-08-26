@@ -78,7 +78,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. The `state` getter on a resolved ref is synchronous — you await the lookup, not the read of an already-resolved ref.
+Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. `patchState`, `setState`, and `updateState` refuse a result that fails `stateSchema`; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). The `state` getter on a resolved ref is synchronous — you await the lookup, not the read of an already-resolved ref.
 
 Each returned ref also carries `path`, `scope`, and `uri` fields for identity — see [Resource identity](./overview#resource-identity-path-scope-and-uri) for details.
 
@@ -123,6 +123,8 @@ The four "if-exists / if-missing" patterns:
 | `create(k, s, { replace: true })` | replaces (setState, defaults fill) | creates |
 | `getOrCreate(k, init?)` | returns as-is | creates |
 | `upsert(k, update, createOnly?)` | patches | creates with `{ ...createOnly, ...update }` |
+
+`create` and `upsert` refuse an initial or merged state that fails `stateSchema`. The instance is not created or patched.
 
 Both new operations fire the right lifecycle hooks: `onInstanceUpdated` on the replace/patch branch, `onInstanceCreated` on the create branch. `maxInstances` is only checked when adding a new instance — replacing or patching an existing one never trips the guard.
 

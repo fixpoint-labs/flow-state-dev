@@ -98,6 +98,64 @@ Deleting a resource leaves a small marker behind rather than removing the row, a
 
 One limit stated plainly: on the filesystem store the comparison is held per key on the store instance. That covers every write through that instance, two contexts sharing it included. It does not coordinate two stores pointed at the same directory, whether they sit in one Node process or two. The in-memory, SQLite and Postgres stores compare and swap inside the store itself.
 
+## Schema-invalid resource writes
+
+After `patchState`, `setState`, or `updateState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same three methods and the same contract.
+
+```ts
+import { defineResource, handler } from "@flow-state-dev/core";
+import { ValidationError } from "@flow-state-dev/engine";
+import { z } from "zod";
+
+const taskResource = defineResource({
+  scope: "session",
+  stateSchema: z.object({
+    note: z.string().default(""),
+    retries: z.number().int().nonnegative().default(0),
+  }),
+  writable: true,
+});
+
+const bumpRetries = handler({
+  name: "bump-retries",
+  resources: { task: taskResource },
+  execute: async (_input, ctx) => {
+    const task = ctx.resources.task;
+
+    await task.patchState({ note: "in progress" });
+    // task.state.note === "in progress"
+
+    try {
+      await task.updateState((state) => ({ ...state, retries: -1 }));
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        err.code;      // "validation_error"
+        err.retryable; // false
+        err.message;
+        // Resource "task" write failed stateSchema validation at "retries": <issue>
+      }
+    }
+    // task.state.retries === 0. The refused write did not land.
+  },
+});
+```
+
+A result that fails `stateSchema`, or that parses to a non-object, throws `ValidationError`. Stored state is the value from before the call. No `resource_change` is emitted.
+
+The message is:
+
+```
+Resource "<storage-key>" write failed stateSchema validation[ at "<path>"]: <issue>
+```
+
+`<storage-key>` is the persist key: `task` for a single resource, `items/doc1` for a collection instance. The ` at "<path>"` segment is present when Zod reports a field path.
+
+Collection `create` and `upsert` refuse an invalid initial or merged state. The instance is not created or patched.
+
+A read of a persisted value that does not validate resolves to a schema-valid default. The read does not throw.
+
+The refusal applies to `ResourceRef`. Scope bags (`ctx.session.patchState` and the rest) are a different surface.
+
 ## Writing an updater that may run twice
 
 The callback you hand to `updateState` (or `atomicState`) is an **updater**: it receives the current state and returns the next one. On any path above with a version check under it — request, session, user, org, and resource state — that callback is not guaranteed to run once. When the persist step loses a version check, the loop refreshes from the store and **calls your updater again** with the freshest state. Only the last attempt's output is written.

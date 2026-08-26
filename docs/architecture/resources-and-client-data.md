@@ -165,6 +165,8 @@ await plan.updateState((current) => ({
 }));
 ```
 
+A write whose result fails `stateSchema` throws `ValidationError` and leaves the stored state untouched. Reads of a persisted value that no longer validates still fall back to the resource default — that is load-time recovery, not a write path.
+
 `ctx.session.state`, `ctx.user.state`, and `ctx.org.state` survive — state slices are namespaces that multiple unrelated blocks contribute keys into and need scope tagging at the install site. Resources have identity, so they carry their scope with them.
 
 ### Portable Resource Definitions
