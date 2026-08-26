@@ -242,8 +242,9 @@ Config options:
 - `stateSchema: ZodTypeAny` — schema for each instance's state
 - `maxInstances?: number` — cap on simultaneous instances (must be >= 1)
 - `eviction?: "none" | "lru" | "oldest"` — what to do when cap is reached (default: `"none"` = throw)
+- `writable?: boolean` — whether blocks can modify instance state (`patchState` / `setState` / `updateState` / `upsert` on an existing key) and instance content (`writeContent`). Default `true`. Independent of `llmWritable`. `create` / `getOrCreate` / `delete` are not gated
 - `llmReadable?: boolean` — exposes every instance's content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`). Default `false`
-- `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable`
+- `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable` and of `writable`
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook

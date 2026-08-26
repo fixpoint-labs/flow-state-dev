@@ -179,6 +179,16 @@ describe("defineResourceCollection", () => {
     ).toThrow("eviction requires maxInstances");
   });
 
+  it("preserves writable: false on the collection definition (FIX-1261)", () => {
+    const coll = defineResourceCollection({
+      pattern: "notes/*",
+      scope: "session",
+      stateSchema: z.object({ body: z.string() }),
+      writable: false,
+    });
+    expect(coll.writable).toBe(false);
+  });
+
   it("allows eviction: 'none' without maxInstances", () => {
     expect(() =>
       defineResourceCollection({

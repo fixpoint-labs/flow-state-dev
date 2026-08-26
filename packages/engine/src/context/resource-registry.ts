@@ -681,6 +681,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     mutate: (current: JsonObject) => JsonObject | Promise<JsonObject>,
     seed: JsonObject
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
+    if (nsConfig.writable === false) {
+      throw new Error(`Resource "${storageKey}" is read-only`);
+    }
+
     return options.mutateResourceKey(
       storageKey,
       async (current) => {
@@ -835,6 +839,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof raw === "string" ? raw : null;
       },
       async writeContent(content: string): Promise<void> {
+        if (nsConfig.writable === false) {
+          throw new Error(`Resource "${storageKey}" content is read-only`);
+        }
+
         await options.persistResourceContentKey(storageKey, content);
         // A content write carries no state delta. Fire the seam as "updated" (so
         // the FIX-739 client projection refreshes unchanged) with a `contentWrite`
