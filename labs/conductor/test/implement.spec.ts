@@ -1,10 +1,16 @@
 /**
  * The completion check's state rule, and the seed's identity.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { seedRepo } from "./harness";
 import {
   COMPLETING_QUERY_STATES,
   hasCompletingPr,
+  implementPhase,
   prListArgs,
   readCompletion,
   repoSlugFromRemote,
@@ -17,6 +23,12 @@ import {
   conductorTaskId,
   encodeSegment,
 } from "../src/workspace";
+
+/** Temp trees this file made; removed after each test so none outlive the run. */
+const dirs: string[] = [];
+afterEach(() => {
+  while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
+});
 
 const ALICE: RunPrincipal = { userId: "alice" };
 const EPIC = "conductor-tasks-test-epic";
@@ -208,6 +220,65 @@ describe("the done-condition — which pull requests count", () => {
       },
     ]);
     expect(readCompletion(saturatedButDone, "owner/repo", 4)).toBe(true);
+  });
+
+  it("queries the repository validated at construction, not the one origin names later", async () => {
+    // A linked worktree shares `remote.origin.url` with the repository it was
+    // cut from, and this probe runs AFTER the coding agent. One
+    // `git remote set-url origin` inside the checkout — by the agent or its
+    // tooling — repointed both the `-R` selector and the attribution, so a
+    // same-branch pull request in the replacement repository settled the board
+    // while none existed in the configured one.
+    //
+    // Asserted on the argv `gh` actually received, because the defect is in
+    // WHICH repository is queried; a return value cannot show that.
+    const repo = mkdtempSync(join(tmpdir(), "conductor-pin-"));
+    dirs.push(repo);
+    seedRepo(repo);
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: repo, stdio: "pipe", encoding: "utf8" });
+    git("remote", "set-url", "origin", "https://github.com/validated/repo.git");
+
+    const bin = mkdtempSync(join(tmpdir(), "conductor-pin-bin-"));
+    dirs.push(bin);
+    const log = join(bin, "argv.log");
+    writeFileSync(
+      join(bin, "gh"),
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then echo fixture; exit 0; fi
+echo "$@" >> ${log}
+echo '[]'
+`,
+    );
+    chmodSync(join(bin, "gh"), 0o755);
+    const priorPath = process.env["PATH"];
+    process.env["PATH"] = `${bin}${delimiter}${priorPath ?? ""}`;
+
+    try {
+      const phase = implementPhase();
+      // Construction-time validation — this is where the identity is pinned.
+      phase.validate?.({ root: repo, sourceRepo: repo, baseRef: "main" } as never);
+
+      // The agent repoints origin. The worktree and the source repo share this
+      // config, so there is no copy of the old value left to read.
+      git("remote", "set-url", "origin", "https://github.com/attacker/repo.git");
+
+      await phase.isDone({
+        epic: "e",
+        issue: "FIX-1",
+        phase: "implement",
+        attempt: 1,
+        workspacePath: repo,
+        branch: "conductor/e/FIX-1--implement",
+        ctx: {} as never,
+      } as never);
+
+      const argv = readFileSync(log, "utf8");
+      expect(argv).toContain("github.com/validated/repo");
+      expect(argv).not.toContain("attacker");
+    } finally {
+      process.env["PATH"] = priorPath;
+    }
   });
 
   it("keeps a port only when it is the API's port", () => {

@@ -30,6 +30,20 @@ export interface ImplementPhaseOptions {
    * test can stage both arms of the conjunction without a network.
    */
   prExists?: (run: PhaseRunContext) => boolean | Promise<boolean>;
+  /**
+   * The repository the completion probe is pinned to, validated at
+   * construction.
+   *
+   * **Without it the probe re-reads `origin` after the agent has run**, and a
+   * linked worktree shares `remote.origin.url` with the repository it was cut
+   * from — so one `git remote set-url` inside the checkout, by the agent or its
+   * tooling, repoints the lookup. The probe would then take both its `gh -R`
+   * selector and its head-repository attribution from the replacement, and a
+   * same-branch pull request over there settles the board while none exists in
+   * the configured source repository. A silent wrong success, which is the
+   * defect class this lab exists to remove.
+   */
+  repo?: RemoteRepo;
 }
 
 /**
@@ -315,17 +329,24 @@ export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
  * `git` puts the answer outside `gh`'s environment, and passing it back as `-R`
  * stops the listing drifting to another one.
  */
-async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
-  const { stdout: originStdout } = await run(
-    "git",
-    ["remote", "get-url", "origin"],
-    {
-      cwd: ctx.workspacePath,
-      timeoutMs: NETWORK_CALL_TIMEOUT_MS,
-      signal: ctx.ctx.signal,
-    },
-  );
-  const repo = repoSlugFromRemote(originStdout.trim());
+/** `origin` as this checkout currently spells it. The unpinned path only. */
+async function readOriginRepo(ctx: PhaseRunContext): Promise<RemoteRepo | undefined> {
+  const { stdout } = await run("git", ["remote", "get-url", "origin"], {
+    cwd: ctx.workspacePath,
+    timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+    signal: ctx.ctx.signal,
+  });
+  return repoSlugFromRemote(stdout.trim());
+}
+
+async function prExistsViaGh(ctx: PhaseRunContext, pinned?: RemoteRepo): Promise<boolean> {
+  // **The pin wins, and re-reading is the fallback rather than the rule.** See
+  // {@link ImplementPhaseOptions.repo}: this runs after the agent, and the
+  // remote it would read is shared with the repository the worktree was cut
+  // from, so the agent can change the answer. A caller that constructs the
+  // phase itself and passes no pin keeps the old behaviour, and keeps the hole
+  // with it.
+  const repo = pinned ?? (await readOriginRepo(ctx));
   if (repo === undefined) return false;
 
   // One listing per state that counts, stopping at the first match. The whole
@@ -369,7 +390,7 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
  * failure than the one being prevented. It could not promise much anyway —
  * credentials valid at construction can expire before the probe runs.
  */
-function assertCompletionProbeUsable(workspace: WorkspaceConfig): void {
+function assertCompletionProbeUsable(workspace: WorkspaceConfig): RemoteRepo {
   let url: string;
   try {
     url = execFileSync("git", ["remote", "get-url", "origin"], {
@@ -386,7 +407,8 @@ function assertCompletionProbeUsable(workspace: WorkspaceConfig): void {
         `fails permanently. Add an "origin" remote, or supply your own \`prExists\`.`,
     );
   }
-  if (repoSlugFromRemote(url) === undefined) {
+  const repo = repoSlugFromRemote(url);
+  if (repo === undefined) {
     throw new Error(
       `[conductor] the "origin" remote of ${workspace.sourceRepo} is "${url}", which does ` +
         `not name a host and repository the completion check can query. Same cost as a ` +
@@ -407,11 +429,25 @@ function assertCompletionProbeUsable(workspace: WorkspaceConfig): void {
         `then fails permanently. Install \`gh\`, or supply your own \`prExists\`.`,
     );
   }
+  // Handed back so the probe can be pinned to the repository that was checked,
+  // rather than to whatever `origin` says once the agent has been and gone.
+  return repo;
 }
 
 /** Build the implement phase. */
 export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
-  const prExists = options.prExists ?? prExistsViaGh;
+  // **Filled by `validate`, which runs at construction — before any dispatch,
+  // and long before the agent exists to repoint anything.** A `let` rather than
+  // a parameter because the validated identity is produced by the same check
+  // that proves the probe can run at all, and re-deriving it in the caller
+  // would be a second reading of a value that can differ from the first.
+  //
+  // A caller that builds this spec and never validates keeps `options.repo` —
+  // `undefined` unless they passed one — and the probe falls back to reading
+  // `origin` at run time, which is the behaviour with the hole in it.
+  let pinned = options.repo;
+  const prExists =
+    options.prExists ?? ((ctx: PhaseRunContext) => prExistsViaGh(ctx, pinned));
 
   return {
     phase: "implement",
@@ -420,7 +456,13 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
     // demanding one would refuse a configuration that works — and the tests,
     // which stub the probe against repositories that have no remote at all, are
     // the proof that this distinction is load-bearing rather than theoretical.
-    ...(options.prExists === undefined ? { validate: assertCompletionProbeUsable } : {}),
+    ...(options.prExists === undefined
+      ? {
+          validate: (workspace: WorkspaceConfig): void => {
+            pinned = assertCompletionProbeUsable(workspace);
+          },
+        }
+      : {}),
     // Empty, and that is not an oversight: this phase reads no collection of its
     // own. It does not read the run record either — everything it needs about
     // the previous attempt arrives on `PhaseRunContext`, because that row
