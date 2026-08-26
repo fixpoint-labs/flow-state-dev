@@ -107,9 +107,34 @@ const GH_QUERYABLE_SCHEMES = String.raw`(?:https?|ssh|git|git\+ssh)`;
  * server, silently.
  */
 export const REMOTE_VIA_URL = new RegExp(
-  String.raw`^${GH_QUERYABLE_SCHEMES}://(?:[^@/]+@)?(${IPV6_HOST}(?::\d+)?|[^/:]+(?::\d+)?)/(.+)$`,
+  String.raw`^(${GH_QUERYABLE_SCHEMES})://(?:[^@/]+@)?(${IPV6_HOST}(?::\d+)?|[^/:]+(?::\d+)?)/(.+)$`,
   "i",
 );
+
+/**
+ * The schemes whose port is the port `gh` should talk to.
+ *
+ * **A port is only the API's when the transport is the API's.** An
+ * `http://ghe.internal:8443/…` remote names an HTTP endpoint, so `:8443` is
+ * where the API lives and carrying it through is required — dropping it sent an
+ * Enterprise checkout to the same hostname on 443, a different server. But
+ * `ssh://git@ghe.acme:2222/…` names an SSH daemon, and its API is on HTTPS
+ * elsewhere; `gh -R host:2222/owner/repo` would query the SSH port and fail
+ * once per attempt, after each paid run.
+ *
+ * The earlier fix was right about `:8443` and wrong to generalise from it. Both
+ * halves of the rule are needed, and neither is the default.
+ */
+export const API_PORT_SCHEMES = /^https?$/i;
+
+/**
+ * A trailing `:port` on a host.
+ *
+ * Anchored at the end, which is what makes it safe for a bracketed IPv6
+ * literal: `[2001:db8::1]:2222` loses the port, `[2001:db8::1]` ends in `]` and
+ * is untouched, and the literal's own colons are never at the end.
+ */
+export const HOST_PORT = /:\d+$/;
 
 /**
  * `[user@]host:owner/name` — scp-like, and NOT a path.

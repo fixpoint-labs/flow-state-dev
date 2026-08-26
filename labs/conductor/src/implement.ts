@@ -16,7 +16,9 @@ import type { PhaseRunContext, PhaseSpec } from "./manager";
 import type { WorkspaceConfig } from "./workspace";
 import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
 import {
+  API_PORT_SCHEMES,
   GIT_SUFFIX,
+  HOST_PORT,
   REMOTE_VIA_SCP,
   REMOTE_VIA_URL,
   TRAILING_SLASHES,
@@ -252,9 +254,22 @@ export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
   // build on a remote `gh` can query perfectly well.
   const viaUrl = REMOTE_VIA_URL.exec(trimmed);
   const viaScp = REMOTE_VIA_SCP.exec(trimmed);
-  const parsed = viaUrl ?? viaScp;
-  if (parsed === null) return undefined;
-  const [, host, rest] = parsed;
+  if (viaUrl === null && viaScp === null) return undefined;
+  // The URL form carries a scheme; the scp-like form has no port to begin with.
+  const [scheme, matchedHost, rest] =
+    viaUrl !== null
+      ? [viaUrl[1], viaUrl[2], viaUrl[3]]
+      : [undefined, viaScp![1], viaScp![2]];
+  // **The port survives only when it is the API's port.** Keeping it for every
+  // scheme was over-generalising from the `:8443` case: that remote is HTTP, so
+  // its port is where the API answers. An `ssh://…:2222` remote names an SSH
+  // daemon, and `gh -R host:2222/owner/repo` would query the SSH port — passing
+  // startup and then failing once per attempt, after each paid run, which is
+  // the shape the preflight beside it exists to prevent.
+  const host =
+    scheme !== undefined && !API_PORT_SCHEMES.test(scheme)
+      ? matchedHost.replace(HOST_PORT, "")
+      : matchedHost;
   const segments = rest.split("/").filter((part) => part.length > 0);
   if (segments.length < 2) return undefined;
   // The last two are owner and name; anything before is a path prefix some

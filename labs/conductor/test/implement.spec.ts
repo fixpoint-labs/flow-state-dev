@@ -210,6 +210,51 @@ describe("the done-condition — which pull requests count", () => {
     expect(readCompletion(saturatedButDone, "owner/repo", 4)).toBe(true);
   });
 
+  it("keeps a port only when it is the API's port", () => {
+    // **The earlier `:8443` fix was right, and I generalised it too far.** A
+    // port survives only when the transport is the one `gh` talks to. These
+    // remotes name an HTTP endpoint, so the port is where the API answers and
+    // dropping it would send the listing to a different server.
+    expect(repoSlugFromRemote("http://ghe.internal:8443/owner/repo.git")?.selector).toBe(
+      "ghe.internal:8443/owner/repo",
+    );
+    expect(repoSlugFromRemote("https://ghe.internal:8443/owner/repo.git")?.selector).toBe(
+      "ghe.internal:8443/owner/repo",
+    );
+
+    // These name an SSH daemon or a git daemon. The API is elsewhere, so
+    // carrying the port through makes `gh -R` query the wrong port — passing
+    // startup and then failing once per attempt, after each paid coding run.
+    expect(repoSlugFromRemote("ssh://git@ghe.acme:2222/owner/repo.git")?.selector).toBe(
+      "ghe.acme/owner/repo",
+    );
+    expect(repoSlugFromRemote("git+ssh://git@ghe.acme:2222/owner/repo.git")?.selector).toBe(
+      "ghe.acme/owner/repo",
+    );
+    expect(repoSlugFromRemote("git://ghe.acme:9418/owner/repo.git")?.selector).toBe(
+      "ghe.acme/owner/repo",
+    );
+
+    // **A bracketed IPv6 literal survives both halves.** Its own colons must
+    // not read as a port, and its brackets must not be eaten by the stripper —
+    // a port rule written as a plain colon split gets both of these wrong.
+    expect(repoSlugFromRemote("ssh://git@[2001:db8::1]:2222/owner/repo.git")?.selector).toBe(
+      "[2001:db8::1]/owner/repo",
+    );
+    expect(repoSlugFromRemote("https://[2001:db8::1]:8443/owner/repo.git")?.selector).toBe(
+      "[2001:db8::1]:8443/owner/repo",
+    );
+
+    // And a portless remote is untouched on both paths, including the scp-like
+    // spelling, which has no port syntax at all.
+    expect(repoSlugFromRemote("ssh://git@ghe.acme/owner/repo.git")?.selector).toBe(
+      "ghe.acme/owner/repo",
+    );
+    expect(repoSlugFromRemote("git@ghe.acme:owner/repo.git")?.selector).toBe(
+      "ghe.acme/owner/repo",
+    );
+  });
+
   it("refuses a transport `gh` cannot query, rather than naming a plausible host", () => {
     // The failure this pins is not a parse error — it is a CONFIDENT one. A
     // scheme-agnostic parser read `file://localhost/owner/repo.git` as the
