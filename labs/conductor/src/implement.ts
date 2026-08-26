@@ -12,7 +12,7 @@
  * exhaust its turn budget.
  */
 import { execFileSync } from "node:child_process";
-import type { PhaseRunContext, PhaseSpec } from "./manager";
+import type { PhaseRunContext, PhaseSpec, PromptRunContext } from "./manager";
 import type { WorkspaceConfig } from "./workspace";
 import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS, run } from "./exec";
 import {
@@ -507,12 +507,29 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
     // collections a phase brings of its own.
     readable: {},
 
-    buildPrompt(ctx: PhaseRunContext): string {
+    buildPrompt(ctx: PromptRunContext): string {
       const lines = [
         `Implement Linear issue ${ctx.issue}.`,
         "",
         `You are working in ${ctx.workspacePath}, on branch ${ctx.branch}.`,
         "Commit your work and open a pull request for that branch when the change is done.",
+        "",
+        // **The forced ask.** The harness offers no seam for a question, so this
+        // instruction IS the seam: nothing else tells the run how to reach a
+        // person, and a run that ignores it takes the ordinary no-question
+        // failure path. Written imperatively, with the path spelled in full and
+        // the ordering constraint stated, because both are load-bearing and a
+        // reworded version of either is a question nobody ever sees.
+        "If you hit an ambiguity you genuinely cannot resolve — a decision that",
+        "belongs to a person rather than to you — do NOT guess and do NOT stop",
+        "silently. Write the question, and only the question, to this exact file:",
+        "",
+        `  ${ctx.askMarkerPath}`,
+        "",
+        "Write it BEFORE you open the pull request, then stop working. The file is",
+        "already gitignored, so it will not be committed. Someone will answer it and",
+        "your run will be started again holding the answer. Only write that file if",
+        "you actually have a question — an empty or leftover file is not one.",
       ];
 
       if (ctx.attempt > 1) {
@@ -532,11 +549,28 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
         lines.push("", "The last attempt stopped for this reason:", ctx.feedback);
       }
 
+      // **The other channel, and it never carries the one above.** These are
+      // answers a person gave to questions this run asked; `feedback` is why an
+      // attempt failed. Handing an answer back through `feedback` is the
+      // cheapest wiring and would tell the run *"your last attempt stopped
+      // because: take the second option."*
+      //
+      // Oldest first, ordered by the manager. Every answered row for this
+      // issue-phase across every attempt — the question history, not a
+      // freshness assumption — and folding it is idempotent, so a replay builds
+      // the same prompt.
+      if (ctx.answers.length > 0) {
+        lines.push("", "Questions you asked earlier have been answered:");
+        for (const { question, answer } of ctx.answers) {
+          lines.push("", `  You asked: ${question}`, `  The answer: ${answer}`);
+        }
+        lines.push("", "Continue on those answers.");
+      }
+
       // From the MANAGER, not from the run record. The record's `sessionId`
       // describes the attempt now running, and this attempt's opening write
       // cleared it before a prompt could be built — so reading it here always
-      // saw `null` and the previous session was silently never named. The
-      // manager captures it before the clear and hands it over.
+      // saw `null` and the previous session was silently never named.
       if (ctx.previousSessionId !== undefined) {
         lines.push("", `The previous run's harness session was ${ctx.previousSessionId}.`);
       }

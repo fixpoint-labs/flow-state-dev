@@ -9,10 +9,10 @@
  * verdict can be staged, and the done-condition, so the conjunction's two arms
  * can be staged independently.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import type {
@@ -53,6 +53,47 @@ export function scriptedAgent(
       for (const message of typeof script === "function" ? script() : script) {
         yield message;
       }
+    },
+  });
+}
+
+/**
+ * A `query` that WRITES A QUESTION into the run's own checkout, then returns
+ * the given verdict.
+ *
+ * The whole ask path in one stub: the marker lands at the attempt's derived
+ * path inside `cwd`, exactly where a real coding run is told to put it, and the
+ * verdict is separate so a marker can be paired with a FAILED result — the
+ * combination arm 2's verdict half exists to exclude.
+ *
+ * The target path is parsed back out of the PROMPT rather than derived here, so
+ * a prompt that stopped naming the marker makes this stub write nowhere — which
+ * is exactly what a real coding agent would do with the same prompt.
+ */
+export function askingAgent(
+  question: string | (() => string | undefined),
+  subtype: string,
+  seen: { prompts: string[]; cwds: (string | undefined)[] },
+): ResolveClaudeAgent {
+  return () => ({
+    query: async function* (args) {
+      const prompt = String(args.prompt);
+      seen.prompts.push(prompt);
+      const cwd = args.options?.cwd;
+      seen.cwds.push(cwd);
+      const text = typeof question === "function" ? question() : question;
+      if (cwd !== undefined && text !== undefined) {
+        // The path the PROMPT named, parsed back out of it — so a prompt that
+        // stopped naming the marker makes this stub write nowhere, which is the
+        // failure a real coding agent would produce.
+        const named = /^\s{2}(\S*[/\\]\.fsdev[/\\]ask[/\\]\d+\.md)\s*$/m.exec(prompt);
+        if (named !== null) {
+          const target = named[1]!;
+          mkdirSync(dirname(target), { recursive: true });
+          writeFileSync(target, text);
+        }
+      }
+      yield sdkResult(subtype);
     },
   });
 }
@@ -122,6 +163,20 @@ export interface ConductorHarness {
     asSession?: string,
     asTenant?: string,
   ): Promise<T>;
+  /**
+   * The same call, with the request's ITEMS as well as its output.
+   *
+   * The board's completion item is where `terminationReason` lives, and the
+   * drain's exit verdict is not on any action's output — so a check that the
+   * drain returned BECAUSE a row was parked has to read the stream, not the
+   * return value.
+   */
+  callWithItems<T = unknown>(
+    action: string,
+    input: unknown,
+    asSession?: string,
+    asTenant?: string,
+  ): Promise<{ output: T; items: readonly unknown[] }>;
   dispose(): void;
 }
 
@@ -143,6 +198,8 @@ export interface HarnessOptions {
   runTimeoutMs?: number;
   /** The bound on ALL of provisioning, which the stale window must clear. */
   provisionTimeoutMs?: number;
+  /** The relay seam. Called after the park; a no-op by default. */
+  announce?: NonNullable<Parameters<typeof conductorFlow>[0]["announce"]>;
 }
 
 /** A real git repository with one commit, so `worktree add` has something to cut. */
@@ -223,6 +280,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
       includePartialMessages: false,
     },
     ownership,
+    ...(options.announce !== undefined ? { announce: options.announce } : {}),
   });
 
   const state = createFlowState({
@@ -239,29 +297,22 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
 
   const sessionId = `sess_conductor_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-  return {
-    state,
-    flow: built.flow,
-    built,
-    workspaceRoot,
-    sourceRepo,
-    sessionId,
-    /**
-     * Run one action.
-     *
-     * `asTenant` is the request's RESOLVED tenant — it goes to `runAction`,
-     * which puts it on `ctx.user.identity`, exactly where a real deployment's
-     * authentication would. Never passed in the input body: the whole point of
-     * the guard under test is that it reads a trusted source (BP-031), so a
-     * test that supplied the tenant through the payload would be exercising the
-     * wrong path.
-     */
-    async call<T>(
-      action: string,
-      input: unknown,
-      asSession?: string,
-      asTenant?: string,
-    ): Promise<T> {
+  /**
+   * Run one action, returning both its output and the request's items.
+   *
+   * `asTenant` is the request's RESOLVED tenant — it goes to `runAction`,
+   * which puts it on `ctx.user.identity`, exactly where a real deployment's
+   * authentication would. Never passed in the input body: the whole point of
+   * the guard under test is that it reads a trusted source (BP-031), so a
+   * test that supplied the tenant through the payload would be exercising the
+   * wrong path.
+   */
+  async function callWithItems<T>(
+    action: string,
+    input: unknown,
+    asSession?: string,
+    asTenant?: string,
+  ): Promise<{ output: T; items: readonly unknown[] }> {
       // The RESOLVED runtime, not the FlowState handle: `stores` on the handle
       // is the unresolved slot config, and `runAction` reaches straight for
       // `stores.activeRequests`.
@@ -296,8 +347,26 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
           JSON.stringify(outcome.error);
         throw new Error(`conductor action "${action}" failed: ${detail}`);
       }
-      return outcome.output as T;
-    },
+    return {
+      output: outcome.output as T,
+      items: (result as { items?: readonly unknown[] }).items ?? [],
+    };
+  }
+
+  return {
+    state,
+    flow: built.flow,
+    built,
+    workspaceRoot,
+    sourceRepo,
+    sessionId,
+    call: async <T>(
+      action: string,
+      input: unknown,
+      asSession?: string,
+      asTenant?: string,
+    ): Promise<T> => (await callWithItems<T>(action, input, asSession, asTenant)).output,
+    callWithItems,
     dispose() {
       rmSync(dir, { recursive: true, force: true });
     },

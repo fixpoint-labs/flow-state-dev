@@ -34,11 +34,17 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import type {
   BlockContext,
   DeclaredResourceEntry,
-  DefinedResourceCollection,
 } from "@flow-state-dev/core/types";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
+import {
+  getOrCreateTaskCollection,
+  hasFrozenLedgerAssignee,
+  resolveResourceCollection,
+  type DefinedTaskCollection,
+  type TaskCollectionRef,
+  type TaskWorker,
+} from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
 import { MAX_TIMER_MS } from "./config-env";
@@ -52,6 +58,17 @@ import {
   type AttemptIdentity,
   type RunRowWrite,
 } from "./run-record";
+import { askMarkerPath, readAskMarker } from "./ask";
+import {
+  INBOX,
+  askQuestion,
+  inboxCollection,
+  listQuestions,
+  questionFingerprint,
+  questionTopic,
+  withdrawEarlierQuestions,
+  withdrawQuestion,
+} from "./inbox";
 import {
   conductorTaskId,
   sameSegment,
@@ -97,12 +114,42 @@ export interface PhaseRunContext {
   ctx: BlockContext;
 }
 
+/** One answered question, as the prompt fold receives it. */
+export interface AnsweredQuestion {
+  /** What the run asked, in its own words. */
+  question: string;
+  /** What the operator said to do. */
+  answer: string;
+}
+
+/**
+ * What a prompt builder gets on top of {@link PhaseRunContext}: the two things
+ * the ask adds.
+ *
+ * Separate from `PhaseRunContext` rather than optional fields on it. The
+ * done-condition needs neither, and a field that is sometimes absent is the
+ * silent-partial shape this lab exists to remove — a builder cannot tell "no
+ * answers" from "nobody read them" if the same `undefined` means both.
+ */
+export interface PromptRunContext extends PhaseRunContext {
+  /**
+   * Every ANSWERED question for this issue-phase, oldest first — across all
+   * attempts, deliberately. That is the question history, not a freshness
+   * assumption, and folding it is idempotent, so a replay produces the same
+   * prompt and it is correct whether the coding session resumed or started
+   * cold.
+   */
+  answers: readonly AnsweredQuestion[];
+  /** Where THIS attempt must write a question if it has one. */
+  askMarkerPath: string;
+}
+
 /** Everything that makes one phase a phase. Three values, passed in. */
 export interface PhaseSpec {
   /** The phase segment of the run record's topic. */
   phase: string;
   /** Rebuilt on every wake from current state, never computed when the row was filed. */
-  buildPrompt(run: PhaseRunContext): string | Promise<string>;
+  buildPrompt(run: PromptRunContext): string | Promise<string>;
   /**
    * Has the job actually been done? Re-evaluated now, and consulted ONLY after
    * a successful verdict — never as an alternative route to completion.
@@ -147,8 +194,15 @@ export interface PhaseSpec {
 export interface ManagerOptions {
   /** The board's ledger collection id — the fence reads the live claim from it. */
   boardCollectionId: string;
-  /** The board's ledger declaration, so the manager can read a claim. */
-  boardCollection: DefinedResourceCollection;
+  /**
+   * The board's ledger declaration.
+   *
+   * Two things read it: the attempt fence, which resolves it as a plain
+   * resource collection to read the live claim, and the park arm, which
+   * resolves it as a `TaskCollectionRef` so `awaitReview` is the substrate's
+   * own transition rather than a status this lab writes by hand.
+   */
+  boardCollection: DefinedTaskCollection;
   /**
    * The tenant this conductor serves — the same value that partitions the
    * board's collection identity. Every request must resolve to it.
@@ -166,7 +220,29 @@ export interface ManagerOptions {
   ownership?: Partial<OwnershipBounds>;
   /** Forwarded to the coding agent, so tests can script the SDK. */
   agent?: Omit<Parameters<typeof claudeCodeAgent>[0], "detached" | "recordWork" | "cwd">;
+  /**
+   * Tell the coordinator session a question exists, so it learns without
+   * polling. Defaults to a no-op.
+   *
+   * **The inbox row is the durable carrier; this is only the announcement.**
+   * Relay (FIX-1230) is not in tree, so the seam's default is doing nothing at
+   * all — and what that costs while it is absent is that the operator finds
+   * the question by reading (`status`) rather than being told.
+   */
+  announce?: (event: QuestionAnnouncement) => void | Promise<void>;
   name?: string;
+}
+
+/**
+ * What the announcement carries: **the row's key and nothing else.**
+ *
+ * The key already names the issue, the phase and the attempt, so a wider
+ * payload would be a second copy of facts the durable row holds — and the row,
+ * not this, is what an answer is written against.
+ */
+export interface QuestionAnnouncement {
+  /** The bare inbox topic — the name `answer` takes. */
+  question: string;
 }
 
 /** The typed payload a conductor task carries. Not model-writable — see `./workspace`. */
@@ -581,6 +657,7 @@ export function harnessManager(options: ManagerOptions) {
     workspace,
     runTimeoutMs,
     agent = {},
+    announce = () => {},
     name = "harness-manager",
   } = options;
 
@@ -604,7 +681,11 @@ export function harnessManager(options: ManagerOptions) {
   // Merging the manager's entries LAST would also prevent both, and it is the
   // wrong fix: the phase author's declaration would simply not work, with
   // nothing anywhere saying why. This fails at construction, naming the key.
-  const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId]);
+  // `INBOX` joins the two for the same reason and with a third harm of its own:
+  // a phase re-declaring it would send the ask into a collection `answer` and
+  // `status` never read, so a run would park on a question no operator could
+  // ever see and no answer could ever reach.
+  const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX]);
   const claimed = Object.keys(phase.readable).filter((key) =>
     RESERVED_ACCESSORS.has(key),
   );
@@ -612,7 +693,8 @@ export function harnessManager(options: ManagerOptions) {
     throw new Error(
       `[conductor] the "${phase.phase}" phase declares readable collection(s) ` +
         `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns — ` +
-        `"${RUNS}" is the run record and "${boardCollectionId}" is the board ledger ` +
+        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, and ` +
+        `"${boardCollectionId}" is the board ledger ` +
         `the attempt fence reads. Both are already available to the phase; declaring ` +
         `them again would replace the manager's own.`,
     );
@@ -621,10 +703,49 @@ export function harnessManager(options: ManagerOptions) {
   const resources: Record<string, DeclaredResourceEntry> = {
     ...phase.readable,
     [RUNS]: runRecordCollection,
+    // Where a question is posted, withdrawn, and read back as an answer. The
+    // `answer` and `status` actions declare the same definition object, so the
+    // question a detached workstream writes is the one the coordinator session
+    // reads — one registration, not two storage slots that look alike.
+    [INBOX]: inboxCollection,
     // Declared so the fence can read the LIVE claim off the board row. The
     // board declares the same definition object, so this is one registration
     // rather than a second storage slot that looks like the first.
     [boardCollectionId]: boardCollection as unknown as DeclaredResourceEntry,
+  };
+
+  /**
+   * The board's rows as the SUBSTRATE sees them, not as a resource collection.
+   *
+   * The fence reads the ledger as a plain collection because all it needs is
+   * two fields off the persisted row. The park arm needs a transition, and a
+   * transition has to be the substrate's: status legality, the recorders'
+   * parked-row refusal and the lease's governance all hang off `awaitReview`
+   * rather than off the string it writes.
+   *
+   * Composed from the two exported pieces rather than reached for through
+   * `board.capability`, because the capability does not exist yet when this
+   * manager is constructed — the board is built FROM this worker. It is the
+   * same resolve the board's own drain and its accessor perform, including the
+   * frozen-assignee policy, which is read off the shared declaration here
+   * rather than captured as a boolean per call site.
+   */
+  const boardTasks = (ctx: BlockContext): Promise<TaskCollectionRef> => {
+    const collection = resolveResourceCollection(ctx, boardCollectionId);
+    if (collection === undefined) {
+      throw new Error(
+        `[conductor] the board ledger "${boardCollectionId}" is not registered on this ` +
+          `worker, so a run cannot be parked on a person — the question it just posted ` +
+          `would sit open with the row still reading as running.`,
+      );
+    }
+    return getOrCreateTaskCollection({
+      ctx,
+      backing: "resource",
+      collectionId: boardCollectionId,
+      collection,
+      immutableAssignee: hasFrozenLedgerAssignee(boardCollection),
+    });
   };
 
   /**
@@ -768,6 +889,22 @@ export function harnessManager(options: ManagerOptions) {
         ),
         "the run row was opened",
       );
+
+      // **Reconcile before this attempt runs.** The create-only write commits
+      // before the outcome arms are selected, so a process that dies in between
+      // leaves the previous attempt's row `open` with no arm having decided it.
+      // Left alone, that orphan satisfies the answer's proceed guard the moment
+      // THIS attempt parks — and answering it re-queues the run while this
+      // attempt's real question is still open.
+      //
+      // A question from an attempt that is over is moot, which is what arms 1
+      // and 3 already say; the gap is only that a crash skips them. After this
+      // there is at most ONE `open` row per issue-phase, which is what both the
+      // proceed guard and recovery's nothing-open condition already assumed.
+      //
+      // After the fenced open, not before: a superseded attempt stops there and
+      // must not reach in and withdraw its replacement's question.
+      await withdrawEarlierQuestions(ctx as BlockContext, issue, phaseName, input.attempts);
     },
   });
 
@@ -785,7 +922,24 @@ export function harnessManager(options: ManagerOptions) {
     resources,
     execute: async (input, ctx) => {
       const state = managerState(ctx as BlockContext);
-      const run: PhaseRunContext = {
+
+      // **Two channels, two meanings, and they never carry each other.** The
+      // board's `feedback` says why the LAST ATTEMPT FAILED; these say what an
+      // operator answered. Handing the answer back through `feedback` is the
+      // cheapest wiring and the one that already means something else — a run
+      // would be told *"your last attempt stopped because: take the second
+      // option."*
+      //
+      // Read here rather than inside the builder so the ORDER is the manager's:
+      // a fold whose order depends on where a phase happens to sort is a prompt
+      // that changes between replays.
+      const answers = (
+        await listQuestions(ctx as BlockContext, state.issue!, state.phase!)
+      )
+        .filter((row) => row.state.status === "answered" && row.state.answer !== null)
+        .map((row) => ({ question: row.state.question, answer: row.state.answer! }));
+
+      const run: PromptRunContext = {
         epic: boardCollectionId,
         issue: state.issue!,
         phase: state.phase!,
@@ -797,6 +951,11 @@ export function harnessManager(options: ManagerOptions) {
           ? { previousSessionId: state.previousSessionId }
           : {}),
         ctx: ctx as BlockContext,
+        answers,
+        // The prompt is the only place this path is named, which is what makes
+        // the ask FORCED rather than spontaneous — the harness offers no seam
+        // for a question to leave through (see `./ask`).
+        askMarkerPath: askMarkerPath(state.workspacePath!, input.attempts),
       };
 
       // **Bounded for the same reason the completion check is.** This await
@@ -853,14 +1012,52 @@ export function harnessManager(options: ManagerOptions) {
   });
 
   /**
-   * Read the verdict, then decide. **Completion is a conjunction.**
+   * Read the verdict, then decide. **Three outcomes, in this order, and the
+   * order is the design. Every arm is a conjunction.**
    *
-   * A run can open the pull request and THEN exhaust its turn budget — the SDK
-   * reports that as an errored handle rather than a throw, which is this whole
-   * lab's premise. So a done-condition consulted alone would complete the row
-   * for a run that failed, reintroducing the silent success through the door
-   * meant to close it. A successful verdict whose done-condition does not hold
-   * is a failed attempt too: the run finished cleanly and did not do the job.
+   * 1. **The verdict succeeded AND the done-condition holds → return.** If this
+   *    attempt asked something, the run answered it itself: withdraw the row and
+   *    complete.
+   * 2. **The verdict did NOT fail AND this attempt's marker holds a question →
+   *    park.** `awaitReview`, announce, then return normally. The recorders
+   *    refuse a parked row, so the workstream request ends with the row still
+   *    `awaiting_review` and the run costs nothing while a person thinks.
+   * 3. **Anything else → throw**, withdrawing this attempt's question first: the
+   *    attempt failed, so its question is moot, and leaving it open means an
+   *    answer later lands against a row no attempt is waiting on.
+   *
+   * **Arms 1 and 3 withdraw THIS attempt's row and no other, and that is
+   * sufficient rather than narrow.** Start-of-attempt reconciliation already
+   * withdrew every earlier attempt's `open` row, so at most one can exist for
+   * the issue-phase and it is this one's. Written as "withdraw any open row"
+   * the code would range over a set the reconciliation has already emptied —
+   * and the next reader would derive a guarantee from the wrong place.
+   *
+   * **Completion is a conjunction.** A run can open the pull request and THEN
+   * exhaust its turn budget — the SDK reports that as an errored handle rather
+   * than a throw, which is this whole lab's premise. So a done-condition
+   * consulted alone would complete the row for a run that failed. A successful
+   * verdict whose done-condition does not hold is a failed attempt too.
+   *
+   * **Arm 2's second half is the one easy to drop, and dropping it is the same
+   * defect from the other side.** A question is only worth holding the board
+   * for if the run is still in a position to use the answer, and a run that
+   * asked and then failed is not — the SDK reports its most common failures by
+   * *returning*. An arm gated on the marker alone matches that run, parks it,
+   * and waits on a person for an attempt that is already dead: the row never
+   * re-pends, the retry budget is never spent, and nothing reports it. A silent
+   * stall, which is the mirror of the silent success decision 1 exists to kill.
+   *
+   * **The row is created BEFORE the arms, not inside the park arm.** Two of the
+   * three arms WITHDRAW it, and a marker with an errored verdict never reaches
+   * arm 2 at all — so creating it there means withdrawing a row that was never
+   * created, while the question history a later attempt and a late answer both
+   * read wants it durably `withdrawn`.
+   *
+   * The run record's `outcome` stays `running` across a park, deliberately: the
+   * run is not over, and **the board row is the authority on the job's state**
+   * while this record is conductor's own bookkeeping. A fourth outcome here
+   * would be a second answer to a question the board already answers.
    */
   const decide = handler({
     name: "conductor-decide",
@@ -900,50 +1097,110 @@ export function harnessManager(options: ManagerOptions) {
         "the verdict was recorded",
       );
 
+      // **The ask, before any arm.** Reading THIS attempt's marker path — never
+      // a fixed one: the checkout survives a retry, so last attempt's question
+      // file is still on disk, and a fixed path makes an attempt that quietly
+      // did nothing look exactly like an attempt that asked.
+      const question = await readAskMarker(state.workspacePath!, identity.attempt);
+      const questionTopicKey =
+        question === undefined
+          ? undefined
+          : questionTopic(
+              state.issue!,
+              state.phase!,
+              identity.attempt,
+              questionFingerprint(question),
+            );
+      if (question !== undefined && questionTopicKey !== undefined) {
+        // Create-only, and the single ask path. The step commits no output, so
+        // it re-executes on recovery: the patch branch has nothing to apply, so
+        // a second execution is a read and a replay cannot erase an answer.
+        await askQuestion(ctx as BlockContext, questionTopicKey, {
+          question,
+          askedBy: identity.taskId,
+          askedAt: Date.now(),
+        });
+      }
+
+      /** Arms 1 and 3 both clear this attempt's question, for opposite reasons. */
+      const withdrawOwnQuestion = async (): Promise<void> => {
+        if (questionTopicKey === undefined) return;
+        await withdrawQuestion(ctx as BlockContext, questionTopicKey);
+      };
+
+      // ── Arm 1: succeeded AND done ──────────────────────────────────────────
+      if (succeeded) {
+        // **Bounded, because the whole-worker budget already says it is.**
+        // `conductorDrainBudgetMs` reserves `NETWORK_CALL_TIMEOUT_MS` for this
+        // step. `isDone` is a public seam, so another phase's check was
+        // unbounded and could outlive the budget a host sized its shutdown
+        // from, leaving the row `in_progress` with nothing to settle it. The
+        // bound is the constant the budget already spends, so it makes the
+        // advertised number true rather than adding one.
+        const done = await withDeadline(
+          async () =>
+            phase.isDone({
+              epic: boardCollectionId,
+              issue: state.issue!,
+              phase: state.phase!,
+              attempt: identity.attempt,
+              workspacePath: state.workspacePath!,
+              branch: state.branch!,
+              ctx: ctx as BlockContext,
+            }),
+          NETWORK_CALL_TIMEOUT_MS,
+          `the ${state.phase} phase's completion check`,
+        );
+        if (done) {
+          // The run answered its own question on the way to finishing. Withdrawn
+          // rather than deleted, so a late answer against it is reported back.
+          await withdrawOwnQuestion();
+          await fenced(
+            writeRunRow(ctx as BlockContext, identity, { outcome: "succeeded", reason: null }),
+            "the row was completed",
+          );
+          return {
+            issue: state.issue!,
+            phase: state.phase!,
+            sessionId: handle.sessionId,
+          };
+        }
+      }
+
+      // ── Arm 2: the verdict did NOT fail AND this attempt asked ─────────────
+      if (succeeded && question !== undefined && questionTopicKey !== undefined) {
+        const board = await boardTasks(ctx as BlockContext);
+        // The substrate's own transition, never a status this lab writes by
+        // hand: the recorders' parked-row refusal, the drain's excusal and the
+        // lease's governance all key off it.
+        await board.awaitReview(identity.taskId, question);
+
+        // **After the park, never before.** What is announced must already be
+        // answerable: a subscriber fast enough to act on an announcement sent
+        // first is refused by the parked-only guard, and then watches the task
+        // park on the question it just tried to answer.
+        await announce({ question: questionTopicKey });
+
+        // Returning normally is the point: the workstream request ends and the
+        // row stays parked, because both recorders decline a row the worker
+        // parked for review.
+        return {
+          issue: state.issue!,
+          phase: state.phase!,
+          sessionId: handle.sessionId,
+        };
+      }
+
+      // ── Arm 3: anything else, INCLUDING a failed verdict with a question ───
+      await withdrawOwnQuestion();
       if (!succeeded) {
         throw new ConductorAttemptFailed(
           `the run stopped without finishing: ${handle.resultSubtype ?? "no result reported"}`,
         );
       }
-
-      // **Bounded, because the whole-worker budget already says it is.**
-      // `conductorDrainBudgetMs` sums four terms and spends
-      // `NETWORK_CALL_TIMEOUT_MS` on this step — a number taken from the
-      // built-in probe, which bounds its own `gh` call. `isDone` is a public
-      // seam, so any other phase's check was unbounded and could outlive the
-      // budget the host sized its shutdown from, leaving the row `in_progress`
-      // with nothing left to settle it. The bound is the same constant the
-      // budget already reserves, so this makes the advertised number true rather
-      // than adding a new one.
-      const done = await withDeadline(
-        async () =>
-          phase.isDone({
-            epic: boardCollectionId,
-            issue: state.issue!,
-            phase: state.phase!,
-            attempt: identity.attempt,
-            workspacePath: state.workspacePath!,
-            branch: state.branch!,
-            ctx: ctx as BlockContext,
-          }),
-        NETWORK_CALL_TIMEOUT_MS,
-        `the ${state.phase} phase's completion check`,
+      throw new ConductorAttemptFailed(
+        `the run finished cleanly and the ${state.phase} phase is still not done`,
       );
-      if (!done) {
-        throw new ConductorAttemptFailed(
-          `the run finished cleanly and the ${state.phase} phase is still not done`,
-        );
-      }
-
-      await fenced(
-        writeRunRow(ctx as BlockContext, identity, { outcome: "succeeded", reason: null }),
-        "the row was completed",
-      );
-      return {
-        issue: state.issue!,
-        phase: state.phase!,
-        sessionId: handle.sessionId,
-      };
     },
   });
 
