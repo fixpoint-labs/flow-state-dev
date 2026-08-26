@@ -2,7 +2,13 @@
  * The completion check's state rule, and the seed's identity.
  */
 import { describe, expect, it } from "vitest";
-import { hasCompletingPr, readCompletion, repoSlugFromRemote } from "../src/implement";
+import {
+  COMPLETING_QUERY_STATES,
+  hasCompletingPr,
+  prListArgs,
+  readCompletion,
+  repoSlugFromRemote,
+} from "../src/implement";
 import {
   branchFor,
   checkoutPathFor,
@@ -137,6 +143,35 @@ describe("the done-condition — which pull requests count", () => {
     // `/`, so these stay refused exactly as they were.
     expect(repoSlugFromRemote("/srv/git/[repo]:x")).toBeUndefined();
     expect(repoSlugFromRemote("[not-a-host]")).toBeUndefined();
+  });
+
+  it("never asks for a state it would throw away", () => {
+    // The defect this pins lives in the ARGUMENTS, not the parsing. The probe
+    // used to ask `--state all` and then discard CLOSED — and CLOSED is the
+    // only state that grows without bound on this deterministic branch, one per
+    // abandoned attempt. Those rows filled the page and pushed the row that
+    // counted off it, so a finished run read as unfinished.
+    //
+    // Asserted on the command rather than on a constant: a test that read back
+    // the states list would pass against any implementation, including the one
+    // that sent `--state all` anyway.
+    // Driven by the constant the probe actually loops over, not by a copy of
+    // it. A first version of this test hardcoded the two states and passed
+    // against `COMPLETING_QUERY_STATES = ["all"]` — it pinned the argument
+    // builder while the thing that chooses the states went unchecked.
+    expect(COMPLETING_QUERY_STATES.length).toBeGreaterThan(0);
+    for (const state of COMPLETING_QUERY_STATES) {
+      const args = prListArgs("conductor/e/FIX-1--implement", state, "owner/repo");
+      expect(args).toContain("--state");
+      expect(args[args.indexOf("--state") + 1]).toBe(state);
+      // The two spellings that reintroduce the unbounded rows.
+      expect(args).not.toContain("all");
+      expect(args).not.toContain("closed");
+      // And the limit is sent rather than inherited — `gh` defaults to 30.
+      expect(args[args.indexOf("--limit") + 1]).toBe("100");
+      // The head is the branch, not a substring match on it.
+      expect(args[args.indexOf("--head") + 1]).toBe("conductor/e/FIX-1--implement");
+    }
   });
 
   it("refuses a saturated page rather than reporting a finished run as unfinished", () => {

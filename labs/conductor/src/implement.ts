@@ -61,16 +61,64 @@ const COMPLETING_PR_STATES = new Set(["OPEN", "MERGED"]);
  * `state` is: an answer we cannot attribute must not complete a task.
  */
 /**
- * How many rows the completion probe asks `gh` for.
+ * How many rows the completion probe asks `gh` for, per state.
  *
- * **Explicit because the default is 30 and this is an existential question.**
- * The listing is `--state all`, and CLOSED is the state that accumulates
- * without bound — every abandoned attempt on this branch leaves one. So the row
- * that counts can be pushed off a defaulted page by rows that never counted,
- * and the probe then reports a finished run as unfinished: re-pended, retried,
- * budget spent, and nothing says why.
+ * **Explicit because the default is 30 and this is an existential question**,
+ * and generous because a page that fills is a question this probe cannot
+ * answer — see {@link readCompletion}.
+ *
+ * What makes a limit tolerable at all is {@link COMPLETING_QUERY_STATES}: the
+ * probe no longer asks for CLOSED, which was the only state that accumulates
+ * without bound here — one per abandoned attempt on this deterministic branch.
+ * Asking for rows that could never count and then discarding them is what let
+ * them push the row that counts off the page.
  */
 const PR_LIST_LIMIT = 100;
+
+/**
+ * The states the probe queries, one listing each.
+ *
+ * **Filtered at the source rather than discarded after loading.** These are
+ * exactly the states {@link COMPLETING_PR_STATES} keeps, so a listing can no
+ * longer be dominated by rows that were going to be thrown away. Two calls
+ * rather than one `--state all`, which costs nothing that matters: the probe
+ * runs once per attempt, after a paid coding run, and the whole of it is
+ * already bounded by one deadline in the manager rather than per call.
+ *
+ * The JSON filter stays underneath and is not redundant — it also carries the
+ * repository attribution, and a query changed in isolation should not silently
+ * widen what counts.
+ */
+export const COMPLETING_QUERY_STATES = ["open", "merged"] as const;
+
+/**
+ * The `gh pr list` arguments for one state.
+ *
+ * Split out so the command the probe actually sends is assertable — the
+ * defect this shape exists to prevent lives in the ARGUMENTS, not in the
+ * parsing, and a test that only exercised the parser would not have caught it.
+ */
+export function prListArgs(
+  branch: string,
+  state: string,
+  selector: string,
+  limit: number = PR_LIST_LIMIT,
+): string[] {
+  return [
+    "pr",
+    "list",
+    "--head",
+    branch,
+    "--state",
+    state,
+    "--json",
+    "number,state,headRepository,headRepositoryOwner",
+    "--limit",
+    String(limit),
+    "-R",
+    selector,
+  ];
+}
 
 /**
  * The probe's answer, or a refusal when the page cannot support one.
@@ -85,6 +133,11 @@ const PR_LIST_LIMIT = 100;
  * A match short-circuits, so a full page that DOES contain a completing pull
  * request answers normally — saturation only matters when the answer would
  * otherwise be no.
+ *
+ * **Kept as a backstop rather than as the fix.** Since the probe stopped asking
+ * for CLOSED, a full page means a hundred OPEN or MERGED pull requests on one
+ * branch, which is not a thing that happens by ordinary use. The refusal is
+ * what keeps the limit from being load-bearing for correctness if it ever does.
  */
 export function readCompletion(
   stdout: string,
@@ -260,23 +313,12 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
   const repo = repoSlugFromRemote(originStdout.trim());
   if (repo === undefined) return false;
 
-  const { stdout } = await run(
-    "gh",
-    [
-      "pr",
-      "list",
-      "--head",
-      ctx.branch,
-      "--state",
-      "all",
-      "--json",
-      "number,state,headRepository,headRepositoryOwner",
-      "--limit",
-      String(PR_LIST_LIMIT),
-      "-R",
-      repo.selector,
-    ],
-    {
+  // One listing per state that counts, stopping at the first match. The whole
+  // probe is bounded by a single deadline in the manager, so the second listing
+  // is not a second budget — it is the same one, already shared with the remote
+  // lookup above.
+  for (const state of COMPLETING_QUERY_STATES) {
+    const { stdout } = await run("gh", prListArgs(ctx.branch, state, repo.selector), {
       cwd: ctx.workspacePath,
       // Bounded twice. Without either, a listing that never answers holds the
       // row `in_progress` past the paid agent it was reporting on — the worker
@@ -284,9 +326,10 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       timeoutMs: NETWORK_CALL_TIMEOUT_MS,
       signal: ctx.ctx.signal,
       maxBuffer: 4 * 1024 * 1024,
-    },
-  );
-  return readCompletion(stdout, repo.ownerRepo);
+    });
+    if (readCompletion(stdout, repo.ownerRepo)) return true;
+  }
+  return false;
 }
 
 /**
