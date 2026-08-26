@@ -488,9 +488,9 @@ export interface DeltaStoreOps<TRecord> {
 
   /**
    * Append `values` (in order) to the array at `path` inside `state`. Treats
-   * a missing value as an empty array; throws via the adapter's normal error
-   * surface if the existing value is non-array. Other record fields are
-   * preserved unchanged.
+   * a missing key as an empty array; throws via the adapter's normal error
+   * surface if a value is already present and is not an array, including
+   * `null`. Other record fields are preserved unchanged.
    */
   pushToArray?(
     id: string,

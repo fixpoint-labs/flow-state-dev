@@ -41,7 +41,14 @@ import { isCollectionConfig } from "./is-collection-config";
 export function resourceStorageKeys(
   configs: Record<string, unknown> | undefined
 ): Record<string, string> {
-  const result: Record<string, string> = {};
+  // Null-prototype: accessor names are author-supplied and are used as keys
+  // here. On a plain `{}` an accessor of `__proto__` writes through the
+  // inherited setter — with a string value that is a silent no-op, so no own
+  // mapping is created and every reader below falls through to
+  // `Object.prototype`, which then persists as the key `"[object Object]"`.
+  // Callers would disagree about where that resource lives. No consumer needs
+  // `Object.prototype` on this map.
+  const result: Record<string, string> = Object.create(null);
   if (configs === undefined) return result;
 
   const canonicalByConfig = new Map<unknown, string>();

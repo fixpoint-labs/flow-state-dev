@@ -236,7 +236,7 @@ export type FilesystemRecordStore<
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<T>>;
-  /** Append to a depth-1 `state` array; missing/non-array → replace (CAS). */
+  /** Append to a depth-1 `state` array; missing → []; present non-array → throw. */
   pushToArray<T extends TRecord>(
     id: string,
     path: string[],
@@ -495,6 +495,11 @@ export function createFilesystemRecordStore<
         expectedVersion,
         (current) => {
           const existing = current.state?.[path[0]];
+          if (existing !== undefined && !Array.isArray(existing)) {
+            throw new Error(
+              `pushToArray target at path[${path[0]}] is not an array (got ${typeof existing})`
+            );
+          }
           const baseline = Array.isArray(existing) ? existing : [];
           return {
             ...current,

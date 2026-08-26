@@ -50,13 +50,15 @@ import type { ResourceCASIntent } from "../stores/resource-cas";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import {
   ConcurrentModificationError,
+  FlowError,
   ResourceAlreadyExistsError,
   ResourceDeletedError
 } from "../errors/flow-error";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import {
   normalizeResourceDefault,
-  normalizeResourceState
+  normalizeResourceState,
+  parseResourceWriteState
 } from "../resources/normalize-resource-state";
 import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
@@ -556,7 +558,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     externalResourceContext?: ExternalResourceContext;
   }
 ): ResourceRegistry<TResources> {
-  const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
+  // Null-prototype: keyed by author-supplied accessor names, and this is the
+  // map `get()` below reads. On a plain `{}` an accessor of `__proto__` would
+  // replace the map's prototype rather than add a key, and an accessor sharing
+  // a name with an `Object.prototype` member would resolve to that builtin
+  // instead of throwing "not registered".
+  const handles = Object.create(null) as Record<
+    string,
+    ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>
+  >;
   const configs = options.configs ?? {};
 
   // Serialize mutating writes per storage key. A resource write is a
@@ -647,7 +657,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
    * `mutate` is the op's intent, not a finished value: it is re-run against
    * refreshed state on every retry, which is what lets two contexts patching
    * different fields both land instead of the second clobbering the first.
-   * Normalization happens inside the mutator so a retry re-normalizes too.
+   * Schema parse happens inside the mutator so a retry re-validates too.
    */
   const persistResourceState = async (
     name: string,
@@ -656,12 +666,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     seed: JsonObject
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (config.writable === false) {
-      throw new Error(`Resource "${name}" is read-only`);
+      throw new FlowError(`Resource "${name}" is read-only`, {
+        code: "resource_read_only",
+        retryable: false
+      });
     }
 
     return options.mutateResourceKey(
       name,
-      async (current) => normalizeResourceState(config, await mutate(current)),
+      async (current) => parseResourceWriteState(config.stateSchema, await mutate(current), name),
       { seed }
     );
   };
@@ -673,12 +686,14 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     mutate: (current: JsonObject) => JsonObject | Promise<JsonObject>,
     seed: JsonObject
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
+    if (nsConfig.writable === false) {
+      throw new Error(`Resource "${storageKey}" is read-only`);
+    }
+
     return options.mutateResourceKey(
       storageKey,
-      async (current) => {
-        const parsed = nsConfig.stateSchema.safeParse(await mutate(current));
-        return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
-      },
+      async (current) =>
+        parseResourceWriteState(nsConfig.stateSchema, await mutate(current), storageKey),
       { seed }
     );
   };
@@ -827,6 +842,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         return typeof raw === "string" ? raw : null;
       },
       async writeContent(content: string): Promise<void> {
+        if (nsConfig.writable === false) {
+          throw new Error(`Resource "${storageKey}" content is read-only`);
+        }
+
         await options.persistResourceContentKey(storageKey, content);
         // A content write carries no state delta. Fire the seam as "updated" (so
         // the FIX-739 client projection refreshes unchanged) with a `contentWrite`
@@ -1232,13 +1251,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           }
 
           // Patch branch: merge `update` over existing state, validate the
-          // merged shape explicitly, then persist. We validate (rather
-          // than rely on `persistNamespaceInstanceState`'s safeParse-with-
-          // empty-fallback) so a bad `update` throws loudly — matching the
-          // create branch's behavior. Without this, an invalid `update`
-          // would silently overwrite the resource with `{}` on the patch
-          // branch but throw on the create branch — an asymmetry that
-          // makes caller bugs hard to detect.
+          // merged shape explicitly, then persist. Persist also rejects an
+          // invalid result; the check here names the op as upsert so the
+          // diagnostic matches the create branch.
           //
           // The merge runs INSIDE the mutator so a CAS retry re-merges
           // `update` over the winner's state rather than re-applying a merge
@@ -1633,7 +1648,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         if (config.writable === false) {
-          throw new Error(`Resource "${resourceName}" content is read-only`);
+          throw new FlowError(`Resource "${resourceName}" content is read-only`, {
+            code: "resource_read_only",
+            retryable: false
+          });
         }
 
         await options.persistResourceContentKey(storageKey, content);

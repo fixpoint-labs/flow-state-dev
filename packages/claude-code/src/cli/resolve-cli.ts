@@ -40,6 +40,13 @@ export type ClaudeCliExec = (
 /** What a {@link ResolveClaudeCli} returns. */
 export interface ResolvedClaudeCli {
   bin: string;
+  /**
+   * Where to run the CLI. A plain string, resolved by the host hook once per
+   * invocation — **not** the same surface as the SDK path's
+   * `ClaudeCodeAgentOptions.cwd`, which is a per-run resolver the block calls
+   * itself. A host reading this should not expect the two to take the same
+   * value, and the CLI path records nothing, so it has no second half.
+   */
   cwd?: string;
   env?: Record<string, string>;
   exec: ClaudeCliExec;

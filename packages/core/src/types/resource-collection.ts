@@ -101,6 +101,13 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * single-resource contract (the write tool gates on `llmWritable` alone).
    */
   llmWritable?: boolean;
+  /**
+   * Allow blocks to mutate instance state (`patchState` / `setState` /
+   * `updateState` / `upsert` patch) and instance content (`writeContent`).
+   * Collection-wide. Default `true` when omitted — same as a single resource.
+   * Set `false` to refuse those writes.
+   */
+  writable?: boolean;
 
   /**
    * Declare a typed-edge graph on each instance of this collection. `true` =
