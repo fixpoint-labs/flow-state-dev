@@ -16,7 +16,7 @@
 **Objective.** FSD stores durable data two ways at session scope and above — the scope-state
 bag (`ctx.session.state`) and resources (`ctx.resources.<name>`). Today a developer picks
 between them by **which API happens to carry the verb they need**, not by where the data
-belongs: an atomic increment or an array append means scope state (`incState` / `pushState` on
+belongs: a named increment or append verb means scope state (`incState` / `pushState` on
 `ScopeStateHandle`, `core/src/types/state.ts`), per-key versioning and collision detection
 means resources — `ResourceRef` carries no delta verb at all
 (`core/src/types/resource.ts`). The operating rule is **symmetry where it is
@@ -34,8 +34,10 @@ Decision 3 follows — the write-up becomes **API documentation**, not a withhel
 *other* difference is still **mapped, not closed** (FIX-1154).
 
 **What ships is API symmetry, not a contention win.** Tier 1 adds the two verbs to the handle and
-touches no store interface. Concurrent increments still resolve by CAS retry exactly as
-`updateState` does today; nothing becomes atomic.
+touches no store interface: **no store-native delta verb and no contention improvement** —
+concurrent increments still resolve by CAS retry exactly as `updateState` does today.
+**CAS atomicity is preserved**, because the verbs ride the read-modify-write *inside* the CAS
+loop, which re-runs the mutator against the winner's row on every conflict.
 **Nor does the deferred store-native half win contention**
 — under this epic's held-version constraint it buys smaller writes, not fewer
 conflicts (theme 2, Decision 2).
@@ -85,8 +87,7 @@ the honest description of it.**
   path. **Not in the active set**, on the reasoning that kept FIX-1155 out and spun FIX-1207
   off: **epic membership is not a severity queue.** Taking them in
   would make this epic's boundary "concurrency bugs we found", which is how a set stops being a
-  set. **FIX-1155 is the worked example** — held out on exactly this reasoning, and it shipped
-  anyway (#1388).
+  set.
 
 **The active set is FIX-1154 and FIX-1269.** The FIX-1158 lodger and FIX-1155 have both shipped.
 **All four surfaced bugs leave the set** — FIX-1259 and FIX-1207 already unparented, FIX-1258 and
@@ -112,8 +113,11 @@ PR rather than deciding locally.
 
 ## 2. Themes & long-horizon direction
 
-Three cross-cutting decisions. A constraint that binds exactly one issue is not a theme; the
-two that have nowhere else to live are recorded below the themes, and labelled as such.
+Three cross-cutting decisions. **A constraint that binds exactly one issue is not a theme and is
+not recorded here** — it belongs on that issue's spec or PR
+([`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) → *Out of scope*). The
+epic carrying a second copy is how a shipped child's design drifts: the two that used to sit
+below the themes had both gone stale against the code that merged.
 
 1. **The two CAS drivers cannot be shared, only eliminated — and this epic eliminates
    nothing.** `stores/cas.ts` and `stores/resource-cas.ts` drive the same load → mutate →
@@ -250,9 +254,27 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    commutative downgrade.** `DeltaStoreOps` (`stores/types.ts`) already takes
    `expectedVersion: ExpectedVersion` — `number | "any" | "absent"` — on every verb, so the
    verbs are not inherently versionless. Scope state opts out of the version check at exactly
-   one line, `scope-persist.ts:60` (`commutative ? "any" : expectedVersion`), and that is safe
-   for scope state only because the blob is a bag of independent keys. Resources pass **their
-   held version** instead.
+   one line, `scope-persist.ts:60` (`commutative ? "any" : expectedVersion`). Resources pass
+   **their held version** instead, and the reason is the **resource lifecycle, not the shape of
+   the blob**.
+
+   **Bag shape does not distinguish the two primitives, and this document used to say it did.**
+   Resource state is a JSON object with field-level mutations too — `updateObjectState`
+   (`context/resource-registry.ts`) spreads the current state and merges the update, exactly
+   like a scope-state patch. What distinguishes them is **deletion**: `checkWriteVersion`
+   returns "admit the write" for `"any"` **before it ever tests liveness**
+   (`resource-state-predicate.ts:143`), so an `"any"` write lands on a tombstone — while the
+   whole resource-state bet is that a delete stays visible to the version check (*"a tombstone
+   keeps its version, so an observer from before a delete can never match the row that replaces
+   it"*, `docs/architecture/state-and-scopes.md`). Scope state has no tombstone to defeat: its
+   delete is hard (theme 1).
+
+   **FIX-1267 must carry the lifecycle reason, not the shape one.** The shape argument collapses
+   the moment Tier 2 gives resources field-scoped writes — a native `incField` leaves siblings
+   alone, which is all "bag of independent keys" ever asked for. The tombstone argument does not
+   collapse, because `"any"` skips the liveness test however small the write is. A child that
+   inherits the shape reasoning will conclude `"any"` became safe once Tier 2 landed, and revive
+   deleted resources.
 
    **Unproven, and it stays unproven — including after D-6 = A.** That *every row of the
    resource policy table survives* under a held version is a **type-level read no code has
@@ -286,10 +308,25 @@ two that have nowhere else to live are recorded below the themes, and labelled a
      **increment and append** on `ResourceRef`, adding **no store-interface surface**.
      **It wins no contention** — concurrent writers still resolve by CAS retry exactly as
      `updateState` does today. What it buys is API symmetry, so a developer stops picking a
-     primitive by its verb list. Do not describe it as making anything atomic.
+     primitive by its verb list.
+
+     **Do not describe it as adding a store-native delta verb or as reducing contention — and
+     do not describe it as non-atomic.** The verbs ride the same read-modify-write *inside* the
+     CAS loop that `updateState` already takes: on a conflict `runResourceCAS` refreshes the
+     container to the winner's row and **re-runs the mutator against it**
+     (`stores/resource-cas.ts`; `persistResourceState` in `context/resource-registry.ts` hands
+     the caller's updater in as that mutator). So a successful call is a single CAS-guarded
+     mutation rather than a client-side read-modify-write — the definition
+     `docs/architecture/state-and-scopes.md` already uses for the bag's `incState` / `pushState`
+     under *Atomicity Guarantees*. **This is the one claim FIX-1269's documentation must not get
+     backwards.** Decision 3 makes that documentation user-facing, and a caller told these verbs
+     are not atomic will wrap them in an external read-then-write — the genuinely unsafe pattern
+     they exist to remove. *(The version-`0` tombstone hole is a **deletion-semantics** defect,
+     not an atomicity one — theme 1, FIX-1258.)*
+
      **How it is built is FIX-1269's spec's call**
-     — this document fixes the tier boundary and the no-contention
-     claim, not the mechanism, the persistence path, or a size.
+     — this document fixes the tier boundary, the no-contention claim and the atomicity claim,
+     not the mechanism, the persistence path, or a size.
    - ***Tier 2 — the store interface. Still deferred (FIX-1267).*** Store-native `incField` /
      `pushToArray` on `ResourceStateStore` across every adapter plus conformance — the tier
      carrying this theme's unproven claim, the liveness gating, and the constraint amendment
@@ -345,7 +382,8 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    value **inside the record's `state` slice** (`stores/types.ts`, `deleteField`), which is a
    state mutation by the contract's own words. The argument described a different verb than the
    one it excluded.
-   **FIX-1267 picks the verb set on the write-amplification test; the epic holds only the constraint below.**
+   **FIX-1267 picks the verb set on the write-amplification test; the epic holds only this
+   theme's `"any"` constraint above.**
 
 3. **`docs/architecture/state-and-scopes.md` is a shared surface, and each child names the
    paragraph it owns.** FIX-1154 rewrites what the doc says about the two primitives' mutation
@@ -357,6 +395,11 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    Decision 3 makes the docs follow the verbs, so FIX-1269 owns the **reference** half — the two
    new methods on `ResourceRef`, their signatures and their return contract — and FIX-1154 owns
    the **comparison** half, the paragraph explaining how the two mutation surfaces line up.
+   **Both halves inherit theme 2's atomicity ruling**, and the comparison half is where it is
+   easiest to get wrong: the two surfaces differ in verb list and in return type, **not** in
+   whether a write is atomic. A comparison row reading "scope state atomic / resources not"
+   would be false in the doc's own vocabulary — resource writes are CAS-guarded
+   read-modify-writes too.
    FIX-1154's map must describe increment and append as **closing** — shipping as FIX-1269 —
    not as a deliberate gap; the spec's old "resources deliberately lack these verbs" framing is
    withdrawn by D-6 and does not survive into the doc. **"Closing", not "shipped":** the spec's
@@ -374,36 +417,6 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    absence at writing time rather than publish a surface that does not exist. The
    `createScopePersist` seam is closed: FIX-1155 has merged, so nothing in the active set
    touches it.
-
-### Constraints on individual children
-
-Not themes. Both are recorded here for want of anywhere else: the first corrects something
-this document previously promised, and the second belongs to a `direct`-route bug that has no
-spec of its own. **Both children have since shipped** (FIX-1155 in #1388, FIX-1158 in #1444),
-so these are now the record of why each was built that way, not live direction.
-
-- **FIX-1155 retains store-level CAS. The two mechanisms cover different writers, and neither
-  covers the other's.** The in-memory queue serializes **same-context** writers; **store-level
-  CAS** is what protects **cross-context** writers. `withScopeLock` keys its FIFO queue on the
-  `StateContainer` object itself (a `WeakMap`, `stores/scope-lock.ts`) and its own contract says
-  *"mutators on different containers are independent"* — so it cannot reach across contexts at
-  all, and a resumed or BullMQ-reclaimed writer holding a **distinct `StateContainer`** is
-  outside it by construction. FIX-1155 therefore adds serialization **within** a context and
-  **does not** switch request scope to the in-memory mutex: a lock-only fix would repair
-  same-context task-board fan-out while letting a stale writer overwrite newer durable request
-  state. That cross-context concurrency is established in *Rejected framings* below. **Do not
-  read this as an instruction to widen the lock** — making it process-wide or distributed is the
-  lock-only design this constraint exists to prevent; the cross-context job is already CAS's.
-- **FIX-1158 keys cross-flow checks by `(scope, ref, flowIsolation)`, not by accessor name.**
-  Accessors are explicitly not storage identity: a flow can expose the same shared user/org
-  resource under different accessors, or reuse one accessor for different `ref`s, so reading
-  the flat `flow.resources` map alone does not identify the durable slot that needs a
-  compatibility check. Effective resource isolation is evaluated **independently of the
-  flow-level state-isolation flag**, because a resource can override that flag in either
-  direction. The parked regression states the same keying
-  (`packages/engine/test/flow-isolation.test.ts:127`, `it.skip` at `:130`). Without both, the
-  repaired check still misses incompatible schemas sharing storage *and* rejects schemas that
-  are genuinely isolated.
 
 ### Rejected framings (do not re-derive)
 
@@ -437,8 +450,8 @@ expensive thing this epic has already paid for.
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review · **its docs half starts when FIX-1269 lands** (prerequisite, not a deferral — theme 3); the map half is unblocked |
-| [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` on the resource handle. API symmetry only: **wins no contention**, adds no store-interface surface. *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(active set; added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
-| [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
+| [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` on the resource handle. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(active set; added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
+| [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, comparing shared declarations on `(scope, ref)` — the durable cell, not the accessor name | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo *(not in the active set; **gates wrap while parented** — note below)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
@@ -557,7 +570,8 @@ the PR closes when the epic wraps; this document outlives it.
   which is why it is withdrawn (§1) rather than defended. **Decided as an engineering call, not
   put to the owner:** both outcomes are cheap and reversible, which is precisely the shape a
   reader of `asking-for-decisions.md` should not be spending attention on. Kept because the
-  cross-cutting calls — the CAS divergence, never `"any"` on the resource path, the
+  cross-cutting calls — the CAS divergence, never `"any"` on a resource **delta or
+  read-modify-write** path, the
   return-contract asymmetry, and three separate corrections to theme 1's justification — are
   exactly what gets re-derived expensively, and this epic has already paid once for re-deriving
   one (#1291, closed unmerged). An epic's real cost here is a coordination doc somebody
@@ -753,4 +767,36 @@ the PR closes when the epic wraps; this document outlives it.
   Indexing it decided a question that was open; escalating it
   spent the owner's attention on the shape of an issue graph. A document is not the place to
   resolve a pending decision, and not every pending decision is the owner's.
+- **"Nothing becomes atomic" retracted — Tier 1 preserves CAS atomicity (2026-08-26)** — the
+  epic had narrowed "Tier 1 wins no contention" (true) into "nothing becomes atomic" (false) at
+  §1 and, worse, into an instruction at theme 2 telling FIX-1269 not to call the verbs atomic —
+  a claim Decision 3 would have carried into shipped user-facing docs. `runResourceCAS` refreshes
+  to the winner's row on a conflict and **re-runs the mutator against it**
+  (`stores/resource-cas.ts`), and `persistResourceState` hands the caller's updater in as that
+  mutator (`context/resource-registry.ts`), so a successful call is the single CAS-guarded
+  mutation `state-and-scopes.md` already calls atomic. **The cost of publishing it was the
+  reason to catch it:** a caller told these verbs are not atomic hand-rolls an external
+  read-then-write, which is genuinely unsafe and is the exact failure this epic exists to stop
+  the docs from causing. **Which makes nine** — and the first where the retracted claim was not
+  merely wrong but *actively harmful if believed*, which is what a guard comment or an API doc
+  makes of every claim it carries.
+- **Theme 2's bag-shape rationale replaced by the lifecycle one (2026-08-26)** — the epic
+  distinguished the two primitives by "the blob is a bag of independent keys", which does not
+  distinguish them: resource state is a JSON object with field-level merges too
+  (`updateObjectState`). The real asymmetry is deletion — `checkWriteVersion` admits `"any"`
+  **before testing liveness** (`resource-state-predicate.ts:143`), so an `"any"` write lands on
+  a tombstone, and retention is the resource store's whole bet. The conclusion is unchanged
+  (resources pass their held version); only the reason moved. **This is the FIX-1259 shape**: a
+  right conclusion on a false reason, which the deferred implementation inherits — and here the
+  shape argument would have *expired* the moment Tier 2 gave resources field-scoped writes,
+  handing FIX-1267 a licence to revive deleted resources.
+- **The child-only constraints subsection removed (2026-08-26)** — two constraints binding
+  exactly one shipped child each (FIX-1155, FIX-1158) sat below the themes, which
+  [`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) routes to the child's
+  own spec or PR. **They had already drifted, which is the argument, not a bonus:** the FIX-1158
+  bullet said the check keys on `(scope, ref, flowIsolation)`, while the code that merged in
+  #1444 says effective isolation is *"a participation filter, not part of the index"*
+  (`registry/flow-registry.ts`), and its citation to a parked `it.skip` pointed at a test #1444
+  unskipped. A second durable carrier for a shipped child's design cannot stay true, because
+  nothing updates it when the child changes. The record lives on #1388 and #1444.
 
