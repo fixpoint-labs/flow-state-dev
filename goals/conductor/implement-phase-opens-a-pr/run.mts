@@ -42,7 +42,7 @@ import {
   repoSlugFromRemote,
   implementPhase,
 } from "../../../labs/conductor/src/implement.ts";
-import { branchFor } from "../../../labs/conductor/src/workspace.ts";
+import { branchFor, isStrictlyInside } from "../../../labs/conductor/src/workspace.ts";
 import {
   positiveIntFromEnv,
   requireSourceRepo,
@@ -301,10 +301,16 @@ await runGoal(async () => {
     issue: fixture.issue,
     phase: fixture.phase,
   });
-  const preexistingPrs = prNumbersFor(sourceRepo, snapshotBranch);
-
   let row: StatusRow | undefined;
   try {
+    // **Inside the `try`, not before it.** This shells out to `gh`, so an
+    // unauthenticated or offline host throws here — and a throw before the
+    // `try` is caught by `runGoal`, which exits. The runtime, the SQLite file
+    // and the scratch directory are all already created by this point, so the
+    // `finally` that removes them never runs and every failed attempt leaves
+    // another copy behind.
+    const preexistingPrs = prNumbersFor(sourceRepo, snapshotBranch);
+
     await call("seed", { issue: fixture.issue, phase: fixture.phase });
 
     // Poll the BOARD ROW. `in_progress` means the run is still alive; anything
@@ -381,7 +387,12 @@ await runGoal(async () => {
                 "working directory was not exercised",
             );
           }
-          if (!resolve(checkout).startsWith(resolve(workspaceRoot))) {
+          // Segment containment, not a string prefix: a sibling named
+          // `<root>-other` shares the prefix and would pass this signal without
+          // being under the root at all. `isStrictlyInside` is the lab's own
+          // rule and its doc argues exactly this case — a second hand-rolled
+          // copy here is how the two drift.
+          if (!isStrictlyInside(resolve(checkout), resolve(workspaceRoot))) {
             failures.push(
               `the run's checkout (${checkout}) is not under the workspace root this ` +
                 `check configured (${workspaceRoot})`,
