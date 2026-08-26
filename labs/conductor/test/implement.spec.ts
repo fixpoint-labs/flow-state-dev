@@ -139,6 +139,46 @@ describe("the done-condition — which pull requests count", () => {
     expect(repoSlugFromRemote("[not-a-host]")).toBeUndefined();
   });
 
+  it("refuses a transport `gh` cannot query, rather than naming a plausible host", () => {
+    // The failure this pins is not a parse error — it is a CONFIDENT one. A
+    // scheme-agnostic parser read `file://localhost/owner/repo.git` as the
+    // selector `localhost/owner/repo`, so the startup preflight accepted it and
+    // the permanent `gh` failure arrived once per attempt, after each paid
+    // coding run. That is the cost the preflight beside it exists to prevent.
+    expect(repoSlugFromRemote("file://localhost/owner/repo.git")).toBeUndefined();
+
+    // **`file:` was the reported one, not the whole set.** All three of these
+    // are git transports, and every one produced the same plausible selector.
+    expect(repoSlugFromRemote("ftp://example.com/owner/repo.git")).toBeUndefined();
+    expect(repoSlugFromRemote("ftps://example.com/owner/repo.git")).toBeUndefined();
+    expect(repoSlugFromRemote("rsync://example.com/owner/repo.git")).toBeUndefined();
+
+    // And the other half of the rule: an allow-list that refused a legitimate
+    // remote would break every real conductor while passing the four above.
+    expect(repoSlugFromRemote("https://github.com/owner/repo.git")?.selector).toBe(
+      "github.com/owner/repo",
+    );
+    expect(repoSlugFromRemote("ssh://git@github.com/owner/repo.git")?.selector).toBe(
+      "github.com/owner/repo",
+    );
+    expect(repoSlugFromRemote("git://github.com/owner/repo.git")?.selector).toBe(
+      "github.com/owner/repo",
+    );
+    expect(repoSlugFromRemote("git+ssh://git@github.com/owner/repo.git")?.selector).toBe(
+      "github.com/owner/repo",
+    );
+    // The scheme is case-insensitive per RFC 3986, and a remote written that
+    // way is still the same server.
+    expect(repoSlugFromRemote("HTTPS://github.com/owner/repo.git")?.selector).toBe(
+      "github.com/owner/repo",
+    );
+    // The port case the host class exists for, re-asserted here so a change to
+    // the scheme cannot quietly take it with it.
+    expect(repoSlugFromRemote("http://ghe.internal:8443/owner/repo.git")?.selector).toBe(
+      "ghe.internal:8443/owner/repo",
+    );
+  });
+
   it("hands the selector and the attribution to their own callers", () => {
     // These are NOT interchangeable, and shipping them as one string made
     // passing the wrong one a typo rather than a type error — which is exactly

@@ -83,6 +83,23 @@ export const GIT_SUFFIX = /\.git$/;
 const IPV6_HOST = String.raw`\[[^\]/]+\]`;
 
 /**
+ * The transports that can name a repository `gh` is able to query.
+ *
+ * **An allow-list, because the failure is a plausible-looking selector rather
+ * than a parse error.** The scheme used to be any RFC-shaped one, so
+ * `file://localhost/owner/repo.git` parsed as the selector
+ * `localhost/owner/repo` — the startup preflight accepted it, and the permanent
+ * `gh` failure then arrived once per attempt, after each paid coding run. That
+ * is the exact cost the preflight beside it exists to prevent.
+ *
+ * `file:` is not alone, which is why this is a list rather than one refusal:
+ * `ftp:`, `ftps:` and `rsync:` are git transports too, and all three produced
+ * the same confidently wrong selector. What separates the ones kept is that
+ * each can address a remote GitHub host; none of the excluded ones can.
+ */
+const GH_QUERYABLE_SCHEMES = String.raw`(?:https?|ssh|git|git\+ssh)`;
+
+/**
  * `scheme://[user@]host[:port]/owner/name`.
  *
  * **The port belongs to the host.** Matching it and discarding it sent an
@@ -90,7 +107,8 @@ const IPV6_HOST = String.raw`\[[^\]/]+\]`;
  * server, silently.
  */
 export const REMOTE_VIA_URL = new RegExp(
-  String.raw`^[A-Za-z][A-Za-z0-9+.-]*://(?:[^@/]+@)?(${IPV6_HOST}(?::\d+)?|[^/:]+(?::\d+)?)/(.+)$`,
+  String.raw`^${GH_QUERYABLE_SCHEMES}://(?:[^@/]+@)?(${IPV6_HOST}(?::\d+)?|[^/:]+(?::\d+)?)/(.+)$`,
+  "i",
 );
 
 /**
