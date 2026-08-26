@@ -11,7 +11,7 @@
  * return (`SuspensionError` bypasses `.rescue()`).
  *
  * What breaks it: `buildDetachedRunner`'s pre-worker START GATE is a `.tap()`,
- * and a `.tap()` has no output for FIX-811's replay-by-injection to reuse — so
+ * and a `.tap()` has no committed output for replay-by-injection to reuse — so
  * it re-executes in full on every re-entry, including a `continueRequest`
  * resume of ITS OWN suspended dispatch, not just a genuinely fresh dispatch.
  * The gate's identity check requires `row.status === "in_progress"`
@@ -59,8 +59,9 @@ import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 
-// Internal to `engine`, spelled literally as the FIX-982 integration tests do
-// (`task-board-detached-handoff.test.ts`) — a wire value, not a shortcut.
+// Internal to `engine`, spelled literally as the detached-handoff integration
+// tests do (`task-board-detached-handoff.test.ts`) — a wire value, not a
+// shortcut.
 const WORKSTREAM_SOURCE = "workstream";
 
 const USER_ID = "u_settle_lab139";
@@ -418,10 +419,21 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
       });
       const resumed = await finished;
       const afterResume = await durableRow(stores, "t1");
-      // The stale attempt's write-back must NOT have overwritten the live
-      // claimant's row. It is declined (advisory), not thrown — so
-      // `resumed.error` may still be undefined, but the STATUS must not read
-      // `completed` under the ORIGINAL (stale) attempt.
+      // **The status assertion alone did not discriminate**, which mattered
+      // more here than anywhere else in this file: this is the anti-game test,
+      // and its whole job is to show the harness can produce a real decline
+      // rather than being green whatever happens. A broken fence would let the
+      // worker re-enter `awaitReview` and suspend again, leaving the row at
+      // `awaiting_review` — also "not completed". So it passed in both worlds.
+      //
+      // Asserted on the decline the fence actually emits, read from a run
+      // rather than guessed: the ATTEMPT fence fires here, not the status gate
+      // that refuses the main test, because the forced ABA put the row back to
+      // `in_progress` under attempt 2 and the gate therefore passes.
+      expect((resumed.output as { error?: string } | undefined)?.error).toContain(
+        "attempt 1 was superseded by attempt 2",
+      );
+      // And the live claimant's row is untouched by the stale write-back.
       expect(afterResume?.status).not.toBe("completed");
     },
     30_000
