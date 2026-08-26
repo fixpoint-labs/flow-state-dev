@@ -105,7 +105,9 @@ const stashDebateSubstrate = handler({
       classification: "convergent",
       netLean: 0.5,
       agreementScore: 0.9,
+      majorityStance: "bullish",
       dissenters: [],
+      verdicts: [],
     });
     await ctx.session.patchState({
       citationIntegrity: { tagsChecked: 3, tagsValid: 2, invalidTags: [] },
