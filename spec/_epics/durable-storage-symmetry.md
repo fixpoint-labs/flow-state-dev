@@ -80,8 +80,8 @@ honest description of a small set.**
   **answers §5's fork by events** rather than by a decision.
 - **FIX-1207** (overlapping collection keyspaces slip past the cross-flow check) is FIX-1158's
   **spun-off remainder** — no theme, no decision at this altitude.
-- **FIX-1258** (a deleted resource revived by a request that never saw it — the version-`0` hole in
-  theme 1's tombstone row) and **FIX-1260** (a resource **mutation** write stores `safeParse`
+- **FIX-1258** (a deleted resource revived by a write issued after the delete — the version-`0` hole
+  in theme 1's tombstone row) and **FIX-1260** (a resource **mutation** write stores `safeParse`
   *output*, so a transforming schema drifts what lands), both from FIX-1154's
   spec review, are **parented children this epic surfaced, not work the objective needs**. The
   boundary rule — **epic membership is not a severity queue** — is why FIX-1259 and FIX-1207 are
@@ -206,12 +206,17 @@ below the themes had both gone stale against the code that merged.
 
    **The tombstone row is incomplete for version `0` — a known hole in this rule, not a second
    rule.** The row is true for a writer holding a live version, and that writer is already
-   refused. It is false for version `0`: a context that loaded a key *before it existed* keeps
-   container version `0`, `runResourceCAS` sends it as the `mutate` intent's `expectedVersion`
-   (`resource-cas.ts:219-220`), and `checkWriteVersion` accepts `0` against a tombstone as
-   create-if-absent (`resource-state-predicate.ts:147-149`) — so a write from a context that
-   **never observed** the resource revives it after a delete. The product bet is unchanged —
-   deleted stays deleted — it is simply not enforced on that one path.
+   refused. It is false for version `0` — and **the condition is the version the write begins with,
+   not what the context has observed.** `runResourceCAS` sends the container's version as the
+   `mutate` intent's `expectedVersion` (`resource-cas.ts:219-220`), and `checkWriteVersion` accepts
+   `0` against a tombstone as create-if-absent, "satisfied by a tombstone as well as a key that never
+   existed" (`resource-state-predicate.ts:147-149`). **Two writers arrive holding `0`.** One never
+   observed the key. The other observed it and **lost the version**: `deleteResourceKey` pairs its
+   durable delete with an *in-place live-cache delete* (`resource-registry.ts`), so a context still
+   holding a `ResourceRef` re-seeds from the absent row and writes at `0`. The second is the
+   **held-then-lost** writer this theme already describes on the scope side for FIX-1259 — the same
+   shape on the other primitive, which is why the two issues carry a `related` link. The product bet
+   is unchanged — deleted stays deleted — it is simply not enforced on that path.
 
    **This cycle adds two new entry points to the hole, and the hole is still open — say so
    rather than discovering it later.** `updateState` already does exactly this on `main` today
@@ -483,8 +488,8 @@ expensive thing this epic has already paid for.
 | [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review · nothing about this issue is blocked. Its docs **publish** after FIX-1269 lands — a prose ordering, deliberately not a Linear blocker (theme 3) |
 | [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` on the resource handle. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, comparing shared declarations on `(scope, ref)` — the durable cell, not the accessor name | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
-| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
-| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. **The split is the right axis and is not sufficient on its own — the scoping note below states the constraint that goes with it.** | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; notes below)* |
+| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | **A write issued after the delete does not revive the resource.** The condition is the **version the write begins with, not what the context observed** — a context that never saw the key and one whose held version the delete evicted both arrive at the create-if-absent seed of `0`, so a fix written for the never-observed case alone leaves the defect live. Same **held-then-lost** shape FIX-1259 fixes on the scope side (`related`). The ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
+| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. **The split is the right axis and is not sufficient on its own** — the constraint that goes with it, the measured evidence ([comment `5430501537`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430501537)) and the choice of mechanism are [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260)'s, on its issue and its PR | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
@@ -509,36 +514,12 @@ cancelled.** FIX-1259 and FIX-1207 are not children, so they are neither dispatc
 boundary rule (§5) decides *membership*, never what happens to a child once it is one. Anything
 finer — which conditions release a row, what parks one — is read from the workflow, not from here.
 
-**FIX-1260's operation split is necessary and not sufficient — it is the right axis, scoped as a
-carve-out rather than a one-line guard.** Settled empirically on the real path, not read: with the
-row's rule applied, a schema carrying a **non-idempotent `.transform()`** still drifts **one
-transform per mutation**, monotonic and unbounded. The load-bearing fact is the seed. On the
-**common, non-conflict path** the mutator is seeded from the **normalized read cache** — `readState`
-reads the per-request live map that `loadDeclaredResourceState` → `normalizeScopeResources` →
-`normalizeResourceState` fills once per execution context, transform included — and **not** from the
-raw stored row; `runResourceCAS`'s conflict re-read, which commits the store's raw value, is the
-exception rather than a mitigation. So storing the candidate removes one transform of two. The
-**exposure is `.transform()` alone**: `.default()` and `.catch()` do not re-fire once the field is
-populated and showed no drift, and the **creation** half of the split is genuinely unaffected as the
-row claims — `create` / `create({ replace: true })` drifted none across repeated replaces.
-
-**The constraint, stated once, for FIX-1260 to resolve.** *Reads keep `parsed.data`* — required, so
-a historical row acquires a newly-defaulted field on load — and *mutation writes store the candidate*
-cannot both hold for such a schema, because the candidate's untouched fields are inherited from that
-transformed read. Two mechanisms are in bounds and **the choice is FIX-1260's, not this epic's**: a
-carve-out for non-idempotent `.transform()` schemas (flagged, forbidden, or required to be
-idempotent), or seeding the mutator from the **raw stored row** on the write path, separate from the
-request-scoped hydrate cache — wider than the row scopes today. **This is a constraint to resolve
-inside FIX-1260, not a licence to widen.** It does not justify a third rule or a third primitive,
-and it reopens neither theme 1 nor D-6. Evidence — the measured drift table and its controls — is on
-this PR as comment
-[`5430501537`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430501537).
-
 *Why FIX-1259 and FIX-1207 have no row here while FIX-1258 and FIX-1260 do — the boundary rule and
-the disposition each of the four surfaced bugs got — is recorded once, in §5. The two notes above
-state FIX-1260's **scope** and stop there: how the defect works, and which mechanism closes it,
-belong to that issue and its PR. §4 is a projection of the coordinator's status table, and nothing
-refreshes a diagnosis parked inside it.*
+the disposition each of the four surfaced bugs got — is recorded once, in §5. **The rows above state
+what each issue delivers and stop there:** how a defect works, and which mechanism closes it, belong
+to that issue and its PR. §4 is a projection of the coordinator's status table and
+[**a table, not prose**](../../docs/contributing/epic-spec-template.md) — nothing refreshes a
+diagnosis parked inside it.*
 
 ## 5. Open cross-cutting questions
 
@@ -806,3 +787,16 @@ retraction taught something the themes do not already say, it earns a clause.
   comparison paragraph, so **FIX-1269** owns the restore if FIX-1154 publishes the absence first.
   Unowned, the epic wraps with the architecture doc still describing the gap it closed. Boundary,
   §11 and Decision 3 untouched.
+- **FIX-1258's condition widened to the held version (2026-08-26)** — the defect is a write that
+  **begins at version `0`**, not one from a context that *never observed* the resource: `delete`
+  evicts the live-cache entry, so a retained `ResourceRef` re-seeds from the absent row into the same
+  create-if-absent branch. Stated narrowly, §4 buys a fix for half the defect. *(**Nineteen** — the
+  identical **held-then-lost** correction landed for FIX-1259 on the scope side earlier the same day
+  and was never carried across, while FIX-1154's own POC had been classifying that path as D5. **A
+  correction is not finished when the path it was found on is fixed.**)*
+- **FIX-1260's diagnosis dropped to its issue (2026-08-26)** — §4 keeps the row and the evidence
+  link; the POC narrative, the drift numbers, the seed derivation and the two mechanisms go to the
+  issue that owns the mechanism. Round 9 removed §4's `mayWrap` derivation and added this **in the
+  same commit** — one carrier out, another in — repeating *FIX-1269's implementation specifics
+  dropped to its spec* on a different child, pre-empting a review surface before its gate opened. §4
+  already said so, two paragraphs below the diagnosis. *(Fifth two-carriers removal.)*
