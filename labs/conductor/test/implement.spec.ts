@@ -281,6 +281,38 @@ echo '[]'
     }
   });
 
+  it("refuses to let one phase be pinned to two different repositories", () => {
+    // `conductorFlow` snapshots the phase with a spread, which copies function
+    // references and not what they close over. So a spec handed to two
+    // conductors shares one pin, and the second construction would repoint the
+    // first's completion check — the exact thing the pin exists to prevent,
+    // reintroduced by the pin itself.
+    const a = mkdtempSync(join(tmpdir(), "conductor-pin-a-"));
+    const b = mkdtempSync(join(tmpdir(), "conductor-pin-b-"));
+    dirs.push(a, b);
+    seedRepo(a);
+    seedRepo(b);
+    const setOrigin = (dir: string, url: string) =>
+      execFileSync("git", ["remote", "set-url", "origin", url], { cwd: dir, stdio: "pipe" });
+    setOrigin(a, "https://github.com/one/repo.git");
+    setOrigin(b, "https://github.com/two/repo.git");
+
+    const phase = implementPhase();
+    phase.validate?.({ root: a, sourceRepo: a, baseRef: "main" } as never);
+
+    expect(() =>
+      phase.validate?.({ root: b, sourceRepo: b, baseRef: "main" } as never),
+    ).toThrow(/cannot serve two conductors/);
+
+    // **Re-validating with the SAME repository stays a no-op.** Two epics on
+    // one source repository is the documented multi-conductor setup, and a
+    // refusal that fired on every second construction would break it while
+    // still passing the assertion above.
+    expect(() =>
+      phase.validate?.({ root: a, sourceRepo: a, baseRef: "main" } as never),
+    ).not.toThrow();
+  });
+
   it("keeps a port only when it is the API's port", () => {
     // **The earlier `:8443` fix was right, and I generalised it too far.** A
     // port survives only when the transport is the one `gh` talks to. These

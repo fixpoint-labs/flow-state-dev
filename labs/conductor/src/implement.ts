@@ -445,6 +445,15 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
   // A caller that builds this spec and never validates keeps `options.repo` —
   // `undefined` unless they passed one — and the probe falls back to reading
   // `origin` at run time, which is the behaviour with the hole in it.
+  //
+  // **The pin is per SPEC, and a spec handed to two conductors would share
+  // it.** `conductorFlow` snapshots the phase with a spread, which copies the
+  // function references and not what they close over, so the second
+  // construction's `validate` would overwrite the first's pin and the first
+  // conductor's probe would then query the second's repository. Refused below
+  // rather than tolerated: this pin exists precisely so the probe cannot be
+  // pointed somewhere else, and a fix that could itself repoint it would be
+  // worth less than nothing.
   let pinned = options.repo;
   const prExists =
     options.prExists ?? ((ctx: PhaseRunContext) => prExistsViaGh(ctx, pinned));
@@ -459,7 +468,23 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
     ...(options.prExists === undefined
       ? {
           validate: (workspace: WorkspaceConfig): void => {
-            pinned = assertCompletionProbeUsable(workspace);
+            const repo = assertCompletionProbeUsable(workspace);
+            // Re-validating with the SAME repository is the ordinary case and
+            // is a no-op: two epics on one source repository is the documented
+            // multi-conductor setup, and both pins are the same value. Only a
+            // second, DIFFERENT repository is ambiguous, and it is ambiguous in
+            // the direction that settles a board from the wrong place.
+            if (pinned !== undefined && pinned.selector !== repo.selector) {
+              throw new Error(
+                `[conductor] this implement phase was already pinned to ` +
+                  `"${pinned.selector}" and is now being built against ` +
+                  `"${repo.selector}". One \`implementPhase()\` cannot serve two ` +
+                  `conductors on different repositories — the pin is per phase, so the ` +
+                  `second would silently repoint the first's completion check. Call ` +
+                  `\`implementPhase()\` once per conductor.`,
+              );
+            }
+            pinned = repo;
           },
         }
       : {}),
