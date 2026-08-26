@@ -35,8 +35,9 @@ Decision 3 follows — the write-up becomes **API documentation**, not a withhel
 
 **What ships is API symmetry, not a contention win.** Tier 1 adds the two verbs to the handle and
 touches no store interface. Concurrent increments still resolve by CAS retry exactly as
-`updateState` does today; nothing becomes atomic. **Nor does the deferred store-native half win
-contention** — under this epic's held-version constraint it buys smaller writes, not fewer
+`updateState` does today; nothing becomes atomic.
+**Nor does the deferred store-native half win contention**
+— under this epic's held-version constraint it buys smaller writes, not fewer
 conflicts (theme 2, Decision 2).
 
 *Code citations are against `origin/main` at `6aa1bea`.*
@@ -146,8 +147,9 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    Because absence also reads as `0`, the same write lands when the row is *gone*.
 
    **This document previously called that "not a bag-side hole", and the reason was wrong** —
-   which is why **FIX-1259 was reopened** after being cancelled on it. It sits at **Backlog ·
-   High and outside this set**, unparented and re-filed as a FIX-1000 leftover (§4). The old
+   which is why **FIX-1259 was reopened** after being cancelled on it. It sits at
+   **Backlog · High and outside this set**,
+   unparented and re-filed as a FIX-1000 leftover (§4). The old
    reasoning was that refusing a version-`0` write would break first touch, so the behaviour had
    to stay. First touch is not spelled `0`: it is spelled **`"absent"`**, and the predicate's own
    header says `0` could not express create-if-absent "without breaking the first CAS write of
@@ -284,8 +286,9 @@ two that have nowhere else to live are recorded below the themes, and labelled a
      **increment and append** on `ResourceRef`, adding **no store-interface surface**.
      **It wins no contention** — concurrent writers still resolve by CAS retry exactly as
      `updateState` does today. What it buys is API symmetry, so a developer stops picking a
-     primitive by its verb list. Do not describe it as making anything atomic. **How it is built
-     is FIX-1269's spec's call** — this document fixes the tier boundary and the no-contention
+     primitive by its verb list. Do not describe it as making anything atomic.
+     **How it is built is FIX-1269's spec's call**
+     — this document fixes the tier boundary and the no-contention
      claim, not the mechanism, the persistence path, or a size.
    - ***Tier 2 — the store interface. Still deferred (FIX-1267).*** Store-native `incField` /
      `pushToArray` on `ResourceStateStore` across every adapter plus conformance — the tier
@@ -304,8 +307,8 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    buys is the same docstring's opening line — *"to avoid full-record UPDATEs on single-field
    scope-state writes"* — **write amplification, not concurrency.**
 
-   **The bag's contention win is the `"any"` downgrade, and this epic was crediting it to the
-   verbs.** `scope-persist.ts:60` hands `effectiveVersion` — `"any"` on every commutative hint —
+   **The bag's contention win is the `"any"` downgrade, and this epic credited it to the verbs.**
+   `scope-persist.ts:60` hands `effectiveVersion` — `"any"` on every commutative hint —
    to all four verbs, while the `set` fallback keeps the caller's version. The routing suite's
    own describe block is named *"commutative ops bypass CAS"*, and its control row is
    *"updater-form patchState uses numeric expectedVersion (RMW, CAS path)"* — the one bag shape
@@ -325,9 +328,9 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    If a store-native delta verb ever lands it must **not** reuse `createScopePersist` or
    commutative hints: that is precisely how `"any"` re-enters the resource path.
 
-   **The adapter half of the mutation-surface asymmetry stands when the epic wraps; the
-   caller-visible half closes.** **Which verbs Tier 2 carries is FIX-1267's to scope, and this
-   document's old exclusion is withdrawn** — it had `patchField` and `deleteField` scoped out,
+   **The adapter half of the mutation-surface asymmetry stands when the epic wraps; the caller-visible half closes.**
+   **Which verbs Tier 2 carries is FIX-1267's to scope, and this document's old exclusion is withdrawn**
+   — it had `patchField` and `deleteField` scoped out,
    and both reasons die with the contention claim above.
 
    *`patchField`:* the reason was that resources already have depth-1 `patchState`, so it would
@@ -341,8 +344,8 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    rather than a state mutation" — but `deleteField` does not remove a record. It removes a
    value **inside the record's `state` slice** (`stores/types.ts`, `deleteField`), which is a
    state mutation by the contract's own words. The argument described a different verb than the
-   one it excluded. **FIX-1267 picks the verb set on the write-amplification test; the epic
-   holds only the constraint below.**
+   one it excluded.
+   **FIX-1267 picks the verb set on the write-amplification test; the epic holds only the constraint below.**
 
 3. **`docs/architecture/state-and-scopes.md` is a shared surface, and each child names the
    paragraph it owns.** FIX-1154 rewrites what the doc says about the two primitives' mutation
@@ -450,15 +453,18 @@ here has no way to know the framing was tried.*
 
 **What actually gates wrap — and it is not this table.** The coordinator's wrap predicate
 requires **every issue in its row set to be Linear-terminal** (`done` / `closed` / `cancelled` /
-`duplicate` / `dropped` / `won't do`), and that row set is built from the **Linear parent→children
-query** plus any explicitly carried members — not from this index. Executed against the seven
+`duplicate` / `dropped` / `won't do`), and that row set is built from the
+**Linear parent→children query**
+plus any explicitly carried members — not from this index. Executed against the seven
 current children, four fail it: **FIX-1154** (In Spec Review), **FIX-1269** (Todo), **FIX-1258**
 (Todo) and **FIX-1260** (Todo). The first two are the active set and will become terminal on their
-own. **The other two are parented bugs nobody is scheduling — and this document used to say wrap
-did not wait on them. It does.** "Not in the active set" is a statement about *dispatch*; it buys
+own.
+**The other two are parented bugs nobody is scheduling — and this document used to say wrap did not wait on them. It does.**
+"Not in the active set" is a statement about *dispatch*; it buys
 nothing at the wrap gate. Such a bug either gets **unparented** — linked `relates-to` — or it
-**holds the epic open** until someone closes it. Prose cannot exempt it. **That is the settled
-disposition for both** (§5): unparent, pending the Linear write. FIX-1259 and FIX-1207 have
+**holds the epic open** until someone closes it. Prose cannot exempt it.
+**That is the settled disposition for both** (§5):
+unparent, pending the Linear write. FIX-1259 and FIX-1207 have
 already left this way. *(Evidence: `TERMINAL_LINEAR` and `mayWrap` in
 [`.agents/workflows/epic-wake.js`](../../.agents/workflows/epic-wake.js), with the regex lifted
 from source and run against the parent→children set rather than read off the page.)*
@@ -492,8 +498,8 @@ wrap is decided by the Linear graph, not by that sentence — see the wrap note 
 >
 > **Landed: FIX-1259 and FIX-1207.** FIX-1259 was unparented, set **Backlog**, related to
 > **FIX-1000** and banner-marked *"leftover, do not re-parent"*. FIX-1207 followed. Neither is a
-> member, so §4 — a list of this epic's issues — is the wrong surface for either. **Do not
-> re-parent them.**
+> member, so §4 — a list of this epic's issues — is the wrong surface for either.
+> **Do not re-parent them.**
 >
 > **Pending: FIX-1258 and FIX-1260.** Both are still parented under FIX-1157, so both are still
 > indexed above and both still **gate wrap** (wrap note). Their rows stay until the writes land —
@@ -520,8 +526,9 @@ the PR closes when the epic wraps; this document outlives it.
   inactive row" in §4 (a carried row is still an index entry, and indexing it answers the
   question).
 
-  The reasoning is the boundary rule this epic has now applied five times: **epic membership is
-  not a severity queue.** FIX-1260 ships independently, no theme depends on it, and this epic
+  The reasoning is the boundary rule this epic has now applied five times:
+  **epic membership is not a severity queue.**
+  FIX-1260 ships independently, no theme depends on it, and this epic
   *surfaced* the defect rather than coordinating the fix — coordination is the only thing
   membership buys. **The wrap predicate makes it more than bookkeeping:** while it is parented and
   non-terminal it holds the epic open (§4's wrap note), so "parented but unscheduled" was never an
@@ -697,8 +704,9 @@ the PR closes when the epic wraps; this document outlives it.
   which is that issue's finding to carry. **Which makes seven** — and it is the pattern six
   entries above arriving through a *promise* rather than a description: the mechanism claim was
   wrong, the decision wrapped around it (defer, don't drop) survived intact.
-- **Sequencing declared; the any-order claim withdrawn (2026-08-26)** — **FIX-1269 is a
-  prerequisite of FIX-1154's documentation work**, because D-6's Decision 3 says the docs
+- **Sequencing declared; the any-order claim withdrawn (2026-08-26)** —
+  **FIX-1269 is a prerequisite of FIX-1154's documentation work**,
+  because D-6's Decision 3 says the docs
   *follow* the verbs and "merged in any order" contradicted a stamped owner decision. FIX-1154's
   §8 writing-time rule survives as the fallback if the order breaks, not as an alternative to
   declaring it. The identical ruling went to #1445 round 26 — a spec and its epic disagreeing
@@ -740,8 +748,9 @@ the PR closes when the epic wraps; this document outlives it.
   landed and their rows are gone; the last two are pending and keep their rows and their wrap
   gate until then. **The lesson is where the question went, not what it answered.** In one day
   this paragraph was written three ways — index it as inactive, put it to the owner as a live
-  fork, settle it — and only the third is right, because **parentage is organization and sits
-  below the owner-decision bar.** Indexing it decided a question that was open; escalating it
+  fork, settle it — and only the third is right, because
+  **parentage is organization and sits below the owner-decision bar.**
+  Indexing it decided a question that was open; escalating it
   spent the owner's attention on the shape of an issue graph. A document is not the place to
   resolve a pending decision, and not every pending decision is the owner's.
 
