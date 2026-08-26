@@ -391,7 +391,7 @@ import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/
 
 ### The next-steps block
 
-Tools that wire FSD into a project — a scaffolder, or a coding assistant following an install skill — print the same closing paragraph: which servers now exist, what each is for, which ports they land on, and the caveats that come with them. That text is authored once here.
+The `install-fsd` skill prints this block after it wires a project. So does a scaffolder that embeds `CANONICAL_NEXT_STEPS`. The block names the servers, what each is for, the ports, and the caveats.
 
 ```ts
 import {
