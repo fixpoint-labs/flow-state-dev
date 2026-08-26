@@ -52,7 +52,7 @@
       "entry": ["src/index.ts", "fsdev.config.ts", "test/**/*.spec.ts", "scripts/**/*.mts"]
     },
     "labs/conductor": {
-      "entry": ["src/index.ts", "fsdev.config.ts", "test/**/*.spec.ts", "test/harness.ts"]
+      "entry": ["fsdev.config.ts", "test/**/*.spec.ts", "test/harness.ts"]
     }
   }
 }
