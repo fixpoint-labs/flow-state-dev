@@ -129,6 +129,64 @@
  * `deadTargets` below for why it asserts rather than filters, and for the
  * oracle's boundary.
  *
+ * THE CITATIONS WERE RESOLVED AGAINST A MOVING TREE — round 35
+ * Round 34 made this file runnable, and runnable exposed what unrunnable had
+ * hidden: every assertion here resolves §11's citations by LINE NUMBER against the
+ * working tree, and §8's first deliverable is an edit to the very files those
+ * numbers point into. Insert one sentence above
+ * `apps/docs/docs/state/mutation-model.md:103` — which the first EXTEND brief asks
+ * for in those words — and the candidate moves to `:104`, the (c)-coverage
+ * assertion reports `§11 cites 103`, and the run exits 1 on work that did exactly
+ * what it was told.
+ *
+ * A gate that fails correct work is worse than a gate that cannot run. The second
+ * teaches you to fix it; the first teaches you to ignore it, and everything this
+ * file asserts rests on nobody having learned to ignore it yet.
+ *
+ * The defect is NOT the line-scoping. That property is round 29's and it stays: a
+ * ruling about one line must keep settling exactly one line, or a sentence about
+ * `:444` goes on settling 579 of them. The defect is that a line number is an
+ * identity only WITH RESPECT TO A TREE, and this file never named which tree.
+ * §11's citations were written about the documentation as it stood when the brief
+ * was written; the checker read them against the documentation as it stands now.
+ * Those are the same tree right up until the implementer starts work — which is
+ * the moment the check is supposed to earn its keep.
+ *
+ * So corpus TEXT is now read at the BASELINE (`git merge-base HEAD origin/main`,
+ * the commit this branch departs from), while corpus MEMBERSHIP stays a
+ * working-tree question, walked and asserted exactly as rounds 24 and 26 left it.
+ * A citation resolves against the tree it was written about, so the implementer's
+ * edits cannot move it, and the ruling still reaches one line and no further.
+ *
+ * WHY A MERGE-BASE AND NOT A PINNED SHA: when `main` moves under this branch and
+ * the branch takes it, the baseline advances too and a corpus page that changed on
+ * `main` is re-swept — round 33's incident (#1469 edited four corpus pages, two of
+ * them §11 targets) still turns this run red. Pinning would have bought line
+ * stability by going blind to that, trading one silent failure for another. A path
+ * with no blob at the baseline — a page this work ADDS — falls back to the working
+ * tree, so it is still scanned and still has to be dispositioned.
+ *
+ * WHAT IT NO LONGER SEES, declared rather than discovered, because a corpus that
+ * silently reaches less far is round 26 all over again. A NEW enumeration added to
+ * an EXISTING corpus page during implementation is invisible: that page's text is
+ * read at the baseline, where the new line does not exist. Measured, not assumed —
+ * planting one on `state/mutation-model.md` exits 1 before this change and 0 after.
+ *
+ * That capability was worth less than it looks. It only ever fired on a run that
+ * was ALREADY red from every line the same edit had shifted, so nothing could be
+ * told apart from anything else; on an implementation branch the old file is red
+ * unconditionally. What is kept is the half that survives an edit intact: a page
+ * with no baseline blob falls back to the working tree, so a page the work ADDS is
+ * still scanned and still has to be dispositioned. Line-level assertions must be
+ * baseline-scoped or they fail correct work; file-level ones need not be, and
+ * closing this by sweeping the working tree at FILE level only is the obvious next
+ * move if a round ever wants it back.
+ *
+ * MEASURED BEFORE IT WAS ADOPTED, per round 32's precondition: this branch touches
+ * only `spec/` and `spec-poc/`, so the baseline corpus and the checked-out corpus
+ * are byte-identical today and every count below is unchanged — 33 candidates, 20
+ * targets. It changes nothing now, and only stops a false failure later.
+ *
  * RUN IT
  *   node spec-poc/FIX-1154-doc-targets/check-targets.mjs
  *
@@ -142,6 +200,77 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
+
+/**
+ * THE TREE §11's LINE NUMBERS MEAN — round 35; see the header.
+ *
+ * The commit this branch departs from, which is the documentation §11 was written
+ * about. Corpus TEXT is read here so the implementer's own edits cannot invalidate
+ * a citation; corpus MEMBERSHIP is still the working-tree walk of rounds 24 and 26.
+ *
+ * Falls back to `main`, then to no baseline at all. That last fallback is the LOUD
+ * direction, deliberately: with no baseline this file behaves exactly as round 34
+ * left it, so a checkout that cannot reach `main` gets the old false FAILURE rather
+ * than a quietly green run. The marker at the bottom always names which tree was
+ * used, per §10's evidence-marker rule.
+ */
+function resolveBaseline() {
+  for (const ref of ["origin/main", "main"]) {
+    try {
+      return execFileSync("git", ["merge-base", "HEAD", ref], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+    } catch {
+      /* ref not reachable in this checkout — try the next */
+    }
+  }
+  return null;
+}
+
+const BASELINE = resolveBaseline();
+
+/**
+ * Every corpus path's text at the baseline, in one `cat-file --batch` pass rather
+ * than a process per file. A path with no blob there is absent from the map and
+ * falls back to the working tree — see the header on pages this work adds.
+ */
+function baselineTexts(relPaths) {
+  if (!BASELINE || relPaths.length === 0) return new Map();
+  const out = execFileSync("git", ["cat-file", "--batch"], {
+    cwd: repoRoot,
+    input: `${relPaths.map((rel) => `${BASELINE}:${rel}`).join("\n")}\n`,
+    maxBuffer: 1 << 28,
+  });
+  const texts = new Map();
+  let off = 0;
+  for (const rel of relPaths) {
+    const nl = out.indexOf(0x0a, off);
+    if (nl === -1) break;
+    const header = out.toString("utf8", off, nl);
+    off = nl + 1;
+    // "<sha> blob <size>" — anything else is "<rev>:<path> missing", no content.
+    const m = header.match(/^[0-9a-f]+ blob (\d+)$/);
+    if (!m) continue;
+    const size = Number(m[1]);
+    texts.set(rel, out.toString("utf8", off, off + size));
+    off += size + 1; // the blob, then the LF `cat-file` appends after it
+  }
+  // A desynced parse would hand every LATER file another file's text, and the run
+  // would stay green on line numbers computed from the wrong page — the silent
+  // failure this whole file is built against. The framing is positional, so the
+  // only honest check is that it consumed exactly the buffer git produced.
+  if (off !== out.length) {
+    console.error(
+      `baseline read desynced: consumed ${off} of ${out.length} bytes from ` +
+        `\`git cat-file --batch\`. Line numbers would be resolved against the wrong ` +
+        `files, so this exits rather than reporting on them.`
+    );
+    process.exit(1);
+  }
+  return texts;
+}
 
 /**
  * The corpus, stated here so the rule cannot be applied to a narrower one.
@@ -397,6 +526,9 @@ assertTotalClassification(TRACKED_PROSE);
 const CORPUS = corpusFiles();
 assertCorpus(CORPUS);
 
+const CORPUS_RELS = CORPUS.map((f) => path.relative(repoRoot, f));
+const BASELINE_TEXTS = baselineTexts(CORPUS_RELS);
+
 /**
  * A candidate, under either half of the rule:
  *   (a)/(b) — carries guarantee language AND is about scope state, either by
@@ -410,7 +542,9 @@ assertCorpus(CORPUS);
 function candidates() {
   const found = [];
   for (const file of CORPUS) {
-    const text = readFileSync(file, "utf8");
+    const rel = path.relative(repoRoot, file);
+    // Round 35: the tree the citations were written about, not the one being edited.
+    const text = BASELINE_TEXTS.get(rel) ?? readFileSync(file, "utf8");
     const aboutScopeState = MUTATOR.test(text) || SUBJECT.test(text);
     const hits = text
       .split("\n")
@@ -420,7 +554,7 @@ function candidates() {
           (aboutScopeState && GUARANTEE.test(line)) || enumeratesWriteSurface(line)
       );
     if (hits.length === 0) continue;
-    found.push({ file: path.relative(repoRoot, file), hits, aboutScopeState });
+    found.push({ file: rel, hits, aboutScopeState });
   }
   return found;
 }
@@ -659,6 +793,16 @@ console.log(
 );
 console.log(
   `corpus files scanned : ${CORPUS.length}  (excluding ${[...EXCLUDED].join(", ")})`
+);
+// Which tree §11's line numbers were resolved against — round 35. Without this the
+// output cannot be told apart from the version that read the edited working tree.
+const fromBaseline = CORPUS_RELS.filter((rel) => BASELINE_TEXTS.has(rel)).length;
+console.log(
+  BASELINE
+    ? `line numbers vs     : ${BASELINE.slice(0, 9)} (merge-base with main)  ` +
+        `— ${fromBaseline}/${CORPUS.length} read there, the rest from the working tree`
+    : `line numbers vs     : WORKING TREE — no 'main' reachable, so citations are ` +
+        `resolved against the tree being edited (round 35's false failure is live)`
 );
 console.log(`candidates           : ${all.length}`);
 for (const { file, hits } of all) {
