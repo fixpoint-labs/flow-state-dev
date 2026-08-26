@@ -267,6 +267,11 @@ export function createPgRecordStore<
    * `valueExpr` is the SQL fragment that produces the new JSONB value for
    * the targeted path. It may reference `$1` (the path text[]) and any
    * additional operand parameters that follow.
+   *
+   * `extraWhere` is an optional predicate, also referencing `$1` as the
+   * path, ANDed onto the UPDATE. Use it when the write is only valid for
+   * some JSON shapes. A 0-row result still goes through `loadConflict`;
+   * the caller distinguishes a real CAS miss from a rejected shape.
    */
   async function runDeltaUpdate(
     id: string,
@@ -275,7 +280,8 @@ export function createPgRecordStore<
     operandParams: unknown[],
     expectedVersion: ExpectedVersion,
     updatedAt: number,
-    verb: string
+    verb: string,
+    extraWhere?: string
   ): Promise<SetResult<TRecord>> {
     assertDeltaExpectedVersion(expectedVersion, verb);
     // Param layout: $1 = path text[]; $2..$M = operand params; then
@@ -284,6 +290,7 @@ export function createPgRecordStore<
     const opOffset = 1 + operandParams.length;
     const updatedAtParam = `$${opOffset + 1}`;
     const idParam = `$${opOffset + 2}`;
+    const extraPred = extraWhere ? ` AND (${extraWhere})` : "";
 
     if (expectedVersion === "any") {
       const sql = `UPDATE ${tableName}
@@ -295,7 +302,7 @@ export function createPgRecordStore<
                     ),
           version = version + 1,
           updated_at = ${updatedAtParam}::bigint
-        WHERE id = ${idParam}
+        WHERE id = ${idParam}${extraPred}
         RETURNING version, data`;
       const params = [pgPath, ...operandParams, updatedAt, id];
       const result = await executor.query(sql, params);
@@ -322,7 +329,7 @@ export function createPgRecordStore<
                   ),
         version = ${newVersionParam}::int,
         updated_at = ${updatedAtParam}::bigint
-      WHERE id = ${idParam} AND version = ${expectedParam}`;
+      WHERE id = ${idParam} AND version = ${expectedParam}${extraPred}`;
 
     const params = [
       pgPath,
@@ -470,15 +477,36 @@ export function createPgRecordStore<
       if (path.length !== 1) {
         throw new Error(`pushToArray only supports depth-1 paths; received path of length ${path.length}`);
       }
-      return runDeltaUpdate(
+      const result = await runDeltaUpdate(
         id,
         statePath(path),
-        "COALESCE(data #> $1::text[], '[]'::jsonb) || $2::jsonb",
+        // Missing key (SQL NULL at the path) becomes the pushed values.
+        // A present array is concatenated. A present non-array is excluded
+        // by extraWhere so this expression never wraps a scalar.
+        "CASE WHEN data #> $1::text[] IS NULL THEN $2::jsonb ELSE (data #> $1::text[]) || $2::jsonb END",
         [JSON.stringify(values)],
         expectedVersion,
         updatedAt,
-        "pushToArray"
+        "pushToArray",
+        "data #> $1::text[] IS NULL OR jsonb_typeof(data #> $1::text[]) = 'array'"
       );
+      if (!result.ok) {
+        const current = result.conflict.currentValue as
+          | { state?: Record<string, unknown>; version: number }
+          | undefined;
+        if (
+          current &&
+          (expectedVersion === "any" || current.version === expectedVersion)
+        ) {
+          const existing = current.state?.[path[0]];
+          if (existing !== undefined && !Array.isArray(existing)) {
+            throw new Error(
+              `pushToArray target at path[${path[0]}] is not an array (got ${typeof existing})`
+            );
+          }
+        }
+      }
+      return result;
     },
 
     async deleteField(
