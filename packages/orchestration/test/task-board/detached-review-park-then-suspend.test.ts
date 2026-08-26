@@ -182,11 +182,12 @@ function buildScenario() {
     },
   });
 
-  // ANTI-GAME sanity check only (second test below): forces a real ABA —
-  // resumes the row from review back to `pending` and lets a different
-  // worker claim it (bumping `attempts`) — so we can confirm the fence
-  // actually refuses a stale resumed write-back rather than the harness
-  // being unable to produce a decline at all.
+  // ANTI-GAME sanity check only (second test below): resumes the row from
+  // review back to `pending` and lets a different worker claim it (bumping
+  // `attempts`), so we can confirm this harness produces a real decline rather
+  // than being unable to fail at all. `resumeFromReview` + `claim`, NOT
+  // `reclaim()` — an `awaiting_review` row is lease-exempt, as the first test
+  // shows, so the reclaim path is unreachable from here.
   const bump = handler({
     name: "bump-attempts",
     inputSchema: z.unknown(),
@@ -340,12 +341,22 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
   );
 
   it(
-    "ANTI-GAME: a stale attempt (row reclaimed and re-attempted before resume) IS refused by the fence",
+    "ANTI-GAME: a stale attempt (review-resumed and re-claimed before resume) IS refused at the start gate",
     async () => {
-      // Sanity-check the fence itself is live in this harness: if we force a
-      // real reclaim (bumping `attempts`) BEFORE resuming the original
-      // suspended attempt, the resumed write-back must be declined, not
+      // Sanity-check that this harness can produce a decline at all: if the row
+      // is resumed from review and re-claimed — bumping `attempts` — BEFORE the
+      // original suspended attempt resumes, that attempt must be refused, not
       // silently accepted. A check that can only pass proves nothing.
+      //
+      // **Two things this does NOT do, both of which earlier prose claimed.**
+      // It does not `reclaim()`: the test above establishes that an
+      // `awaiting_review` row is ineligible for reclamation, so a real
+      // lease-reclaim is not reachable from this state at all. And the refusal
+      // comes from the start gate's `attempts` conjunct
+      // (`detached-runner.ts`), not from a fenced write-back — the worker never
+      // runs, so no write-back is attempted. Removing the write-back fence
+      // entirely would leave this test green, which bounds what it is evidence
+      // for: the harness declines, not that the fence works.
       const { flow } = buildScenario();
       const { stores, provider } = createDurableStores();
       const dispatched: { sessionId: string; actionName: string; input: unknown }[] = [];
