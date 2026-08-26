@@ -26,11 +26,33 @@
  * does NOT catch a page that is dispositioned wrongly. That is the honest
  * boundary — see §11's "What is mechanised here".
  *
+ * THE CORPUS IS ASSERTED, NOT JUST PRINTED — round 24
+ * The first version of this file walked every directory under its roots with no
+ * exclusion, and `statSync` follows symlinks, so under pnpm it descended through
+ * `apps/docs/node_modules` into the dependency tree: 14 dependency READMEs here,
+ * `@docusaurus/core/README.md` among them, and far more in a hoisted install. A
+ * dependency README that happened to carry the SUBJECT vocabulary would have
+ * failed this check and demanded a §11 disposition for THIRD-PARTY prose — a
+ * failure the document cannot fix, which is worse than no check, because the
+ * first person to hit it deletes it.
+ *
+ * It survived a round because the number was measured where the defect could not
+ * appear (a worktree with no dependencies installed) and confirmed with `find`,
+ * which does NOT follow symlinks and reported zero. THE CHECK WAS AIMED AT A
+ * NEIGHBOUR OF THE CLAIM — the same failure §10 exists to prevent, this time in
+ * the verification of the mechanism built to prevent it. A checker that walks
+ * symlinks needs its corpus asserted by something that walks them too, so the
+ * corpus now asserts itself (`assertCorpus`) rather than trusting the walk, and
+ * the printed count names what it excluded. That is §10's evidence-marker row
+ * applied to this file's own output.
+ *
  * RUN IT
  *   node spec-poc/FIX-1154-doc-targets/check-targets.mjs
  *
- * Exit 0 = every candidate is dispositioned. Exit 1 = at least one is not.
+ * Exit 0 = every candidate is dispositioned. Exit 1 = at least one is not, or
+ * the corpus itself is wrong.
  */
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -59,13 +81,55 @@ const MUTATOR =
  */
 const SUBJECT = /scope state|state layer|state mutator|scope write|state write/i;
 
+/**
+ * Never traversed. `statSync` follows symlinks and pnpm's `node_modules` is a
+ * forest of them, so without this the corpus is the dependency tree's prose plus
+ * ours. `build` / `.docusaurus` / `dist` are the same page twice — generated
+ * copies of files already counted from source.
+ */
+const EXCLUDED = new Set(["node_modules", "build", ".docusaurus", "dist", ".git"]);
+
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
+    if (EXCLUDED.has(entry)) continue;
     const full = path.join(dir, entry);
     if (statSync(full).isDirectory()) walk(full, out);
     else if (/\.mdx?$/.test(entry)) out.push(full);
   }
   return out;
+}
+
+/**
+ * The control for the defect above, and it deliberately does NOT re-check
+ * `EXCLUDED`. Asserting the walk against the same list the walk consults is a
+ * tautology: it catches a broken traversal but not a missing entry, which is the
+ * half that actually happened. So the oracle is independent — `git ls-files`,
+ * which knows what is OURS rather than what we remembered to exclude. It walks
+ * symlinks no more than the index does, and dependency trees, generated output
+ * and anything else foreign are all untracked by construction.
+ *
+ * A file in the corpus that this repo does not track means the traversal reached
+ * prose the document has no standing to disposition, and every count below it is
+ * meaningless — so this is a hard exit, not a warning.
+ */
+function assertCorpus(files) {
+  const tracked = new Set(
+    execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf8" })
+      .split("\0")
+      .filter(Boolean)
+  );
+  const foreign = files
+    .map((f) => path.relative(repoRoot, f))
+    .filter((rel) => !tracked.has(rel));
+  if (foreign.length > 0) {
+    console.error(
+      `corpus contains ${foreign.length} file(s) this repo does not track — ` +
+        `the traversal escaped the documentation source:`
+    );
+    for (const rel of foreign.slice(0, 10)) console.error(`  ${rel}`);
+    if (foreign.length > 10) console.error(`  ...and ${foreign.length - 10} more`);
+    process.exit(1);
+  }
 }
 
 function corpusFiles() {
@@ -91,13 +155,16 @@ function corpusFiles() {
   return files;
 }
 
+const CORPUS = corpusFiles();
+assertCorpus(CORPUS);
+
 /**
  * A candidate: carries guarantee language AND is about scope state — either by
  * naming a mutator or by naming the subject.
  */
 function candidates() {
   const found = [];
-  for (const file of corpusFiles()) {
+  for (const file of CORPUS) {
     const text = readFileSync(file, "utf8");
     if (!MUTATOR.test(text) && !SUBJECT.test(text)) continue;
     const hits = text
@@ -132,7 +199,13 @@ function isDispositioned(file) {
 const all = candidates();
 const undispositioned = all.filter(({ file }) => !isDispositioned(file));
 
-console.log(`corpus files scanned : ${corpusFiles().length}`);
+// The marker names what it executed over AND what it could not reach — §10's
+// evidence-marker row, applied to this file's own output. The count is
+// dependency-invariant by construction: it is the same with or without
+// `pnpm install`, which is the property the round-24 defect destroyed.
+console.log(
+  `corpus files scanned : ${CORPUS.length}  (excluding ${[...EXCLUDED].join(", ")})`
+);
 console.log(`candidates           : ${all.length}`);
 for (const { file, hits } of all) {
   const mark = isDispositioned(file) ? "ok" : "UNDISPOSITIONED";

@@ -978,10 +978,27 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
   it("data loss: a BIGINT or SYMBOL delta throws a RETRYABLE raw TypeError", async () => {
     // `current + delta` runs before anything validates `delta`. For these two
     // the arithmetic itself throws, and it throws the wrong TYPE: a raw
-    // TypeError is not a FlowError, so `isRetryableError` returns true for it
-    // under any policy — the block re-runs, replaying every side effect it
-    // already performed. Documenting an error as fatal does not survive this;
+    // TypeError is not a FlowError, so it never hits the `retryable === false`
+    // branch that would stop it — the block re-runs, replaying every side effect
+    // it already performed. Documenting an error as fatal does not survive this;
     // only the error's type does, which is the mechanism behind D6.
+    //
+    // SCOPE OF WHAT THIS ROW ESTABLISHES — it is narrower than the sentence this
+    // comment used to carry ("retryable under any policy"), which was the spec's
+    // D6 overstatement, narrowed there across three rounds and left standing
+    // here. The policy below is CONFIGURED and restricts no error types, so the
+    // check returns true at retry.ts:86. Two cases it does NOT cover, and neither
+    // is exotic:
+    //   - no policy at all (`undefined`) returns FALSE at :63-64 — and that is
+    //     the UNCONFIGURED DEFAULT, since `mergeRetryPolicy` returns undefined
+    //     when neither block nor runtime configures retry. An unconfigured block
+    //     runs once and the refusal surfaces immediately.
+    //   - a non-empty `retryableErrors` allowlist classifies by `instanceof`
+    //     against it (:89), so `retryableErrors: [FlowError]` would NOT retry a
+    //     raw TypeError.
+    // So the claim is "retryable under a configured policy that restricts no
+    // error types" — D6's three conditions in the spec, not "under any policy",
+    // and specifically not under the safe default.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
     const ref = ctx.resources.bag as unknown as MutableRef;
