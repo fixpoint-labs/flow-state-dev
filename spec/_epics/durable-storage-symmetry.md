@@ -151,7 +151,7 @@ below the themes had both gone stale against the code that merged.
    **This document previously called that "not a bag-side hole", and the reason was wrong** —
    which is why **FIX-1259 was reopened** after being cancelled on it. It sits at
    **Backlog · High and outside this set**,
-   unparented and re-filed as a FIX-1000 leftover (§4). The old
+   unparented and re-filed as a FIX-1000 leftover (§5). The old
    reasoning was that refusing a version-`0` write would break first touch, so the behaviour had
    to stay. First touch is not spelled `0`: it is spelled **`"absent"`**, and the predicate's own
    header says `0` could not express create-if-absent "without breaking the first CAS write of
@@ -451,7 +451,7 @@ expensive thing this epic has already paid for.
 | [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` on the resource handle. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(active set; added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, comparing shared declarations on `(scope, ref)` — the durable cell, not the accessor name | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo · High *(parented child, not in the active set; **gates wrap** — note below)* |
-| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming resource state schema stops drifting the stored value on every write — `normalizeResourceState` stores the **output** of `safeParse` instead of validating the candidate and storing the candidate. **Two independent copies** (`routes/route-utils.ts`, `context/resource-registry.ts`), so a one-site fix leaves the other standing | **bug** | — | — | Todo · High *(parented child, not in the active set; **gates wrap** — note below)* |
+| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value on every write — `normalizeResourceState` **validates the candidate and then stores the candidate**, rather than storing what `safeParse` returned. Both copies store the parse output today (`routes/route-utils.ts:250`, `context/resource-registry.ts:205`), and they are **independent**, so a one-site fix leaves the other standing | **bug** | — | — | Todo · High *(parented child, not in the active set; **gates wrap** — note below)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
@@ -484,49 +484,10 @@ filter and `mayWrap` in
 from source and run against the parent→children set rather than read off the page — seven
 children, four non-terminal.)*
 
-**What FIX-1260's row is actually about — two live defects on `main`, neither fixed here.**
-FIX-1154's spec review promoted two findings from *gaps in a proposed guard* to *defects
-already shipped*:
-
-- A **`.catch()`-wrapped state schema stores its fallback and erases untouched fields.** An
-  inner refinement violation never makes `safeParse` fail, so the fallback is what gets
-  stored: the write succeeds, the version advances, and a field the caller never touched comes
-  back as the schema default. Nothing throws.
-- A **schema transform can produce a value the adapters store differently.** The memory store
-  keeps `Infinity` (it clones with `structuredClone`); every JSON-backed adapter flattens it to
-  `null`, which then fails the schema on the next durable read. Two deployments hold different
-  data from the same call, and neither raises.
-
-Both share one root, and **FIX-1260 is it**: `normalizeResourceState` stores the **output** of
-`safeParse` rather than validating the candidate and storing the candidate, so any schema that
-rewrites its input on parse changes what lands. **The root has two copies, not one** — the same
-function exists independently in `routes/route-utils.ts` and in `context/resource-registry.ts`,
-and it is the registry copy that runs on both ends of every read-modify-write. A fix that lands in
-one place leaves the other standing. *The epic found this and does not schedule the fix: FIX-1260
-is indexed above because it is a child of FIX-1157, not because it joined the active set. It is
-described here because a reader who sees the epic's characterization rows asserting today's wrong
-behaviour needs to know those rows are tracked work, not an epic deliverable. Whether it delays
-wrap is decided by the Linear graph, and the answer is **yes** — see the wrap note above.*
-
-> **The four surfaced bugs split two and two, and nothing here is pending.** The boundary rule —
-> epic membership is not a severity queue (§5) — argued for unparenting all four. Two of those
-> writes were made and two were not, and the two that were not are **settled as they stand**.
->
-> **Left the set: FIX-1259 and FIX-1207.** FIX-1259 was unparented, set **Backlog**, related to
-> **FIX-1000** and banner-marked *"leftover, do not re-parent"*. FIX-1207 followed, keeping its
-> blocked-by on FIX-1158. Neither is a member, so §4 — a list of this epic's issues — is the wrong
-> surface for either. **Do not re-parent them and do not re-index them.**
->
-> **Stayed: FIX-1258 and FIX-1260.** Both are children of FIX-1157, so both are indexed above and
-> both **gate wrap** (wrap note). **FIX-1260's row is new, and the earlier ruling that it must not
-> be indexed is retracted** — a parented child belongs in the index, because this index is a
-> projection of the Linear graph and not a second opinion about it. With that row the two surfaces
-> agree exactly: seven children, seven rows.
->
-> None of this moves theme 1: the version-`0` scope hole is still real, still FIX-1259's to fix,
-> and the retraction that reopened it still stands — the reviving writer is a **held-then-lost**
-> one handed `0` by the retry path, not a first-touch writer, so refusing it costs first touch
-> nothing.
+*Why FIX-1259 and FIX-1207 have no row here while FIX-1258 and FIX-1260 do — the boundary rule and
+the disposition each of the four surfaced bugs got — is recorded once, in §5. How FIX-1260's defect
+works belongs to that issue and its PR, not to this index: §4 is a projection of the coordinator's
+status table, and nothing refreshes a diagnosis parked inside it.*
 
 ## 5. Open cross-cutting questions
 
@@ -825,4 +786,21 @@ the PR closes when the epic wraps; this document outlives it.
   from the last thing we wrote. **The boundary rule itself is untouched** — epic membership is not
   a severity queue, which is still why FIX-1259 and FIX-1207 stay out; it lost the parentage
   argument for the other two without being wrong.
+- **FIX-1260's row inverted, and its 43-line diagnosis left §4 (2026-08-26)** — the row's *what it
+  delivers* cell described the **defect** (`normalizeResourceState` stores `safeParse` output)
+  in the slot that tells an implementer what to build, so following it would have changed nothing:
+  both copies already return the parse output (`routes/route-utils.ts:250`,
+  `context/resource-registry.ts:205`). The cell now states the delivery — validate the candidate,
+  then store the candidate. **The diagnosis that sat under the index went with it**, to the issue
+  that owns it;
+  [`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) keeps §4 a status-table
+  projection rather than prose, and a diagnosis parked there has no refresh trigger.
+  **The two findings are one finding.** The row and the diagnosis said the same thing twice inside
+  one section, which made two things to keep true, and they contradicted each other **inside a
+  single commit** — the row prescribed what the diagnosis below it called the bug.
+  That is the second removal of this shape after *the child-only constraints subsection*, above;
+  there the two carriers took four days to drift, here one commit, because both copies were
+  written in the same pass and only one of them was aimed at an implementer.
+  **Not counted as a retraction:** the mechanism the row named was true. It was in the wrong slot,
+  which is a different defect from a claim that does not hold.
 
