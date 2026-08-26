@@ -356,17 +356,37 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  * the shape the two built-in backings happen to return.
  *
  * If you write one, every worker-callable transition — `complete`, `fail`,
- * `block`, `unblock`, `awaitReview`, `resumeFromReview`, `cancel` — **must**
+ * `block`, `unblock`, `awaitReview`, `resumeFromReview`, `cancel` — should
  * accept and honour the optional `TaskTransitionOptions` argument. The type
  * system cannot hold you to this: an implementation taking only `(id, output)`
  * structurally satisfies the interface, and JavaScript discards the extra
- * argument in silence. A ref that ignores the options throws on a task someone
- * else already settled, and that throw escapes the task board's per-worker
- * rescue and abandons every sibling task on the board — the exact failure the
- * options exist to contain. It also leaves ownership unchecked, so a worker's
- * write lands on whichever task the caller named. See `TaskTransitionOptions`
- * for the two guards, and evaluate both inside your atomic write so the check
- * cannot race the write it guards.
+ * argument in silence. See `TaskTransitionOptions` for the guards, and evaluate
+ * them inside your atomic write so the check cannot race the write it guards.
+ *
+ * ### What the substrate guarantees, and what you still owe
+ *
+ * **Guaranteed — for one class of throw, not for every failure.** The
+ * substrate's advisory write-backs contain a throw they can attribute to a
+ * decline a conforming store would have made before committing anything: the
+ * late result is dropped and the drain finishes its other tasks. So a ref that
+ * ignores the options no longer abandons every sibling task the first time a
+ * worker's result arrives late — the write-back *conflict* is contained.
+ *
+ * That is the whole of it. A store that is unreachable, or that commits and then
+ * fails on the way out, still throws through to the caller and can still fail
+ * the drain, because neither is a task-state conflict and silencing them would
+ * lose real failures. Don't read this as fault isolation from your store.
+ *
+ * **Still yours:** the write's correctness. Containment fires on a *throw*, and
+ * plenty of wrong writes don't throw. A worker reporting success on a task
+ * another worker has since taken over is an ordinary `in_progress → completed`,
+ * so an unguarded ref commits it and overwrites the holder's result; nothing
+ * outside your atomic section can see that, let alone stop it. Ownership goes
+ * unchecked the same way — a worker's write lands on whichever task the caller
+ * named.
+ *
+ * So the options are no longer what keeps a board alive. They are what keeps its
+ * tasks' outcomes true.
  */
 export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /** Stable identifier — matches `data.collectionId` on emitted `task-change` items. */

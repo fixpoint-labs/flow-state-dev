@@ -221,8 +221,8 @@ describe("Store delta verbs — in-memory adapter", () => {
     });
 
     it("throws when the target field exists but is not an array", async () => {
-      // Matches Postgres' SQL `||` operator error on non-array JSONB so a
-      // state-shape bug surfaces in dev rather than silently overwriting.
+      // Programming error at the call site: the field is present and not an
+      // array. The same throw is required of every adapter.
       const store = createInMemorySessionStore();
       await seed(store, "s1", { bag: { k: 1 } });
 

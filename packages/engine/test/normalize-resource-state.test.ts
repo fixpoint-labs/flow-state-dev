@@ -8,9 +8,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { ResourceConfig } from "@flow-state-dev/core/types";
+import { ValidationError } from "../src/errors/flow-error";
 import {
   normalizeResourceDefault,
-  normalizeResourceState
+  normalizeResourceState,
+  parseResourceWriteState
 } from "../src/resources/normalize-resource-state";
 
 /** A resource config carrying only the fields these normalizers read. */
@@ -73,5 +75,47 @@ describe("normalizeResourceState", () => {
   it("never surfaces a non-object, even when the schema would accept one", () => {
     const schema = z.union([z.object({ n: z.number() }), z.string()]);
     expect(normalizeResourceState(config(schema), "a string")).toEqual({});
+  });
+});
+
+describe("parseResourceWriteState", () => {
+  it("returns the parsed object when the write validates", () => {
+    const schema = z.object({ n: z.number().nonnegative(), keep: z.string() });
+    expect(parseResourceWriteState(schema, { n: 5, keep: "ok" }, "counter")).toEqual({
+      n: 5,
+      keep: "ok"
+    });
+  });
+
+  it("throws ValidationError and does not return a default on refinement failure", () => {
+    const schema = z.object({ n: z.number().nonnegative(), keep: z.string() });
+    expect(() => parseResourceWriteState(schema, { n: -1, keep: "ok" }, "counter")).toThrow(
+      ValidationError
+    );
+    expect(() => parseResourceWriteState(schema, { n: -1, keep: "ok" }, "counter")).toThrow(
+      /Resource "counter" write failed stateSchema validation at "n"/
+    );
+  });
+
+  it("throws when the schema accepts a non-object", () => {
+    const schema = z.union([z.object({ n: z.number() }), z.string()]);
+    expect(() => parseResourceWriteState(schema, "a string", "counter")).toThrow(
+      /parsed value is not a JSON object/
+    );
+  });
+
+  it("persists schema-valid null as {} — the documented nullable-single reset", () => {
+    const schema = z.object({ ticker: z.string() }).nullable();
+    expect(parseResourceWriteState(schema, null, "priceHistory")).toEqual({});
+  });
+
+  it("still throws when a nullable schema rejects a partial object", () => {
+    const schema = z.object({ ticker: z.string(), range: z.string() }).nullable();
+    expect(() => parseResourceWriteState(schema, { ticker: "NVDA" }, "priceHistory")).toThrow(
+      ValidationError
+    );
+    expect(() => parseResourceWriteState(schema, { ticker: "NVDA" }, "priceHistory")).toThrow(
+      /at "range"/
+    );
   });
 });

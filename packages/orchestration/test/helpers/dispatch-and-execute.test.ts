@@ -21,6 +21,7 @@ import {
   createCapturedChanges,
   createFakeSequencerState,
 } from "../helpers";
+import { dropsTheGuards, unreachable } from "../collection/store-wrappers";
 
 function buildCollection(): TaskCollectionRef {
   const captured = createCapturedChanges();
@@ -704,4 +705,76 @@ describe("a worker's background work survives transport teardown", () => {
     expect(result.error).toBeUndefined();
     expect(probe.ended).toBe("aborted");
   }, 20_000);
+});
+
+/**
+ * FIX-964 — the helper is handed a `TaskCollectionRef` directly, as a plain
+ * option. There is no factory to certify at, which is why containment lives in
+ * the write-back seam and not at a boundary check.
+ */
+describe("a custom store that ignores the advisory guards", () => {
+  it("does not reject the handler when the task was settled while the worker ran", async () => {
+    const c = buildCollection();
+    await c.addTask({ id: "t", goal: "do thing" });
+
+    const worker = handler({
+      name: "worker",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => {
+        // A coordinator settling the task mid-flight. Cancelling does not stop
+        // the worker already running it, so finishing normally afterwards is
+        // the ordinary case rather than the exotic one.
+        await c.cancel("t", "coordinator changed its mind");
+        return { done: true };
+      },
+    });
+
+    // Before the fix the write-back throws `cancelled → completed`, the
+    // helper's own `catch` calls `fail()`, and THAT throws too — escaping the
+    // handler whatever `onError` says, because the `onError === "fail"` check
+    // sits after the `fail()` call.
+    const result = await runForTest(
+      dispatchAndExecuteBlock({
+        collection: dropsTheGuards(c),
+        dispatcher: fifoDispatcher,
+        workers: worker,
+        onError: "skip",
+      }),
+      undefined,
+      fakeCtx
+    );
+
+    expect(result.claimed).toBe(true);
+    expect(result.taskId).toBe("t");
+    // The settler's decision stands; the late result is dropped, not applied.
+    expect(c.get("t")?.status).toBe("cancelled");
+    expect(c.get("t")?.output).toBeUndefined();
+  });
+
+  it("still rejects when the store is down on a task the worker holds", async () => {
+    // The negative that keeps containment from becoming error suppression.
+    const c = buildCollection();
+    await c.addTask({ id: "t", goal: "do thing" });
+
+    const worker = handler({
+      name: "worker",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: () => ({ done: true }),
+    });
+
+    await expect(
+      runForTest(
+        dispatchAndExecuteBlock({
+          collection: unreachable(c, "store unreachable"),
+          dispatcher: fifoDispatcher,
+          workers: worker,
+          onError: "skip",
+        }),
+        undefined,
+        fakeCtx
+      )
+    ).rejects.toThrow("store unreachable");
+  });
 });

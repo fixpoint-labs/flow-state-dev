@@ -176,6 +176,10 @@ below. Two things to keep in mind:
 - **For an externally-managed store**, `collection` also accepts a
   `(ctx) => TaskCollectionRef` factory — resolve any `ResourceCollectionRef`
   yourself inside it. `defineTaskCollection` is the one-liner for the common case.
+  Honor the [advisory write guards](/docs/orchestration/task-substrate#recording-a-result-that-may-no-longer-apply)
+  in the ref you hand back. A board whose store ignores them still drains — it
+  contains the write-back that would otherwise have thrown — but that task's
+  result is no longer protected from a worker that has moved on.
 
 So request A can `addTask` into it, the request ends, and request B — a
 different call, even a different session turn — can still see those tasks (same
