@@ -36,8 +36,9 @@ Decision 3 follows — the write-up becomes **API documentation**, not a withhel
 **What ships is API symmetry, not a contention win.** The verbs are a read-modify-write over the
 **existing** `runResourceCAS` (`stores/resource-cas.ts:191`) — roughly sixty lines, no store
 change. Concurrent increments still resolve by CAS retry exactly as `updateState` does today;
-nothing becomes atomic at the adapter. **That win is the store-native half, and it stays
-deferred** (theme 2, Decision 2).
+nothing becomes atomic at the adapter. **Nor does the deferred store-native half win contention**
+— under this epic's held-version constraint it buys smaller writes, not fewer conflicts (theme 2,
+Decision 2).
 
 *Code citations are against `origin/main` at `6aa1bea`.*
 
@@ -83,14 +84,14 @@ the honest description of it.**
 - **FIX-1258** (a deleted resource revived by a request that never saw it) is the version-`0`
   hole in theme 1's tombstone row — found by FIX-1154's spec review and reproduced on the real
   path. **Not in the active set**, on the reasoning that kept FIX-1155 out, spun FIX-1207 off,
-  and now also covers **FIX-1259**: **epic membership is not a severity queue.** Taking them in
+  and now also covers **FIX-1260**: **epic membership is not a severity queue.** Taking them in
   would make this epic's boundary "concurrency bugs we found", which is how a set stops being a
   set. **FIX-1155 is the worked example** — held out on exactly this reasoning, and it shipped
   anyway (#1388).
 
 **The active set is FIX-1154 and FIX-1269.** The FIX-1158 lodger and FIX-1155 have both
-shipped; FIX-1207, FIX-1258 and FIX-1259 are carried in §4 so the record is complete. **Wrap
-does not wait for any of them.**
+shipped; FIX-1207, FIX-1258 and FIX-1260 are carried in §4 so the record is complete, and
+FIX-1259 has left it (unparented). **Wrap does not wait for any of them.**
 
 Whether this is an epic at all — rather than one issue and a standalone bug — was asked twice
 by review and is **decided: it stays an epic** (§5, resolved). An engineering call, not the
@@ -100,11 +101,10 @@ set now carries two substantive children that share one contract decision.
 **Not doing:** merging the two primitives; deleting or deprecating either one at any scope;
 re-attempting the org-state removal; cross-record atomicity (FIX-854); and resource-specific
 surface with no state analogue at all — content, `client`, `reactTo`, `edges`, collections.
-**One pair of verbs closes; the rest is only mapped** (D-6). `incState` / `pushState` reach
-`ResourceRef` this cycle (FIX-1269); every *other* difference is **mapped by FIX-1154, not
-closed by it**, and most are out of scope **by construction**. The one thing **deferred rather
-than absent** is the **store-native** delta layer (`incField` / `pushToArray`) — FIX-1267, next
-to FIX-992 (theme 2, Decision 2). Do not read the shipping handle verbs as that work.
+**One pair of verbs closes; the rest is only mapped** (D-6, above) — and most of it is out of
+scope **by construction**. The one thing **deferred rather than absent** is the
+**store-native** delta layer (`incField` / `pushToArray`) — FIX-1267, next to FIX-992 (theme 2,
+Decision 2). Do not read the shipping handle verbs as that work.
 **No child deprecates, removes, or
 migrates a primitive** — every one of them fixes, generalizes, or documents. A child that
 finds itself proposing a removal has hit the rejected framings in §2 and comments up on this
@@ -147,7 +147,8 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    Because absence also reads as `0`, the same write lands when the row is *gone*.
 
    **This document previously called that "not a bag-side hole", and the reason was wrong** —
-   which is why **FIX-1259 is reopened** (Todo · P2) after being cancelled on it. The old
+   which is why **FIX-1259 was reopened** after being cancelled on it. It sits at **Backlog ·
+   High and outside this set**, unparented and re-filed as a FIX-1000 leftover (§4). The old
    reasoning was that refusing a version-`0` write would break first touch, so the behaviour had
    to stay. First touch is not spelled `0`: it is spelled **`"absent"`**, and the predicate's own
    header says `0` could not express create-if-absent "without breaking the first CAS write of
@@ -287,10 +288,39 @@ two that have nowhere else to live are recorded below the themes, and labelled a
      `updateState` does today. What it buys is API symmetry, so a developer stops picking a
      primitive by its verb list. Do not describe it as making anything atomic.
    - ***Tier 2 — the store interface. Still deferred (FIX-1267).*** Store-native `incField` /
-     `pushToArray` on `ResourceStateStore` across every adapter plus conformance — the tier that
-     would actually win contention, and the one carrying this theme's unproven claim, the
-     liveness gating, and the constraint amendment above. **Deferred and explicitly not
-     dropped** (Decision 2), returning through the epic-theme rewrite next to FIX-992.
+     `pushToArray` on `ResourceStateStore` across every adapter plus conformance — the tier
+     carrying this theme's unproven claim, the liveness gating, and the constraint amendment
+     above. **It wins no contention either** — this document promised that it would, and the
+     retraction is below. **Deferred and explicitly not dropped** (Decision 2), returning through
+     the epic-theme rewrite next to FIX-992.
+
+   **Neither tier wins contention, and the reason is this theme's own constraint.**
+   `DeltaStoreOps` states it outright — a delta verb's *"concurrency contract is identical to
+   `set`: the write applies only when the current stored version equals `expectedVersion`"*
+   (`stores/types.ts:446-449`). So under a held version a native verb admits exactly one writer
+   and the loser conflicts and retries, which is the full-record `set` it replaces. Run rather
+   than read: `patchField`, `incField` and `pushToArray` each carry a passing *"returns conflict
+   on stale expectedVersion"* row (`packages/engine/test/store-delta-verbs.test.ts`). What Tier 2
+   buys is the same docstring's opening line — *"to avoid full-record UPDATEs on single-field
+   scope-state writes"* — **write amplification, not concurrency.**
+
+   **The bag's contention win is the `"any"` downgrade, and this epic was crediting it to the
+   verbs.** `scope-persist.ts:60` hands `effectiveVersion` — `"any"` on every commutative hint —
+   to all four verbs, while the `set` fallback keeps the caller's version. The routing suite's
+   own describe block is named *"commutative ops bypass CAS"*, and its control row is
+   *"updater-form patchState uses numeric expectedVersion (RMW, CAS path)"* — the one bag shape
+   that keeps the gate, and keeps the conflicts with it
+   (`packages/engine/test/scope-persist-routing.test.ts`). Verb and downgrade are a **pair**:
+   `"any"` is non-lossy only because a field-scoped write leaves siblings alone (*"incField on
+   one field does not disturb others"*), where a full `set` at `"any"` would clobber them. This
+   theme forbids the downgrade half for resources, so the pair cannot travel — and neither can
+   the win.
+
+   **This does not un-defer Tier 2 and does not reopen Decision 2.** FIX-1267 stays deferred.
+   What moved is its *justification* — from a concurrency fix to a write-amplification one — and
+   that is a finding for **FIX-1267 to carry**, not a scope change here. It also sharpens the
+   Tier 1 / Tier 2 split rather than blurring it: the two tiers now differ in *what* they buy,
+   not in *how much* of one thing.
 
    If a store-native delta verb ever lands it must **not** reuse `createScopePersist` or
    commutative hints: that is precisely how `"any"` re-enters the resource path.
@@ -312,15 +342,23 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    Decision 3 makes the docs follow the verbs, so FIX-1269 owns the **reference** half — the two
    new methods on `ResourceRef`, their signatures and their return contract — and FIX-1154 owns
    the **comparison** half, the paragraph explaining how the two mutation surfaces line up.
-   FIX-1154's map must describe increment and append as **shipped**, not as a deliberate gap;
-   the spec's old "resources deliberately lack these verbs" framing is withdrawn by D-6 and does
-   not survive into the doc.
+   FIX-1154's map must describe increment and append as **closing** — shipping as FIX-1269 —
+   not as a deliberate gap; the spec's old "resources deliberately lack these verbs" framing is
+   withdrawn by D-6 and does not survive into the doc. **"Closing", not "shipped":** the spec's
+   map rows already read that way, and until FIX-1269 lands, a page that says *shipped*
+   publishes a surface that does not exist.
 
    **Constrains:** no issue silently rewrites a neighbour's paragraph, and if two land close
    together the second rebases the doc edit rather than resolving a conflict by preference.
-   **There is no sequencing** — the children are independent and can be specced, built and
-   merged in any order. The `createScopePersist` seam is closed: FIX-1155 has merged, so nothing
-   in the active set touches it.
+   **FIX-1269 is a declared prerequisite of FIX-1154's documentation work.** D-6's Decision 3
+   says the docs *follow* the verbs, and this document's earlier "merged in any order" claim
+   contradicted a stamped owner decision — that claim is withdrawn, not qualified. The two
+   issues stay independent everywhere else: FIX-1154's **map** can be specced and reviewed
+   whenever, and only the **documentation** half waits. **If the order breaks anyway**,
+   FIX-1154's §8 rule is the fallback and not an alternative to the prerequisite: state the
+   absence at writing time rather than publish a surface that does not exist. The
+   `createScopePersist` seam is closed: FIX-1155 has merged, so nothing in the active set
+   touches it.
 
 ### Constraints on individual children
 
@@ -383,13 +421,13 @@ expensive thing this epic has already paid for.
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the shipped verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review |
+| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review · **its docs half starts when FIX-1269 lands** (prerequisite, not a deferral — theme 3); the map half is unblocked |
 | [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `ResourceRef.incState` / `pushState` as a read-modify-write over the existing `runResourceCAS`. API symmetry only: **wins no contention**, changes no store | spec | — | — | Todo · Medium *(active set; added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
 | [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | A write from a context that **never observed** a resource does not revive it after a delete, while the ordinary first touch of a never-written resource is unchanged — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo *(not in the active set; wrap does not wait for it)* |
 | [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) | Cross-flow validation compares exact refs, so overlapping collection keyspaces slip through — the scope excluded from FIX-1158, filed separately | **bug** | — | — | Backlog *(blocked by FIX-1158; not in the active set)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
-| [FIX-1259](https://linear.app/fixpoint-labs/issue/FIX-1259) | A hard-deleted scope record is not recreated by a **held-then-lost** writer handed version `0` by the CAS retry path (`cas.ts:169-171`) — the scope-side counterpart to FIX-1258 | **bug** | — | — | Todo · P2 *(reopened 2026-08-26; not in the active set)* |
+| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming resource state schema drifts the stored value on every write — `normalizeResourceState` stores `safeParse`'s **output**, in two independent copies (`routes/route-utils.ts`, `context/resource-registry.ts`) | **bug** | — | — | Todo · High *(parented under FIX-1157; **carried, not active** — wrap does not wait for it)* |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
 *A bug carries no spec PR by design — it routes straight to implementation
@@ -423,25 +461,31 @@ own the fix. They are recorded here because a reader who sees the epic's charact
 asserting today's wrong behaviour needs to know those rows are tracked work, not an epic
 deliverable.*
 
-> **Flagged, not settled — the doc and Linear still disagree about one issue.**
+> **Settled — the index and Linear now agree on both flagged issues, and they landed on opposite
+> answers.** Recorded because the next reader will otherwise re-derive the disagreement.
+>
 > **FIX-1260** (the transforming-schema drift) is **parented under FIX-1157 in Linear**, which is
 > what makes an issue a member ([`orchestration.md`](../../docs/contributing/orchestration.md)
-> → the epic is the parent), but this document does not carry it as one. **This fold does not
-> decide which surface is wrong**: re-parenting is destructive and Linear allows a single parent,
-> so it is the coordinator's call — either it joins §4 as a carried-but-inactive row, or it is
-> re-parented out. Recorded here so the next reader finds the disagreement instead of trusting
-> whichever surface they happened to open.
+> → the epic is the parent), so it is now carried in §4 above as a **flagged inactive row**.
+> That is the owner's resolution: a carried row makes this document match Linear without anyone
+> touching the graph, which matters because **re-parenting is destructive** — Linear allows one
+> parent. **Carried is not active.** Wrap does not wait for it, and no theme depends on it.
 >
-> **FIX-1259's half of this is now closed** — it is reopened (Todo · P2, 2026-08-26) and carried
-> in §4 above, matching its Linear parentage. It had been cancelled on reasoning theme 1 has
-> since retracted: the writer that revives a hard-deleted record is a **held-then-lost** writer
-> handed `0` by the retry path, not a first-touch writer, so refusing it costs first touch
-> nothing.
+> **FIX-1259 is the mirror case, and it has left the index.** Linear Manager has **unparented it
+> from FIX-1157**, set it **Backlog**, related it to **FIX-1000**, and banner-marked it
+> *"leftover, do not re-parent"*. It is therefore **not a member**, and §4 — a list of this
+> epic's issues — is the wrong surface for it. **Do not re-parent it.** None of that moves
+> theme 1: the version-`0` scope hole is still real, still FIX-1259's to fix, and the retraction
+> that reopened it still stands — the reviving writer is a **held-then-lost** one handed `0` by
+> the retry path, not a first-touch writer, so refusing it costs first touch nothing.
 
 ## 5. Open cross-cutting questions
 
-**No live fork remains.** The resolved entries are kept in full rather than only on the epic PR
-— the PR closes when the epic wraps; this document outlives it.
+**No live fork remains** — including the membership question §4 was holding open, which the owner
+resolved in favour of a carried inactive row for FIX-1260 and no re-parenting either way (§4,
+which is where that resolution lives; it is not restated here, because a second carrier for one
+decision is how this document has drifted before). The resolved entries below are kept in full
+rather than only on the epic PR — the PR closes when the epic wraps; this document outlives it.
 
 - **~~Does this epic finish with the task-board fan-out crash still live?~~** *Resolved by
   events, not by a decision: **FIX-1155 shipped** — PR
@@ -580,7 +624,8 @@ deliverable.*
   held `expectedVersion` to a store delta verb at all. **The Tier 1 / Tier 2 split is now the
   load-bearing distinction in this document** and is stated wherever the verbs are: Tier 1 is
   handle-surface API symmetry that **wins no contention**; Tier 2 is the store interface that
-  would. Eight surfaces carried the superseded answer and were reconciled in one pass (§1's
+  would *(that second half is wrong — see* Tier 2's contention win retracted *below)*. Eight
+  surfaces carried the superseded answer and were reconciled in one pass (§1's
   objective, necessity bullets, active-set line and *Not doing*; theme 1's entry-point
   paragraph; theme 2's three tier paragraphs; theme 3's shared-paragraph seam; the §4 rows; §5's
   D-6 and return-contract entries) together with the epic PR's diagram, asks and engineering
@@ -599,4 +644,27 @@ deliverable.*
   sixth consecutive case of the pattern two entries above: a *mechanism* description was wrong
   while the **decision** wrapped around it (the drivers stay separate; the divergence is
   tombstoned generations vs hard-deleted records) survived intact.
+- **Tier 2's contention win retracted; the deferral untouched (2026-08-26)** — the epic had
+  called store-native deltas *"the tier that would actually win contention"*. Under this theme's
+  own held-`expectedVersion` constraint they win none: `DeltaStoreOps`'s contract is *"identical
+  to `set`"* (`stores/types.ts:446-449`), and all three verbs have a passing *conflict on stale
+  expectedVersion* row. What they buy is **write amplification**. The bag's real win is the
+  commutative downgrade to `"any"` (`scope-persist.ts:60`) — the exact move theme 2 forbids
+  generalizing — so the epic had been crediting the verbs with a benefit the downgrade produces.
+  **FIX-1267 stays deferred and Decision 2 is not reopened**; its *justification* is rescoped,
+  which is that issue's finding to carry. **Which makes seven** — and it is the pattern six
+  entries above arriving through a *promise* rather than a description: the mechanism claim was
+  wrong, the decision wrapped around it (defer, don't drop) survived intact.
+- **Sequencing declared; the any-order claim withdrawn (2026-08-26)** — **FIX-1269 is a
+  prerequisite of FIX-1154's documentation work**, because D-6's Decision 3 says the docs
+  *follow* the verbs and "merged in any order" contradicted a stamped owner decision. FIX-1154's
+  §8 writing-time rule survives as the fallback if the order breaks, not as an alternative to
+  declaring it. The identical ruling went to #1445 round 26 — a spec and its epic disagreeing
+  about ordering is worse than either answer.
+- **FIX-1260 carried, FIX-1259 dropped from the index (2026-08-26)** — the two flagged
+  membership disagreements resolved in opposite directions, both by matching Linear rather than
+  editing it: FIX-1260 stays parented, so it joins §4 as a flagged inactive row; FIX-1259 was
+  unparented and banner-marked *"leftover, do not re-parent"*, so it leaves §4 entirely. Theme
+  1's conclusion is untouched by both — **the index is a projection of the Linear graph, not a
+  second opinion about it.**
 
