@@ -1013,10 +1013,15 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     //     runs once and the refusal surfaces immediately.
     //   - a non-empty `retryableErrors` allowlist classifies by `instanceof`
     //     against it (:89), so `retryableErrors: [FlowError]` would NOT retry a
-    //     raw TypeError.
-    // So the claim is "retryable under a configured policy that restricts no
-    // error types" — D6's three conditions in the spec, not "under any policy",
-    // and specifically not under the safe default.
+    //     raw TypeError. NB an allowlist is not by itself an exclusion: `[Error]`
+    //     matches every plain Error and every TypeError through the prototype
+    //     chain, so it replays these refusals exactly as an absent list does.
+    //     Rows for that are in `../FIX-1154-round25-claims/` (round 28) rather
+    //     than here, so this suite's stated count stays put.
+    // So the claim is "retryable under a configured policy whose retryableErrors
+    // is absent, empty, or names an ancestor of the thrown class" — D6's three
+    // conditions in the spec, not "under any policy", and specifically not under
+    // the safe default.
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
     const ref = ctx.resources.bag as unknown as MutableRef;

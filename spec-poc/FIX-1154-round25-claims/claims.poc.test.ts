@@ -1,13 +1,14 @@
 /**
- * FIX-1154 — round-25 claim checks. Throwaway; never merges.
+ * FIX-1154 — claim checks for rounds 25, 26 and 28. Throwaway; never merges.
  *
  * WHY A THIRD FILE
- * Round 25 corrected three factual claims in the write-up. Each was argued from
- * a code read on one side and a review comment on the other, and this document's
- * own §10 rule is that a claim about runtime behaviour is settled by running it.
- * They live here rather than in `FIX-1154-resource-mutation-verbs/` so that
- * suite's "twenty-four rows" stays an accurate count — adding rows to it would
- * have made §10's own figure stale, which is the exact defect round 24 recorded.
+ * Each round below corrected a factual claim in the write-up that had been
+ * argued from a code read on one side and a review comment on the other, and
+ * this document's own §10 rule is that a claim about runtime behaviour is
+ * settled by running it. They live here rather than in
+ * `FIX-1154-resource-mutation-verbs/` so that suite's "twenty-four rows" stays
+ * an accurate count — adding rows to it would have made §10's own figure stale,
+ * which is the exact defect round 24 recorded.
  *
  * WHAT EACH GROUP SETTLES
  *  1. §2's fold headline said "a resource write is ALWAYS version-checked".
@@ -18,9 +19,19 @@
  *     Zod strips the property first, no adapter ever sees it.
  *  3. §11 said `deleteStateRecord` persists at `expectedVersion: "any"`. That is
  *     conditional on the adapter advertising the native verb.
+ *  4. §9/§11 scoped the silent first-touch no-op to a schema with no valid
+ *     complete default (round 26: false — the condition is the seed), and then
+ *     to whether a row exists (round 28: also false). Group 4 drives the single
+ *     handle's composition; group 4b drives the REAL registry and settles what
+ *     the axis is, what the collection handle does instead, and how far it
+ *     reaches.
+ *  5. D6's replay predicate required `retryableErrors` unset or empty. A
+ *     non-empty allowlist containing a matching class replays it too.
  *
- * These drive real modules — `runResourceCAS`, the repo's Zod, `createScopePersist`
- * over the real memory and filesystem scope stores. No mocked stores.
+ * These drive real modules — `runResourceCAS`, the repo's Zod,
+ * `createScopePersist` over the real memory and filesystem scope stores, and
+ * (group 4b) `createExecutionContext` with the shipped collection handle. No
+ * mocked stores anywhere.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,6 +45,19 @@ import {
   normalizeResourceDefault,
   normalizeResourceState
 } from "../../packages/engine/src/resources/normalize-resource-state";
+import { isRetryableError } from "../../packages/engine/src/execution/retry";
+import { FlowError } from "../../packages/engine/src/errors/flow-error";
+import {
+  defineFlow,
+  defineResource,
+  defineResourceCollection,
+  handler
+} from "@flow-state-dev/core";
+import {
+  createExecutionContext,
+  createInMemoryStores,
+  type StoreRegistry
+} from "../../packages/engine/src";
 import type { ExpectedVersion } from "../../packages/engine/src/stores/types";
 import { createScopePersist } from "../../packages/engine/src/stores/scope-persist";
 import { createFilesystemSessionStore } from "../../packages/engine/src/stores/filesystem/session-store";
@@ -42,6 +66,23 @@ import { createFilesystemOrgStore } from "../../packages/engine/src/stores/files
 import { createInMemorySessionStore } from "../../packages/engine/src/stores/memory/session-store";
 import { createInMemoryUserStore } from "../../packages/engine/src/stores/memory/user-store";
 import { createInMemoryOrgStore } from "../../packages/engine/src/stores/memory/org-store";
+
+/**
+ * Local structural stand-ins. The POC never leaves this file, and the shipped
+ * generic types would need the flow's inferred resource map to line up — which
+ * is machinery, not evidence.
+ */
+type PocState = Record<string, unknown>;
+type MutableRef = {
+  readonly state: PocState;
+  updateState(updater: (s: PocState) => PocState | Promise<PocState>): Promise<void>;
+};
+type CollectionHandle = {
+  create(key: string, initial?: PocState): Promise<MutableRef>;
+  get(key: string): Promise<MutableRef>;
+  getOptional(key: string): Promise<MutableRef | undefined>;
+  delete(key: string): Promise<boolean>;
+};
 
 // ---------------------------------------------------------------------------
 // 1. Is EVERY resource write version-checked? (§2 fold headline vs map row 10)
@@ -367,5 +408,272 @@ describe("§11 first-touch no-op — the condition is the seed, not the default"
     expect(out.version).toBe(4);
     expect(out.persisted).toBe(true);
     expect(out.state).toEqual({ n: 0, keep: "gone" }); // D1
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4b. Which axis actually decides it — driven through the REAL registry
+//
+// Round 26 re-cut §9/§11 on "row exists vs first touch". Round 28 says that
+// axis is wrong too. Both earlier cuts were stated at the width of the single
+// resource, which is the only handle the group above drives.
+//
+// The mechanism is one line — `resource-cas.ts:229` short-circuits when
+// normalization returns what the container ALREADY HOLDS — and the two handles
+// answer it differently because the normalizer is two copies with two
+// different fallbacks (§7b):
+//
+//   single      seed(no row) = normalizeResourceDefault(config)   (:1494)
+//               invalid      = normalizeResourceDefault(config)   (normalize-resource-state.ts:50)
+//               the SAME FUNCTION — equal by construction
+//
+//   collection  seed(no row) = stateSchema.safeParse({})          (:712-713)
+//               invalid      = bare {}                            (:680)
+//               two different expressions — equal only by coincidence
+//
+// Everything below goes through `createExecutionContext` and the shipped
+// collection handle. Nothing here hand-composes the registry: the group above
+// does that, and a hand-composed harness can only ever execute this author's
+// READING of the composition — the neighbour trap §10 records eight times.
+// ---------------------------------------------------------------------------
+
+describe("§9/§11 axis — normalization vs what the container holds, not row-existence", () => {
+  const schemaWithDefaults = z.object({
+    n: z.number().default(0),
+    keep: z.string().default("seed")
+  });
+
+  const tasks = defineResourceCollection({
+    scope: "session",
+    pattern: "tasks/**",
+    stateSchema: schemaWithDefaults
+  });
+
+  // Same schema as the collection, so every contrast below is handle-vs-handle
+  // and never schema-vs-schema.
+  const single = defineResource({
+    scope: "session",
+    ref: "single",
+    stateSchema: schemaWithDefaults,
+    default: { n: 0, keep: "seed" }
+  });
+
+  // A collection whose `safeParse({})` FAILS, so its seed and its invalid
+  // fallback coincide at `{}` — the case that behaves like the single.
+  const strict = defineResourceCollection({
+    scope: "session",
+    pattern: "strict/**",
+    stateSchema: z.object({ n: z.number() })
+  });
+
+  const makeCtx = (stores: StoreRegistry, requestId: string) =>
+    createExecutionContext({
+      flow: defineFlow({
+        kind: "fix1154-r28",
+        actions: {
+          run: {
+            inputSchema: z.string(),
+            block: handler({
+              name: "noop",
+              resources: { tasks, single, strict },
+              execute: () => "ok"
+            })
+          }
+        }
+      })(),
+      actionName: "run",
+      requestId,
+      sessionId: "sess_1",
+      userId: "user_1",
+      stores
+    });
+
+  const readRow = (stores: StoreRegistry, key: string) =>
+    stores.resourceState.get("session", "sess_1", key);
+
+  it("CLAIM: a collection row's invalid write lands {} — every field gone, schema defaults included", async () => {
+    // The collection normalizer substitutes a BARE `{}` (`:680`). Nothing
+    // survives — not the untouched field, not the fields the schema defaults.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_coll");
+    await (ctx.resources.tasks as never as CollectionHandle).create("t1", {
+      n: 5,
+      keep: "DO-NOT-LOSE"
+    });
+    expect((await readRow(stores, "tasks/t1"))?.state).toEqual({ n: 5, keep: "DO-NOT-LOSE" });
+
+    const inst = await (ctx.resources.tasks as never as CollectionHandle).get("t1");
+    await inst.updateState(() => ({ n: "bad" }) as never);
+
+    const after = await readRow(stores, "tasks/t1");
+    expect(after?.state).toEqual({}); // NOT `{ n: 0, keep: "seed" }`
+    expect(after?.version).toBe(2); // committed, and reported success
+  });
+
+  it("CONTRAST: the same schema and the same write on a SINGLE lands the schema DEFAULT", async () => {
+    // D1 as §7b states it. The pair is the point: same schema, same candidate,
+    // two different survivors — so "what the schema declares" cannot be the axis.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_single");
+    const ref = ctx.resources.single as never as MutableRef;
+    await ref.updateState(() => ({ n: 5, keep: "DO-NOT-LOSE" }));
+
+    await ref.updateState(() => ({ n: "bad" }) as never);
+
+    const after = await readRow(stores, "single");
+    expect(after?.state).toEqual({ n: 0, keep: "seed" }); // the default, not {}
+    expect(after?.version).toBe(2);
+  });
+
+  it("the first-touch no-op is a SINGLE-side guarantee — seed and fallback are one function", async () => {
+    // Never-persisted single, invalid first write: `normalizeResourceState`
+    // falls back to exactly what the container was seeded with, the deep-equal
+    // fires, and nothing reaches a store. This is round 26's claim on the real
+    // path rather than on a composed harness.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_first");
+
+    await expect(
+      (ctx.resources.single as never as MutableRef).updateState(() => ({ n: "bad" }) as never)
+    ).resolves.toBeUndefined();
+
+    expect(await readRow(stores, "single")).toBeUndefined();
+  });
+
+  it("SCOPE: a never-created collection instance cannot be reached at all", async () => {
+    // This is what stops the collection's `{}` fallback from being a
+    // first-touch defect: there is no first touch to have. Recorded because
+    // without it the rows above read as a wider blast radius than exists.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_scope");
+    const handle = ctx.resources.tasks as never as CollectionHandle;
+
+    await expect(handle.get("never")).rejects.toThrow(/not found in collection/);
+    expect(await handle.getOptional("never")).toBeUndefined();
+  });
+
+  it("SCOPE: create() VALIDATES and throws — the silent {} is only reachable through a held ref", async () => {
+    // The other half of the scope. `create` parses the initial state and raises
+    // a named error naming the failing path (`resource-registry.ts:1102`;
+    // `upsert` does the same at `:1280`), so neither way IN to a collection
+    // instance carries the defect — only the three per-instance write ops do.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_create");
+
+    await expect(
+      (ctx.resources.tasks as never as CollectionHandle).create("t2", { n: "bad" } as never)
+    ).rejects.toThrow(/state validation failed/);
+    expect(await readRow(stores, "tasks/t2")).toBeUndefined();
+  });
+
+  it("BOUNDARY: a held ref whose row was deleted recreates it holding {}", async () => {
+    // The one reachable place where the collection's seed is the schema default
+    // and its fallback is `{}`: after `delete`, the cache entry is gone, so
+    // `readState()` takes the `safeParse({})` branch (:712-713) while the write
+    // still returns `{}`. They differ, so the write commits.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_del");
+    const handle = ctx.resources.tasks as never as CollectionHandle;
+    await handle.create("t3", { n: 5, keep: "DO-NOT-LOSE" });
+    const inst = await handle.get("t3");
+    await handle.delete("t3");
+    expect(await readRow(stores, "tasks/t3")).toBeUndefined();
+
+    await inst.updateState(() => ({ n: "bad" }) as never);
+
+    expect((await readRow(stores, "tasks/t3"))?.state).toEqual({});
+  });
+
+  it("CONTROL: a VALID write on that same ref recreates it too — so the revival is D5, only the {} is the normalizer", async () => {
+    // Without this the row above would read as "the invalid write resurrects
+    // it", which is wrong and would re-file D5 under a new name. The revival is
+    // the tombstone branch (D5 / FIX-1258); what the normalizer decides is only
+    // WHAT the recreated row holds.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_del_valid");
+    const handle = ctx.resources.tasks as never as CollectionHandle;
+    await handle.create("t4", { n: 5, keep: "DO-NOT-LOSE" });
+    const inst = await handle.get("t4");
+    await handle.delete("t4");
+
+    await inst.updateState((s) => ({ ...s, n: 9 }));
+
+    expect((await readRow(stores, "tasks/t4"))?.state).toEqual({ n: 9, keep: "seed" });
+  });
+
+  it("a collection whose safeParse({}) FAILS is a no-op — the two fallbacks coincide at {}", async () => {
+    // So "collection" is not the axis either. With a required field,
+    // `readState()` falls through to `{}`, the invalid write returns `{}`, the
+    // deep-equal fires, and nothing is written. The divergence is between the
+    // two FALLBACKS, not between the two handles.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "r_strict");
+    const handle = ctx.resources.strict as never as CollectionHandle;
+    await handle.create("s1", { n: 5 });
+    const inst = await handle.get("s1");
+    await handle.delete("s1");
+
+    await inst.updateState(() => ({ n: "bad" }) as never);
+
+    expect(await readRow(stores, "strict/s1")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. D6's third condition — an allowlist does not mean "no replay"
+//
+// The spec (and the FIX-1265 issue body) said the replay needs `retryableErrors`
+// UNSET OR EMPTY. `isRetryableError` classifies by `instanceof` over the listed
+// constructors (`execution/retry.ts:89`), and both read-only refusals are plain
+// `Error`s — so an allowlist that happens to CONTAIN a matching class replays
+// them too. That makes the stated predicate a strict subset of the defect, and
+// a verification scoped to it would miss the case.
+// ---------------------------------------------------------------------------
+
+describe("D6 third condition — a MATCHING allowlist replays the refusal too", () => {
+  // The exact shape both read-only guards throw:
+  // `resource-registry.ts:659` (state) and `:1636` (content).
+  const readOnlyRefusal = new Error('Resource "stats" is read-only');
+
+  const policy = (retryableErrors?: Array<new (...args: never[]) => Error>) => ({
+    maxAttempts: 2,
+    baseDelayMs: 0,
+    maxDelayMs: 0,
+    ...(retryableErrors ? { retryableErrors } : {})
+  });
+
+  it("unset — retryable (the condition the spec already stated)", () => {
+    expect(isRetryableError(readOnlyRefusal, policy())).toBe(true);
+  });
+
+  it("empty list — retryable (the other half the spec already stated)", () => {
+    expect(isRetryableError(readOnlyRefusal, policy([]))).toBe(true);
+  });
+
+  it("CLAIM: a NON-EMPTY list containing a matching class is ALSO retryable", () => {
+    // `[Error]` is not exotic — it is what a caller writes to mean "retry
+    // ordinary failures". Every plain Error is an `instanceof Error`.
+    expect(isRetryableError(readOnlyRefusal, policy([Error]))).toBe(true);
+  });
+
+  it("a superclass match counts — TypeError refusals are caught by [Error] too", () => {
+    // The `instanceof` is over the prototype chain, not an identity check, so
+    // "contains the error's class" is too narrow as well: it is "contains a
+    // class the error is an instanceof".
+    expect(isRetryableError(new TypeError("bad delta"), policy([Error]))).toBe(true);
+  });
+
+  it("CONTROL: a non-matching allowlist does NOT retry — the exclusion is real", () => {
+    // Without this the rows above prove only that the classifier says yes a lot.
+    // A plain Error is not a FlowError, so this is the case where an allowlist
+    // genuinely stops the replay.
+    expect(isRetryableError(readOnlyRefusal, policy([FlowError]))).toBe(false);
+  });
+
+  it("CONTROL: no policy at all is not retryable — the safe default is unchanged", () => {
+    // `mergeRetryPolicy` returns `undefined` for an unconfigured block
+    // (`execution/retry.ts:34-36`), and `isRetryableError` returns false for it
+    // (`:63-65`). The defect stays latent, which is the half that is correct.
+    expect(isRetryableError(readOnlyRefusal, undefined)).toBe(false);
   });
 });
