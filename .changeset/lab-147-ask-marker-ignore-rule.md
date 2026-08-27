@@ -10,3 +10,5 @@ Provisioning now asks git, in the checkout, whether that path is ignored, and re
 Internal to `labs/conductor`; no published package surface changes.
 
 A refusal discards the checkout it just created, and that cleanup runs after the provisioning budget it could not draw from. The lock's advertised lifetime now carries the allowance for it, so an `ownership.staleAfterMs` sized against the old two-term bound is refused at construction rather than letting a waiter clear a lock while its holder is still cleaning up.
+
+A refusal on a branch that outlives it — one reused from a previous attempt, or a pre-existing branch the cleanup deliberately keeps — now names that branch. The tree is on a commit cut before the fix, so fixing the source repository alone leaves it unchanged; the message says to bring it up to date or delete it rather than advertising a recovery that does not apply.

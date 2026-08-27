@@ -1097,8 +1097,33 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     const config = workspace();
     dropIgnoreRule(config.sourceRepo);
 
+    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
+      () => undefined,
+      (error: Error) => error.message,
+    );
+
+    expect(failure).toMatch(/Add `\*\*\/\.fsdev\/` to that repository's \.gitignore/);
+    // And that is the WHOLE instruction here, so it does not carry the branch
+    // half. This checkout's branch is deleted on the way out and the next
+    // attempt cuts a new one from the fixed base; telling the operator to go
+    // repair a branch that no longer exists is advice they cannot act on.
+    expect(failure).not.toMatch(/bring "/);
+  });
+
+  it("tells the operator a REUSED branch needs fixing too", async () => {
+    // "Fix the repository" is the whole instruction only for a tree about to be
+    // cut fresh from `baseRef`. This one already exists on a branch cut before
+    // the fix, and nothing here deletes it — so the operator follows the
+    // instruction, the next attempt reuses the same branch, and it refuses
+    // identically. An advertised recovery that quietly does not apply is worse
+    // than no advice.
+    const config = workspace();
+    const branch = branchFor(at("FIX-1219", "implement"));
+    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    dropIgnoreRule(first.path);
+
     await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      /Add `\*\*\/\.fsdev\/` to that repository's \.gitignore/,
+      new RegExp(`bring "${branch}" up to date, or delete it`),
     );
   });
 
@@ -1209,6 +1234,22 @@ describe("provisioning refuses a repository that would commit the ask marker", (
         encoding: "utf8",
       }).trim(),
     ).not.toBe("");
+  });
+
+  it("names the branch it preserved, because fixing the repository misses it", async () => {
+    // The branch it kept is the reason the refusal needs a second half. Kept
+    // means the next attempt reattaches it, and it points at a commit cut
+    // before the fix — so the recovery the message advertises leaves the task
+    // exactly as wedged as it found it. Same tree as the test above; this one
+    // asserts the operator is told what to do about it.
+    const config = workspace();
+    const branch = branchFor(at("FIX-1219", "implement"));
+    dropIgnoreRule(config.sourceRepo);
+    execFileSync("git", ["branch", branch], { cwd: config.sourceRepo, stdio: "pipe" });
+
+    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+      new RegExp(`bring "${branch}" up to date, or delete it`),
+    );
   });
 
   it("refuses a rule that names one marker file rather than the directory", async () => {

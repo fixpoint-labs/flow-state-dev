@@ -548,7 +548,11 @@ async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Pro
  * to say so and change nothing, and the refusal lands before the agent runs,
  * which is what keeps it from being paid for once per retry.
  */
-async function assertAskMarkerIgnored(checkoutPath: string, left: () => number): Promise<void> {
+async function assertAskMarkerIgnored(
+  checkoutPath: string,
+  left: () => number,
+  preservedBranch?: string,
+): Promise<void> {
   // **Already committed is asked FIRST, and it is a different failure.** An
   // ignore rule does not un-track a file: `git add -A` stages a change to a
   // tracked path whatever the rules say. So a target that has committed a
@@ -566,7 +570,8 @@ async function assertAskMarkerIgnored(checkoutPath: string, left: () => number):
       `[conductor] the repository behind ${checkoutPath} already tracks ${ASK_MARKER_DIR}: ` +
         `${tracked.split("\n").join(", ")}. An ignore rule does not un-track a file — the ` +
         `agent's \`git add -A\` stages a change to a tracked path regardless — so a run's ` +
-        `question would still be committed. Remove those files from that repository first.`,
+        `question would still be committed. Remove those files from that repository first.` +
+        staleBranchRemedy(preservedBranch),
     );
   }
 
@@ -609,7 +614,34 @@ async function assertAskMarkerIgnored(checkoutPath: string, left: () => number):
       `\`git add -A\` from staging a file git does not already ignore — so the question ` +
       `would be committed to the branch and land in the pull request. The DIRECTORY is ` +
       `what is checked, because a rule naming one marker file leaves the next attempt's ` +
-      `unprotected. Add \`${ASK_MARKER_IGNORE_RULE}\` to that repository's .gitignore.`,
+      `unprotected. Add \`${ASK_MARKER_IGNORE_RULE}\` to that repository's .gitignore.` +
+      staleBranchRemedy(preservedBranch),
+  );
+}
+
+/**
+ * The rest of an ignore refusal's remedy, when the tree is on a branch that
+ * outlives the refusal.
+ *
+ * **"Fix the repository" is only the whole instruction for a checkout about to
+ * be cut fresh from `baseRef`.** On any branch that survives this call — one
+ * reused from a previous attempt, or a pre-existing branch `worktree add`
+ * attached and {@link discardFreshCheckout} therefore keeps — the tree was cut
+ * BEFORE the fix. The operator follows the instruction, the next attempt
+ * reattaches the same branch, and it refuses identically. The advertised
+ * recovery quietly does not apply, which is worse than no advice.
+ *
+ * Advice rather than automatic repair, deliberately: a branch this call did not
+ * create may carry work, and the module's rule is that unknown contents are
+ * kept. So the operator is told exactly which branch and given both outs.
+ */
+function staleBranchRemedy(branch: string | undefined): string {
+  if (branch === undefined) return "";
+  return (
+    ` This checkout is on branch "${branch}", which nothing here removes — it may carry ` +
+    `work. That branch was cut before the fix, so fixing the source repository alone ` +
+    `leaves it unchanged and the next attempt reattaches it and refuses the same way: ` +
+    `bring "${branch}" up to date, or delete it so the next attempt cuts a new one.`
   );
 }
 
@@ -952,7 +984,7 @@ export async function provisionCheckout(
     // Re-checked on reuse, not only on creation: the rule is a tracked file on
     // the branch this tree is on, so a run that deleted it leaves a checkout
     // that provisioned legally and is no longer safe to write a question into.
-    await assertAskMarkerIgnored(path, left);
+    await assertAskMarkerIgnored(path, left, branch);
 
     return { path, branch, created: false };
   }
@@ -1051,7 +1083,12 @@ export async function provisionCheckout(
   // return, under the lock, with no agent yet dispatched. Same argument the
   // no-`.git` branch above makes, at the one other moment it holds.
   try {
-    await assertAskMarkerIgnored(path, left);
+    // The branch is named in the refusal only when this call will not delete
+    // it. Fresh, `discardFreshCheckout` removes it and the next attempt cuts a
+    // new one from the fixed `baseRef`, so "fix the repository" is the whole
+    // instruction; pre-existing, it is deliberately kept and the operator has a
+    // second thing to do.
+    await assertAskMarkerIgnored(path, left, branchPreexisted ? branch : undefined);
   } catch (refusal) {
     const removed = await discardFreshCheckout(config, path, branch, branchPreexisted, now);
     if (removed) throw refusal;
