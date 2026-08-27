@@ -52,7 +52,8 @@ import {
   ConcurrentModificationError,
   FlowError,
   ResourceAlreadyExistsError,
-  ResourceDeletedError
+  ResourceDeletedError,
+  ValidationError
 } from "../errors/flow-error";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import {
@@ -177,6 +178,42 @@ function refuseDelta(message: string): { ok: false; error: FlowError } {
 }
 
 /**
+ * Read a state field as an OWN property (FIX-965's guard, applied here).
+ *
+ * `current[field]` on a plain object falls through to `Object.prototype` for a
+ * field the object does not own, so `constructor`, `toString`, `valueOf` and
+ * `hasOwnProperty` come back as functions and `__proto__` as an object. The
+ * guards below read "absent" as a field's empty state, so a bare lookup turns
+ * the most ordinary write there is — a first touch — into a wrong-kind refusal.
+ * State field names come from the caller (`incState({ [providerName]: 1 })`),
+ * so this is reachable, not theoretical. Same shape as `ownTask` in the task
+ * collection and `keyedRouter` in core.
+ */
+function ownField(current: JsonObject, field: string): JsonValue | undefined {
+  return Object.hasOwn(current, field) ? current[field] : undefined;
+}
+
+/**
+ * Write a state field as an OWN property.
+ *
+ * `next[field] = value` is a phantom write when `field` is `"__proto__"`: it
+ * sets the object's prototype instead of creating an own property, so the
+ * delta reports success and stores nothing. `defineProperty` always creates or
+ * updates an own data property, matching plain-object semantics for every
+ * other key. (A computed key in an object literal is already safe, but relying
+ * on that distinction leaves the next simplifying edit free to reintroduce the
+ * bug — so both delta mutators write through here.)
+ */
+function setOwnField(target: JsonObject, field: string, value: JsonValue): void {
+  Object.defineProperty(target, field, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true
+  });
+}
+
+/**
  * `incState`'s mutator body: add each delta to its field.
  *
  * Builds a fresh object and returns it only once every field passed, so a
@@ -195,7 +232,7 @@ function applyIncrements(
   for (const [field, delta] of Object.entries(increments)) {
     if (delta === undefined) continue;
 
-    const stored = current[field];
+    const stored = ownField(current, field);
     if (stored !== undefined && stored !== null && typeof stored !== "number") {
       return refuseDelta(
         `Resource "${label}" incState target "${field}" is not a number (got ${describeJsonType(stored)})`
@@ -215,7 +252,7 @@ function applyIncrements(
       );
     }
 
-    next[field] = result;
+    setOwnField(next, field, result);
   }
 
   return { ok: true, next };
@@ -231,7 +268,7 @@ function applyPush(
   field: string,
   value: JsonValue
 ): DeltaOutcome {
-  const stored = current[field];
+  const stored = ownField(current, field);
   if (stored !== undefined && stored !== null && !Array.isArray(stored)) {
     return refuseDelta(
       `Resource "${label}" pushState target "${field}" is not an array (got ${describeJsonType(stored)})`
@@ -239,7 +276,9 @@ function applyPush(
   }
 
   const base = Array.isArray(stored) ? stored : [];
-  return { ok: true, next: { ...current, [field]: [...base, value] } };
+  const next: JsonObject = { ...current };
+  setOwnField(next, field, [...base, value]);
+  return { ok: true, next };
 }
 
 /**
@@ -297,26 +336,71 @@ type ResourceWriteMutator = (
  * `refusal()` therefore reports the verdict of the LAST attempt only, and it is
  * set only where the driver verified the row it was judged against.
  *
+ * The write-path SCHEMA parse needs the same treatment for the same reason, and
+ * it is one line away from the refusal in the persist helpers. A delta computed
+ * off a stale cached row can produce a result the schema rejects — `calls: 11`
+ * against a `.max(10)` field — while the row it would actually commit against
+ * makes the very same call valid. So the persist helpers hand a
+ * {@link ValidationError} to `deferWriteError` instead of throwing it, and it
+ * arrives here as one more verdict on this attempt's basis. A result that is
+ * still invalid against the verified row throws exactly as before.
+ *
  * Contention and deletion outcomes are unaffected: those throw from the driver
  * before this ever reports, keeping their existing retryability.
  */
 function createDeltaMutator(apply: (current: JsonObject) => DeltaOutcome): {
   mutator: (current: JsonObject) => JsonObject | WriteUnchanged;
   refusal: () => FlowError | undefined;
+  deferWriteError: (error: FlowError) => void;
 } {
   let refusal: FlowError | undefined;
   return {
     mutator: (current) => {
       // Reset per attempt: a retry runs against a different row, which may no
-      // longer mismatch.
+      // longer mismatch. This runs before the persist helper's parse, so a
+      // deferred schema failure from a previous attempt is cleared too.
       refusal = undefined;
       const outcome = apply(current);
       if (outcome.ok) return outcome.next;
       refusal = outcome.error;
       return WRITE_UNCHANGED;
     },
-    refusal: () => refusal
+    refusal: () => refusal,
+    deferWriteError: (error) => {
+      refusal = error;
+    }
   };
+}
+
+/**
+ * Run one write mutator attempt and parse what it produced — the single place a
+ * write result meets its `stateSchema`, shared by the single-resource and
+ * collection-instance persist helpers.
+ *
+ * `deferWriteError` is supplied only by the delta verbs. With it, a schema
+ * rejection hands the basis back untouched (the {@link WRITE_UNCHANGED} shape)
+ * so the CAS driver verifies the row the result was judged against before the
+ * failure becomes terminal; see {@link createDeltaMutator}. Without it — the
+ * `patchState` / `setState` / `updateState` path — the parse throws exactly as
+ * it always has. Nothing but a {@link ValidationError} is ever deferred.
+ */
+async function runWriteMutator(
+  mutate: ResourceWriteMutator,
+  stateSchema: ResourceConfig["stateSchema"],
+  label: string,
+  current: JsonObject,
+  deferWriteError: ((error: FlowError) => void) | undefined
+): Promise<JsonObject> {
+  const next = await mutate(current);
+  if (next === WRITE_UNCHANGED) return current;
+
+  try {
+    return parseResourceWriteState(stateSchema, next, label);
+  } catch (error) {
+    if (deferWriteError === undefined || !(error instanceof ValidationError)) throw error;
+    deferWriteError(error);
+    return current;
+  }
 }
 
 /**
@@ -834,13 +918,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
    * Schema parse happens inside the mutator so a retry re-validates too — and
    * only over a value the mutator actually produced. A mutator that yields
    * {@link WRITE_UNCHANGED} gets its basis back untouched; see that symbol for
-   * what parsing an unchanged row costs.
+   * what parsing an unchanged row costs. `deferWriteError` (delta verbs only)
+   * routes a schema rejection through the same verified-basis path.
    */
   const persistResourceState = async (
     name: string,
     config: ResourceConfig,
     mutate: ResourceWriteMutator,
-    seed: JsonObject
+    seed: JsonObject,
+    deferWriteError?: (error: FlowError) => void
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (config.writable === false) {
       throw new FlowError(`Resource "${name}" is read-only`, {
@@ -851,11 +937,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
     return options.mutateResourceKey(
       name,
-      async (current) => {
-        const next = await mutate(current);
-        if (next === WRITE_UNCHANGED) return current;
-        return parseResourceWriteState(config.stateSchema, next, name);
-      },
+      (current) => runWriteMutator(mutate, config.stateSchema, name, current, deferWriteError),
       { seed }
     );
   };
@@ -865,7 +947,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     storageKey: string,
     nsConfig: ResourceCollectionConfig,
     mutate: ResourceWriteMutator,
-    seed: JsonObject
+    seed: JsonObject,
+    deferWriteError?: (error: FlowError) => void
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (nsConfig.writable === false) {
       throw new Error(`Resource "${storageKey}" is read-only`);
@@ -873,11 +956,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
     return options.mutateResourceKey(
       storageKey,
-      async (current) => {
-        const next = await mutate(current);
-        if (next === WRITE_UNCHANGED) return current;
-        return parseResourceWriteState(nsConfig.stateSchema, next, storageKey);
-      },
+      (current) =>
+        runWriteMutator(mutate, nsConfig.stateSchema, storageKey, current, deferWriteError),
       { seed }
     );
   };
@@ -942,7 +1022,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     const runDeltaWrite = async (
       apply: (current: JsonObject) => DeltaOutcome
     ): Promise<void> => {
-      const { mutator, refusal } = createDeltaMutator(apply);
+      const { mutator, refusal, deferWriteError } = createDeltaMutator(apply);
       let prev!: JsonObject;
       let post!: JsonObject;
       let committed = false;
@@ -952,7 +1032,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           storageKey,
           nsConfig,
           mutator,
-          seed
+          seed,
+          deferWriteError
         ));
         post = readState();
       });
@@ -1774,7 +1855,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     const runDeltaWrite = async (
       apply: (current: JsonObject) => DeltaOutcome
     ): Promise<void> => {
-      const { mutator, refusal } = createDeltaMutator(apply);
+      const { mutator, refusal, deferWriteError } = createDeltaMutator(apply);
       let prev!: JsonObject;
       let post!: JsonObject;
       let committed = false;
@@ -1784,7 +1865,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           storageKey,
           config,
           mutator,
-          seed
+          seed,
+          deferWriteError
         ));
         post = readState();
       });

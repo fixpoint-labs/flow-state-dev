@@ -201,6 +201,59 @@ describe.each(HANDLE_KINDS)("FIX-1269 delta verbs on a %s", (kind) => {
     expect(await readStored(stores, key)).toEqual({ calls: 2, errors: ["again"] });
   });
 
+  it("treats a field named after an Object.prototype member as first touch", async () => {
+    // A plain object INHERITS `constructor`, `toString`, `valueOf` and the rest
+    // of `Object.prototype`, so `current[field]` on a field the object does not
+    // own resolves a function rather than `undefined`. A type guard reading the
+    // field bare then reports the most ordinary write there is — a first touch
+    // — as a wrong-typed target. Same own-property hazard as FIX-965 in the
+    // task collection, and it is reachable here because state field names come
+    // from the caller: `incState({ [providerName]: 1 })` over a tally.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    const ref = await seedHandle(ctx, kind, {});
+
+    await ref.incState({ constructor: 1 });
+    await ref.pushState("toString", "first");
+    await ref.incState({ valueOf: 2, hasOwnProperty: 3 });
+
+    const stored = (await readStored(stores, key))!;
+    expect(Object.keys(stored).sort()).toEqual([
+      "constructor",
+      "hasOwnProperty",
+      "toString",
+      "valueOf"
+    ]);
+    expect(stored["constructor"]).toBe(1);
+    expect(stored["toString"]).toEqual(["first"]);
+    expect(stored["valueOf"]).toBe(2);
+    expect(stored["hasOwnProperty"]).toBe(3);
+
+    // Second touch reads the OWN value rather than starting over.
+    await ref.incState({ constructor: 4 });
+    expect((await readStored(stores, key))!["constructor"]).toBe(5);
+  });
+
+  it("still refuses a prototype-named field whose OWN value is wrong-typed", async () => {
+    // The other half of the guard, and what stops the fix above from being
+    // "skip the check for these names": once the object owns the field, its own
+    // value decides.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    const ref = await seedHandle(ctx, kind, { constructor: "nope", toString: 7 });
+
+    await expect(ref.incState({ constructor: 1 })).rejects.toThrow(
+      /"constructor" is not a number \(got string\)/
+    );
+    await expect(ref.pushState("toString", "x")).rejects.toThrow(
+      /"toString" is not an array \(got number\)/
+    );
+
+    const stored = (await readStored(stores, key))!;
+    expect(stored["constructor"]).toBe("nope");
+    expect(stored["toString"]).toBe(7);
+  });
+
   it("re-runs against the winner's row instead of refusing on a stale wrong-typed value", async () => {
     // The row that distinguishes decision 1 as specified from a naive type
     // check. `runResourceCAS` calls the mutator UNGUARDED and reaches `persist`
@@ -389,5 +442,236 @@ describe("FIX-1269 delta refusal on a rewriting schema", () => {
 
     await ref.incState({ other: 1 });
     expect(await readVersion(stores, "legacy-tallies/t1")).toBe(before! + 1);
+  });
+});
+
+/**
+ * A state field literally named `__proto__`.
+ *
+ * Two hazards meet on this one name and only the first belongs to the verbs:
+ *
+ *  - `current["__proto__"]` on a plain object resolves `Object.prototype`, so a
+ *    bare read makes a first touch look like an object-valued field; and
+ *    `next["__proto__"] = value` sets the object's prototype rather than
+ *    creating an own property — a write that reports success and stores nothing.
+ *  - one layer ABOVE the verbs, zod rebuilds a `ZodObject`'s output with plain
+ *    assignment, so `parseResourceWriteState` drops the key on ANY object
+ *    stateSchema. Nothing in the delta path can reach that.
+ *
+ * The fixture's schema therefore returns its input unchanged, which takes the
+ * second hazard out of the picture and leaves the delta path's own guarantee
+ * visible. That premise is pinned as an assertion below rather than asserted in
+ * prose.
+ */
+describe.each(HANDLE_KINDS)("FIX-1269 a __proto__ field on a %s", (kind) => {
+  const passthroughState = z.custom<JsonObject>(
+    (v) => typeof v === "object" && v !== null && !Array.isArray(v)
+  );
+
+  const protoKey = kind === "single resource" ? "protoCounter" : "proto-tallies/t1";
+
+  function makeProtoFlow() {
+    return defineFlow({
+      kind: "fix1269-delta-proto",
+      actions: {
+        run: {
+          inputSchema: z.string(),
+          block: handler({
+            name: "noop",
+            resources: {
+              protoCounter: defineResource({
+                scope: "session",
+                stateSchema: passthroughState,
+                default: {}
+              }),
+              protoTallies: defineResourceCollection({
+                scope: "session",
+                pattern: "proto-tallies/**",
+                stateSchema: passthroughState
+              })
+            },
+            execute: () => "ok"
+          })
+        }
+      }
+    })();
+  }
+
+  async function protoRef(stores: StoreRegistry): Promise<ResourceRef<JsonObject>> {
+    const ctx = await createExecutionContext({
+      flow: makeProtoFlow(),
+      actionName: "run",
+      requestId: "req_a",
+      sessionId: "sess_1",
+      userId: "user_1",
+      stores
+    });
+    if (kind === "single resource") {
+      return (ctx.resources as any).protoCounter as ResourceRef<JsonObject>;
+    }
+    await (ctx.resources as any).protoTallies.create("t1", {});
+    return (await (ctx.resources as any).protoTallies.get("t1")) as ResourceRef<JsonObject>;
+  }
+
+  it("round-trips a __proto__ field: stored as an own property and readable back", async () => {
+    // The premise for the fixture, measured rather than asserted in prose: an
+    // ordinary object schema drops the key at the write-path parse, one layer
+    // above the delta path.
+    const own = {};
+    Object.defineProperty(own, "__proto__", {
+      value: 1,
+      enumerable: true,
+      writable: true,
+      configurable: true
+    });
+    const viaObjectSchema = z.object({}).passthrough().parse(own);
+    expect(Object.prototype.hasOwnProperty.call(viaObjectSchema, "__proto__")).toBe(false);
+
+    const stores = createInMemoryStores();
+    const ref = await protoRef(stores);
+
+    // Computed keys throughout: `{ __proto__: 1 }` written as a plain property
+    // in an object literal is the prototype-setter syntax, not a key.
+    await ref.incState({ ["__proto__"]: 1 });
+
+    const stored = (await readStored(stores, protoKey))!;
+    expect(Object.prototype.hasOwnProperty.call(stored, "__proto__")).toBe(true);
+    expect(stored["__proto__"]).toBe(1);
+    expect(Object.keys(stored)).toEqual(["__proto__"]);
+    // ...and readable back off the handle, not only out of the store.
+    expect((ref.state as JsonObject)["__proto__"]).toBe(1);
+
+    // A second touch reads the stored own value rather than starting from 0.
+    await ref.incState({ ["__proto__"]: 4 });
+    expect((await readStored(stores, protoKey))!["__proto__"]).toBe(5);
+  });
+
+  it("appends to a __proto__ field rather than refusing it as a non-array", async () => {
+    const stores = createInMemoryStores();
+    const ref = await protoRef(stores);
+
+    await ref.pushState("__proto__", "first");
+    await ref.pushState("__proto__", "second");
+
+    const stored = (await readStored(stores, protoKey))!;
+    expect(Object.prototype.hasOwnProperty.call(stored, "__proto__")).toBe(true);
+    expect(stored["__proto__"]).toEqual(["first", "second"]);
+  });
+});
+
+/**
+ * FIX-1269 (follow-up) — a delta whose RESULT fails `stateSchema` must be
+ * judged against a verified basis, exactly like a wrong-kind refusal.
+ *
+ * `runResourceCAS` calls its mutator unguarded, so a `ValidationError` thrown
+ * from inside the write-path parse propagates before the driver observes any
+ * conflict — no refresh, no re-run. A delta computed off a STALE cached row can
+ * then fail over a value the store no longer holds, while the number it would
+ * have produced against the live row is perfectly valid.
+ *
+ * This is the same failure mode the refusal deferral already fixed, one line
+ * down the same mutator. Both ref factories, per BP-035.
+ */
+describe.each(HANDLE_KINDS)("FIX-1269 a schema-invalid delta on a %s", (kind) => {
+  // A ceiling the delta can cross, so the parse — not the verbs — is what
+  // rejects the result.
+  const cappedState = z.object({ calls: z.number().max(10) }).passthrough();
+
+  const cappedKey = kind === "single resource" ? "capped" : "capped-tallies/t1";
+
+  function makeCappedFlow() {
+    return defineFlow({
+      kind: "fix1269-delta-capped",
+      actions: {
+        run: {
+          inputSchema: z.string(),
+          block: handler({
+            name: "noop",
+            resources: {
+              capped: defineResource({
+                scope: "session",
+                stateSchema: cappedState,
+                default: { calls: 0 }
+              }),
+              cappedTallies: defineResourceCollection({
+                scope: "session",
+                pattern: "capped-tallies/**",
+                stateSchema: cappedState
+              })
+            },
+            execute: () => "ok"
+          })
+        }
+      }
+    })();
+  }
+
+  const makeCappedCtx = (stores: StoreRegistry, requestId: string) =>
+    createExecutionContext({
+      flow: makeCappedFlow(),
+      actionName: "run",
+      requestId,
+      sessionId: "sess_1",
+      userId: "user_1",
+      stores
+    });
+
+  async function seedCapped(ctx: any, initial: JsonObject): Promise<ResourceRef<JsonObject>> {
+    if (kind === "single resource") {
+      await ctx.resources.capped.setState(initial);
+      return ctx.resources.capped as ResourceRef<JsonObject>;
+    }
+    await ctx.resources.cappedTallies.create("t1", initial);
+    return (await ctx.resources.cappedTallies.get("t1")) as ResourceRef<JsonObject>;
+  }
+
+  async function getCapped(ctx: any): Promise<ResourceRef<JsonObject>> {
+    return kind === "single resource"
+      ? (ctx.resources.capped as ResourceRef<JsonObject>)
+      : ((await ctx.resources.cappedTallies.get("t1")) as ResourceRef<JsonObject>);
+  }
+
+  it("re-runs against the winner's row instead of failing on a stale basis", async () => {
+    const stores = createInMemoryStores();
+    const ctxA = await makeCappedCtx(stores, "req_a");
+    const refA = await seedCapped(ctxA, { calls: 10 });
+
+    // B caches `calls: 10` — right at the ceiling.
+    const ctxB = await makeCappedCtx(stores, "req_b");
+    const refB = await getCapped(ctxB);
+
+    // A resets the stored value. B's cached basis is now stale.
+    await refA.setState({ calls: 0 });
+
+    // Off B's cache the result is 11 and fails `.max(10)`. Off the row B would
+    // actually commit against it is 1, which is fine — so this must land.
+    await expect(refB.incState({ calls: 1 })).resolves.toBeUndefined();
+    expect(await readStored(stores, cappedKey)).toEqual({ calls: 1 });
+  });
+
+  it("still fails loudly when the result is invalid against the verified row", async () => {
+    // The half that keeps the fix from swallowing the genuine case.
+    const stores = createInMemoryStores();
+    const ctx = await makeCappedCtx(stores, "req_a");
+    const ref = await seedCapped(ctx, { calls: 10 });
+    const before = await readVersion(stores, cappedKey);
+
+    await expect(ref.incState({ calls: 1 })).rejects.toThrow(/failed stateSchema validation/);
+
+    expect(await readStored(stores, cappedKey)).toEqual({ calls: 10 });
+    expect(await readVersion(stores, cappedKey)).toBe(before);
+  });
+
+  it("does not leave a stale verdict behind when a later call succeeds", async () => {
+    // The deferred error is per-attempt state. A call that refused must not
+    // make the next successful call on the same handle report a failure.
+    const stores = createInMemoryStores();
+    const ctx = await makeCappedCtx(stores, "req_a");
+    const ref = await seedCapped(ctx, { calls: 10 });
+
+    await expect(ref.incState({ calls: 1 })).rejects.toThrow(/failed stateSchema validation/);
+    await expect(ref.incState({ calls: -4 })).resolves.toBeUndefined();
+
+    expect(await readStored(stores, cappedKey)).toEqual({ calls: 6 });
   });
 });
