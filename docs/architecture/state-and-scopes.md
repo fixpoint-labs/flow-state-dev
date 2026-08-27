@@ -75,13 +75,17 @@ Every persisted scope state is versioned. Writes provide an expected version; mi
 
 **Scope stores can also require a record to be absent.** `set(id, record, "absent")` writes only when nothing exists at that id, and returns the ordinary conflict — carrying the winner's record — when something does. It exists because a `get`-then-`set` cannot decide a create race: nothing stops a second writer landing between the two calls, and `set` is an upsert, so both writers won and the second silently overwrote the first. Deriving an id from the work it belongs to does not help; two requests deriving the same id is exactly the case.
 
-The sentinel is a word rather than a number because **`0` was already taken here.** Scope records are created *at* version `0`, so a v0 record is live, and `expectedVersion: 0` means "stored at version 0" — the first CAS write of every new session, user and org depends on it. That is the opposite of resource state below, which starts its versions at `1` and spends its `0` on create-if-absent. `ResourceStateStore` therefore rejects `"absent"` rather than aliasing it: the two agree on `set` but not on `delete`, where "delete only if absent" has no meaning. Two spellings that each mean one thing, until a later change retires the resource side's `0`.
+The sentinel is a word rather than a number because **`0` was already taken here.** Scope records are created *at* version `0`, so a v0 record is live, and `expectedVersion: 0` means "stored at version 0" — the first CAS write of every new session, user and org depends on it. That is the opposite of resource state below, which starts its versions at `1` and spends its `0` on create-if-absent.
+
+`ResourceStateStore.set` honours `"absent"` too, with the same meaning — "no record exists" — but it is **not** an alias for that store's `0`. A tombstone is a record, so `"absent"` refuses one where `0` admits it, and that gap is what lets the resource side tell a never-written key from a deleted one. `delete` still rejects the word, since `0` already answers "no live row, so the terminal state holds."
 
 Scope `delete` is a hard delete with no tombstone, so a recreated id may reuse versions — stated rather than defended. The scope store's versions detect concurrent modification; they are not an identity, and nothing in the framework treats them as one.
 
 **Resource state is versioned too.** The four scopes above hold one state record each; resource state lives in `ResourceStateStore`, keyed per resource, and was originally modelled on `ContentStore` as plain last-write-wins. That model is wrong for structured state concurrent workers read-modify-write, so the store contract is now compare-and-swap: `set` and `delete` take an `ExpectedVersion` and return a `SetResult`, and the three reads carry the version alongside the state.
 
-`0` means *no live row*, so it is create-if-absent and a tombstone satisfies it. A numeric expected version must be a non-negative integer; anything else throws, since `number | "any"` admits values the contract has no meaning for, and a mistake at the call site is not a lost race to report as a conflict. Deletes mark a `lifecycle` column rather than removing the row, retain the version, and drop the payload; `deleteAll` bulk-marks the scope. Reads filter to `live`, so a tombstone is indistinguishable from an absent key to callers.
+`0` means *no live row*, so it is create-if-absent and a tombstone satisfies it — that is what explicit recreation after a delete rides on. `"absent"` is the stricter form: no row **at all**, so a tombstone conflicts. A numeric expected version must be a non-negative integer; anything else throws, since the union admits values the contract has no meaning for, and a mistake at the call site is not a lost race to report as a conflict. Deletes mark a `lifecycle` column rather than removing the row, retain the version, and drop the payload; `deleteAll` bulk-marks the scope. Reads filter to `live`, so a tombstone is indistinguishable from an absent key to callers.
+
+Which of the two a write asks for is decided by intent, not by the caller: an explicit `create()` writes at `0`, and a `patchState` / `setState` / `updateState` writes at the version its context observed — or at `"absent"` when it observed none. Reads cannot make that distinction (both a tombstone and a never-written key read as absent), which is exactly why it has to be made inside the atomic compare-and-swap rather than by looking first.
 
 **Retention is the guarantee.** Versions are never reused, and a tombstone keeps its version, so an observer from before a delete can never match the row that replaces it — at key altitude and at scope altitude alike. Nothing reclaims a tombstone; that is deliberate, and it is why the ABA argument needs no sweep, no timer and no retention window. The cost is one row per deleted key, in every scope.
 
@@ -95,8 +99,8 @@ The trap worth knowing at this altitude: `createScopeStateOps` lives in `state-c
 
 | Situation | Reported as |
 |---|---|
-| Key never persisted (a declared resource living on its schema default), mutator asks for no change | **Not an error** — a verified no-op. Nothing was written and nothing was taken away |
-| We held a live version and the row is now a tombstone | `ResourceDeletedError`, terminal |
+| No live row (a declared resource living on its schema default, or a deleted one), mutator asks for no change | **Not an error** — a verified no-op. Nothing was written, so nothing can have been revived |
+| A mutation reaches a tombstone — whether it held a live version and lost it, or never held one at all | `ResourceDeletedError`, terminal |
 | A create-if-absent lost its race | `ResourceAlreadyExistsError`, terminal, **carrying the winner's row** so the first-touch APIs can finish as a read |
 | A delete's version check failed against a **live** row (deleted and recreated under us) | `ConcurrentModificationError` — nothing was deleted, so a deletion error would report the opposite |
 | Retry budget exhausted | `ConcurrentModificationError` |

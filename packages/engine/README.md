@@ -629,14 +629,21 @@ interface ResourceStateStore {
 }
 ```
 
-`expectedVersion` is a non-negative integer, or `"any"` to write unconditionally. Two meanings differ from the scope stores that share these types, and both are deliberate:
+`expectedVersion` is a non-negative integer, `"any"` to write unconditionally, or `"absent"`. Two meanings differ from the scope stores that share these types, and both are deliberate:
 
 - **`0` means "no live row"** — create-if-absent. A tombstoned key satisfies it just as a never-existed one does.
 - **Some conflicts are terminal.** A conflict against a deleted resource must not be retried into a resurrection, and a losing create must not be retried into an overwrite.
 
 A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any" | "absent"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
 
-**`"absent"` throws here too.** It is the scope stores' create-if-absent sentinel, and this store keeps spelling create-if-absent `0`. Accepting it as an alias would be cheap on `set` and incoherent on `delete`, where `0` has a meaning ("no live row, so the terminal state already holds") and "delete only if absent" has none. One sentinel with a verb-dependent meaning on the subtlest predicate in these adapters is worse than two spellings that each mean one thing. Converging them — moving these callers to `"absent"` and retiring this store's `0` — is a later change that removes a spelling rather than adding one.
+**`"absent"` is the stricter of two create expectations on `set`, and throws on `delete`.** It means what it means in the scope stores — "no record exists" — and here a tombstone *is* a record, so it refuses one where `0` admits it. The pair is what lets the store tell a key nothing ever wrote from one that was written and deleted:
+
+| Write | Admitted when | Used by |
+|---|---|---|
+| `set(…, 0)` | No **live** row — never existed, or tombstoned | Explicit creation, including recreating a deleted resource |
+| `set(…, "absent")` | No row **at all** — a tombstone conflicts | A read-modify-write that started out holding no version, so it cannot undo a delete it never saw |
+
+`delete(…, "absent")` still throws. `0` already covers "no live row, so the requested terminal state holds", and "delete only if absent" asks nothing on top of that — the same call `assertDeltaExpectedVersion` makes on the scope side's delta verbs. Keeping the refusal to that one verb is what stops the word acquiring a second, verb-dependent meaning.
 
 ### Versions, deletes and retention
 
