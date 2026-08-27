@@ -67,18 +67,22 @@ On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` inst
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
+Not every scope-state write carries a version. An increment, an append, or a write to one key of a record field is handed to the store as the operation itself. The store applies it to the value it currently holds, so concurrent ones land without a version to compare. [State Operations](../fundamentals/state-operations.md#cas-semantics) lists which calls go which way.
+
 ### Concurrency by store
 
-How much compare-and-swap safety each store actually gives you differs, and it is worth knowing before you pick one:
+Where the comparison happens differs by store, and it is worth knowing before you pick one:
 
 | Store | Scope state | Resource state |
 |---|---|---|
-| In-memory | Serialized per container | Real compare-and-swap (single process by definition) |
-| Filesystem | Serialized per container | Compared under a per-key lock, **per store instance** |
+| In-memory | Compared inside the store (single process by definition) | Real compare-and-swap (single process by definition) |
+| Filesystem | Compared under a per-key lock, **per store instance** | Compared under a per-key lock, **per store instance** |
 | SQLite | Real compare-and-swap | Real compare-and-swap |
 | Postgres | Real compare-and-swap | Real compare-and-swap |
 
 The filesystem row is the one to read twice. The lock lives on the store instance, in memory rather than on disk, so it covers every write that goes through that instance and nothing past it. A second store pointed at the same directory races with the first, whether the two sit in one Node process or two. Most apps build one store and hand it to `createFlowState`, so in practice the boundary falls at the process; the instance is what actually draws it. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
+
+The filesystem store also has no field-delete operation, so `deleteStateRecord` there writes the whole scope record at the version the run last read, in one attempt. Lose that race and the call returns `false` with the key still stored. Request state behaves the same way on every store, because none of them offer field delete on the request record.
 
 The resource-state column reaches your flow code, not just callers holding the store directly. A flow mutating `ctx.resources` or a collection instance writes at the version its execution context read, so a write built on a stale read is refused and re-applied against the value that won rather than overwriting it — see [the mutation model](../state/mutation-model.md) for what that looks like from inside a flow.
 

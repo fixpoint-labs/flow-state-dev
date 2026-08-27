@@ -64,7 +64,7 @@ await ctx.session.setStateRecord("byId", "doc-1", {
 await ctx.session.deleteStateRecord("byId", "doc-1");
 ```
 
-Both go through the same atomic path as `patchState` — concurrent writes don't lose updates.
+Each one writes a single key rather than the whole map, so two runs updating different keys don't overwrite each other. [State Operations](/docs/fundamentals/state-operations#cas-semantics) has the full concurrency story, including the one case where `deleteStateRecord` can report that it did nothing.
 
 ## Schema bubbling
 

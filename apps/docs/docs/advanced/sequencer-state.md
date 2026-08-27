@@ -143,10 +143,12 @@ Compare with the persistence scopes (when wired to a durable store like sqlite o
 | Lifetime tied to | Sequencer instance execution | Identity (request / session / user / org) |
 | Persistence model | Latest-only checkpoint per instance | Versioned per-scope record |
 | Survives restart | Yes (when `durable: true`) — resume runtime rehydrates | Yes (with a durable store) |
-| Concurrency model | FIFO lock per container | CAS retry loop |
-| Throws `ConcurrentModificationError`? | No | Yes |
+| Concurrency model | FIFO lock per container | CAS retry loop, except for commutative writes |
+| Throws `ConcurrentModificationError`? | No | Yes, on a version-checked write |
 
 The mutation model details are in [State Mutation Model](/docs/state/mutation-model). The short version: sequencer scope serializes mutators through an in-process queue, so it never sees the version conflicts that drive `ConcurrentModificationError`. The cost of safety is zero, and the operation surface (`patchState`, `incState`, etc.) is identical to the durable scopes.
+
+On the durable scopes, a single-field `incState` or a `pushState` is handed to the store as the operation itself and applied to the value it currently holds, so it doesn't conflict either.
 
 ### Why not just use session state?
 

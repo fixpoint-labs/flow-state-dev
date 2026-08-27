@@ -4,7 +4,9 @@ sidebar_position: 1
 
 # State mutation model
 
-Every scope's state mutators (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) route through one of three paths inside the runtime. Two questions pick the path: does the scope write to a store at all, and can anything outside this Node.js process advance the version underneath you.
+Every scope's state mutators (`patchState`, `setState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) route through one of three paths inside the runtime. Which path you get depends on whether the scope writes to a store at all, and on whether anything outside this Node.js process can advance the version underneath you.
+
+The shape of the write then decides whether a version is checked on the way. Some writes carry the version they expect to find. Others are applied to whatever the store holds at the moment they arrive, with no version involved. [Commutative writes skip the version check](#commutative-writes-skip-the-version-check) covers which is which.
 
 Read-only instance config is also available on the context as `ctx.settings` — see [Engine setup → Settings](/docs/server/setup#settings).
 
@@ -34,6 +36,8 @@ The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps
 | Request scope | `ConcurrentModificationError` when the retry budget exhausts |
 | Session / user / org | `ConcurrentModificationError` when the retry budget exhausts |
 
+The two persisting rows describe version-checked writes. A commutative write on those scopes carries no version, so it has no conflict to retry and cannot raise `ConcurrentModificationError`.
+
 ### In-memory scopes use a FIFO queue
 
 A *target* state container, a *sequencer* state container, [block state](/docs/advanced/block-state) generally, or any scope you build that doesn't bridge through a `persist` callback gets the lock path. Each container has a tail promise; new mutators chain off it, run one at a time in submission order, and the tail advances.
@@ -52,15 +56,71 @@ The version check and its retries sit underneath the queue rather than being rep
 
 ### Session, user, and org scopes use CAS
 
-These scopes bridge through a `persist` callback (filesystem, sqlite, postgres adapters) and keep the optimistic CAS path. The remote authority — another connection pool, another process, the durable file lock — can advance the stored version while we hold a stale read. CAS is exactly the primitive for that: read the version, mutate locally, persist with `expectedVersion`, retry on conflict.
+These scopes bridge through a `persist` callback (the in-memory, filesystem, sqlite and postgres adapters) and take the optimistic CAS path for any write that depends on what state currently holds. A remote authority — another connection pool, another process, the durable file lock — can advance the stored version while we hold a stale read. CAS is the primitive for that: read the version, mutate locally, persist with `expectedVersion`, retry on conflict.
 
 `ConcurrentModificationError` surfaces from these paths when retries exhaust. That's the contract: if the remote authority moves faster than your retry budget, you need to either widen the budget with `cas` on the scope or restructure to avoid the contention.
+
+### Commutative writes skip the version check
+
+A **commutative** write is one whose result doesn't depend on what state currently holds, or on the order it lands in. Adding `1` to a counter is commutative; two of them produce `2` either way round. So the runtime sends the store the operation itself, "add 1 to `messageCount`", and the store applies it to the value it holds right now. No version is compared.
+
+The commutative writes are:
+
+| Call | Commutative when |
+|---|---|
+| `incState({ field: n })` | exactly one field |
+| `pushState(field, value)` | always |
+| `setStateRecord(field, key, value)` | always |
+| `deleteStateRecord(field, key)` | always |
+| `patchState({ field: value })` | exactly one field, set to a plain value |
+
+Everything else takes the version check and the retry loop: `setState`, `atomicState`, `patchState` in its updater form (`patchState("counters", (c) => ...)`), `patchState` with more than one field, and `incState` across more than one field. Each of those reads current state to compute the next one, so a stale read has to be caught.
+
+Two contexts incrementing the same counter both land, and neither spends a retry:
+
+```ts
+// two concurrent execution contexts, unchanged flow code, messageCount at 0
+await ctx.session.incState({ messageCount: 1 });
+await ctx.session.incState({ messageCount: 1 });
+// stored messageCount is 2
+```
+
+A commutative write can't raise `ConcurrentModificationError`. There's no version for it to lose.
+
+#### The store has to offer the operation
+
+Skipping the check depends on the store behind the scope offering the matching operation. When it doesn't, the runtime writes the whole record instead, at the version this run last read, in a single attempt with no retry.
+
+Field deletion is the one gap in the built-in adapters. No built-in store offers it on request state, and the filesystem store offers it on no scope at all. `deleteStateRecord` there writes the full record:
+
+```ts
+await ctx.session.deleteStateRecord("byId", "doc-1");
+// on the filesystem store, resolves false when another writer moved the
+// session record first. "doc-1" is still stored.
+```
+
+On session, user and org state backed by the in-memory, SQLite or Postgres store, `deleteStateRecord` is commutative like the rest.
+
+#### What skipping the check doesn't cover
+
+An unchecked write is safe from competing writers. It isn't safe from the record being gone.
+
+Every store refuses a write against a record that doesn't exist, before it looks at any version. A commutative write to a scope whose record was deleted underneath you doesn't recreate it:
+
+```ts
+await ctx.session.incState({ messageCount: 1 });
+// false if the session record has been deleted. Nothing is created.
+```
+
+That's the case where `false` doesn't mean "the state already matched". A refused write reports `false` the same way a no-op does, and the return value alone won't tell them apart.
 
 ### The resource state store is versioned too
 
 The four scopes above hold one state record each. **Resource state** — the state behind `ctx.resources.something`, and behind every instance of a collection — lives in a separate store, keyed per resource.
 
 Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current.
+
+Every mutation through a resource handle takes that check. The commutative shortcut above belongs to scope state.
 
 **That guarantee reaches flow code.** When you mutate `ctx.resources.something` or a collection instance, the runtime writes at the version this execution context read. If another context moved the key in between, your write is refused, your mutator re-runs against the value that actually won, and the retry writes the merge. Two contexts patching different fields of one resource both land:
 
@@ -255,9 +315,10 @@ await ctx.session.atomicState((state) => {
 
 **Why does my flow still throw `ConcurrentModificationError`?**
 
-You're writing through a `persist` callback to an external store (filesystem, sqlite, postgres). The CAS retry budget exhausted because contention exceeded what optimistic concurrency can absorb at that boundary. Options:
+A version-checked write to a store scope exhausted its CAS retry budget, because contention exceeded what optimistic concurrency can absorb at that boundary. Options:
 
 - Widen the retry budget on the persist call site.
+- Rewrite the contended write in a commutative shape if the update allows it. A counter bumped with `incState({ n: 1 })` never conflicts; the same counter bumped with `atomicState` does.
 - Move the contended writes to an in-memory scope (sequencer state on a parent block) so they go through the lock instead.
 - Restructure the contention pattern — fewer concurrent writers, batched updates, or finer-grained scopes.
 

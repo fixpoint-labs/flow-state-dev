@@ -49,6 +49,8 @@ await ctx.session.incState({ messageCount: 1, errorCount: 0 });
 
 Each entry is added to the current value. Negative numbers decrement. Fields that don't exist start from `0`.
 
+An increment on a **single** field is sent to the store as the increment itself, so two concurrent runs bumping the same counter both land and neither has to retry. Increment more than one field in a call and the operation writes a computed record instead, under the version check described in [CAS semantics](#cas-semantics).
+
 ### `pushState(field, value)`
 
 Append to an array field:
@@ -58,6 +60,8 @@ await ctx.session.pushState("history", { role: "user", text: "Hello" });
 ```
 
 The field must be declared as an array in your schema. If the field is missing, the operation initializes it to `[value]`.
+
+Like a single-field increment, an append is sent to the store as the append itself. Two runs appending to one array both land, and the array holds both entries.
 
 ### `setStateRecord(field, key, value)` and `deleteStateRecord(field, key)`
 
@@ -72,7 +76,9 @@ await ctx.session.setStateRecord("byId", "doc-1", {
 await ctx.session.deleteStateRecord("byId", "doc-1");
 ```
 
-These are common enough in real applications (chat threads, saved items, anything indexed by ID) that they get dedicated helpers.
+These are common enough in real applications (chat threads, saved items, anything indexed by ID) that they get dedicated helpers. Both touch one key and leave the rest of the map alone, so two runs writing different keys don't contend.
+
+`deleteStateRecord` has one place where that doesn't hold. Not every store offers a field-delete operation: none of them do on request state, and the filesystem store doesn't on any scope. Those cases write the whole record at the version this run last read, in one attempt. If another writer moved the record first, the call returns `false` and the key is still there.
 
 ### `atomicState(mutator)`
 
@@ -104,6 +110,8 @@ await ctx.session.patchState({ mode: "agent" });
 ```
 
 The comparison uses `Object.is` for primitives (NaN-equal-NaN, `+0 != -0`) and recursive structural equality for plain objects and arrays.
+
+One other thing returns `false`: a write the store refused because the scope's record no longer exists. That covers the operations in the right-hand column of [CAS semantics](#cas-semantics) below. Stores refuse a missing record before they look at any version, and the write isn't turned into a create. So `false` from `incState` or `pushState` means "nothing was written", which isn't always "the state already matched".
 
 ## Reading state
 
@@ -145,7 +153,7 @@ type ScopeIdentity = {
 
 ## CAS semantics
 
-Scope writes use **Compare-and-Swap (CAS)**: the helper reads the current state and version, computes the next state, and persists with `expectedVersion`. If another writer has bumped the version in between, the persist call reports a conflict, the container refreshes from the store, and the operation retries with the new current state.
+A scope write that depends on what state currently holds uses **Compare-and-Swap (CAS)**: the helper reads the current state and version, computes the next state, and persists with `expectedVersion`. If another writer has bumped the version in between, the persist call reports a conflict, the container refreshes from the store, and the operation retries with the new current state.
 
 ```
 read state + version
@@ -160,7 +168,23 @@ persist(next, expectedVersion)
    ok    conflict ──► refresh from store, retry
 ```
 
-Default retry budget: **3 retries** with exponential backoff (10ms, 20ms, 40ms). The retry budget is per call, not per process.
+Which calls take that path, and which don't:
+
+| Version-checked | Applied to whatever the store holds |
+|---|---|
+| `setState` | `pushState(field, value)` |
+| `atomicState` | `setStateRecord(field, key, value)` |
+| `patchState("field", updater)` | `deleteStateRecord(field, key)` |
+| `patchState` with two or more fields | `patchState({ field: value })` — one field, plain value |
+| `incState` across two or more fields | `incState({ field: n })` — one field |
+
+The right-hand column doesn't read state to compute its result, so it doesn't need a version to be current. The store applies the increment, the append, or the single-key write to the record as it stands. Those calls never conflict and never raise `ConcurrentModificationError`.
+
+They are still refused if the scope's record has been deleted. See [what skipping the check doesn't cover](/docs/state/mutation-model#what-skipping-the-check-doesnt-cover).
+
+A store also has to offer the matching operation for a write to go the right-hand way. Field deletion is the gap in the built-in adapters, so `deleteStateRecord` falls back to a version-checked full-record write on request state and on the filesystem store. The [mutation model](/docs/state/mutation-model#the-store-has-to-offer-the-operation) has the detail.
+
+Default retry budget for a version-checked write: **3 retries** with exponential backoff (10ms, 20ms, 40ms). The retry budget is per call, not per process.
 
 When retries exhaust, the helper throws `ConcurrentModificationError`:
 
@@ -168,7 +192,9 @@ When retries exhaust, the helper throws `ConcurrentModificationError`:
 import { ConcurrentModificationError } from "@flow-state-dev/engine";
 
 try {
-  await ctx.session.patchState({ mode: "agent" });
+  await ctx.session.atomicState((state) => ({
+    retryCount: state.retryCount + 1,
+  }));
 } catch (err) {
   if (err instanceof ConcurrentModificationError) {
     // err.attempts — how many tries we made
@@ -181,7 +207,7 @@ In practice, this is rare for typical conversational flows. It surfaces under su
 
 ### Three dispatch paths
 
-Not every scope uses the CAS retry loop. `session`, `user`, and `org` do, because a remote authority — another connection, another process — can advance the stored version under a stale read.
+Version-checked writes don't all run the same loop. On `session`, `user`, and `org` they run the CAS retry loop directly, because a remote authority — another connection, another process — can advance the stored version under a stale read.
 
 `request` state is written to a store too. Its writes serialize through a per-container FIFO queue and persist under it, so a fan-out of concurrent writers inside one run commits every write, in submission order. The version check stays underneath the queue, because the queue orders one run's writers and nothing else.
 
@@ -193,11 +219,9 @@ Note: sequencer state going through the lock path doesn't mean it's lost on rest
 
 The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps` API regardless of which path runs. For the full breakdown — when you'd see `ConcurrentModificationError` vs `ScopeMutationTimeoutError`, and how to bound the lock path's worst case — see [State Mutation Model](/docs/state/mutation-model).
 
-## State size warnings
+## How much to keep in state
 
-The CAS path enforces a soft size limit (default: 10 KB per scope). When state crosses the threshold, the framework calls a warning hook — the write still succeeds, but you'll see a log line at startup configuration time.
-
-This is a guardrail, not a hard limit. State is meant for flat, structured fields and small records. Large content — documents, transcripts, embeddings — belongs in a [Resource](/docs/resources/overview), where it lives outside the hot CAS loop.
+Nothing caps the size of a scope's state. It is meant for flat, structured fields and small records: modes, counters, ids, short maps. Large content, like documents, transcripts or embeddings, belongs in a [Resource](/docs/resources/overview), which is stored and versioned per key.
 
 ## Where to next
 
