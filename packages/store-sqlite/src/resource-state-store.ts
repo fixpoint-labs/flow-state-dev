@@ -219,6 +219,26 @@ export function createSQLiteResourceStateStore(
     };
   };
 
+  /**
+   * The `"absent"` write: insert if no row exists at all, otherwise report the
+   * row that refused it — atomically, so no concurrent revive can be mistaken
+   * for the refusing row. `.immediate` (BEGIN IMMEDIATE) takes the write lock
+   * up front; the default DEFERRED would not hold one across the read, which
+   * is the gap being closed. See the call site for what the split let through.
+   */
+  const insertOrReportTx = db.transaction(
+    (
+      scopeType: StorageScopeType,
+      scopeId: string,
+      resourceKey: string,
+      payload: string
+    ): SetResult<JsonObject> => {
+      const inserted = insertStmt.run(scopeType, scopeId, resourceKey, payload, 1);
+      if (inserted.changes > 0) return { ok: true, version: 1 };
+      return conflictFrom(readRow(scopeType, scopeId, resourceKey));
+    }
+  ).immediate;
+
   return {
     async get(
       scopeType: StorageScopeType,
@@ -254,9 +274,18 @@ export function createSQLiteResourceStateStore(
         // below, which goes on to revive a tombstone. Deliberately one
         // statement: a read-then-insert would let a delete land in between and
         // put the write back on the resurrection path this exists to close.
-        const inserted = insertStmt.run(scopeType, scopeId, resourceKey, payload, 1);
-        if (inserted.changes > 0) return { ok: true, version: 1 };
-        return conflictFrom(readRow(scopeType, scopeId, resourceKey));
+        //
+        // Insert and conflict-read run in ONE transaction, because the two
+        // apart are a time-of-check/time-of-use split: an explicit `create()`
+        // at `0` on another connection can revive the key between them, and
+        // the read would then describe a LIVE row where a tombstone did the
+        // refusing. `runResourceCAS` reads a conflict carrying a current value
+        // as retryable, so it would re-run the mutator and apply it to the
+        // recreated generation instead of throwing `ResourceDeletedError`.
+        // better-sqlite3 being synchronous closes that in-process, but not
+        // against a second process over the same file — which the store
+        // supports — so the guarantee is taken here rather than inherited.
+        return insertOrReportTx(scopeType, scopeId, resourceKey, payload);
       }
 
       if (expectedVersion === 0) {

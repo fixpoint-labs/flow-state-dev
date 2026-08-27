@@ -33,6 +33,15 @@ import type { QueryExecutor } from "./types";
 type RawRow = { state: JsonObject; version: number | string; lifecycle: string };
 
 export function createPostgresResourceStateStore(executor: QueryExecutor): ResourceStateStore {
+  /** Parse one raw result row into the shape the shared contract logic takes. */
+  const parseRow = (row: RawRow): ResourceStateRow => ({
+    state: row.state,
+    // node-pg returns BIGINT as a string, so coerce rather than letting a
+    // string version silently fail every `===` comparison downstream.
+    version: Number(row.version),
+    lifecycle: row.lifecycle === "live" ? "live" : "deleted"
+  });
+
   /** Read the row and parse it into the shape the shared contract logic takes. */
   const readRow = async (
     scopeType: StorageScopeType,
@@ -45,14 +54,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       [scopeType, scopeId, resourceKey]
     );
     const row = result.rows[0] as RawRow | undefined;
-    if (row === undefined) return undefined;
-    return {
-      state: row.state,
-      // node-pg returns BIGINT as a string, so coerce rather than letting a
-      // string version silently fail every `===` comparison downstream.
-      version: Number(row.version),
-      lifecycle: row.lifecycle === "live" ? "live" : "deleted"
-    };
+    return row === undefined ? undefined : parseRow(row);
   };
 
   /**
@@ -195,14 +197,44 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         // which goes on to revive a tombstone. Deliberately one statement: a
         // read-then-insert would let a delete land in between and put the
         // write back on the resurrection path this exists to close.
-        const inserted = await executor.query(
-          `INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-           VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
-           ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING`,
+        //
+        // The conflicting row comes back from the SAME statement, because a
+        // separate read afterwards is a time-of-check/time-of-use split: an
+        // explicit `create()` at `0` can revive the key in between, and the
+        // read would then describe a LIVE row where a tombstone did the
+        // refusing. `runResourceCAS` reads a conflict carrying a current value
+        // as retryable, so it would re-run the mutator and apply it to the
+        // recreated generation instead of throwing `ResourceDeletedError` —
+        // the write landing on a delete, which is the whole thing `"absent"`
+        // exists to stop.
+        const attempt = await executor.query(
+          `WITH ins AS (
+             INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
+             VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
+             ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING
+             RETURNING version, state, lifecycle
+           )
+           SELECT version, state, lifecycle, true AS inserted FROM ins
+           UNION ALL
+           SELECT version, state, lifecycle, false AS inserted
+             FROM resource_state
+            WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3
+              AND NOT EXISTS (SELECT 1 FROM ins)`,
           [scopeType, scopeId, resourceKey, payload]
         );
-        if ((inserted.rowCount ?? 0) > 0) return { ok: true, version: 1 };
-        return conflictFrom(await readRow(scopeType, scopeId, resourceKey));
+        const attempted = attempt.rows[0] as (RawRow & { inserted: boolean }) | undefined;
+        if (attempted === undefined) {
+          // No arm produced a row, which happens in exactly one case: the
+          // conflicting row was committed by another transaction AFTER this
+          // statement's snapshot, so the unique index refused the insert while
+          // the `UNION` arm — reading under that snapshot — could not see it.
+          // That is a racing first insert, not the revive above: a tombstone
+          // old enough to refuse us predates the snapshot and is visible to
+          // both arms. Nothing atomic is available here, so re-read.
+          return conflictFrom(await readRow(scopeType, scopeId, resourceKey));
+        }
+        if (attempted.inserted) return { ok: true, version: 1 };
+        return conflictFrom(parseRow(attempted));
       }
 
       if (expectedVersion === 0) {

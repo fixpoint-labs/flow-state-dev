@@ -1192,9 +1192,16 @@ export interface ResourceStateStore {
    * which then fails leaves a live scope over intact tombstones with nothing
    * left to retry it — the permanent version of the very bug this closes.
    * Reclaiming first commits nothing until it has succeeded, and reclaiming
-   * twice is a no-op. The caller should check for an existing record before
-   * reclaiming, so only a genuine create race can reclaim under a scope it
-   * loses; because this touches no live row, such a loser can destroy no data.
+   * twice is a no-op.
+   *
+   * That order has its own known limit, and it is not a small one. A caller
+   * that reclaims and then loses the create has removed tombstones under a
+   * scope somebody else owns, and a later ordinary write at `"absent"` — which
+   * is what every fresh context sends for a key it holds no version for — then
+   * finds no row and recreates the key. Checking for an existing record first
+   * narrows this to a true create race but cannot close it; only an atomic
+   * generation or ownership fence on scope birth can. Callers must know they
+   * are choosing between that and the permanent brick the other order causes.
    */
   purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }

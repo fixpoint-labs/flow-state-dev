@@ -70,14 +70,38 @@ type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
  *    succeeded. A failure at either step leaves no record, so the caller's
  *    retry starts clean, and reclaiming twice is a no-op.
  *
- * The cost of reclaiming first is that a caller which then LOSES the create has
- * reclaimed under a session it does not own. That is survivable only because
- * this reclaims **tombstones and nothing else**: the loser cannot touch a live
- * row, so no data is at risk — at worst a tombstone the winner made in the
- * microseconds since it won is reclaimed, and only a straggler already holding
- * no version could then write that key. Callers keep the exposure to a true
- * race by checking for an existing record first; a create against a session
- * that plainly already exists must not reach here at all.
+ * ## KNOWN LIMIT: the reclamation is unfenced against a concurrent creator
+ *
+ * Reclaiming first means a caller that then LOSES the create has reclaimed
+ * under a session it does not own, and **that can resurrect a deleted
+ * resource**:
+ *
+ *  1. Two creators both read the session id and both find nothing.
+ *  2. The winner creates it; its session runs and deletes resource `R`,
+ *     leaving a tombstone.
+ *  3. The delayed loser reaches the reclamation and removes the winner's
+ *     tombstone.
+ *  4. The loser then loses the session CAS and goes away.
+ *  5. The next ordinary `patchState` on `R` holds no version, so it writes at
+ *     `"absent"`; no row exists any more, so **the write lands and `R` is
+ *     back**.
+ *
+ * State it plainly: step 5 is not a straggler or any other rare actor. Every
+ * fresh request legitimately holds no version, so the exposure is the deleted
+ * resource returning on the next normal write — the very failure this change
+ * exists to close, reached through a different door.
+ *
+ * The existence check above is a narrowing, not a fence: it keeps a create
+ * against a session that plainly already exists from reclaiming at all, so
+ * only a genuine create race can reach step 3. It cannot close the race,
+ * because there is no transaction across the two stores. Closing it needs an
+ * atomic generation or ownership fence on session birth, which is a larger
+ * design change than "a deleted resource stays deleted" and is deliberately
+ * not attempted here.
+ *
+ * The one thing the narrowing to tombstones does buy: a losing reclaimer can
+ * touch no live row, so it can destroy no data. What it can do is remove a
+ * refusal.
  *
  * (An earlier revision of this ran after the create, on the reasoning that a
  * loser must not touch the winner's scope. That reasoning was written when this

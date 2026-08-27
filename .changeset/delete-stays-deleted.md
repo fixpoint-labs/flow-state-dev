@@ -40,6 +40,13 @@ writing the record first would strand a live session on the old one's tombstones
 whenever the clear then failed — permanently, since a retried create answers 409
 and an action-driven create adopts the existing record.
 
+**Known limit.** With no cross-store transaction the clear is not fenced against
+a concurrent creator. If two callers both find no session and one wins, the
+loser can clear a tombstone the winner's session just made, and the next
+ordinary write to that resource will recreate it. Closing this needs a
+generation or ownership fence on session birth, which is a larger change than
+this one.
+
 For custom `ResourceStateStore` adapters, two changes:
 
 - `set` gains a third `expectedVersion` spelling: `"absent"` means "no row at
