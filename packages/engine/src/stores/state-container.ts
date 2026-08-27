@@ -151,7 +151,8 @@ export type ScopeStateOpsOptions<TState extends object> = {
  *   dispatch runs unlocked.
  *
  * The durable dispatch (`runDurableMutation`) sends commutative hints to
- * `runCommutative` (one persist against `"any"`) and everything else to
+ * `runCommutative` (one persist, version-checked or not depending on whether
+ * the adapter advertises the verb) and everything else to
  * `runWithCAS`, which drives the optimistic load → mutate → persist cycle
  * with exponential backoff. The `hint` is forwarded to the persist callback
  * unchanged across retries (it describes user intent, not derived state).
@@ -212,8 +213,10 @@ async function applyMutation<TState extends object>(
 
 /**
  * Durable write dispatch shared by request scope (under `withScopeLock`) and
- * session/user/org (unlocked). Commutative hints persist once against
- * `"any"`; everything else drives the CAS retry loop.
+ * session/user/org (unlocked). Commutative hints take a single persist with
+ * no retry behind it — against `"any"` where the adapter advertises the delta
+ * verb, otherwise a version-checked full-record `set` that can be refused.
+ * Everything else drives the CAS retry loop.
  */
 async function runDurableMutation<TState extends object>(
   container: StateContainer<TState>,
