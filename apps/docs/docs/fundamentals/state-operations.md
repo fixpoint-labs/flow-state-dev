@@ -51,7 +51,7 @@ await ctx.session.incState({ messageCount: 1, errorCount: 0 });
 
 Each entry is added to the current value. Negative numbers decrement. Fields that don't exist start from `0`.
 
-An increment on a **single** field is sent to the store as the increment itself, so two concurrent runs bumping the same counter both land and neither has to retry. Increment more than one field in a call and the operation writes a computed record instead, under the version check described in [CAS semantics](#cas-semantics). The increments still compose: a retry recomputes them against the value that won.
+An increment on a **single** field is sent to the store as the increment itself, so on the built-in stores two concurrent runs bumping the same counter both land and neither has to retry. Increment more than one field in a call and the operation writes a computed record instead, under the version check described in [CAS semantics](#cas-semantics). The increments still compose: a retry recomputes them against the value that won.
 
 ### `pushState(field, value)`
 
@@ -63,7 +63,7 @@ await ctx.session.pushState("history", { role: "user", text: "Hello" });
 
 The field must be declared as an array in your schema. If the field is missing, the operation initializes it to `[value]`.
 
-Like a single-field increment, an append is sent to the store as the append itself. Two runs appending to one array both land, and the array holds both entries.
+Like a single-field increment, an append is sent to the store as the append itself. On the built-in stores, two runs appending to one array both land and the array holds both entries.
 
 ### `setStateRecord(field, key, value)` and `deleteStateRecord(field, key)`
 
@@ -207,7 +207,7 @@ The left-hand column isn't automatically a merge either, and a retry means somet
 
 Unchecked calls are still refused if the scope's record has been deleted. See [when `false` doesn't mean "already correct"](/docs/state/mutation-model#when-false-doesnt-mean-already-correct).
 
-A store also has to offer the matching operation for a write to go the right-hand way. Field deletion is the gap in the built-in adapters, so `deleteStateRecord` falls back to a version-checked full-record write on request state and on the filesystem store. The [mutation model](/docs/state/mutation-model#the-store-has-to-offer-the-operation) has the detail.
+A store also has to offer the matching operation for a write to go the right-hand way. The field write, the increment, the append and the field delete are each optional on a store adapter, and a call whose operation is missing falls back to a version-checked full-record write. The built-in stores implement all but the delete on every scope, so the right-hand column holds there; `deleteStateRecord` takes the fallback on request state and on the filesystem store. The [mutation model](/docs/state/mutation-model#the-store-has-to-offer-the-operation) has the detail.
 
 Default retry budget for a version-checked write: **3 retries** with exponential backoff (10ms, 20ms, 40ms). The retry budget is per call, not per process.
 

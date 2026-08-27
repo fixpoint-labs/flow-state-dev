@@ -141,9 +141,25 @@ await ctx.session.deleteStateRecord("byId", "doc-1");
 // session record first. "doc-1" is still stored.
 ```
 
-That `false` is a lost race against a session record that is still very much there, not a report that the key was already gone. If a delete has to stick on the filesystem store, or on request state anywhere, read the map back and retry it yourself.
+That `false` is a lost race against a session record that is still very much there, not a report that the key was already gone.
 
-On session, user and org state backed by the in-memory store, SQLite or Postgres, `deleteStateRecord` is unchecked like the rest.
+Retrying the same call in the same execution context will not clear the key. The refused write leaves this context's cached state and version untouched, so every repeat sends the version that already lost and gets `false` back. Reading the map first changes nothing, because that read comes from the same cache.
+
+Use a version-checked write instead. `atomicState` refreshes from the store on a conflict and runs your mutator again against the record that won:
+
+```ts
+await ctx.session.atomicState((state) => ({
+  byId: Object.fromEntries(
+    Object.entries(state.byId).filter(([key]) => key !== "doc-1")
+  ),
+}));
+// "doc-1" is gone from the record the store holds. Raises
+// ConcurrentModificationError if the retry budget exhausts.
+```
+
+A fresh execution context clears it too, since it loads the record from the store on the way in.
+
+On session, user and org state backed by the in-memory store, SQLite or Postgres, `deleteStateRecord` is unchecked like the rest. The store removes the key in place, so there is no version to lose.
 
 #### When `false` doesn't mean "already correct" {#when-false-doesnt-mean-already-correct}
 
@@ -180,9 +196,9 @@ await ctx.resources.plan.writeContent("# Plan\n\nDraft one");
 // writer's body is replaced without a refusal and without a retry.
 ```
 
-Keep anything two contexts might need to merge in resource state, where the version check applies. Treat content as a body you replace whole.
+Keep anything two contexts might need to merge in resource state rather than in content, and write it with `updateState`. Its updater runs again against the value that won, so both changes land. `patchState` merges too when the two contexts name disjoint fields: the fields you pass are applied to the refreshed state, so fields you didn't name survive and fields you did are overwritten. `setState` never merges. It re-sends the object you passed, replacing whatever the other context stored. Treat content as a body you replace whole.
 
-**The version guarantee reaches flow code.** When you mutate `ctx.resources.something` or a collection instance, the runtime writes at the version this execution context read. If another context moved the key in between, your write is refused, your mutator re-runs against the value that actually won, and the retry writes the merge. Two contexts patching different fields of one resource both land:
+**The version guarantee reaches flow code.** When you mutate `ctx.resources.something` or a collection instance, the runtime writes at the version this execution context read. If another context moved the key in between, your write is refused, your mutator re-runs against the value that actually won, and the retry writes whatever that re-run produced. Two contexts patching different fields of one resource both land:
 
 ```ts
 // two concurrent execution contexts, unchanged flow code

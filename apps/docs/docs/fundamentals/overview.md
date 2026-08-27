@@ -34,7 +34,7 @@ State lives in four nested scopes with atomic operations:
 | User | Across sessions for a user |
 | Org | Shared across sessions in an org |
 
-Each scope supports `patchState`, `setState`, `incState`, `pushState`, `atomicState`. Concurrent writers don't corrupt state, but they don't all merge either: increments and appends always land, and a plain field write is last-write-wins. [State Operations](/docs/fundamentals/state-operations#cas-semantics) has the rule per call. Blocks declare only the state fields they need.
+Each scope supports `patchState`, `setState`, `incState`, `pushState`, `atomicState`. Concurrent writers don't corrupt state, but they don't all merge either: on the built-in stores increments and appends both land, and a plain field write is last-write-wins. [State Operations](/docs/fundamentals/state-operations#cas-semantics) has the rule per call. Blocks declare only the state fields they need.
 
 See [State and Scopes](/docs/fundamentals/state-and-scopes).
 
