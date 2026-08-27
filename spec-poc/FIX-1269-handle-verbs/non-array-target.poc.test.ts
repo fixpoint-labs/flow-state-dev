@@ -63,9 +63,14 @@ const loose = defineResource({
   ref: "loose",
   stateSchema: z.object({
     items: z.union([z.string(), z.array(z.any())]).default([]),
+    // The increment twin of `items`: a field whose schema admits a non-number,
+    // so the resource-side increment trap is reachable at all. Decision 1
+    // covers BOTH verbs, so both traps have to be measured — an asymmetric
+    // evidence base under a symmetric decision is how one half ships unproven.
+    count: z.union([z.string(), z.number()]).default(0),
     keep: z.string().default("untouched")
   }),
-  default: { items: [], keep: "untouched" } as never
+  default: { items: [], count: 0, keep: "untouched" } as never
 });
 
 /** The ordinary shape: the field is declared an array and nothing else fits. */
@@ -131,6 +136,24 @@ function appendVia(ref: MutableRef, field: string, value: unknown): Promise<void
   return ref.updateState((s) => {
     const next = { ...s } as Record<string, unknown>;
     next[field] = [...toList(next[field]), value];
+    return next as PocState;
+  });
+}
+
+/**
+ * The increment twin of `appendVia`, written the way an implementer porting the
+ * bag's `incField` body would write it: `typeof existing === "number" ? existing
+ * : 0` as the baseline. That fallback is the whole subject of the increment trap
+ * row below.
+ */
+const toNumber = (v: unknown): number => (typeof v === "number" ? v : 0);
+
+function incVia(ref: MutableRef, increments: Record<string, number>): Promise<void> {
+  return ref.updateState((s) => {
+    const next = { ...s } as Record<string, unknown>;
+    for (const [field, delta] of Object.entries(increments)) {
+      next[field] = toNumber(next[field]) + delta;
+    }
     return next as PocState;
   });
 }
@@ -216,6 +239,35 @@ describe("resource append onto a non-array target", () => {
       // Which is the opposite of what the bag does on the identical input. An
       // implementer who "matches the bag" by copying its mutator body ships
       // this, silently, on every adapter.
+    }
+  );
+
+  it(
+    "TRAP, symmetric: the same port of the bag's INCREMENT destroys the scalar and reports success",
+    async () => {
+      // Decision 1 covers both verbs, so both traps are measured rather than
+      // one being measured and the other implied. Same shape as the append
+      // trap above: port the bag's mutator body, get a silent overwrite.
+      const stores = createInMemoryStores();
+      const ctx = await makeCtx(stores, "req_trap_inc");
+      const ref = ctx.resources.loose as unknown as MutableRef;
+
+      await ref.updateState((s) => ({ ...s, count: "not a number", keep: "untouched" }));
+      expect((await readRow(stores, "loose"))?.state).toMatchObject({
+        count: "not a number"
+      });
+
+      // No throw. `toNumber` swallowed the scalar and the increment succeeded.
+      await incVia(ref, { count: 1 });
+
+      const state = (await readRow(stores, "loose"))?.state as PocState;
+      expect(state.count).toBe(1);
+      expect(state.keep).toBe("untouched");
+
+      // Note the asymmetry this pins down: on the BAG, append refuses here and
+      // increment overwrites. On a RESOURCE, the naive port makes BOTH
+      // overwrite — so "match the bag" would not even reproduce the bag's own
+      // split behaviour. Decision 1 picks one contract for both verbs.
     }
   );
 
