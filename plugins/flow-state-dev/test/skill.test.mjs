@@ -326,6 +326,28 @@ describe("secrets never enter the transcript", () => {
     expect(readFileSync(first, "utf8")).toBe(`FSD_DEMO_TOKEN=${a}\n`);
     expect(readFileSync(second, "utf8")).toBe(`FSD_DEMO_TOKEN=${b}\n`);
   });
+
+  it("fills a whitespace-only FSD_DEMO_TOKEN assignment in place, without appending a second one", () => {
+    const snippet = evalSnippetContaining("randomBytes");
+    expect(snippet, "the generate-token -e script is extractable").not.toBeNull();
+
+    const root = makeTree({});
+    const dest = join(root, ".env.local");
+    writeFileSync(dest, "OTHER=keep\nFSD_DEMO_TOKEN=   \t\n");
+
+    const stdout = execFileSync(
+      process.execPath,
+      ["--input-type=module", "-e", snippet, "--", dest],
+      { encoding: "utf8", cwd: root },
+    );
+
+    const body = readFileSync(dest, "utf8");
+    expect(body).toMatch(/^OTHER=keep\nFSD_DEMO_TOKEN=[0-9a-f]{64}\n$/);
+    expect(body.match(/FSD_DEMO_TOKEN=/g)).toHaveLength(1);
+    const value = /FSD_DEMO_TOKEN=([0-9a-f]{64})/.exec(body)[1];
+    expect(stdout).not.toContain(value);
+    expect(stdout).toMatch(/Filled an empty FSD_DEMO_TOKEN line/);
+  });
 });
 
 describe("the skill's embedded next-steps block equals canonical", () => {

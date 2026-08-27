@@ -130,7 +130,7 @@ One delimited section, created when the file is absent, appended when it is pres
 
 `.env.local` is **not** on the delimited-section list. Follow the Phase 1 decision.
 
-**Generate `FSD_DEMO_TOKEN` without ever printing it.** Pass every destination whose `reasons` name it, including reuse dests. The script converges on one value: it copies an existing assignment if any dest already has one, otherwise it generates. It refuses if two dests already disagree. It does not print the token.
+**Generate `FSD_DEMO_TOKEN` without ever printing it.** Pass every destination whose `reasons` name it, including reuse dests. The script converges on one value: it copies an existing non-empty assignment if any dest already has one, otherwise it generates. A whitespace-only `FSD_DEMO_TOKEN=` line is empty — fill it in place; do not append a second assignment. It refuses if two dests already disagree. It does not print the token.
 
 ```bash
 node --input-type=module -e '
@@ -144,11 +144,14 @@ function readAssignment(existing) {
   const m = /(?:^|\n)FSD_DEMO_TOKEN=([^\r\n]*)/.exec(existing);
   return m ? m[1] : null;
 }
+function hasToken(value) {
+  return value != null && value.trim() !== "";
+}
 let token = null;
 for (const dest of dests) {
   const existing = existsSync(dest) ? readFileSync(dest, "utf8") : "";
   const value = readAssignment(existing);
-  if (value) {
+  if (hasToken(value)) {
     if (token !== null && token !== value) {
       console.error("FSD_DEMO_TOKEN already has different values in two destinations; refusing to write a second one.");
       process.exit(1);
@@ -160,13 +163,13 @@ if (token === null) token = randomBytes(32).toString("hex");
 for (const dest of dests) {
   const existing = existsSync(dest) ? readFileSync(dest, "utf8") : "";
   const value = readAssignment(existing);
-  if (value) {
+  if (hasToken(value)) {
     console.log("FSD_DEMO_TOKEN already has a value in one destination; left that file alone.");
     continue;
   }
   mkdirSync(dirname(dest), { recursive: true });
-  if (value === "") {
-    writeFileSync(dest, existing.replace(/(^|\n)FSD_DEMO_TOKEN=(?=\r?\n|$)/, "$1FSD_DEMO_TOKEN=" + token));
+  if (value !== null) {
+    writeFileSync(dest, existing.replace(/(^|\n)FSD_DEMO_TOKEN=[^\r\n]*/, "$1FSD_DEMO_TOKEN=" + token));
     console.log("Filled an empty FSD_DEMO_TOKEN line.");
     continue;
   }
