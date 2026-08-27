@@ -119,8 +119,7 @@ export function inspectRegistry(configPath) {
     entries.push({ name, identifier, specifier, modulePath, kind: kindOf(modulePath), raw: part });
   }
 
-  const ourEntry =
-    entries.find((entry) => entry.specifier !== null && isOurFlowSpecifier(entry.specifier)) ?? null;
+  const ourEntry = entries.find((entry) => isOurFlowModule(entry.modulePath)) ?? null;
   const foreignWithOurKind = entries.filter(
     (entry) => entry !== ourEntry && entry.kind === DEMO_FLOW.kind,
   );
@@ -136,9 +135,17 @@ export function inspectRegistry(configPath) {
   return { extendable: true, entries, demoKind, ourEntry, foreignWithOurKind, unreadable };
 }
 
-/** Does this specifier point at the flow file this skill writes? */
-function isOurFlowSpecifier(specifier) {
-  return specifier.replace(/\.m?[jt]s$/, "") === DEMO_FLOW.modulePath.replace(/\.m?[jt]s$/, "");
+/**
+ * Is this the flow file this skill wrote?
+ *
+ * Ownership is the resolved path plus the generated marker, never the specifier stem.
+ * `./flows/hello/flow.js` normalises to the same stem as `./flows/hello/flow.mts`; treating the
+ * stem as ours claimed a foreign module and left their flow registered instead of the demo.
+ */
+function isOurFlowModule(modulePath) {
+  if (modulePath === null) return false;
+  const source = readIfPresent(modulePath);
+  return source !== null && source.includes(GENERATED_MARKER);
 }
 
 /**

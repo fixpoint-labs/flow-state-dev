@@ -50,6 +50,23 @@ const result = await testBlock(block, {
 });
 ```
 
+### Reading resource rows a block wrote
+
+`testBlock` returns a `resources` map alongside the block's output, keyed by the
+accessor names in the block's `declaredResources` — `{}` for a block that
+declares none. It is populated after the run, so a test can assert on the rows a
+block actually wrote without building a context and calling the block's
+`execute` by hand, which would skip the execution wrapping every real consumer
+goes through.
+
+```ts
+const result = await testBlock(saveDraft, { input: { title: "Draft" } });
+
+// `drafts` is the accessor name the block declared.
+const drafts = result.resources.drafts as { list: () => Promise<Draft[]> };
+expect(await drafts.list()).toHaveLength(1);
+```
+
 ### Seeding scope state and resources
 
 `testFlow` and `testBlock` use nested scope seeds:

@@ -50,6 +50,8 @@ function decisionSnapshot(
     ticker: "NVDA",
     asOfDate: "2026-05-06",
     finalRating: "Overweight",
+    ratingUnanchored: false,
+    periodDisclosure: null,
     decisionConfidence: 0.72,
     decisionSummary: "Constructive on AI demand.",
     direction: "long",

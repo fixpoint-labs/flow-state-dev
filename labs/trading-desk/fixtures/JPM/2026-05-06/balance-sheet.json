@@ -1,6 +1,7 @@
 {
   "ticker": "JPM",
   "asOf": "2026-03-31",
+  "periodEnd": "2025-12-31",
   "totalAssets": 4150.0,
   "totalLiabilities": 3815.0,
   "totalEquity": 335.0,

@@ -258,15 +258,15 @@ describe("defineFlow", () => {
   });
 
   it("rejects requireUser: false when user.client is declared", () => {
-    // Legacy `clientData` normalizes into `client.derived`, so the
-    // requireUser-consistency check applies to either input shape.
     expect(() =>
       defineFlow({
         kind: "user-clientdata-with-no-user",
         requireUser: false,
         user: {
-          clientData: {
-            displayName: () => "anon"
+          client: {
+            derived: {
+              displayName: () => "anon"
+            }
           }
         },
         actions: {
@@ -803,42 +803,19 @@ describe("defineFlow", () => {
       });
       expect(flow.session?.client?.expose).toEqual(["count"]);
       expect(typeof flow.session?.client?.derived?.greeting).toBe("function");
-      expect((flow.session as { clientData?: unknown })?.clientData).toBeUndefined();
     });
 
-    it("normalizes legacy clientData into client.derived and warns once per scope", async () => {
-      const { __resetDeprecationWarningsForTests } = await import("../src/helpers/deprecation");
-      __resetDeprecationWarningsForTests();
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-      const flow = defineFlow({
-        kind: "ccnorm-2",
-        actions: {},
-        session: {
-          stateSchema: z.object({}),
-          clientData: { legacy: () => ({ ok: true }) }
-        }
-      });
-      flow({ id: "ccnorm-2-instance" });
-
-      expect(typeof flow.session?.client?.derived?.legacy).toBe("function");
-      expect((flow.session as { clientData?: unknown })?.clientData).toBeUndefined();
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      warnSpy.mockRestore();
-    });
-
-    it("throws when both client and clientData are set on the same scope", () => {
+    it("rejects leftover session.clientData", () => {
       expect(() =>
         defineFlow({
-          kind: "ccnorm-3",
+          kind: "ccnorm-2",
           actions: {},
           session: {
             stateSchema: z.object({}),
-            client: { derived: { a: () => 1 } },
-            clientData: { b: () => 2 }
-          }
+            clientData: { legacy: () => ({ ok: true }) }
+          } as any
         })
-      ).toThrow(/sets both session\.client and session\.clientData/);
+      ).toThrow(/session\.clientData was removed/);
     });
 
     it("throws when expose and derived share a name", () => {

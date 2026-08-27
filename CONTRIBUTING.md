@@ -40,7 +40,7 @@ The architecture has locked contracts. Don't change these without explicit discu
 - Actions are flow-level: `defineFlow({ actions })`
 - Required caller input: `userId`
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
-- `server` never depends on `client` or `react`
+- `engine` never depends on `client` or `react`
 - `react` wraps `client` — no transport logic in react
 
 ## Submitting changes

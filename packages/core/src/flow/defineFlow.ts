@@ -39,7 +39,6 @@ import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } fr
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateChatConfig, type ChatConfig, type ChatEventBinding } from "../types/chat";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
-import { warnDeprecated } from "../helpers/deprecation";
 import { introspectStateKeys } from "../helpers/zod-introspect";
 
 type ScopeKind = "session" | "user" | "org";
@@ -47,51 +46,30 @@ type ScopeKind = "session" | "user" | "org";
 type ScopeWithClient = {
   stateSchema?: unknown;
   client?: ScopeClientConfig;
-  clientData?: Record<string, unknown>;
 };
 
 /**
- * Collapse a scope's `{ client, clientData }` inputs into the canonical
- * `client` shape the runtime consumes. Throws on conflicting input
- * (both fields set, name collision, unknown `expose` key) so authors
- * see one clear error at definition time. Emits a one-shot deprecation
- * warning when only the legacy `clientData` is set.
+ * Validate a scope's `client` config. Throws on a leftover `clientData`
+ * key, an `expose`/`derived` name collision, or an `expose` key that
+ * isn't on the scope state schema.
+ *
+ * Validation only — nothing is rewritten, so the merged config the caller
+ * already holds is the one the instance carries.
  */
-function normalizeScopeClientConfig(
+function validateScopeClientConfig(
   flowKind: string,
   scope: ScopeKind,
   config: ScopeWithClient | undefined
-): ScopeClientConfig | undefined {
-  if (config === undefined) return undefined;
+): void {
+  if (config === undefined) return;
 
-  const hasClient = config.client !== undefined;
-  const hasClientData = config.clientData !== undefined && Object.keys(config.clientData).length > 0;
+  rejectRemovedClientData(config, flowKind, scope);
 
-  if (hasClient && hasClientData) {
-    throw new Error(
-      `Flow "${flowKind}" sets both ${scope}.client and ${scope}.clientData. ` +
-      `Pick one — clientData is the legacy shape; move its entries under client.derived.`
-    );
-  }
+  const client = config.client;
+  if (client === undefined) return;
 
-  let normalized: ScopeClientConfig | undefined;
-  if (hasClient) {
-    normalized = config.client;
-  } else if (hasClientData) {
-    warnDeprecated(
-      `clientData:${flowKind}:${scope}`,
-      `${flowKind}.${scope}.clientData is deprecated. ` +
-      `Replace with ${scope}.client: { derived: { ... } } (or expose: [...] for verbatim passthrough).`
-    );
-    normalized = { derived: config.clientData as ScopeClientConfig["derived"] };
-  } else {
-    return undefined;
-  }
-
-  if (normalized === undefined) return undefined;
-
-  const exposeNames = normalized.expose ?? [];
-  const derivedNames = normalized.derived === undefined ? [] : Object.keys(normalized.derived);
+  const exposeNames = client.expose ?? [];
+  const derivedNames = client.derived === undefined ? [] : Object.keys(client.derived);
 
   if (exposeNames.length > 0 && derivedNames.length > 0) {
     const exposeSet = new Set(exposeNames);
@@ -117,19 +95,6 @@ function normalizeScopeClientConfig(
       }
     }
   }
-
-  return normalized;
-}
-
-function applyNormalizedClient<TConfig extends ScopeWithClient | undefined>(
-  config: TConfig,
-  normalized: ScopeClientConfig | undefined
-): TConfig {
-  if (config === undefined) return config;
-  // Drop the legacy `clientData` field from the runtime object so consumers
-  // can't accidentally read it; carry the normalized result on `client`.
-  const { clientData: _drop, ...rest } = config as ScopeWithClient;
-  return { ...(rest as object), client: normalized } as TConfig;
 }
 
 type AnyActions = Record<string, ActionConfig>;
@@ -177,6 +142,31 @@ function rejectRemovedWork(value: object | undefined, location: string): void {
       "Its four hooks were never invoked, so no lifecycle behaviour is lost — but they were walked for " +
       "resource declaration, so any resource declared only there is no longer registered. " +
       "Move those declarations onto a block that runs, and dispatch background steps with `.sideChain()`."
+    );
+  }
+}
+
+/**
+ * Reject the removed scope-config `clientData` option.
+ *
+ * `clientData` was the legacy authoring shape for a scope's client-facing
+ * projection. It is gone from `SessionConfig` / `UserConfig` / `OrgConfig`
+ * in favour of `client: { derived, expose }`, so a TypeScript caller passing
+ * a fresh object literal now fails to compile; this is the runtime half, for
+ * plain JS and for a non-fresh object TypeScript lets through.
+ *
+ * Failing loudly is the point: accepting-and-ignoring the key would silently
+ * stop publishing data the frontend still reads, with no error anywhere near
+ * the flow that authored it.
+ *
+ * Only the authoring key moved — the wire shape is unchanged, and clients
+ * still read `snapshot.clientData.<scope>.<name>`.
+ */
+function rejectRemovedClientData(value: object | undefined, flowKind: string, scope: ScopeKind): void {
+  if (value !== undefined && Object.hasOwn(value, "clientData")) {
+    throw new Error(
+      `Flow "${flowKind}" ${scope}.clientData was removed. ` +
+      `Use ${scope}.client: { derived: { ... } } (or expose: [...] for verbatim passthrough).`
     );
   }
 }
@@ -845,10 +835,10 @@ function mergeFlowResourceMap(
 /**
  * `requireUser: false` is a build-time opt-out from the framework's user-
  * scope identity. Flows that opt out must not declare any user-scope state,
- * clientData, or resources — otherwise the runtime would have nowhere to
- * route the read/write. We catch the conflict at registration so authors
- * see one clear error at startup rather than a confusing runtime failure on
- * the first request.
+ * `client` projection, or resources — otherwise the runtime would have
+ * nowhere to route the read/write. We catch the conflict at registration so
+ * authors see one clear error at startup rather than a confusing runtime
+ * failure on the first request.
  */
 function validateRequireUserFalseConsistency(
   flowKind: string,
@@ -965,22 +955,13 @@ function createFlowInstance(
   const kind = options?.kind ?? definition.kind;
   const actions = mergeActions(definition.actions, options?.actions, tools);
 
-  const sessionMerged = mergeConfig(definition.session, options?.session);
-  const userMerged = mergeConfig(definition.user, options?.user);
-  const orgMerged = mergeConfig(definition.org, options?.org);
+  const session = mergeConfig(definition.session, options?.session);
+  const user = mergeConfig(definition.user, options?.user);
+  const org = mergeConfig(definition.org, options?.org);
 
-  const session = applyNormalizedClient(
-    sessionMerged,
-    normalizeScopeClientConfig(kind, "session", sessionMerged as ScopeWithClient | undefined)
-  );
-  const user = applyNormalizedClient(
-    userMerged,
-    normalizeScopeClientConfig(kind, "user", userMerged as ScopeWithClient | undefined)
-  );
-  const org = applyNormalizedClient(
-    orgMerged,
-    normalizeScopeClientConfig(kind, "org", orgMerged as ScopeWithClient | undefined)
-  );
+  validateScopeClientConfig(kind, "session", session as ScopeWithClient | undefined);
+  validateScopeClientConfig(kind, "user", user as ScopeWithClient | undefined);
+  validateScopeClientConfig(kind, "org", org as ScopeWithClient | undefined);
 
   const isolateUserState = options?.isolateUserState ?? definition.isolateUserState ?? false;
   const isolateOrgState = options?.isolateOrgState ?? definition.isolateOrgState ?? false;

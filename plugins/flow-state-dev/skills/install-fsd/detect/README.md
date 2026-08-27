@@ -106,7 +106,11 @@ Each of these was a defect first. They are recorded here rather than in the modu
 
 **The workspace search is bounded twice.** Not by the nearest package-manager signal — a stale `package-lock.json` beside an app made that app its own workspace root and resolved npm inside a pnpm workspace. And not past the repository — a project nested inside an unrelated checkout inherited that repository's workspace declaration and resolved a package manager belonging to a project the developer has nothing to do with.
 
-**There are two env parsers, not one.** The module modelled two runtimes with opposite tie-breaks and then parsed both with a single function that faithfully mirrored neither. Three findings lived in that one parser: `@next/env` performs variable expansion and we do not, `export KEY=…` is valid dotenv syntax and our CLI's parser is not, and destination selection consulted only one of the pair — so on a mounted-route host the file Next actually decides from never reached the tracked-by-git check.
+**There are two env parsers, not one.** The module modelled two runtimes with opposite tie-breaks and then parsed both with a single function that faithfully mirrored neither. Three findings lived in that one parser: `@next/env` performs variable expansion and we do not — including after quotes are stripped — `export KEY=…` is valid dotenv syntax and our CLI's parser is not, and destination selection consulted only one of the pair — so on a mounted-route host the file Next actually decides from never reached the tracked-by-git check.
+
+**Inherited `process.env` cannot be overridden by a file.** A non-empty inherited token is reused and nothing is written. An empty one refuses (`inherited-secret-empty`) rather than pointing a write at a file neither loader will read.
+
+**A setting is a top-level key.** Nested `basePath: false` on a redirect is not Next's `basePath`; reading it as the mount prefix turns away an ordinary App Router config whose prefix is unset.
 
 **The source walker is anchored, and it is one walker.** It existed twice, and both copies took the first textual match: a commented-out `// basePath: '/old'` decided the mount URL, and a helper `const example = { flows: {} }` above the real call reported a live registry as free.
 

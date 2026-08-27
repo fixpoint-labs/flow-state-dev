@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator } from "@flow-state-dev/core";
+import { testBlock } from "@flow-state-dev/testing";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { createClaudeCodeAgentCapability } from "../../src/sdk/capability";
 import { claudeCodeAgent } from "../../src/sdk/agent";
 
@@ -139,5 +141,51 @@ describe("createClaudeCodeAgentCapability — recordWork", () => {
     expect(Object.keys(flow.resources ?? {})).not.toContain("observed-file-ops");
     expect(Object.keys(flow.resources ?? {})).not.toContain("observed-plan");
     expect(Object.keys(flow.resources ?? {})).not.toContain("observed-gaps");
+  });
+});
+
+describe("createClaudeCodeAgentCapability — cwd", () => {
+  it("forwards the working-directory resolver to the agent block it exposes", async () => {
+    // The capability forwards ALL agent options, so this holds by construction
+    // rather than by a line — which is exactly why it is worth pinning. The
+    // sibling `detached` / `recordWork` tests exist because forwarding one
+    // option and not another fails silently, and a working directory that never
+    // reached the query would fail the same way.
+    let seen: string | undefined;
+    const cap = createClaudeCodeAgentCapability({
+      cwd: () => "/work/checkout-a",
+      resolveClaudeAgent: () => ({
+        query: async function* (args) {
+          seen = args.options?.cwd;
+          yield {
+            type: "result",
+            subtype: "success",
+            result: "ok",
+            session_id: "s",
+          } as never;
+        },
+      }),
+    });
+
+    // **Dispatched through `testBlock`, not through `block.config.execute`.**
+    // The private callback bypasses everything the framework does around a
+    // block, so a test driving it shows the option reached a closure rather than
+    // that it reaches a run.
+    //
+    // Reaching INTO the capability for the block is a separate question, and
+    // there is no public way to do it: `DefinedCapability` declares
+    // `__presetDefs` and exposes no accessor for a preset's tools. Every sibling
+    // test in this file takes the same route for the same reason. That missing
+    // accessor is a real gap — named here rather than papered over.
+    const [tool] = (
+      cap as unknown as {
+        __presetDefs: { tools: { tools: BlockDefinition<any, any>[] } };
+      }
+    ).__presetDefs.tools.tools;
+
+    const { error } = await testBlock(tool, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(seen).toBe("/work/checkout-a");
   });
 });

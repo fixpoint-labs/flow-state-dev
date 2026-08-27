@@ -30,9 +30,9 @@ a no-non-relative-import scan over `src/`), so it cannot silently regress.
   — deterministic `buildBlockInstanceId` / `parseBlockInstanceId` and the
   `blockPath*` segment builders.
 - **Pure helpers** (`@flow-state-dev/contracts/helpers`) — `deepEqual` /
-  `looseDeepEqual`, `mapLimit` (bounded-concurrency map), and the string-case
-  utilities `camelToKebab` / `normalizeTagName`. Re-exported from
-  `@flow-state-dev/core/helpers`.
+  `looseDeepEqual`, `mapLimit` (bounded-concurrency map), `toError`
+  (unknown-throw coercion), and the string-case utilities `camelToKebab` /
+  `normalizeTagName`. Re-exported from `@flow-state-dev/core/helpers`.
 - **Pure leaf types** — `ModelIdentity`, `SuspensionReason`,
   `SuspensionStatus`, `RequestStatus`.
 
@@ -41,7 +41,7 @@ the block-instance-id helpers, and the suspension leaf types.
 
 ## Who depends on it
 
-`core`, `client`, `react`, and `server` all depend on `contracts`. **`core`
+`core`, `client`, `react`, and `ui` all depend on `contracts`. **`core`
 re-exports every symbol from its original path** (`@flow-state-dev/core`,
 `@flow-state-dev/core/items`, `@flow-state-dev/core/items/internal`, the leaf
 types), so importing these from `core` is unchanged for end users — the

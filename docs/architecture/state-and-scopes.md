@@ -114,7 +114,7 @@ Deliberately unconditional, each for a stated reason rather than because it was 
 - **`create({ replace: true })`** writes at `"any"`. It is an explicit overwrite of a key the caller has decided it owns; opting out of the version check is the posture being requested
 - **`deleteAll`** takes no expected version at all. It is a scope operation, not a key operation — a bulk lifecycle mark over every live key
 - **the two seed helpers in `@flow-state-dev/testing`** pass `"any"` when priming a fresh scope, where no concurrent writer exists by construction
-- **scope state** — `request` / `session` / `user` / `org` — is not this driver's at all. It keeps `runWithCAS`, and `createScopePersist` downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
+- **scope state** — `session` / `user` / `org` drive `runWithCAS` directly. Request scope runs that same driver under `withScopeLock` (`serialize: true`), so a same-process fan-out serializes rather than exhausting the retry budget, and the budget stays for a writer the queue cannot see. `createScopePersist` still downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
 
 The collection-item HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
 
@@ -181,18 +181,18 @@ ctx.request.patchState()   // + all ScopeStateOps
 // Session scope (always available in Phase 1)
 ctx.session.state          // Readonly<TSessionState>
 ctx.session.metadata       // Readonly<SessionMetadata> (title, description, tags)
-ctx.session.resources      // ResourceRegistry
 ctx.session.items          // SessionItemViews (client/llm views)
 ctx.session.getJournal()
 ctx.session.setMetadata()
 
 // User scope (always available in Phase 1)
 ctx.user.state             // Readonly<TUserState>
-ctx.user.resources         // ResourceRegistry
 
 // Org scope (optional)
-ctx.org?.state         // Readonly<TOrgState>
-ctx.org?.resources     // ResourceRegistry
+ctx.org?.state             // Readonly<TOrgState>
+
+// Flat resource registry (every declared resource, any scope)
+ctx.resources              // ResourceRegistry — keyed by accessor, routed by resource.scope
 ```
 
 ### Partial State Schemas
@@ -409,7 +409,7 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 
 ### Cross-flow schema registry (default)
 
-`FlowRegistry.register` collects `user.stateSchema`, `org.stateSchema`, and user/org resource schemas from every non-isolated registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
+`FlowRegistry.register` collects `user.stateSchema`, `org.stateSchema`, and user/org resource schemas from every registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
 
 | Scenario | Outcome |
 |----------|---------|
@@ -417,17 +417,25 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 | Object shapes with overlapping keys whose types agree | Merge. Disjoint fields or compatible extensions emit a `console.warn`. |
 | Shared required field whose types disagree | Throw `CrossFlowSchemaConflictError`. |
 | Non-object schemas of different kinds | Throw `CrossFlowSchemaConflictError`. |
-| Same-named user/org resource with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
+| Two shared user/org resources at the same `ref` with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
 
-The error names both flow kinds, the scope (`user` or `org`), the field path (`stateSchema` or `resources.<name>`), and a reason. Resolution is either reconciling the schemas or opting into isolation.
+The error names both flow kinds, the scope (`user` or `org`), the field path (`stateSchema` or `resources.<ref>`), and a reason. Resolution is either reconciling the schemas or opting into isolation.
 
-The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss).
+**What each half compares.** The two halves of the check follow the two storage-key rules below, so they drop out of the shared view at different granularities:
+
+- The **scope record's `stateSchema`** is one blob per scope, so it follows the flow-level `isolateUserState` / `isolateOrgState` flag. A flow that isolates a scope contributes no `stateSchema` to it.
+- **Resources** are compared when two flows declare a shared resource at the same `(scope, ref)` — never by the accessor name they hang off `ctx.resources.<key>`, which is a naming choice rather than a storage identity. Effective `flowIsolation` decides *participation* rather than forming part of that key: an isolated resource is flow-namespaced and so cannot collide, and it is dropped before any comparison. Each resource is judged on its own `flowIsolation`, independently of the flow-level flag — a flow that isolates a scope still participates for a resource declaring `flowIsolation: false`, and a shared flow does not participate for a resource declaring `flowIsolation: true`.
+
+The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss). Two overlaps are the exception, and are **not** detected today:
+
+- **A collection pattern overlapping a concrete ref.** Refs are compared exactly, so a collection at `files/*` and a resource at `files/a` index separately even though the collection's `"a"` instance resolves to that same cell. Two collections declaring the *same* pattern are compared normally — a collection indexes on its `pattern`, which is what its instance keys derive from.
+- **Two instances of one flow kind whose `resources` overrides disagree.** Participants are retained per `flowKind` and same-kind pairs are skipped, so per-instance overrides are never compared against each other.
 
 ### Per-flow isolation (opt-in)
 
 Isolation promotes a user/org-scope storage cell to a flow-namespaced key (`${id}:${flowKind}`) so it can't be read or overwritten by other flows. Two layers decide it, at two different granularities (FIX-735):
 
-- **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Two roles: (1) it keys the **scope record** — the scope's single `state` blob (`ctx.user.state` / `ctx.org.state`) — and (2) it is the default `flowIsolation` for resources at that scope that don't declare their own. A flow that isolates a scope does not participate in the registry schema merge for it.
+- **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Two roles: (1) it keys the **scope record** — the scope's single `state` blob (`ctx.user.state` / `ctx.org.state`) — and (2) it is the default `flowIsolation` for resources at that scope that don't declare their own. A flow that isolates a scope contributes no `stateSchema` to the registry schema merge for it, but still participates for any resource that opts back out.
 - **Resource-level** (FIX-435): `defineResource({ scope: "user", flowIsolation: true })`. Decides **that resource's** storage key, and always wins over the flow default — in both directions. A library can ship a flow-private user-scoped resource without consumers flipping the flow flag, and a resource declared `flowIsolation: false` stays shared even when a sibling on the same flow is isolated.
 
 Resources key **per resource**, not per flow. A flow may hold both shared and isolated user-scoped resources at once: each `flowIsolation: false` resource lives at the bare `{id}`, each `flowIsolation: true` resource at `{id}:{flowKind}`. The scope record's own `state` keys independently, on the flow-level flag alone.

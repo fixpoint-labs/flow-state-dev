@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import {
   semanticFactSchema,
   semanticMemoryStateSchema,
@@ -21,7 +21,7 @@ import {
 
 function createMockSemRef(
   initialState?: Partial<SemanticMemoryState>,
-): ResourceHandle<SemanticMemoryState> {
+): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
@@ -39,7 +39,7 @@ function createMockSemRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceHandle<SemanticMemoryState>
+  } as ResourceRef<SemanticMemoryState>
 }
 
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import { generator } from '@flow-state-dev/core'
 import { workingMemoryStateSchema } from '../src/working-memory.js'
 import type { WorkingMemoryState } from '../src/working-memory.js'
@@ -24,7 +24,7 @@ import { createMemoryCapability } from '../src/memory-capability.js'
 
 function createMockWmRef(
   initialState?: Partial<WorkingMemoryState>,
-): ResourceHandle<WorkingMemoryState> {
+): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = {
     entries: [],
     currentTurn: 0,
@@ -41,12 +41,12 @@ function createMockWmRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
 function createMockEpRef(
   initialState?: Partial<EpisodicMemoryState>,
-): ResourceHandle<EpisodicMemoryState> {
+): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = {
     episodes: [],
     totalEncoded: 0,
@@ -63,12 +63,12 @@ function createMockEpRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
 function createMockSemRef(
   initialState?: Partial<SemanticMemoryState>,
-): ResourceHandle<SemanticMemoryState> {
+): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
@@ -86,14 +86,14 @@ function createMockSemRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceHandle<SemanticMemoryState>
+  } as ResourceRef<SemanticMemoryState>
 }
 
 /** Build a mock block context with the given resource refs. */
 function mockCtx(opts: {
-  wm?: ResourceHandle<WorkingMemoryState>
-  ep?: ResourceHandle<EpisodicMemoryState>
-  sem?: ResourceHandle<SemanticMemoryState>
+  wm?: ResourceRef<WorkingMemoryState>
+  ep?: ResourceRef<EpisodicMemoryState>
+  sem?: ResourceRef<SemanticMemoryState>
 }) {
   const refs: Record<string, unknown> = {
     workingMemory: opts.wm ?? createMockWmRef(),

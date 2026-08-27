@@ -56,6 +56,22 @@ describe("the host is narrower than 'a next dependency'", () => {
     expect(buildReport(root).refusals.find((r) => r.code === "next-unsupported").message).toContain("14.2.5");
   });
 
+  it("refuses a range that still allows Next 14, even when 15 is listed first", () => {
+    // `^15.0.0 || ^14.0.0` is a valid range the lockfile can satisfy with 14. Reading the first
+    // major and calling the host supported lets the adapter install fail after files land.
+    const root = makeTree({
+      "package.json": manifest({
+        dependencies: { next: "^15.0.0 || ^14.0.0" },
+        scripts: { dev: "next dev" },
+        packageManager: "npm@10.0.0",
+      }),
+      "app/page.tsx": page,
+    });
+    const host = classifyHost(root);
+    expect(host.value).toBe("next-unsupported");
+    expect(host.failed).toContain("next-version-unreadable");
+  });
+
   it("classifies a project with no next dependency as node, down to the minimal floor", () => {
     // An empty directory with a package.json and a packageManager field is a valid target.
     const root = makeTree({ "package.json": manifest({ packageManager: "npm@10.0.0" }) });
@@ -334,6 +350,42 @@ describe("the mount URL carries basePath", () => {
     });
     expect(codes(buildReport(root))).toContain("config-past-what-i-read");
   });
+
+  it("does not treat a nested basePath inside redirects as the Next setting", () => {
+    // Ordinary App Router configs put `basePath: false` on a redirect or rewrite. A flat
+    // search of the exported object reads that as the mount prefix, then refuses because
+    // `false` is not a string — turning away a project whose top-level basePath is unset.
+    const root = makeTree({
+      "package.json": nextManifest({ packageManager: "pnpm@9.0.0" }),
+      "app/page.tsx": page,
+      "next.config.js": [
+        "module.exports = {",
+        "  redirects: [{ source: '/old', destination: '/new', basePath: false, permanent: true }],",
+        "  rewrites: [{ source: '/docs', destination: '/api/docs', basePath: false }],",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    const report = buildReport(root);
+    expect(codes(report)).not.toContain("config-past-what-i-read");
+    expect(report.mount.basePathReadable).toBe(true);
+    expect(report.mount.path).toBe("/api/flows");
+  });
+
+  it("still reads a top-level basePath sitting beside nested ones", () => {
+    const root = makeTree({
+      "package.json": nextManifest({ packageManager: "pnpm@9.0.0" }),
+      "app/page.tsx": page,
+      "next.config.js": [
+        "module.exports = {",
+        "  basePath: '/portal',",
+        "  redirects: [{ source: '/old', destination: '/new', basePath: false }],",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(buildReport(root).mount.path).toBe("/portal/api/flows");
+  });
 });
 
 describe("a route slot is checked across the scan set and classified by marker", () => {
@@ -394,6 +446,16 @@ describe("the dev command, and the refusal scoped to the topology that spends it
     });
     const report = buildReport(root);
     expect(report.devCommand.script).toBe("serve");
+    expect(report.devCommand.port).toBe(4000);
+    expect(report.devCommand.url).toBe("http://localhost:4000");
+  });
+
+  it("reads PORT= from the script, which next --help documents as the default source", () => {
+    const root = makeTree({
+      "package.json": nextManifest({ scripts: { dev: "PORT=4000 next dev" }, packageManager: "pnpm@9.0.0" }),
+      "app/page.tsx": page,
+    });
+    const report = buildReport(root);
     expect(report.devCommand.port).toBe(4000);
     expect(report.devCommand.url).toBe("http://localhost:4000");
   });

@@ -1,5 +1,7 @@
 ---
 sidebar_position: 6
+title: CLI API
+sidebar_label: CLI
 ---
 
 # CLI API
@@ -25,13 +27,10 @@ fsdev run my-agent chat -i '{"message": "Hello!"}'
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
-| `--seed-user <json\|path>` | Seed user-level state |
-| `--seed-org <json\|path>` | Seed org-level state |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
-| `--format <format>` | Output format (default: `json`) |
 
 When a config is loaded, `fsdev run` looks up the flow by `kind` in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect), and it covers the generators that run in this process but not [background work handed to a queue](/docs/cli/overview#model-overrides). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit, and disposal waits for any background work the run started in this process. See [App Configuration](/docs/cli/configuration) and [Background work](/docs/cli/overview#background-work).
 
@@ -196,6 +195,27 @@ fsdev block ./src/flows/my-app/blocks/counter.ts -i '{"increment": 1}'
   "execution": { "durationMs": 12 }
 }
 ```
+
+### `fsdev benchmark <file>`
+
+Load a `defineBenchmark` file and print the scorecard.
+
+```bash
+fsdev benchmark ./benchmark.ts
+```
+
+Narrative and flags: [Benchmarks](/docs/testing/benchmarks) and [Choosing a pattern with benchmarks](/guides/choosing-patterns-with-benchmarks).
+
+### `fsdev ui add <name>` / `fsdev ui list`
+
+Install or list components from the Flow State UI registry. `add` shells out to the shadcn CLI.
+
+```bash
+fsdev ui add model-badge
+fsdev ui list
+```
+
+Narrative: [UI](/docs/ui/overview).
 
 ## Flow Discovery
 

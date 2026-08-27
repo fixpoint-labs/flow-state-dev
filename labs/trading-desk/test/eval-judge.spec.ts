@@ -76,6 +76,7 @@ function completedBundle(): RunArtifactsBundle {
     capturePath: null,
     ranAt: SECRET_TS,
     finalRating: "Overweight",
+    ratingUnanchored: false,
     decisionConfidence: 0.7,
     targetWeightPct: 3,
     direction: "long",

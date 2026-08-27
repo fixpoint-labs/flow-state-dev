@@ -11,20 +11,37 @@
  * it produces the three canonical statement payloads. The HTTP fetch and the
  * ticker→CIK lookup live in `edgar.ts`.
  *
+ * PERIOD SELECTION IS NOT THIS MODULE'S (FIX-1113). Every figure is read at the
+ * ONE anchor chosen by `financial-period.ts`; a figure the anchor does not carry
+ * is absent. The fiscal-year (`fy`) index this module used to build is GONE and
+ * must not come back: `fy` records the year of the FILING, not the year the
+ * number describes, so last year's comparatives republished inside this year's
+ * annual report carry this year's label. In this repository's own Apple
+ * fixture that collides the period ending 2024-09-28 into fy 2025 across
+ * fifteen of sixteen line items, and collapses three years of `Revenues` into
+ * the single label 2018 — discarding two of them.
+ *
  * Selection rules learned from real filings:
  *  - Balance-sheet facts are *instant* (end-date only); income/cashflow facts
- *    are *duration* (start+end). The annual selector differs accordingly.
+ *    are *duration* (start+end). The annual test differs accordingly.
  *  - Total debt has no single tag: sum LongTermDebtNoncurrent + ...Current,
  *    falling back to the combined LongTermDebt tag.
  *  - Revenue lives under `Revenues` (older filings) or
- *    `RevenueFromContractWithCustomerExcludingAssessedTax` (newer). Pick the
- *    most recent across both rather than a fixed preference — a filer that
- *    switched tags leaves the old one frozen at a stale value.
+ *    `RevenueFromContractWithCustomerExcludingAssessedTax` (newer). Both are
+ *    read at the anchor, newest-filed wins — a filer that switched tags leaves
+ *    the old one frozen, and reading AT a period means the frozen one simply
+ *    has nothing at the anchor.
  *  - EDGAR reports capex (`PaymentsToAcquirePropertyPlantAndEquipment`) as a
  *    positive outflow, so FCF = operating − capex.
  *  - A tag the filer never reported is absent → `null`, never 0.
  */
 import type { FinancialPeriod } from "./financials-history";
+import {
+  ANNUAL_MIN_DAYS,
+  chooseAnchorPeriodEnd,
+  hasNoFigures,
+  samePeriod,
+} from "./financial-period";
 
 /** One reported fact entry under a us-gaap tag's USD unit. EDGAR emits
  *  `start: null` (and `frame: null`) for instant balance-sheet facts, so both
@@ -54,8 +71,6 @@ export interface EdgarCompanyFacts {
 }
 
 const USD_BILLION = 1_000_000_000;
-/** A duration fact spanning more than this many days is treated as annual. */
-const ANNUAL_MIN_DAYS = 350;
 
 function daysBetween(start: string, end: string): number {
   return (Date.parse(end) - Date.parse(start)) / 86_400_000;
@@ -66,75 +81,155 @@ function entries(facts: Record<string, Fact>, tag: string): FactEntry[] {
   return facts[tag]?.units?.USD ?? [];
 }
 
-/** Latest annual *instant* value (balance-sheet facts: end-date, no start). */
-function latestInstantB(facts: Record<string, Fact>, tag: string): number | null {
-  const usable = entries(facts, tag)
-    .filter((e) => e.start == null && e.end != null && typeof e.val === "number")
-    .sort((a, b) => Date.parse(a.end!) - Date.parse(b.end!));
-  const last = usable[usable.length - 1];
-  return last && typeof last.val === "number" ? last.val / USD_BILLION : null;
+/** SEC form types known to carry QUARTERLY instant facts. Checked even when
+ *  `fp` is absent (Codex review, FIX-1113) — a filer that omits `fp` is not
+ *  thereby annual OR thereby non-annual; `form` is independent, affirmative
+ *  evidence, checked whether or not `fp` is present. Duration facts need no
+ *  such gate — the day-span test below already excludes a quarter regardless
+ *  of `form` or `fp`. Amendments (`/A`) carry the same period shape as the
+ *  original.
+ *
+ *  A DENYLIST WAS TRIED HERE FIRST AND WAS WRONG. Rejecting only `10-Q` /
+ *  `10-Q/A` and admitting every other form by default let an 8-K, an S-1, a
+ *  424B4 — or any form this codebase has never seen — win the annual anchor
+ *  whenever it also omitted `fp`. Our own fixtures already carry 8-K, S-1/A,
+ *  and 424B4 (`git grep '"form"'`), so this was not a hypothetical. A guard
+ *  whose entire job is to stop a non-year being labelled a year has to
+ *  require AFFIRMATIVE evidence of "year", not the absence of a name someone
+ *  thought to list.
+ *
+ *  20-F is included: foreign private issuers report annual results on 20-F
+ *  under `ifrs-full`, and this mapper already has a dedicated 20-F fixture
+ *  and test (`ifrsTwoYear`, "ifrs-full (foreign private issuers, e.g. TSM)").
+ *  40-F (the Canadian MJDS annual form) is NOT included — nothing in this
+ *  codebase's fixtures, tests, or provider code exercises it, and adding it
+ *  on spec would be exactly the kind of unverified list entry this fix
+ *  exists to stop making. */
+const ANNUAL_FORMS = new Set(["10-K", "10-K/A", "20-F", "20-F/A"]);
+
+/**
+ * Whether a fact entry is an ANNUAL observation of the shape this field takes.
+ *
+ * Duration (flow) facts must span a full year, so a quarter of revenue can
+ * never be read as the year's.
+ *
+ * Instant (balance) facts carry no `start`, and a snapshot shape alone is NOT
+ * enough: a quarterly balance sheet is also an instant. The old selector tested
+ * only for the snapshot shape and never for annual, which is why the desk paired
+ * a full year of profit with whatever quarter was filed most recently.
+ *
+ * AFFIRMATIVE EVIDENCE, NOT ABSENCE OF A DENYLISTED FORM (Codex review,
+ * FIX-1113 — the fix after this comment's first version). An instant fact is
+ * annual when `fp === "FY"`, OR its `form` is a KNOWN annual form
+ * (`ANNUAL_FORMS`) — never merely because `fp` is absent and `form` is not on
+ * some denylist. This still covers the worry the denylist was protecting (a
+ * 10-K that omits `fp` — the form allowlist alone accepts it), while an entry
+ * with NEITHER `form` NOR `fp` now carries no affirmative annual evidence and
+ * is rejected: real EDGAR `companyfacts` responses populate both fields on
+ * every unit entry (SEC's documented schema, and this repo's own captured
+ * Apple fixture — zero entries missing either), so this closes a gap the
+ * type permits but production data does not actually produce.
+ */
+function isAnnual(e: FactEntry, kind: "instant" | "duration"): boolean {
+  if (e.end == null || typeof e.val !== "number") return false;
+  if (kind === "duration") {
+    return e.start != null && daysBetween(e.start, e.end) > ANNUAL_MIN_DAYS;
+  }
+  if (e.start != null) return false;
+  return e.fp === "FY" || (e.form != null && ANNUAL_FORMS.has(e.form));
 }
 
-/** Latest annual *duration* value (income/cashflow facts: full-year span). */
-function latestDurationB(facts: Record<string, Fact>, tag: string): number | null {
-  const usable = entries(facts, tag)
-    .filter(
-      (e) =>
-        e.start != null &&
-        e.end != null &&
-        typeof e.val === "number" &&
-        daysBetween(e.start, e.end) > ANNUAL_MIN_DAYS,
-    )
-    .sort((a, b) => Date.parse(a.end!) - Date.parse(b.end!));
-  const last = usable[usable.length - 1];
-  return last && typeof last.val === "number" ? last.val / USD_BILLION : null;
-}
-
-/** Latest-period value across several duration tags (e.g. the two revenue
- *  tags). Picks by recency of period end, so a frozen legacy tag never wins. */
-function latestDurationAcrossB(
+/** Every annual period end this tag set reports. The candidate pool the anchor
+ *  is chosen from — wide by design: a period carried by one figure is real. */
+function annualEndsFor(
   facts: Record<string, Fact>,
   tags: string[],
+  kind: "instant" | "duration",
+): string[] {
+  const ends: string[] = [];
+  for (const tag of tags) {
+    for (const e of entries(facts, tag)) {
+      if (isAnnual(e, kind)) ends.push(e.end!);
+    }
+  }
+  return ends;
+}
+
+/**
+ * The $B value this tag set reports AT `periodEnd`, else `null`.
+ *
+ * This is the whole fix in one function: the value is read AT a period, never
+ * "the most recent value". When several entries cover the same period (an
+ * as-filed figure and a later restatement) the one from the NEWEST FILING wins
+ * — a period-preserving choice, not a period-selecting one.
+ */
+function valueAtB(
+  facts: Record<string, Fact>,
+  tags: string[],
+  kind: "instant" | "duration",
+  periodEnd: string | null,
 ): number | null {
+  if (!periodEnd) return null;
   let best: FactEntry | null = null;
   for (const tag of tags) {
     for (const e of entries(facts, tag)) {
+      if (!isAnnual(e, kind)) continue;
+      if (!samePeriod(e.end!, periodEnd)) continue;
+      // Newest filing wins for the same period: prefer a higher `fy` (the
+      // filing year), falling back to the later period end within tolerance.
       if (
-        e.start != null &&
-        e.end != null &&
-        typeof e.val === "number" &&
-        daysBetween(e.start, e.end) > ANNUAL_MIN_DAYS
+        best == null ||
+        (e.fy ?? 0) > (best.fy ?? 0) ||
+        ((e.fy ?? 0) === (best.fy ?? 0) && Date.parse(e.end!) > Date.parse(best.end!))
       ) {
-        if (best == null || Date.parse(e.end) > Date.parse(best.end!)) best = e;
+        best = e;
       }
     }
   }
   return best && typeof best.val === "number" ? best.val / USD_BILLION : null;
 }
 
-/** Period end-date of the latest entry for a tag, for the `asOf` field. */
-function latestEndDate(
-  facts: Record<string, Fact>,
-  tags: string[],
-  fallback: string,
-): string {
-  let latest: string | null = null;
-  for (const tag of tags) {
-    for (const e of entries(facts, tag)) {
-      if (e.end != null && (latest == null || Date.parse(e.end) > Date.parse(latest))) {
-        latest = e.end;
-      }
-    }
-  }
-  return latest ?? fallback;
-}
-
 const REVENUE_TAGS = ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"];
+/** Cost-of-revenue tags, same newest-filing-wins rule as revenue. */
+const COGS_TAGS = ["CostOfGoodsAndServicesSold", "CostOfRevenue"];
+
+/** The us-gaap tags this provider anchors on — this mapper's own instance of the
+ *  ANCHOR-discovery rule (`financial-period.ts`'s module header). Deliberately NOT
+ *  the recovery ladder's completeness test — see that module. */
+const US_GAAP_ANCHOR_TAGS: Array<{ tags: string[]; kind: "instant" | "duration" }> = [
+  { tags: REVENUE_TAGS, kind: "duration" },
+  { tags: ["OperatingIncomeLoss"], kind: "duration" },
+  { tags: ["NetIncomeLoss"], kind: "duration" },
+  { tags: ["NetCashProvidedByUsedInOperatingActivities"], kind: "duration" },
+  { tags: ["Assets"], kind: "instant" },
+  { tags: ["StockholdersEquity"], kind: "instant" },
+  { tags: ["CashAndCashEquivalentsAtCarryingValue"], kind: "instant" },
+  { tags: ["LongTermDebtNoncurrent", "LongTermDebtCurrent", "LongTermDebt"], kind: "instant" },
+];
+
+/** Every annual period end any core figure reports, across all three
+ *  statements. Built ONCE per response and used for both the single-period
+ *  statements and the multi-period rows — deriving it twice is how per-tag
+ *  sorting comes back under a new name. */
+function anchorCandidates(
+  facts: Record<string, Fact>,
+  anchorTags: Array<{ tags: string[]; kind: "instant" | "duration" }>,
+): string[] {
+  const ends: string[] = [];
+  for (const spec of anchorTags) ends.push(...annualEndsFor(facts, spec.tags, spec.kind));
+  return ends;
+}
 
 /**
  * Map a raw `companyfacts` response into the three canonical statement
- * payloads. Missing tags → `null` fields. Monetary values are normalized to
- * USD billions to match the statement schemas and fixtures.
+ * payloads, every figure read at ONE anchor period end. A figure the anchor
+ * does not carry is `null`; one absent figure never blanks its statement.
+ * Monetary values are normalized to USD billions to match the statement
+ * schemas and fixtures.
+ *
+ * `date` (the requested analysis date) is retained only as the legacy `asOf`
+ * fallback for a response with no annual period at all. `periodEnd` is NEVER
+ * given that fallback — an empty period is the honest answer there.
  */
 export function mapEdgarCompanyFacts(
   resp: EdgarCompanyFacts,
@@ -142,99 +237,109 @@ export function mapEdgarCompanyFacts(
   date: string,
 ) {
   const g = resp.facts?.["us-gaap"] ?? {};
+  const anchor = chooseAnchorPeriodEnd(anchorCandidates(g, US_GAAP_ANCHOR_TAGS));
 
-  // Total debt: prefer summing current + noncurrent long-term debt; fall back
-  // to the combined LongTermDebt tag when a filer reports only that.
-  const ltNoncurrent = latestInstantB(g, "LongTermDebtNoncurrent");
-  const ltCurrent = latestInstantB(g, "LongTermDebtCurrent");
-  let totalDebt: number | null;
-  if (ltNoncurrent != null || ltCurrent != null) {
-    totalDebt = (ltNoncurrent ?? 0) + (ltCurrent ?? 0);
-  } else {
-    totalDebt = latestInstantB(g, "LongTermDebt");
-  }
+  const at = (tags: string[], kind: "instant" | "duration") =>
+    valueAtB(g, tags, kind, anchor);
+
+  // Total debt: prefer summing current + noncurrent long-term debt AT the
+  // anchor, but ONLY when BOTH legs are present there — falling back to the
+  // combined LongTermDebt tag when a filer reports only that (both legs read
+  // at the same period, so the sum cannot mix years).
+  //
+  // A SINGLE LEG PRESENT WITHOUT ITS PAIR IS NOT ZERO-FILLED (review round 6,
+  // P1). `valueAtB` returning `null` for a tag means the filer never reported
+  // it AT THIS PERIOD — indistinguishable, from this data alone, between "they
+  // have none" and "they have some but it isn't tagged here." Summing the one
+  // present leg with an assumed 0 for the other silently understates total
+  // debt, which propagates into enterprise value, leverage and expected
+  // return. This is the SAME "a tag the filer never reported is absent, never
+  // 0" rule the module header states; the fallback below is what actually
+  // honours it — if neither the split nor the combined tag resolves, total
+  // debt stays `null`, not the lone leg.
+  const ltNoncurrent = at(["LongTermDebtNoncurrent"], "instant");
+  const ltCurrent = at(["LongTermDebtCurrent"], "instant");
+  const totalDebt =
+    ltNoncurrent != null && ltCurrent != null
+      ? ltNoncurrent + ltCurrent
+      : at(["LongTermDebt"], "instant");
 
   // FCF = operating − capex (EDGAR reports capex as a positive outflow).
-  const operating = latestDurationB(g, "NetCashProvidedByUsedInOperatingActivities");
-  const capex = latestDurationB(g, "PaymentsToAcquirePropertyPlantAndEquipment");
-  const freeCashFlow =
-    operating != null && capex != null ? operating - capex : null;
+  const operating = at(["NetCashProvidedByUsedInOperatingActivities"], "duration");
+  const capex = at(["PaymentsToAcquirePropertyPlantAndEquipment"], "duration");
+  const freeCashFlow = operating != null && capex != null ? operating - capex : null;
+
+  const asOf = anchor ?? date;
+
+  // Each statement's own figures, extracted BEFORE the return object so its
+  // `periodEnd` can be conditioned on them (Codex review, FIX-1113). The
+  // anchor stays ONE response-wide value for READING every figure — that is
+  // unchanged, and must stay unchanged: three statements each choosing their
+  // own period is the exact defect this PR removes. What changes is only the
+  // LABEL — a statement is stamped with the anchor when it actually carries
+  // a figure there, and `periodEnd: null` when it carries none. A figureless
+  // statement stamped with the response's anchor anyway is how a missing
+  // statement got misread as "returned an old period" downstream: the
+  // recovery ladder's `observedNewest` bookkeeping reads `periodEnd`
+  // directly (`statement-recovery.ts`'s `declaredPeriod`), so a phantom
+  // label there becomes a phantom sighting there, and the set can be
+  // declared stale over a statement that was simply never populated.
+  const revenue = at(REVENUE_TAGS, "duration");
+  const grossProfit = at(["GrossProfit"], "duration");
+  const operatingIncome = at(["OperatingIncomeLoss"], "duration");
+  const netIncome = at(["NetIncomeLoss"], "duration");
+
+  const totalAssets = at(["Assets"], "instant");
+  const totalLiabilities = at(["Liabilities"], "instant");
+  const totalEquity = at(["StockholdersEquity"], "instant");
+  const cashAndEquivalents = at(["CashAndCashEquivalentsAtCarryingValue"], "instant");
+
+  const investing = at(["NetCashProvidedByUsedInInvestingActivities"], "duration");
+  const financing = at(["NetCashProvidedByUsedInFinancingActivities"], "duration");
 
   return {
     incomeStatement: {
       source: "edgar" as const,
       ticker,
-      asOf: latestEndDate(g, REVENUE_TAGS, date),
-      revenue: latestDurationAcrossB(g, REVENUE_TAGS),
-      grossProfit: latestDurationB(g, "GrossProfit"),
-      operatingIncome: latestDurationB(g, "OperatingIncomeLoss"),
-      netIncome: latestDurationB(g, "NetIncomeLoss"),
-      // EDGAR is point-in-time per filing; YoY would need two annual periods
-      // selected consistently. Left null here — Yahoo supplies YoY when it
-      // answers, and the desk treats a null growth field as unobserved.
+      asOf,
+      periodEnd: hasNoFigures(revenue, grossProfit, operatingIncome, netIncome) ? null : anchor,
+      revenue,
+      grossProfit,
+      operatingIncome,
+      netIncome,
+      // EDGAR's YoY comes from the multi-period path, which pairs periods
+      // through `consecutivePeriodPair`. Left null here — Yahoo supplies YoY
+      // when it answers, and the desk treats a null growth field as unobserved.
       yoyRevenueGrowth: null,
       unit: "USD billions",
     },
     balanceSheet: {
       source: "edgar" as const,
       ticker,
-      asOf: latestEndDate(g, ["Assets"], date),
-      totalAssets: latestInstantB(g, "Assets"),
-      totalLiabilities: latestInstantB(g, "Liabilities"),
-      totalEquity: latestInstantB(g, "StockholdersEquity"),
-      cashAndEquivalents: latestInstantB(g, "CashAndCashEquivalentsAtCarryingValue"),
+      asOf,
+      periodEnd: hasNoFigures(totalAssets, totalLiabilities, totalEquity, cashAndEquivalents, totalDebt)
+        ? null
+        : anchor,
+      totalAssets,
+      totalLiabilities,
+      totalEquity,
+      cashAndEquivalents,
       totalDebt,
       unit: "USD billions",
     },
     cashflow: {
       source: "edgar" as const,
       ticker,
-      asOf: latestEndDate(g, ["NetCashProvidedByUsedInOperatingActivities"], date),
+      asOf,
+      periodEnd: hasNoFigures(operating, investing, financing, freeCashFlow) ? null : anchor,
       operating,
-      investing: latestDurationB(g, "NetCashProvidedByUsedInInvestingActivities"),
-      financing: latestDurationB(g, "NetCashProvidedByUsedInFinancingActivities"),
+      investing,
+      financing,
       freeCashFlow,
       unit: "USD billions",
     },
   };
 }
-
-/** A fiscal year's value for one tag, in USD billions, with its period end. */
-type FyValue = { end: string; valB: number };
-
-/**
- * Collect annual facts for a set of tags, indexed by fiscal year (`fy`), in
- * USD billions. Annual = a full-year duration fact (income/cashflow) or a
- * fiscal-year-end instant fact (balance sheet), both marked `fp: "FY"`. When a
- * fiscal year appears under more than one tag/filing, the latest period end
- * wins (so a restated comparative never overwrites the as-filed value).
- */
-function annualByFy(
-  facts: Record<string, Fact>,
-  tags: string[],
-  kind: "instant" | "duration",
-): Map<number, FyValue> {
-  const byFy = new Map<number, FyValue>();
-  for (const tag of tags) {
-    for (const e of entries(facts, tag)) {
-      if (typeof e.val !== "number" || e.end == null || e.fy == null) continue;
-      const isAnnual =
-        kind === "instant"
-          ? e.start == null && e.fp === "FY"
-          : e.start != null &&
-            (e.fp === "FY" || daysBetween(e.start, e.end) > ANNUAL_MIN_DAYS);
-      if (!isAnnual) continue;
-      const prev = byFy.get(e.fy);
-      if (prev == null || Date.parse(e.end) > Date.parse(prev.end)) {
-        byFy.set(e.fy, { end: e.end, valB: e.val / USD_BILLION });
-      }
-    }
-  }
-  return byFy;
-}
-
-/** Cost-of-revenue tags, newest-tag-wins like revenue. */
-const COGS_TAGS = ["CostOfGoodsAndServicesSold", "CostOfRevenue"];
 
 /** Per-field tag selection for one XBRL taxonomy: which tag(s) to read and
  *  whether the fact is instant (balance sheet) or duration (income/cashflow). */
@@ -283,58 +388,57 @@ const IFRS_HISTORY_TAGS: StatementTagMap = {
   },
 };
 
-/** Assemble annual `FinancialPeriod`s from one taxonomy's facts. */
+/** The IFRS tags behind the anchor-discovery fields. */
+const IFRS_ANCHOR_TAGS: Array<{ tags: string[]; kind: "instant" | "duration" }> = [
+  { tags: ["Revenue"], kind: "duration" },
+  { tags: ["ProfitLossFromOperatingActivities"], kind: "duration" },
+  { tags: ["ProfitLoss"], kind: "duration" },
+  { tags: ["CashFlowsFromUsedInOperatingActivities"], kind: "duration" },
+  { tags: ["Assets"], kind: "instant" },
+  { tags: ["Equity"], kind: "instant" },
+];
+
+/** Assemble annual `FinancialPeriod`s from one taxonomy's facts, keyed on the
+ *  PERIOD END — the same index the single-period statements use. */
 function buildPeriods(
   facts: Record<string, Fact>,
   tagMap: StatementTagMap,
+  anchorTags: Array<{ tags: string[]; kind: "instant" | "duration" }>,
   maxPeriods: number,
 ): FinancialPeriod[] {
-  const series = {
-    totalAssets: annualByFy(facts, tagMap.totalAssets.tags, tagMap.totalAssets.kind),
-    totalCurrentAssets: annualByFy(facts, tagMap.totalCurrentAssets.tags, tagMap.totalCurrentAssets.kind),
-    totalCurrentLiabilities: annualByFy(facts, tagMap.totalCurrentLiabilities.tags, tagMap.totalCurrentLiabilities.kind),
-    totalLiabilities: annualByFy(facts, tagMap.totalLiabilities.tags, tagMap.totalLiabilities.kind),
-    retainedEarnings: annualByFy(facts, tagMap.retainedEarnings.tags, tagMap.retainedEarnings.kind),
-    totalEquity: annualByFy(facts, tagMap.totalEquity.tags, tagMap.totalEquity.kind),
-    totalRevenue: annualByFy(facts, tagMap.totalRevenue.tags, tagMap.totalRevenue.kind),
-    costOfRevenue: annualByFy(facts, tagMap.costOfRevenue.tags, tagMap.costOfRevenue.kind),
-    grossProfit: annualByFy(facts, tagMap.grossProfit.tags, tagMap.grossProfit.kind),
-    operatingIncome: annualByFy(facts, tagMap.operatingIncome.tags, tagMap.operatingIncome.kind),
-    netIncome: annualByFy(facts, tagMap.netIncome.tags, tagMap.netIncome.kind),
-    cfo: annualByFy(facts, tagMap.cfo.tags, tagMap.cfo.kind),
-    capitalExpenditures: annualByFy(facts, tagMap.capitalExpenditures.tags, tagMap.capitalExpenditures.kind),
-  };
+  // Distinct annual period ends any core figure reports, newest first. Built
+  // from the SAME candidate pool the anchor comes from, so the two paths cannot
+  // disagree about which periods exist.
+  const ends = [...new Set(anchorCandidates(facts, anchorTags))]
+    .filter((e) => !Number.isNaN(Date.parse(e)))
+    .sort((a, b) => Date.parse(b) - Date.parse(a));
 
-  // Fiscal years present in any core series, newest first.
-  const fySet = new Set<number>();
-  for (const fy of series.totalAssets.keys()) fySet.add(fy);
-  for (const fy of series.totalRevenue.keys()) fySet.add(fy);
-  for (const fy of series.netIncome.keys()) fySet.add(fy);
-  const fys = [...fySet].sort((a, b) => b - a).slice(0, maxPeriods);
+  // Collapse ends that describe the same period (a provider reporting the same
+  // fiscal year days apart) so one period never yields two rows.
+  const periodEnds: string[] = [];
+  for (const e of ends) {
+    if (!periodEnds.some((kept) => samePeriod(kept, e))) periodEnds.push(e);
+  }
 
-  const valB = (m: Map<number, FyValue>, fy: number): number | null =>
-    m.get(fy)?.valB ?? null;
-
-  return fys.map((fy) => ({
-    endDate:
-      series.totalAssets.get(fy)?.end ??
-      series.totalRevenue.get(fy)?.end ??
-      series.netIncome.get(fy)?.end ??
-      "",
-    totalAssets: valB(series.totalAssets, fy),
-    totalCurrentAssets: valB(series.totalCurrentAssets, fy),
-    totalCurrentLiabilities: valB(series.totalCurrentLiabilities, fy),
-    totalLiabilities: valB(series.totalLiabilities, fy),
-    retainedEarnings: valB(series.retainedEarnings, fy),
-    totalEquity: valB(series.totalEquity, fy),
-    totalRevenue: valB(series.totalRevenue, fy),
-    costOfRevenue: valB(series.costOfRevenue, fy),
-    grossProfit: valB(series.grossProfit, fy),
-    operatingIncome: valB(series.operatingIncome, fy),
-    netIncome: valB(series.netIncome, fy),
-    cfo: valB(series.cfo, fy),
-    capitalExpenditures: valB(series.capitalExpenditures, fy),
-  }));
+  return periodEnds.slice(0, maxPeriods).map((end) => {
+    const at = (spec: FieldSpec) => valueAtB(facts, spec.tags, spec.kind, end);
+    return {
+      endDate: end,
+      totalAssets: at(tagMap.totalAssets),
+      totalCurrentAssets: at(tagMap.totalCurrentAssets),
+      totalCurrentLiabilities: at(tagMap.totalCurrentLiabilities),
+      totalLiabilities: at(tagMap.totalLiabilities),
+      retainedEarnings: at(tagMap.retainedEarnings),
+      totalEquity: at(tagMap.totalEquity),
+      totalRevenue: at(tagMap.totalRevenue),
+      costOfRevenue: at(tagMap.costOfRevenue),
+      grossProfit: at(tagMap.grossProfit),
+      operatingIncome: at(tagMap.operatingIncome),
+      netIncome: at(tagMap.netIncome),
+      cfo: at(tagMap.cfo),
+      capitalExpenditures: at(tagMap.capitalExpenditures),
+    };
+  });
 }
 
 /**
@@ -348,12 +452,25 @@ function buildPeriods(
  * annual facts are present in either taxonomy so the caller falls through to
  * Yahoo. (An IFRS filer that reports no USD convenience translation also
  * returns `[]` — currency conversion is out of scope.)
+ *
+ * Rows are keyed on the period END, so a fiscal-year label that covers two
+ * different period ends can no longer collapse them into one row.
  */
 export function mapEdgarFinancialsHistory(
   resp: EdgarCompanyFacts,
   maxPeriods = 4,
 ): FinancialPeriod[] {
-  const usGaap = buildPeriods(resp.facts?.["us-gaap"] ?? {}, US_GAAP_HISTORY_TAGS, maxPeriods);
+  const usGaap = buildPeriods(
+    resp.facts?.["us-gaap"] ?? {},
+    US_GAAP_HISTORY_TAGS,
+    US_GAAP_ANCHOR_TAGS,
+    maxPeriods,
+  );
   if (usGaap.length > 0) return usGaap;
-  return buildPeriods(resp.facts?.["ifrs-full"] ?? {}, IFRS_HISTORY_TAGS, maxPeriods);
+  return buildPeriods(
+    resp.facts?.["ifrs-full"] ?? {},
+    IFRS_HISTORY_TAGS,
+    IFRS_ANCHOR_TAGS,
+    maxPeriods,
+  );
 }

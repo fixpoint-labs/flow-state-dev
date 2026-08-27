@@ -1,6 +1,6 @@
 # @flow-state-dev/store-postgres
 
-PostgreSQL persistence adapter for flow-state-dev. Implements all 5 store interfaces (`SessionStore`, `RequestStore`, `UserStore`, `ProjectStore`, `ActiveRequestRegistry`) using `pg` with connection pooling.
+PostgreSQL persistence adapter for flow-state-dev. Implements the full `StoreRegistry` using `pg` with connection pooling.
 
 ## Why PostgreSQL
 
@@ -15,27 +15,28 @@ pnpm add @flow-state-dev/store-postgres pg
 ## Usage
 
 ```ts
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createPostgresStores, postgresStores } from "@flow-state-dev/store-postgres";
+import supportDesk from "./flows/support-desk";
 
-// From connection string (pool created automatically)
-const stores = await createPostgresStores({
-  connectionString: "postgres://user:pass@localhost:5432/mydb",
-  max: 20 // pool size, default: 10
+const flowstate = createFlowState({
+  flows: { supportDesk },
+  stores: {
+    default: {
+      primary: postgresStores({
+        connectionString: "postgres://user:pass@localhost:5432/mydb",
+        max: 20, // pool size, default: 10
+      }),
+    },
+  },
 });
 
-// Or with a pre-configured pg.Pool
+// Or open a registry yourself — pre-configured pool, tests, deploy-time schema init
 import { Pool } from "pg";
 
 const pool = new Pool({ connectionString: "postgres://..." });
 const stores = await createPostgresStores({ pool });
 
-// Use as a drop-in replacement for createInMemoryStores()
-const server = createFlowServer({
-  stores,
-  // ...
-});
-
-// Close when done (drains the connection pool)
 await stores.close();
 ```
 
@@ -123,10 +124,10 @@ The schema uses:
 
 | Table | Primary Key | Purpose |
 |-------|-------------|---------|
-| `sessions` | `id` | Session records with flow kind, user, project |
+| `sessions` | `id` | Session records with flow kind, user, org |
 | `requests` | `id` | Request records with status tracking |
 | `users` | `id` | User-scoped state and resources |
-| `projects` | `id` | Project-scoped state and resources |
+| `orgs` | `id` | Org-scoped state and resources |
 | `active_requests` | `request_id` | In-flight request registry for interrupted request recovery |
 | `resource_content` | `(scope_type, scope_id, resource_key)` | Resource content bodies (`TEXT`), keyed per resource, separate from scope records |
 | `resource_state` | `(scope_type, scope_id, resource_key)` | Resource state (`JSONB`), single + collection instances, keyed per resource, separate from scope records |

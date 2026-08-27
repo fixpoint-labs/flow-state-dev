@@ -15,7 +15,6 @@ apps/docs/build
 docs/superpowers/*
 
 .mcp.json
-.claude/settings.json
 .claude/specs/*
 packages/devtool/dist-client/*
 .claude/**/_drafts/*

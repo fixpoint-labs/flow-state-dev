@@ -134,12 +134,23 @@ describe("each runtime is parsed by its own loader's grammar", () => {
     expect(resolveForCli("FSD_DEMO_TOKEN", root, {})).toMatchObject({ status: "non-empty" });
   });
 
-  it("keeps a single-quoted or escaped dollar readable, because dotenv does not expand those", () => {
+  it("keeps an escaped dollar readable, because dotenv does not expand those", () => {
     const root = makeTree({
       "package.json": nextManifest(),
-      ".env.local": "FSD_DEMO_TOKEN='$literal'\n",
+      ".env.local": "FSD_DEMO_TOKEN=\\$LITERAL\n",
     });
     expect(resolveForNextDev("FSD_DEMO_TOKEN", root, {})).toMatchObject({ status: "non-empty" });
+  });
+
+  it("reports a single-quoted Next expansion as unreadable, because expand runs after quotes are stripped", () => {
+    // dotenv.parse strips the quotes, then @next/env's expand() interpolates the bare `$VAR`.
+    // Treating `'$DOES_NOT_EXIST'` as a literal leaves the report saying the token is configured
+    // while Next authenticates with the empty string.
+    const root = makeTree({
+      "package.json": nextManifest(),
+      ".env.local": "FSD_DEMO_TOKEN='$DOES_NOT_EXIST'\n",
+    });
+    expect(resolveForNextDev("FSD_DEMO_TOKEN", root, {})).toMatchObject({ status: "unreadable" });
   });
 });
 
@@ -156,7 +167,7 @@ describe("the destination is chosen from both loaders, not one", () => {
       ".gitignore": ".env.local\n",
     });
     initGit(root);
-    const report = buildReport(root, { providerKey: KEY });
+    const report = buildReport(root, { providerKey: KEY, env: {} });
     const paths = report.secretFiles.map((f) => f.path);
     expect(paths).toContain(join(root, ".env.development.local"));
     const deciding = report.secretFiles.find((f) => f.path === join(root, ".env.development.local"));
@@ -183,7 +194,7 @@ describe("the destination is chosen from both loaders, not one", () => {
 describe("all three provider keys are resolved before anyone is asked which one they want", () => {
   it("carries a resolution for each candidate, by name", () => {
     const root = makeTree({ "package.json": manifest({ packageManager: "npm@10.0.0" }) });
-    const report = buildReport(root);
+    const report = buildReport(root, { env: {} });
     for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"]) {
       expect(report.secrets[key]).toBeDefined();
       expect(report.secrets[key].cli.status).toBe("absent");
@@ -211,7 +222,7 @@ describe("resolution 10 is a set of files, and every one is checked for git trac
       "apps/web/package.json": manifest({ packageManager: "npm@10.0.0" }),
     });
     initGit(root);
-    const report = buildReport(join(root, "apps/web"), { providerKey: KEY });
+    const report = buildReport(join(root, "apps/web"), { providerKey: KEY, env: {} });
     expect(codes(report)).toContain("secret-file-tracked");
     const refusal = report.refusals.find((r) => r.code === "secret-file-tracked");
     expect(refusal.message).toContain(join(root, ".env.local"));
@@ -326,6 +337,50 @@ describe("the demo token is reused, never rotated, and never adopted from an anc
       report.secretFiles.map((f) => f.path),
       "the ancestor must never be a destination for a secret we author",
     ).not.toContain(join(root, ".env.local"));
+  });
+
+  it("reuses a non-empty token inherited from the environment, and writes nothing", () => {
+    // Inherited process.env beats every file. Calling that "another project's" generated a second
+    // token into `.env.local` that neither loader would ever see — every request carrying it 401s.
+    const root = makeTree({
+      "package.json": manifest({ packageManager: "npm@10.0.0" }),
+      ".gitignore": ".env.local\n",
+    });
+    initGit(root);
+    const report = buildReport(root, { env: { FSD_DEMO_TOKEN: "from-the-shell" } });
+    expect(report.secrets.FSD_DEMO_TOKEN.cli).toMatchObject({
+      status: "non-empty",
+      from: "the inherited environment",
+      path: null,
+    });
+    expect(report.secretFiles.map((f) => f.path)).not.toContain(join(root, ".env.local"));
+    expect(codes(report)).not.toContain("secret-file-tracked");
+  });
+
+  it("refuses an inherited empty token rather than pointing a write at a file neither loader will read", () => {
+    // `FSD_DEMO_TOKEN=""` in the shell is set, so both loaders ignore `.env.local`. Generating
+    // into that file leaves demo auth broken while the report stays green.
+    const root = makeTree({
+      "package.json": manifest({ packageManager: "npm@10.0.0" }),
+      ".gitignore": ".env.local\n",
+    });
+    initGit(root);
+    const report = buildReport(root, { env: { FSD_DEMO_TOKEN: "" } });
+    expect(codes(report)).toContain("inherited-secret-empty");
+    expect(report.refusals.find((r) => r.code === "inherited-secret-empty").message).toContain(
+      "FSD_DEMO_TOKEN",
+    );
+  });
+
+  it("refuses an inherited empty provider key the same way", () => {
+    const root = makeTree({
+      "package.json": manifest({ packageManager: "npm@10.0.0" }),
+      ".gitignore": ".env.local\n",
+    });
+    initGit(root);
+    const report = buildReport(root, { env: { [KEY]: "" }, providerKey: KEY });
+    expect(codes(report)).toContain("inherited-secret-empty");
+    expect(report.refusals.find((r) => r.code === "inherited-secret-empty").message).toContain(KEY);
   });
 
   it("writes a fresh token locally when one exists only in an ancestor", () => {

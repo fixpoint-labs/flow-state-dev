@@ -16,6 +16,7 @@ import type {
   incomeStatementSchema,
 } from "../tools/schemas";
 import type { z } from "zod";
+import { hasNoFigures } from "@/lib/providers/financial-period";
 
 type IncomeStatement = z.infer<typeof incomeStatementSchema>;
 type BalanceSheet = z.infer<typeof balanceSheetSchema>;
@@ -86,14 +87,45 @@ export function promoteCandidate(c: FinancialCandidate): {
   cashflow: Cashflow;
 } {
   const asOf = c.periodEnd || c.filingDate;
+  // The recovered statements are single-period by construction — one filing,
+  // one transcribed column — so all three READ at the same period, unchanged.
+  // `asOf` keeps its filing-date fallback for legacy readers; `periodEnd`
+  // does NOT take it (FIX-1113): a filing date is when the document was
+  // filed, not the period it covers, which is the same class of lie the
+  // mappers stopped telling.
+  //
+  // periodEnd only LABELS a statement that actually carries a figure (Codex
+  // review, FIX-1113 — the same defect already fixed in the EDGAR/Yahoo
+  // mappers, found here in the recovery path). `validateFinancialCandidate`
+  // requires revenue, operatingIncome, and FCF — NOT any balance figure — so
+  // a validated candidate can carry a fully empty balance section (both
+  // `cashAndEquivalents` and `totalDebt` null). `statement-recovery.ts`'s
+  // ladder reads a statement's own `periodEnd` to build `observedNewest`; a
+  // phantom label on an empty balance sheet becomes a phantom sighting,
+  // which is exactly how the EDGAR/Yahoo instance of this defect produced a
+  // false `settled-for-less-than-seen` withholding over a statement that was
+  // simply absent. Income and cashflow are structurally safe today (the
+  // validator guarantees each carries a figure), but the guard costs nothing
+  // and does not depend on that guarantee holding forever.
+  const revenue = toBillions(c.income.revenue);
+  const operatingIncome = toBillions(c.income.operatingIncome);
+
+  const cashAndEquivalents = toBillions(c.balance.cashAndEquivalents);
+  const totalDebt = toBillions(c.balance.totalDebt);
+
+  const operating = toBillions(c.cashflow.operating);
+  const freeCashFlow = toBillions(candidateFreeCashFlowRaw(c));
+
+  const periodEnd = c.periodEnd || null;
   return {
     incomeStatement: {
       source: "edgar-prospectus",
       ticker: c.ticker,
       asOf,
-      revenue: toBillions(c.income.revenue),
+      periodEnd: hasNoFigures(revenue, operatingIncome) ? null : periodEnd,
+      revenue,
       grossProfit: null,
-      operatingIncome: toBillions(c.income.operatingIncome),
+      operatingIncome,
       netIncome: null,
       yoyRevenueGrowth: null,
       unit: "USD billions",
@@ -102,21 +134,23 @@ export function promoteCandidate(c: FinancialCandidate): {
       source: "edgar-prospectus",
       ticker: c.ticker,
       asOf,
+      periodEnd: hasNoFigures(cashAndEquivalents, totalDebt) ? null : periodEnd,
       totalAssets: null,
       totalLiabilities: null,
       totalEquity: null,
-      cashAndEquivalents: toBillions(c.balance.cashAndEquivalents),
-      totalDebt: toBillions(c.balance.totalDebt),
+      cashAndEquivalents,
+      totalDebt,
       unit: "USD billions",
     },
     cashflow: {
       source: "edgar-prospectus",
       ticker: c.ticker,
       asOf,
-      operating: toBillions(c.cashflow.operating),
+      periodEnd: hasNoFigures(operating, freeCashFlow) ? null : periodEnd,
+      operating,
       investing: null,
       financing: null,
-      freeCashFlow: toBillions(candidateFreeCashFlowRaw(c)),
+      freeCashFlow,
       unit: "USD billions",
     },
   };

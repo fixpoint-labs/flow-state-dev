@@ -17,7 +17,6 @@ import { FlowProvider } from "@flow-state-dev/react";
   flowKind="my-app"
   sessionId="optional-initial-session"
   userId="devuser"
-  baseUrl="/api/flows"
   renderers={{
     message: MessageComponent,
     reasoning: ReasoningComponent,

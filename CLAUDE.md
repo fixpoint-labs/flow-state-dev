@@ -156,7 +156,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 ```
 docs/
-  architecture/     Framework architecture reference (13 docs)
+  architecture/     Framework architecture reference
   contributing/     Development setup, best practices, wave process
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
@@ -182,7 +182,7 @@ The `stateId`s and team id the lifecycles use are inlined in `issue-lifecycle` �
 
 ## Skills Library
 
-Development task skills live in `agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
+Development task skills live in `.agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
 
 > **Workflow scripts** live alongside them in `.agents/workflows/` (with `.claude/workflows` symlinked the same way). They hold the parts of a lifecycle that are pure mechanism — budgets, caps, dedupe, DAG derivation — as deterministic control flow rather than prose a coordinator re-derives each wake. Two exist today: `epic-wake` (one epic-lifecycle wake) and `issue-multi-pr` (one step of a multi-PR DAG). Both are covered by `node .agents/workflows/verify.mjs`, which runs them with stubbed hooks and spawns no agents — **run it after editing either script.** A workflow script can't prompt, wait, subscribe, or read the filesystem, so gates and state stay with the calling skill; see `docs/contributing/orchestration.md` → "The pieces at a glance".
 
@@ -210,6 +210,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `spec-poc`                | Build a throwaway POC **on** a never-merged spec/epic PR so a direction is validated before it's implemented — a characterization test pinning how things already work, sketch files showing a solution's shape, a self-contained HTML mockup, or (epic altitude) a rough end-state showing what the whole set looks like once every issue lands. Carries 2–3 competing variants when a fork is contested. Triggered, not default; costs no review rounds; never merges |
 | `settle-claim`            | Settle ONE disputed factual claim ("does X actually work that way?") with a quick throwaway POC — a goal-shaped check run on the real path — returning CONFIRMED / REFUTED / INCONCLUSIVE with evidence. Fires when a review **loops** on the same behavioral claim (asserted and counter-asserted twice), not on a single assertion; non-blocking, costs no review rounds, opens a PR only if it found something worth a human's eyes |
 | `cross-spec-review`       | Review an epic's SET of specs against each other for mutual coherence (scope overlap, conflicting decisions, colliding surface) before any is built; the coherence lens at spec-set altitude; gated on the user approving each spec first. Read-only — reports conflicts to the coordinator |
+| `agent-mailbox`           | Talk to agents this session can't dispatch — Grok, Cursor, Codex, a Claude in another repo — over the `fixpoint-labs/agent-mailbox` board, where one open PR is an inbox handle and its conversation comments are messages. Attach with push access, list the open handles to find the ones addressed to your work, subscribe so their comments arrive as live push events. Checked at epic setup and on request |
 | `watch-pr`                | Local substitute for `subscribe_pr_activity` (cloud-only): arms a `Monitor` poll loop that streams new PR comments, reviews (incl. approvals), and CI conclusions into the session — waking only on real events. Use when working against a PR locally, or as a local epic/issue lifecycle's webhook stand-in |
 
 > **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), **which issues get a spec at all** (features do; bugs go straight to the fix), the epic-spec, **the spec-review bar and convergence rule**, and **the twelve-round PR-feedback cap** (past it we stop auto-handling review feedback and ask you whether the approach needs re-examining) — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it. Its companion, [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md), is canonical for what **every** PR description owes its two audiences — the layout (problem → what this does → what's asked of you → *"Parts worth reviewing closely"*, with the static reviewer contract collapsed below the fold), and when a diagram earns its place. The general rule it applies — **the fold**: lead with the problem, collapse the derivation, and the per-artifact word budgets and density checks that go with it — is [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md), which governs specs, Linear issues, and review comments too. The fold decides *where* an ask goes; [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) decides *what it says* — every gate, fork, and escalated blocker is written to it.
@@ -240,7 +241,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 
 ## Capabilities
 
-- **Prefer capabilities over manual plumbing.** Use `defineCapability` + `uses: [cap]` instead of manually spreading `tools`, `context`, `sessionResources` into blocks. Capabilities are self-contained, portable, and composable.
+- **Prefer capabilities over manual plumbing.** Use `defineCapability` + `uses: [cap]` instead of manually spreading `tools`, `context`, `resources` into blocks. Capabilities are self-contained, portable, and composable.
 - **Factory pattern for configurable capabilities.** When a capability needs config (provider type, resource refs), export a factory: `createXCapability(options)` → `DefinedCapability`.
 - **Prefer static capability entries over manual context functions.** If a capability already provides context presets, use the capability in `uses` rather than reimplementing its formatting in a `context` slot. Gate conditional behavior at the pipeline level (e.g., `sideChainIf` on capture) instead of at the context injection level.
 - **Dynamic `uses` for conditional capabilities.** `uses` arrays accept `(ctx) => CapabilityRef[]` functions. Static entries install resources at build time; dynamic entries add context/tools at runtime. Resources must be declared statically somewhere.
@@ -257,7 +258,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 - Generator provider: Vercel AI SDK in Phase 1
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 - Package boundary: `react` wraps `client` — no transport logic in react
-- Package boundary: `server` never depends on `client` or `react`
+- Package boundary: `engine` never depends on `client` or `react`
 - Collection key resolution: `collection.create("key")` auto-prepends the pattern prefix. `ref.name` returns the full storage key (e.g., `"artifacts/my-doc"`). Strip the prefix for bare keys.
 - Resource mutations emit `resource_change` SSE events via `onResourceChanged` in `createScopeResourceRegistry`. These are transient items — `useSession` checks for them before the transient filter.
 
@@ -320,7 +321,7 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 - **Common helpers** (`deepEqual`, formatting utilities, etc.) belong in a shared utils file — not inlined per-file. No duplicate copies across packages.
 
-### Best practices (BP-001…040)
+### Best practices
 
 Best practices have two altitudes. Full text lives in `docs/contributing/best-practices.md` (universal) and `docs/contributing/best-practices/<category>.md` (situational).
 

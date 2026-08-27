@@ -54,7 +54,7 @@ import { whenAnyItem } from "@flow-state-dev/core/items";
 
 pipeline.waitForCondition(
   whenAnyItem(
-    (item) => item.type === "component" && item.componentType === "task-change"
+    (item) => item.type === "component" && item.component === "task-change"
   ),
   { timeoutMs: 5_000 }
 );
@@ -144,21 +144,25 @@ A filter that throws is caught at the emitter boundary and the listener still fi
 
 ### Example
 
-Pair the task-board claim predicate with the task-change wake filter:
+Build the collection check once and use it for both halves:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
-import { whenBoardClaimable } from "@flow-state-dev/orchestration/task-board";
+import { whenAnyItem } from "@flow-state-dev/core/items";
 import { onTaskChangeFor } from "@flow-state-dev/orchestration";
 
+const isResearchTaskChange = onTaskChangeFor("research");
+
 sequencer({ name: "idle-wait" })
-  .waitForCondition(whenBoardClaimable(collection), {
+  .waitForCondition(whenAnyItem(isResearchTaskChange), {
     timeoutMs: 5_000,
-    wakeOn: onTaskChangeFor(collection.collectionId),
+    wakeOn: isResearchTaskChange,
   });
 ```
 
-`resource_change`, `block_trace`, and `task-change` items targeting other collections are filtered out before the predicate runs.
+`onTaskChangeFor` checks `item.data.collectionId`, so it works as the item predicate and as the wake filter. Sharing one function is what keeps the two in agreement.
+
+**Both halves need the collection check — the wake filter alone is not enough.** The on-entry evaluation runs the predicate over every item already in the request, and it does not consult `wakeOn`. A predicate that matches any `task-change` would therefore be satisfied immediately by a `task-change` for a *different* collection that landed earlier in the request, and the wait would return before the research tasks had done anything. `wakeOn` governs only the subscription callbacks that come after; it cannot undo that first match.
 
 ### Anti-pattern
 

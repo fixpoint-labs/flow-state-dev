@@ -23,6 +23,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
+    // No figures, so no period to declare (FIX-1113). `asOf` keeps the request
+    // date for legacy readers; `periodEnd` must NOT — a request date is not a
+    // year-end, and writing one here fabricates the very thing this issue
+    // stopped the mappers doing.
+    periodEnd: null,
     totalAssets: null,
     totalLiabilities: null,
     totalEquity: null,
@@ -34,6 +39,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
+    // No figures, so no period to declare (FIX-1113). `asOf` keeps the request
+    // date for legacy readers; `periodEnd` must NOT — a request date is not a
+    // year-end, and writing one here fabricates the very thing this issue
+    // stopped the mappers doing.
+    periodEnd: null,
     revenue: null,
     grossProfit: null,
     operatingIncome: null,
@@ -45,6 +55,11 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     source: "unavailable",
     ticker: i.ticker,
     asOf: i.date,
+    // No figures, so no period to declare (FIX-1113). `asOf` keeps the request
+    // date for legacy readers; `periodEnd` must NOT — a request date is not a
+    // year-end, and writing one here fabricates the very thing this issue
+    // stopped the mappers doing.
+    periodEnd: null,
     operating: null,
     investing: null,
     financing: null,

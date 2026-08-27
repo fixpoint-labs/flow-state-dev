@@ -80,6 +80,21 @@ export type TestBlockResult<TOutput> = {
     sequencer: Record<string, unknown>;
   };
   stateChanges: StateChange[];
+  /**
+   * The block's resolved resource registry, after the run.
+   *
+   * `state` covers the scope records; this covers the other half — resource
+   * collections a block declares and writes into. Without it a test that
+   * asserts on written ROWS has to build its own context and dispatch the
+   * block's `execute` callback by hand, which skips the execution wrapping
+   * every consumer goes through. Reading rows and running the block the real
+   * way stop being mutually exclusive.
+   *
+   * Keyed by the accessor names in the block's `declaredResources`, which
+   * `testBlock` already wires into the synthetic flow. `{}` for a block that
+   * declares none.
+   */
+  resources: Record<string, unknown>;
   meta: {
     durationMs: number;
     blockName: string;

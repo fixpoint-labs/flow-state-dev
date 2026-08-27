@@ -159,6 +159,21 @@ describe("resolution 8b — what their registry holds", () => {
     expect(registry.demoKind).toBe("undetermined");
   });
 
+  it("does not claim a foreign module at our stem as ours", () => {
+    // `./flows/hello/flow.js` normalises to the same stem as the file we write (`flow.mts`).
+    // Ownership is the resolved path plus the generated marker — the specifier alone is a
+    // proxy, and acting on `demoKind: "free"` leaves their flow registered instead of the demo.
+    const root = makeTree({
+      ...base,
+      "fsdev.config.ts": `import hello from "./flows/hello/flow.js";\nexport default createFlowState({ flows: { hello } });\n`,
+      "flows/hello/flow.js": `export default defineFlow({ kind: "hello" })({ id: "default" });\n`,
+    });
+    const registry = inspectRegistry(join(root, "fsdev.config.ts"));
+    expect(registry.ourEntry).toBeNull();
+    expect(registry.demoKind).toBe("taken");
+    expect(codes(buildReport(root))).toContain("demo-kind-taken");
+  });
+
   it("does not refuse over a kind it could not read", () => {
     // Undetermined is not `taken`: refusing here would lock out a project whose flow module we
     // simply cannot parse, and the skill has a documented fallback for it.

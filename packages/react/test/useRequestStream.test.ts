@@ -26,7 +26,6 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 });
 
 import { useRequestStream } from "../src/hooks/useRequestStream";
-import { setFlowContext } from "../src/context/FlowContext";
 
 let seq = 0;
 function base() {
@@ -111,13 +110,11 @@ describe("useRequestStream (react)", () => {
   beforeEach(() => {
     connections.length = 0;
     seq = 0;
-    setFlowContext({});
   });
   afterEach(() => {
     // Unmount rendered hooks (mirrors the devtool suite's setup) so each test's
     // effect cleanup runs — closes the SSE handle and cancels pending RAFs.
     cleanup();
-    setFlowContext({});
   });
 
   it("accumulates streamed message text mid-stream, before item.done (FIX-846 regression)", () => {

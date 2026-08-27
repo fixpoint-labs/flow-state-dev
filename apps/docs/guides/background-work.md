@@ -40,7 +40,7 @@ const turn = sequencer({
   .sideChain(captureMemory);
 ```
 
-`respondToUser` streams to the browser and the chain moves straight on. `captureMemory` runs alongside it. On a run that finishes normally the request waits: every queued task settles before the stream closes. Closing the tab doesn't cancel that work — background tasks deliberately don't listen to the transport signal — but nothing waits for it either, so a process that shuts down first can still drop it. An explicit abort does cancel it. A failure is logged rather than surfaced, which is the trade you take for not blocking.
+`respondToUser` streams to the browser and the chain moves straight on. `captureMemory` runs alongside it. On a run that finishes normally the request waits: every queued task settles before the stream closes. Closing the tab doesn't cancel that work — background tasks don't listen to the transport signal — but nothing waits for it either, so a process that shuts down first can still drop it. An explicit abort does cancel it. A failure is logged rather than surfaced, which is the trade you take for not blocking.
 
 Reach for it when the work is cheap, best-effort, and belongs to the turn that produced it. Analytics, cache warming, memory writes, auto-titling.
 
@@ -124,6 +124,10 @@ Some bounds are worth knowing before you reach for this.
 **On serverless, the work is bounded by the function unless something else consumes the queue.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. A queue adapter alone does not lift it: in `colocated` mode the same process both enqueues *and* consumes, so the job is picked up by the invocation that is already running out of time. What lifts the ceiling is a consumer with its own lifetime — run the function in `dispatch-only` mode and host the worker separately, as a container or a long-lived process in `worker-only` mode. `colocated` is the right answer on a server you keep running, not on a function.
 
 **A `worker-only` process starts workstreams that aren't durable.** That mode dispatches nothing, so the work runs in the worker process and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
+
+**A workstream releases the request while it is actually working the task.** A task a workstream has in hand is not counted by the board that filed it, so the request that filed it finishes without waiting.
+
+That release lasts only while a workstream is actually holding the task, not for the rest of the task's life. Handing work over says where it belongs; it does not promise the work is still moving. If the workstream stops without settling the task — its process dies, its host is shut down — the task goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A task parked for a person counts again too, unless the board asked not to wait on reviews with [`onReview: "exit"`](/docs/orchestration/task-board#waiting-on-a-person-onreview).
 
 ### Which tasks share a workstream
 

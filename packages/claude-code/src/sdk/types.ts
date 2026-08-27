@@ -301,6 +301,12 @@ export interface ClaudeAgentQueryOptions {
   maxTurns?: number;
   resume?: string;
   includePartialMessages?: boolean;
+  /**
+   * The directory the run works in. The SDK's own file tools address paths
+   * relative to it, and the block keys its record of what the run touched there
+   * too — see `ClaudeCodeAgentOptions.cwd`, which is canonical for both halves.
+   */
+  cwd?: string;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
 }

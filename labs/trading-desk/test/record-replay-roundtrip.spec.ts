@@ -47,6 +47,7 @@ describe("record → replay round-trip", () => {
       source: "yahoo",
       ticker: "XOM",
       asOf: DATE,
+      periodEnd: DATE,
       totalAssets: 376.3,
       totalLiabilities: 163.8,
       totalEquity: 212.5,

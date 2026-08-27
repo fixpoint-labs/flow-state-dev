@@ -13,8 +13,22 @@
  * produces the three canonical statement payloads. The HTTP fetch lives in
  * `yahoo.ts`. A series that is absent (or carries no usable period) maps to
  * `null`, never 0, preserving the honest-unobserved discipline.
+ *
+ * PERIOD SELECTION IS NOT THIS MODULE'S (FIX-1113). Every figure is read at the
+ * ONE anchor chosen by `financial-period.ts` — the period-keyed read this file's
+ * multi-year path already used, now the rule everywhere. The latest-value and
+ * latest-date-per-series selectors are GONE. The trap they left: the date came
+ * from the last POINT while the value came from the last FINITE point, so a
+ * payload published a date its own figure did not come from as soon as the
+ * newest point was unreported.
  */
 import type { FinancialPeriod } from "./financials-history";
+import {
+  chooseAnchorPeriodEnd,
+  consecutivePeriodPair,
+  hasNoFigures,
+  samePeriod,
+} from "./financial-period";
 
 /** One annual data point in a Yahoo timeseries series. */
 type TimeseriesPoint = {
@@ -90,39 +104,49 @@ function indexByType(resp: YahooTimeseriesResponse): Map<string, TimeseriesPoint
   return out;
 }
 
-/** Latest finite reported value for a series, in $B; `null` if absent/unusable. */
-function latestB(series: Map<string, TimeseriesPoint[]>, type: string): number | null {
-  const points = series.get(type);
-  if (!points || points.length === 0) return null;
-  for (let i = points.length - 1; i >= 0; i--) {
-    const raw = points[i]?.reportedValue?.raw;
-    if (typeof raw === "number" && Number.isFinite(raw)) return raw / USD_BILLION;
-  }
-  return null;
-}
+/** The series this provider anchors on — this mapper's own instance of the
+ *  ANCHOR-discovery rule (`financial-period.ts`'s module header). Every annual
+ *  period end any of them reports is an anchor candidate. */
+const ANCHOR_SERIES = [
+  "annualTotalRevenue",
+  "annualOperatingIncome",
+  "annualNetIncome",
+  "annualOperatingCashFlow",
+  "annualFreeCashFlow",
+  "annualTotalAssets",
+  "annualStockholdersEquity",
+  "annualCashAndCashEquivalents",
+  "annualTotalDebt",
+] as const;
 
-/** The two latest raw values for a series (absolute dollars), newest last. */
-function latestTwoRaw(series: Map<string, TimeseriesPoint[]>, type: string): number[] {
-  const points = series.get(type) ?? [];
-  const finite: number[] = [];
-  for (const p of points) {
-    const raw = p?.reportedValue?.raw;
-    if (typeof raw === "number" && Number.isFinite(raw)) finite.push(raw);
+/** Every annual period end any core series reports. Built ONCE per response and
+ *  fed to both the single-period statements and the multi-period rows —
+ *  deriving it per path is how per-series sorting comes back under a new name.
+ *  A point with no usable value is not evidence that its period exists, which
+ *  is what kept the old date/value divergence alive. */
+function anchorCandidates(series: Map<string, TimeseriesPoint[]>): string[] {
+  const ends: string[] = [];
+  for (const type of ANCHOR_SERIES) {
+    for (const p of series.get(type) ?? []) {
+      const raw = p?.reportedValue?.raw;
+      if (p.asOfDate && typeof raw === "number" && Number.isFinite(raw)) {
+        ends.push(p.asOfDate);
+      }
+    }
   }
-  return finite.slice(-2);
-}
-
-/** Period end-date of the latest income-statement point, else the requested date. */
-function latestAsOf(series: Map<string, TimeseriesPoint[]>, type: string, fallback: string): string {
-  const points = series.get(type);
-  const last = points?.[points.length - 1];
-  return last?.asOfDate ?? fallback;
+  return ends;
 }
 
 /**
  * Map a raw `fundamentals-timeseries` response into the three canonical
- * statement payloads. Missing series → `null` fields. Monetary values are
- * normalized to USD billions to match the statement schemas and fixtures.
+ * statement payloads, every figure read at ONE anchor period end. A series the
+ * anchor does not carry is `null`; one absent figure never blanks its
+ * statement. Monetary values are normalized to USD billions to match the
+ * statement schemas and fixtures.
+ *
+ * `date` (the requested analysis date) is retained only as the legacy `asOf`
+ * fallback for a response with no annual period at all. `periodEnd` is NEVER
+ * given that fallback — an empty period is the honest answer there.
  */
 export function mapYahooTimeseries(
   resp: YahooTimeseriesResponse,
@@ -130,56 +154,85 @@ export function mapYahooTimeseries(
   date: string,
 ) {
   const s = indexByType(resp);
+  const candidates = anchorCandidates(s);
+  const anchor = chooseAnchorPeriodEnd(candidates);
+  const at = (type: string) => valueAtB(s, type, anchor);
 
-  // YoY revenue growth needs two periods; with fewer it is unobserved (null),
-  // never 0 (which the prompt would read as "flat", a different claim).
-  const revPair = latestTwoRaw(s, "annualTotalRevenue");
+  // YoY revenue growth pairs the anchor with the period immediately BEFORE it,
+  // and publishes nothing when those two are not consecutive — a gap-year filer
+  // gets no growth figure rather than a two-year change called one year's.
+  // Unobserved is null, never 0 (which the prompt would read as "flat").
+  const pair = consecutivePeriodPair(candidates);
+  const revNow = pair ? valueAtB(s, "annualTotalRevenue", pair.anchor) : null;
+  const revPrior = pair ? valueAtB(s, "annualTotalRevenue", pair.prior) : null;
   const yoy =
-    revPair.length === 2 && revPair[0] > 0
-      ? (revPair[1] - revPair[0]) / revPair[0]
+    revNow != null && revPrior != null && revPrior > 0
+      ? (revNow - revPrior) / revPrior
       : null;
 
   // FCF: prefer the reported series; fall back to operating + capex (capex is
-  // reported negative) when the desk only has the components.
-  let freeCashFlow = latestB(s, "annualFreeCashFlow");
+  // reported negative) when the desk only has the components. Both legs read at
+  // the anchor, so the fallback cannot mix two years.
+  let freeCashFlow = at("annualFreeCashFlow");
   if (freeCashFlow == null) {
-    const op = latestB(s, "annualOperatingCashFlow");
-    const capex = latestB(s, "annualCapitalExpenditure");
+    const op = at("annualOperatingCashFlow");
+    const capex = at("annualCapitalExpenditure");
     if (op != null && capex != null) freeCashFlow = op + capex;
   }
 
-  const incomeAsOf = latestAsOf(s, "annualTotalRevenue", date);
-  const balanceAsOf = latestAsOf(s, "annualTotalAssets", date);
-  const cashflowAsOf = latestAsOf(s, "annualOperatingCashFlow", date);
+  const asOf = anchor ?? date;
+
+  // Each statement's own figures, extracted BEFORE the return object so its
+  // `periodEnd` can be conditioned on them (Codex review, FIX-1113). The
+  // anchor stays ONE response-wide value for READING every figure — see
+  // `edgar-companyfacts.ts`'s sibling comment for why (the same fix, the
+  // same reasoning, applied to both mappers together).
+  const revenue = at("annualTotalRevenue");
+  const grossProfit = at("annualGrossProfit");
+  const operatingIncome = at("annualOperatingIncome");
+  const netIncome = at("annualNetIncome");
+
+  const totalAssets = at("annualTotalAssets");
+  const totalLiabilities = at("annualTotalLiabilitiesNetMinorityInterest");
+  const totalEquity = at("annualStockholdersEquity");
+  const cashAndEquivalents = at("annualCashAndCashEquivalents");
+  const totalDebt = at("annualTotalDebt");
+
+  const operating = at("annualOperatingCashFlow");
 
   return {
     incomeStatement: {
       source: "yahoo" as const,
       ticker,
-      asOf: incomeAsOf,
-      revenue: latestB(s, "annualTotalRevenue"),
-      grossProfit: latestB(s, "annualGrossProfit"),
-      operatingIncome: latestB(s, "annualOperatingIncome"),
-      netIncome: latestB(s, "annualNetIncome"),
+      asOf,
+      periodEnd: hasNoFigures(revenue, grossProfit, operatingIncome, netIncome) ? null : anchor,
+      revenue,
+      grossProfit,
+      operatingIncome,
+      netIncome,
       yoyRevenueGrowth: yoy,
       unit: "USD billions",
     },
     balanceSheet: {
       source: "yahoo" as const,
       ticker,
-      asOf: balanceAsOf,
-      totalAssets: latestB(s, "annualTotalAssets"),
-      totalLiabilities: latestB(s, "annualTotalLiabilitiesNetMinorityInterest"),
-      totalEquity: latestB(s, "annualStockholdersEquity"),
-      cashAndEquivalents: latestB(s, "annualCashAndCashEquivalents"),
-      totalDebt: latestB(s, "annualTotalDebt"),
+      asOf,
+      periodEnd: hasNoFigures(totalAssets, totalLiabilities, totalEquity, cashAndEquivalents, totalDebt)
+        ? null
+        : anchor,
+      totalAssets,
+      totalLiabilities,
+      totalEquity,
+      cashAndEquivalents,
+      totalDebt,
       unit: "USD billions",
     },
     cashflow: {
       source: "yahoo" as const,
       ticker,
-      asOf: cashflowAsOf,
-      operating: latestB(s, "annualOperatingCashFlow"),
+      asOf,
+      periodEnd: hasNoFigures(operating, freeCashFlow) ? null : anchor,
+      operating,
       // investing/financing are not in the timeseries set we request; they are
       // not load-bearing for any derived metric, so they read null here.
       investing: null,
@@ -190,13 +243,19 @@ export function mapYahooTimeseries(
   };
 }
 
-/** The $B value of a series at a specific period end-date; `null` if absent. */
+/**
+ * The $B value of a series AT a period end; `null` when the series does not
+ * carry that period. The whole fix in one function: read AT a period, never
+ * "the most recent value". Matched by `samePeriod` rather than string equality
+ * so the same fiscal year dated days apart still resolves.
+ */
 function valueAtB(
   series: Map<string, TimeseriesPoint[]>,
   type: string,
-  asOfDate: string,
+  periodEnd: string | null,
 ): number | null {
-  const point = series.get(type)?.find((p) => p.asOfDate === asOfDate);
+  if (!periodEnd) return null;
+  const point = series.get(type)?.find((p) => samePeriod(p.asOfDate ?? null, periodEnd));
   const raw = point?.reportedValue?.raw;
   return typeof raw === "number" && Number.isFinite(raw) ? raw / USD_BILLION : null;
 }
@@ -216,14 +275,17 @@ export function mapYahooTimeseriesHistory(
 ): FinancialPeriod[] {
   const s = indexByType(resp);
 
-  // Fiscal-year-ends present in any core series, newest first.
-  const dates = new Set<string>();
-  for (const type of ["annualTotalAssets", "annualTotalRevenue", "annualNetIncome"]) {
-    for (const p of s.get(type) ?? []) {
-      if (p.asOfDate) dates.add(p.asOfDate);
-    }
+  // The SAME candidate pool the anchor comes from, newest first, with ends that
+  // describe one period collapsed so a provider dating a year days apart cannot
+  // yield two rows for it.
+  const ends = [...new Set(anchorCandidates(s))].sort(
+    (a, b) => Date.parse(b) - Date.parse(a),
+  );
+  const periodEnds: string[] = [];
+  for (const e of ends) {
+    if (!periodEnds.some((kept) => samePeriod(kept, e))) periodEnds.push(e);
   }
-  const periodEnds = [...dates].sort().reverse().slice(0, maxPeriods);
+  periodEnds.splice(maxPeriods);
 
   return periodEnds.map((end) => ({
     endDate: end,

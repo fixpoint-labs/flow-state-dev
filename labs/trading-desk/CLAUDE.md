@@ -249,6 +249,106 @@ path. Persistence is Postgres-shaped (FIX-772): embedded PGlite in dev (persiste
 under `.fsdev/pglite`, survives restarts) and real Postgres via `DATABASE_URL` in
 deployment. The store backing is wired in `db/portfolio-db.ts` / `lib/server.ts`.
 
+## Theses view
+
+The **Theses** tab is the per-participant memo reader: a phase-grouped sidebar
+picks a memo, and `components/theses/theses-pane.tsx`'s `MemoDoc` dispatches on
+`(agentName, status)` to a renderer. Most memos fall through to the generic
+`ThesisHeader + ThesisBody`; five participants have dedicated cards.
+
+- **Routing is registry-DERIVED, never a hand-maintained list.** `LENS_AGENTS`,
+  `TRADER_AGENTS`, and `RISK_AGENTS` live in
+  `components/theses/memo-renderer-routing.ts` — a plain module, not exports on
+  the pane — and are built from `PHASE_2B_MEMO_KEYS` / `PHASE_3_MEMO_KEYS` /
+  `PHASE_4_MEMO_KEYS`, so a participant added to a phase registry is routed by
+  construction rather than by somebody remembering. Adding a sixth dedicated
+  renderer means adding a set the same way — not an `agent === "..."` literal.
+  `test/memo-renderer-routing.spec.ts` asserts each set equals its registry
+  exactly and that the three are disjoint (the dispatch is an ordered if-chain,
+  so an overlap would silently let one card win).
+- **A memo renderer NEVER authors a price-level label.** Same rule as the
+  Summary view: read `flows/analysis/lib/trade-levels.ts`. Pack the input with
+  `storedTradeLevelsFrom(record)` (never hand-assemble the five-field literal —
+  that is how a surface comes to read three of the four levels), name the levels
+  with `buildTradeLevelModel`, and format the one-liner with `tradeLineParts`.
+  Map a row's `kind` to a colour, never to a name. The monitoring label
+  constants are deliberately unexported, which is the guarantee: there is no way
+  to spell the words in `components/theses/**`.
+- **A stored `metrics` bag is a SECOND, unconstrained copy of typed values, and
+  each card needs its own answer.** `ThesisMetrics` renders whatever keys it is
+  handed, verbatim. The trader card strips the level keys
+  (`withoutLevelMetrics`) and denylists `direction` / `size` / `holdingPeriod`,
+  because its structured trade line already draws them and nothing forces the
+  free-form copy to agree with the typed field. The risk personas drop entries
+  whose VALUE is the `"—"` sentinel their prompts fill unused keys with (a
+  rendered empty cell asserts a slot for a measurement nobody took). The
+  consolidated assessment denylists `calibration` + the three adjustment axes,
+  all four of which mirror typed fields it renders structurally. **Every one of
+  these is a denylist or a value filter, never an allowlist of today's keys** —
+  an allowlist silently swallows a metric a later schema adds, which is the exact
+  defect these cards exist to fix.
+- **The verdict renders once, and the structured fields are the ones that
+  render.** Every memo carries a free-form `rating` string that nothing forces to
+  agree with the typed fields a dedicated card draws beside it, so a card that
+  drew both could contradict itself. Both dedicated cards therefore suppress the
+  header's rating chip: the trader's `rating` and `direction` are two separate
+  `long | short | flat` enums, so the card shows `direction` (the field the levels
+  were named from); the risk memos are worse, because the persona prompts PIN
+  `rating` to a literal regardless of what the memo concludes — conservative to
+  `"size correct"` while naming `smaller` as the typical
+  `proposedAdjustments.sizing`, aggressive to `"upsize"` while allowing
+  `unchanged` — so the header contradicted the structured verdict on the TYPICAL
+  path, and the consolidated assessment's free-form `rating` is independent of
+  its typed `confidenceCalibration`. **This is a property of the shape, not of a
+  participant** — a header verdict rendered beside structured verdicts nothing
+  reconciles — so check it for every new card, and suppress via a model whose
+  `rating` is typed as the literal `null` (`traderHeaderModel` /
+  `riskHeaderModel`), which makes reintroducing the stored value a compile error
+  rather than something review has to catch. Still open on the generic
+  fall-through renderer for `PmHero` (its `metrics.rating` chip sits beside the
+  typed `finalRating` tier bar) and `ScenarioPanel` (whose prompt tells it to put
+  the `distribution` tag in `rating`, which the panel also draws) — both
+  pre-existing, neither routed by a card FIX-1061 added.
+- **A card's optional sub-field never gates a sibling that is present.** The
+  assessment's `recommendedAdjustments.*.rationale` and `.attributedTo` are two
+  separate required `z.string()`s, neither `.min(1)`, so a schema-valid memo can
+  persist an empty rationale beside a populated attribution. Nesting attribution
+  inside the rationale's render condition hid who supported an adjustment that
+  still rendered — while the Summary tab's `RiskPanel` drew it anyway, so one
+  stored record read two ways on two surfaces. When two surfaces show the same
+  field, match the existing treatment rather than inventing a third.
+- **Shared presentational leaves are imported, never re-implemented.**
+  `LabeledBulletList` (an empty list renders nothing), `InvalidationList`,
+  and `components/risk-vocabulary.ts` (`SEVERITY` glyphs, `CALIBRATION_CLASS`,
+  and `ADJUSTMENT_AXES`, shared with the Summary's `RiskPanel`). "Match the
+  existing behaviour" is how this surface acquired duplicate copies of one rule;
+  import it instead. **Where colour carries meaning it is part of the shared
+  vocabulary, not a per-surface choice** — an "overconfident" calibration
+  verdict must read as a warning on the Theses tab and the Summary tab alike, so
+  both index one `CALIBRATION_CLASS`.
+- **Do NOT add a second provenance marker.** `ReportProvenanceBanner` is mounted
+  above the Theses/Summary tab switch so the disclosure is gated only on the
+  report being pre-fix. A memo renderer reads no `dataHonestyContractVersion`,
+  calls no `isPreDataHonestyFix`, and renders no notice of its own.
+- **Both card contracts take `onJumpToTranscript` and forward it to the shared
+  header.** It is the only navigation affordance a memo has, and re-routing a
+  memo into a new card is exactly how it gets silently deleted — no view-model
+  test would notice.
+- **Rules live in pure helpers, because most JSX is unreachable from the
+  node-env suite.** `test/trader-proposal-card.spec.ts`,
+  `test/risk-critique-card.spec.ts`, and `test/memo-renderer-field-coverage.spec.ts`
+  (a walker that fails when a schema grows a field no card renders or excludes
+  with a reason) cover the helpers. Where the rule IS the rendered output — a
+  colour that carries meaning — assert it by rendering the card with
+  `renderToStaticMarkup` from `react-dom/server` and reading the class off the
+  markup; no DOM, no jsdom, and it works in the existing node env. Live wiring
+  (selection, streaming, the drawer) is still verified by opening a finished
+  report in the running app.
+- **Still on the generic renderer:** the research manager, the two debaters, and
+  the thesis validator carry structured fields (`unresolvedDisagreements`,
+  `blindSpots`, `supportingEvidence`, `contradictingEvidence`) nothing draws. A
+  flagged follow-up, not a silent gap.
+
 ## Summary view
 
 Each report has a **Theses | Summary** tab toggle inside `ThesesPane`. The
@@ -1777,6 +1877,88 @@ endpoint (a 200-with-no-data response the Yahoo mapper detects and treats as a
 miss). Non-US tickers have no EDGAR CIK and fall through to Yahoo. The legacy
 Yahoo `*History` quoteSummary modules were dropped: they returned zero-filled
 statements in current Yahoo responses.
+
+**Every statement describes ONE completed financial year, and says which.** Each
+of the three payloads carries a `periodEnd` — the single year-end date every
+figure in it was read at. The desk picks that year first (the most recent annual
+period end any core figure reports — never the most recent year where the core
+set is COMPLETE, which walks a messy filer's whole report back a year) and then
+reads every field AT it. A figure the chosen year does not carry is `null`, the
+same as any other unobserved figure; it is never filled in from a neighbouring
+year. One absent figure never blanks the rest of its statement. `periodEnd` is
+empty only on a statement with no figures at all — the `unavailable` path, which
+has no period to declare. `asOf` keeps its older request-date fallback for
+legacy readers and is NOT the period; read `periodEnd`. Two dates describe the
+same period when they are within about a month of each other, not when they fall
+in the same calendar year: the filings source and the market-data source date
+the same fiscal year days apart, and a 52/53-week filer's year-end crosses
+January. Anything comparing two periods (year-over-year growth, the change-based
+quality criteria) goes through one accessor that refuses a non-adjacent pair, so
+a gap-year filer gets no growth figure rather than a two-year change labelled as
+one year's.
+
+**When the three statements cannot be placed at one period, the desk DETECTS it
+and WITHHOLDS — it does not assemble a coherent set.** Each statement resolves
+through its own provider ladder, concurrently, so one can come from the filings
+source while another falls through to market data. After all three return, the
+set is checked once (`lib/statement-set-period.ts`). Two things make it
+incoherent: any statement that settled for an older period than one its own
+resolution actually observed, or three returned periods that are not mutually
+compatible. The first half is not optional — without it the check reduces to "do
+the periods match", which passes three statements that ALL fell back to the same
+older year. One route is outside the guarantee by construction: a provider that
+answers completely short-circuits before the next provider is fetched, so a
+newer period nobody looked for is never observed.
+
+On an incoherent set, every deterministic output that reads more than one
+statement is withheld — the spanning multiples, the expected return, and
+everything downstream of it including fair value, the cash-flow model,
+triangulation, the setup score and the **rating envelope** — and the spine reads
+`thin`, so the always-on evidence gate caps new exposure. A figure inside ONE
+statement (an operating margin is income over income) is computed as normal;
+"withhold" must never be implemented as "blank the spine".
+
+**The rating still publishes.** Read this before assuming a mismatch suppresses
+it. The envelope only CLAMPS a rating the portfolio manager emits on its own as
+a required field, and the clamp sits inside a conditional on the envelope's
+presence — so withholding the envelope removes the BOUND, not the rating, and
+what publishes is the model's own value with nothing constraining it. Absence is
+permission here, not suppression. The desk therefore marks that rating
+`ratingUnanchored` and records the three periods on the memo and the decision
+snapshot, and the same flag reaches the `RunSummary`, where it is the marker
+that makes "how often does this fire" an answerable machine-readable number.
+It also reaches every surface a person reads the rating on, but not all three
+the same way — a surface that cannot access the disclosure must not describe
+its cause, and the two surfaces below split exactly on that line. The Summary
+decision header and the PM's detailed memo both render the full
+`RatingUnanchoredNotice` (`components/summary/rating-unanchored-notice.tsx`),
+naming which periods and why. The Past Reports list row does NOT render that
+component — a list row is a compact chip, not a card — but it carries the same
+`periodDisclosure` (mirrored onto the reports-index metadata alongside the
+`ratingUnanchored` boolean) and reads a reason-specific sentence off its
+tooltip via the SAME `ratingUnanchoredReason`/`disclosurePrintShape`
+classifier (`components/reports/report-row.tsx`), rather than a hand-written
+tooltip that describes one specific cause as if it explained every reachable
+shape. **Any future guard that reaches the envelope should start here: check
+what the ABSENCE of the thing you are withholding actually causes** — and
+verify each surface's rendering against the code, not against what an earlier
+commit's message says it does, before repeating a claim about the SET of
+surfaces.
+
+The fundamentals analyst is a SECOND valuation site and needs the same treatment
+separately — it computes and publishes its own valuation from its own tool
+payloads before the spine exists, so a guard on the spine is structurally
+invisible to it. Both call the same predicate, and both read the same
+observations: the analyst's own tool fan-out writes each `*PeriodObservation`
+field onto the same session-scoped `financialsData` resource the spine reads,
+and is awaited (`.parallel`, before the generator step) ahead of the analyst's
+own computation — so its deterministic half is gated IDENTICALLY, catching
+uniform staleness as well as outright disagreement, not only the latter. The
+other half is **advisory only**: the analyst is handed the three raw statements
+and asked to divide one by another, so on a mismatch its context states the
+periods and instructs it not to combine them. A model can ignore an
+instruction, so a memo can still carry a figure the spine withheld. Assert what
+the analyst was told, never what it concluded.
 
 ## The data-honesty contract
 

@@ -42,8 +42,7 @@ import { sessionStateSchema } from "../flows/analysis/state";
 /**
  * Test-only writer: plant a payload directly on the technical spine, standing
  * in for a Phase 1 fetch whose provider came back empty. `bars` is optional
- * ONLY so a test can attempt the malformed write the tap deliberately does not
- * guard against (see the boundary test below).
+ * ONLY so the boundary test can attempt a schema-invalid write (see below).
  */
 const seedSpineBars = handler({
   name: "seed-spine-bars",
@@ -312,10 +311,10 @@ describe("storePriceHistory tap", () => {
 
     // Why this test exists: the tap checks only for an ABSENT `priceBars`, with
     // no second guard for a present-but-bars-less payload. That is safe only
-    // because the spine's own schema requires `bars` — the resource boundary
-    // drops such a patch outright. Pinning it here means loosening that schema
-    // fails loudly instead of turning the tap's `payload.bars.map` into a
-    // mid-run TypeError.
+    // because the spine's own schema requires `bars` — a bars-less patch now
+    // throws and leaves stored state untouched. Pinning it here means loosening
+    // that schema fails loudly instead of turning the tap's `payload.bars.map`
+    // into a mid-run TypeError.
     const seeded = await testFlow({
       flow: priceFlow,
       action: "seedSpine",
@@ -325,9 +324,11 @@ describe("storePriceHistory tap", () => {
       input: { source: "yahoo", ticker: "NVDA", range: "1mo" },
       seed: { session: { state: { ...baseState, dataSource: "live" as const } } },
     });
-    expect(seeded.error).toBeUndefined();
+    expect(seeded.error).toBeDefined();
+    expect(seeded.error?.message).toMatch(/priceBars\.bars/);
+    expect(seeded.status).toBe("failed");
 
-    // The malformed payload was rejected at the boundary — the spine is empty.
+    // The malformed payload was refused — the spine is still empty.
     const spine = toBareStates(await stores.resourceState.getAll("session", sessionId));
     expect(spine["technicalData"]).toBeUndefined();
 

@@ -132,7 +132,6 @@ export function ContentReview({ userId }: { userId: string }) {
     <FlowProvider
       flowKind="content-review"
       userId={userId}
-      baseUrl="/api/flows"
       renderers={chatAssistantRenderers}
     >
       <ReviewSurface />

@@ -14,11 +14,11 @@ import type { TaskWriteToken } from "../write-provenance";
 
 /**
  * Why a write was refused (FIX-976; `not-my-task` added by FIX-981;
- * `immutable-assignee` by FIX-982). Resolved in a **fixed precedence order** —
- * `immutable-assignee` → `terminal` → `not-my-task` → `disallowed` →
- * `lost-claim` — so a decline where two conditions hold always reports the same
- * one, and two callers cannot render two different messages for the same
- * refusal.
+ * `immutable-assignee` by FIX-982; `parked` by FIX-1234). Resolved in a **fixed
+ * precedence order** — `immutable-assignee` → `terminal` → `not-my-task` →
+ * `disallowed` → `parked` → `lost-claim` — so a decline where two conditions
+ * hold always reports the same one, and two callers cannot render two different
+ * messages for the same refusal.
  *
  * - `immutable-assignee` — the board runs detached work, where a task's
  *   assignee is fixed at admission. Reassignment is refused whatever the task's
@@ -30,8 +30,14 @@ import type { TaskWriteToken } from "../write-provenance";
  *   the caller never held.
  * - `disallowed` — the state machine rejects the move from a **non**-terminal
  *   status (`pending → errored`, `blocked → errored`).
+ * - `parked` — the caller passed `refuseWhenParked` and the task is sitting in
+ *   `awaiting_review`. **Not a lost claim:** nobody took the row, the attempt
+ *   still owns it, and a person is deciding what happens to it. The recoveries
+ *   are opposite — `lost-claim` says re-claim and redo, `parked` says do
+ *   neither, because the work is done.
  * - `lost-claim` — the presented `claim` names this task but no longer owns it:
- *   it was reclaimed, re-queued, or parked while the caller was working.
+ *   it was reclaimed or re-queued while the caller was working, or its lease
+ *   ran out while it was still `in_progress`.
  *
  * **Why `not-my-task` sits above `disallowed`, and below `terminal`.** The
  * guard runs inside the atomic write, but a decline aborts that write *before*
@@ -46,6 +52,17 @@ import type { TaskWriteToken } from "../write-provenance";
  * another for the same cross-task write: accidental protection, not a
  * guarantee, and a reason no caller can act on.
  *
+ * **Where `parked` sits, and the one case it takes from `lost-claim`.** It is
+ * evaluated after the transition arms and before the ownership arms. For the
+ * caller it is meant for — a worker reporting the result of its own run — the
+ * two never compete: `awaiting_review` is an attempt-owned status and the lease
+ * does not govern it, so neither ownership arm fires and the order is
+ * immaterial. They overlap on one narrow row: a *displaced* attempt writing to
+ * a task that was parked, resumed, re-claimed, and parked again reports
+ * `parked` where `lost-claim` is the more precise fact. Both tell that caller
+ * the same thing — do not redo the work — so the order is left where the guard
+ * reads most simply rather than split to chase the rarer reason.
+ *
  * **Why `immutable-assignee` sits above `terminal`.** It reads no mutable task
  * state at all — the board either runs detached work or it does not — so it is
  * safe at any position by the argument above. It goes first because it is the
@@ -58,7 +75,16 @@ export type TaskWriteDeclineReason =
   | "terminal"
   | "not-my-task"
   | "disallowed"
-  | "lost-claim";
+  | "lost-claim"
+  /**
+   * The row is parked for review, and the refused write was a claim-fenced
+   * settlement (FIX-1234). Distinct from `lost-claim` on purpose: nobody took
+   * this row — the attempt still owns it — so the recoveries differ. A caller
+   * that reads `lost-claim` should re-claim and redo the work; a caller that
+   * reads `parked` should do neither, because the work is done and a person is
+   * deciding what happens to it.
+   */
+  | "parked";
 
 /**
  * What a write actually did (FIX-976).
@@ -221,6 +247,35 @@ export interface TaskTransitionOptions {
    */
   claim?: TaskClaimTicket;
   /**
+   * Decline this write if the task is parked for review (FIX-1234).
+   *
+   * For the caller that is reporting the result of its own run — a task board's
+   * result recorders are the ones in tree. A worker that called `awaitReview()`
+   * on the task it was holding has handed that task to a person and owes the
+   * substrate no result, but nothing else refuses its write-back on the way out:
+   * `awaiting_review` is a status the attempt still owns, and both
+   * `awaiting_review → completed` and `→ errored` are legal. So the settlement
+   * would land and erase the park, and a failure with retries left would go
+   * further and re-queue the row for a sibling worker while the person is still
+   * being asked.
+   *
+   * **Opt-in, because settling a parked task is otherwise legitimate.** A holder
+   * recording a review's rejection as a failure travels the same path, and a
+   * coordinator ending a review with `complete` or `cancel` travels it without a
+   * ticket at all. Neither passes this, and neither changes.
+   *
+   * Applies only to a write that reports a result — `complete`, and `fail` on
+   * both its terminal and its retrying route. `resumeFromReview` and `cancel`
+   * keep working on a parked task with this set, which matters because a
+   * retrying failure and a resume both target `pending` and only the change kind
+   * tells them apart.
+   *
+   * Declines with reason `parked`, evaluated inside the same atomic write as
+   * every other guard here — a pre-read cannot carry this, because a park
+   * arriving between the read and the write is exactly the case it has to catch.
+   */
+  refuseWhenParked?: boolean;
+  /**
    * Record this write on the task, so the caller can find out afterwards
    * whether it committed — **even if this call throws** (FIX-989).
    *
@@ -301,17 +356,37 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  * the shape the two built-in backings happen to return.
  *
  * If you write one, every worker-callable transition — `complete`, `fail`,
- * `block`, `unblock`, `awaitReview`, `resumeFromReview`, `cancel` — **must**
+ * `block`, `unblock`, `awaitReview`, `resumeFromReview`, `cancel` — should
  * accept and honour the optional `TaskTransitionOptions` argument. The type
  * system cannot hold you to this: an implementation taking only `(id, output)`
  * structurally satisfies the interface, and JavaScript discards the extra
- * argument in silence. A ref that ignores the options throws on a task someone
- * else already settled, and that throw escapes the task board's per-worker
- * rescue and abandons every sibling task on the board — the exact failure the
- * options exist to contain. It also leaves ownership unchecked, so a worker's
- * write lands on whichever task the caller named. See `TaskTransitionOptions`
- * for the two guards, and evaluate both inside your atomic write so the check
- * cannot race the write it guards.
+ * argument in silence. See `TaskTransitionOptions` for the guards, and evaluate
+ * them inside your atomic write so the check cannot race the write it guards.
+ *
+ * ### What the substrate guarantees, and what you still owe
+ *
+ * **Guaranteed — for one class of throw, not for every failure.** The
+ * substrate's advisory write-backs contain a throw they can attribute to a
+ * decline a conforming store would have made before committing anything: the
+ * late result is dropped and the drain finishes its other tasks. So a ref that
+ * ignores the options no longer abandons every sibling task the first time a
+ * worker's result arrives late — the write-back *conflict* is contained.
+ *
+ * That is the whole of it. A store that is unreachable, or that commits and then
+ * fails on the way out, still throws through to the caller and can still fail
+ * the drain, because neither is a task-state conflict and silencing them would
+ * lose real failures. Don't read this as fault isolation from your store.
+ *
+ * **Still yours:** the write's correctness. Containment fires on a *throw*, and
+ * plenty of wrong writes don't throw. A worker reporting success on a task
+ * another worker has since taken over is an ordinary `in_progress → completed`,
+ * so an unguarded ref commits it and overwrites the holder's result; nothing
+ * outside your atomic section can see that, let alone stop it. Ownership goes
+ * unchecked the same way — a worker's write lands on whichever task the caller
+ * named.
+ *
+ * So the options are no longer what keeps a board alive. They are what keeps its
+ * tasks' outcomes true.
  */
 export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /** Stable identifier — matches `data.collectionId` on emitted `task-change` items. */

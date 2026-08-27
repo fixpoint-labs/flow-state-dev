@@ -52,23 +52,6 @@ export function resolveDispatcher(
 }
 
 /**
- * True when a `pending` task's deps are all `completed`. Mirrors the
- * substrate's default eligibility but reads through the collection's
- * `get` so dep status reflects the latest committed view.
- */
-export function depsSatisfied(
-  task: Task,
-  collection: TaskCollectionRef
-): boolean {
-  if (task.deps === undefined || task.deps.length === 0) return true;
-  for (const depId of task.deps) {
-    const dep = collection.get(depId);
-    if (dep === undefined || dep.status !== "completed") return false;
-  }
-  return true;
-}
-
-/**
  * Would this row's work be *routed* to a Workstream rather than run in the
  * drain that is asking (FIX-982)?
  *
@@ -138,10 +121,30 @@ export function isHandedOff(
  *   so excluding it would let the drain exit *before* spawning anything — the
  *   feature inverted into a board that silently runs nothing;
  * - an `awaiting_review` row is parked for an external actor whichever way it
- *   was dispatched. That wait predates detachment and is not what the hand-off
- *   changed, so it keeps holding the drain open. A detached board that parks
- *   for review therefore still blocks its launching request; closing that is a
- *   separate question about who owns a parked row, not this one.
+ *   was dispatched, so the *routing* exclusion never reaches it. Whether that
+ *   row holds the drain open is a different question with a different answer,
+ *   asked by `excuseParked` below.
+ *
+ * ## The second exclusion: rows parked for a human
+ *
+ * `excuseParked` (FIX-1234) is the board's `onReview: "exit"` mode reaching
+ * this count. It drops `awaiting_review` rows, and it is a **predicate of its
+ * own beside** the routing one rather than a widening of it, because the two
+ * answer different questions. `runsElsewhere` asks *where this row's work
+ * belongs*, derived from the board's detached declarations. This one asks
+ * whether the row is waiting on a **human**, which is true on any board however
+ * it dispatches.
+ *
+ * **And it carries no liveness conjunct, deliberately.** The routing exclusion
+ * is paired with a lease check because a routed row can be abandoned by a
+ * claimant that died. A parked row cannot be in that state: parking moves it
+ * off `in_progress`, and the lease deliberately stops governing it there so
+ * that a slow human cannot have the task reclaimed out from under them. A lease
+ * conjunct here would either exclude nothing or reintroduce exactly the reclaim
+ * the substrate prevents on purpose.
+ *
+ * Absent (`false`) for every board that leaves `onReview` at its default, which
+ * is what keeps those boards' counts bit-for-bit what they were.
  *
  * ## …and only while the lease is live
  *
@@ -184,18 +187,49 @@ export function isHandedOff(
 function countWaitable(
   collection: TaskCollectionRef,
   statuses: TaskStatus[],
-  runsElsewhere?: RunsElsewhere
-): number {
-  if (runsElsewhere === undefined) return collection.count({ status: statuses });
+  runsElsewhere?: RunsElsewhere,
+  excuseParked = false
+): WaitableCount {
+  if (runsElsewhere === undefined && !excuseParked) {
+    return { waiting: collection.count({ status: statuses }), excusedParked: false };
+  }
   const rows = collection.list({ status: statuses });
   const now = collection.now();
   let waiting = 0;
+  let excusedParked = false;
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
     if (isHandedOff(row, now, runsElsewhere)) continue;
+    if (excuseParked && row.status === "awaiting_review") {
+      excusedParked = true;
+      continue;
+    }
     waiting += 1;
   }
-  return waiting;
+  return { waiting, excusedParked };
+}
+
+/**
+ * A waitable count, plus whether the park exclusion took anything off it.
+ *
+ * The two travel together because the second is only meaningful about the pass
+ * that produced the first. `excusedParked` is what the board's completion item
+ * eventually reports as `parked-for-review` (FIX-1234) — it is read here, at
+ * the moment the exit is decided, and carried from there rather than
+ * re-derived from rows that may have moved since. A resume landing between the
+ * worker pool finishing and the completion item would otherwise turn a
+ * successful review exit into a reported failure.
+ *
+ * A flag rather than a count, because every reader asks only whether the
+ * exclusion fired. How many rows are parked is already on the completion item
+ * as `counts.awaiting_review`, read fresh, which is the number a caller
+ * actually wants.
+ */
+export interface WaitableCount {
+  /** Rows this drain must still wait on. */
+  waiting: number;
+  /** Did the park exclusion drop at least one row from `waiting`? */
+  excusedParked: boolean;
 }
 
 /**
@@ -203,17 +237,21 @@ function countWaitable(
  * `awaiting_review` are all in-flight — `awaiting_review` per FIX-443
  * §10.1, the others by definition. Terminal statuses don't count.
  *
- * `runsElsewhere` (FIX-982) drops the rows a Workstream is running. See
- * {@link countWaitable} for which statuses it reaches and why.
+ * `runsElsewhere` (FIX-982) drops the rows a Workstream is running;
+ * `excuseParked` (FIX-1234) drops the rows parked for a human. See
+ * {@link countWaitable} for which statuses each reaches and why they are two
+ * predicates rather than one.
  */
 export function inFlightCount(
   collection: TaskCollectionRef,
-  runsElsewhere?: RunsElsewhere
-): number {
+  runsElsewhere?: RunsElsewhere,
+  excuseParked = false
+): WaitableCount {
   return countWaitable(
     collection,
     ["pending", "in_progress", "awaiting_review"],
-    runsElsewhere
+    runsElsewhere,
+    excuseParked
   );
 }
 
@@ -227,15 +265,24 @@ export function inFlightCount(
  * would disagree about the same handed-off row — one calling the board drained,
  * the other still seeing an active worker — which is the drift the quiescence
  * module exists to prevent.
+ *
+ * `excuseParked` (FIX-1234) reaches this arm for the same reason. A board whose
+ * parked row has a `pending` dependent is not drained — the dependent is still
+ * waitable — and the honest verdict for it is `blocked`. That verdict is only
+ * reachable if this count excuses the parked row too; excusing it in one arm
+ * and not the other would leave such a board spinning until its iteration
+ * budget ran out, which is the defect park-exit exists to remove.
  */
 export function activeWorkerCount(
   collection: TaskCollectionRef,
-  runsElsewhere?: RunsElsewhere
-): number {
+  runsElsewhere?: RunsElsewhere,
+  excuseParked = false
+): WaitableCount {
   return countWaitable(
     collection,
     ["in_progress", "awaiting_review"],
-    runsElsewhere
+    runsElsewhere,
+    excuseParked
   );
 }
 
@@ -270,10 +317,4 @@ export function hasClaimableTask(collection: TaskCollectionRef): boolean {
     if (isClaimable(candidates[i], lookup, now)) return true;
   }
   return false;
-}
-
-/** Sleep for `ms` milliseconds. Used for idle-poll backoff in the worker loop. */
-export function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -86,9 +86,3 @@ export function useResourceManifest(session: SessionView): UseResourceManifestRe
 
   return { manifest, isLoading, error };
 }
-
-/** @internal Test-only — clears the module-level manifest cache. */
-export function __resetManifestCacheForTests(): void {
-  manifestCache.clear();
-  inFlight.clear();
-}

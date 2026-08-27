@@ -92,9 +92,10 @@ describe("parseAsNextDev mirrors the dotenv grammar @next/env ships", () => {
     expect(parseAsNextDev("KEY=$DOES_NOT_EXIST").get("KEY").expands).toBe(true);
     expect(parseAsNextDev("KEY=${OTHER:-fallback}").get("KEY").expands).toBe(true);
     expect(parseAsNextDev("KEY=literal").get("KEY").expands).toBe(false);
-    // Escaped and single-quoted forms are literal in dotenv's grammar, so they stay readable.
+    // Escaped dollars stay literal. Single quotes do not: dotenv.parse strips them, then
+    // @next/env's expand() interpolates the bare `$VAR`.
     expect(parseAsNextDev("KEY=\\$LITERAL").get("KEY").expands).toBe(false);
-    expect(parseAsNextDev("KEY='$LITERAL'").get("KEY").expands).toBe(false);
+    expect(parseAsNextDev("KEY='$DOES_NOT_EXIST'").get("KEY").expands).toBe(true);
   });
 });
 

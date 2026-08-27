@@ -22,6 +22,8 @@ const snapshot: DecisionSnapshotState = {
   ticker: "NVDA",
   asOfDate: "2026-05-06",
   finalRating: "Buy",
+  ratingUnanchored: false,
+  periodDisclosure: null,
   decisionConfidence: 0.8,
   decisionSummary: "Strong setup.",
   direction: "long",

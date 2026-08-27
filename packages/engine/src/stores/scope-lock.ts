@@ -1,7 +1,10 @@
 /**
- * Per-`StateContainer` async FIFO mutation queue. The two-tier dispatch
- * lives in `applyMutation`; CAS retries still apply at the durable
- * boundary in `runWithCAS`.
+ * Per-`StateContainer` async FIFO mutation queue. The dispatch that decides
+ * who uses it — in-memory scopes, request-scope persist (`serialize`),
+ * session/user/org CAS — lives in `applyMutation`. The queue is keyed by
+ * container identity, so it orders writers WITHIN one execution context and
+ * nothing beyond it; CAS retries at the durable boundary (`runWithCAS`) are
+ * what still cover a second context writing the same record.
  */
 
 const tails = new WeakMap<object, Promise<unknown>>();
@@ -39,7 +42,11 @@ export interface WithScopeLockOptions {
  *
  * `timeoutMs` is caller-facing only — it does not cancel the in-flight
  * mutator or release the lock early. Use it as a bounded-error safety
- * net for hangs, not as a cancellation primitive.
+ * net for hangs, not as a cancellation primitive, and never on a mutator
+ * that writes to a store: rejecting the caller does not stop the write,
+ * so the abandoned closure can still land after the caller has moved on
+ * and treated the mutation as failed. `applyMutation` keeps the durable
+ * paths off this option for that reason.
  */
 export function withScopeLock<TContainer extends object, T>(
   container: TContainer,

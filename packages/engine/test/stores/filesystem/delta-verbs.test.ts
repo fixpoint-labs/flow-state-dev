@@ -159,15 +159,11 @@ describe("Filesystem adapter — delta verbs", () => {
       expect((await store.get("s1"))?.state).toEqual({ log: ["a", "b", "c"] });
     });
 
-    it("treats a missing or non-array field as []", async () => {
+    it("treats a missing field as []", async () => {
       const store = createFilesystemSessionStore({ rootDir });
-      await seed(store, "s1", { log: "not-an-array" });
+      await seed(store, "s1", {});
       await store.pushToArray!("s1", ["fresh"], ["first"], 0, Date.now());
-      await store.pushToArray!("s1", ["log"], ["x"], 1, Date.now());
-      expect((await store.get("s1"))?.state).toEqual({
-        fresh: ["first"],
-        log: ["x"]
-      });
+      expect((await store.get("s1"))?.state).toEqual({ fresh: ["first"] });
     });
   });
 

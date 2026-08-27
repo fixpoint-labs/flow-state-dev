@@ -17,7 +17,7 @@ export type {
   UserScopeHandle,
 } from "./types/scope";
 export type { ScopeStateOps } from "./types/state";
-export type { AgentType, ItemVisibility } from "./items/types";
+export type { ItemVisibility } from "./items/types";
 export {
   whenAnyItem,
   whenResourceChanged,

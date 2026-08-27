@@ -58,6 +58,7 @@ const SPINE: ValuationSpineState = {
   envelope: { absoluteRating: "Hold", relativeRating: "Overweight", implied: "Overweight", floor: BAND.floor, ceiling: BAND.ceiling, rationale: "x" },
   valuationMethod: "ev-multiples",
   evidenceBasis: "sufficient",
+  periodDisclosure: null,
 };
 
 function basePublished(entry: (typeof ALL_MEMO_KEYS)[keyof typeof ALL_MEMO_KEYS]): MemoState {
@@ -90,6 +91,7 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
     capturePath: null,
     ranAt: "2026-06-25T00:00:00.000Z",
     finalRating: "Overweight",
+    ratingUnanchored: false,
     decisionConfidence: DECISION_CONFIDENCE,
     targetWeightPct: CLAMP.targetWeightPct,
     direction: "long",
@@ -141,6 +143,8 @@ function healthyBundle(): RunArtifactsBundle {
         state: {
           ...state,
           finalRating: "Overweight",
+          ratingUnanchored: false,
+          periodDisclosure: null,
           decisionConfidence: DECISION_CONFIDENCE,
           modelImpliedRating: "Overweight",
           ratingBand: { floor: BAND.floor, ceiling: BAND.ceiling },
@@ -194,13 +198,15 @@ function healthyBundle(): RunArtifactsBundle {
 
   return {
     summary: summary(),
-    valuationSpine: SPINE,
+    valuationSpine: { ...SPINE },
     rewardToRisk: { ...RR, lossAversion: MANDATE.lossAversion, mandateId: MANDATE.id },
     lensConvergence: null,
     decisionSnapshot: {
       ticker: "NVDA",
       asOfDate: "2026-05-06",
       finalRating: "Overweight",
+      ratingUnanchored: false,
+      periodDisclosure: null,
       decisionConfidence: DECISION_CONFIDENCE,
       decisionSummary: "x",
       direction: "long",
@@ -433,7 +439,7 @@ describe("checkRun — rating-envelope", () => {
     const b = healthyBundle();
     const buyBand = ratingBandFor("Buy", false);
     b.valuationSpine!.envelope = {
-      ...b.valuationSpine!.envelope,
+      rationale: b.valuationSpine!.envelope?.rationale ?? "",
       absoluteRating: "Buy",
       relativeRating: "Overweight",
       implied: "Buy",
@@ -469,6 +475,184 @@ describe("checkRun — rating-envelope", () => {
     b.decisionSnapshot!.finalRating = "Sell";
     const report = checkRun(b);
     expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("fail");
+  });
+
+  it("fails (not skips) band-recompute when fairValue is null but the envelope and its other siblings are still populated — a malformed spine, not a coherent withholding", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = null; // corrupted: no periodDisclosure, siblings intact
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("fail");
+  });
+
+  it("skips band-recompute on a genuine FIX-1113 withholding — periodDisclosure set and every cross-statement leg withheld alongside fair value", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.expectedReturn = null;
+    b.valuationSpine!.setupScore = null;
+    b.valuationSpine!.envelope = null;
+    b.valuationSpine!.periodDisclosure = {
+      reason: "periods-disagree",
+      income: "2025-12-31",
+      balance: "2025-09-30",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("skipped");
+  });
+
+  it("THE BUG (Codex review, FIX-1113): a malformed spine with envelope null but siblings populated hard-fails even when the PM has no band to fall back to", () => {
+    // The exact reachability gap: `envelope: null` drives BOTH `spineBand`
+    // to null (below) AND, in a real run, `writer.ts` to leave the PM's own
+    // `ratingBand` null too (it only mirrors a band that exists) — so `band`
+    // ends up null and the OLD code's early skip/return fired before
+    // `band-recompute`'s malformed-spine check ever ran. Reproduced directly:
+    // no snapshot/pm dependency in the malformed check itself, but the
+    // no-band skip must not be what stands between it and running.
+    const b = healthyBundle();
+    b.valuationSpine!.envelope = null; // malformed: siblings still populated, no periodDisclosure
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    (b.memos.find((m) => m.key === pmKey)!.state as MemoState).ratingBand = null;
+    const report = checkRun(b);
+    // Confirms this bundle really does trip the no-band shape the old skip
+    // fired on — otherwise this test would pass for the wrong reason.
+    expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("skipped");
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("fail");
+    // Pinned check-id set — see the `mandate/dial-sanity` sibling test's
+    // comment for why. `pm-band-present` and `clamp-implies-edge` correctly
+    // cannot run here (both need `band`, which is null in this exact shape);
+    // `band-recompute` is the one that does not, and its presence here is
+    // the regression guard. `disclosure-mirrored` / `stale-band-suppressed`
+    // (added the round after this test was written) correctly SKIP here —
+    // `periodDisclosure` is null in this fixture (the spine is malformed,
+    // not withheld), so there is nothing for them to mirror or suppress —
+    // and a skip still emits an id, which is why the pinned set grew rather
+    // than staying the same size. This is the pinned-list mechanism doing
+    // its job: it forced this line to be looked at and explained, not
+    // silently drift.
+    expect(
+      report.checks
+        .filter((r) => r.id.startsWith("rating-envelope/"))
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual([
+      "rating-envelope/band-recompute",
+      "rating-envelope/disclosure-mirrored",
+      "rating-envelope/final-within-band",
+      "rating-envelope/stale-band-suppressed",
+    ]);
+  });
+
+  it("control: a legacy spine-less run still skips band-recompute (nothing to recompute against)", () => {
+    const b = healthyBundle();
+    b.valuationSpine = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("skipped");
+  });
+
+  it("control: a fully populated spine still runs band-recompute normally (passes)", () => {
+    const b = healthyBundle();
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("pass");
+  });
+});
+
+describe("checkRun — rating-envelope disclosure mirrors (Codex review, FIX-1113)", () => {
+  // Nothing in this file compared the spine's own `periodDisclosure` to the
+  // PM memo's or the decision snapshot's mirrors — the exact plumbing this
+  // PR built to make an unanchored rating visible. `writer.ts` derives ONE
+  // local disclosure and assigns it to all three destinations (spine, PM
+  // memo, snapshot), so on a correct run they are always identical.
+  const WITHHELD_DISCLOSURE = {
+    reason: "periods-disagree" as const,
+    income: "2025-12-31",
+    balance: "2025-09-30",
+    cashflow: "2025-12-31",
+    observedNewest: null,
+    anyUndatedWithFigures: false,
+  };
+
+  /** A withheld spine (all four cross-statement legs null, disclosure set) —
+   *  the shape `buildValuationSpine` actually produces. Does NOT touch the
+   *  PM memo / snapshot mirrors — callers set those explicitly per case. */
+  function withheldBundle(): RunArtifactsBundle {
+    const b = healthyBundle();
+    b.valuationSpine!.expectedReturn = null;
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.setupScore = null;
+    b.valuationSpine!.envelope = null;
+    b.valuationSpine!.periodDisclosure = { ...WITHHELD_DISCLOSURE };
+    return b;
+  }
+
+  /** Mirror the withheld disclosure onto the PM memo and snapshot exactly as
+   *  `writer.ts` does, and null the PM's own rating band (nothing to mirror
+   *  when the envelope was withheld). The correct, fully-mirrored case. */
+  function mirrorDisclosure(b: RunArtifactsBundle): void {
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.ratingUnanchored = true;
+    pm.periodDisclosure = { ...WITHHELD_DISCLOSURE };
+    pm.ratingBand = null;
+    b.decisionSnapshot!.ratingUnanchored = true;
+    b.decisionSnapshot!.periodDisclosure = { ...WITHHELD_DISCLOSURE };
+  }
+
+  it("THE BUG: a withheld spine whose PM memo AND snapshot dropped the mirror hard-fails, not skips or passes", () => {
+    const b = withheldBundle();
+    // PM/snapshot left at healthyBundle's ordinary defaults — ratingUnanchored:
+    // false, periodDisclosure: null — exactly what a dropped mirror looks like.
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("fail");
+  });
+
+  it("THE BUG: a withheld spine with a correctly-mirrored disclosure but a STALE populated PM band still hard-fails", () => {
+    const b = withheldBundle();
+    mirrorDisclosure(b);
+    // Mirror is correct, but the PM band was left populated (stale — a
+    // leftover from before the spine started withholding, or a write bug).
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.ratingBand = { floor: "Hold", ceiling: "Buy" };
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("pass");
+    expect(byId(report.checks, "rating-envelope/stale-band-suppressed")?.status).toBe("fail");
+  });
+
+  it("a mismatched mirror (different reason/periods than the spine) hard-fails — a disagreeing mirror is worse than an absent one", () => {
+    const b = withheldBundle();
+    mirrorDisclosure(b);
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    // The PM mirrors a DIFFERENT disclosure than the spine actually carries.
+    pm.periodDisclosure = { ...WITHHELD_DISCLOSURE, reason: "period-unstated" };
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("fail");
+  });
+
+  it("control: a withheld spine correctly mirrored on both PM memo and snapshot, with no stale band, passes both", () => {
+    const b = withheldBundle();
+    mirrorDisclosure(b);
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("pass");
+    expect(byId(report.checks, "rating-envelope/stale-band-suppressed")?.status).toBe("pass");
+  });
+
+  it("control: an ordinary un-withheld run with a real PM band still passes normally — the new checks skip, not fail", () => {
+    const b = healthyBundle();
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("skipped");
+    expect(byId(report.checks, "rating-envelope/stale-band-suppressed")?.status).toBe("skipped");
+    expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("pass");
+  });
+
+  it("control: a legacy spine-less run still skips both new checks", () => {
+    const b = healthyBundle();
+    b.valuationSpine = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("skipped");
+    expect(byId(report.checks, "rating-envelope/stale-band-suppressed")?.status).toBe("skipped");
   });
 });
 
@@ -582,6 +766,68 @@ describe("checkRun — mandate", () => {
     b.decisionSnapshot!.mandateVerdict = null;
     const report = checkRun(b);
     expect(byId(report.checks, "mandate/mirror-present")?.status).toBe("fail");
+    // Pinned check-id set (Codex re-audit, FIX-1113 — "is there a way to make
+    // the class visible rather than found one at a time"). This is the exact
+    // shape `mandate/dial-sanity` went silently absent from. Every id in
+    // this group that reads `decision`/`snapshot` correctly cannot run here
+    // (mirror-present's own hard-fail is the reason) — `dial-sanity` is the
+    // one that reads neither, and its presence in this pinned list is the
+    // regression guard: a future change that re-introduces the same "gated
+    // by a condition it does not depend on" shape changes this SET, not
+    // just one check's status, and a changed pinned list forces a reviewed
+    // answer to "why did this id appear or disappear", rather than a silent
+    // drift no test would catch. Scoped to one prefix, on one already-named
+    // scenario — not a general framework, and not a claim that every
+    // scenario needs this (most don't: the bug only bites when an id is
+    // independent of what gates its neighbours, which is a fact about THAT
+    // id, not something a generic assertion can derive).
+    expect(
+      report.checks
+        .filter((r) => r.id.startsWith("mandate/"))
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(["mandate/dial-sanity", "mandate/mirror-present"]);
+  });
+
+  it("THE BUG (Codex re-audit, FIX-1113): dial-sanity still runs when a mandate-aware run drops its mandate mirror, rather than going silent", () => {
+    // `mandate/dial-sanity` reads only `mandate.capacityVetoCapPct` /
+    // `mandate.unclearedCapPct` — nothing about `decision`/`snapshot` — but
+    // sat after the "mandate-aware run missing its mirror" hard-fail+return,
+    // which DOES need them. On that malformed combination the check id was
+    // simply absent from the report, not even reported as skipped.
+    const b = healthyBundle();
+    b.decisionSnapshot!.mandateVerdict = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/mirror-present")?.status).toBe("fail");
+    expect(byId(report.checks, "mandate/dial-sanity")?.status).toBe("pass");
+  });
+
+  it("control: dial-sanity hard-fails when the caps are actually inverted", () => {
+    const b = healthyBundle();
+    b.riskMandate = { ...b.riskMandate!, capacityVetoCapPct: b.riskMandate!.unclearedCapPct + 1 };
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/dial-sanity")?.status).toBe("fail");
+  });
+
+  it("control: a genuinely mandate-blind run still skips dial-sanity (nothing to check it against)", () => {
+    const b = healthyBundle();
+    b.riskMandate = null;
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.mandateDecision = null;
+    b.decisionSnapshot!.mandateId = null;
+    b.decisionSnapshot!.mandateVerdict = null;
+    b.decisionSnapshot!.rewardToRiskLossAdjustedGlr = null;
+    b.decisionSnapshot!.worstCaseReturnPct = null;
+    b.decisionSnapshot!.capacityVetoed = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/dial-sanity")?.status).toBe("skipped");
+  });
+
+  it("control: a healthy bundle still hard-passes dial-sanity", () => {
+    const b = healthyBundle();
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/dial-sanity")?.status).toBe("pass");
   });
 
   it("fails when the snapshot capacity-veto mirror disagrees with recomputation", () => {
@@ -1103,6 +1349,148 @@ describe("checkRun — valuation", () => {
     };
     const report = checkRun(b);
     expect(byId(report.checks, "valuation/triangulation")?.status).toBe("fail");
+  });
+});
+
+/**
+ * FIX-1113 P2 — `valuation/abstention-honesty` skipped on ANY null fair-value
+ * leg, regardless of `periodDisclosure`. A withheld spine (the three financial
+ * statements could not be placed at one fiscal period) is coherent by
+ * construction — every cross-statement leg is withheld together. A null
+ * fair-value leg with a sibling leg (dcf / triangulation / setupScore /
+ * envelope) still populated is not a withholding at all: it is a corrupted
+ * artifact, and the old code reported it as a benign skip because the early
+ * `return` did not depend on `periodDisclosure`.
+ */
+describe("checkRun — valuation/abstention-honesty (FIX-1113 P2)", () => {
+  it("hard-fails a null fair-value leg with NO periodDisclosure while a sibling leg is still populated (corrupted, not withheld)", () => {
+    const b = healthyBundle();
+    // The healthy fixture's spine already carries a populated `setupScore`
+    // and `envelope`; corrupt only `fairValue` and leave `periodDisclosure`
+    // null (its ordinary, anchored value) and the siblings untouched.
+    b.valuationSpine!.fairValue = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe(
+      "fail",
+    );
+  });
+
+  it("hard-fails a null fair-value leg with periodDisclosure SET but a sibling leg still populated (a mismatched withholding)", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.periodDisclosure = {
+      reason: "periods-disagree",
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    // setupScore / envelope are still populated (from the healthy fixture) —
+    // a genuine withholding would have withheld them too.
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe(
+      "fail",
+    );
+  });
+
+  // Control arm: a GENUINELY withheld spine — periodDisclosure set AND every
+  // cross-statement leg withheld along with fair value — must still skip.
+  // Without this, the fix above would read as "always fail the honest case
+  // too", which is the wrong direction to be wrong in.
+  it("(control) still skips a genuinely withheld spine — periodDisclosure set and every cross-statement leg withheld", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.expectedReturn = null;
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.dcf = null;
+    b.valuationSpine!.triangulation = null;
+    b.valuationSpine!.setupScore = null;
+    b.valuationSpine!.envelope = null;
+    b.valuationSpine!.periodDisclosure = {
+      reason: "periods-disagree",
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe(
+      "skipped",
+    );
+  });
+
+  it("THE BUG (Codex re-audit, FIX-1113): dcf-abstention still runs and catches its own contradiction even when fairValue is malformed-null", () => {
+    // The early `return` after abstention-honesty's verdict made every OTHER
+    // check in this function unreachable whenever fairValue was null —
+    // including dcf-abstention's own, INDEPENDENT contradiction check on a
+    // dcf leg that has nothing to do with why fairValue is null. A spine can
+    // be malformed in two places at once; the report must not go silent on
+    // the second one because the first one already fired.
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = null; // malformed: no periodDisclosure, siblings intact
+    b.valuationSpine!.dcf = {
+      intrinsicValue: 100,
+      marginOfSafety: 0.2,
+      discountRate: 0.09,
+      stage1Growth: 0.1,
+      terminalValueShare: 0.7,
+      impliedGrowth: 0.12,
+      expectationsGap: 0.02,
+      reliability: "ok",
+      reverseDcfStatus: "solved",
+      unavailableReason: "non-positive-fcf", // contradiction: set alongside available: false's opposite shape below
+      method: "dcf",
+      available: false, // available:false must retain NO valuation numbers — it retains all of them
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe("fail");
+    expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("fail");
+    // Pinned check-id set — see the `mandate/dial-sanity` sibling test's
+    // comment for why. `fair-value-abstention` correctly cannot validate a
+    // null fairValue (it now gets its own explicit skip, not silence);
+    // `triangulation` correctly skips (this spine's triangulation leg is
+    // null, unrelated to the fairValue corruption). `dcf-abstention`'s
+    // presence here is the regression guard: it reads only `dcf`, which is
+    // populated and contradictory in this test.
+    expect(
+      report.checks
+        .filter((r) => r.id.startsWith("valuation/"))
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual([
+      "valuation/abstention-honesty",
+      "valuation/dcf-abstention",
+      "valuation/fair-value-abstention",
+      "valuation/triangulation",
+    ]);
+  });
+
+  it("control: a genuinely withheld spine (dcf null too) still skips dcf-abstention, not fails it", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.expectedReturn = null;
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.dcf = null;
+    b.valuationSpine!.triangulation = null;
+    b.valuationSpine!.setupScore = null;
+    b.valuationSpine!.envelope = null;
+    b.valuationSpine!.periodDisclosure = {
+      reason: "periods-disagree",
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe("skipped");
+    expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("skipped");
+  });
+
+  it("control: a fully healthy bundle still passes fair-value-abstention", () => {
+    const b = healthyBundle();
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/fair-value-abstention")?.status).toBe("pass");
   });
 });
 

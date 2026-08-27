@@ -243,6 +243,51 @@ describe("buildReportSummary — decision", () => {
     );
     expect(summary.decision?.primaryScenario).toBeNull();
   });
+
+  // FIX-1113 — the desk withholds the rating envelope (never the rating) when
+  // the three statements do not share a fiscal period, and marks the record
+  // with `ratingUnanchored` + `periodDisclosure`. The PM memo already carries
+  // both fields (`writer.ts`); the aggregate must carry them through to the
+  // report surfaces rather than stopping at the stored resource.
+  it("carries ratingUnanchored + periodDisclosure through to the decision summary", () => {
+    const disclosure = {
+      reason: "periods-disagree" as const,
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({
+            finalRating: "Buy",
+            ratingUnanchored: true,
+            periodDisclosure: disclosure,
+          }),
+        ],
+      ]),
+      null,
+    );
+    expect(summary.decision?.ratingUnanchored).toBe(true);
+    expect(summary.decision?.periodDisclosure).toEqual(disclosure);
+  });
+
+  it("leaves ratingUnanchored false and periodDisclosure null on an ordinary anchored decision", () => {
+    const summary = buildReportSummary(
+      mapOf([
+        [
+          "portfolioManager",
+          memo({ finalRating: "Buy", ratingUnanchored: false, periodDisclosure: null }),
+        ],
+      ]),
+      null,
+    );
+    expect(summary.decision?.ratingUnanchored).toBe(false);
+    expect(summary.decision?.periodDisclosure).toBeNull();
+  });
 });
 
 describe("buildReportSummary — conviction strip", () => {

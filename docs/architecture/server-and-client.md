@@ -113,12 +113,10 @@ const router = createFlowApiRouter({
   stores: createInMemoryStores(),
 });
 
-// Optional runtime safeguards for long-lived servers
+// Optional runtime safeguard for long-lived servers
 const guardedRouter = createFlowApiRouter({
   registry,
   maxResponseBufferSize: 10_000,
-  maxConcurrentStreams: 1_000,
-  staleStreamTtlMs: 300_000,
 });
 ```
 

@@ -2,6 +2,7 @@ import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig, GeneratorHistoryConfig, GeneratorSlot } from "../blocks";
 import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
+import { toUserContent } from "./to-user-content";
 
 export const decomposerTaskSchema = z.object({
   id: z.string(),
@@ -37,14 +38,6 @@ export interface DecomposerConfig<
    * or `"trace"` for observability-only runs.
    */
   itemVisibility?: ItemVisibility;
-}
-
-function toUserContent(input: unknown): string {
-  if (typeof input === "string") {
-    return input;
-  }
-
-  return JSON.stringify(input, null, 2);
 }
 
 /**

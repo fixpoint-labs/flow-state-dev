@@ -24,6 +24,11 @@ import { PHASE_1_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { asDataBlock } from "../../lib/helpers";
 import { computeValuation, formatValuation } from "../../lib/valuation";
+import {
+  analystStatementDisclosure,
+  formatPeriodMismatch,
+} from "../../lib/statement-set-period";
+import { financialsDataResource } from "../../financials-data-resource";
 import { loadPrompt } from "../../lib/prompt";
 import { defineAnalyst } from "../_recipe/define-analyst";
 import { thesisOutputSchema } from "./thesis-schema";
@@ -87,11 +92,48 @@ const disclosurePrompt = loadPrompt("agents/analysts/prompts/disclosure.prompt.m
 // Fundamentals
 // ---------------------------------------------------------------------------
 
+/** The three `*PeriodObservation` fields off the session's `financialsData`
+ *  spine, in the shape `analystStatementDisclosure`'s second argument takes.
+ *  Absent whenever the resource hasn't been written (fixture mode never runs
+ *  the live ladder; a peer/benchmark probe never writes the subject's
+ *  resource) — `analystStatementDisclosure` degrades correctly on `undefined`. */
+function financialsObservations(ctx: { resources: any }) {
+  const state = ctx.resources.financialsData?.state;
+  return {
+    incomeStatement: state?.incomeStatementPeriodObservation,
+    balanceSheet: state?.balanceSheetPeriodObservation,
+    cashflow: state?.cashflowPeriodObservation,
+  };
+}
+
+/**
+ * One disclosure per render, shared by the `valuation` and `periodMismatch`
+ * context slots below. Without this, each slot independently re-reads
+ * `ctx.resources.financialsData.state` — a deep clone of the whole financials
+ * spine, including all three raw statement payloads — to recompute the exact
+ * same verdict. Keyed by `ctx` object identity: the framework hands the SAME
+ * ctx reference to every context slot within one render (and `input` with
+ * it), so this is exactly one entry per render and nothing survives past it —
+ * a `WeakMap` drops the entry once that ctx is no longer referenced elsewhere.
+ */
+const analystDisclosureCache = new WeakMap<
+  object,
+  ReturnType<typeof analystStatementDisclosure>
+>();
+
+function analystDisclosureFor(input: any, ctx: { resources: any }) {
+  if (analystDisclosureCache.has(ctx)) return analystDisclosureCache.get(ctx) ?? null;
+  const disclosure = analystStatementDisclosure(input, financialsObservations(ctx));
+  analystDisclosureCache.set(ctx, disclosure);
+  return disclosure;
+}
+
 const fundamentalsGenerator = generator({
   name: "fundamentals-analyst-generator",
   itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.fundamentals.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
+  resources: { financialsData: financialsDataResource },
   inputSchema: z.object({
     balanceSheet: toolOutputSchemas.get_balance_sheet,
     incomeStatement: toolOutputSchemas.get_income_statement,
@@ -99,9 +141,31 @@ const fundamentalsGenerator = generator({
     fundamentals: toolOutputSchemas.get_fundamentals,
     fundamentalsContext: toolOutputSchemas.discover_fundamentals_context,
   }),
+  // THE SECOND VALUATION SITE (FIX-1113). This analyst computes and publishes
+  // its OWN valuation from its OWN tool payloads, BEFORE the valuation spine
+  // exists — so a guard placed on the spine is structurally invisible here.
+  // Both sites call the same predicate, and both now read the same
+  // observations: the analyst's own tool fan-out (`.parallel`, in
+  // `define-analyst.ts`) is awaited before this generator runs, and it writes
+  // to the SAME `financialsData` resource the spine reads — so part (a)
+  // (uniform staleness) fires here too, not only at the spine.
+  //
+  // Only the `valuation` half is DETERMINISTIC. The `periodMismatch` half is
+  // ADVISORY: the analyst is also handed the three raw statements in `data` and
+  // its prompt asks it to divide one by another, and no computation seam
+  // reaches a division a model performs in prose. Telling it the periods and
+  // telling it not to combine them is the ceiling. A memo can still carry a
+  // figure the spine withheld.
   context: {
     data: (input) => asDataBlock(input),
-    valuation: (input: any) => formatValuation(computeValuation(input)),
+    valuation: (input: any, ctx) =>
+      formatValuation(
+        computeValuation({
+          ...input,
+          periodsCoherent: analystDisclosureFor(input, ctx) == null,
+        }),
+      ),
+    periodMismatch: (input: any, ctx) => formatPeriodMismatch(analystDisclosureFor(input, ctx)),
   },
   ...definePromptFile(fundamentalsPrompt),
   outputSchema: thesisOutputSchema,

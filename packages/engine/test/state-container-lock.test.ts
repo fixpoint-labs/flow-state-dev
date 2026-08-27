@@ -1,9 +1,17 @@
+import { defineFlow, handler } from "@flow-state-dev/core";
 import type { StateContainer } from "@flow-state-dev/core/types";
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   ConcurrentModificationError,
+  continueRequest,
+  createExecutionContext,
+  createFlowRegistry,
+  createInMemoryStores,
   createScopeStateOps,
   createStateContainer,
+  detectInterruptedRequests,
+  runAction,
   ScopeMutationTimeoutError
 } from "../src";
 import type { CASPersist } from "../src/stores/cas";
@@ -222,5 +230,475 @@ describe("applyMutation — external-store (CAS) branch", () => {
     // strictly so persist always sees expectedVersion === storeVersion.
     expect(conflictsObserved).toBeGreaterThan(0);
     expect(container.read().count).toBe(3);
+  });
+});
+
+describe("applyMutation — persist + serialize (request-scope) branch", () => {
+  function versionedPersist<TState extends { count: number }>(): {
+    persist: CASPersist<TState>;
+    persistCount: () => number;
+  } {
+    let store: TState = { count: 0 } as TState;
+    let storeVersion = 0;
+    let persistCount = 0;
+    const persist: CASPersist<TState> = async (state, expectedVersion) => {
+      persistCount += 1;
+      if (expectedVersion !== storeVersion) {
+        return {
+          ok: false,
+          currentState: store,
+          currentVersion: storeVersion
+        };
+      }
+      storeVersion += 1;
+      store = state;
+      return { ok: true, version: storeVersion };
+    };
+    return { persist, persistCount: () => persistCount };
+  }
+
+  it("throws ConcurrentModificationError on a wide persist fan-out without serialize", async () => {
+    type State = { count: number };
+    const container = createStateContainer<State>({ count: 0 }, 0);
+    const { persist } = versionedPersist<State>();
+    const ops = createScopeStateOps<State>(container, {
+      persist,
+      cas: { maxRetries: 3, baseDelayMs: 0 }
+    });
+
+    const N = 8;
+    const results = await Promise.allSettled(
+      Array.from({ length: N }, () =>
+        ops.atomicState((state) => ({ count: state.count + 1 }))
+      )
+    );
+
+    expect(
+      results.some(
+        (r) =>
+          r.status === "rejected" &&
+          r.reason instanceof ConcurrentModificationError
+      )
+    ).toBe(true);
+  });
+
+  it("commits every write on a wide persist fan-out when serialize is set", async () => {
+    type State = { count: number };
+    const container = createStateContainer<State>({ count: 0 }, 0);
+    const { persist, persistCount } = versionedPersist<State>();
+    const ops = createScopeStateOps<State>(container, {
+      persist,
+      serialize: true
+    });
+
+    const N = 8;
+    await expect(
+      Promise.all(
+        Array.from({ length: N }, () =>
+          ops.atomicState((state) => ({ count: state.count + 1 }))
+        )
+      )
+    ).resolves.toEqual(Array.from({ length: N }, () => true));
+
+    expect(container.read().count).toBe(N);
+    expect(container.getVersion()).toBe(N);
+    expect(persistCount()).toBe(N);
+  });
+
+  it("ignores mutationTimeoutMs so an abandoned caller cannot leave a write in flight", async () => {
+    // `withScopeLock`'s timeout rejects the caller but does NOT cancel the
+    // mutation. On a durable path that is a corruption primitive, not a
+    // safety net: the caller gives up, the runtime terminalizes the request,
+    // and the closure it abandoned persists afterwards. The serialize branch
+    // must therefore drop the option rather than honor it.
+    type State = { count: number };
+    const container = createStateContainer<State>({ count: 0 }, 0);
+
+    let persistStarted = 0;
+    const persist: CASPersist<State> = async (state) => {
+      persistStarted += 1;
+      await new Promise<void>((resolve) => setTimeout(resolve, 60));
+      return { ok: true, version: 1, record: state };
+    };
+
+    const ops = createScopeStateOps<State>(container, {
+      persist,
+      serialize: true,
+      mutationTimeoutMs: 10
+    });
+
+    // Pre-fix this rejects at 10ms while `persist` keeps running to 60ms.
+    await expect(
+      ops.atomicState((state) => ({ count: state.count + 1 }))
+    ).resolves.toBe(true);
+
+    expect(persistStarted).toBe(1);
+    expect(container.read().count).toBe(1);
+  });
+
+  it("preserves FIFO order and skips persist on no-op writes when serialize is set", async () => {
+    type State = { values: number[] };
+    const container = createStateContainer<State>({ values: [] }, 0);
+    let persistCount = 0;
+    let storeVersion = 0;
+    const persist: CASPersist<State> = async (state, expectedVersion) => {
+      persistCount += 1;
+      if (expectedVersion !== storeVersion) {
+        return {
+          ok: false,
+          currentState: container.read() as State,
+          currentVersion: storeVersion
+        };
+      }
+      storeVersion += 1;
+      return { ok: true, version: storeVersion };
+    };
+    const ops = createScopeStateOps<State>(container, {
+      persist,
+      serialize: true
+    });
+
+    const N = 8;
+    await Promise.all(
+      Array.from({ length: N }, (_, i) =>
+        ops.atomicState((state) => ({ values: [...state.values, i] }))
+      )
+    );
+    expect(container.read().values).toEqual(Array.from({ length: N }, (_, i) => i));
+    expect(await ops.atomicState((state) => ({ values: state.values }))).toBe(
+      false
+    );
+    expect(persistCount).toBe(N);
+    expect(container.getVersion()).toBe(N);
+  });
+});
+
+describe("scope write-path wiring — createExecutionContext", () => {
+  // The blocks above prove the `serialize` branch behaves correctly once it is
+  // asked for. They do not prove the runtime asks for it: they hand
+  // `serialize: true` to `createScopeStateOps` by hand. Without the two cases
+  // below, deleting `serialize: true` from `createExecutionContext`'s
+  // `requestOps` leaves every other test in this file green and puts FIX-1155
+  // straight back.
+  //
+  // N is wider than any CAS retry budget in play. A lockstep fan-out lands at
+  // most `maxRetries + 1` writes on the CAS path, because a single attempt
+  // round only advances the store version once — so the count below is the
+  // whole assertion, not a timing coincidence.
+  const N = 12;
+
+  function fanOutBlock() {
+    return handler<{ value: string }, { ok: boolean }>({
+      name: "fanout-handler",
+      execute: () => ({ ok: true })
+    });
+  }
+
+  it("request scope commits a fan-out wider than the CAS retry budget", async () => {
+    const flow = defineFlow({
+      kind: "fanout-request-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: fanOutBlock()
+        }
+      }
+    })();
+    const stores = createInMemoryStores();
+
+    // Serializing is only the right fix if the fan-out stops CONFLICTING, not
+    // if it merely survives on the retry budget. Count refused writes at the
+    // store boundary: under the lock each mutator reads a current version, so
+    // the correct number is zero and the CAS attempts stay unspent — available
+    // for the cross-context race they exist for.
+    let conflicts = 0;
+    const realSet = stores.request.set.bind(stores.request);
+    stores.request.set = async (id, value, expectedVersion) => {
+      const result = await realSet(id, value, expectedVersion);
+      if (!result.ok) conflicts += 1;
+      return result;
+    };
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_fanout",
+      sessionId: "sess_fanout",
+      userId: "user_fanout",
+      stores,
+      requestState: { count: 0 }
+    });
+
+    // Pre-fix this rejects: request scope drove `runWithCAS` on the default
+    // budget of 3 retries, so 8 of these 12 writers exhausted it and threw
+    // ConcurrentModificationError.
+    await expect(
+      Promise.all(
+        Array.from({ length: N }, () =>
+          ctx.request.atomicState((state) => ({
+            count: ((state as { count?: number }).count ?? 0) + 1
+          }))
+        )
+      )
+    ).resolves.toEqual(Array.from({ length: N }, () => true));
+
+    expect(ctx.request.state).toEqual({ count: N });
+
+    // Serializing must not cost per-write durability. The store — not just the
+    // in-request container — has to carry the result, because a resumed
+    // request reads its state back from there.
+    const saved = await stores.request.get("req_fanout");
+    expect(saved?.state).toEqual({ count: N });
+
+    expect(conflicts).toBe(0);
+  });
+
+  it("does not put request-scope durable writes on the non-cancelling mutation timeout", async () => {
+    // The timeout rejects the caller and leaves the mutation running. On a
+    // durable path that hands the store a write nobody is waiting for any
+    // more, and `runAction` terminalizes as soon as the caller's rejection
+    // reaches it. This case plays that sequence out against the real wiring:
+    // a slow store `set`, a tiny budget, then the terminal patch runAction
+    // writes on its failure path. Wire the timeout into `requestOps` and the
+    // request comes back from `failed` to `in_progress` with its pre-write
+    // state.
+    const stores = createInMemoryStores();
+    const realSet = stores.request.set.bind(stores.request);
+    let delayNextSetMs = 0;
+    stores.request.set = async (id, value, expectedVersion) => {
+      const delay = delayNextSetMs;
+      delayNextSetMs = 0;
+      if (delay > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      }
+      return realSet(id, value, expectedVersion);
+    };
+
+    const flow = defineFlow({
+      kind: "slow-store-request-flow",
+      // Small enough that the store write below cannot finish inside it.
+      request: { mutationTimeoutMs: 20 },
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: fanOutBlock()
+        }
+      }
+    })();
+
+    const requestId = "req_slow_store";
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId,
+      sessionId: "sess_slow_store",
+      userId: "user_slow_store",
+      stores,
+      requestState: { count: 0 }
+    });
+
+    delayNextSetMs = 80;
+    const write = ctx.request.atomicState((state) => ({
+      count: ((state as { count?: number }).count ?? 0) + 1
+    }));
+    const outcome = await write.then(
+      () => "settled" as const,
+      (error: unknown) => error
+    );
+
+    // runAction's terminal patch, verbatim in shape: read the record, stamp
+    // the status, write it back with "any". It carries the record's existing
+    // version, so it leaves the version the abandoned write expects intact.
+    const beforeTerminal = await stores.request.get(requestId);
+    const failedAt = Date.now();
+    await stores.request.set(
+      requestId,
+      {
+        ...beforeTerminal!,
+        status: "failed",
+        failedAtMs: failedAt,
+        updatedAt: failedAt
+      },
+      "any"
+    );
+
+    // Long enough for anything still in flight to land on top of it.
+    await new Promise<void>((resolve) => setTimeout(resolve, 120));
+
+    const after = await stores.request.get(requestId);
+    expect(after?.status).toBe("failed");
+    expect(after?.failedAtMs).toBe(failedAt);
+    expect(after?.state).toEqual({ count: 1 });
+    expect(outcome).toBe("settled");
+  });
+
+  it("session scope stays on CAS and still surfaces ConcurrentModificationError", async () => {
+    const flow = defineFlow({
+      kind: "fanout-session-flow",
+      // Pinned rather than defaulted so this case cannot be quietly rewritten
+      // by a change to DEFAULT_MAX_RETRIES. That `session.cas` reaches the
+      // scope at all is itself part of the point — request scope has no `cas`
+      // option to configure.
+      session: { cas: { maxRetries: 2, baseDelayMs: 0 } },
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: fanOutBlock()
+        }
+      }
+    })();
+    const stores = createInMemoryStores();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_session_fanout",
+      sessionId: "sess_session_fanout",
+      userId: "user_session_fanout",
+      stores,
+      sessionState: { count: 0 }
+    });
+
+    const results = await Promise.allSettled(
+      Array.from({ length: N }, () =>
+        ctx.session.atomicState((state) => ({
+          count: ((state as { count?: number }).count ?? 0) + 1
+        }))
+      )
+    );
+
+    // Deliberate, not a leftover: a remote authority can advance the session
+    // version underneath the local cache, so session/user/org keep the
+    // optimistic loop and keep surfacing conflicts at the durable boundary.
+    // If this ever comes back clean, someone handed session scope
+    // `serialize: true` as well and collapsed two postures that must differ.
+    const rejections = results.filter((r) => r.status === "rejected");
+    expect(rejections.length).toBeGreaterThan(0);
+    expect(
+      rejections.every(
+        (r) =>
+          (r as PromiseRejectedResult).reason instanceof
+          ConcurrentModificationError
+      )
+    ).toBe(true);
+  });
+});
+
+describe("request-scope writes under a recovery continuation", () => {
+  // The lock is per-`StateContainer`, and `createExecutionContext` builds a
+  // fresh container per run. So the FIFO queue only ever orders writers that
+  // share ONE execution context — it cannot order two contexts against each
+  // other, even in a single process. Recovery produces exactly that pair: the
+  // stale-heartbeat sweep flips a still-running request to `interrupted`, and
+  // `/continue` (which gates on precisely that status) starts a second worker
+  // on the same request id while the first is still alive and still able to
+  // write.
+  //
+  // With the serialize branch persisting once and refusing to retry, the
+  // second writer to reach the store lost its write outright. That is the
+  // regression this case pins: a conflict that CAS would have resolved by
+  // re-reading and re-applying became a hard `ConcurrentModificationError`.
+  it("retries a conflicting write instead of failing it outright", async () => {
+    const stores = createInMemoryStores();
+
+    // One barrier both workers park on, so the original is provably still
+    // in-flight (not merely un-terminalized) when the continuation starts.
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    const entered: Array<() => void> = [];
+    const parked = [0, 1].map(
+      (i) =>
+        new Promise<void>((resolve) => {
+          entered[i] = resolve;
+        })
+    );
+
+    let workersStarted = 0;
+    const outcomes: Array<{ worker: number; error?: string }> = [];
+
+    const parkedBlock = handler({
+      name: "parked-writer",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        const me = workersStarted;
+        workersStarted += 1;
+        entered[me]?.();
+        await barrier;
+
+        // `atomicState` carries a `set` hint, so `createScopePersist` keeps the
+        // numeric `expectedVersion` rather than downgrading to `"any"`. That is
+        // the whole exposed surface: commutative hints ride `"any"` and cannot
+        // conflict here.
+        try {
+          await ctx.request.atomicState((state) => ({
+            writes: [...((state as { writes?: number[] }).writes ?? []), me]
+          }));
+          outcomes.push({ worker: me });
+        } catch (error) {
+          outcomes.push({ worker: me, error: (error as Error).name });
+        }
+        return { ok: true };
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "recovery-overlap-flow",
+      actions: {
+        run: { inputSchema: z.any(), block: parkedBlock }
+      }
+    })({ id: "recovery-overlap-flow" });
+
+    const flowRegistry = createFlowRegistry();
+    flowRegistry.register(flow as never);
+
+    const requestId = "req_recovery_overlap";
+    // Worker 1: the original run. Deliberately not awaited — it must still be
+    // parked (and still holding a live container) when recovery fires.
+    const original = runAction({
+      flow,
+      actionName: "run",
+      requestId,
+      sessionId: "sess_recovery_overlap",
+      userId: "user_recovery_overlap",
+      input: {},
+      stores,
+      runtimeConfig: {}
+    });
+    await parked[0];
+
+    // The sweep writes `status: "interrupted"` with `"any"`, so it carries the
+    // record's version through untouched. Both containers therefore hold the
+    // SAME expected version — the conflict below comes from the two workers,
+    // not from the sweep bumping the record underneath them.
+    const swept = await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    expect(swept.map((s) => s.entry.requestId)).toContain(requestId);
+    expect((await stores.request.get(requestId))?.status).toBe("interrupted");
+
+    // Worker 2: the continuation, under the same request id.
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry,
+      runtimeConfig: {}
+    });
+    await parked[1];
+
+    releaseBarrier();
+    await Promise.allSettled([original, finished]);
+
+    // Pre-fix: the second writer to reach the store rejects with
+    // ConcurrentModificationError, because the serialize branch persisted once
+    // and threw on conflict instead of refreshing and re-applying.
+    expect(outcomes).toHaveLength(2);
+    expect(outcomes.filter((o) => o.error !== undefined)).toEqual([]);
+
+    // Both writes have to be observable in the store, not just non-throwing.
+    // A retry that re-read and re-applied keeps the loser's append; one that
+    // silently gave up would leave a single entry here.
+    const saved = await stores.request.get(requestId);
+    expect(((saved?.state as { writes?: number[] })?.writes ?? []).slice().sort()).toEqual([0, 1]);
   });
 });

@@ -5,8 +5,14 @@
  *   - `pending` → loud-badge "awaiting upstream phases" card.
  *   - `writing` → `WritingSkeleton`.
  *   - `published` AND `agentName === "portfolioManager"` → `PmHero` (P5).
+ *   - `published` AND a phase-2b lens agent → `LensCard`.
+ *   - `published` AND `agentName === "trader"` → `TraderProposalCard` (P3).
+ *   - `published` AND a phase-4 risk agent → `RiskCritiqueCard` (P4).
  *   - `published` otherwise → `ThesisHeader` + `ThesisBody`.
  *   - `error` → red marker + error message.
+ *
+ * The three dedicated-renderer arms route off the registry-derived sets in
+ * `memo-renderer-routing.ts`, never a hand-maintained list.
  *
  * Live status is derived from the memos collection itself: the collection
  * opts into `client: { live: true }` (FIX-739), so `useResourceCollectionList`
@@ -57,6 +63,13 @@ import { ThesisBody } from "./thesis-body";
 import { PmHero } from "./pm-hero";
 import { ReportThesisPanel } from "./report-thesis-panel";
 import { LensCard } from "./lens-card";
+import { TraderProposalCard } from "./trader-proposal-card";
+import { RiskCritiqueCard } from "./risk-critique-card";
+import {
+  LENS_AGENTS,
+  RISK_AGENTS,
+  TRADER_AGENTS,
+} from "./memo-renderer-routing";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
 import { ReportSummary } from "@/components/summary/report-summary";
@@ -66,8 +79,6 @@ import {
   AGENTS,
   ALL_MEMO_KEYS,
   COLLECTION_KEY_TO_SHORT,
-  LENS_IDS,
-  PHASE_2B_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
   shortNameForAgent,
@@ -78,9 +89,7 @@ import type { MemoStatus } from "@/flows/analysis/resources";
 import { memosCollection } from "@/flows/analysis/resources";
 import {
   buildTradeLevelModel,
-  hasTradeStance,
   storedTradeLevelsFrom,
-  withDisplayLevelMetrics,
 } from "@/flows/analysis/lib/trade-levels";
 import type { ClientDataOf } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -93,13 +102,6 @@ type ThesesPaneProps = {
    *  then shows no jump control. */
   onJumpToTranscript?: (agent: AgentName) => void;
 };
-
-/** The four phase-2b lens agents, derived READ-ONLY from the Slice-5
- *  `PHASE_2B_MEMO_KEYS` registry. A `published` memo for one of these agents
- *  renders as a dedicated `LensCard` rather than the generic memo doc. */
-const LENS_AGENTS: ReadonlySet<AgentName> = new Set(
-  LENS_IDS.map((id) => PHASE_2B_MEMO_KEYS[id].agentName),
-);
 
 /** Order memos are expected to publish in. Auto-follow walks back-to-front. */
 const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
@@ -425,20 +427,6 @@ function MemoDoc({
     return item.clientData ?? null;
   }, [item, collectionKey]);
 
-  // FIX-780 — the chips a memo doc shows are level NAMES when the memo records a
-  // stance (the trader's row is `direction, size, stop, target, conviction`), so
-  // they fall under the one rule. Correcting them at commit is not enough: a doc
-  // opened from a historical report never runs a commit, and a pre-FIX-780 trader
-  // memo persisted `stop` / `target` on a flat call — so this view showed a
-  // stop-loss on a stand-aside decision. Memos with no stance (analysts, lenses,
-  // researchers) pass through untouched; a legacy pair is captioned, not dropped.
-  const displayMetrics = useMemo<Record<string, string> | null>(() => {
-    const metrics = data?.metrics ?? null;
-    if (metrics === null) return null;
-    if (!hasTradeStance(data?.direction)) return metrics;
-    return withDisplayLevelMetrics(storedTradeLevelsFrom(data), metrics);
-  }, [data]);
-
   if (status === "unavailable" || status === "pending") {
     return <PendingDoc agent={agent} />;
   }
@@ -499,6 +487,30 @@ function MemoDoc({
     return <LensCard agent={agent} data={data} />;
   }
 
+  // FIX-1061 — the trader and the four risk memos carry structured fields the
+  // generic renderer never drew. Both cards take `onJumpToTranscript`: it is
+  // the only navigation affordance a memo header has, and re-routing five memos
+  // would silently delete it.
+  if (TRADER_AGENTS.has(agent)) {
+    return (
+      <TraderProposalCard
+        agent={agent}
+        data={data}
+        onJumpToTranscript={onJumpToTranscript}
+      />
+    );
+  }
+
+  if (RISK_AGENTS.has(agent)) {
+    return (
+      <RiskCritiqueCard
+        agent={agent}
+        data={data}
+        onJumpToTranscript={onJumpToTranscript}
+      />
+    );
+  }
+
   return (
     <article className="flex flex-col gap-5">
       <ThesisHeader
@@ -506,7 +518,7 @@ function MemoDoc({
         label={data?.label ?? null}
         headline={data?.headline ?? null}
         rating={data?.rating ?? null}
-        metrics={displayMetrics}
+        metrics={data?.metrics ?? null}
         onJumpToTranscript={onJumpToTranscript}
       />
       {data?.body !== null && data?.body !== undefined && data.body.length > 0 && (
@@ -596,6 +608,8 @@ function PmHeroWithScenarios({
       policyDecision={data?.policyDecision ?? null}
       evidenceDecision={data?.evidenceDecision ?? null}
       levels={levels}
+      ratingUnanchored={data?.ratingUnanchored ?? null}
+      periodDisclosure={data?.periodDisclosure ?? null}
       />
     </div>
   );

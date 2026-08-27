@@ -20,6 +20,7 @@ import {
   type WebhookProviderDefinition
 } from "./createWebhookTransportAdapter";
 import { ensureSessionForWebhook } from "./session-resolver";
+import { jsonResponse } from "../../routes/route-utils";
 
 export async function handleWebhook(
   req: Request,
@@ -286,11 +287,4 @@ function matchBinding(
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" }
-  });
 }

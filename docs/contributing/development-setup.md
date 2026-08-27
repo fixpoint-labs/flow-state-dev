@@ -30,7 +30,7 @@ These commands should pass cleanly before starting any work.
 ```
 packages/
   core/          Isomorphic builders, types, item taxonomy
-  server/        Execution runtime, stores, SSE streaming, routes
+  engine/        Execution runtime, stores, SSE streaming, routes
   client/        Isomorphic API client (actions, sessions, streams)
   react/         React hooks and renderers
   testing/       Test harnesses and mocks
@@ -115,7 +115,7 @@ packages are skipped). Build and typecheck stay fully parallel.
 You don't order builds by hand. The one explicit edge in `turbo.json` is
 `@flow-state-dev/engine#build`, pinned to `core` only: `testing` is a dev-only
 dependency of `engine`, so the default graph traversal would otherwise see a
-`server ⇄ testing` cycle.
+`engine ⇄ testing` cycle.
 
 To build the DevTool static assets (for `fsdev dev`), run
 `pnpm --filter @flow-state-dev/devtool build:assets`. It builds the DevTool app
