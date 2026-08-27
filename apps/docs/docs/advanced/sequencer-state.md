@@ -143,12 +143,12 @@ Compare with the persistence scopes (when wired to a durable store like sqlite o
 | Lifetime tied to | Sequencer instance execution | Identity (request / session / user / org) |
 | Persistence model | Latest-only checkpoint per instance | Versioned per-scope record |
 | Survives restart | Yes (when `durable: true`) — resume runtime rehydrates | Yes (with a durable store) |
-| Concurrency model | FIFO lock per container | CAS retry loop, except for commutative writes |
+| Concurrency model | FIFO lock per container | CAS retry loop for writes computed from current state; increments, appends and single-key writes skip the check |
 | Throws `ConcurrentModificationError`? | No | Yes, on a version-checked write |
 
 The mutation model details are in [State Mutation Model](/docs/state/mutation-model). The short version: sequencer scope serializes mutators through an in-process queue, so it never sees the version conflicts that drive `ConcurrentModificationError`. The cost of safety is zero, and the operation surface (`patchState`, `incState`, etc.) is identical to the durable scopes.
 
-On the durable scopes, a single-field `incState` or a `pushState` is handed to the store as the operation itself and applied to the value it currently holds, so it doesn't conflict either.
+On the durable scopes some writes skip that check entirely. A single-field `incState` or a `pushState` is handed to the store as the operation itself and applied to the value it currently holds, so two of them both land. A single-field `patchState`, a `setStateRecord` and a `deleteStateRecord` skip the check too, but those don't combine: two writers on one field, or one key of one map, means the second value replaces the first and neither call reports a conflict. [State Operations](/docs/fundamentals/state-operations#cas-semantics) has the rule per call.
 
 ### Why not just use session state?
 

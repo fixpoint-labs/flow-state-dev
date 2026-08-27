@@ -10,7 +10,7 @@ For the conceptual overview of scopes and schema bubbling, see [State & Scopes](
 
 ## The seven operations
 
-All scope handles implement the same `ScopeStateOps` interface. Every operation returns `Promise<boolean>` — `true` when the write produced a real state change, `false` when the proposed update was structurally equal to the current state and was skipped.
+All scope handles implement the same `ScopeStateOps` interface. Every operation returns `Promise<boolean>` — `true` when the write changed stored state, `false` when nothing was written. More than one thing produces `false`, and none of them promise the store already holds your value; see [the no-op short-circuit](#the-no-op-short-circuit).
 
 ### `patchState(updates)`
 
@@ -38,6 +38,8 @@ await ctx.session.setState({ mode: "chat", messageCount: 0 });
 ```
 
 Use sparingly — `patchState` is almost always what you want. Reach for `setState` when resetting a session, initializing on first run, or genuinely overwriting everything.
+
+`setState` writes the object you passed, and it keeps writing that object if it has to retry against a concurrent writer. It replaces their fields rather than merging with them. That is the right behaviour for "make the state exactly this" and the wrong one for "apply my change".
 
 ### `incState(increments)`
 
@@ -76,9 +78,9 @@ await ctx.session.setStateRecord("byId", "doc-1", {
 await ctx.session.deleteStateRecord("byId", "doc-1");
 ```
 
-These are common enough in real applications (chat threads, saved items, anything indexed by ID) that they get dedicated helpers. Both touch one key and leave the rest of the map alone, so two runs writing different keys don't contend.
+These are common enough in real applications (chat threads, saved items, anything indexed by ID) that they get dedicated helpers. Both touch one key and leave the rest of the map alone, so two runs writing different keys don't contend. Two runs writing the *same* key do: neither write carries a version, so the second one replaces the first, both calls return `true`, and neither is told.
 
-`deleteStateRecord` has one place where that doesn't hold. Not every store offers a field-delete operation: none of them do on request state, and the filesystem store doesn't on any scope. Those cases write the whole record at the version this run last read, in one attempt. If another writer moved the record first, the call returns `false` and the key is still there.
+`deleteStateRecord` has one place where that doesn't hold. Not every store offers a field-delete operation: none of them do on request state, and the filesystem store doesn't on any scope. Those cases write the whole record at the version this run last read, in one attempt. If another writer moved the record first, the call returns `false` and the key is still there. That `false` is a lost race against a record that still exists, not a report that the key was already gone.
 
 ### `atomicState(mutator)`
 
@@ -100,9 +102,9 @@ The mutator must be a *pure function* of the current state. Don't perform side e
 Every operation returns `Promise<boolean>`:
 
 - `true` — the write changed state. Persisted, version bumped, `state_change` SSE event emitted.
-- `false` — the proposed update was structurally equal to the current state. No persist call, no version bump, no SSE event. The operation is a free no-op.
+- `false` — nothing was written. No persist call, no version bump, no SSE event.
 
-This means idempotent writes don't need manual identity checks:
+The usual cause of `false` is a redundant write. When the update you propose is structurally equal to the state this context last read, it's skipped, so idempotent writes don't need manual identity checks:
 
 ```ts
 // Safe to call repeatedly. If `mode` is already "agent", nothing happens.
@@ -111,7 +113,16 @@ await ctx.session.patchState({ mode: "agent" });
 
 The comparison uses `Object.is` for primitives (NaN-equal-NaN, `+0 != -0`) and recursive structural equality for plain objects and arrays.
 
-One other thing returns `false`: a write the store refused because the scope's record no longer exists. That covers the operations in the right-hand column of [CAS semantics](#cas-semantics) below. Stores refuse a missing record before they look at any version, and the write isn't turned into a create. So `false` from `incState` or `pushState` means "nothing was written", which isn't always "the state already matched".
+### What `false` doesn't promise
+
+That comparison runs against the state **this context last read**, before anything reaches the store. It is not a check that the store agrees. If another context has changed the field since your last read, and your write happens to match your own stale copy, the write is skipped and the other context's value stays stored.
+
+Two more things return `false`, and neither of them means "already correct":
+
+- **The scope's record no longer exists.** Stores refuse a missing record before they look at any version, and the write isn't turned into a create. An `incState` or `pushState` against a deleted session returns `false` and creates nothing.
+- **An unchecked write fell back to a full-record write and lost.** When the store doesn't offer the matching operation, the runtime writes the whole record at the version this run last read, in one attempt with no retry. Lose that race and the call returns `false` against a record that still exists — a lost delete looks exactly like a delete that had nothing to do.
+
+So read `false` as "nothing was written", never as "the state already matched". When you need to know what is stored, read it back.
 
 ## Reading state
 
@@ -170,7 +181,7 @@ persist(next, expectedVersion)
 
 Which calls take that path, and which don't:
 
-| Version-checked | Applied to whatever the store holds |
+| Version-checked | Unchecked |
 |---|---|
 | `setState` | `pushState(field, value)` |
 | `atomicState` | `setStateRecord(field, key, value)` |
@@ -180,7 +191,21 @@ Which calls take that path, and which don't:
 
 The right-hand column doesn't read state to compute its result, so it doesn't need a version to be current. The store applies the increment, the append, or the single-key write to the record as it stands. Those calls never conflict and never raise `ConcurrentModificationError`.
 
-They are still refused if the scope's record has been deleted. See [what skipping the check doesn't cover](/docs/state/mutation-model#what-skipping-the-check-doesnt-cover).
+Not conflicting is not the same as not losing data, and the difference splits that column in two:
+
+| Unchecked call | Two concurrent writers, same field |
+|---|---|
+| `incState({ field: n })` — one field | Both land. The field ends up with both deltas |
+| `pushState(field, value)` | Both land. Position is not promised |
+| `patchState({ field: value })` — one field, plain value | Last write wins. The other value is gone |
+| `setStateRecord(field, key, value)` | Last write wins on that key. Other keys are untouched |
+| `deleteStateRecord(field, key)` | The key is removed. Other keys are untouched |
+
+Increments and appends combine. A single-field `patchState`, or a `setStateRecord` on one key, does not: the store has nothing to compare, so it stores the value it was handed and the earlier one is gone. Both calls return `true`, and neither writer is told it overwrote anything. When the new value depends on the old one, reach for `patchState("field", updater)` or `atomicState` — those re-run your function against the value that won.
+
+The left-hand column isn't automatically a merge either. `atomicState` and the updater form of `patchState` re-run your function against the refreshed state, so two updates combine. `setState` re-sends the object you passed, unchanged, so it replaces whatever the other writer landed. Use it to set state to a known value, not to apply a change to it.
+
+Unchecked calls are still refused if the scope's record has been deleted. See [when `false` doesn't mean "already correct"](/docs/state/mutation-model#when-false-doesnt-mean-already-correct).
 
 A store also has to offer the matching operation for a write to go the right-hand way. Field deletion is the gap in the built-in adapters, so `deleteStateRecord` falls back to a version-checked full-record write on request state and on the filesystem store. The [mutation model](/docs/state/mutation-model#the-store-has-to-offer-the-operation) has the detail.
 

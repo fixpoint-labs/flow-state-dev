@@ -6,7 +6,7 @@ sidebar_position: 1
 
 Every scope's state mutators (`patchState`, `setState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) route through one of three paths inside the runtime. Which path you get depends on whether the scope writes to a store at all, and on whether anything outside this Node.js process can advance the version underneath you.
 
-The shape of the write then decides whether a version is checked on the way. Some writes carry the version they expect to find. Others are applied to whatever the store holds at the moment they arrive, with no version involved. [Commutative writes skip the version check](#commutative-writes-skip-the-version-check) covers which is which.
+The shape of the write decides a second question: whether it carries a version at all. [Which writes carry a version](#which-writes-carry-a-version) is the table, and it is the part worth reading before you pick a mutator.
 
 Read-only instance config is also available on the context as `ctx.settings` — see [Engine setup → Settings](/docs/server/setup#settings).
 
@@ -36,9 +36,9 @@ The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps
 | Request scope | `ConcurrentModificationError` when the retry budget exhausts |
 | Session / user / org | `ConcurrentModificationError` when the retry budget exhausts |
 
-The two persisting rows describe version-checked writes. A commutative write on those scopes carries no version, so it has no conflict to retry and cannot raise `ConcurrentModificationError`.
+Those two rows are about version-checked writes. An unchecked write carries no version, so it has nothing to conflict with and cannot raise `ConcurrentModificationError`.
 
-### In-memory scopes use a FIFO queue
+### Scopes with no store use a FIFO queue
 
 A *target* state container, a *sequencer* state container, [block state](/docs/advanced/block-state) generally, or any scope you build that doesn't bridge through a `persist` callback gets the lock path. Each container has a tail promise; new mutators chain off it, run one at a time in submission order, and the tail advances.
 
@@ -50,31 +50,38 @@ The lock branch never throws `ConcurrentModificationError`. There is no version 
 
 Request state is written to the store on every mutation, so a paused request can restore it on `/continue`. Most of the contention on that record comes from inside a single run — a block that fans out, a few side chains patching request state at once. Those writers all share one container, so a queue can order them exactly.
 
-So request scope takes the queue and the store write both: mutators serialize through the same per-container lock the in-memory scopes use, and each one persists while it still holds the lock. Writers land in submission order, one version bump each. Because each reads a current version, they never conflict with one another, and a fan-out wider than any retry budget still commits every write.
+So request scope takes the queue and the store write both: mutators serialize through the same per-container lock the store-less scopes use, and each one persists while it still holds the lock. Writers land in submission order, one version bump each. Because each reads a current version, they never conflict with one another, and a fan-out wider than any retry budget still commits every write.
 
 The version check and its retries sit underneath the queue rather than being replaced by it. A queue can only order writers that share a container, and a request record can briefly have one that doesn't: recovery re-enters an interrupted request under its own id, and the run it starts writes through a container of its own. A conflict there resolves the way it does on session scope — re-read, re-apply, persist — and `ConcurrentModificationError` surfaces only if the budget exhausts.
 
 ### Session, user, and org scopes use CAS
 
-These scopes bridge through a `persist` callback (the in-memory, filesystem, sqlite and postgres adapters) and take the optimistic CAS path for any write that depends on what state currently holds. A remote authority — another connection pool, another process, the durable file lock — can advance the stored version while we hold a stale read. CAS is the primitive for that: read the version, mutate locally, persist with `expectedVersion`, retry on conflict.
+These scopes write to a store — whichever adapter you configured, including the default in-memory one — and take the optimistic CAS path for any write that depends on what state currently holds. A remote authority — another connection pool, another process, the durable file lock — can advance the stored version while we hold a stale read. CAS is the primitive for that: read the version, mutate locally, persist with `expectedVersion`, retry on conflict.
 
 `ConcurrentModificationError` surfaces from these paths when retries exhaust. That's the contract: if the remote authority moves faster than your retry budget, you need to either widen the budget with `cas` on the scope or restructure to avoid the contention.
 
-### Commutative writes skip the version check
+### Which writes carry a version
 
-A **commutative** write is one the store can apply without knowing what you read first. Adding `1` to a counter is commutative; two of them produce `2` whichever lands first. So the runtime sends the store the operation itself, "add 1 to `messageCount`", and the store applies it to the value it holds right now. No version is compared.
+Some calls compute the next state from what they read, so the runtime writes a whole record and asks the store to accept it only if the version this context read is still current. Others describe an operation instead — "add 1 to `messageCount`", "set `byId.doc-1` to this value" — and the runtime hands that operation to the store, which applies it to the record as it stands. Those are **unchecked** writes. Nothing is compared, so nothing can conflict, and an unchecked write never raises `ConcurrentModificationError`.
 
-The commutative writes are:
+That is the mechanism. What you actually need is the second column: what two concurrent writers on the same field end up with.
 
-| Call | Commutative when |
-|---|---|
-| `incState({ field: n })` | exactly one field |
-| `pushState(field, value)` | always |
-| `setStateRecord(field, key, value)` | always |
-| `deleteStateRecord(field, key)` | always |
-| `patchState({ field: value })` | exactly one field, set to a plain value |
+| Call | Carries a version | Two writers, same field |
+|---|---|---|
+| `incState({ field: n })` — one field | No | Both land. The field ends up with both deltas |
+| `pushState(field, value)` | No | Both land. Position is not promised |
+| `patchState({ field: value })` — one field, plain value | No | **Last write wins.** The other value is gone |
+| `setStateRecord(field, key, value)` | No | **Last write wins** on that key. Other keys are untouched |
+| `deleteStateRecord(field, key)` | No | The key is removed. Other keys are untouched |
+| `setState(next)` | Yes | **The object you passed is written as-is.** The other writer's fields are replaced |
+| `patchState({ a, b })` — two or more fields | Yes | Your fields overwrite theirs. Fields you didn't name survive |
+| `incState({ a, b })` — two or more fields | Yes | Both sets of increments land |
+| `patchState("field", updater)` | Yes | Your updater runs again against the value that won |
+| `atomicState(mutator)` | Yes | Your mutator runs again against the value that won |
 
-Everything else takes the version check and the retry loop: `setState`, `atomicState`, `patchState` in its updater form (`patchState("counters", (c) => ...)`), `patchState` with more than one field, and `incState` across more than one field. Each of those reads current state to compute the next one, so a stale read has to be caught.
+Carrying a version is not the same as merging, and `setState` is the call that catches people out. When a version-checked write loses the race, the runtime refreshes from the store and runs the write again — but "again" means different things per call. `atomicState` and the updater form of `patchState` re-run *your function* against the value that won, so the two updates combine. `setState` re-sends *the object you already passed*, unchanged, so whatever the other writer landed is replaced. Reach for `setState` when you mean "make the state exactly this", not when you mean "apply my change to it".
+
+#### Both writers land
 
 Two contexts incrementing the same counter both land, and neither spends a retry:
 
@@ -97,27 +104,11 @@ await ctx.session.pushState("history", { role: "user", text: "second" });
 
 So if you read that array back as an ordered history, order it on a field you set yourself, a timestamp or a sequence number. Array position won't carry that for you.
 
-A commutative write can't raise `ConcurrentModificationError`. There's no version for it to lose.
+#### Last write wins on the same field
 
-#### The store has to offer the operation
+An unchecked write holds up against writers touching other parts of the record. Two writers on different fields, or on different keys of one map, don't clobber each other, because each write is applied to the record as the store holds it at that moment.
 
-Skipping the check depends on the store behind the scope offering the matching operation. When it doesn't, the runtime writes the whole record instead, at the version this run last read, in a single attempt with no retry.
-
-Field deletion is the one gap in the built-in adapters. No built-in store offers it on request state, and the filesystem store offers it on no scope at all. `deleteStateRecord` there writes the full record:
-
-```ts
-await ctx.session.deleteStateRecord("byId", "doc-1");
-// on the filesystem store, resolves false when another writer moved the
-// session record first. "doc-1" is still stored.
-```
-
-On session, user and org state backed by the in-memory, SQLite or Postgres store, `deleteStateRecord` is commutative like the rest.
-
-#### What skipping the check doesn't cover
-
-An unchecked write holds up against writers touching other parts of the record. Increments accumulate. Appends all survive. Two writers on different fields, or on different keys of one map, don't clobber each other, because each write is applied to the record as the store holds it at that moment.
-
-The case it doesn't cover is two writers on the *same* path. A single-field `patchState`, or a `setStateRecord` on one key, carries no version, so the store has nothing to compare and assigns the value it was handed. The write that reaches the store second wins, and the first one is gone:
+Two writers on the same field, or the same key of one map, are the case that bites. A single-field `patchState`, or a `setStateRecord` on one key, carries no version, so the store has nothing to compare and stores the value it was handed. The write that reaches the store second wins, and the first one is gone:
 
 ```ts
 // two concurrent execution contexts, both writing session state
@@ -127,16 +118,51 @@ await ctx.session.patchState({ owner: "worker-b" });
 // overwritten. Both calls resolved true, neither raised, neither retried.
 ```
 
-Reach for a version-carrying form when the write depends on what is already stored: the updater form of `patchState`, or `atomicState`. Both read current state, and a lost race re-runs your updater against the value that won instead of discarding it.
+Nothing in the return value tells you this happened. Both calls resolve `true`, because each writer's own value did reach the store.
 
-An unchecked write is refused, though, when the record is gone. Every store checks that the record exists before it looks at any version. A commutative write to a scope whose record was deleted underneath you doesn't recreate it:
+When the write depends on what is already stored, use the updater form of `patchState` or `atomicState` instead. Both read current state, and a lost race re-runs your updater against the value that won rather than discarding it:
+
+```ts
+// claim the session only if nobody holds it
+const claimed = await ctx.session.patchState("owner", (current) => current ?? "worker-b");
+// true if this context claimed it. false if "worker-a" won the race —
+// the updater re-ran against "worker-a" and left it alone.
+```
+
+#### The store has to offer the operation
+
+A write only skips the check if the store behind the scope offers the matching operation. When it doesn't, the runtime writes the whole record instead, at the version this run last read, in a single attempt with no retry.
+
+Field deletion is the one gap in the built-in adapters. No built-in store offers it on request state, and the filesystem store offers it on no scope at all. `deleteStateRecord` there writes the full record:
+
+```ts
+await ctx.session.deleteStateRecord("byId", "doc-1");
+// on the filesystem store, resolves false when another writer moved the
+// session record first. "doc-1" is still stored.
+```
+
+That `false` is a lost race against a session record that is still very much there, not a report that the key was already gone. If a delete has to stick on the filesystem store, or on request state anywhere, read the map back and retry it yourself.
+
+On session, user and org state backed by the in-memory store, SQLite or Postgres, `deleteStateRecord` is unchecked like the rest.
+
+#### When `false` doesn't mean "already correct" {#when-false-doesnt-mean-already-correct}
+
+An unchecked write is refused when the record is gone. Every store checks that the record exists before it looks at any version, so a write to a scope whose record was deleted underneath you doesn't recreate it:
 
 ```ts
 await ctx.session.incState({ messageCount: 1 });
 // false if the session record has been deleted. Nothing is created.
 ```
 
-That's the case where `false` doesn't mean "the state already matched". A refused write reports `false` the same way a no-op does, and the return value alone won't tell them apart.
+`false` is also what you get when the write was skipped as a no-op, and that no-op is decided against the state **this context last read**, before any store round-trip. If another context changed the field since your last read, and your write happens to match your own stale copy, the write is skipped and the other context's value stays stored:
+
+```ts
+// this context last read mode: "chat". Another context has since stored "agent".
+const changed = await ctx.session.atomicState(() => ({ mode: "chat" }));
+// false. Stored mode is still "agent" — the write was never sent.
+```
+
+So `false` means "nothing was written". It does not mean "the store already holds your value". Three different things produce it: a no-op against this context's cached read, a refusal because the record is gone, and a lost version check on a full-record fallback write. The return value alone won't tell them apart. When you need to know what is stored, read it back.
 
 ### The resource state store is versioned too
 
@@ -144,7 +170,7 @@ The four scopes above hold one state record each. **Resource state** — the sta
 
 Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current.
 
-The resource **state** mutators take that check: `patchState`, `setState`, `updateState`, and the same three on a collection instance. The commutative shortcut above belongs to scope state.
+The resource **state** mutators take that check: `patchState`, `setState`, `updateState`, and the same three on a collection instance. The unchecked writes above belong to scope state.
 
 `writeContent` does not take it. A content write carries no version, so the store overwrites whatever body the key holds:
 
@@ -300,7 +326,7 @@ A repo-wide check (`scripts/validate-updater-purity.mjs`, run by `pnpm typecheck
 
 ## Mutation timeout
 
-The lock path can deadlock if a mutator never finishes — say it awaits something that never resolves. To bound the worst case, every in-memory mutation has a budget:
+The lock path can deadlock if a mutator never finishes — say it awaits something that never resolves. To bound the worst case, every mutation on a scope with no store has a budget:
 
 ```ts
 defineFlow({
@@ -314,7 +340,7 @@ When a mutator's queue wait + execution exceeds the budget, the call rejects wit
 
 The timeout is a bounded-error safety net, not a cancellation primitive. The in-flight mutator keeps running after the caller's promise rejects; if it eventually returns, the lock still commits its result and bumps the version. So a caller that retries on `ScopeMutationTimeoutError` may end up applying the mutation twice. If you need at-most-once semantics, write idempotent mutators (e.g. set/replace, not increment) or guard the retry on top.
 
-That is also why the budget stops at in-memory scopes. It is not applied to request, session, user, or org — anything that writes to a store. A write the caller has given up on is still able to reach the store, and by the time it gets there the runtime may have finished the request and written its final status. Letting the abandoned write land on top of that would replace a finished record with a stale one. An error you can catch is worth having when the cost of the timeout is a rejected call; it isn't when the cost is the stored record.
+That is also why the budget stops at scopes with no store. It is not applied to request, session, user, or org — anything that writes to a store. A write the caller has given up on is still able to reach the store, and by the time it gets there the runtime may have finished the request and written its final status. Letting the abandoned write land on top of that would replace a finished record with a stale one. An error you can catch is worth having when the cost of the timeout is a rejected call; it isn't when the cost is the stored record.
 
 Set to `Infinity` to disable.
 
@@ -352,11 +378,11 @@ await ctx.session.atomicState((state) => {
 A version-checked write to a store scope exhausted its CAS retry budget, because contention exceeded what optimistic concurrency can absorb at that boundary. Options:
 
 - Widen the retry budget on the persist call site.
-- Rewrite the contended write in a commutative shape if the update allows it. A counter bumped with `incState({ n: 1 })` never conflicts; the same counter bumped with `atomicState` does.
-- Move the contended writes to an in-memory scope (sequencer state on a parent block) so they go through the lock instead.
+- Rewrite the contended write as a single-field increment or an append if the update allows it. A counter bumped with `incState({ n: 1 })` never conflicts; the same counter bumped with `atomicState` does.
+- Move the contended writes to a scope with no store (sequencer state on a parent block) so they go through the lock instead.
 - Restructure the contention pattern — fewer concurrent writers, batched updates, or finer-grained scopes.
 
-**Why don't in-memory scopes retry on conflict?**
+**Why don't scopes with no store retry on conflict?**
 
 There's no conflict to retry. The lock serializes mutators inside this process; each one reads the current state at the moment its turn arrives. Two mutators racing to increment `count` both see the post-commit value of the previous one, so both increments land — no retries needed.
 

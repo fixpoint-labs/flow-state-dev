@@ -67,18 +67,18 @@ On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` inst
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
-Not every scope-state write carries a version. An increment, an append, or a write to one key of a record field is handed to the store as the operation itself. The store applies it to the value it currently holds, so concurrent ones land without a version to compare. [State Operations](../fundamentals/state-operations.md#cas-semantics) lists which calls go which way.
+Not every scope-state write carries a version. An increment, an append, or a write to one key of a record field is handed to the store as the operation itself, and the store applies it to the value it currently holds. Concurrent increments and appends both land. Concurrent writes to one field don't combine — the second one replaces the first, and neither call reports a conflict. [State Operations](../fundamentals/state-operations.md#cas-semantics) lists which calls go which way.
 
 ### Concurrency by store
 
-Where the comparison happens differs by store, and it is worth knowing before you pick one:
+Where the comparison happens differs by store, and it is worth knowing before you pick one. There are two arrangements. Either the store compares the version and writes as one indivisible step, or it holds a lock in memory while it reads, compares and writes. What separates them is how far the guarantee reaches.
 
-| Store | Scope state | Resource state |
-|---|---|---|
-| In-memory | Compared inside the store (single process by definition) | Real compare-and-swap (single process by definition) |
-| Filesystem | Compared under a per-key lock, **per store instance** | Compared under a per-key lock, **per store instance** |
-| SQLite | Real compare-and-swap | Real compare-and-swap |
-| Postgres | Real compare-and-swap | Real compare-and-swap |
+| Store | Scope state | Resource state | Guarantee covers |
+|---|---|---|---|
+| In-memory | Atomic in the store | Atomic in the store | This process. There is nothing outside it to cover |
+| Filesystem | Under a per-key lock | Under a per-key lock | **One store instance** |
+| SQLite | Atomic in the store | Atomic in the store | Every writer against the database file |
+| Postgres | Atomic in the store | Atomic in the store | Every connection to the database |
 
 The filesystem row is the one to read twice. The lock lives on the store instance, in memory rather than on disk, so it covers every write that goes through that instance and nothing past it. A second store pointed at the same directory races with the first, whether the two sit in one Node process or two. Most apps build one store and hand it to `createFlowState`, so in practice the boundary falls at the process; the instance is what actually draws it. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
 

@@ -86,7 +86,7 @@ Request scope exists only for the duration of one action. Session scope is where
 
 Blocks declare partial schemas: they only specify the fields they read or write. A counter block doesn't need to know about preferences. The framework merges these declarations at the flow level. This keeps blocks portable and self-documenting.
 
-Concurrent `incState` and `pushState` calls do not lose updates. Each one sends the store the operation itself rather than a computed result, and the store applies it to the value it currently holds. Writes that compute a new value from the old one, like `setState` and `atomicState`, carry the version they read instead and retry if another writer got there first.
+Concurrent `incState` and `pushState` calls do not lose updates. Each one sends the store the operation itself rather than a computed result, and the store applies it to the value it currently holds. `atomicState`, and the updater form of `patchState`, carry the version they read instead: on a lost race they re-run your function against the value that won, so both updates end up in the record. `setState` carries a version too, but it replaces the record with the object you passed, so it overwrites a concurrent writer rather than merging with one.
 
 ## 6. Items are the data model
 
