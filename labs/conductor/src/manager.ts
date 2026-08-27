@@ -1015,23 +1015,39 @@ export function harnessManager(options: ManagerOptions) {
    * Read the verdict, then decide. **Three outcomes, in this order, and the
    * order is the design. Every arm is a conjunction.**
    *
-   * 1. **The verdict succeeded AND the done-condition holds → return.** If this
-   *    attempt asked something, the run answered it itself: withdraw the row and
-   *    complete.
-   * 2. **The verdict did NOT fail AND this attempt's marker holds a question →
+   * 1. **The verdict did NOT fail AND this attempt's marker holds a question →
    *    park.** `awaitReview`, announce, then return normally. The recorders
    *    refuse a parked row, so the workstream request ends with the row still
    *    `awaiting_review` and the run costs nothing while a person thinks.
+   * 2. **The verdict succeeded AND the done-condition holds → return.**
    * 3. **Anything else → throw**, withdrawing this attempt's question first: the
    *    attempt failed, so its question is moot, and leaving it open means an
    *    answer later lands against a row no attempt is waiting on.
    *
-   * **Arms 1 and 3 withdraw THIS attempt's row and no other, and that is
-   * sufficient rather than narrow.** Start-of-attempt reconciliation already
-   * withdrew every earlier attempt's `open` row, so at most one can exist for
-   * the issue-phase and it is this one's. Written as "withdraw any open row"
-   * the code would range over a set the reconciliation has already emptied —
-   * and the next reader would derive a guarantee from the wrong place.
+   * **The park is asked FIRST, and the order is the whole guarantee.** The
+   * done-condition is not attempt-scoped and cannot be: the branch is derived
+   * from (epic, issue, phase), so every attempt on a task shares it, and the
+   * implement phase's probe reports on the branch. Attempt 1 opens a pull
+   * request and fails; attempt 2 asks a question and stops having produced
+   * nothing; the probe still says done. Consulted first, that reading withdraws
+   * a question a person was about to be shown and records the phase as
+   * succeeded — a silent wrong success arriving through the completion check.
+   *
+   * A question marker is the run stating outright that it needs a decision.
+   * That statement is about THIS attempt and nothing else, so it is the one to
+   * believe when the two disagree. The cost is a run that asked, unblocked
+   * itself and finished anyway: it now parks for one human round trip instead
+   * of completing. Rejected alternative: keep the old order but scope the probe
+   * to this attempt, which needs a pull-request timestamp compared against a
+   * locally-stamped attempt start — a clock-skew race guarding a rarer case
+   * than the one it opens.
+   *
+   * **Arm 3 withdraws THIS attempt's row and no other, and that is sufficient
+   * rather than narrow.** Start-of-attempt reconciliation already withdrew
+   * every earlier attempt's `open` row, so at most one can exist for the
+   * issue-phase and it is this one's. Written as "withdraw any open row" the
+   * code would range over a set the reconciliation has already emptied — and
+   * the next reader would derive a guarantee from the wrong place.
    *
    * **Completion is a conjunction.** A run can open the pull request and THEN
    * exhaust its turn budget — the SDK reports that as an errored handle rather
@@ -1039,20 +1055,20 @@ export function harnessManager(options: ManagerOptions) {
    * consulted alone would complete the row for a run that failed. A successful
    * verdict whose done-condition does not hold is a failed attempt too.
    *
-   * **Arm 2's second half is the one easy to drop, and dropping it is the same
+   * **Arm 1's FIRST half is the one easy to drop, and dropping it is the same
    * defect from the other side.** A question is only worth holding the board
    * for if the run is still in a position to use the answer, and a run that
    * asked and then failed is not — the SDK reports its most common failures by
    * *returning*. An arm gated on the marker alone matches that run, parks it,
    * and waits on a person for an attempt that is already dead: the row never
    * re-pends, the retry budget is never spent, and nothing reports it. A silent
-   * stall, which is the mirror of the silent success decision 1 exists to kill.
+   * stall, which is the mirror of the silent success arm 2 exists to kill.
    *
-   * **The row is created BEFORE the arms, not inside the park arm.** Two of the
-   * three arms WITHDRAW it, and a marker with an errored verdict never reaches
-   * arm 2 at all — so creating it there means withdrawing a row that was never
-   * created, while the question history a later attempt and a late answer both
-   * read wants it durably `withdrawn`.
+   * **The row is created BEFORE the arms, not inside the park arm.** Arm 3
+   * WITHDRAWS it, and a marker with an errored verdict never reaches arm 1 at
+   * all — so creating it there means withdrawing a row that was never created,
+   * while the question history a later attempt and a late answer both read
+   * wants it durably `withdrawn`.
    *
    * The run record's `outcome` stays `running` across a park, deliberately: the
    * run is not over, and **the board row is the authority on the job's state**
@@ -1122,13 +1138,37 @@ export function harnessManager(options: ManagerOptions) {
         });
       }
 
-      /** Arms 1 and 3 both clear this attempt's question, for opposite reasons. */
+      /** Arm 3 clears this attempt's question: the attempt failed, so it is moot. */
       const withdrawOwnQuestion = async (): Promise<void> => {
         if (questionTopicKey === undefined) return;
         await withdrawQuestion(ctx as BlockContext, questionTopicKey);
       };
 
-      // ── Arm 1: succeeded AND done ──────────────────────────────────────────
+      // ── Arm 1: the verdict did NOT fail AND this attempt asked ─────────────
+      if (succeeded && question !== undefined && questionTopicKey !== undefined) {
+        const board = await boardTasks(ctx as BlockContext);
+        // The substrate's own transition, never a status this lab writes by
+        // hand: the recorders' parked-row refusal, the drain's excusal and the
+        // lease's governance all key off it.
+        await board.awaitReview(identity.taskId, question);
+
+        // **After the park, never before.** What is announced must already be
+        // answerable: a subscriber fast enough to act on an announcement sent
+        // first is refused by the parked-only guard, and then watches the task
+        // park on the question it just tried to answer.
+        await announce({ question: questionTopicKey });
+
+        // Returning normally is the point: the workstream request ends and the
+        // row stays parked, because both recorders decline a row the worker
+        // parked for review.
+        return {
+          issue: state.issue!,
+          phase: state.phase!,
+          sessionId: handle.sessionId,
+        };
+      }
+
+      // ── Arm 2: succeeded AND done ──────────────────────────────────────────
       if (succeeded) {
         // **Bounded, because the whole-worker budget already says it is.**
         // `conductorDrainBudgetMs` reserves `NETWORK_CALL_TIMEOUT_MS` for this
@@ -1152,9 +1192,9 @@ export function harnessManager(options: ManagerOptions) {
           `the ${state.phase} phase's completion check`,
         );
         if (done) {
-          // The run answered its own question on the way to finishing. Withdrawn
-          // rather than deleted, so a late answer against it is reported back.
-          await withdrawOwnQuestion();
+          // No question to withdraw: arm 1 returned on every attempt that asked
+          // one, so reaching here with a succeeded verdict means the marker was
+          // empty.
           await fenced(
             writeRunRow(ctx as BlockContext, identity, { outcome: "succeeded", reason: null }),
             "the row was completed",
@@ -1165,30 +1205,6 @@ export function harnessManager(options: ManagerOptions) {
             sessionId: handle.sessionId,
           };
         }
-      }
-
-      // ── Arm 2: the verdict did NOT fail AND this attempt asked ─────────────
-      if (succeeded && question !== undefined && questionTopicKey !== undefined) {
-        const board = await boardTasks(ctx as BlockContext);
-        // The substrate's own transition, never a status this lab writes by
-        // hand: the recorders' parked-row refusal, the drain's excusal and the
-        // lease's governance all key off it.
-        await board.awaitReview(identity.taskId, question);
-
-        // **After the park, never before.** What is announced must already be
-        // answerable: a subscriber fast enough to act on an announcement sent
-        // first is refused by the parked-only guard, and then watches the task
-        // park on the question it just tried to answer.
-        await announce({ question: questionTopicKey });
-
-        // Returning normally is the point: the workstream request ends and the
-        // row stays parked, because both recorders decline a row the worker
-        // parked for review.
-        return {
-          issue: state.issue!,
-          phase: state.phase!,
-          sessionId: handle.sessionId,
-        };
       }
 
       // ── Arm 3: anything else, INCLUDING a failed verdict with a question ───

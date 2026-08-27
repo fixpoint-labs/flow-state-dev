@@ -21,7 +21,7 @@ import type {
 } from "@flow-state-dev/claude-code/sdk";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
-import type { PhaseSpec } from "../src/manager";
+import type { PhaseSpec, PromptRunContext } from "../src/manager";
 
 export const USER_ID = "conductor-test-user";
 
@@ -64,7 +64,7 @@ export function scriptedAgent(
  * The whole ask path in one stub: the marker lands at the attempt's derived
  * path inside `cwd`, exactly where a real coding run is told to put it, and the
  * verdict is separate so a marker can be paired with a FAILED result — the
- * combination arm 2's verdict half exists to exclude.
+ * combination arm 1's verdict half exists to exclude.
  *
  * The target path is parsed back out of the PROMPT rather than derived here, so
  * a prompt that stopped naming the marker makes this stub write nowhere — which
@@ -185,6 +185,16 @@ export interface HarnessOptions {
   /** Overrides the implement phase's done-condition. Default: satisfied. */
   isDone?: PhaseSpec["isDone"];
   /**
+   * Called with each attempt's prompt context, before its run.
+   *
+   * A spy on the real builder rather than a replacement — the prompt is
+   * unchanged. It exists because `ctx.resources` is otherwise unreachable from
+   * a test, and `buildPrompt` is the one phase hook that runs on EVERY attempt:
+   * the done-condition runs only where its answer can decide something, so an
+   * attempt that parks on a question never reaches it.
+   */
+  onPrompt?: (run: PromptRunContext) => void;
+  /**
    * Overrides the configured phase NAME. Lets a test restart a conductor over
    * durable rows with the phase spelled differently — which is how a casing
    * mismatch between config and stored row actually arises.
@@ -241,6 +251,14 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
     ...base,
     ...(options.isDone !== undefined ? { isDone: options.isDone } : {}),
     ...(options.phaseName !== undefined ? { phase: options.phaseName } : {}),
+    ...(options.onPrompt !== undefined
+      ? {
+          buildPrompt: (run: PromptRunContext) => {
+            options.onPrompt!(run);
+            return base.buildPrompt(run);
+          },
+        }
+      : {}),
   };
 
   // Derived, not spelled out. The manager enforces
