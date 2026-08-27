@@ -62,7 +62,7 @@ These scopes write to a store — whichever adapter you configured, including th
 
 ### Which writes carry a version
 
-Some calls compute the next state from what they read, so the runtime writes a whole record and asks the store to accept it only if the version this context read is still current. Others describe an operation instead — "add 1 to `messageCount`", "set `byId.doc-1` to this value" — and the runtime hands that operation to the store, which applies it to the record as it stands. Those are **unchecked** writes. Nothing is compared, so nothing can conflict, and an unchecked write never raises `ConcurrentModificationError`.
+Some calls compute the next state from what they read, so the runtime writes a whole record and asks the store to accept it only if the version this context read is still current. Others describe an operation instead — "add 1 to `messageCount`", "set `byId.doc-1` to this value" — and the runtime hands that operation to the store, which applies it to the record as it stands. Those are **unchecked** writes. Nothing is compared, so nothing can conflict, and an unchecked write never raises `ConcurrentModificationError`. A call only goes that way if [the store offers the matching operation](#the-store-has-to-offer-the-operation).
 
 That is the mechanism. What you actually need is the second column: what two concurrent writers on the same field end up with.
 

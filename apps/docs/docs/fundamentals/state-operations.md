@@ -191,7 +191,7 @@ Which calls take that path, and which don't:
 | `patchState` with two or more fields | `patchState({ field: value })` — one field, plain value |
 | `incState` across two or more fields | `incState({ field: n })` — one field |
 
-The right-hand column doesn't read state to compute its result, so it doesn't need a version to be current. The store applies the increment, the append, or the single-key write to the record as it stands. Those calls never conflict and never raise `ConcurrentModificationError`.
+The right-hand column doesn't read state to compute its result, so it doesn't need a version to be current. The store applies the increment, the append, or the single-key write to the record as it stands. Those calls never enter the retry loop and never raise `ConcurrentModificationError`. Where the store offers the matching operation they never conflict either; where it doesn't, the call becomes one version-checked attempt that can lose the race and resolve `false`.
 
 Not conflicting is not the same as not losing data, and the difference splits that column in two:
 
