@@ -236,17 +236,27 @@ Summarize for the user:
 **State ops** (not uniformly version-checked — see below):
 `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
 
-Two things to hold while debugging a state bug:
+Three things to hold while debugging a state bug:
 
-- A **commutative** write is never version-checked, so it cannot raise
-  `ConcurrentModificationError`. Seeing one means the call landed on the checked path — either by
-  shape (multi-field, the `patchState` updater form, `setState`, `atomicState`) or because the
-  adapter does not advertise that verb for that scope and it fell back to a full-record `set`.
-  `deleteStateRecord` on **request** scope is the trap: it is checked on every shipped adapter.
-- A **lost update** on the commutative path leaves no conflict to find. Increments and appends
-  compose, so suspect a same-path overwrite — a literal `patchState` or a `setStateRecord` on the
-  key another writer just wrote. If the write vanished rather than being overwritten, check whether
-  the record was deleted underneath it: a missing record is refused even at `"any"`.
+- An **unchecked** write sends no version, so it cannot raise `ConcurrentModificationError`. That
+  covers `pushState`, `setStateRecord` and `deleteStateRecord`; `incState` given a single field;
+  and `patchState` given exactly one literal field. Seeing the error means the call landed on the
+  version-checked path, and **call shape is the only way onto it**: multi-field `patchState`,
+  multi-field `incState`, the `patchState` updater form, `setState`, `atomicState`. A missing
+  adapter verb is not a second route onto it — the unchecked dispatch is already chosen by the time
+  the verb is found missing, so the full-record `set` fallback is attempted once at the held
+  version, with no retry loop behind it. Start from the version-checked call, not from the
+  adapter's capabilities.
+- A **missing delta verb** shows up as a bare `false` instead. The one fallback `set` returns
+  `false` on a version mismatch and nothing is thrown, which is indistinguishable from the `false`
+  a genuine no-op returns. If a `setStateRecord` or `deleteStateRecord` quietly fails to land,
+  check whether that scope's adapter implements the verb before hunting for a race.
+- A **lost update** leaves no conflict to find, and the version-checked path is not exempt.
+  Increments and appends compose, so suspect a same-target overwrite — a literal `patchState` or a
+  `setStateRecord` on the key another writer just wrote, where the last write wins and both calls
+  still return `true`. `setState` loses updates too: on a retry it re-applies the same whole state
+  and discards the winner's change. If the write vanished rather than being overwritten, check
+  whether the record was deleted underneath it: a missing record is refused even at `"any"`.
 
 Which calls land on which path — by call shape, adapter and scope — is
 [Atomicity Guarantees](../../../docs/architecture/state-and-scopes.md#atomicity-guarantees).
