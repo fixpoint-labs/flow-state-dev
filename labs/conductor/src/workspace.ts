@@ -46,7 +46,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
-import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "./ask";
+import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { identityFromCommonDir } from "./config-env";
 import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./patterns";
 
@@ -564,11 +564,22 @@ async function assertAskMarkerIgnored(
   // `provisionTimeoutMs`; the ownership arithmetic reads that number as the
   // longest the lock is held, and a bound wrong by the command count is the
   // failure `WorkspaceConfig.provisionTimeoutMs` is written against.
-  const tracked = await git(checkoutPath, ["ls-files", "--", ASK_MARKER_DIR], left());
-  if (tracked !== "") {
+  //
+  // **Filtered to marker NAMES, because tracked and ignored are independent in
+  // both directions.** `ls-files` lists everything tracked under the directory,
+  // and a target that keeps a `.gitkeep` or a README there is not endangered by
+  // it: measured, a tracked sibling forces git to descend and `git add -A`
+  // still leaves an untracked `1.md` ignored. Refusing on the whole listing
+  // refused a safe repository for a file that cannot become a question — the
+  // same shape of wrong answer `--no-index` was added to stop giving.
+  const tracked = (await git(checkoutPath, ["ls-files", "--", ASK_MARKER_DIR], left()))
+    .split("\n")
+    .filter((line) => line !== "" && isAskMarkerPath(line));
+  if (tracked.length > 0) {
     throw new Error(
-      `[conductor] the repository behind ${checkoutPath} already tracks ${ASK_MARKER_DIR}: ` +
-        `${tracked.split("\n").join(", ")}. An ignore rule does not un-track a file — the ` +
+      `[conductor] the repository behind ${checkoutPath} already tracks question markers ` +
+        `under ${ASK_MARKER_DIR}: ` +
+        `${tracked.join(", ")}. An ignore rule does not un-track a file — the ` +
         `agent's \`git add -A\` stages a change to a tracked path regardless — so a run's ` +
         `question would still be committed. Remove those files from that repository first.` +
         staleBranchRemedy(preservedBranch),

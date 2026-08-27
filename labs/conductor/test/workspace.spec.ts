@@ -26,7 +26,7 @@ import {
   isStrictlyInside,
 } from "../src/workspace";
 import { seedRepo } from "./harness";
-import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
+import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "../src/ask";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -1173,6 +1173,31 @@ describe("provisioning refuses a repository that would commit the ask marker", (
 
     expect(failure).toMatch(/already tracks/);
     expect(failure).not.toMatch(/does not ignore/);
+  });
+
+  it("allows a tracked NON-marker beside the markers", async () => {
+    // Tracked and ignored are independent, so a target can carry the rule and
+    // still track a `.gitkeep` inside the directory it excludes. Measured, that
+    // costs nothing: the tracked sibling forces git to descend, and `git add -A`
+    // still leaves an untracked `1.md` ignored. Refusing on the whole `ls-files`
+    // listing turned a safe repository away for a file that cannot ever become
+    // a question — the same shape of wrong answer `--no-index` was added to
+    // stop giving, one directory over.
+    const config = workspace();
+    execFileSync("mkdir", ["-p", join(config.sourceRepo, ASK_MARKER_DIR)]);
+    writeFileSync(join(config.sourceRepo, ASK_MARKER_DIR, ".gitkeep"), "");
+    execFileSync("git", ["add", "-f", `${ASK_MARKER_DIR}/.gitkeep`], {
+      cwd: config.sourceRepo,
+      stdio: "pipe",
+    });
+    execFileSync("git", ["commit", "-q", "-m", "keep the ask directory"], {
+      cwd: config.sourceRepo,
+      stdio: "pipe",
+    });
+
+    await expect(
+      provisionCheckout(config, at("FIX-1219", "implement")),
+    ).resolves.toMatchObject({ created: true });
   });
 
   it("leaves nothing behind, so fixing the repository fixes the task", async () => {

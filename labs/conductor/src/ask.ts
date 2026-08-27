@@ -67,7 +67,7 @@
  * lacks it is refused with the line to add.
  */
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 /** The directory, relative to the checkout, the marker lives in. */
 export const ASK_MARKER_DIR = join(".fsdev", "ask");
@@ -88,6 +88,41 @@ export const ASK_MARKER_IGNORE_RULE = "**/.fsdev/";
 /** Where THIS attempt must write a question, if it has one. */
 export function askMarkerPath(workspacePath: string, attempt: number): string {
   return join(workspacePath, ASK_MARKER_DIR, `${attempt}.md`);
+}
+
+/**
+ * Is `gitPath` one of THIS module's markers — as `git ls-files` prints a path,
+ * `/`-separated and relative to the repository root?
+ *
+ * **Beside {@link askMarkerPath} because it is the same rule read backwards.**
+ * A caller asking "would a run ever write this file?" is asking about the
+ * naming above, and a second spelling of it somewhere else is a spelling that
+ * drifts.
+ *
+ * The distinction earns its keep because **tracked and ignored are independent**
+ * — measured, not reasoned about. A repository can carry `**\/.fsdev\/` and still
+ * track something inside the directory it excludes, and what happens next
+ * depends entirely on whether that something is a marker:
+ *
+ * - A tracked `.fsdev/ask/.gitkeep` forces git to descend into the directory,
+ *   and `git add -A` **still leaves an untracked `1.md` ignored**. Nothing is
+ *   at risk, so refusing such a repository refuses a safe one — and a negation
+ *   does not re-open the directory either, so the descent buys an attacker
+ *   nothing.
+ * - A tracked `.fsdev/ask/1.md` is staged the moment the run rewrites it,
+ *   whatever the rules say. That is the case the tracked check exists for.
+ *
+ * **Deliberately shape-based, not attempt-aware.** `007.md` is refused though
+ * attempt 7 writes `7.md`: a name that looks like a marker is treated as one,
+ * because the caller is checking a repository it will run many attempts in and
+ * cannot know which numbers those will be.
+ */
+export function isAskMarkerPath(gitPath: string): boolean {
+  const dir = ASK_MARKER_DIR.split(sep).join("/");
+  if (!gitPath.startsWith(`${dir}/`)) return false;
+  // Direct children only — nothing writes a marker into a subdirectory, so a
+  // tracked `.fsdev/ask/notes/1.md` is somebody else's file.
+  return /^\d+\.md$/.test(gitPath.slice(dir.length + 1));
 }
 
 /**
