@@ -240,13 +240,26 @@ Three things to hold while debugging a state bug:
 
 - An **unchecked** write sends no version, so it cannot raise `ConcurrentModificationError`. That
   covers `pushState`, `setStateRecord` and `deleteStateRecord`; `incState` given a single field;
-  and `patchState` given exactly one literal field. Seeing the error means the call landed on the
-  version-checked path, and **call shape is the only way onto it**: multi-field `patchState`,
+  and `patchState` given exactly one literal field. Seeing the error means some version-checked
+  write exhausted a retry budget — but **two separate drivers raise it, and neither wraps the
+  other, so settle which one you are in before auditing any call**. The message discriminates them.
+  `State update failed due to concurrent modifications` is scope state on `runWithCAS`
+  (`packages/engine/src/stores/cas.ts`), written through `ctx.request` / `ctx.session` / `ctx.user`
+  / `ctx.org`. `Resource "<key>" update failed due to concurrent modifications` is resource state on
+  `runResourceCAS` (`packages/engine/src/stores/resource-cas.ts`), written through
+  `ctx.resources.<name>.patchState` / `setState` / `updateState`. A flow can use one surface and not
+  the other, so auditing the wrong one finds nothing and proves nothing.
+  On the **scope-state** driver, call shape is what puts you there: multi-field `patchState`,
   multi-field `incState`, the `patchState` updater form, `setState`, `atomicState`. A missing
   adapter verb is not a second route onto it — the unchecked dispatch is already chosen by the time
   the verb is found missing, so the full-record `set` fallback is attempted once at the held
   version, with no retry loop behind it. Start from the version-checked call, not from the
   adapter's capabilities.
+  On the **resource** driver there is no such shape split: those three ops are all version-checked,
+  so the driver follows from the surface you called rather than from the call's form, and the error
+  means sustained contention on one key. Writes from a single context already serialize per key
+  through `serializeResourceWrite`, so look for a writer that queue cannot see rather than for a
+  fan-out inside your own block.
 - A **missing delta verb** shows up as a bare `false` instead. The one fallback `set` returns
   `false` on a version mismatch and nothing is thrown, which is indistinguishable from the `false`
   a genuine no-op returns. If a `setStateRecord` or `deleteStateRecord` quietly fails to land,
@@ -258,8 +271,11 @@ Three things to hold while debugging a state bug:
   and discards the winner's change. If the write vanished rather than being overwritten, check
   whether the record was deleted underneath it: a missing record is refused even at `"any"`.
 
-Which calls land on which path — by call shape, adapter and scope — is
-[Atomicity Guarantees](../../../docs/architecture/state-and-scopes.md#atomicity-guarantees).
+Which **scope-state** calls land on which path — by call shape, adapter and scope — is
+[Atomicity Guarantees](../../../docs/architecture/state-and-scopes.md#atomicity-guarantees). The
+**resource** driver's policy table — every case where it diverges from `runWithCAS`, and the
+failure the shared driver would have produced — lives beside the code, in the
+`packages/engine/src/stores/resource-cas.ts` module header.
 
 ### Item Types
 
