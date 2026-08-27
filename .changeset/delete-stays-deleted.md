@@ -1,10 +1,10 @@
 ---
-"@flow-state-dev/engine": patch
-"@flow-state-dev/store-sqlite": patch
-"@flow-state-dev/store-postgres": patch
+"@flow-state-dev/engine": minor
+"@flow-state-dev/store-sqlite": minor
+"@flow-state-dev/store-postgres": minor
 ---
 
-Deleting a resource now keeps it deleted. A `patchState` / `setState` /
+Deleting a resource now keeps it deleted (FIX-1258). A `patchState` / `setState` /
 `updateState` that ran after the delete could bring the resource back — holding
 whatever that write computed from the resource's schema default, with no error
 to the caller. It happened whenever the write executed with no live cached
