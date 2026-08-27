@@ -508,6 +508,48 @@ echo '[]'
   });
 });
 
+describe("the forced ask tells the run to keep the marker out of the commit", () => {
+  /** The minimum a prompt builder needs; none of it is what these assert. */
+  const promptRun = (askMarkerPath: string) =>
+    ({
+      epic: EPIC,
+      issue: "FIX-1219",
+      phase: "implement",
+      attempt: 1,
+      workspacePath: "/tmp/does-not-matter",
+      branch: "conductor/FIX-1219/implement",
+      answers: [],
+      askMarkerPath,
+      ctx: {} as never,
+    }) as never;
+
+  it("instructs rather than reassures, because the rule can stop holding mid-run", async () => {
+    // It used to say the file "is already gitignored, so it will not be
+    // committed" — a promise nothing can keep for the length of a run.
+    // Provisioning checks the rule at the door, and `.gitignore` is a TRACKED
+    // file in the tree the run is about to edit: a task that legitimately
+    // rewrites it and then runs `git add -A` stages every marker under
+    // `.fsdev/`, and the next attempt's check catches that one commit late.
+    //
+    // A run reassured the file cannot be committed has no reason to look, so
+    // the reassurance is worse than silence — it is the only party holding the
+    // shell at the moment the rule stops being true.
+    const prompt = await implementPhase().buildPrompt(promptRun("/w/.fsdev/ask/1.md"));
+
+    expect(prompt).toMatch(/Never stage or commit anything under `\.fsdev\/`/);
+    expect(prompt).not.toMatch(/will not be committed/);
+  });
+
+  it("still spells the marker path in full", async () => {
+    // The instruction not to commit it is useless if the run cannot find where
+    // to write it. Asserted separately: one is the seam, the other is the
+    // safeguard, and merged they would fail under a single name.
+    const prompt = await implementPhase().buildPrompt(promptRun("/w/.fsdev/ask/7.md"));
+
+    expect(prompt).toContain("/w/.fsdev/ask/7.md");
+  });
+});
+
 describe("the board task's identity", () => {
   it("is stable per issue-phase, so a repeated seed cannot mint a second run", () => {
     // Two rows for one issue-phase derive the same checkout, the same branch and

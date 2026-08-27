@@ -526,10 +526,28 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
         "",
         `  ${ctx.askMarkerPath}`,
         "",
-        "Write it BEFORE you open the pull request, then stop working. The file is",
-        "already gitignored, so it will not be committed. Someone will answer it and",
-        "your run will be started again holding the answer. Only write that file if",
-        "you actually have a question — an empty or leftover file is not one.",
+        "Write it BEFORE you open the pull request, then stop working. Someone will",
+        "answer it and your run will be started again holding the answer. Only write",
+        "that file if you actually have a question — an empty or leftover file is not",
+        "one.",
+        "",
+        // **An instruction, where this used to be a reassurance.** It read "the
+        // file is already gitignored, so it will not be committed" — a promise
+        // the conductor cannot keep for the length of a run. Provisioning checks
+        // the rule at the door, and `.gitignore` is a TRACKED file in the tree
+        // this run is about to edit: a task that legitimately rewrites it, then
+        // runs `git add -A`, stages every marker in `.fsdev/` including its own.
+        // The next attempt's check catches that one commit too late.
+        //
+        // Nothing outside the run can close that window — the run holds the
+        // shell and opens the pull request. So the one lever that works during
+        // it is the run itself, and telling it the rule holds is the opposite of
+        // using that lever: a run reassured the file cannot be committed has no
+        // reason to look, which is exactly the run that commits it.
+        "Never stage or commit anything under `.fsdev/` — not this file, not one a",
+        "previous attempt left. An ignore rule normally keeps it out of your way, but",
+        "it is a tracked file you may end up editing, so do not rely on it: if you",
+        "run `git add -A`, check what you staged before you commit.",
       ];
 
       if (ctx.attempt > 1) {
