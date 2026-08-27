@@ -192,8 +192,23 @@ export interface HarnessOptions {
    * a test, and `buildPrompt` is the one phase hook that runs on EVERY attempt:
    * the done-condition runs only where its answer can decide something, so an
    * attempt that parks on a question never reaches it.
+   *
+   * Distinct from {@link buildPrompt} below, which REPLACES the builder: a spy
+   * that also replaced it could not observe the real prompt, and a replacement
+   * that also spied would report on itself.
    */
   onPrompt?: (run: PromptRunContext) => void;
+  /**
+   * Overrides the implement phase's construction-time validation. Lets a test
+   * observe what `conductorFlow` does with the value `validate` returns.
+   */
+  validate?: PhaseSpec["validate"];
+  /**
+   * Overrides the prompt builder. The other half of what `conductorFlow` binds
+   * — `validated` reaches this hook and the done-condition through two
+   * separately-built contexts, so observing one says nothing about the other.
+   */
+  buildPrompt?: PhaseSpec["buildPrompt"];
   /**
    * Overrides the configured phase NAME. Lets a test restart a conductor over
    * durable rows with the phase spelled differently — which is how a casing
@@ -247,18 +262,26 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   seedRepo(sourceRepo);
 
   const base = implementPhase({ prExists: () => true });
+
+  // **The spy wraps whatever builder is in effect, not always the base one.**
+  // These two options arrived on separate branches and met here: as spreads,
+  // whichever came last won, so a test setting both got `onPrompt` reporting on
+  // `base.buildPrompt` while its own `buildPrompt` was silently discarded — a
+  // spy that observes something other than what runs. Composed instead, because
+  // one REPLACES the builder and the other OBSERVES it, and those compose.
+  const builder = options.buildPrompt ?? base.buildPrompt;
   const phase: PhaseSpec = {
     ...base,
     ...(options.isDone !== undefined ? { isDone: options.isDone } : {}),
+    ...(options.validate !== undefined ? { validate: options.validate } : {}),
     ...(options.phaseName !== undefined ? { phase: options.phaseName } : {}),
-    ...(options.onPrompt !== undefined
-      ? {
-          buildPrompt: (run: PromptRunContext) => {
+    buildPrompt:
+      options.onPrompt === undefined
+        ? builder
+        : (run: PromptRunContext) => {
             options.onPrompt!(run);
-            return base.buildPrompt(run);
+            return builder(run);
           },
-        }
-      : {}),
   };
 
   // Derived, not spelled out. The manager enforces

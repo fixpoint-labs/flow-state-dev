@@ -81,6 +81,8 @@ import {
   resolveOwnership,
   type RequestIdentityContext,
   type PhaseSpec,
+  type PhaseRunContext,
+  type PromptRunContext,
 } from "./manager";
 import { implementPhase } from "./implement";
 import {
@@ -467,8 +469,6 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // The phase's own preconditions, at the same door and for the same reason —
   // see `PhaseSpec.validate`. Last, because a phase's requirements are stated in
   // terms of a repository the checks above have already established is real.
-  phase.validate?.(workspace);
-
   if (tenant === "") {
     throw new Error(
       "[conductor] tenant is an empty string. Omit it for an untenanted conductor, or " +
@@ -476,6 +476,47 @@ export function conductorFlow(options: ConductorFlowOptions) {
         "request, resolving an empty tenant as untenanted, is then refused against.",
     );
   }
+
+  // **Above `validate`, and no longer for safety.** Under the previous design
+  // this ordering was load-bearing and got it wrong: `validate` stored what it
+  // found, so a construction that then failed here left the pin behind and the
+  // corrected retry was refused as already pinned. `validate` retains nothing
+  // now, so either order is correct — which is what makes the cheap check
+  // going first a plain economy rather than a fix. The implement phase's
+  // `validate` spawns `git` and `gh`; comparing a string to `""` does not.
+  //
+  // **Captured, not left in the phase.** What `validate` learns belongs to THIS
+  // conductor; a phase that stored it on itself would hand it to the next one.
+  const validated = phase.validate?.(workspace);
+
+  // The phase the manager actually runs: this conductor's `validated` bound
+  // into every run context, by a closure that belongs to this construction and
+  // nothing else. Two conductors from one `PhaseSpec` get two wrappers, so
+  // neither can reach the other's value — which is the property the phase
+  // could not give itself, since the snapshot above copies function references
+  // and not what they close over.
+  //
+  // Gated on the VALUE rather than on `validate` being defined, and the two are
+  // equivalent: binding `undefined` produces a run context whose `validated` is
+  // `undefined`, which is what an unwrapped phase already receives. A phase
+  // cannot distinguish "not bound" from "bound as undefined", so the wrapper
+  // would be a no-op — and this way a `validate` that only refuses, returning
+  // nothing, costs no allocation per run.
+  // **Both hooks, because the type promises both.** `validated` lives on
+  // `PhaseRunContext`, which `PromptRunContext` extends — so a phase's prompt
+  // builder is told it receives the value. Binding it into `isDone` alone made
+  // the type a lie for the other half: a custom phase whose prompt depends on
+  // what `validate` found would read `undefined` and build the wrong prompt,
+  // silently, after a construction that succeeded. The manager builds the two
+  // contexts separately, so one wrapper cannot cover both.
+  const runPhase: PhaseSpec =
+    validated === undefined
+      ? phase
+      : Object.freeze({
+          ...phase,
+          isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
+          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
+        });
 
   // **An empty tenant is a mistake, and refusing it is not the same as
   // normalizing it.**
@@ -542,7 +583,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     boardCollectionId: collectionId,
     boardCollection: tasks,
     tenant,
-    phase,
+    phase: runPhase,
     workspace,
     runTimeoutMs,
     ...(agent !== undefined ? { agent } : {}),
