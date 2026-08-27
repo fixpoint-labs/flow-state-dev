@@ -82,6 +82,7 @@ import {
   type RequestIdentityContext,
   type PhaseSpec,
   type PhaseRunContext,
+  type PromptRunContext,
 } from "./manager";
 import { implementPhase } from "./implement";
 import {
@@ -501,12 +502,20 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // cannot distinguish "not bound" from "bound as undefined", so the wrapper
   // would be a no-op — and this way a `validate` that only refuses, returning
   // nothing, costs no allocation per run.
+  // **Both hooks, because the type promises both.** `validated` lives on
+  // `PhaseRunContext`, which `PromptRunContext` extends — so a phase's prompt
+  // builder is told it receives the value. Binding it into `isDone` alone made
+  // the type a lie for the other half: a custom phase whose prompt depends on
+  // what `validate` found would read `undefined` and build the wrong prompt,
+  // silently, after a construction that succeeded. The manager builds the two
+  // contexts separately, so one wrapper cannot cover both.
   const runPhase: PhaseSpec =
     validated === undefined
       ? phase
       : Object.freeze({
           ...phase,
           isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
+          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
         });
 
   // **An empty tenant is a mistake, and refusing it is not the same as

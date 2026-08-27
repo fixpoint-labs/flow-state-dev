@@ -1375,6 +1375,31 @@ describe("the ledger is partitioned by tenant", () => {
     expect(seen).toBe("the-validated-value");
   });
 
+  it("hands the same value to the prompt builder, not only the done-condition", async () => {
+    // `validated` sits on `PhaseRunContext`, which `PromptRunContext` extends,
+    // so the type tells a prompt builder it receives the value. The manager
+    // builds the two contexts separately, so binding into `isDone` alone made
+    // the type a lie for the other half: a phase whose prompt depends on what
+    // `validate` found would read `undefined` and build the wrong prompt,
+    // after a construction that reported success.
+    //
+    // Separate from the done-condition's test because they fail
+    // independently — one wrapper cannot cover both hooks.
+    let seen: unknown = "never ran";
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      validate: () => "the-validated-value",
+      buildPrompt: (run) => {
+        seen = run.validated;
+        return "p";
+      },
+    });
+
+    await seedAndDrain(live);
+
+    expect(seen).toBe("the-validated-value");
+  });
+
   describe("every action refuses another tenant BEFORE touching the board", () => {
     // The guarantee this file documents used to hold for exactly one of the
     // three actions. The tenant check lived only in the manager, which runs
