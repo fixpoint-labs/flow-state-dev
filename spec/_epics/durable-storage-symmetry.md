@@ -88,9 +88,12 @@ honest description of a small set.**
   not children at all; it lost the argument for these two, so they are ordinary children with
   everything that follows (§4).
 
-**What the objective needs is FIX-1154 and FIX-1269.** The FIX-1158 lodger and FIX-1155 have both
-shipped. **The four surfaced bugs split two and two:** FIX-1259 and FIX-1207 are unparented and out
-of the index; **FIX-1258 and FIX-1260 stay children.** The unparent write was skipped and is not
+**What the objective needs is FIX-1154 and FIX-1269, and FIX-1269 has shipped**
+([#1488](https://github.com/fixpoint-labs/flow-state-dev/pull/1488) merged, **Done**) — so what is
+left of the objective is FIX-1154. The FIX-1158 lodger and FIX-1155 shipped before it. **The four
+surfaced bugs split two and two:** FIX-1259 and FIX-1207 are unparented and out
+of the index; **FIX-1258 (shipped, [#1487](https://github.com/fixpoint-labs/flow-state-dev/pull/1487))
+and FIX-1260 stay children.** The unparent write was skipped and is not
 being re-asked (§5), so **the Linear graph is the only ledger** — a parented, non-terminal child is
 dispatched like any other child and holds wrap open until it is fixed or cancelled (§4).
 
@@ -167,11 +170,12 @@ below the themes had both gone stale against the code that merged.
    divergence is still **tombstoned generations versus hard-deleted, recreatable records**, and
    the fix is FIX-1259's, not this epic's.
 
-   The resource side differs precisely because it *has* a tombstone and
-   a deleted-stays-deleted bet, so its predicate intends to refuse and misses `0`. A neighbouring
-   scope-side case — work still running when a delete lands, writing into a session after it
-   was emptied — is filed as **FIX-1000**, a FIX-992 residual **outside this set** and not
-   a member of §4's index.
+   The resource side differs precisely because it *has* a tombstone and a deleted-stays-deleted
+   bet. Its predicate used to intend to refuse and miss `0`; **FIX-1258 closed that** (below).
+   What can still undo a delete is the tombstone being **removed** rather than defeated — filed as
+   **FIX-1000** (*"A create racing session deletion lands in a purged, caller-reusable scope —
+   fence the scope generation"*), a FIX-992 residual **outside this set** and not a member of §4's
+   index.
 
    **`lineageId` is not the missing discriminator** — the epic said so and was wrong. It is the
    inherited **storage address** for `sharedToWorkstream` session-scoped resources (FIX-1068,
@@ -204,74 +208,108 @@ below the themes had both gone stale against the code that merged.
    exists, so absent-vs-deleted never arises there"* was false on both clauses, and it is the
    wording that must not be copied anywhere (see **Constrains**).
 
-   **The tombstone row is incomplete for version `0` — a known hole in this rule, not a second
-   rule.** The row is true for a writer holding a live version, and that writer is already
-   refused. It is false for version `0` — and **the condition is the version the write begins with,
-   not what the context has observed.** `runResourceCAS` sends the container's version as the
-   `mutate` intent's `expectedVersion` (`runResourceCAS`), and `checkWriteVersion` accepts
-   `0` against a tombstone as create-if-absent, "satisfied by a tombstone as well as a key that never
-   existed" (`resource-state-predicate.ts`). **Two *mutations* arrive holding `0`.** One never
-   observed the key. The other observed it and **lost the version**: `deleteResourceKey` pairs its
-   durable delete with an *in-place live-cache delete* (`resource-registry.ts`), so a context still
-   holding a `ResourceRef` re-seeds from the absent row and writes at `0`. The second is the
-   **held-then-lost** writer this theme already describes on the scope side for FIX-1259 — the same
-   shape on the other primitive, which is why the two issues carry a `related` link. The product bet
-   is unchanged — deleted stays deleted — it is simply not enforced on that path.
+   **The tombstone row was incomplete for version `0` — a known hole in this rule, never a second
+   rule — and FIX-1258 closed it.** The row was always right for a writer holding a live version,
+   and that writer was already refused. It was wrong for version `0` — and **the condition is the
+   version the write begins with, not what the context has observed.** **Two *mutations* arrived
+   holding `0`.** One never observed the key. The other observed it and **lost the version**:
+   `deleteResourceKey` pairs its durable delete with an *in-place live-cache delete*
+   (`resource-registry.ts`), so a context still holding a `ResourceRef` re-seeds from the absent
+   row. The second is the **held-then-lost** writer this theme describes on the scope side for
+   FIX-1259 — the same shape on the other primitive, which is why the two issues carry a `related`
+   link, and stating the condition at the held version rather than at *never observed* is what let
+   one fix cover both. The product bet was never in doubt — deleted stays deleted — it was simply
+   unenforced on that path, and it is enforced now: on `origin/main` a `mutate` that begins at `0`
+   writes at `"absent"`, which `checkWriteVersion` refuses against **any** row, tombstone included.
 
-   **This cycle adds two new entry points to the hole, and the hole is still open — say so
-   rather than discovering it later.** `updateState` already does exactly this on `main` today
-   with no new verb involved, so the hole exists whatever this epic ships. But D-6 = **A** ships
-   `incState` and `pushState` onto the **same resource write path** `updateState` already takes,
-   at held version `0` (theme 2), so the count of ways in goes from one to three. That is a known,
-   accepted cost of Ask 1 = A and not a reason to reopen it: the verbs inherit the defect of the
-   path they reuse rather than introducing one, and closing it once at the predicate fixes all
-   three. **FIX-1269 must not grow its own version handling to route around this** — a local
-   workaround in the new verbs would leave `updateState` broken and put the fix in the wrong
-   layer.
+   **This cycle added two new entry points to the hole, predicted that one fix at the predicate
+   would cover all three, and that is what happened.** `updateState` already did exactly this on
+   `main` with no new verb involved, so the hole existed whatever this epic shipped. D-6 = **A**
+   then put `incState` and `pushState` onto the **same resource write path** `updateState` takes,
+   at held version `0` (theme 2), taking the count of ways in from one to three — a known, accepted
+   cost of Ask 1 = A rather than a reason to reopen it, because the verbs **inherited** the defect
+   of the path they reuse instead of introducing one. FIX-1258 fixed it once, in the driver every
+   resource read-modify-write goes through, and all three verbs came with it. **The constraint on
+   FIX-1269 held:** it grew no version handling of its own to route around the hole, which would
+   have left `updateState` broken and put the fix in the wrong layer.
 
-   **Constrains FIX-1258 — the predicate is the right place, and getting there requires splitting
-   intent first.** The *where* above is unchanged; what it cannot do is simply tighten the rule it
-   enforces today. `checkWriteVersion(row, expectedVersion)` takes **no operation intent**
-   (`resource-state-predicate.ts`), and by the time it runs the two cases are indistinguishable:
-   `runResourceCAS` derives `expectedVersion` as a literal `0` for the `create` intent and
-   `container.getVersion()` for `mutate`, which *is* `0` for a key never read or one whose cache
-   entry a delete evicted, so both collapse to the same value at that expression (`resource-cas.ts`;
-   the driver's header states the general form — *"by the time a value reaches the store the caller's
-   intent is gone"*). So refusing `0` against a tombstone outright would also refuse **explicit
-   recreation after a delete** — and that behaviour is **intentional prior art, tagged FIX-992**,
-   not incidental. It is pinned in **two** suites (*"classifies a create over another context's
+   **The predicate was the right place, and getting there required splitting intent first — which
+   is what FIX-1258 did.** The constraint this document set was that `checkWriteVersion(row,
+   expectedVersion)` takes **no operation intent** (`resource-state-predicate.ts`), so by the time
+   it ran the two cases were indistinguishable: `runResourceCAS` derived `expectedVersion` as a
+   literal `0` for the `create` intent and `container.getVersion()` for `mutate`, which *is* `0` for
+   a key never read or one whose cache entry a delete evicted, so both collapsed to the same value at
+   that expression (`resource-cas.ts`; the driver's header states the general form — *"by the time a
+   value reaches the store the caller's intent is gone"*). Refusing `0` against a tombstone outright
+   would therefore also have refused **explicit recreation after a delete** — **intentional prior
+   art, tagged FIX-992**, pinned in **two** suites (*"classifies a create over another context's
    delete as a create"*, `resource-cas-registry.test.ts`; *"…as created, not updated (FIX-992)"*,
    `test/context/resource-registry.spec.ts`) and published as contract in
    `docs/architecture/state-and-scopes.md` (*"`0` means no live row, so it is create-if-absent and a
-   tombstone satisfies it"*). **That documentation is correct as written and is not stale**, and a
-   naive predicate change would reverse a decision someone already made deliberately — those pinned
-   tests are the record of it, not obstacles to route around. **The constraint:** `create` keeps its
-   tombstone-accepting behaviour, a mutation that began at the absent-row seed is refused, and the
-   split happens **before the shared predicate**. **Which mechanism achieves that is FIX-1258's** —
-   this bounds the fix, it does not design it. Verified against `origin/main`; evidence in
+   tombstone satisfies it"*). **That documentation was correct as written and is still not stale.**
+   So the constraint read: `create` keeps its tombstone-accepting behaviour, a mutation that began at
+   the absent-row seed is refused, and the split happens **before the shared predicate**.
+
+   **That is what shipped**, read on `origin/main`. `runResourceCAS` now derives the expectation per
+   intent — `create` → `0`, `replace` → `"any"`, `mutate` → `"absent"` when the container holds no
+   version and the held version otherwise — and `checkWriteVersion` gained the matching arm:
+   `"absent"` means *no row at all*, and a tombstone **is** a row, so it conflicts and the driver
+   turns that into a terminal `ResourceDeletedError`; `0` still means *no live row*, a tombstone
+   still satisfies it, and FIX-992 is intact. `"absent"` is a **third** expectation next to `0`, not
+   a rename of it, and `ResourceStateStore.delete` still refuses the word outright
+   (`assertDeleteExpectedVersion`) so it never acquired a second, verb-dependent meaning. What that
+   adoption did and did not do to the two vocabularies is settled below, under *Scope state already
+   carries the vocabulary the resource side lacks*.
+   Earlier evidence for the constraint is in
    [comment `5430745011`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430745011).
 
-   **Scope state already carries the vocabulary the resource side lacks** — a genuine asymmetry
-   between the two primitives, and one this epic hit through a defect rather than through
-   FIX-1154's map, which is why it is recorded in this theme. `checkScopeWriteVersion`
-   (`scope-write-predicate.ts`) has an **`"absent"` sentinel distinct from numeric `0`**, and its
-   comment names the exact problem: *"An absent record reads as version `0` — the pinned behaviour
-   that leaves `0` unable to mean 'must not exist'."* That is a precedent for the **shape** — a
-   distinct `ExpectedVersion` value carrying intent — and **not a value to copy across**. The
-   semantics are opposite where it counts: scope's `"absent"` *refuses* an existing record, where
-   resource `create` must keep *accepting* a tombstone; and `ResourceStateStore` already rejects
-   `"absent"` rather than aliasing it (`assertExpectedVersion`), precisely so the sentinel never
-   acquires a second meaning. **This epic does not unify the two `ExpectedVersion` vocabularies.**
-   Stating an asymmetry is this document's job; proposing the merger is the move theme 1 exists to
-   refuse, and a child that reads the precedent as "port `"absent"` to resources" has taken it. The limitation is still *pinned at the
-   child* rather than left implicit — FIX-1154's characterization POC carries a row named
+   **One door is still open, and it is a different door.** Reusing a session id needs the previous
+   incarnation's tombstones gone, or every **static** resource of the next session under that id is
+   permanently unwritable — a static `ResourceRef` has no create-if-absent verb to escape through.
+   So FIX-1258 also made session birth purge them (`purgeStaleResourceState` →
+   `ResourceStateStore.purgeTombstones`, `context/ensure-session-record.ts`). That reclamation is
+   **unfenced against a concurrent creator**, and the file says so under its own `KNOWN LIMIT`
+   heading: the loser of a create race can remove the winner's tombstone, after which an ordinary
+   write at `"absent"` finds no row and the resource is back. **So deleted-stays-deleted is now
+   enforced against a write that tries to defeat a tombstone; what can still undo a delete is the
+   tombstone being removed out from under it.** Closing that needs a **scope generation**, which is
+   FIX-1000's and tracked outside this set. Named here so no reader of this theme takes *"FIX-1258
+   landed"* for *"the bet is now unconditional"* — and **no child in this set inherits it**.
+
+   **Scope state carried the `"absent"` vocabulary first, and the resource side has now taken the
+   shape** — an asymmetry between the two primitives this epic hit through a defect rather than
+   through FIX-1154's map, which is why it is recorded in this theme. `checkScopeWriteVersion`
+   (`scope-write-predicate.ts`) had an **`"absent"` sentinel distinct from numeric `0`** when
+   resources had none, and its comment names the exact problem: *"An absent record reads as version
+   `0` — the pinned behaviour that leaves `0` unable to mean 'must not exist'."* That was a
+   precedent for the **shape** — a
+   distinct `ExpectedVersion` value carrying intent — **and FIX-1258 took it, correctly.**
+   `ResourceStateStore.set` now honours `"absent"` with the meaning it already had on the scope
+   side, *no row at all*; `scope-write-predicate.ts`'s header states the correspondence from the
+   other end. What must **not** travel is the semantics of resource `0`: scope's `"absent"` refuses
+   an existing record, where resource `create` has to keep *accepting* a tombstone (FIX-992). So the
+   two expectations sit side by side on the resource side instead of one replacing the other, and
+   the store refuses to alias them — `delete` still rejects the word outright
+   (`assertDeleteExpectedVersion`), which is what stops the sentinel acquiring a second,
+   verb-dependent meaning. **This epic still does not unify the two `ExpectedVersion`
+   vocabularies**, and that claim is narrower than it was: the *word* is shared, the *value set* is
+   not, because scope has no `0`-means-create-if-absent to share. Stating an asymmetry is this
+   document's job; proposing the merger is the move theme 1 exists to refuse. *(This paragraph used
+   to say resources **reject** `"absent"`, cite an `assertExpectedVersion` that no longer exists,
+   and read "port `"absent"` to resources" as itself the forbidden move — one width too wide, and
+   it would have condemned the mechanism this epic's own child then shipped. The conclusion held;
+   the mechanism description did not.)*
+
+   **The pin at the child fired as designed.** FIX-1154's characterization POC carries a row named
    *"CURRENT BEHAVIOUR (defect D5): a version-0 context REVIVES a tombstone"*
    (`spec-poc/FIX-1154-resource-mutation-verbs/policy-rows.poc.test.ts`, PR
-   [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445)) that asserts today's
-   wrong behaviour and **fails when the fix lands**, which is the intended signal.
-   **FIX-1258** owns closing it, and **no theme waits on it** — that is the only exemption this
-   document can grant. It is a child of FIX-1157, so it is dispatched like any other child and it
-   gates wrap (§4).
+   [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445)), written against the real
+   path to assert the behaviour of the day and to **fail when the fix landed** — its own comment
+   calls that failure the intended signal. The fix has landed, so the row now asserts a revival
+   `main` no longer performs; retiring it belongs to FIX-1154 on its own spec PR, not to this
+   branch. **FIX-1258 owned closing the defect and has**
+   ([#1487](https://github.com/fixpoint-labs/flow-state-dev/pull/1487) merged, Linear **Done**), so
+   it no longer gates wrap — §4 carries which children still do.
 
    **Constrains:** FIX-1154's "shared driver seam" question resolves to *state the divergence
    once*, not *reconcile the drivers*; no issue in this set may propose unifying them. **The
@@ -327,13 +365,13 @@ below the themes had both gone stale against the code that merged.
    **if the claim fails, this theme changes rather than one issue's design**, so FIX-1267 comments
    up on this PR rather than re-scoping locally.
 
-   **The shipping handle verbs do not discharge that obligation and do not inherit it.** This is
+   **The shipped handle verbs did not discharge that obligation and do not inherit it.** This is
    the distinction the whole theme turns on: **Tier 1 does not touch the store interface**, so it
    never hands a held `expectedVersion` to a **store delta verb** — the thing this theme's claim
-   is actually about, and true however FIX-1269 chooses to build it. FIX-1269 therefore
-   proves nothing here and owes nothing here, and it is the *store interface*, untouched this
-   cycle, that still rests on an unexercised read. Loading the obligation onto FIX-1269 would
-   cost a child real work against a path it never takes.
+   is actually about, and true however FIX-1269 built it. FIX-1269 therefore proved nothing here
+   and owes nothing here, and it is the *store interface*, untouched this cycle, that still rests
+   on an unexercised read. Loading the obligation onto it would have cost a child real work against
+   a path it never takes.
 
    **Constrains:** no issue in this set may reach for `"any"` on a resource
    **delta or read-modify-write** path. That qualifier is load-bearing and was missing: `"any"` already
@@ -344,28 +382,32 @@ below the themes had both gone stale against the code that merged.
    stays a separate op — which is how resources already model it. **Extend the seams that
    exist; do not invent a new core `MutationContract` type until a second consumer appears.**
 
-   **One tier ships and one stays deferred — keeping them apart is what stops this epic
+   **One tier shipped and one stays deferred — keeping them apart is what stops this epic
    overclaiming (D-6).**
 
-   - ***Tier 1 — the handle surface. Ships this cycle (FIX-1269).*** Caller-visible
+   - ***Tier 1 — the handle surface. Shipped this cycle (FIX-1269,
+     [#1488](https://github.com/fixpoint-labs/flow-state-dev/pull/1488) merged).*** Caller-visible
      **increment and append** on the public resource handle types, adding **no store-interface
      surface**. **It wins no contention** — concurrent writers still resolve by CAS retry exactly as
-     `updateState` does today. What it buys is API symmetry, so a developer stops picking a
+     `updateState` does. What it buys is API symmetry, so a developer stops picking a
      primitive by its verb list.
 
-     **The surface promise covers `ResourceContext`, not only `ResourceRef` — "the handle surface"
-     is two types.** `ResourceContext<TState>` (`core/src/types/resource.ts`) is a **separate public
-     type** declaring its own `state` / `patchState` / `setState` / `updateState`, and on
-     `origin/main` it carries **no** `incState` or `pushState`. It is public rather than incidental
-     by two named exports: `DefinedResource.ContextType` resolves to it, and so does
-     `ContextOf<T, "resource">`. It is also the type our own documentation *sends people to* —
+     **The surface promise covered `ResourceContext`, not only `ResourceRef` — "the handle surface"
+     is two types, and both shipped with the verbs.** `ResourceContext<TState>`
+     (`core/src/types/resource.ts`) is a **separate public type** declaring its own `state` /
+     `patchState` / `setState` / `updateState`, and it carried **no** `incState` or `pushState` when
+     this requirement was written. It is public rather than incidental by two named exports:
+     `DefinedResource.ContextType` resolves to it, and so does `ContextOf<T, "resource">`. It is also
+     the type our own documentation *sends people to* —
      `docs/architecture/resources-and-client-data.md` says *"`defineResource` exposes `StateType` and
      `ContextType` helpers for typing shared helper functions"* and works the example with an
      `addStep(ctx: PlanContext, …)` whose body calls `ctx.updateState(...)`. So a developer following
-     our documented pattern for shared resource helpers reaches the one type the new verbs would have
-     skipped — **the gap this epic exists to close, reopened one type over.** An epic whose objective
-     is symmetry cannot ship an asymmetric surface, which is why the requirement is fixed here rather
-     than left to a child to notice.
+     our documented pattern for shared resource helpers would have reached the one type verbs on
+     `ResourceRef` alone would have skipped — **the gap this epic exists to close, reopened one type
+     over.** An epic whose objective is symmetry cannot ship an asymmetric surface, which is why the
+     requirement was fixed here rather than left to a child to notice. **On `origin/main` both types
+     now declare `incState` and `pushState`, each returning `Promise<void>`** — this requirement and
+     §5's return-type constraint both met.
 
      **Do not describe it as adding a store-native delta verb or as reducing contention — and
      do not describe it as non-atomic.** The verbs ride the same read-modify-write *inside* the
@@ -375,14 +417,15 @@ below the themes had both gone stale against the code that merged.
      the caller's updater in as that mutator). So a successful call is a single CAS-guarded
      mutation rather than a client-side read-modify-write — the definition
      `docs/architecture/state-and-scopes.md` already uses for the bag's `incState` / `pushState`
-     under *Atomicity Guarantees*. **This is the one claim FIX-1269's documentation must not get
-     backwards.** Decision 3 makes that documentation user-facing, and a caller told these verbs
-     are not atomic will wrap them in an external read-then-write — the genuinely unsafe pattern
-     they exist to remove. *(The version-`0` tombstone hole is a **deletion-semantics** defect,
-     not an atomicity one — theme 1, FIX-1258.)*
+     under *Atomicity Guarantees*. **This is the one claim Decision 3's documentation must not get
+     backwards** — FIX-1269's reference half, now merged, and FIX-1154's comparison half, still to
+     publish. That documentation is user-facing, and a caller told these verbs are not atomic will
+     wrap them in an external read-then-write — the genuinely unsafe pattern they exist to remove.
+     *(The version-`0` tombstone hole was a **deletion-semantics** defect, not an atomicity one —
+     theme 1, closed by FIX-1258.)*
 
-     **How it is built is FIX-1269's spec's call**
-     — this document fixes the tier boundary, **which public types the promise covers**, the
+     **How it was built was FIX-1269's spec's call**
+     — this document fixed the tier boundary, **which public types the promise covers**, the
      no-contention claim and the atomicity claim, not the mechanism, the persistence path, a size,
      or whether the two types share a base or declare the verbs separately.
    - ***Tier 2 — the store interface. Still deferred (FIX-1267).*** Store-native `incField` /
@@ -459,40 +502,41 @@ below the themes had both gone stale against the code that merged.
    whether a write is atomic. A comparison row reading "scope state atomic / resources not"
    would be false in the doc's own vocabulary — resource writes are CAS-guarded
    read-modify-writes too.
-   FIX-1154's map must describe increment and append as **closing** — shipping as FIX-1269 —
-   not as a deliberate gap; the spec's old "resources deliberately lack these verbs" framing is
-   withdrawn by D-6 and does not survive into the doc. **"Closing", not "shipped":** the spec's
-   map rows already read that way, and until FIX-1269 lands, a page that says *shipped*
-   publishes a surface that does not exist.
+   FIX-1154's map must describe increment and append as **shipped**, not as a deliberate gap; the
+   spec's old "resources deliberately lack these verbs" framing is withdrawn by D-6 and does not
+   survive into the doc. **The tense flipped when FIX-1269 merged.** While the verbs were unlanded
+   the rule here was *"closing", not "shipped"*, because a page saying *shipped* published a surface
+   that did not exist. #1488 is merged and both handle types carry the verbs on `main`, so a map row
+   still reading *closing* now understates what a reader can call.
 
    **Constrains:** no issue silently rewrites a neighbour's paragraph, and if two land close
    together the second rebases the doc edit rather than resolving a conflict by preference.
-   **FIX-1269 precedes FIX-1154's documentation.** D-6's Decision 3 says the docs *follow* the
-   verbs, and this document's earlier "merged in any order" claim contradicted a stamped owner
-   decision — that claim is withdrawn, not qualified. What waits is **publication**, not the
-   writing: FIX-1154's map can be specced, reviewed and written whenever, and if the order breaks
-   anyway its §8 rule is the fallback — state the absence at writing time rather than publish a
-   surface that does not exist.
+   **FIX-1269 was required to precede FIX-1154's documentation, and it did** — #1488 merged with
+   #1478 still open. D-6's Decision 3 says the docs *follow* the verbs, and this document's earlier
+   "merged in any order" claim contradicted a stamped owner decision; that claim stays withdrawn,
+   not qualified. What waited was **publication**, not the writing, and the prerequisite is now
+   **discharged**: FIX-1154 publishes into a world where the verbs exist.
 
-   **The fallback's restore has an owner: whichever child lands second.** Stating the absence
-   writes a paragraph that FIX-1269's merge then falsifies, and nothing else here assigned the
-   correction — so the epic could wrap with the architecture doc still describing the gap this
-   cycle closes. **FIX-1154 owns it by default**, since it owns the comparison half. **If FIX-1154
-   publishes first, FIX-1269 owns it** — a one-paragraph correction of a statement its own merge
-   made false, not a transfer of FIX-1154's documentation scope. It re-cuts nothing: the FIX-1269 /
-   FIX-1154 boundary, FIX-1154's §11 target set and the corpus checker are unchanged, FIX-1154 is
-   not split, and Decision 3 is not reopened.
+   **The fallback's restore had an owner and never needed one.** Had FIX-1154 published first it
+   would have stated the absence — its §8 rule — writing a paragraph FIX-1269's merge then
+   falsifies, with nothing else here assigning the correction, so the epic could have wrapped with
+   the architecture doc still describing the gap this cycle closes. The rule was: whichever child
+   lands **second** owns the restore — **FIX-1154 by default**, since it owns the comparison half,
+   **FIX-1269 if FIX-1154 published first**. FIX-1269 landed first, so the branch needing a restore
+   never happened and the §8 fallback never fired. It re-cut nothing: the FIX-1269 / FIX-1154
+   boundary, FIX-1154's §11 target set and the corpus checker are unchanged, FIX-1154 is not split,
+   and Decision 3 is not reopened.
 
-   **The prerequisite binds the conceptual half only, and FIX-1269 still documents what it ships.**
-   JSDoc on the new exports, or a one-line README method entry, travels with FIX-1269's PR as
-   ordinary implementer hygiene — it is **not** the architecture/guide corpus, not §11, and not a
-   reason to thin FIX-1154's target set. *(The contingent restore above is the one exception, and
-   only in the branch where FIX-1154 published the absence first.)* The carve-out is stated because without it an implementer
-   reading "FIX-1269 precedes FIX-1154's documentation" can conclude they are forbidden from
-   documenting their own exports, which the prerequisite was never about. That FIX-1269's methods
-   merge before the comparison paragraph publishes is the **accepted cost of Decision 3**, not a
-   defect in it: both children sit under FIX-1157 and gate wrap together, so the window closes
-   inside the epic.
+   **The prerequisite bound the conceptual half only, and FIX-1269 documented what it shipped.**
+   JSDoc on the new exports, or a one-line README method entry, travelled with FIX-1269's PR as
+   ordinary implementer hygiene — **not** the architecture/guide corpus, not §11, and not a reason
+   to thin FIX-1154's target set. The carve-out is kept on the record because without it an
+   implementer reading "FIX-1269 precedes FIX-1154's documentation" concludes they are forbidden
+   from documenting their own exports, which the prerequisite was never about. That FIX-1269's
+   methods merged before the comparison paragraph publishes is the **accepted cost of Decision 3**,
+   not a defect in it — **and that window is open right now**: the verbs are on `main` and the
+   comparison paragraph is not. It closes when FIX-1154 lands, which is one of the two children
+   still holding wrap open (§4).
 
    **This ordering is prose and stays prose. Do not encode it as a Linear blocker, and do not
    split FIX-1154 to make an encoding possible.** The lifecycle carries **one phase and one
@@ -539,7 +583,7 @@ expensive thing this epic has already paid for.
 | [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | [#1478](https://github.com/fixpoint-labs/flow-state-dev/pull/1478) *(open)* | **In Development** · nothing about this issue is blocked. FIX-1269 has **landed** (#1488), so theme 3's publication ordering is satisfied — it was a prose ordering, deliberately never a Linear blocker |
 | [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `incState` / `pushState` on **both** public resource handle types, `ResourceRef` and `ResourceContext`. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | [#1479](https://github.com/fixpoint-labs/flow-state-dev/pull/1479) | [#1488](https://github.com/fixpoint-labs/flow-state-dev/pull/1488) *(merged)* | **Done** *(added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, comparing shared declarations on `(scope, ref)` — the durable cell, not the accessor name | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
-| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | **A write issued after the delete does not revive the resource.** The condition is the **version the write begins with, not what the context observed** — a context that never saw the key and one whose held version the delete evicted both arrive at the create-if-absent seed of `0`, so a fix written for the never-observed case alone leaves the defect live. Same **held-then-lost** shape FIX-1259 fixes on the scope side (`related`). The ordinary first touch of a never-written resource is unchanged, **and so is explicit recreation after a delete** (FIX-992 behaviour, pinned in two suites; theme 1 constrains the fix) — the version-`0` hole in theme 1's tombstone row | **bug** | — | [#1487](https://github.com/fixpoint-labs/flow-state-dev/pull/1487) *(merged)* | **Done** |
+| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | **A write issued after the delete does not revive the resource.** The condition is the **version the write begins with, not what the context observed** — a context that never saw the key and one whose held version the delete evicted both arrive at the create-if-absent seed of `0`, so a fix written for the never-observed case alone leaves the defect live. Same **held-then-lost** shape FIX-1259 fixes on the scope side (`related`). The ordinary first touch of a never-written resource is unchanged, **and so is explicit recreation after a delete** (FIX-992 behaviour, pinned in two suites; theme 1 constrained the fix and records what shipped) — the version-`0` hole in theme 1's tombstone row | **bug** | — | [#1487](https://github.com/fixpoint-labs/flow-state-dev/pull/1487) *(merged)* | **Done** |
 | [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. **The split is the right axis and is not sufficient on its own** — the constraint that goes with it, the measured evidence ([comment `5430501537`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430501537)) and the choice of mechanism are [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260)'s, on its issue and its PR | **bug** | — | [#1486](https://github.com/fixpoint-labs/flow-state-dev/pull/1486) *(open)* | **In Review** · High *(parented child — **gates wrap**; note below)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
@@ -647,7 +691,7 @@ the PR closes when the epic wraps; this document outlives it.
   cycle delivers at the handle surface.
 - **~~Do resources grow a committed `boolean`, or is the `Promise<boolean>` vs
   `Promise<void>` split deliberate?~~** *Resolved: deliberate — and D-6 = **A** makes it
-  binding rather than academic, because FIX-1269 now has to pick a return type.*
+  binding rather than academic, because FIX-1269 had to pick a return type.*
   Scope state returns `boolean` because callers branch on it to suppress a redundant
   `state_change`; resources verify the no-op internally and gate `resource_change` on that,
   so the value has no caller to serve. Forcing them to match would be symmetry for its own
@@ -655,13 +699,13 @@ the PR closes when the epic wraps; this document outlives it.
   asymmetry stated once where it is not. This is that statement. Raised by review on this PR,
   decided here at epic altitude so no child picks either way on its own.
 
-  **Constrains FIX-1269:** the shipping `incState` / `pushState` return **`Promise<void>`** on
-  **both** handle types, matching the `patchState` / `setState` / `updateState` that `ResourceRef`
-  and `ResourceContext` each already declare (`core/src/types/resource.ts`) — **not** the
-  `Promise<boolean>` that `ScopeStateOps` returns (`core/src/types/state.ts`). The verbs are being
-  added for API symmetry, which makes copying the bag's signature the tempting move and the wrong
-  one: it would fork the resource side's own return contract to close a gap with the other
-  primitive.
+  **Constrained FIX-1269, and the constraint held:** `incState` / `pushState` return
+  **`Promise<void>`** on **both** handle types on `origin/main`, matching the `patchState` /
+  `setState` / `updateState` that `ResourceRef` and `ResourceContext` each already declare
+  (`core/src/types/resource.ts`) — **not** the `Promise<boolean>` that `ScopeStateOps` returns
+  (`core/src/types/state.ts`). The verbs were added for API symmetry, which made copying the bag's
+  signature the tempting move and the wrong one: it would have forked the resource side's own
+  return contract to close a gap with the other primitive.
 
 ---
 
@@ -880,3 +924,32 @@ retraction taught something the themes do not already say, it earns a clause.
   [#1365](https://github.com/fixpoint-labs/flow-state-dev/pull/1365)'s **description**, not in this
   document, and were left alone: the API returns that body lossily — it strips angle-bracketed text,
   so a round-trip would silently delete `ctx.resources.<name>` and every `Promise<…>` generic in it.)*
+- **The two landings swept through the prose (2026-08-27)** — the entry above corrected §4 and the
+  wrap predicate *at the locations it was given*; **sixteen claim-sites** across §1, all three
+  themes, §4 and §5 were still written as if FIX-1258 and FIX-1269 were unfinished. Theme 1 said the
+  predicate "misses `0`" and the bet was "not enforced on that path" and that FIX-1258 still gates
+  wrap; theme 2 cited `ResourceContext` as carrying **no** `incState` *on `origin/main`*; theme 3
+  told FIX-1154 to write *closing* rather than *shipped*, kept a contingency for an ordering that
+  held, and had both children gating wrap together; §1's inventory omitted FIX-1269. Recast as
+  outcomes, not deleted — theme 1's prediction that the new verbs **inherited** the hole and one fix
+  at the predicate would close all three is now recorded as confirmed against the shipped intent
+  split, read in source rather than inferred from the merge. *(**Twenty-three**, and the shape the
+  log keeps recording: the previous pass was scoped to the surfaces it was pointed at, so **a status
+  correction is not finished when the status table is right**.)*
+- **Theme 1 had forbidden the mechanism its own child then shipped (2026-08-27)** — the paragraph
+  reading scope's `"absent"` as a precedent for the *shape* and not a value to copy also claimed
+  `ResourceStateStore` **rejects** the word, citing an `assertExpectedVersion` that no longer
+  exists, and called *"port `"absent"` to resources"* the forbidden move. FIX-1258 ported exactly
+  that word, with the same meaning, as a **third** expectation beside `0` — `set` honours it,
+  `delete` still refuses it, FIX-992 untouched. The conclusion survives and narrows: **the word is
+  shared, the value set is not**, because scope has no `0`-means-create-if-absent to share.
+  *(**Twenty-four** — a constraint stated one width too wide, the recurring shape, and the first to
+  condemn work this epic itself directed.)*
+- **FIX-1258's residual named in theme 1 (2026-08-27)** — the closure is **partial by design**:
+  reusing a session id needs the old incarnation's tombstones gone or its static resources are
+  unwritable, so the fix also purges them at session birth, and that reclamation is unfenced against
+  a concurrent creator — a lost create race can remove a tombstone and let an ordinary `"absent"`
+  write revive the resource (`ensure-session-record.ts`, under its own `KNOWN LIMIT` heading, naming
+  **FIX-1000** as the fence). Theme 1 had FIX-1000 filed as an unrelated *scope-side* case; it is
+  the door left open in theme 1's own bet, so the theme names it. **Deleted-stays-deleted is
+  enforced against a write that defeats a tombstone, not against the tombstone being removed.**
