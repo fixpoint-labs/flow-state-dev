@@ -246,13 +246,10 @@ export async function handleCreateCollectionItem(
     return jsonResponse(501, { error: "Collection mutations only supported for session scope" });
   }
 
-  // Seed default state from schema, through the one parse path every resource
-  // write uses (FIX-1260). This route is the only place in the engine that
-  // writes resource state from outside the registry, and it used to seed from a
-  // bare `safeParse` beside that guard: a schema `collection.create()` refuses
-  // still got a row over HTTP, and that row then rejected every later mutation.
+  // Seed from the schema's parse of `{}` — the route carries no initial state.
   // A schema whose parse of `{}` fails, or does not settle, has no seed this
-  // route can supply — 400 is the honest answer, not a `{}` the schema rejects.
+  // route can supply, so 400 is the honest answer rather than a `{}` the schema
+  // rejects on arrival.
   let initialState: JsonObject;
   try {
     initialState = parseResourceWriteState(config.stateSchema, {}, storageKey);

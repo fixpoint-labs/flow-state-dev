@@ -3,7 +3,7 @@
  * does this resource hold, given a config and a possibly-absent persisted
  * value" — plus the write-path parse that rejects a schema-invalid result
  * instead of substituting a default, and rejects a schema whose parse does not
- * settle (see {@link assertStableResourceState}).
+ * settle (see {@link parseResourceWriteState}).
  *
  * Lives in its own module so both `context/resource-registry` and
  * `routes/route-utils` can import it without creating a cycle, the same
@@ -89,11 +89,12 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
  * on the way *out* as well, so such a schema corrupts reads too, and catching it
  * at one write site would only move where the surprise surfaces.
  *
- * Returns `parsed` so call sites can use it inline.
+ * Returns `parsed` so call sites can use it inline. Module-private: the write
+ * path reaches it only through {@link parseResourceWriteState}.
  *
  * @throws {ValidationError} (`retryable: false`) when re-parsing moves the value
  */
-export function assertStableResourceState(
+function assertStableResourceState(
   stateSchema: ResourceConfig["stateSchema"],
   parsed: JsonObject,
   candidate: unknown,
@@ -106,9 +107,7 @@ export function assertStableResourceState(
 
   const reparsed = stateSchema.safeParse(parsed);
   // Bound on its own so the `isJsonObject` narrowing reaches the `.find` callback
-  // below. The cast this replaces claimed an object the second parse need not have
-  // produced, which turned a schema that collapses its own output into a raw
-  // TypeError instead of the diagnostic this guard exists to give.
+  // below — the second parse need not have produced an object at all.
   const reparsedObject =
     reparsed.success && isJsonObject(reparsed.data) ? reparsed.data : undefined;
   if (reparsedObject !== undefined && deepEqual(reparsedObject, parsed)) {

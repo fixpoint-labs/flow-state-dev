@@ -1106,15 +1106,6 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             }
           }
 
-          // The seeded row goes through the one parse path every resource write
-          // uses (FIX-1260) — throw on invalid input, never a silent fallback;
-          // reject a non-object result; and require the value to be a fixed point
-          // of its own schema. `create` writes the row the mutation verbs will
-          // read-modify-write, so holding it to a weaker bar than they use only
-          // moves the failure: the create succeeds and every later write on the
-          // instance throws, which reads as "patch is broken" rather than "this
-          // schema can't back a resource".
-          //
           // Defaults declared on the schema (e.g. `.nullable().default(null)`,
           // per BP-023) fill missing fields on both the create and replace
           // branches, so callers only supply the non-nullable scaffold.
@@ -1250,10 +1241,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             );
           }
 
-          // Patch branch: merge `update` over existing state, validate the
-          // merged shape explicitly, then persist. Persist also rejects an
-          // invalid result; the check here names the op as upsert so the
-          // diagnostic matches the create branch.
+          // Patch branch: merge `update` over existing state, then persist.
+          // Persist is the one write parse — an invalid or unstable merge is
+          // refused there, in the same words as every other resource write.
           //
           // The merge runs INSIDE the mutator so a CAS retry re-merges
           // `update` over the winner's state rather than re-applying a merge
@@ -1282,21 +1272,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
               const result = await persistNamespaceInstanceState(
                 storageKey,
                 nsConfig,
-                (current) => {
-                  const merged = updateObjectState(current, update);
-                  const parseResult = nsConfig.stateSchema.safeParse(merged);
-                  if (!parseResult.success) {
-                    const issue = parseResult.error.issues[0];
-                    const issuePath = issue === undefined ? "" : issue.path.join(".");
-                    const issueMessage =
-                      issue === undefined ? "schema validation failed" : issue.message;
-                    const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
-                    throw new Error(
-                      `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
-                    );
-                  }
-                  return merged;
-                },
+                (current) => updateObjectState(current, update),
                 seed
               );
               committed = result.committed;
