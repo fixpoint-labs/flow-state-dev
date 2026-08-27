@@ -68,59 +68,21 @@ export function resourceStateConflict(
 }
 
 /**
- * Refuse an `expectedVersion` that cannot name a version, before any adapter
- * acts on it.
+ * Refuse a numeric `expectedVersion` that cannot name a version.
  *
- * `ExpectedVersion` is `number | "any" | "absent"`, so the type admits values
- * the contract has no meaning for: `0` means "no live row" and real versions
- * start at `1`, so a negative, fractional, `NaN` or infinite version is a
- * programming error at the call site — not a lost race. It is thrown rather
- * than returned as a conflict for that reason: a `SetResult` conflict reports a
- * concurrency outcome the store never observed, and sends the caller into a
- * retry loop that can never converge.
- *
- * `"absent"` is refused here for the same reason, and deliberately **not**
- * aliased onto this store's `0`. The two would agree on `set` — but not on
- * `delete`, where `0` has a coherent meaning ("no live row, so the requested
- * terminal state already holds") and "delete only if absent" has none. An
- * alias would give one sentinel a second, verb-dependent meaning on the
- * subtlest predicate in these adapters. Scope stores, whose `0` is a real
- * version, are where `"absent"` is spelled and honoured.
- *
- * The assertion signature carries the refusal into the type system: after this
- * runs, `expectedVersion` narrows to `number | "any"`, so every downstream body
- * that does arithmetic on it or binds it to a SQL parameter can rely on that
- * without restating the check.
- *
- * The narrowing is a promise the compiler takes on trust, which is why the
- * check below is an allowlist. `Number.isInteger` plus the `"any"` early
- * return refuses every non-numeric value including ones this union does not
- * have yet — a guard that named only the members it knew would narrow a
- * future member away silently and hand it to that arithmetic. `"absent" !== 5`
- * is, after all, a perfectly good comparison.
- *
- * The rule is stated here and mirrored in the two SQL adapters, which cannot
- * import runtime engine code (see {@link resourceStateConflict}); the shared
- * conformance suite pins it against all four.
+ * `0` means "no live row" and real versions start at `1`, so a negative,
+ * fractional, `NaN` or infinite version is a programming error at the call site
+ * — not a lost race. It is thrown rather than returned as a conflict for that
+ * reason: a `SetResult` conflict reports a concurrency outcome the store never
+ * observed, and sends the caller into a retry loop that can never converge.
  *
  * `-1` is the value this exists for. Both SQL adapters carry it as the in-band
  * `"any"` sentinel inside the delete predicate, which is sound over the versions
  * the store *produces* and says nothing about what a caller may *pass*. This
  * closes the input domain so the sentinel is unreachable from outside.
  */
-export function assertExpectedVersion(
-  expectedVersion: ExpectedVersion
-): asserts expectedVersion is number | "any" {
-  if (expectedVersion === "any") return;
-  // Named ahead of the numeric check purely for the message: `Number.isInteger`
-  // already refuses it, but "must be a non-negative integer" is unhelpful
-  // advice for a caller who reached for the scope stores' create-if-absent.
-  if (expectedVersion === "absent") {
-    throw new TypeError(
-      'expectedVersion "absent" is not supported by ResourceStateStore; use 0, which means "no live row" here'
-    );
-  }
-  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+function assertVersionNumber(expectedVersion: unknown): void {
+  if (!Number.isInteger(expectedVersion) || (expectedVersion as number) < 0) {
     throw new TypeError(
       `expectedVersion must be a non-negative integer or "any", received ${String(expectedVersion)}`
     );
@@ -128,10 +90,83 @@ export function assertExpectedVersion(
 }
 
 /**
+ * Refuse an `expectedVersion` `set` cannot act on, before any adapter does.
+ *
+ * `set` honours all three members of the union, and the two non-numeric ones
+ * are **not** interchangeable on this side:
+ *
+ * - `0` — "no live row." Create-if-absent, satisfied by a tombstone as well as
+ *   a key that never existed. This is what an explicit `create()` writes at,
+ *   and recreating a deleted resource is intentional (FIX-992).
+ * - `"absent"` — "no row at all." A tombstone **is** a row, so it conflicts.
+ *   This is the stricter of the two, and it is what a read-modify-write that
+ *   began from the absent-row seed writes at, so a delete cannot be undone by
+ *   a mutation that never knew the resource was there (FIX-1258).
+ *
+ * `"absent"` means the same thing here as it does in `checkScopeWriteVersion`
+ * — "no record exists" — which is why it is spelled the same. What it is not
+ * is an alias for this store's `0`: aliasing them would collapse exactly the
+ * distinction this predicate now draws. `delete` still refuses the word
+ * outright ({@link assertDeleteExpectedVersion}), so it never acquires a
+ * second, verb-dependent meaning.
+ *
+ * The assertion signature carries the refusal into the type system, so every
+ * downstream body that does arithmetic on the value or binds it to a SQL
+ * parameter can narrow on it without restating the check.
+ *
+ * The narrowing is a promise the compiler takes on trust, which is why the
+ * check is an allowlist: `Number.isInteger` plus the two string early-returns
+ * refuse every other value, including members this union does not have yet. A
+ * guard that named only the members it knew would narrow a future member away
+ * silently and hand it to that arithmetic. `"absent" !== 5` is, after all, a
+ * perfectly good comparison.
+ *
+ * The rule is stated here and mirrored in the two SQL adapters, which cannot
+ * import runtime engine code (see {@link resourceStateConflict}); the shared
+ * conformance suite pins it against all four.
+ */
+export function assertSetExpectedVersion(
+  expectedVersion: ExpectedVersion
+): asserts expectedVersion is number | "any" | "absent" {
+  if (expectedVersion === "any" || expectedVersion === "absent") return;
+  assertVersionNumber(expectedVersion);
+}
+
+/**
+ * Refuse an `expectedVersion` `delete` cannot act on.
+ *
+ * Same numeric domain as {@link assertSetExpectedVersion}, and `"absent"` on
+ * top of it. "Delete only if the row does not exist" states no condition a
+ * delete could act on: `0` already covers "no live row, so the requested
+ * terminal state already holds," and there is nothing left for the stricter
+ * word to ask. Refusing it here is the same call `assertDeltaExpectedVersion`
+ * makes on the scope side, for the same reason — the verb read-modify-writes
+ * something that has to be there.
+ *
+ * Keeping the refusal on this verb only is what lets `set` honour the word
+ * without it meaning two things.
+ */
+export function assertDeleteExpectedVersion(
+  expectedVersion: ExpectedVersion
+): asserts expectedVersion is number | "any" {
+  if (expectedVersion === "any") return;
+  // Named ahead of the numeric check purely for the message: `Number.isInteger`
+  // already refuses it, but "must be a non-negative integer" is unhelpful
+  // advice for a caller who reached for the create-if-absent sentinel.
+  if (expectedVersion === "absent") {
+    throw new TypeError(
+      'expectedVersion "absent" is not supported by ResourceStateStore.delete; use 0, which means "no live row" here'
+    );
+  }
+  assertVersionNumber(expectedVersion);
+}
+
+/**
  * Shared write predicate: returns a conflict `SetResult` when `expectedVersion`
  * does not admit a write against `row`, or `undefined` when it does.
  *
- * Assumes `expectedVersion` has already passed {@link assertExpectedVersion}.
+ * Assumes `expectedVersion` has already passed the assertion for its verb
+ * ({@link assertSetExpectedVersion} / {@link assertDeleteExpectedVersion}).
  * The assertion is not folded in here because `delete` answers an absent or
  * already-tombstoned key without ever consulting the version — a check behind
  * this one would leave those paths unguarded.
@@ -144,8 +179,19 @@ export function checkWriteVersion(
 
   const isLive = row !== undefined && row.lifecycle === "live";
 
-  // `0` means "no live row" — create-if-absent, satisfied by a tombstone as
-  // well as a key that never existed.
+  // `"absent"` means "no row at all". A tombstone is a row — that is the whole
+  // point of retaining it — so it refuses one, and the conflict it builds
+  // carries `currentValue: undefined`, which the CAS driver reads as "deleted"
+  // and stops on. This is the only expectation that can tell a never-written
+  // key from a deleted one, and the reason `delete` means delete for a writer
+  // that started out believing the key was never there.
+  if (expectedVersion === "absent") {
+    return row === undefined ? undefined : resourceStateConflict(row);
+  }
+
+  // `0` is the weaker "no live row" — create-if-absent, satisfied by a
+  // tombstone as well as a key that never existed. Explicit recreation after a
+  // delete rides on exactly this (FIX-992).
   if (expectedVersion === 0) return isLive ? resourceStateConflict(row) : undefined;
 
   // A positive version requires a live row at exactly that version. A
