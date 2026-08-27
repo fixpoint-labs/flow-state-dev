@@ -240,15 +240,26 @@ Three things to hold while debugging a state bug:
 
 - An **unchecked** write sends no version, so it cannot raise `ConcurrentModificationError`. That
   covers `pushState`, `setStateRecord` and `deleteStateRecord`; `incState` given a single field;
-  and `patchState` given exactly one literal field. Seeing the error means some version-checked
-  write exhausted a retry budget — but **two separate drivers raise it, and neither wraps the
-  other, so settle which one you are in before auditing any call**. The message discriminates them.
+  and `patchState` given exactly one literal field. Seeing the error means a version-checked write
+  lost a race — but **three separate paths raise it and none wraps another, so settle which one you
+  are in before auditing any call**. The message discriminates them.
   `State update failed due to concurrent modifications` is scope state on `runWithCAS`
   (`packages/engine/src/stores/cas.ts`), written through `ctx.request` / `ctx.session` / `ctx.user`
   / `ctx.org`. `Resource "<key>" update failed due to concurrent modifications` is resource state on
   `runResourceCAS` (`packages/engine/src/stores/resource-cas.ts`), written through
-  `ctx.resources.<name>.patchState` / `setState` / `updateState`. A flow can use one surface and not
-  the other, so auditing the wrong one finds nothing and proves nothing.
+  `ctx.resources.<name>.patchState` / `setState` / `updateState`. Those two mean a retry budget ran
+  out. The third is neither driver: `Resource "<key>" was replaced by another writer (expected
+  version N, found M) — the delete was refused rather than applied to the new generation` is the
+  version-checked `delete` in `packages/engine/src/context/createExecutionContext.ts`, thrown on the
+  FIRST conflict with no retry loop behind it. It means the store still holds a live row at a
+  version this context did not expect — some other writer moved the key, delete-and-recreate being
+  the case the check exists to catch. It reaches there through
+  `ctx.resources.<collection>.delete(key)` **and** through instance-cap LRU eviction, which issues
+  the same version-conditional delete without you calling it. Audit those and whoever last wrote the
+  key; the mutation ops below are not on this path. (That same path has one more message, `Resource "<key>"
+  delete was refused with no current value ...`, which a conforming store cannot produce: read it as
+  an adapter bug, not a race.) A flow can use one surface and not the other, so auditing the wrong
+  one finds nothing and proves nothing.
   On the **scope-state** driver, call shape is what puts you there: multi-field `patchState`,
   multi-field `incState`, the `patchState` updater form, `setState`, `atomicState`. A missing
   adapter verb is not a second route onto it — the unchecked dispatch is already chosen by the time

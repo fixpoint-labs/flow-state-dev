@@ -292,10 +292,13 @@ export class ResourceAlreadyExistsError extends FlowError {
 
 /**
  * Thrown when a version-checked write loses a race — either because a CAS
- * driver spent its whole retry budget without landing, which is why the class
- * is `retryable: true` (a fresh attempt can win once contention subsides), or
- * because a version-checked resource `delete` conflicted, which is terminal on
- * the first conflict and is the one shape retrying will not win.
+ * driver spent its whole retry budget without landing, or because a
+ * version-checked resource `delete` conflicted. The class is `retryable: true`,
+ * which on the CAS paths means a fresh attempt can win once contention
+ * subsides. What sets the `delete` apart is that it has no internal retry loop
+ * behind it at all: it passes the literal `attempts: 1` where both drivers pass
+ * `maxRetries + 1`. That is a statement about the loop, not a claim about what
+ * a caller's own retry policy can do.
  *
  * **Three raise sites, not one.** Both CAS drivers raise it when their retry
  * budget exhausts — `runWithCAS` (`../stores/cas.ts`) for scope state,
@@ -303,7 +306,11 @@ export class ResourceAlreadyExistsError extends FlowError {
  * version-checked resource `delete` in `createExecutionContext` raises it
  * terminally on the first conflict, with no retry loop behind it (`attempts`
  * is 1 there). Prose that names only the scope-state driver, or only budget
- * exhaustion, is describing one of the three.
+ * exhaustion, is describing one of the three. Three *paths*, four `throw`s:
+ * the `delete` path holds two, one for the conflict it exists to catch (a live
+ * row at an unexpected version, which refreshes the cached value and version
+ * from the winner's row before it throws) and one for a store adapter that has
+ * broken idempotent delete, which no retry can fix.
  *
  * **The ops below are examples, not a closed list.** On the scope-state
  * driver a call reaches the retry loop when the scope has a durable `persist`
@@ -316,8 +323,14 @@ export class ResourceAlreadyExistsError extends FlowError {
  * adapter doesn't advertise the matching delta verb, because
  * `createScopePersist` then falls back to a full `set` at the held numeric
  * version — that refusal returns `false` instead of raising, which is a
- * different report, not an exemption. The resource driver has no such split:
- * its writes are version-checked whatever the store backs them.
+ * different report, not an exemption. The resource driver has no such
+ * *store-dependent* split — it does no delta-verb feature detection, so what
+ * the adapter advertises never changes its `expectedVersion`. The caller's
+ * intent decides that instead (`../stores/resource-cas.ts:222-223`):
+ * `mutate` sends the held version, `create` sends `0` — a version check, but
+ * against "no live row" rather than the version this context holds — and
+ * `replace`, reached by `create(key, state, { replace: true })`, sends `"any"`
+ * and so is not version-checked at all.
  *
  * Read the hint routing before restating any of this narrower than it is.
  */

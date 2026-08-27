@@ -88,7 +88,7 @@ type FlowError = Error & {
 | `ProviderUnavailableError` | Yes | Transient upstream provider outage (5xx, gateway failure) |
 | `ToolExecutionError` | Varies | Tool block execution failure |
 | `AmbiguousBlockNameError` | No | Block name resolution conflict |
-| `ConcurrentModificationError` | Yes | Version-checked write lost a race — either CAS driver (`runWithCAS` for scope state, `runResourceCAS` for resource state) exhausted its retry budget, or a version-checked resource `delete` conflicted, which is terminal on the first conflict (`attempts: 1`, no retry loop) and is the one shape a retry won't win |
+| `ConcurrentModificationError` | Yes | Version-checked write lost a race — either CAS driver (`runWithCAS` for scope state, `runResourceCAS` for resource state) exhausted its retry budget, or a version-checked resource `delete` conflicted, which is terminal on the first conflict (`attempts: 1`, no internal retry loop — a fact about the loop, not a claim about what a caller's own retry policy can do) |
 | `OutputValidationError` | No | Generator output failed `outputSchema` |
 | `RouteUnavailableError` | No | Recorded router decision can't be honored on resume (re-decision drift or removed route) |
 
