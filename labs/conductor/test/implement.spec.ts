@@ -3,7 +3,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { seedRepo } from "./harness";
@@ -29,6 +29,39 @@ const dirs: string[] = [];
 afterEach(() => {
   while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
+
+/** A `gh` on PATH that records its argv and answers with an empty listing. */
+function recordingGh(): { bin: string; log: string; restore: () => void } {
+  const bin = mkdtempSync(join(tmpdir(), "conductor-gh-"));
+  const log = join(bin, "argv.log");
+  writeFileSync(
+    join(bin, "gh"),
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo fixture; exit 0; fi\necho "$@" >> ${log}\necho '[]'\n`,
+  );
+  chmodSync(join(bin, "gh"), 0o755);
+  const prior = process.env["PATH"];
+  process.env["PATH"] = `${bin}${delimiter}${prior ?? ""}`;
+  return {
+    bin,
+    log,
+    restore: () => {
+      process.env["PATH"] = prior;
+    },
+  };
+}
+
+/** A run context for a checkout, with the fields the completion probe reads. */
+function runContext(checkout: string): Record<string, unknown> {
+  return {
+    epic: "e",
+    issue: "FIX-1",
+    phase: "implement",
+    attempt: 1,
+    workspacePath: checkout,
+    branch: "conductor/e/FIX-1--implement",
+    ctx: {},
+  };
+}
 
 const ALICE: RunPrincipal = { userId: "alice" };
 const EPIC = "conductor-tasks-test-epic";
@@ -222,13 +255,12 @@ describe("the done-condition — which pull requests count", () => {
     expect(readCompletion(saturatedButDone, "owner/repo", 4)).toBe(true);
   });
 
-  it("queries the repository validated at construction, not the one origin names later", async () => {
+  it("queries the repository validate returned, not the one origin names later", async () => {
     // A linked worktree shares `remote.origin.url` with the repository it was
     // cut from, and this probe runs AFTER the coding agent. One
-    // `git remote set-url origin` inside the checkout — by the agent or its
-    // tooling — repointed both the `-R` selector and the attribution, so a
-    // same-branch pull request in the replacement repository settled the board
-    // while none existed in the configured one.
+    // `git remote set-url origin` inside the checkout repointed both the `-R`
+    // selector and the attribution, so a same-branch pull request in the
+    // replacement settled the board while none existed in the configured one.
     //
     // Asserted on the argv `gh` actually received, because the defect is in
     // WHICH repository is queried; a return value cannot show that.
@@ -239,54 +271,40 @@ describe("the done-condition — which pull requests count", () => {
       execFileSync("git", args, { cwd: repo, stdio: "pipe", encoding: "utf8" });
     git("remote", "set-url", "origin", "https://github.com/validated/repo.git");
 
-    const bin = mkdtempSync(join(tmpdir(), "conductor-pin-bin-"));
+    const { bin, log, restore } = recordingGh();
     dirs.push(bin);
-    const log = join(bin, "argv.log");
-    writeFileSync(
-      join(bin, "gh"),
-      `#!/bin/sh
-if [ "$1" = "--version" ]; then echo fixture; exit 0; fi
-echo "$@" >> ${log}
-echo '[]'
-`,
-    );
-    chmodSync(join(bin, "gh"), 0o755);
-    const priorPath = process.env["PATH"];
-    process.env["PATH"] = `${bin}${delimiter}${priorPath ?? ""}`;
-
     try {
       const phase = implementPhase();
-      // Construction-time validation — this is where the identity is pinned.
-      phase.validate?.({ root: repo, sourceRepo: repo, baseRef: "main" } as never);
+      // Construction-time validation HANDS BACK the identity; the flow binds it
+      // into each run context. Nothing is stored on the phase.
+      const validated = phase.validate?.({
+        root: repo,
+        sourceRepo: repo,
+        baseRef: "main",
+      } as never);
+      expect(validated).toBeDefined();
 
       // The agent repoints origin. The worktree and the source repo share this
       // config, so there is no copy of the old value left to read.
       git("remote", "set-url", "origin", "https://github.com/attacker/repo.git");
 
-      await phase.isDone({
-        epic: "e",
-        issue: "FIX-1",
-        phase: "implement",
-        attempt: 1,
-        workspacePath: repo,
-        branch: "conductor/e/FIX-1--implement",
-        ctx: {} as never,
-      } as never);
+      await phase.isDone({ ...runContext(repo), validated } as never);
 
       const argv = readFileSync(log, "utf8");
       expect(argv).toContain("github.com/validated/repo");
       expect(argv).not.toContain("attacker");
     } finally {
-      process.env["PATH"] = priorPath;
+      restore();
     }
   });
 
-  it("refuses to let one phase be pinned to two different repositories", () => {
-    // `conductorFlow` snapshots the phase with a spread, which copies function
-    // references and not what they close over. So a spec handed to two
-    // conductors shares one pin, and the second construction would repoint the
-    // first's completion check — the exact thing the pin exists to prevent,
-    // reintroduced by the pin itself.
+  it("gives two conductors from one spec their own repository, with no residue", async () => {
+    // The property that removed the need for a guard. One `PhaseSpec` handed to
+    // two conductors used to share a pin in its closure — `conductorFlow`
+    // snapshots the phase with a spread, which copies function references and
+    // not what they close over — so the second construction repointed the
+    // first's completion check. `validate` is pure now and the value travels on
+    // the run context, so each conductor's is unreachable from the other's.
     const a = mkdtempSync(join(tmpdir(), "conductor-pin-a-"));
     const b = mkdtempSync(join(tmpdir(), "conductor-pin-b-"));
     dirs.push(a, b);
@@ -298,33 +316,64 @@ echo '[]'
     setOrigin(b, "https://github.com/two/repo.git");
 
     const phase = implementPhase();
-    phase.validate?.({ root: a, sourceRepo: a, baseRef: "main" } as never);
+    const first = phase.validate?.({ root: a, sourceRepo: a, baseRef: "main" } as never);
+    const second = phase.validate?.({ root: b, sourceRepo: b, baseRef: "main" } as never);
 
-    expect(() =>
-      phase.validate?.({ root: b, sourceRepo: b, baseRef: "main" } as never),
-    ).toThrow(/cannot serve two conductors/);
+    // Validating the second neither refuses nor disturbs the first.
+    expect((first as { selector: string }).selector).toBe("github.com/one/repo");
+    expect((second as { selector: string }).selector).toBe("github.com/two/repo");
 
-    // **Re-validating with the SAME repository stays a no-op.** Two epics on
-    // one source repository is the documented multi-conductor setup, and a
-    // refusal that fired on every second construction would break it while
-    // still passing the assertion above.
-    expect(() =>
-      phase.validate?.({ root: a, sourceRepo: a, baseRef: "main" } as never),
-    ).not.toThrow();
+    const { bin, log, restore } = recordingGh();
+    dirs.push(bin);
+    try {
+      // Sliced by run rather than indexed by line: each `isDone` makes one
+      // listing per counting state, so a positional assertion would compare the
+      // first run's second call against the second run — and pass or fail for
+      // reasons that have nothing to do with isolation.
+      await phase.isDone({ ...runContext(a), validated: first } as never);
+      const afterFirst = readFileSync(log, "utf8");
+      await phase.isDone({ ...runContext(b), validated: second } as never);
+      const afterSecond = readFileSync(log, "utf8").slice(afterFirst.length);
 
-    // **And the same repository spelled differently is still the same
-    // repository.** Identity folds case in this module, and a byte comparison
-    // would refuse a second clone whose remote differs only in casing — which
-    // passes both assertions above while breaking a configuration that works.
-    const c = mkdtempSync(join(tmpdir(), "conductor-pin-c-"));
-    dirs.push(c);
-    seedRepo(c);
-    setOrigin(c, "https://GITHUB.com/One/Repo.git");
-    expect(() =>
-      phase.validate?.({ root: c, sourceRepo: c, baseRef: "main" } as never),
-    ).not.toThrow();
+      expect(afterFirst).toContain("github.com/one/repo");
+      expect(afterFirst).not.toContain("two/repo");
+      expect(afterSecond).toContain("github.com/two/repo");
+      expect(afterSecond).not.toContain("one/repo");
+    } finally {
+      restore();
+    }
   });
 
+  it("refuses to query anything when the run context carries no repository", async () => {
+    // The pin is bound by `conductorFlow` from what `validate` returned, so an
+    // absent one means the probe was reached by a route that never validated.
+    //
+    // The tempting recovery is to re-read `origin` here, and it used to: that
+    // is the defect the pin exists to remove. This probe runs AFTER the agent,
+    // and a linked worktree shares `remote.origin.url` with the repository it
+    // was cut from, so the answer would be whatever the agent last left there
+    // — a same-branch pull request over in the replacement settling the board.
+    // Failing re-pends the attempt with a reason; answering wrongly settles it.
+    //
+    // Asserted through a recording `gh` as well as on the throw, because "did
+    // not query" is the half a rejected promise alone does not establish.
+    const repo = mkdtempSync(join(tmpdir(), "conductor-nopin-"));
+    dirs.push(repo);
+    seedRepo(repo);
+
+    const { bin, log, restore } = recordingGh();
+    dirs.push(bin);
+    try {
+      const phase = implementPhase();
+      await expect(
+        phase.isDone({ ...runContext(repo), validated: undefined } as never),
+      ).rejects.toThrow(/no repository to query/);
+      expect(existsSync(log)).toBe(false);
+    } finally {
+      restore();
+    }
+
+  });
   it("keeps a port only when it is the API's port", () => {
     // **The earlier `:8443` fix was right, and I generalised it too far.** A
     // port survives only when the transport is the one `gh` talks to. These

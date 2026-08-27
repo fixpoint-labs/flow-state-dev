@@ -185,6 +185,17 @@ export interface HarnessOptions {
   /** Overrides the implement phase's done-condition. Default: satisfied. */
   isDone?: PhaseSpec["isDone"];
   /**
+   * Overrides the implement phase's construction-time validation. Lets a test
+   * observe what `conductorFlow` does with the value `validate` returns.
+   */
+  validate?: PhaseSpec["validate"];
+  /**
+   * Overrides the prompt builder. The other half of what `conductorFlow` binds
+   * — `validated` reaches this hook and the done-condition through two
+   * separately-built contexts, so observing one says nothing about the other.
+   */
+  buildPrompt?: PhaseSpec["buildPrompt"];
+  /**
    * Overrides the configured phase NAME. Lets a test restart a conductor over
    * durable rows with the phase spelled differently — which is how a casing
    * mismatch between config and stored row actually arises.
@@ -240,6 +251,8 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   const phase: PhaseSpec = {
     ...base,
     ...(options.isDone !== undefined ? { isDone: options.isDone } : {}),
+    ...(options.validate !== undefined ? { validate: options.validate } : {}),
+    ...(options.buildPrompt !== undefined ? { buildPrompt: options.buildPrompt } : {}),
     ...(options.phaseName !== undefined ? { phase: options.phaseName } : {}),
   };
 

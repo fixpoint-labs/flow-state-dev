@@ -1350,6 +1350,56 @@ describe("the ledger is partitioned by tenant", () => {
     expect(separated.boardId).not.toBe(implement.boardId);
   });
 
+  it("hands each conductor what its own `validate` returned", async () => {
+    // The flow-side half of the pin. `validate` is pure and returns the
+    // identity it checked; `conductorFlow` binds THAT value into this
+    // conductor's run contexts. Without the binding a phase has no way to carry
+    // anything from construction into a run, and the version that stored it on
+    // itself produced three defects in as many rounds.
+    //
+    // Driven through a real seed rather than by calling `isDone` directly,
+    // because what is under test is the wiring in `conductorFlow` and calling
+    // the phase by hand would supply the value the wiring is supposed to.
+    let seen: unknown = "never ran";
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      validate: () => "the-validated-value",
+      isDone: (run) => {
+        seen = run.validated;
+        return true;
+      },
+    });
+
+    await seedAndDrain(live);
+
+    expect(seen).toBe("the-validated-value");
+  });
+
+  it("hands the same value to the prompt builder, not only the done-condition", async () => {
+    // `validated` sits on `PhaseRunContext`, which `PromptRunContext` extends,
+    // so the type tells a prompt builder it receives the value. The manager
+    // builds the two contexts separately, so binding into `isDone` alone made
+    // the type a lie for the other half: a phase whose prompt depends on what
+    // `validate` found would read `undefined` and build the wrong prompt,
+    // after a construction that reported success.
+    //
+    // Separate from the done-condition's test because they fail
+    // independently — one wrapper cannot cover both hooks.
+    let seen: unknown = "never ran";
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      validate: () => "the-validated-value",
+      buildPrompt: (run) => {
+        seen = run.validated;
+        return "p";
+      },
+    });
+
+    await seedAndDrain(live);
+
+    expect(seen).toBe("the-validated-value");
+  });
+
   describe("every action refuses another tenant BEFORE touching the board", () => {
     // The guarantee this file documents used to hold for exactly one of the
     // three actions. The tenant check lived only in the manager, which runs
