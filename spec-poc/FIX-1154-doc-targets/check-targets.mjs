@@ -318,6 +318,7 @@ const CORPUS_GLOB_PACKAGE_READMES = "packages";
 const OUT_OF_SCOPE = [
   [".changeset/", "release-note fragments — a record of what a past release said at the time, not a live contract (3 candidate hits, all historical)"],
   ["packages/", "package sources and CHANGELOGs. Only each package's README.md is a caller-facing contract, and that is in the corpus above (CHANGELOG hits are release history)"],
+  ["plugins/", "harness plugin tooling — install/detection scripts and their READMEs, not documentation of the framework surface (probed: 0 candidates)"],
   ["apps/kitchen-sink/", "the reference app demonstrates the framework, it does not document it (probed: 0 candidates)"],
   ["apps/pattern-benchmark/", "benchmark harness notes (probed: 0 candidates)"],
   ["apps/README.md", "one-line index of the apps directory"],
