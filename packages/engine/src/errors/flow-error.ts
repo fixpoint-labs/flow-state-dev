@@ -326,12 +326,11 @@ export class ResourceAlreadyExistsError extends FlowError {
  * different report, not an exemption. The resource driver has no such
  * *store-dependent* split — it does no delta-verb feature detection, so what
  * the adapter advertises never changes its `expectedVersion`. The caller's
- * intent decides that instead — `runResourceCAS` derives `expectedVersion`
- * from its `intent` argument:
- * `mutate` sends the held version, `create` sends `0` — a version check, but
- * against "no live row" rather than the version this context holds — and
- * `replace`, reached by `create(key, state, { replace: true })`, sends `"any"`
- * and so is not version-checked at all.
+ * intent decides that instead — `runResourceCAS` derives `expectedVersion` from
+ * its `intent` argument. `mutate` sends the held version; `create` sends `0`, a
+ * version check, but against "no live row" rather than the version this context
+ * holds; and `replace`, reached by `create(key, state, { replace: true })`,
+ * sends `"any"` and so is not version-checked at all.
  *
  * Read the hint routing before restating any of this narrower than it is.
  */

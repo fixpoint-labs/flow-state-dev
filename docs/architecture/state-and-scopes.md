@@ -221,11 +221,10 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
   against, so both writers land. `updateState` is the second kind — its callback derives the next
   state from the current one, so two concurrent increments both land. `setState` and `patchState`
   supply fixed values, so the fields they name are last-writer-wins. `getOrPatchState` is a
-  first-touch memoize rather than an updater
-  — it patches a single key only when that key is absent — so it follows `patchState`, not
-  `updateState`; concurrent callers for one key inside a request are single-flighted.
-  `writeContent` carries no version predicate at all — `ContentStore.set` creates or overwrites —
-  so it is last-writer-wins outright.
+  first-touch memoize rather than an updater — it patches a single key only when that key is absent
+  — so it follows `patchState`, not `updateState`; concurrent callers for one key inside a request
+  are single-flighted. `writeContent` carries no version predicate at all — `ContentStore.set`
+  creates or overwrites — so it is last-writer-wins outright.
 
 ### Delta verb routing (FIX-405)
 
