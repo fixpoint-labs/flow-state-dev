@@ -291,7 +291,11 @@ export class ResourceAlreadyExistsError extends FlowError {
 }
 
 /**
- * Thrown when a version-checked write loses a race that retrying will not win.
+ * Thrown when a version-checked write loses a race — either because a CAS
+ * driver spent its whole retry budget without landing, which is why the class
+ * is `retryable: true` (a fresh attempt can win once contention subsides), or
+ * because a version-checked resource `delete` conflicted, which is terminal on
+ * the first conflict and is the one shape retrying will not win.
  *
  * **Three raise sites, not one.** Both CAS drivers raise it when their retry
  * budget exhausts — `runWithCAS` (`../stores/cas.ts`) for scope state,

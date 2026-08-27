@@ -84,9 +84,11 @@ type FlowError = Error & {
 | `TimeoutError` | Yes | Operation exceeded timeout |
 | `RateLimitError` | Yes | Provider rate limit hit |
 | `ModelError` | Yes | Model provider error |
+| `ContextLengthError` | No | Prompt exceeded the model's context window — resending the same input fails identically, so the caller must shrink it |
+| `ProviderUnavailableError` | Yes | Transient upstream provider outage (5xx, gateway failure) |
 | `ToolExecutionError` | Varies | Tool block execution failure |
 | `AmbiguousBlockNameError` | No | Block name resolution conflict |
-| `ConcurrentModificationError` | Yes | CAS contention exhausted |
+| `ConcurrentModificationError` | Yes | Version-checked write lost a race — either CAS driver (`runWithCAS` for scope state, `runResourceCAS` for resource state) exhausted its retry budget, or a version-checked resource `delete` conflicted, which is terminal on the first conflict (`attempts: 1`, no retry loop) and is the one shape a retry won't win |
 | `OutputValidationError` | No | Generator output failed `outputSchema` |
 | `RouteUnavailableError` | No | Recorded router decision can't be honored on resume (re-decision drift or removed route) |
 

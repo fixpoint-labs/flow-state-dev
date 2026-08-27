@@ -18,7 +18,7 @@
  * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `wait()` (`cas.ts:96-104`) is an unabortable timer — **persists after cancellation** |
  * | Retry budget exhausted | {@link ConcurrentModificationError} | same |
  * | Mutator output equals the cached state | Suppress **only against a re-read, verified version** | Returns `committed: false` *before* `persist` (`cas.ts:143-145`, ahead of the only version check at `:147`) — **silently drops a deliberate write** |
- * | Single-field literal patch | Stays on CAS — there is no hint surface here | `state-container.ts:155-157` routes a commutative hint to `runCommutative`, which persists at `expectedVersion: "any"` (`:189-193`) — **no version check at all** |
+ * | Single-field literal patch | Stays on CAS — there is no hint surface here | `state-container.ts:228-229` routes a commutative hint to `runCommutative`, which persists **once, with no retry behind it** (`:267-271`). Whether that one write is version-checked is the adapter's to decide: `createScopePersist` maps `expectedVersion` to `"any"` only INSIDE its four delta-verb branches, each guarded on `typeof store.<verb> === "function"` (`scope-persist.ts:96-143`). Against an adapter advertising none, the same hint falls through to a **version-checked full-record `set` at the raw numeric version** (`:147-148`) — a single attempt that can lose the write, reported as `false` rather than retried |
  *
  * The no-op and commutative rows are the subtle ones. A no-op decided against an
  * unverified snapshot *is* a lost update: a context that reads `{mode:"old"}`,
@@ -41,7 +41,10 @@
  * `updateState` — the same names as the registry's resource ops, one module
  * away. It is the natural thing to import and the wrong one. The same goes for
  * `createScopePersist` (`scope-persist.ts:60`), which downgrades
- * `expectedVersion` to `"any"` for commutative hints.
+ * `expectedVersion` to `"any"` for commutative hints **only when the store
+ * advertises the matching delta verb** (`:96-143`), and otherwise sends a
+ * single version-checked full-record `set` at the held numeric version
+ * (`:147-148`) — one attempt, which can lose the write outright.
  */
 
 import type { CASOptions, JsonObject, StateContainer } from "@flow-state-dev/core/types";
