@@ -317,8 +317,8 @@ failure the shared driver would have produced — lives beside the code, in the
 | `provider_unavailable_error` | Yes | Upstream provider outage (5xx, gateway failure) |
 | `tool_execution_error` | No | Tool block threw during generator loop |
 | `ambiguous_block_name` | No | Block name resolved to more than one execution target |
-| `resource_deleted` | No | Resource write lost to a concurrent delete — terminal, a retry would resurrect the row |
-| `resource_already_exists` | No | Create-if-absent resource write lost its race; carries the winner's state and version |
+| `resource_deleted` | No | A state mutation reached a **tombstoned** resource. Usually no race to find: any earlier delete leaves the tombstone, and a later context is refused whether it writes at `"absent"` (holding no version) or at a numeric one (a tombstone is never live). Terminal because no retry can revive the key — recreating it is `create()`'s job, which writes at `0`, and a tombstone admits that |
+| `resource_already_exists` | No | A create-if-absent write found a **live** row under the key. A lost race is one way there; an ordinary `create` on a key that already exists is the other, and the store cannot tell them apart. Carries the existing (winner's) state and version, so `getOrCreate` / `upsert` finish as a read rather than a second lookup |
 | `concurrent_modification` | Yes | Version-checked write lost: either CAS driver exhausted its retry budget, or a version-checked resource delete conflicted (terminal, `attempts: 1`) |
 | `output_validation_error` | No | Generator output failed its `outputSchema`; `details` carries `{ rawOutput, issues, phase }` |
 | `route_unavailable` | No | Recorded router decision can't be honored on resume — the selector re-decided, or the route left the table |
