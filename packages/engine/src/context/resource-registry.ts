@@ -56,7 +56,6 @@ import {
 } from "../errors/flow-error";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import {
-  assertStableResourceState,
   normalizeResourceDefault,
   normalizeResourceState,
   parseResourceWriteState
@@ -1107,29 +1106,23 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             }
           }
 
-          // Validate state via schema — throw on invalid input, never silent fallback.
+          // The seeded row goes through the one parse path every resource write
+          // uses (FIX-1260) — throw on invalid input, never a silent fallback;
+          // reject a non-object result; and require the value to be a fixed point
+          // of its own schema. `create` writes the row the mutation verbs will
+          // read-modify-write, so holding it to a weaker bar than they use only
+          // moves the failure: the create succeeds and every later write on the
+          // instance throws, which reads as "patch is broken" rather than "this
+          // schema can't back a resource".
+          //
           // Defaults declared on the schema (e.g. `.nullable().default(null)`,
           // per BP-023) fill missing fields on both the create and replace
           // branches, so callers only supply the non-nullable scaffold.
-          const parseResult = nsConfig.stateSchema.safeParse(initial ?? {});
-          if (!parseResult.success) {
-            const issue = parseResult.error.issues[0];
-            const issuePath = issue === undefined ? "" : issue.path.join(".");
-            const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
-            const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
-            const opLabel = replace && exists ? "create(replace)" : "create";
-            throw new Error(
-              `Namespace "${nsConfig.pattern}" ${opLabel}("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
-            );
-          }
-
-          const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
-
-          // Same rule as the mutation verbs, applied where the row is first
-          // seeded. Without it a create succeeds and every later write on the
-          // instance throws, which reads as "patch is broken" rather than "this
-          // schema can't back a resource".
-          assertStableResourceState(nsConfig.stateSchema, state, initial ?? {}, storageKey);
+          const state = parseResourceWriteState(
+            nsConfig.stateSchema,
+            initial ?? {},
+            storageKey
+          );
 
           // Capture (cloned) prior state for the updated-hook before
           // persisting. Clone so hook code that caches or mutates `prev`

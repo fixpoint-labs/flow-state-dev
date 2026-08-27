@@ -79,6 +79,16 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
  * path depends on (BP-030): that is exactly how a row written before its schema
  * gained a defaulted field acquires that field.
  *
+ * **Assumed: a schema's parse is a pure function of its input.** That is what
+ * lets the check short-circuit when the first parse changed nothing — an
+ * unchanged value is taken as its own fixed point without paying a second
+ * `safeParse`, and an ordinary schema over an already-normalized value is the
+ * overwhelming majority of writes. A schema that parses the same input to
+ * different values on different calls is not defended against here, because it
+ * is already broken past what this guard could repair: resource state is parsed
+ * on the way *out* as well, so such a schema corrupts reads too, and catching it
+ * at one write site would only move where the surprise surfaces.
+ *
  * Returns `parsed` so call sites can use it inline.
  *
  * @throws {ValidationError} (`retryable: false`) when re-parsing moves the value
@@ -95,24 +105,54 @@ export function assertStableResourceState(
   if (deepEqual(candidate, parsed)) return parsed;
 
   const reparsed = stateSchema.safeParse(parsed);
-  if (reparsed.success && isJsonObject(reparsed.data) && deepEqual(reparsed.data, parsed)) {
+  // Bound on its own so the `isJsonObject` narrowing reaches the `.find` callback
+  // below. The cast this replaces claimed an object the second parse need not have
+  // produced, which turned a schema that collapses its own output into a raw
+  // TypeError instead of the diagnostic this guard exists to give.
+  const reparsedObject =
+    reparsed.success && isJsonObject(reparsed.data) ? reparsed.data : undefined;
+  if (reparsedObject !== undefined && deepEqual(reparsedObject, parsed)) {
     return parsed;
   }
 
-  // Name the field that moved. A type-changing transform (`z.string().transform(Number)`)
-  // fails the re-parse outright rather than differing, so there may be no field to name.
-  const movedKey = reparsed.success
-    ? Object.keys(parsed).find(
-        (key) => !deepEqual((reparsed.data as JsonObject)[key], parsed[key])
-      )
-    : reparsed.error.issues[0]?.path.join(".");
-  const at = movedKey === undefined || movedKey.length === 0 ? "" : ` at "${movedKey}"`;
+  // Three ways the second parse can fail the fixed-point test, and each sends the
+  // schema's author to a different line of their schema — so say which happened
+  // rather than always claiming a field moved.
+  let at = "";
+  let cause =
+    "the schema does not parse its own output back to the same value, so every write would " +
+    "move the stored state.";
+
+  if (reparsedObject !== undefined) {
+    // A different object: name the first field that moved.
+    const movedKey = Object.keys(parsed).find(
+      (key) => !deepEqual(reparsedObject[key], parsed[key])
+    );
+    if (movedKey !== undefined && movedKey.length > 0) at = ` at "${movedKey}"`;
+  } else if (reparsed.success) {
+    // A non-object — a conditional transform that collapses its own output, as in
+    // `{phase:0} -> {phase:1} -> null`. Nothing moved, so there is no field to
+    // name, and the row would not survive its own read path either.
+    const produced =
+      reparsed.data === null
+        ? "null"
+        : Array.isArray(reparsed.data)
+          ? "an array"
+          : `a ${typeof reparsed.data}`;
+    cause =
+      `re-parsing its own output produced ${produced}, not an object, so the stored state ` +
+      `would not survive its own read path.`;
+  } else {
+    // A rejected re-parse: a type-changing transform (`z.string().transform(Number)`)
+    // whose output no longer satisfies its own input type. Name the path Zod flagged.
+    const issuePath = reparsed.error.issues[0]?.path.join(".");
+    if (issuePath !== undefined && issuePath.length > 0) at = ` at "${issuePath}"`;
+  }
 
   throw new ValidationError(
-    `Resource "${resourceLabel}" write failed stateSchema validation${at}: the schema ` +
-      `does not parse its own output back to the same value, so every write would move the ` +
-      `stored state. Make the transform idempotent — parsing an already-parsed value must ` +
-      `yield that same value.`
+    `Resource "${resourceLabel}" write failed stateSchema validation${at}: ${cause} ` +
+      `Make the transform idempotent — parsing an already-parsed value must yield that ` +
+      `same value.`
   );
 }
 

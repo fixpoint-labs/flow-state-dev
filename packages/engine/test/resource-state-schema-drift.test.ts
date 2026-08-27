@@ -144,19 +144,20 @@ async function seedStored(
 describe("FIX-1260: a state schema never moves the stored value on its own", () => {
   it("holds a single resource's untouched field steady across successive writes", async () => {
     const stores = createInMemoryStores();
-    await seedStored(stores, "drifting", { n: 0 });
+    // Seeded at 41, not at the schema's default of 0: a value only a previous
+    // write could have put there, so "the row held" and "the default re-derived
+    // it" are distinguishable outcomes. A drifting schema would climb off it,
+    // and a re-derived one would snap to 0 — neither reads as 41.
+    await seedStored(stores, "defaulted", { n: 41, tag: "seed" });
 
     // Three writes, each in its own context (one request apiece), none of which
-    // mentions `n`. Whatever happens to `tag`, `n` is not this caller's business
-    // and must not move. Today each context re-parses on load AND on write, so
-    // `n` climbs; the assertion names the value rather than "it wrote", so it
-    // cannot go green against a stored value that moved a different amount.
+    // mentions `n`. Every one of them succeeds — this is the case for what a
+    // caller's ordinary write must NOT do to a field it never named, so it is
+    // driven through a schema whose parse settles. The refusal cases are below.
     for (const [i, tag] of ["a", "b", "c"].entries()) {
       const ctx = await makeCtx(stores, `req_${i}`);
-      await (ctx.resources.drifting as any)
-        .patchState({ tag })
-        .catch(() => undefined);
-      expect(await readStored(stores, "drifting")).toMatchObject({ n: 0 });
+      await (ctx.resources.defaulted as any).patchState({ tag });
+      expect(await readStored(stores, "defaulted")).toEqual({ n: 41, tag });
     }
   });
 
@@ -165,9 +166,10 @@ describe("FIX-1260: a state schema never moves the stored value on its own", () 
     await seedStored(stores, "drifting", { n: 0 });
     const ctx = await makeCtx(stores, "req_1");
 
-    // Loud, not silent. The caller finds out at the write, naming the resource.
+    // Loud, not silent. The caller finds out at the write, naming the resource
+    // and the field the second parse moved.
     await expect((ctx.resources.drifting as any).patchState({ tag: "a" })).rejects.toThrow(
-      /drifting/
+      /Resource "drifting" write failed stateSchema validation at "n"/
     );
     // And the row is untouched — a refused write leaves no partial state.
     expect(await readStored(stores, "drifting")).toEqual({ n: 0 });
@@ -178,14 +180,46 @@ describe("FIX-1260: a state schema never moves the stored value on its own", () 
     // `persistNamespaceInstanceState`, a different function from the single's
     // path. A suite covering only singles passes while every instance drifts.
     const stores = createInMemoryStores();
-    await seedStored(stores, "driftingItems/one", { n: 0 });
+    await seedStored(stores, "defaultedItems/one", { n: 41, tag: "seed" });
 
     for (const [i, tag] of ["a", "b"].entries()) {
       const ctx = await makeCtx(stores, `req_${i}`);
-      const instance = await (ctx.resources.driftingItems as any).get("one");
-      await instance?.patchState({ tag }).catch(() => undefined);
-      expect(await readStored(stores, "driftingItems/one")).toMatchObject({ n: 0 });
+      const instance = await (ctx.resources.defaultedItems as any).get("one");
+      await instance.patchState({ tag });
+      expect(await readStored(stores, "defaultedItems/one")).toEqual({ n: 41, tag });
     }
+  });
+
+  it("refuses a write on a collection instance through an unstable schema", async () => {
+    // The refusal has to reach the instance write path as well, and that is a
+    // different function from the single's. It also no longer rides along on the
+    // steady case above, which now drives a schema that settles.
+    const stores = createInMemoryStores();
+    await seedStored(stores, "driftingItems/one", { n: 0 });
+    const ctx = await makeCtx(stores, "req_1");
+
+    const instance = await (ctx.resources.driftingItems as any).get("one");
+    await expect(instance.patchState({ tag: "a" })).rejects.toThrow(
+      /Resource "driftingItems\/one" write failed stateSchema validation at "n"/
+    );
+    expect(await readStored(stores, "driftingItems/one")).toEqual({ n: 0 });
+  });
+
+  it("refuses collection.create() through an unstable schema", async () => {
+    // `create` seeds the row the mutation verbs will later read-modify-write, so
+    // a create held to a weaker bar than they use only moves the failure to the
+    // first patch — where it reads as "patch is broken". The README and the
+    // release note both claim `create` is guarded; this is what that rests on.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_1");
+
+    await expect(
+      (ctx.resources.driftingItems as any).create("fresh", { n: 0 })
+    ).rejects.toThrow(
+      /Resource "driftingItems\/fresh" write failed stateSchema validation at "n"/
+    );
+    // Refused means no row, not a row nobody can write to.
+    expect(await readStored(stores, "driftingItems/fresh")).toBeUndefined();
   });
 
   it("does not drift when a CAS conflict re-runs the mutator", async () => {

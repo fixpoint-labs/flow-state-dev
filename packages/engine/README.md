@@ -632,7 +632,11 @@ state. Make the transform idempotent — parsing an already-parsed value must yi
 that same value.
 ```
 
-The check runs on `setState` / `patchState` / `updateState`, on the same ops for collection instances, and on `create`. Rows written before this check may not satisfy it; they are read normally and converge to a stable value on their next successful write. If you need a derived value, compute it where you read the state rather than inside the state schema.
+A schema that collapses its own output — one whose second parse returns `null` or another non-object rather than a different object — is refused the same way, and says so instead of naming a field that did not move.
+
+Every resource write runs the check, because they all share one parse path: `setState` / `patchState` / `updateState`, the same ops on collection instances, `collection.create()` and `upsert`, and the client create route `POST /sessions/:id/resources/:ref`. That route carries no initial state, so it seeds the row from the schema's parse of `{}` — and a schema that cannot produce a valid, stable object from `{}` now gets `400` rather than a `201` over a row every later write would reject. A required field with no `.default()` is the usual cause; give it one.
+
+Rows written before this check may not satisfy it; they are read normally and converge to a stable value on their next successful write. If you need a derived value, compute it where you read the state rather than inside the state schema.
 
 ```ts
 // branded — see the note under the table below

@@ -641,15 +641,22 @@ describe("maxInstances with eviction: oldest", () => {
 // Schema validation
 // ---------------------------------------------------------------------------
 
+/**
+ * `create` refuses the same states the mutation verbs do, and says so in the
+ * same words: since FIX-1260 it seeds through the one write-parse path, so the
+ * message names the storage key and the offending field rather than the
+ * namespace pattern and the branch. These pin the field, which is what a caller
+ * reading the error actually needs.
+ */
 describe("schema validation on create", () => {
   it("throws on invalid initial state", async () => {
     const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     // language is required string — passing a number should fail
-    await expect(
-      ns.create("bad.ts", { language: 42 as any })
-    ).rejects.toThrow("validation failed");
+    await expect(ns.create("bad.ts", { language: 42 as any })).rejects.toThrow(
+      /Resource "files\/bad\.ts" write failed stateSchema validation at "language"/
+    );
   });
 
   it("never silently falls back to empty state", async () => {
@@ -666,7 +673,9 @@ describe("schema validation on create", () => {
     const ns = ctx.resources.strict as any as ResourceCollectionRef<{ required: string }>;
 
     // Missing required field should throw, not create with {}
-    await expect(ns.create("bad.ts", {})).rejects.toThrow("validation failed");
+    await expect(ns.create("bad.ts", {})).rejects.toThrow(
+      /Resource "strict\/bad\.ts" write failed stateSchema validation at "required"/
+    );
   });
 });
 

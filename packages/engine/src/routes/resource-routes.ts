@@ -22,7 +22,11 @@ import {
   loadTenantSession,
   parseJsonBody,
 } from "./route-utils";
-import { normalizeResourceState } from "../resources/normalize-resource-state";
+import {
+  normalizeResourceState,
+  parseResourceWriteState,
+} from "../resources/normalize-resource-state";
+import { ValidationError } from "../errors/flow-error";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
@@ -242,10 +246,20 @@ export async function handleCreateCollectionItem(
     return jsonResponse(501, { error: "Collection mutations only supported for session scope" });
   }
 
-  // Seed default state from schema
-  const defaultState = config.stateSchema.safeParse({});
-  const initialState: JsonObject =
-    defaultState.success && isJsonObject(defaultState.data) ? defaultState.data : {};
+  // Seed default state from schema, through the one parse path every resource
+  // write uses (FIX-1260). This route is the only place in the engine that
+  // writes resource state from outside the registry, and it used to seed from a
+  // bare `safeParse` beside that guard: a schema `collection.create()` refuses
+  // still got a row over HTTP, and that row then rejected every later mutation.
+  // A schema whose parse of `{}` fails, or does not settle, has no seed this
+  // route can supply — 400 is the honest answer, not a `{}` the schema rejects.
+  let initialState: JsonObject;
+  try {
+    initialState = parseResourceWriteState(config.stateSchema, {}, storageKey);
+  } catch (error) {
+    if (!(error instanceof ValidationError)) throw error;
+    return jsonResponse(400, { error: error.message });
+  }
 
   const content = typeof body.content === "string" ? body.content : undefined;
 
