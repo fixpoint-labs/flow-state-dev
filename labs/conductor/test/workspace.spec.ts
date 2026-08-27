@@ -26,6 +26,7 @@ import {
   isStrictlyInside,
 } from "../src/workspace";
 import { seedRepo } from "./harness";
+import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -1174,7 +1175,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     ).toBe("");
 
     // And the recovery works: add the rule, provision again, no manual step.
-    writeFileSync(join(config.sourceRepo, ".gitignore"), "**/.fsdev/\n");
+    writeFileSync(join(config.sourceRepo, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
     execFileSync("git", ["add", ".gitignore"], { cwd: config.sourceRepo, stdio: "pipe" });
     execFileSync("git", ["commit", "-q", "-m", "restore the rule"], {
       cwd: config.sourceRepo,

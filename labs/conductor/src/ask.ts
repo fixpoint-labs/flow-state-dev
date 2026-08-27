@@ -72,6 +72,19 @@ import { join } from "node:path";
 /** The directory, relative to the checkout, the marker lives in. */
 export const ASK_MARKER_DIR = join(".fsdev", "ask");
 
+/**
+ * The `.gitignore` line a target repository needs, spelled once.
+ *
+ * It appears in the refusal a run gets, in the test fixture's repository, and
+ * in the assertions on both — three copies that have to agree, and a refusal
+ * naming a rule the fixture does not use is a message that has been wrong
+ * without anything failing.
+ *
+ * Double-star rather than root-anchored: it matches at any depth, so the rule
+ * keeps covering the marker if the checkout layout ever nests.
+ */
+export const ASK_MARKER_IGNORE_RULE = "**/.fsdev/";
+
 /** Where THIS attempt must write a question, if it has one. */
 export function askMarkerPath(workspacePath: string, attempt: number): string {
   return join(workspacePath, ASK_MARKER_DIR, `${attempt}.md`);

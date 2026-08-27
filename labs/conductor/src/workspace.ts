@@ -46,7 +46,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
-import { ASK_MARKER_DIR } from "./ask";
+import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "./ask";
 import { identityFromCommonDir } from "./config-env";
 import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./patterns";
 
@@ -548,13 +548,19 @@ async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Pro
  * to say so and change nothing, and the refusal lands before the agent runs,
  * which is what keeps it from being paid for once per retry.
  */
-async function assertAskMarkerIgnored(checkoutPath: string, timeoutMs: number): Promise<void> {
+async function assertAskMarkerIgnored(checkoutPath: string, left: () => number): Promise<void> {
   // **Already committed is asked FIRST, and it is a different failure.** An
   // ignore rule does not un-track a file: `git add -A` stages a change to a
   // tracked path whatever the rules say. So a target that has committed a
   // marker before is unsafe even with a correct `.gitignore`, and it needs the
   // other instruction — remove the file, not add a line.
-  const tracked = await git(checkoutPath, ["ls-files", "--", ASK_MARKER_DIR], timeoutMs);
+  // `left` rather than one snapshot, redrawn before each command — the
+  // convention `looksHalfBuilt` already follows. Handed a single number, these
+  // two calls each get the WHOLE remaining budget, so the pair can outlast
+  // `provisionTimeoutMs`; the ownership arithmetic reads that number as the
+  // longest the lock is held, and a bound wrong by the command count is the
+  // failure `WorkspaceConfig.provisionTimeoutMs` is written against.
+  const tracked = await git(checkoutPath, ["ls-files", "--", ASK_MARKER_DIR], left());
   if (tracked !== "") {
     throw new Error(
       `[conductor] the repository behind ${checkoutPath} already tracks ${ASK_MARKER_DIR}: ` +
@@ -587,13 +593,14 @@ async function assertAskMarkerIgnored(checkoutPath: string, timeoutMs: number): 
     // target that had already leaked a marker was refused for missing a rule it
     // had. The tracked case is caught above, by its own name; this call asks
     // only the question it is for, which is whether the RULE covers the path.
-    await git(checkoutPath, ["check-ignore", "-q", "--no-index", probe], timeoutMs);
+    await git(checkoutPath, ["check-ignore", "-q", "--no-index", probe], left());
     return;
   } catch (error) {
-    // `check-ignore` answers "no" with exit 1 and fails with 128. Only the
-    // first is the finding; anything else is git being unable to answer, and
-    // reporting that as "not ignored" would name the wrong cause.
-    if ((error as { code?: unknown }).code !== 1) throw error;
+    // Only a clean exit 1 is the finding; anything else is git being unable to
+    // answer, and reporting that as "not ignored" would name the wrong cause.
+    // Through the shared discriminator rather than an inlined `code === 1`,
+    // which is how this one shipped without the `killed` guard.
+    if (!gitAnsweredNo(error)) throw error;
   }
   throw new Error(
     `[conductor] the repository behind ${checkoutPath} does not ignore the directory ` +
@@ -602,7 +609,7 @@ async function assertAskMarkerIgnored(checkoutPath: string, timeoutMs: number): 
       `\`git add -A\` from staging a file git does not already ignore — so the question ` +
       `would be committed to the branch and land in the pull request. The DIRECTORY is ` +
       `what is checked, because a rule naming one marker file leaves the next attempt's ` +
-      `unprotected. Add \`**/.fsdev/\` to that repository's .gitignore.`,
+      `unprotected. Add \`${ASK_MARKER_IGNORE_RULE}\` to that repository's .gitignore.`,
   );
 }
 
@@ -741,7 +748,7 @@ async function branchExists(
     );
     return true;
   } catch (err) {
-    if (isRefAbsent(err)) return false;
+    if (gitAnsweredNo(err)) return false;
     throw new Error(
       `[conductor] could not determine whether branch "${branch}" exists in ` +
         `${config.sourceRepo}: the probe failed for a reason other than the ref being ` +
@@ -752,8 +759,14 @@ async function branchExists(
 }
 
 /**
- * Did the ref probe fail **because the ref is not there**, or because the probe
- * itself did not work?
+ * Did git answer **no**, or did the probe itself fail?
+ *
+ * Two callers ask it, and neither can use a blanket `catch`: the ref probe
+ * (`rev-parse --verify --quiet`, exit 1 = the ref is absent) and the ignore
+ * probe (`check-ignore -q`, exit 1 = the path is not ignored). Named for the
+ * shape rather than for either question, because the discriminator below is the
+ * thing being shared and it is easy to re-derive slightly wrong — the ignore
+ * probe originally inlined `code === 1` without the `killed` guard.
  *
  * A blanket `catch` cannot tell those apart, and answering `false` for both is
  * wrong twice over. On the reuse path the caller reports a branch someone
@@ -770,7 +783,7 @@ async function branchExists(
  * git cannot read exits 128 unkilled, and a git that cannot be spawned carries
  * a string `code` such as `ENOENT`. Only the first is an answer.
  */
-function isRefAbsent(err: unknown): boolean {
+function gitAnsweredNo(err: unknown): boolean {
   const { code, killed } = (err ?? {}) as { code?: unknown; killed?: unknown };
   return killed !== true && code === 1;
 }
@@ -939,7 +952,7 @@ export async function provisionCheckout(
     // Re-checked on reuse, not only on creation: the rule is a tracked file on
     // the branch this tree is on, so a run that deleted it leaves a checkout
     // that provisioned legally and is no longer safe to write a question into.
-    await assertAskMarkerIgnored(path, left());
+    await assertAskMarkerIgnored(path, left);
 
     return { path, branch, created: false };
   }
@@ -1038,7 +1051,7 @@ export async function provisionCheckout(
   // return, under the lock, with no agent yet dispatched. Same argument the
   // no-`.git` branch above makes, at the one other moment it holds.
   try {
-    await assertAskMarkerIgnored(path, left());
+    await assertAskMarkerIgnored(path, left);
   } catch (refusal) {
     const removed = await discardFreshCheckout(config, path, branch, branchPreexisted, now);
     if (removed) throw refusal;

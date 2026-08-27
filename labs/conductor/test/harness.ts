@@ -21,6 +21,7 @@ import type {
 } from "@flow-state-dev/claude-code/sdk";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
+import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
 import type { PhaseSpec } from "../src/manager";
 
 export const USER_ID = "conductor-test-user";
@@ -222,7 +223,7 @@ export function seedRepo(dir: string): void {
   // refuses a checkout whose repository does not carry it, before the agent
   // runs. Third fixture in this file that had drifted from the thing it stands
   // for, and the same tell each time: the specs passed because nothing asked.
-  writeFileSync(join(dir, ".gitignore"), "**/.fsdev/\n");
+  writeFileSync(join(dir, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
   git("add", "tracked.txt", ".gitignore");
   git("commit", "-m", "root");
   // **A stand-in source repository has an `origin`, because a real one does.**
