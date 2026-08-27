@@ -1085,7 +1085,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     dropIgnoreRule(config.sourceRepo);
 
     await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      /does not ignore "\.fsdev/,
+      /does not ignore the directory "\.fsdev/,
     );
   });
 
@@ -1112,7 +1112,7 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     dropIgnoreRule(first.path);
 
     await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      /does not ignore "\.fsdev/,
+      /does not ignore the directory "\.fsdev/,
     );
     // Refused, not cleared: the tree may hold the run's real work.
     expect(existsSync(join(first.path, "tracked.txt"))).toBe(true);
@@ -1208,6 +1208,56 @@ describe("provisioning refuses a repository that would commit the ask marker", (
         encoding: "utf8",
       }).trim(),
     ).not.toBe("");
+  });
+
+  it("refuses a rule that names one marker file rather than the directory", async () => {
+    // A marker is named for the attempt that writes it, so a check on one
+    // filename answers about one attempt. This rule ignores `1.md` and nothing
+    // else: attempt 1 is safe, attempt 2's question gets committed. Probing a
+    // concrete filename accepted this checkout.
+    //
+    // The directory is what is checked now, because git does not descend into
+    // an excluded one — so no enumeration of filenames can satisfy it partway.
+    const config = workspace();
+    writeFileSync(join(config.sourceRepo, ".gitignore"), ".fsdev/ask/1.md\n");
+    execFileSync("git", ["commit", "-q", "-am", "ignore only the first marker"], {
+      cwd: config.sourceRepo,
+      stdio: "pipe",
+    });
+
+    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+      /does not ignore the directory/,
+    );
+  });
+
+  it("removes the checkout even when the refusal is the budget running out", async () => {
+    // The case the cleanup exists for, and the one it could not handle.
+    // `remainingBudget` THROWS once the deadline passes, so a cleanup written
+    // against the provisioning budget threw at its first call and the swallow
+    // turned that into silence — leaving the branch it was added to remove.
+    //
+    // Staged on the real clock seam rather than by sleeping: `now` reads
+    // normally until the checkout exists, which is `worktree add` returning,
+    // then jumps past the deadline. Everything after that point runs with the
+    // budget genuinely exhausted, which is the condition under test.
+    const config = workspace();
+    const checkout = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const branch = branchFor(at("FIX-1219", "implement"));
+    const start = Date.now();
+    const now = () => (existsSync(checkout) ? start + 60 * 60 * 1000 : Date.now());
+
+    await expect(
+      provisionCheckout(config, at("FIX-1219", "implement"), now),
+    ).rejects.toThrow(/exceeded its budget/);
+
+    // Both halves gone, so the operator's next attempt starts clean.
+    expect(existsSync(checkout)).toBe(false);
+    expect(
+      execFileSync("git", ["branch", "--list", branch], {
+        cwd: config.sourceRepo,
+        encoding: "utf8",
+      }).trim(),
+    ).toBe("");
   });
 });
 

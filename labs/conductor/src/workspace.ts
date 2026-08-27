@@ -564,9 +564,22 @@ async function assertAskMarkerIgnored(checkoutPath: string, timeoutMs: number): 
     );
   }
 
-  // A concrete path rather than the directory: a pattern can match a file and
-  // not the directory that holds it, and the file is what has to be ignored.
-  const probe = join(ASK_MARKER_DIR, "1.md");
+  // **The DIRECTORY, because the guarantee has to hold for every attempt.** A
+  // marker is named for the attempt that writes it, so a check on one filename
+  // answers about one attempt: a repository whose rule spells
+  // `.fsdev/ask/1.md` passes it and then commits attempt 2's question.
+  //
+  // An ignored directory is the one condition that cannot be defeated that way.
+  // Git does not descend into an excluded directory, so nothing inside can be
+  // staged — and a negation cannot re-open it, which the docs state and this
+  // was checked against: with `**/.fsdev/` plus `!.fsdev/ask/1.md`, `git add -A`
+  // stages nothing. No enumeration of filenames can satisfy it partially.
+  //
+  // **The cost, stated rather than hidden:** a rule that covers every marker
+  // FILE without covering the directory — `.fsdev/ask/*.md`, measured — is safe
+  // and is refused anyway. That is the safe direction of a check that cannot
+  // ask "for all n", and the message names a rule that satisfies it.
+  const probe = ASK_MARKER_DIR;
   try {
     // **`--no-index`, and without it this check was wrong about the very repo
     // it exists for.** Consulting the index, `check-ignore` reports a TRACKED
@@ -583,11 +596,13 @@ async function assertAskMarkerIgnored(checkoutPath: string, timeoutMs: number): 
     if ((error as { code?: unknown }).code !== 1) throw error;
   }
   throw new Error(
-    `[conductor] the repository behind ${checkoutPath} does not ignore "${probe}". A run ` +
-      `writes the question it needs answered to that path inside its own checkout, and ` +
-      `nothing here can stop the coding agent's \`git add -A\` from staging a file git ` +
-      `does not already ignore — so the question would be committed to the branch and ` +
-      `land in the pull request. Add \`**/.fsdev/\` to that repository's .gitignore.`,
+    `[conductor] the repository behind ${checkoutPath} does not ignore the directory ` +
+      `"${probe}". A run writes the question it needs answered to a file named for its ` +
+      `attempt inside that directory, and nothing here can stop the coding agent's ` +
+      `\`git add -A\` from staging a file git does not already ignore — so the question ` +
+      `would be committed to the branch and land in the pull request. The DIRECTORY is ` +
+      `what is checked, because a rule naming one marker file leaves the next attempt's ` +
+      `unprotected. Add \`**/.fsdev/\` to that repository's .gitignore.`,
   );
 }
 
@@ -1025,8 +1040,18 @@ export async function provisionCheckout(
   try {
     await assertAskMarkerIgnored(path, left());
   } catch (refusal) {
-    await discardFreshCheckout(config, path, branch, branchPreexisted, left);
-    throw refusal;
+    const removed = await discardFreshCheckout(config, path, branch, branchPreexisted, now);
+    if (removed) throw refusal;
+    // Cleanup did not finish, so the leftover this function tried to prevent is
+    // there after all. Saying so beats a refusal that describes a tree the
+    // operator will not find, and beats replacing the diagnosis entirely.
+    throw new Error(
+      `${(refusal as Error).message}\n\n[conductor] and the checkout this call created ` +
+        `could not be removed, so ${path}${branchPreexisted ? "" : ` and branch "${branch}"`} ` +
+        `are still there. Fixing the repository will not be enough on its own — delete ` +
+        `them by hand, or the next attempt reuses a tree cut before the fix and fails the ` +
+        `same way.`,
+    );
   }
 
   return { path, branch, created: true };
@@ -1039,31 +1064,45 @@ export async function provisionCheckout(
  * `-b` attaches an existing branch, which belongs to whoever made it and may
  * carry work; removing the tree is ours, removing their branch is not.
  *
- * **Cleanup failures are swallowed, deliberately.** The caller is already
- * throwing something that names a real problem and tells the operator what to
- * do about it; replacing that with "and then `git branch -D` timed out" trades
- * a diagnosis for a footnote. A leftover is what the operator had before this
- * function existed, and the original refusal still names the path.
+ * **Its own budget, and that is the whole reason it works.** Written against
+ * the provisioning deadline, it could not run at all in the case it exists for:
+ * `remainingBudget` THROWS once the deadline passes, so a refusal raised
+ * *because* the budget ran out reached cleanup with no budget left, every git
+ * call threw at the first `left()`, and the swallow below turned that into
+ * silence — leaving exactly the branch this function was added to remove.
+ *
+ * Undoing an operation is not part of that operation's time box. The extension
+ * is one `GIT_TIMEOUT_MS` and only on the refusal path, which ends the attempt
+ * anyway; the alternative is a wedge no retry can clear.
+ *
+ * **Reports whether it finished, and cleanup failures are still swallowed.**
+ * The caller is already throwing something that names a real problem; replacing
+ * that with "and then `git branch -D` timed out" trades a diagnosis for a
+ * footnote. It gets a boolean instead, so it can add the leftover to its own
+ * message rather than describing a tree the operator will not find.
  */
 async function discardFreshCheckout(
   config: WorkspaceConfig,
   path: string,
   branch: string,
   branchPreexisted: boolean,
-  left: () => number,
-): Promise<void> {
+  now: () => number,
+): Promise<boolean> {
+  const deadline = now() + GIT_TIMEOUT_MS;
+  const left = () => remainingBudget(deadline, now);
   try {
     // The same guard the half-created branch uses, for the same reason: a
     // derived path stays derived only if every destructive call re-checks it.
     const root = resolve(config.root);
-    if (!isStrictlyInside(path, root)) return;
+    if (!isStrictlyInside(path, root)) return false;
     rmSync(path, { recursive: true, force: true });
     await git(config.sourceRepo, ["worktree", "prune"], left());
     if (!branchPreexisted) {
       await git(config.sourceRepo, ["branch", "-D", branch], left());
     }
+    return true;
   } catch {
-    // See above.
+    return false;
   }
 }
 
