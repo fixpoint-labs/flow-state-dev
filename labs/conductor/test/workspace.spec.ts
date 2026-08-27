@@ -1192,6 +1192,12 @@ describe("provisioning refuses a repository that would commit the ask marker", (
 
     // Neither half of what the failed call made is still there.
     expect(existsSync(checkout)).toBe(false);
+    // Nor the interrupted-provision marker the cleanup wears while it deletes.
+    // It goes back on before `rmSync` so a delete cut short leaves a leftover
+    // the next attempt can identify and clear rather than one it refuses by
+    // hand — but left behind after a delete that DID finish, it is a claim
+    // about a tree that no longer exists.
+    expect(existsSync(`${checkout}.provisioning`)).toBe(false);
     expect(
       execFileSync("git", ["branch", "--list", branch], {
         cwd: config.sourceRepo,

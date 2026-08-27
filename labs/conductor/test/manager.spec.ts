@@ -1119,8 +1119,10 @@ describe("the manager — the stale window is refused at construction", () => {
     // arriving through the door added to stop a wedge.
     //
     // 31_500 sits above `runTimeoutMs + provisionTimeoutMs` (31_000) and below
-    // the real bound (91_000), so it is accepted by the two-term sum and
-    // refused by the three-term one. That gap is the entire assertion.
+    // the real bound (61_000 = provisioning's 1_000 plus the cleanup allowance,
+    // which is the longer of the two tails here), so it is accepted by the
+    // arithmetic that ignores cleanup and refused by the arithmetic that counts
+    // it. That gap is the entire assertion.
     expect(() =>
       createConductorHarness({
         resolveClaudeAgent: scriptedAgent([sdkResult("success")], {

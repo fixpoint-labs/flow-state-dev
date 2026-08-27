@@ -568,16 +568,27 @@ export function resolveOwnership(options: {
   // commands back to back, so a per-call bound of N would let the real hold
   // reach 3N while this sum said N.
   //
-  // **The third term is provisioning's own undo, and leaving it out was a real
-  // gap.** A refusal late in provisioning discards the checkout it just made,
-  // and that cleanup cannot draw from `provisionBudget` — the case it exists
-  // for is that budget running out. So it extends the hold by
-  // `CHECKOUT_CLEANUP_TIMEOUT_MS`, under the lock. Unsummed, a slow cleanup
-  // runs past the point a waiter may call this lock stale, and two attempts
-  // prune the same worktree bookkeeping: the same defeat-by-arithmetic the
-  // paragraph above describes, through the door added to prevent a wedge.
+  // **What follows provisioning is a fork, not a sequence — so the second term
+  // is a maximum, not a sum.** Provisioning either refuses, in which case it
+  // discards the checkout it just made and throws before any agent is
+  // dispatched, or it succeeds, in which case the run happens and that cleanup
+  // never does. One lock, two mutually exclusive tails.
+  //
+  // Both tails have to be counted, and leaving the cleanup one out was a real
+  // gap: it cannot draw from `provisionBudget` — the case it exists for is that
+  // budget running out — so on the refusal path the hold genuinely outlasts
+  // provisioning. Unaccounted, a slow cleanup runs past the point a waiter may
+  // call this lock stale, and two attempts prune the same worktree bookkeeping:
+  // the same defeat-by-arithmetic the paragraph above describes, through the
+  // door added to prevent a wedge.
+  //
+  // Adding all three instead would price a run and its own cancellation as if
+  // they happened back to back. That is not conservatism with no cost — this
+  // number is the floor `staleAfterMs` is REFUSED against, so every millisecond
+  // of slack rejects deployments whose configuration is in fact safe.
   const provisionBudget = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
-  const maxLockHeldMs = runTimeoutMs + provisionBudget + CHECKOUT_CLEANUP_TIMEOUT_MS;
+  const maxLockHeldMs =
+    provisionBudget + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS);
 
   const ownership: OwnershipBounds = {
     // Sized against the lease-renewal lag that produces overlap, and well
@@ -644,9 +655,10 @@ export function resolveOwnership(options: {
   if (ownership.staleAfterMs <= maxLockHeldMs) {
     throw new Error(
       `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed the ` +
-        `longest a live attempt can hold the lock (${maxLockHeldMs}ms = runTimeoutMs ` +
-        `${runTimeoutMs}ms + the provisioning budget ${provisionBudget}ms + ` +
-        `${CHECKOUT_CLEANUP_TIMEOUT_MS}ms to undo a checkout provisioning refused): the ` +
+        `longest a live attempt can hold the lock (${maxLockHeldMs}ms = the provisioning ` +
+        `budget ${provisionBudget}ms + whichever of runTimeoutMs ${runTimeoutMs}ms and the ` +
+        `${CHECKOUT_CLEANUP_TIMEOUT_MS}ms to undo a checkout provisioning refused is ` +
+        `longer, since a refusal throws before any run): the ` +
         `lock is taken before the checkout is provisioned, so a window sized against the ` +
         `run's deadline alone can elapse while the holder is still inside git. Raise the ` +
         `stale window, lower the deadline, or lower options.provisionTimeoutMs.`,

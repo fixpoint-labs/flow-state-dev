@@ -1151,7 +1151,26 @@ async function discardFreshCheckout(
     // derived path stays derived only if every destructive call re-checks it.
     const root = resolve(config.root);
     if (!isStrictlyInside(path, root)) return false;
+
+    // **The interrupted-provision marker goes back on before the delete, and
+    // comes off after.** `rmSync` is synchronous and recursive, and node offers
+    // no way to bound it — no signal, no timeout — so this one call is the part
+    // of the cleanup the allowance above cannot actually cap. Small in practice
+    // (nothing has run in this tree yet, so it is the checked-out source at
+    // `baseRef` and nothing an agent built), but "small" is not "bounded".
+    //
+    // So the disposition is made safe instead of the duration made certain.
+    // Interrupted here — by a kill, or by the lock being taken because the
+    // delete ran long — the leftover is a partly-removed tree, and without the
+    // marker the next attempt cannot distinguish it from work it must not
+    // touch: it refuses and asks for a human. With it, the leftover is
+    // positively identified as a provision that never finished, which the
+    // reuse path above already clears on its own.
+    const marker = provisioningMarkerFor(path);
+    writeFileSync(marker, "");
     rmSync(path, { recursive: true, force: true });
+    rmSync(marker, { force: true });
+
     await git(config.sourceRepo, ["worktree", "prune"], left());
     if (!branchPreexisted) {
       await git(config.sourceRepo, ["branch", "-D", branch], left());

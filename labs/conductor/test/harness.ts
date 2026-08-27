@@ -263,14 +263,15 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   // the git budget is what keeps the suite's numbers small while the inequality
   // stays the real one.
   const provisionTimeoutMs = options.provisionTimeoutMs ?? 10_000;
-  // Derived from the SAME three terms the manager sums, not from two of them.
-  // `maxLockHeldMs` gained the cleanup allowance — a refusal late in
-  // provisioning discards the checkout it just made, under the lock — and a
-  // fixture that kept adding only `runTimeoutMs + provisionTimeoutMs` derived a
+  // Derived the SAME way the manager derives it, not from two of its terms.
+  // `maxLockHeldMs` counts the cleanup allowance — a refusal late in
+  // provisioning discards the checkout it just made, under the lock — against
+  // `runTimeoutMs` rather than alongside it, because a refusal throws before any
+  // run. A fixture adding only `runTimeoutMs + provisionTimeoutMs` derived a
   // stale window the manager refuses at construction.
   const staleAfterMs =
     options.ownership?.staleAfterMs ??
-    runTimeoutMs + provisionTimeoutMs + CHECKOUT_CLEANUP_TIMEOUT_MS + 1_000;
+    provisionTimeoutMs + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS) + 1_000;
   const pollMs = options.ownership?.pollMs ?? 25;
   const ownership = {
     // **Strictly past the stale window, by one poll.** The manager requires it,
