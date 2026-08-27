@@ -506,7 +506,7 @@ const counter = sequencer({
 }).step(/* ... */);
 ```
 
-**No-op write guard.** A state-write helper that produces a value structurally equal to the current state is suppressed: no persist call, no `state_change` SSE item, and the helper returns `false` instead of `true`. Idempotent writes are now free — callers no longer need to guard with manual identity checks. The comparison uses `Object.is` for primitives (NaN-equal-NaN; `+0 != -0`) and recursive structural equality for plain objects and arrays.
+**No-op write guard.** A state-write helper that produces a value structurally equal to the current state is suppressed: no persist call, no `state_change` SSE item, and the helper returns `false` instead of `true`. Callers don't need their own identity check before a repeated write. The comparison uses `Object.is` for primitives (NaN-equal-NaN; `+0 != -0`) and recursive structural equality for plain objects and arrays.
 
 **Transient slots.** `transientSlot()` marks a top-level field on `stateSchema` as in-memory only. Transient slots:
 

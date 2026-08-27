@@ -67,7 +67,7 @@ On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` inst
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
-Not every scope-state write carries a version. An increment, an append, or a write to one key of a record field is handed to the store as the operation itself, and the store applies it to the value it currently holds. Concurrent increments and appends both land. Concurrent writes to one field don't combine — the second one replaces the first, and neither call reports a conflict. [State Operations](../fundamentals/state-operations.md#cas-semantics) lists which calls go which way.
+Not every scope-state write carries a version. An increment, an append, or a write to one key of a record field is handed to the store as the operation itself, and the store applies it to the value it currently holds. On the built-in stores, concurrent increments and appends both land; a custom store that doesn't implement those operations takes a version-checked whole-record write instead, and one of the two is refused. Concurrent writes to one field don't combine — the second one replaces the first, and neither call reports a conflict. [State Operations](../fundamentals/state-operations.md#cas-semantics) lists which calls go which way.
 
 ### Concurrency by store
 

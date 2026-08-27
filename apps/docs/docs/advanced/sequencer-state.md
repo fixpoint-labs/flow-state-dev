@@ -148,7 +148,7 @@ Compare with the persistence scopes (when wired to a durable store like sqlite o
 
 The mutation model details are in [State Mutation Model](/docs/state/mutation-model). The short version: sequencer scope serializes mutators through an in-process queue, so it never sees the version conflicts that drive `ConcurrentModificationError`. The cost of safety is zero, and the operation surface (`patchState`, `incState`, etc.) is identical to the durable scopes.
 
-On the durable scopes some writes skip that check entirely. A single-field `incState` or a `pushState` is handed to the store as the operation itself and applied to the value it currently holds, so two of them both land. A single-field `patchState`, a `setStateRecord` and a `deleteStateRecord` skip the check too, but those don't combine: two writers on one field, or one key of one map, means the second value replaces the first and neither call reports a conflict. [State Operations](/docs/fundamentals/state-operations#cas-semantics) has the rule per call.
+On the durable scopes some writes skip that check entirely. A single-field `incState` or a `pushState` is handed to the store as the operation itself and applied to the value it currently holds, so on the built-in stores two of them both land. A single-field `patchState`, a `setStateRecord` and a `deleteStateRecord` skip the check too, but those don't combine: two writers on one field, or one key of one map, means the second value replaces the first and neither call reports a conflict. [State Operations](/docs/fundamentals/state-operations#cas-semantics) has the rule per call.
 
 ### Why not just use session state?
 
