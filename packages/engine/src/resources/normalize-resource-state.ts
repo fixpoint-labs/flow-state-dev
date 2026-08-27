@@ -63,16 +63,21 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
  * its own schema — parsing it again must yield that same value.
  *
  * Why the write path needs this at all, since `parsed` came straight out of
- * `safeParse`: a resource's stored row is parsed on the way out as well as on
- * the way in. The read path normalizes the row into the request's cache, the
- * caller's updater builds its next value on top of that cache, and the write
- * parses the result again. So every schema step that rewrites its input runs
- * once per read-modify-write cycle. If the step is idempotent — filling a
- * default, stripping an unknown key, normalizing a retired enum value — the
- * second application is a no-op and the row converges. If it is not, the row
- * moves a little further on every cycle, the write reports success, and
- * `ref.state` reads back a plausible value because the same shift re-applies on
- * the way out.
+ * `safeParse`: a schema step that rewrites its input runs again on every cycle,
+ * and for a *single* resource it runs twice. Its stored row is parsed on the
+ * way out as well as on the way in — the read path normalizes the row into the
+ * request's cache, the caller's updater builds its next value on top of that
+ * cache, and the write parses the result again. A collection instance takes it
+ * once: `createNamespaceInstanceRef` hands back the cached stored object as-is
+ * and the loaders that fill that cache copy store rows in unparsed, so only the
+ * write applies the schema there.
+ *
+ * Either count recurs, which is what matters here. If the step is idempotent —
+ * filling a default, stripping an unknown key, normalizing a retired enum value
+ * — the next application is a no-op and the row converges. If it is not, the
+ * row moves a little further on every cycle and the write reports success; on a
+ * single resource it also reads back a plausible value, because the same shift
+ * re-applies on the way out.
  *
  * The check is therefore on the parse's *stability*, not on whether the parse
  * changed anything. Rejecting any change would break the normalization the read
