@@ -102,9 +102,9 @@ The mutator must be a *pure function* of the current state. Don't perform side e
 Every operation returns `Promise<boolean>`:
 
 - `true` — the write changed state. Persisted, version bumped, `state_change` SSE event emitted.
-- `false` — nothing was written. No persist call, no version bump, no SSE event.
+- `false` — nothing was written. No version bump, no SSE event. The store may still have been called.
 
-The usual cause of `false` is a redundant write. When the update you propose is structurally equal to the state this context last read, it's skipped, so idempotent writes don't need manual identity checks:
+The usual cause of `false` is a redundant write. When the update you propose is structurally equal to the state this context last read, it's skipped before the store is called, so idempotent writes don't need manual identity checks:
 
 ```ts
 // Safe to call repeatedly. If `mode` is already "agent", nothing happens.
