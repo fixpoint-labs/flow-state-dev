@@ -38,6 +38,9 @@ function emptyStores() {
       get: async (): Promise<SessionRecord | undefined> => undefined,
       set: async () => ({ ok: true as const })
     },
+    // A won create reclaims the key's tombstones (FIX-1258). Nothing here has
+    // any, so the call only has to exist.
+    resourceState: { purgeTombstones: async () => {} },
     // Per-process by default, so liveness is gated off — irrelevant here.
     activeRequests: {}
   } as never;

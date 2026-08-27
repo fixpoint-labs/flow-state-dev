@@ -273,14 +273,13 @@ async function runCommutative<TState extends object>(
   if (!result.ok) {
     // The `"any"` expectedVersion that makes a commutative op unconflictable
     // is applied by `createScopePersist` only INSIDE its four delta-verb
-    // branches, each guarded on `typeof store.<verb> === "function"`
-    // (`scope-persist.ts:96-143`). An adapter that advertises no verb falls
-    // through to the full-record `set` at the raw numeric version
-    // (`scope-persist.ts:147-148`), so this branch is reached by an ordinary
-    // lost version race against a LIVE record just as readily as by the
-    // missing record it used to name. Measured: a store with no delta verbs
-    // holding version 7 against a container at version 0 refused three
-    // `deleteStateRecord` calls in a row, every `set` sent
+    // branches, each guarded on `typeof store.<verb> === "function"`. An
+    // adapter that advertises no verb falls through to that function's
+    // full-record `set` at the raw numeric version, so this branch is reached
+    // by an ordinary lost version race against a LIVE record just as readily
+    // as by the missing record it used to name. Measured: a store with no
+    // delta verbs holding version 7 against a container at version 0 refused
+    // three `deleteStateRecord` calls in a row, every `set` sent
     // `expectedVersion: 0`, and the record was there the whole time.
     //
     // Either way there is nothing to commit and nothing to retry here: the

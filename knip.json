@@ -53,6 +53,10 @@
     },
     "labs/conductor": {
       "entry": ["fsdev.config.ts", "test/**/*.spec.ts", "test/harness.ts"]
+    },
+    "plugins/flow-state-dev": {
+      "entry": ["test/**/*.test.mjs", "skills/install-fsd/detect/detect.mjs"],
+      "project": ["test/**/*.mjs", "skills/**/*.mjs"]
     }
   }
 }

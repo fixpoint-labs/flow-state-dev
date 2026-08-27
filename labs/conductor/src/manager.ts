@@ -104,6 +104,15 @@ export interface PhaseRunContext {
    */
   previousSessionId?: string;
   /**
+   * Whatever this phase's own {@link PhaseSpec.validate} returned, for THIS
+   * conductor.
+   *
+   * `unknown` because only the phase that produced it knows its shape — the
+   * manager carries it and never reads it. Absent when the phase has no
+   * `validate`, or when one is invoked outside `conductorFlow`.
+   */
+  validated?: unknown;
+  /**
    * Why the LAST attempt stopped, as the board captured it when `fail()`
    * re-pended the row. This — not the run record — is the carry-forward:
    * without it a deterministic failure replays and the retry budget burns for
@@ -186,8 +195,17 @@ export interface PhaseSpec {
    * `origin`; a checkout whose GitHub remote is called something else fails it
    * AFTER the paid agent run, once per retry. That is the case this exists for,
    * and it is why the hook takes the workspace rather than being a boolean.
+   *
+   * **Whatever it returns is handed back to this phase's own `isDone` as
+   * {@link PhaseRunContext.validated}, once per conductor.** That is the only
+   * way a phase can carry something it learned at construction into a run:
+   * closing over it does not work, because one `PhaseSpec` can be given to two
+   * conductors and `conductorFlow`'s snapshot copies function references rather
+   * than what they close over. Three separate defects came out of a phase that
+   * tried — a pin shared between conductors, a pin retained by a construction
+   * that then failed, and a comparison written to paper over both.
    */
-  validate?(workspace: WorkspaceConfig): void;
+  validate?(workspace: WorkspaceConfig): unknown;
 }
 
 /** How the manager is wired to its board and its host. */

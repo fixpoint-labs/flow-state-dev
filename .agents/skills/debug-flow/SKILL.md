@@ -247,7 +247,8 @@ Three things to hold while debugging a state bug:
   (`packages/engine/src/stores/cas.ts`), written through `ctx.request` / `ctx.session` / `ctx.user`
   / `ctx.org`. `Resource "<key>" update failed due to concurrent modifications` is resource state on
   `runResourceCAS` (`packages/engine/src/stores/resource-cas.ts`), written through
-  `ctx.resources.<name>.patchState` / `setState` / `updateState`. Those two mean a retry budget ran
+  `ctx.resources.<name>.patchState` / `setState` / `updateState` / `incState` / `pushState`. Those
+  two mean a retry budget ran
   out. The third is neither driver: `Resource "<key>" was replaced by another writer (expected
   version N, found M) — the delete was refused rather than applied to the new generation` is the
   version-checked `delete` in `packages/engine/src/context/createExecutionContext.ts`, thrown on the

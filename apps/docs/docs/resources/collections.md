@@ -78,12 +78,12 @@ execute: async (input, ctx) => {
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. `patchState`, `setState`, and `updateState` refuse a result that fails `stateSchema`; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). The `state` getter on a resolved ref is synchronous — you await the lookup, not the read of an already-resolved ref.
+Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `incState()`, `pushState()`, `readContent()`, `readContentRaw()`. `patchState`, `setState`, `updateState`, `incState`, and `pushState` all refuse a result that fails `stateSchema`; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). The `state` getter on a resolved ref is synchronous — you await the lookup, not the read of an already-resolved ref.
 
 Each returned ref also carries `path`, `scope`, and `uri` fields for identity — see [Resource identity](./overview#resource-identity-path-scope-and-uri) for details.
 
 :::note Parallel writes
-Creating distinct collection instances across concurrent `.parallel` / `.forEach` branches is safe: each write commits to its own key, and a later `list()` or `count()` in the same request sees all of them. Two branches writing the *same* instance key are last-writer-wins. See [parallelism in control flow](../sequencers/control-flow.md#parallelism).
+Creating distinct collection instances across concurrent `.parallel` / `.forEach` branches is safe: each write commits to its own key, and a later `list()` or `count()` in the same request sees all of them. Two branches writing the *same* instance key are last-writer-wins; `incState` and `pushState` are the way to accumulate on a shared key without one branch overwriting the other. See [parallelism in control flow](../sequencers/control-flow.md#parallelism).
 :::
 
 ### `create({ replace })` and `upsert` — handling the exists/missing branches
@@ -289,7 +289,7 @@ Collections can declare a `client` config to make their items visible to the fro
 
 ## Writable
 
-`writable` controls whether blocks can change an instance's state or content. Default `true`. Instance `patchState` / `setState` / `updateState`, collection `upsert` on an existing key, and instance `writeContent` all honor it.
+`writable` controls whether blocks can change an instance's state or content. Default `true`. Instance `patchState` / `setState` / `updateState` / `incState` / `pushState`, collection `upsert` on an existing key, and instance `writeContent` all honor it.
 
 Set `writable: false` and those writes throw. The flag is collection-wide: every instance is covered.
 

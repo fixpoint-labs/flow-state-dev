@@ -86,7 +86,11 @@ The filesystem store also has no field-delete operation, so `deleteStateRecord` 
 
 The resource-state column reaches your flow code, not just callers holding the store directly. A flow mutating `ctx.resources` or a collection instance writes at the version its execution context read, so a write built on a stale read is refused and re-applied against the value that won rather than overwriting it — see [the mutation model](../state/mutation-model.md) for what that looks like from inside a flow.
 
-Deleting a resource on any store leaves a small marker row behind instead of removing it. The marker keeps the version, which is what stops a worker holding a pre-delete version from matching the resource that later replaces it. Markers are kept indefinitely — nothing reclaims them today — so a workload that creates and deletes many resource keys will accumulate one row per deleted key.
+Deleting a resource on any store leaves a small marker row behind instead of removing it. The marker keeps the version, which is what stops a worker holding a pre-delete version from matching the resource that later replaces it. Nothing ages a marker out — there is no sweep, no timer, no retention window — so a workload that creates and deletes many resource keys accumulates one row per deleted key.
+
+Markers are reclaimed at exactly one moment: when a session record is **created** under a session id, the runtime clears that id's markers immediately before it writes the record. Reusing a session id therefore gives you writable resources again, rather than a session whose static resources are permanently refused. Nothing happens at delete time — while a session is merely gone, its markers are still doing their job.
+
+Two things to know about that reclamation. A reclaimed key's version restarts at `1`, so the pre-delete guarantee above does not carry across a reused id: a worker still holding a version from the old session can match a row in the new one. And the reclamation is not fenced against a second creator racing it for the same id — the loser of that race can clear a marker inside the session that won, which lets the next ordinary write bring a deleted resource back. Both need a per-session generation to close, and neither is reachable without deliberately reusing a session id.
 
 ## What gets persisted
 

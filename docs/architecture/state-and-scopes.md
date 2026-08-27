@@ -128,15 +128,29 @@ Every persisted scope state is versioned. Writes provide an expected version; mi
 
 **Scope stores can also require a record to be absent.** `set(id, record, "absent")` writes only when nothing exists at that id, and returns the ordinary conflict — carrying the winner's record — when something does. It exists because a `get`-then-`set` cannot decide a create race: nothing stops a second writer landing between the two calls, and `set` is an upsert, so both writers won and the second silently overwrote the first. Deriving an id from the work it belongs to does not help; two requests deriving the same id is exactly the case.
 
-The sentinel is a word rather than a number because **`0` was already taken here.** Scope records are created *at* version `0`, so a v0 record is live, and `expectedVersion: 0` means "stored at version 0" — the first CAS write of every new session, user and org depends on it. That is the opposite of resource state below, which starts its versions at `1` and spends its `0` on create-if-absent. `ResourceStateStore` therefore rejects `"absent"` rather than aliasing it: the two agree on `set` but not on `delete`, where "delete only if absent" has no meaning. Two spellings that each mean one thing, until a later change retires the resource side's `0`.
+The sentinel is a word rather than a number because **`0` was already taken here.** Scope records are created *at* version `0`, so a v0 record is live, and `expectedVersion: 0` means "stored at version 0" — the first CAS write of every new session, user and org depends on it. That is the opposite of resource state below, which starts its versions at `1` and spends its `0` on create-if-absent.
+
+`ResourceStateStore.set` honours `"absent"` too, with the same meaning — "no record exists" — but it is **not** an alias for that store's `0`. A tombstone is a record, so `"absent"` refuses one where `0` admits it, and that gap is what lets the resource side tell a never-written key from a deleted one. `delete` still rejects the word, since `0` already answers "no live row, so the terminal state holds."
 
 Scope `delete` is a hard delete with no tombstone, so a recreated id may reuse versions — stated rather than defended. The scope store's versions detect concurrent modification; they are not an identity, and nothing in the framework treats them as one.
 
 **Resource state is versioned too.** The four scopes above hold one state record each; resource state lives in `ResourceStateStore`, keyed per resource, and was originally modelled on `ContentStore` as plain last-write-wins. That model is wrong for structured state concurrent workers read-modify-write, so the store contract is now compare-and-swap: `set` and `delete` take an `ExpectedVersion` and return a `SetResult`, and the three reads carry the version alongside the state.
 
-`0` means *no live row*, so it is create-if-absent and a tombstone satisfies it. A numeric expected version must be a non-negative integer; anything else throws, since `number | "any"` admits values the contract has no meaning for, and a mistake at the call site is not a lost race to report as a conflict. Deletes mark a `lifecycle` column rather than removing the row, retain the version, and drop the payload; `deleteAll` bulk-marks the scope. Reads filter to `live`, so a tombstone is indistinguishable from an absent key to callers.
+`0` means *no live row*, so it is create-if-absent and a tombstone satisfies it — that is what explicit recreation after a delete rides on. `"absent"` is the stricter form: no row **at all**, so a tombstone conflicts. A numeric expected version must be a non-negative integer; anything else throws, since the union admits values the contract has no meaning for, and a mistake at the call site is not a lost race to report as a conflict. Deletes mark a `lifecycle` column rather than removing the row, retain the version, and drop the payload; `deleteAll` bulk-marks the scope. Reads filter to `live`, so a tombstone is indistinguishable from an absent key to callers.
 
-**Retention is the guarantee.** Versions are never reused, and a tombstone keeps its version, so an observer from before a delete can never match the row that replaces it — at key altitude and at scope altitude alike. Nothing reclaims a tombstone; that is deliberate, and it is why the ABA argument needs no sweep, no timer and no retention window. The cost is one row per deleted key, in every scope.
+Which of the two a write asks for is decided by intent, not by the caller: an explicit `create()` writes at `0`, and a `patchState` / `setState` / `updateState` writes at the version its context observed — or at `"absent"` when it observed none. Reads cannot make that distinction (both a tombstone and a never-written key read as absent), which is exactly why it has to be made inside the atomic compare-and-swap rather than by looking first.
+
+**Retention is the guarantee.** Versions are never reused, and a tombstone keeps its version, so an observer from before a delete can never match the row that replaces it — at key altitude and at scope altitude alike. Nothing ages a tombstone out: no sweep, no timer, no retention window. The cost is one row per deleted key, in every scope.
+
+**A scope's re-creation is where that stops applying.** The two stores disagree about a reused id on purpose, and the disagreement has to be resolved somewhere. Scope `delete` is a hard delete, so a session id is genuinely free the moment its record is gone; resource state tombstones, so the same id still carries refusals. Left alone, those refusals outlive the session that earned them, and the next session under `chat-42` finds every **static** resource permanently unwritable — a static reference has no create-if-absent verb to fall back on the way a collection instance does. So `purgeTombstones` clears them, and the engine calls it at exactly one kind of moment: when a session record is *created* under that id — never when one is deleted. Three paths create one (the create-session route, a first action reaching `ensureSessionRecord`, and a detached child spawn), and each reclaims **immediately before** its create-if-absent, having first checked that no record exists. While a session is merely gone, its tombstones are still doing their job.
+
+The ordering carries the weight, because there is no transaction across the two stores. Creating first and reclaiming second would leave a committed session record sitting on intact tombstones whenever the reclamation failed or the process died between the two — and nothing retries it, since a second create answers 409 and an action-driven create adopts the record without reaching the reclamation. That session's static resources would be bricked for its whole life, which is the original defect made permanent. Reclaiming first commits nothing until it has succeeded, so a failure at either step leaves no record and the retry starts clean.
+
+**Known limit: the reclamation is not fenced against a concurrent creator.** Two creators can both read the id and both find nothing; the winner creates the session, its request deletes resource `R`, and the delayed loser then reclaims — removing the winner's tombstone before losing the session CAS itself. The next ordinary `patchState` on `R` holds no version, writes at `"absent"`, finds no row, and brings `R` back. That last step is not a rare actor: every fresh request legitimately holds no version, so the exposure is a deleted resource returning on the next normal write. The existence check narrows this to a genuine create race but cannot close it, because there is no cross-store transaction.
+
+Closing it needs a **scope generation**, which is already tracked and specced as FIX-1000 ("A create racing session deletion lands in a purged, caller-reusable scope — fence the scope generation"). That is the one remedy: don't reach for a second primitive, and in particular not for `lineageId`, which is a workstream address (FIX-1068) answering a different question. Until that lands, both orderings have a door, and reclaim-first is the one whose door is recoverable.
+
+It removes tombstones only, never a live row — state written under a scope id before that scope's record exists is a real pattern, and a blanket purge would silently delete it. What it does give up is the ABA guarantee *across* incarnations: a reclaimed key's version restarts at `1`, so a straggler from the previous session holding version `N` can match a row in the new one. That window opens only after a deliberate re-create under a reused id, and closing it is the same open problem `deleteAll` already has with a create of a never-existed key — both need a scope generation rather than a per-key predicate.
 
 Resource state does **not** reuse `runWithCAS`, and the reason is policy rather than shape. It has its own driver (`stores/resource-cas.ts`), placed at the registry's read/mutate seam rather than at the persister: the persister is value-only, and by the time a write reaches it the caller's intent has already been materialized into an object, so a retry there could only overwrite a concurrent writer's field. The driver takes each write op's real mutator and re-runs it against refreshed state.
 
@@ -146,18 +160,18 @@ The trap worth knowing at this altitude: `createScopeStateOps` lives in `state-c
 
 **How the seven bag ops line up against the resource handles.** They are not seven ops with no resource counterpart; they split three ways:
 
-- **Shared** — `patchState` / `setState`, declared on both `ResourceContext` and `ResourceRef`.
+- **Shared** — `patchState` / `setState` / `incState` / `pushState`, declared on both `ResourceContext` and `ResourceRef`.
 - **Analogue, not equivalent** — `atomicState` corresponds to `updateState`, and the two are *not* interchangeable. `atomicState` returns a partial that is shallow-merged; `updateState` returns the whole next state, which is re-parsed against the resource's `stateSchema`, so a field the callback omits does not survive.
 - **Deliberately absent** — `setStateRecord` / `deleteStateRecord`, because a resource *is* the per-key row and the storage key already does that addressing.
 
-`incState` / `pushState` have no resource form today. That is the gap that sends a reader who wants an unchecked commutative write to the bag instead — the resource state mutators are all version-checked (`writeContent` is the exception, and it carries no version predicate at all).
+A shared name is not a shared guarantee, and `incState` / `pushState` are where that bites. On a scope bag they are the unchecked commutative path: the delta itself goes to the store, so both writers land and neither can be told a race happened. On a resource handle they carry a version like every other state mutator there — the driver re-runs the delta against refreshed state, so both writers still land, but the write can exhaust the retry budget and raise, and it is refused outright against a tombstone. Every resource *state* mutator is version-checked; `writeContent` is the exception, and it carries no version predicate at all.
 
 **Error taxonomy — the write path reports what actually happened**, which is this epic's whole thesis pointed at its own store. Three distinct states must not collapse into one error:
 
 | Situation | Reported as |
 |---|---|
-| Key never persisted (a declared resource living on its schema default), mutator asks for no change | **Not an error** — a verified no-op. Nothing was written and nothing was taken away |
-| We held a live version and the row is now a tombstone | `ResourceDeletedError`, terminal |
+| No live row (a declared resource living on its schema default, or a deleted one), mutator asks for no change | **Not an error** — a verified no-op. Nothing was written, so nothing can have been revived |
+| A mutation reaches a tombstone — whether it held a live version and lost it, or never held one at all | `ResourceDeletedError`, terminal |
 | A create-if-absent lost its race | `ResourceAlreadyExistsError`, terminal, **carrying the winner's row** so the first-touch APIs can finish as a read |
 | A delete's version check failed against a **live** row (deleted and recreated under us) | `ConcurrentModificationError` — nothing was deleted, so a deletion error would report the opposite |
 | Retry budget exhausted | `ConcurrentModificationError` |
@@ -166,7 +180,7 @@ The trap worth knowing at this altitude: `createScopeStateOps` lives in `state-c
 
 Version-checked, through the driver above:
 
-- every registry write op — single-resource and collection-instance `patchState` / `setState` / `updateState`, plus `upsert`'s patch path
+- every registry write op — single-resource and collection-instance `patchState` / `setState` / `updateState` / `incState` / `pushState`, plus `upsert`'s patch path
 - `create()` at `expectedVersion: 0`, terminal on conflict
 - both delete writers, `collection.delete()` and `evictInstance`, at the version the context observed
 
@@ -211,15 +225,17 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
   compared, so these verbs protect against competing writers, not against the record going away
 - Use `maxConcurrency` on `parallel`/`forEach` when shared state writes are unavoidable
 - Resource-collection instance writes (`create` / `setState` / `patchState` / `updateState` /
-  `getOrPatchState` / `writeContent`) commit per key and update the per-scope cache in place
+  `incState` / `pushState` / `getOrPatchState` / `writeContent`) commit per key and update the
+  per-scope cache in place
   (FIX-744), so distinct-key writes from concurrent `parallel`/`forEach` branches all survive into
   the same-request view — a convergence `.list()` after a fan-out sees every instance. **Same-key
   concurrent writes do not share one rule, and what the writer supplies decides which one it gets.**
   The state mutators run through the version-checked driver, which refreshes and re-runs the op's
   real mutator on conflict: a writer supplying a **whole value** is last-writer-wins on the fields
   it names, while one supplying a **derivation or a delta** is re-run against the row it commits
-  against, so both writers land. `updateState` is the second kind — its callback derives the next
-  state from the current one, so two concurrent increments both land. `setState` and `patchState`
+  against, so both writers land. `updateState`, `incState` and `pushState` are the second kind —
+  the callback derives the next state from the current one, and the two delta verbs re-apply their
+  delta to it, so two concurrent increments or appends both land. `setState` and `patchState`
   supply fixed values, so the fields they name are last-writer-wins. `getOrPatchState` is a
   first-touch memoize rather than an updater — it patches a single key only when that key is absent
   — so it follows `patchState`, not `updateState`; concurrent callers for one key inside a request

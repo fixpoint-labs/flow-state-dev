@@ -211,8 +211,8 @@ export class FlowStateDisposedError extends FlowError {
 }
 
 /**
- * Thrown when a resource write loses to a concurrent **delete** — the row this
- * caller held a live version for is now a tombstone.
+ * Thrown when a resource write reaches a **tombstone** — the key is deleted,
+ * whether or not this caller ever held a live version for it.
  *
  * Terminal, never retryable: the only state a retry could re-apply is the
  * caller's pre-delete snapshot, so retrying would resurrect a resource somebody
@@ -220,11 +220,18 @@ export class FlowStateDisposedError extends FlowError {
  * `runWithCAS`, whose conflict handler falls back to the container's cached
  * state and would do exactly that once a tombstone makes the version matchable.
  *
- * **Raised only when a live version was actually lost.** A key that was never
- * persisted — a declared resource that exists so far only through its schema
- * default — is *absent*, not deleted, and a write that asks for no change to
- * one is a no-op. Reporting a deletion there would be this store telling a
- * caller that something happened to a row that never existed.
+ * **A caller holding no live version reaches this too.** Its write goes out at
+ * `"absent"` ("no row at all"), which a tombstone refuses — precisely so an
+ * ordinary first write of a fresh context cannot land on top of somebody's
+ * delete. Against a key that was never persisted at all, the same write finds
+ * no row to refuse it and simply creates the key.
+ *
+ * **Never raised for a no-op.** A write that asks for no change is a verified
+ * no-op whenever this context holds no version, a deleted key included:
+ * nothing is stored either way, so nothing can have been revived. Reporting a
+ * deletion to a declared resource living so far on its schema default would be
+ * this store telling a caller that something happened to a row that never
+ * existed.
  */
 export class ResourceDeletedError extends FlowError {
   readonly resourceKey: string;
@@ -327,10 +334,15 @@ export class ResourceAlreadyExistsError extends FlowError {
  * *store-dependent* split — it does no delta-verb feature detection, so what
  * the adapter advertises never changes its `expectedVersion`. The caller's
  * intent decides that instead — `runResourceCAS` derives `expectedVersion` from
- * its `intent` argument. `mutate` sends the held version; `create` sends `0`, a
- * version check, but against "no live row" rather than the version this context
- * holds; and `replace`, reached by `create(key, state, { replace: true })`,
- * sends `"any"` and so is not version-checked at all.
+ * its `intent` argument, and the split is four-way rather than three. `mutate`
+ * sends the held version, or `"absent"` ("no row at all") when it holds none;
+ * a tombstone is a row, so it refuses `"absent"` and that write ends
+ * terminally rather than landing on top of a delete. `create` sends `0`, a
+ * version check, but against "no live row" rather than the version this
+ * context holds — which a tombstone satisfies, because recreating a deleted
+ * resource is what the verb is for. And `replace`, reached by
+ * `create(key, state, { replace: true })`, sends `"any"` and so is not
+ * version-checked at all.
  *
  * Read the hint routing before restating any of this narrower than it is.
  */

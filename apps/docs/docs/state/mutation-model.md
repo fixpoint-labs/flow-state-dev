@@ -186,7 +186,7 @@ The four scopes above hold one state record each. **Resource state** — the sta
 
 Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current. The store is what compares, so the refusal reaches exactly as far as the store does: the in-memory, SQLite and Postgres stores compare inside the store, and the filesystem store compares under a guard held on the store instance.
 
-The resource **state** mutators take that check: `patchState`, `setState`, `updateState`, and the same three on a collection instance. The unchecked writes above belong to scope state.
+Every resource **state** mutator takes that check: `patchState`, `setState`, `updateState`, `incState`, `pushState`, and the same five on a collection instance. The unchecked writes above belong to scope state — `incState` and `pushState` share their names with a scope bag but not that bag's exemption, so on a resource the delta is re-applied against the value that won rather than sent to the store unversioned.
 
 `writeContent` does not take it. A content write carries no version, so the store overwrites whatever body the key holds:
 
@@ -230,13 +230,15 @@ Writing a value the resource already holds still skips the write and emits no ch
 
 A resource write can exhaust its retry budget under sustained contention and raise `ConcurrentModificationError`, the same as the external-store scopes above. The per-key write queue in front of it makes that rare, because writes from one context never contend with each other.
 
-Deleting a resource leaves a small marker behind rather than removing the row, and that marker keeps the version. It is what makes delete-then-recreate safe: a worker holding a version from before the delete can never match the resource that replaced it, because versions are never reused. Markers are kept indefinitely — nothing sweeps them — which costs one row per deleted key.
+Deleting a resource leaves a small marker behind rather than removing the row, and that marker keeps the version. It is what makes delete-then-recreate safe: a worker holding a version from before the delete can never match the resource that replaced it, because versions are never reused. Nothing ages a marker out — there is no sweep and no retention window — which costs one row per deleted key.
+
+Markers are cleared at one moment only: the birth of a session record. Creating a session under an id clears that id's markers just before the record is written, so reusing a session id hands you writable resources rather than a session whose static resources refuse every write. Deleting a session clears nothing. That reclamation is the one place the never-reused-version guarantee stops holding — a reclaimed key starts again at version `1` — and it is not fenced against a second creator racing it for the same id, so the loser of that race can clear a marker inside the session that won and let the next write bring a deleted resource back. Both are reachable only by deliberately reusing a session id. See [persistence](../persistence/overview.md) for the storage-side view.
 
 One limit stated plainly: on the filesystem store the comparison is held per key on the store instance. That covers every write through that instance, two contexts sharing it included. It does not coordinate two stores pointed at the same directory, whether they sit in one Node process or two. The in-memory, SQLite and Postgres stores compare and swap inside the store itself.
 
 ## Schema-invalid resource writes
 
-After `patchState`, `setState`, or `updateState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same three methods and the same contract.
+After `patchState`, `setState`, `updateState`, `incState`, or `pushState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same five methods and the same contract.
 
 ```ts
 import { defineResource, handler, FlowError } from "@flow-state-dev/core";
@@ -291,6 +293,8 @@ Collection `create` and `upsert` refuse an invalid initial or merged state. The 
 A read of a persisted single-resource value that does not validate resolves to a schema-valid default. The read does not throw. A collection-instance read returns the stored object as-is.
 
 The refusal applies to `ResourceRef`. Scope bags (`ctx.session.patchState` and the rest) are a different surface.
+
+`incState` and `pushState` carry a second refusal alongside this one. A delta aimed at a field that holds the wrong kind of value throws `FlowError` with code `resource_delta_refused` instead of a schema error, and the stored value is unchanged either way. See [When a delta is refused](/docs/resources/overview#when-a-delta-is-refused).
 
 ## Writing an updater that may run twice
 
