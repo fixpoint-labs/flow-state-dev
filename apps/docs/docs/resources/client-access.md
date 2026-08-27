@@ -511,7 +511,7 @@ That batched-at-completion default is the right call for most resources. It avoi
 
 ### Which mutations announce
 
-- **Collections** announce every instance mutation, whatever their `client` config: state writes (`patchState`, `setState`, `updateState`), lifecycle changes (`create`, `upsert`, `delete`, including capacity evictions), and content writes (`writeContent`).
+- **Collections** announce every instance mutation, whatever their `client` config: state writes (`patchState`, `setState`, `updateState`, `incState`, `pushState`), lifecycle changes (`create`, `upsert`, `delete`, including capacity evictions), and content writes (`writeContent`).
 - **Single resources** announce only when `live: true`. State writes carry the projected delta; content writes don't (content has no state projection), so a content write falls back to the batched refetch even on a live resource.
 - **Non-live single resources** don't stream change events at all — their state and content still load through snapshots and the content endpoint.
 
