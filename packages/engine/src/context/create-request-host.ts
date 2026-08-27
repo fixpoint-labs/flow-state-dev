@@ -31,6 +31,7 @@ import { workstreamDispatchInputSchema } from "@flow-state-dev/core";
 import type { RuntimeConfig } from "../runtime-config";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
+import { purgeStaleResourceState } from "./ensure-session-record";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
 
@@ -94,7 +95,9 @@ export type ParentTaskBinding = {
 };
 
 export type RequestHostInputs = {
-  stores: Pick<StoreRegistry, "session" | "activeRequests">;
+  // `resourceState` is here only for the tombstone reclamation a newly created
+  // child owes itself — see the `purgeStaleResourceState` call below.
+  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState">;
   flow: FlowInstance;
   /** Server-derived identity of the running request. Never caller-supplied. */
   identity: {
@@ -326,6 +329,16 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           };
         }
         adopted = true;
+      } else {
+        // Won the create, so this is a NEW child rather than an adopted one,
+        // and it owes itself the same tombstone reclamation every other
+        // newborn session does (FIX-1258). It matters more here than anywhere:
+        // the child key is derived from the seed, so the same seed always
+        // lands on the same key — reuse is the norm on this path, not the
+        // exception, which is why adoption exists at all. Without this, a
+        // child whose session was deleted comes back with every static
+        // resource permanently unwritable.
+        await purgeStaleResourceState(stores, storageKey);
       }
     }
 

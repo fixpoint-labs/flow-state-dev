@@ -29,7 +29,10 @@ write to every **static** resource, permanently: a static resource reference has
 no create-if-absent verb to fall back on the way a collection instance does. The
 tombstones are cleared when the new session record is created, not when the old
 one is deleted — while the session is gone they are still what keeps a delete
-deleted.
+deleted. This covers every way a session is created: the create-session route, a
+first action against an id that has none, and a detached child spawn. The spawn
+matters most, since a child's key is derived from its seed and so is reused by
+design.
 
 For custom `ResourceStateStore` adapters, two changes:
 

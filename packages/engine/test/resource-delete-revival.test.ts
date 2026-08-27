@@ -24,6 +24,8 @@ import {
   defineResourceCollection,
   handler
 } from "@flow-state-dev/core";
+import type { FlowInstance } from "@flow-state-dev/core";
+import { createRequestHost } from "../src/context/create-request-host";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
@@ -78,6 +80,39 @@ async function readStored(
 ): Promise<JsonObject | undefined> {
   const row = await stores.resourceState.get("session", "sess_1", key);
   return row?.state;
+}
+
+/** Only `kind` and `workstream` are read by the detached-spawn verb. */
+const SPAWN_FLOW = {
+  kind: "fix1258-spawn",
+  workstream: { block: { name: "core" } }
+} as unknown as FlowInstance;
+
+/**
+ * Spawn a detached child from one fixed seed, and return its session key.
+ *
+ * The seed is constant on purpose: the key is derived from it, so every call
+ * targets the same child id — which is what makes the delete/re-spawn case
+ * below reachable at all.
+ */
+async function spawnChild(stores: StoreRegistry): Promise<string> {
+  const { host } = createRequestHost({
+    stores,
+    flow: SPAWN_FLOW,
+    identity: {
+      userId: "user_1",
+      tenantId: undefined,
+      orgId: undefined,
+      sessionId: "sess_parent",
+      lineageId: "lin_1"
+    },
+    startOperation: async () => ({ requestId: "req_child" }),
+    liveness: {}
+  });
+
+  const result = await host.startDetached({ seed: { topic: "review" }, input: {} });
+  if (!result.ok) throw new Error(`spawn refused: ${result.refused}`);
+  return result.sessionId;
 }
 
 describe("FIX-1258: a write after a delete does not revive the resource", () => {
@@ -194,6 +229,59 @@ describe("FIX-1258: a write after a delete does not revive the resource", () => 
     ).rejects.toBeInstanceOf(ResourceDeletedError);
 
     expect(await readStored(stores, "spine")).toBeUndefined();
+  });
+
+  it("still writes resources after a detached child is deleted and re-spawned", async () => {
+    // The same brick at the other session-birth site, and the one where id
+    // reuse is the norm rather than the exception: a child's key is DERIVED
+    // from its seed, so the same seed always lands on the same key — which is
+    // why adoption exists on that path at all.
+    //
+    // The assertion is at the store, on the expectation a static resource's
+    // first mutation carries. The cases above already pin that a static ref's
+    // `setState` sends `"absent"` through the real path; what is in question
+    // here is only whether the re-spawn cleared what would refuse it.
+    const stores = createInMemoryStores();
+    const first = await spawnChild(stores);
+    await stores.resourceState.set("session", first, "spine", { generation: 1 }, 0);
+
+    // Teardown, as the delete route performs it.
+    await stores.resourceState.deleteAll("session", first);
+    await stores.session.delete(first);
+
+    const second = await spawnChild(stores);
+    expect(second).toBe(first); // same seed, same derived key — the whole point
+
+    const write = await stores.resourceState.set(
+      "session",
+      second,
+      "spine",
+      { generation: 2 },
+      "absent"
+    );
+    expect(write.ok).toBe(true);
+  });
+
+  it("leaves a live child's resources alone when the key is merely adopted", async () => {
+    // The control for the case above. A spawn that ADOPTS an existing child
+    // must reclaim nothing — it is the same incarnation continuing, and a
+    // reclamation there would be operating on a session already running.
+    const stores = createInMemoryStores();
+    const child = await spawnChild(stores);
+    await stores.resourceState.set("session", child, "spine", { generation: 1 }, 0);
+    await stores.resourceState.delete("session", child, "spine", 1);
+
+    // Re-spawn with the record still in place, so this adopts rather than creates.
+    expect(await spawnChild(stores)).toBe(child);
+
+    const revival = await stores.resourceState.set(
+      "session",
+      child,
+      "spine",
+      { revived: true },
+      "absent"
+    );
+    expect(revival.ok).toBe(false);
   });
 
   it("still creates a never-written resource on its first touch", async () => {
