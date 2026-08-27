@@ -62,7 +62,7 @@ These scopes bridge through a `persist` callback (the in-memory, filesystem, sql
 
 ### Commutative writes skip the version check
 
-A **commutative** write is one whose result doesn't depend on what state currently holds, or on the order it lands in. Adding `1` to a counter is commutative; two of them produce `2` either way round. So the runtime sends the store the operation itself, "add 1 to `messageCount`", and the store applies it to the value it holds right now. No version is compared.
+A **commutative** write is one the store can apply without knowing what you read first. Adding `1` to a counter is commutative; two of them produce `2` whichever lands first. So the runtime sends the store the operation itself, "add 1 to `messageCount`", and the store applies it to the value it holds right now. No version is compared.
 
 The commutative writes are:
 
@@ -85,6 +85,18 @@ await ctx.session.incState({ messageCount: 1 });
 // stored messageCount is 2
 ```
 
+Appends land the same way, and nothing is dropped. What isn't promised is position. Two concurrent `pushState` calls on one array both survive, in whichever order they reached the store:
+
+```ts
+// two concurrent execution contexts appending to session state
+await ctx.session.pushState("history", { role: "user", text: "first" });
+await ctx.session.pushState("history", { role: "user", text: "second" });
+// both entries are in history. Which one sits at index 0 depends on
+// which write the store applied first.
+```
+
+So if you read that array back as an ordered history, order it on a field you set yourself, a timestamp or a sequence number. Array position won't carry that for you.
+
 A commutative write can't raise `ConcurrentModificationError`. There's no version for it to lose.
 
 #### The store has to offer the operation
@@ -103,9 +115,21 @@ On session, user and org state backed by the in-memory, SQLite or Postgres store
 
 #### What skipping the check doesn't cover
 
-An unchecked write is safe from competing writers. It isn't safe from the record being gone.
+An unchecked write holds up against writers touching other parts of the record. Increments accumulate. Appends all survive. Two writers on different fields, or on different keys of one map, don't clobber each other, because each write is applied to the record as the store holds it at that moment.
 
-Every store refuses a write against a record that doesn't exist, before it looks at any version. A commutative write to a scope whose record was deleted underneath you doesn't recreate it:
+The case it doesn't cover is two writers on the *same* path. A single-field `patchState`, or a `setStateRecord` on one key, carries no version, so the store has nothing to compare and assigns the value it was handed. The write that reaches the store second wins, and the first one is gone:
+
+```ts
+// two concurrent execution contexts, both writing session state
+await ctx.session.patchState({ owner: "worker-a" });
+await ctx.session.patchState({ owner: "worker-b" });
+// stored owner is whichever write landed second. The other value is
+// overwritten. Both calls resolved true, neither raised, neither retried.
+```
+
+Reach for a version-carrying form when the write depends on what is already stored: the updater form of `patchState`, or `atomicState`. Both read current state, and a lost race re-runs your updater against the value that won instead of discarding it.
+
+An unchecked write is refused, though, when the record is gone. Every store checks that the record exists before it looks at any version. A commutative write to a scope whose record was deleted underneath you doesn't recreate it:
 
 ```ts
 await ctx.session.incState({ messageCount: 1 });
@@ -120,9 +144,19 @@ The four scopes above hold one state record each. **Resource state** — the sta
 
 Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current.
 
-Every mutation through a resource handle takes that check. The commutative shortcut above belongs to scope state.
+The resource **state** mutators take that check: `patchState`, `setState`, `updateState`, and the same three on a collection instance. The commutative shortcut above belongs to scope state.
 
-**That guarantee reaches flow code.** When you mutate `ctx.resources.something` or a collection instance, the runtime writes at the version this execution context read. If another context moved the key in between, your write is refused, your mutator re-runs against the value that actually won, and the retry writes the merge. Two contexts patching different fields of one resource both land:
+`writeContent` does not take it. A content write carries no version, so the store overwrites whatever body the key holds:
+
+```ts
+await ctx.resources.plan.writeContent("# Plan\n\nDraft one");
+// replaces the stored body. No version is compared, so a concurrent
+// writer's body is replaced without a refusal and without a retry.
+```
+
+Keep anything two contexts might need to merge in resource state, where the version check applies. Treat content as a body you replace whole.
+
+**The version guarantee reaches flow code.** When you mutate `ctx.resources.something` or a collection instance, the runtime writes at the version this execution context read. If another context moved the key in between, your write is refused, your mutator re-runs against the value that actually won, and the retry writes the merge. Two contexts patching different fields of one resource both land:
 
 ```ts
 // two concurrent execution contexts, unchanged flow code

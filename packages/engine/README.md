@@ -879,7 +879,7 @@ A store has to implement the matching operation for the write to go that way; ot
 
 Every store refuses a write against a record that does not exist before it compares versions, unconditional writes included. So an increment against a deleted scope record returns `false` and creates nothing. `false` from a mutator means "nothing was written", which is not the same as "the state already matched".
 
-The table above is scope state. Every mutation through a resource handle takes the version check.
+The table above is scope state. Every *state* mutation through a resource handle takes the version check; `writeContent` carries no version and overwrites the stored body.
 
 ## Request registry sharedness
 
