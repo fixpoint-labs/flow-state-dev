@@ -1024,14 +1024,20 @@ export type VersionedResourceState = {
  * | Version | First create writes `1`; each committed write bumps by 1; **never reused**. A recreate continues from the tombstone's version + 1 |
  * | `delete` | Retains the version, drops the payload (stores `{}`), marks `deleted`. The version is the only thing a tombstone carries |
  * | `deleteAll` | Bulk-marks every live key in the scope `deleted`. A scope operation, so it takes no expected version |
- * | Retention | **Tombstones are retained indefinitely, in every scope.** Nothing reclaims one, and nothing here depends on anything ever doing so |
+ * | `purgeTombstones` | Removes the scope's tombstoned rows outright and touches no live one. The only operation that reclaims a tombstone, and the one a scope's **re-creation** performs |
+ * | Retention | **The store never reclaims a tombstone on its own** — no sweep, no TTL, in any scope. Only an explicit `purgeTombstones` removes one |
  * | Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
  * | Version domain | A numeric `expectedVersion` must be a **non-negative integer**. Negative, fractional, `NaN` and `Infinity` **throw** — a programming error, not a lost race, so it is never folded into a conflict |
  *
- * Retention is what closes the delete/recreate ABA: because a tombstone keeps
- * its version, an observer holding a pre-delete version never matches the row
- * that replaces it. A tombstone that is never removed is always sound — it
- * costs one row and can never resurrect anything.
+ * Retention is what closes the delete/recreate ABA **within one incarnation of
+ * a scope id**: because a tombstone keeps its version, an observer holding a
+ * pre-delete version never matches the row that replaces it. Nothing ages a
+ * tombstone out, so that guarantee does not weaken with time.
+ *
+ * It is `purgeTombstones` — and only that — which gives those versions back,
+ * which is why it is not something teardown does. See its own doc for the
+ * trade it makes and why a scope's re-creation is the one caller entitled to
+ * make it.
  *
  * ## Per-adapter guarantee
  *
@@ -1144,6 +1150,47 @@ export interface ResourceStateStore {
    * predicate.
    */
   deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
+
+  /**
+   * Remove a scope instance's **tombstoned** rows outright, so each of those
+   * keys reads as one that was never written. Live rows are not touched, and
+   * a scope with no tombstones is unchanged.
+   *
+   * This is **not** teardown; `deleteAll` is. This is what a scope's
+   * **re-creation** calls, and the two differ on exactly what `"absent"`
+   * tests for. After `deleteAll` a deleted key is still a row, so a write from
+   * a context that never saw it live is refused and a delete stays deleted.
+   * After this, there is no row, so such a write creates the key.
+   *
+   * Both are needed because scope ids are caller-supplied and reusable. A
+   * session id like `chat-42` can be deleted and used again, and the session
+   * store keeps no tombstone of its own, so the id really is free. Without
+   * this at that point the dead incarnation's tombstones outlive it and make
+   * every **static** resource in the new one permanently unwritable — a static
+   * `ResourceRef` has no create-if-absent verb to escape through, unlike a
+   * collection instance.
+   *
+   * Why tombstones only, rather than the whole scope: a tombstone's only
+   * effect is to refuse writes, so removing one when it has stopped applying
+   * costs nothing. A live row is data. State written under a scope id before
+   * that scope's record exists is a real pattern — pre-seeding, and a
+   * partially-failed teardown — and a blanket purge would silently delete it
+   * on the next create.
+   *
+   * The trade, stated rather than implied: a purged key's version restarts at
+   * `1`, so a straggler from the previous incarnation holding version `N` can
+   * match a row in the new one. Two things keep that narrow. It opens only
+   * once a scope has been deliberately re-created under a reused id — never
+   * during the delete itself, where retention still holds. And it is the same
+   * residual `deleteAll` already documents: separating incarnations rather
+   * than merely detecting them needs a scope generation, not a per-key
+   * predicate.
+   *
+   * Callers own the ordering. A caller that purges on scope creation must win
+   * the create first and purge second, so a lost create race cannot reclaim
+   * tombstones under a scope the winner is already writing to.
+   */
+  purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }
 
 /**

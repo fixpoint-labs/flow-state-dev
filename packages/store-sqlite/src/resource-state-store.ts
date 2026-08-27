@@ -106,6 +106,14 @@ export function createSQLiteResourceStateStore(
     "UPDATE resource_state SET state = '{}', lifecycle = 'deleted' " +
       "WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'live'"
   );
+  // Scope re-creation: a real DELETE of the dead rows only, so the new
+  // incarnation of a reused scope id inherits no tombstone. The inverse of
+  // `deleteAllStmt` — same scope predicate, opposite lifecycle — and
+  // deliberately not reachable from teardown. See `purgeTombstones` on
+  // `ResourceStateStore` for what giving those versions back costs.
+  const purgeTombstonesStmt = db.prepare(
+    "DELETE FROM resource_state WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'"
+  );
 
   /** Read the row and parse it into the shape the shared contract logic takes. */
   const readRow = (
@@ -396,6 +404,10 @@ export function createSQLiteResourceStateStore(
 
     async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {
       deleteAllStmt.run(scopeType, scopeId);
+    },
+
+    async purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void> {
+      purgeTombstonesStmt.run(scopeType, scopeId);
     }
   };
 }

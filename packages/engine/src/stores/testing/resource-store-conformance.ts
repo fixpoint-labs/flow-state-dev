@@ -902,5 +902,72 @@ export function createResourceStateStoreConformanceTests(
         expect(straggler.ok).toBe(false);
       });
     });
+
+    // --- purgeTombstones, the scope-re-creation altitude ------------------
+
+    it("purgeTombstones lets a write at \"absent\" land on a deleted key again", async () => {
+      await withStore(async (store) => {
+        // The whole reason this operation exists. `deleteAll` leaves rows a
+        // write at `"absent"` is refused by — correct while the scope is dead,
+        // and a permanent brick once its id is reused. This is what a caller
+        // re-creating the scope runs to say the new incarnation inherits none
+        // of the old one's refusals.
+        await seed(store, "k", makeState(1));
+        await store.deleteAll("session", "s1");
+
+        const refused = await store.set("session", "s1", "k", makeState(2), "absent");
+        expect(refused.ok).toBe(false);
+
+        await store.purgeTombstones("session", "s1");
+
+        const admitted = await store.set("session", "s1", "k", makeState(3), "absent");
+        // Version restarts at 1: no row survived to continue from. That IS the
+        // trade — pinned so nobody reads the number as a bug.
+        expect(admitted).toEqual({ ok: true, version: 1 });
+        expect((await store.get("session", "s1", "k"))?.state).toEqual(makeState(3));
+      });
+    });
+
+    it("purgeTombstones leaves live rows and other scopes untouched", async () => {
+      await withStore(async (store) => {
+        // Two controls in one, and both are load-bearing. Without the live-row
+        // one, an implementation that wiped the scope would pass the case
+        // above — and would silently destroy state written under a scope id
+        // before its record existed. Without the other-scope one, so would an
+        // implementation that ignored the scope predicate entirely.
+        await seed(store, "live", makeState(1));
+        await store.set("session", "s1", "dead", makeState(2), 0);
+        await store.delete("session", "s1", "dead", 1);
+        await store.set("session", "s2", "gone", makeState(3), 0);
+        await store.delete("session", "s2", "gone", 1);
+
+        await store.purgeTombstones("session", "s1");
+
+        expect((await store.get("session", "s1", "live"))?.state).toEqual(makeState(1));
+        // s2's tombstone is untouched, which `get` cannot show — an absent key
+        // and a tombstone both read `undefined`. A write at `"absent"` is what
+        // separates them, so ask each scope the same question and compare.
+        expect((await store.set("session", "s2", "gone", makeState(4), "absent")).ok).toBe(
+          false
+        );
+        expect((await store.set("session", "s1", "dead", makeState(5), "absent")).ok).toBe(
+          true
+        );
+      });
+    });
+
+    it("purgeTombstones on a scope with nothing to reclaim is a no-op, not an error", async () => {
+      await withStore(async (store) => {
+        // The ordinary case at the call site: every newborn scope purges,
+        // because the caller cannot know whether its id was used before. The
+        // overwhelmingly common answer is "no".
+        await store.purgeTombstones("session", "never-existed");
+        expect(await store.getAll("session", "never-existed")).toEqual({});
+
+        await seed(store, "k", makeState(1));
+        await store.purgeTombstones("session", "s1");
+        expect((await store.get("session", "s1", "k"))?.version).toBe(1);
+      });
+    });
   });
 }

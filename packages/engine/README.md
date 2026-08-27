@@ -626,6 +626,7 @@ interface ResourceStateStore {
   getAll(scopeType, scopeId): Promise<Record<string, VersionedResourceState>>;
   getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, VersionedResourceState>>;
   deleteAll(scopeType, scopeId): Promise<void>;
+  purgeTombstones(scopeType, scopeId): Promise<void>;
 }
 ```
 
@@ -654,10 +655,17 @@ A number outside that domain — negative, fractional, `NaN`, `Infinity` — thr
 | `delete` | Takes a version like every other write, retains it, and drops the payload. A delete chosen from a stale snapshot conflicts rather than tombstoning a newer generation |
 | `delete(…, "any")` | Never reports a conflict. Finding no live row is the whole answer to a blind delete, so it succeeds at `version: 0` even if a concurrent recreate makes the key live again a moment later. A positive `expectedVersion` in the same race still conflicts — it asserted something that did not hold |
 | `deleteAll` | Bulk-marks every live key in the scope. A scope operation, so it carries no expected version |
-| Retention | Tombstones are kept **indefinitely, in every scope**. Nothing reclaims one |
+| `purgeTombstones` | Removes the scope's tombstoned rows outright and touches no live one. The only operation that reclaims a tombstone |
+| Retention | The store **never reclaims a tombstone on its own** — no sweep, no TTL, in any scope. Only an explicit `purgeTombstones` removes one |
 | Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
 
-Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it. A tombstone that is never removed is always sound. It costs one row per deleted key.
+Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it within the same incarnation of a scope id. A tombstone that is never aged out is always sound. It costs one row per deleted key.
+
+`purgeTombstones` is the deliberate exception, and it exists because scope ids are reusable. Session ids are caller-supplied, so `chat-42` can be deleted and used again — and `SessionStore.delete` keeps no tombstone of its own, so the id really is free. The resource-state tombstones of the dead session would otherwise outlive it and refuse every `"absent"` write the new one makes, leaving each **static** resource permanently unwritable (a static ref has no create-if-absent verb to fall back on, unlike a collection instance). So the engine reclaims them at the moment they stop applying: when a new session record is born under that id, not when the old one died. While the session is merely gone, the tombstones still do their job.
+
+It removes tombstones only. A live row is data — state can legitimately be written under a scope id before that scope's record exists — and a blanket purge would delete it. The cost is that a reclaimed key's version restarts at `1`, so a straggler from the previous incarnation holding version `N` can match a row in the new one. That window opens only after a deliberate re-create under a reused id, and closing it properly needs a scope generation rather than a per-key predicate.
+
+**Writing an adapter:** `purgeTombstones` is required. It is one statement in SQL (`DELETE … WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'`), and the shared conformance suite covers it.
 
 `toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
 

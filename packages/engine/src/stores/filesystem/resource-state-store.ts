@@ -265,6 +265,33 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
           });
         });
       }
+    },
+
+    async purgeTombstones(scopeType, scopeId): Promise<void> {
+      // The inverse of `deleteAll` above, and the same enumerate-and-act shape
+      // with the lifecycle test flipped: it marks the live ones, this removes
+      // the dead ones.
+      //
+      // An unmarked subtree has nothing to do here. It either predates the
+      // nested layout — never versioned, so it holds no tombstone — or is
+      // empty. `deleteAll` removes the directory in that case because it is
+      // tearing the scope down; this one is preparing a scope to be used, so
+      // removing the tree would be destroying live legacy rows, not reclaiming
+      // dead ones.
+      if (!(await leaves.hasValidLayoutMarker())) return;
+
+      const all = await leaves.getAll(scopeType, scopeId);
+      for (const [resourceKey, leaf] of Object.entries(all)) {
+        if (leaf.lifecycle === "live") continue;
+        await gate.runExclusive(lockKey(scopeType, scopeId, resourceKey), async () => {
+          // Re-read under the lock for the same reason `deleteAll` does: a
+          // writer may have moved the row since enumeration. A row that came
+          // back to life is not this operation's to remove.
+          const current = await leaves.get(scopeType, scopeId, resourceKey);
+          if (current === undefined || current.lifecycle === "live") return;
+          await leaves.delete(scopeType, scopeId, resourceKey);
+        });
+      }
     }
   };
 }

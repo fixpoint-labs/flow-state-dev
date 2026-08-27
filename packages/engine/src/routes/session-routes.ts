@@ -6,6 +6,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
+import { purgeStaleResourceState } from "../context/ensure-session-record";
 import {
   asObject,
   asStringArray,
@@ -198,6 +199,14 @@ export async function handleCreateSession(
       error: `Session "${sessionId}" already exists`
     });
   }
+
+  // This route does not go through `ensureSessionRecord` — it owes the caller a
+  // 409 on a lost race, which that helper resolves into an adoption instead —
+  // so it makes the same third decision explicitly. `sessionId` is
+  // caller-supplied, so this may be the second session to live under it, and
+  // the first one's resource-state tombstones would otherwise brick every
+  // static resource here (FIX-1258). Winner-only, after the create.
+  await purgeStaleResourceState(ctx.stores, record.id);
 
   return jsonResponse(201, {
     session: { ...record, id: sessionId }

@@ -377,6 +377,19 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
          WHERE scope_type = $1 AND scope_id = $2 AND lifecycle = 'live'`,
         [scopeType, scopeId]
       );
+    },
+
+    async purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void> {
+      // Scope re-creation: a real DELETE of the dead rows only, so the new
+      // incarnation of a reused scope id inherits no tombstone. The inverse of
+      // `deleteAll` above — same scope predicate, opposite lifecycle — and
+      // deliberately not reachable from teardown. See `purgeTombstones` on
+      // `ResourceStateStore` for what giving those versions back costs.
+      await executor.query(
+        `DELETE FROM resource_state
+         WHERE scope_type = $1 AND scope_id = $2 AND lifecycle = 'deleted'`,
+        [scopeType, scopeId]
+      );
     }
   };
 }

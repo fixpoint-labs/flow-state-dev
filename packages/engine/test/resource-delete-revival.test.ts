@@ -144,6 +144,58 @@ describe("FIX-1258: a write after a delete does not revive the resource", () => 
 
   // --- Controls: what must NOT start failing ---
 
+  it("still writes static resources after the session id is deleted and recreated", async () => {
+    // The other half of the refusals above, and the one that decides whether
+    // this store's `"absent"` is a guard or a brick. Session ids are
+    // caller-supplied (`session-routes.ts` falls back to a generated one only
+    // when the body omits `sessionId`), so `chat-42` or a document id being
+    // deleted and used again is ordinary, not exotic.
+    //
+    // Teardown here is what the delete route does, in its order: tombstone the
+    // scope's resource rows, then HARD-delete the session record — the session
+    // store keeps no tombstone, so the id is genuinely free afterwards. What
+    // follows is therefore a NEW incarnation, not a straggler from the dead
+    // one: it re-creates the session record before it writes.
+    //
+    // A static `ResourceRef` has no `create()` to escape through, so if its
+    // first mutation is refused the resource is unwritable for the rest of the
+    // session's life.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.spine as any).setState({ generation: 1 });
+
+    await stores.resourceState.deleteAll("session", "sess_1");
+    await stores.session.delete("sess_1");
+    expect(await stores.session.get("sess_1")).toBeUndefined();
+
+    const ctxB = await makeCtx(stores, "req_b");
+    await (ctxB.resources.spine as any).patchState({ generation: 2 });
+
+    expect(await readStored(stores, "spine")).toEqual({ generation: 2 });
+  });
+
+  it("keeps refusing a straggler when the session id was NOT recreated", async () => {
+    // The discriminator, stated as its own case so the control above cannot be
+    // satisfied by simply readmitting every write. Same teardown, same fresh
+    // context — but the session record is put back by hand at its OLD identity
+    // rather than born again, so nothing here is a new incarnation and the
+    // tombstone must still hold.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.spine as any).setState({ generation: 1 });
+
+    const record = await stores.session.get("sess_1");
+    await stores.resourceState.deleteAll("session", "sess_1");
+    await stores.session.set("sess_1", record!, "any");
+
+    const ctxB = await makeCtx(stores, "req_b");
+    await expect(
+      (ctxB.resources.spine as any).setState({ revived: true })
+    ).rejects.toBeInstanceOf(ResourceDeletedError);
+
+    expect(await readStored(stores, "spine")).toBeUndefined();
+  });
+
   it("still creates a never-written resource on its first touch", async () => {
     // The common path, and the probe's own control: if this went red the
     // refusals above would prove nothing about tombstones.
