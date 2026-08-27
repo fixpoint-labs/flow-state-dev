@@ -167,7 +167,8 @@ function assertStableResourceState(
  * Schema-valid `null` is the documented reset for a `.nullable()` resource
  * (`setState(null)`). The store holds `JsonObject`, so that write persists as
  * `{}` — the same cleared form an unwritten nullable single already surfaces
- * as. A schema-valid string or other non-object still throws.
+ * as — and that `{}` is held to the same stability bar, because it is what the
+ * next read parses. A schema-valid string or other non-object still throws.
  *
  * `resourceLabel` is the storage key (or accessor) named in the error.
  */
@@ -184,6 +185,24 @@ export function parseResourceWriteState(
   // Cleared nullable: schema accepted null. Persist the store's empty object,
   // not a default that would look like surviving data.
   if (parsed.success && parsed.data == null) {
+    // `{}` is what lands in the store and what the next read parses, so `{}` —
+    // not the `null` this parse produced — is the value that has to be a fixed
+    // point. Checking the null instead would let a schema that sends its input
+    // to null seed a row here that every later mutation verb refuses: without
+    // this, `create(key, seed)` succeeds while a bare `create(key)` (which
+    // seeds from `{}` and so lands above) is refused — the same verb reaching
+    // the same row and answering two different ways.
+    //
+    // Only the object case, deliberately. When `{}` fails the schema or parses
+    // to a non-object there is no seed either, but that is a separate and older
+    // defect with a different failure mode — the write reports success and
+    // stores nothing, rather than being refused — which predates this guard and
+    // is filed on its own. Widening the condition here would quietly fold that
+    // fix into this one; it stays narrow until that issue lands.
+    const cleared = stateSchema.safeParse({});
+    if (cleared.success && isJsonObject(cleared.data)) {
+      assertStableResourceState(stateSchema, cleared.data, {}, resourceLabel);
+    }
     return {};
   }
 

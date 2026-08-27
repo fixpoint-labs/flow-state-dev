@@ -62,6 +62,28 @@ const defaultingSchema = z.object({
   tag: z.string().optional()
 });
 
+/**
+ * Unstable AND able to parse a seed away to `null`: `{}` becomes `{phase:1}`,
+ * `{phase:1}` becomes `{phase:2}` (so it never settles), and an explicit
+ * `{phase:0}` becomes `null`.
+ *
+ * `phase` is `.optional()` rather than `.default(0)` on purpose — "absent" and
+ * "explicitly 0" have to stay distinguishable, because those are exactly the
+ * two seeds `create` can be handed, and the pair of cases below turns on the
+ * write path answering them the same way.
+ */
+const nullingSchema = z
+  .object({ phase: z.number().optional() })
+  .transform((v) => (v.phase === 0 ? null : { phase: (v.phase ?? 0) + 1 }));
+
+/**
+ * Nullable and settled: `{}` parses to `{}`, which is the cleared form a null
+ * write persists, so it is already its own fixed point. The control for the
+ * null branch — this is the ordinary `.nullable()` resource whose documented
+ * `setState(null)` reset must keep working.
+ */
+const stableNullableSchema = z.object({ note: z.string().optional() }).nullable();
+
 const drifting = defineResource({
   scope: "session",
   stateSchema: driftingSchema,
@@ -92,6 +114,23 @@ const defaultedItems = defineResourceCollection({
   stateSchema: defaultingSchema
 });
 
+const nullingItems = defineResourceCollection({
+  scope: "session",
+  pattern: "nullingItems/**",
+  stateSchema: nullingSchema
+});
+
+const clearable = defineResource({
+  scope: "session",
+  stateSchema: stableNullableSchema
+});
+
+const clearableItems = defineResourceCollection({
+  scope: "session",
+  pattern: "clearableItems/**",
+  stateSchema: stableNullableSchema
+});
+
 function makeFlow() {
   return defineFlow({
     kind: "fix1260-drift",
@@ -100,7 +139,16 @@ function makeFlow() {
         inputSchema: z.string(),
         block: handler({
           name: "noop",
-          resources: { drifting, stable, defaulted, driftingItems, defaultedItems },
+          resources: {
+            drifting,
+            stable,
+            defaulted,
+            driftingItems,
+            defaultedItems,
+            nullingItems,
+            clearable,
+            clearableItems
+          },
           execute: () => "ok"
         })
       }
@@ -220,6 +268,85 @@ describe("FIX-1260: a state schema never moves the stored value on its own", () 
     );
     // Refused means no row, not a row nobody can write to.
     expect(await readStored(stores, "driftingItems/fresh")).toBeUndefined();
+  });
+
+  it("refuses collection.create() the same way whether or not a seed parses to null", async () => {
+    // Both halves of one verb. The seed decides which branch of the write path
+    // the create takes, and before this fix the two branches disagreed: a bare
+    // create was refused while a create whose seed the schema parsed away to
+    // `null` committed — same verb, same resulting row (`{}`), opposite answers,
+    // with the failure merely deferred to the instance's first patch. That is
+    // the weaker bar the create-guard case above says must not exist.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_1");
+
+    // No initial state: the seed is the schema's parse of `{}`, an object, so
+    // this half already reached the guard.
+    await expect((ctx.resources.nullingItems as any).create("bare")).rejects.toThrow(
+      /Resource "nullingItems\/bare" write failed stateSchema validation at "phase"/
+    );
+
+    // An initial state the schema parses to `null`. `{}` is what would be
+    // stored and what the next read would parse, so `{}` is what has to settle
+    // — and it does not, so this half is refused now too, in the same words.
+    await expect(
+      (ctx.resources.nullingItems as any).create("seeded", { phase: 0 })
+    ).rejects.toThrow(
+      /Resource "nullingItems\/seeded" write failed stateSchema validation at "phase"/
+    );
+
+    // Neither leaves a durable row...
+    expect(await readStored(stores, "nullingItems/bare")).toBeUndefined();
+    expect(await readStored(stores, "nullingItems/seeded")).toBeUndefined();
+
+    // ...nor an instance to enumerate, in this context or in a fresh one that
+    // re-reads the store. A create that "succeeded" into an unwritable row
+    // would show up here.
+    expect(await (ctx.resources.nullingItems as any).list()).toEqual([]);
+    const fresh = await makeCtx(stores, "req_2");
+    expect(await (fresh.resources.nullingItems as any).list()).toEqual([]);
+  });
+
+  it("still creates and writes through a nullable schema that settles from {}", async () => {
+    // The control for the case above, on the same surface: nullable too, but
+    // `{}` parses to `{}`, so it is its own fixed point. Without this, a passing
+    // run would not show the guard discriminates rather than refusing every
+    // nullable collection.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_1");
+
+    await (ctx.resources.clearableItems as any).create("kept");
+    expect(await readStored(stores, "clearableItems/kept")).toEqual({});
+
+    const instance = await (ctx.resources.clearableItems as any).get("kept");
+    await instance.setState({ note: "a" });
+    expect(await readStored(stores, "clearableItems/kept")).toEqual({ note: "a" });
+
+    // The following write is the half that matters: the create above is only
+    // useful if the instance it seeded is actually writable.
+    await instance.patchState({ note: "b" });
+    expect(await readStored(stores, "clearableItems/kept")).toEqual({ note: "b" });
+
+    expect(await (ctx.resources.clearableItems as any).list()).toHaveLength(1);
+  });
+
+  it("still clears an ordinary nullable resource with setState(null)", async () => {
+    // `setState(null)` is the documented reset for a `.nullable()` resource and
+    // is the one path the null branch's new check could have broken. It does
+    // not: `{}` parses to `{}`, so the check short-circuits on `deepEqual`
+    // before it ever re-parses. Anything else here would make this a breaking
+    // change for real users.
+    const stores = createInMemoryStores();
+    await seedStored(stores, "clearable", { note: "seed" });
+    const ctx = await makeCtx(stores, "req_1");
+
+    await (ctx.resources.clearable as any).setState(null);
+    expect(await readStored(stores, "clearable")).toEqual({});
+
+    // And the cleared row is still a row you can write to, in a later request.
+    const next = await makeCtx(stores, "req_2");
+    await (next.resources.clearable as any).patchState({ note: "after" });
+    expect(await readStored(stores, "clearable")).toEqual({ note: "after" });
   });
 
   it("does not drift when a CAS conflict re-runs the mutator", async () => {
