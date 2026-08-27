@@ -117,7 +117,7 @@ request → session → user → org
 (one run)  (conversation)  (across sessions)  (shared across users)
 ```
 
-Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more. **They do not all take the version check.** A commutative write — single-field `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, or `patchState` given exactly one literal field — persists at `expectedVersion: "any"` on any adapter that advertises the matching delta verb, so a concurrent state write cannot refuse it. Everything else — multi-field `incState`, the `patchState` updater form, `setState`, `atomicState` — takes the version-checked CAS loop. Skipping the version check is not immunity: every shipped delta store refuses a write whose record has been deleted, `"any"` included. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md) for the routing.
+Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more. **They do not all take the version check** — some writes are guarded by compare-and-swap and can be refused, while the commutative ones persist unconditionally, and which is which depends on the shape of the call, the adapter and the scope. Before you rely on either behaviour, read [Atomicity Guarantees](./state-and-scopes.md#atomicity-guarantees), which is where that split is stated. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md) for the routing.
 
 ### Detached work — outliving the request
 

@@ -1,6 +1,6 @@
 # State and Scopes
 
-Flow State Dev manages state across four hierarchical scopes, each with typed atomic operations and CAS-based concurrency control.
+Flow State Dev manages state across four hierarchical scopes, each with typed state operations. Concurrency control is compare-and-swap on most writes and deliberately absent on the commutative ones — [Atomicity Guarantees](#atomicity-guarantees) is the single statement of which is which.
 
 ## Scope Hierarchy
 
@@ -53,16 +53,27 @@ by verb name. `createScopePersist` computes `expectedVersion: "any"` from the co
 before any store lookup, and only when the adapter advertises the matching delta verb; otherwise it
 falls through to a full-record `set` at the **held** version.
 
-- **Commutative, so *not* version-checked** (on an adapter advertising the verb): single-field
-  `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, and `patchState` given exactly one
-  literal field. Each is a single store-side mutation, not a client-side read-modify-write, so
-  concurrent callers do not lose each other's updates.
+- **Commutative, so *not* version-checked** (on an adapter advertising the verb): `pushState`,
+  `setStateRecord` and `deleteStateRecord` always; `incState` given a **single** field; `patchState`
+  given exactly one **literal** field. Each applies store-side against the record as found rather
+  than against a snapshot the caller is holding, so **writes to unrelated paths all survive** — no
+  writer clobbers a field it did not name, which a stale full-record `set` would. That is the
+  guarantee, and
+  it is narrower than "no lost updates". On the **same** path only increments and appends compose
+  (`incState` adds to, and `pushState` appends to, whatever the store finds); a literal `patchState`
+  and a `setStateRecord` on the same key **overwrite each other**, last writer wins, and the loser's
+  value is gone with no conflict reported. Use `atomicState` when a same-path update has to read what
+  is already there.
 - **Version-checked:** multi-field `incState`, the `patchState` updater form, multi-field
   `patchState`, `setState`, and `atomicState`. These can raise `ConcurrentModificationError` on
   retry exhaustion.
-- **Adapter capability decides the first bullet.** Memory, SQLite and Postgres advertise all four
-  delta verbs. The **filesystem** session/user/org stores advertise `patchField` / `incField` /
-  `pushToArray` but **not** `deleteField`, so `deleteStateRecord` alone is version-checked there.
+- **Adapter capability decides the first bullet, and it varies by scope as well as by adapter.**
+  For **session / user / org**, the memory, SQLite and Postgres stores advertise all four delta
+  verbs; the **filesystem** stores advertise `patchField` / `incField` / `pushToArray` but **not**
+  `deleteField`, so `deleteStateRecord` alone is version-checked there. For **request** scope no
+  shipped adapter advertises `deleteField` at all — memory, SQLite and Postgres each expose only the
+  other three on their request store — so `ctx.request.deleteStateRecord` takes the version-checked
+  full-record `set` on every adapter we ship.
 - **Unchecked is not immune.** Every shipped delta store refuses a **missing record** before it
   compares versions, `"any"` included — so a commutative write racing a record delete is still
   refused. Skipping the version check buys freedom from *concurrent state writes*, not from
@@ -108,6 +119,14 @@ Resource state does **not** reuse `runWithCAS`, and the reason is policy rather 
 Six of `runWithCAS`'s decisions do not transfer: a conflict against a tombstone and a losing create-if-absent are **terminal** here rather than retryable, cancellation is honoured, a no-op is suppressed only against a re-read version, and nothing on the commutative path is inherited. **The policy table lives in one place — the `stores/resource-cas.ts` module header** — beside the code it governs and with the source citations that go stale the moment `cas.ts` is edited. Read it there rather than a copy; `cas.ts` carries the matching pointer back, so a reader arriving at either driver can see there are two and why.
 
 The trap worth knowing at this altitude: `createScopeStateOps` lives in `state-container.ts` and its ops are named `patchState` / `setState` / `updateState`, the same names as the registry's resource ops. Reaching for it is the natural move and the wrong one. The same goes for `createScopePersist`, which downgrades `expectedVersion` to `"any"` for commutative hints on adapters advertising a delta verb.
+
+**How the seven bag ops line up against the resource handles.** They are not seven ops with no resource counterpart; they split three ways:
+
+- **Shared** — `patchState` / `setState`, declared on both `ResourceContext` and `ResourceRef`.
+- **Analogue, not equivalent** — `atomicState` corresponds to `updateState`, and the two are *not* interchangeable. `atomicState` returns a partial that is shallow-merged; `updateState` returns the whole next state, which is re-parsed against the resource's `stateSchema`, so a field the callback omits does not survive.
+- **Deliberately absent** — `setStateRecord` / `deleteStateRecord`, because a resource *is* the per-key row and the storage key already does that addressing.
+
+`incState` / `pushState` have no resource form today. That is the gap that sends a reader who wants an unchecked commutative write to the bag instead — the resource state mutators are all version-checked (`writeContent` is the exception, and it carries no version predicate at all).
 
 **Error taxonomy — the write path reports what actually happened**, which is this epic's whole thesis pointed at its own store. Three distinct states must not collapse into one error:
 
@@ -160,39 +179,52 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
 
 **Concurrency guidance:**
 - Avoid read-modify-write patterns inside `parallel`/`forEach` unless using atomic ops
-- Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes — but read the arity and
-  the adapter before relying on it. Only the **single-field** forms are commutative (a multi-field
-  `incState` takes checked CAS like any other write), and only on an adapter advertising the
-  matching delta verb — `deleteStateRecord` stays version-checked on the filesystem stores. None of
-  this survives a concurrent **delete**: a missing record is refused before versions are compared,
-  so these verbs protect against competing writers, not against the record going away
+- Prefer `incState` and `pushState` for concurrent counters and appends — those compose store-side
+  even against the same field. `setStateRecord` is safe across **distinct** keys and last-writer-wins
+  on the same key. Which forms skip the version check, and on which adapters and scopes, is
+  [Atomicity Guarantees](#atomicity-guarantees) — read it before relying on any of them. None of
+  them survives a concurrent record **delete**: a missing record is refused before versions are
+  compared, so these verbs protect against competing writers, not against the record going away
 - Use `maxConcurrency` on `parallel`/`forEach` when shared state writes are unavoidable
 - Resource-collection instance writes (`create` / `setState` / `patchState` / `updateState` /
   `getOrPatchState` / `writeContent`) commit per key and update the per-scope cache in place
   (FIX-744), so distinct-key writes from concurrent `parallel`/`forEach` branches all survive into
-  the same-request view — a convergence `.list()` after a fan-out sees every instance. Same-key
-  concurrent writes are last-writer-wins.
+  the same-request view — a convergence `.list()` after a fan-out sees every instance. **Same-key
+  concurrent writes do not share one rule.** The state mutators run through the version-checked
+  driver, which refreshes and re-runs the mutator on conflict — so `updateState` and
+  `getOrPatchState`, whose callback derives the next state from the current one, compose rather than
+  clobber (two concurrent increments both land). `setState` and `patchState` supply fixed values, so
+  the fields they name are last-writer-wins. `writeContent` carries no version predicate at all —
+  `ContentStore.set` creates or overwrites — so it is last-writer-wins outright.
 
 ### Delta verb routing (FIX-405)
 
 The framework routes scope-state ops through the cheapest available write path on each adapter. Single-field patches map to native atomic ops (Postgres `jsonb_set`, future Upstash `HINCRBY`, future Mongo `$inc` / `$push`); multi-field patches fall back to a full-record `set`.
 
-| Scope op | Shape | Routes to |
-| -- | -- | -- |
-| `patchState({ foo: value })` | Single own-property, non-function value | `patchField` |
-| `patchState(key, updater)` | Keyed-updater form | `patchField` |
-| `patchState({ foo, bar })` | Multi-field | `set` |
-| `patchState({ foo: () => ... })` | Function value | `set` |
-| `setState(value)` | Full replacement | `set` |
-| `incState({ field: delta })` | Single numeric field | `incField` |
-| `incState({ a: 1, b: 1 })` | Multi-field | `set` |
-| `pushState(field, value)` | Always | `pushToArray` |
-| `setStateRecord(field, key, value)` | Depth-2 path | `set` (v1) |
-| `deleteStateRecord` / `atomicState` | Any | `set` |
+| Scope op | Shape | Routes to | Version check |
+| -- | -- | -- | -- |
+| `patchState({ foo: value })` | Single own-property, non-function value | `patchField` | skipped (`"any"`) |
+| `patchState(key, updater)` | Keyed-updater form | `patchField` | **checked** |
+| `patchState({ foo, bar })` | Multi-field | `set` | checked |
+| `patchState({ foo: () => ... })` | Function value | `set` | checked |
+| `setState(value)` | Full replacement | `set` | checked |
+| `incState({ field: delta })` | Single numeric field | `incField` | skipped (`"any"`) |
+| `incState({ a: 1, b: 1 })` | Multi-field | `set` | checked |
+| `pushState(field, value)` | Always | `pushToArray` | skipped (`"any"`) |
+| `setStateRecord(field, key, value)` | Depth-2 path | `patchField` | skipped (`"any"`) |
+| `deleteStateRecord(field, key)` | Depth-2 path | `deleteField` | skipped (`"any"`) |
+| `atomicState(mutator)` | Any | `set` | checked |
+
+**The storage verb and the version check are two decisions, not one.** `patchState(key, updater)` is
+the row that makes the difference visible: it routes to `patchField` exactly like a literal
+single-field patch, but it reads the current value to compute the next one, so it keeps the held
+version and can be refused. A row marked *skipped* also falls back to `set` at the held version
+wherever the adapter does not advertise its verb — see [Atomicity Guarantees](#atomicity-guarantees)
+for which those are.
 
 **Why multi-field patches stay on `set`:** decomposing `{ a: 1, b: 2 }` into N `patchField` calls would bump the version counter per field, multiply CAS-retry exposure under contention, and make intermediate states visible to concurrent readers. A single `set` preserves single-version semantics for one logical mutation. The cost (whole-record UPDATE) is identical to today's behavior — no regression.
 
-**Capability advertisement:** the delta verbs are optional on the `Store` interface in v1. `createScopePersist` feature-detects per call: an adapter without `patchField` (filesystem, SQLite as of v1) continues to receive `set` calls transparently. Adapters that advertise the verbs (`@flow-state-dev/engine`'s in-memory adapter, `@flow-state-dev/store-postgres`) receive the delta routing. Future Upstash and Mongo adapters ship the verbs as required.
+**Capability advertisement:** the delta verbs are optional on the `Store` interface. `createScopePersist` feature-detects per call, so a store that does not implement the verb a hint names receives a full-record `set` at the held version instead, transparently. Every adapter that ships today — in-memory, filesystem, SQLite, Postgres — implements `patchField` / `incField` / `pushToArray`. `deleteField` is the uneven one; [Atomicity Guarantees](#atomicity-guarantees) above records which stores carry it. Future Upstash and Mongo adapters ship the verbs as required.
 
 **Resource content writes do not bump scope record version.** Resource content is persisted via `ContentStore`, separate from the scope record. Content writes do not update the scope record's `version` or `updatedAt` fields. The scope record version reflects state and metadata changes only.
 

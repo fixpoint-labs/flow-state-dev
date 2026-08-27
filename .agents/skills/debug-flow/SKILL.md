@@ -236,13 +236,20 @@ Summarize for the user:
 **State ops** (not uniformly version-checked — see below):
 `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
 
-A commutative write — single-field `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`,
-or `patchState` given one literal field — goes out at `expectedVersion: "any"` wherever the adapter
-advertises the matching delta verb, so it is *not* version-checked and cannot be the source of a
-`ConcurrentModificationError`. Multi-field `incState`, the `patchState` updater form, `setState` and
-`atomicState` do take the checked CAS loop. Two consequences when you are debugging a state bug:
-a lost update on a checked verb and one on a commutative verb have different causes, and an
-unchecked write is still refused when its record has been deleted.
+Two things to hold while debugging a state bug:
+
+- A **commutative** write is never version-checked, so it cannot raise
+  `ConcurrentModificationError`. Seeing one means the call landed on the checked path — either by
+  shape (multi-field, the `patchState` updater form, `setState`, `atomicState`) or because the
+  adapter does not advertise that verb for that scope and it fell back to a full-record `set`.
+  `deleteStateRecord` on **request** scope is the trap: it is checked on every shipped adapter.
+- A **lost update** on the commutative path leaves no conflict to find. Increments and appends
+  compose, so suspect a same-path overwrite — a literal `patchState` or a `setStateRecord` on the
+  key another writer just wrote. If the write vanished rather than being overwritten, check whether
+  the record was deleted underneath it: a missing record is refused even at `"any"`.
+
+Which calls land on which path — by call shape, adapter and scope — is
+[Atomicity Guarantees](../../../docs/architecture/state-and-scopes.md#atomicity-guarantees).
 
 ### Item Types
 
