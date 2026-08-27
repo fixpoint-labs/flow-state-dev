@@ -53,4 +53,7 @@ the work the retry budget is priced on. Named as a limit; deliberately not built
 **Run:** `pnpm tsx goals/conductor/implement-phase-opens-a-pr/run.mts`
 
 Requires a real Claude Code Agent SDK, a `gh` authenticated against the repository, and
-`GOAL_CONDUCTOR_REPO` pointing at a clone the check may cut worktrees from.
+`GOAL_CONDUCTOR_REPO` pointing at a clone the check may cut worktrees from. That
+repository must ignore `**/.fsdev/` — a run writes the question it needs answered
+under that path inside its own checkout, and provisioning refuses a repository that
+would let the agent commit it.

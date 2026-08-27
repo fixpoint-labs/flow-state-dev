@@ -46,22 +46,25 @@
  *   change. **What makes that fatal rather than annoying is that the run's
  *   result subtype stays `"success"`** — a refused ask is indistinguishable
  *   from an attempt that never asked.
- * - **Not committable.** `git add -A` does not stage a gitignored path, and
- *   the repo's own `.gitignore` carries a double-star `.fsdev` rule — so it is
- *   already there on every fresh clone and every worktree, with nothing to set
- *   up, remember, or crash between. *Rejected: a per-worktree
- *   `.git/info/exclude` entry* (a step at worktree-prep time) and *rejected:
- *   clearing the marker before each invocation* (a step a crash can interrupt,
- *   leaving the stale-marker stall).
+ * - **Not committable.** `git add -A` does not stage a gitignored path, so the
+ *   marker is safe exactly where git already ignores it — and **provisioning
+ *   asks git whether it does**, in the checkout, before the agent runs
+ *   (`assertAskMarkerIgnored` in `./workspace`). *Rejected: clearing the marker
+ *   before each invocation* — a step a crash can interrupt, leaving the
+ *   stale-marker stall.
  *
- * `.fsdev/` rather than `.orchestration/`, checked rather than assumed:
- * a double-star `.fsdev` rule matches at **any depth**, while `/.orchestration/` is
- * root-anchored and would silently stop covering the marker if the path ever
- * nested. `.fsdev/` is also the framework's own namespace.
+ * `.fsdev/` rather than `.orchestration/`: a double-star `.fsdev` rule matches
+ * at **any depth**, while `/.orchestration/` is root-anchored and would
+ * silently stop covering the marker if the path ever nested. `.fsdev/` is also
+ * the framework's own namespace.
  *
- * **The trade-off, stated rather than hidden:** the guarantee is now coupled to
- * that `.gitignore` entry staying accurate. Narrow the pattern or rename the
- * directory without updating it and the leak comes back silently.
+ * **Which repository's rule, which is where this was wrong.** The guarantee was
+ * written against THIS repository's `.gitignore` — the one dispatching the run.
+ * The marker lands in the product checkout, a worktree of `sourceRepo`, which
+ * this lab requires be a different repository, and a target that never adopted
+ * the pattern has no such rule. So the rule is now checked where the marker
+ * lands rather than assumed from where the code lives, and a repository that
+ * lacks it is refused with the line to add.
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";

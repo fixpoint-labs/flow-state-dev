@@ -1064,6 +1064,61 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
   });
 });
 
+describe("provisioning refuses a repository that would commit the ask marker", () => {
+  /** Drop the ignore rule from the source repo's `main`, and commit that. */
+  function dropIgnoreRule(sourceRepo: string): void {
+    execFileSync("git", ["rm", "-q", ".gitignore"], { cwd: sourceRepo, stdio: "pipe" });
+    execFileSync("git", ["commit", "-q", "-m", "drop the rule"], {
+      cwd: sourceRepo,
+      stdio: "pipe",
+    });
+  }
+
+  it("refuses a source repository with no rule covering the marker", async () => {
+    // The marker lands in the PRODUCT checkout, which this lab requires be a
+    // different repository from the one dispatching the run. Its
+    // do-not-commit guarantee was resting on the dispatching repository's
+    // `.gitignore` — a rule the target has no reason to carry. Without it the
+    // coding agent's own `git add -A` stages the question and it lands in a
+    // commit on the branch, and from there in the pull request.
+    const config = workspace();
+    dropIgnoreRule(config.sourceRepo);
+
+    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+      /does not ignore "\.fsdev/,
+    );
+  });
+
+  it("names the rule to add, because the operator owns that repository", async () => {
+    // The refusal is only useful if it says what to do. Nothing here can fix
+    // it: a tracked `.gitignore` is the operator's file, and `info/exclude`
+    // lives in the common directory every worktree of that repository shares.
+    const config = workspace();
+    dropIgnoreRule(config.sourceRepo);
+
+    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+      /Add `\*\*\/\.fsdev\/` to that repository's \.gitignore/,
+    );
+  });
+
+  it("refuses a REUSED checkout whose branch dropped the rule", async () => {
+    // The rule is a tracked file on the branch the checkout is on, so a run
+    // can delete it. A guard that only fired on creation would then hand the
+    // next attempt a tree that provisioned legally and is no longer safe to
+    // write a question into — the same defect, one attempt later.
+    const config = workspace();
+    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    expect(first.created).toBe(true);
+    dropIgnoreRule(first.path);
+
+    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+      /does not ignore "\.fsdev/,
+    );
+    // Refused, not cleared: the tree may hold the run's real work.
+    expect(existsSync(join(first.path, "tracked.txt"))).toBe(true);
+  });
+});
+
 describe("two epics on one issue-phase are isolated too", () => {
   // D-4 partitions the board because it is a claim pool. `runs/**`, the
   // checkout and the branch are the other three things two epics both write —

@@ -46,6 +46,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
+import { ASK_MARKER_DIR } from "./ask";
 import { identityFromCommonDir } from "./config-env";
 import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./patterns";
 
@@ -524,6 +525,52 @@ async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Pro
 }
 
 /**
+ * Refuse a checkout whose repository does not ignore the ask marker.
+ *
+ * **The guarantee is checked where the marker LANDS, which is not where it was
+ * being checked.** A run writes its question to `<checkout>/.fsdev/ask/N.md`
+ * (see `./ask`), and nothing must commit it. That was resting on THIS
+ * repository's `.gitignore` carrying a double-star `.fsdev` rule — but the
+ * marker lands in the product checkout, a worktree of `sourceRepo`, which this
+ * lab requires be a DIFFERENT repository. A target that never adopted the same
+ * pattern has no such rule, so the agent's own `git add -A` stages the marker
+ * and it lands in someone else's commit, on a pull request conductor opened.
+ *
+ * Asked of git rather than derived: ignore rules compose from the repository's
+ * `.gitignore` files at every level, `$GIT_DIR/info/exclude` and the user's
+ * global excludes, and re-implementing that resolution here is how the two
+ * answers drift. `check-ignore` is git's own answer to the exact question.
+ *
+ * **Refused rather than fixed.** Installing the rule means writing into a
+ * repository this lab does not own — a tracked `.gitignore` is the operator's
+ * file, and `info/exclude` lives in the common dir every worktree of that
+ * repository shares. This module's standing answer for a tree it cannot use is
+ * to say so and change nothing, and the refusal lands before the agent runs,
+ * which is what keeps it from being paid for once per retry.
+ */
+async function assertAskMarkerIgnored(checkoutPath: string, timeoutMs: number): Promise<void> {
+  // A concrete path rather than the directory: a pattern can match a file and
+  // not the directory that holds it, and the file is what has to be ignored.
+  const probe = join(ASK_MARKER_DIR, "1.md");
+  try {
+    await git(checkoutPath, ["check-ignore", "-q", probe], timeoutMs);
+    return;
+  } catch (error) {
+    // `check-ignore` answers "no" with exit 1 and fails with 128. Only the
+    // first is the finding; anything else is git being unable to answer, and
+    // reporting that as "not ignored" would name the wrong cause.
+    if ((error as { code?: unknown }).code !== 1) throw error;
+  }
+  throw new Error(
+    `[conductor] the repository behind ${checkoutPath} does not ignore "${probe}". A run ` +
+      `writes the question it needs answered to that path inside its own checkout, and ` +
+      `nothing here can stop the coding agent's \`git add -A\` from staging a file git ` +
+      `does not already ignore — so the question would be committed to the branch and ` +
+      `land in the pull request. Add \`**/.fsdev/\` to that repository's .gitignore.`,
+  );
+}
+
+/**
  * The branch a worktree is actually on, or `null` on a detached HEAD.
  *
  * A detached HEAD is a mismatch like any other — the run would commit to no
@@ -853,6 +900,11 @@ export async function provisionCheckout(
       );
     }
 
+    // Re-checked on reuse, not only on creation: the rule is a tracked file on
+    // the branch this tree is on, so a run that deleted it leaves a checkout
+    // that provisioned legally and is no longer safe to write a question into.
+    await assertAskMarkerIgnored(path, left());
+
     return { path, branch, created: false };
   }
 
@@ -932,6 +984,11 @@ export async function provisionCheckout(
   writeFileSync(marker, "");
   await git(config.sourceRepo, args, left());
   rmSync(marker, { force: true });
+
+  // After the tree exists, because the answer depends on the checked-out
+  // `.gitignore` and there is nothing to ask git about before that.
+  await assertAskMarkerIgnored(path, left());
+
   return { path, branch, created: true };
 }
 

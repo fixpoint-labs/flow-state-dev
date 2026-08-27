@@ -216,7 +216,14 @@ export function seedRepo(dir: string): void {
   // distinction is what the provisioning marker is now corroborated against.
   // Another fixture that had drifted from the thing it stands for.
   writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
-  git("add", "tracked.txt");
+  // **A stand-in source repository ignores the ask marker, because a real one
+  // has to.** The marker lands in the product checkout, so the rule that keeps
+  // it out of a commit belongs to THAT repository — and provisioning now
+  // refuses a checkout whose repository does not carry it, before the agent
+  // runs. Third fixture in this file that had drifted from the thing it stands
+  // for, and the same tell each time: the specs passed because nothing asked.
+  writeFileSync(join(dir, ".gitignore"), "**/.fsdev/\n");
+  git("add", "tracked.txt", ".gitignore");
   git("commit", "-m", "root");
   // **A stand-in source repository has an `origin`, because a real one does.**
   // The implement phase's completion probe reads it, and `conductorFlow` now
