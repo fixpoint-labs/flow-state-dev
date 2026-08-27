@@ -291,10 +291,31 @@ export class ResourceAlreadyExistsError extends FlowError {
 }
 
 /**
- * Thrown when a CAS retry loop exhausts its budget on an external-store scope.
- * Only surfaces for read-modify-write ops (`setState`, `atomicState`,
- * multi-field `patchState`, updater-form `patchState`); commutative ops
- * and in-memory scopes never throw it.
+ * Thrown when a version-checked write loses a race that retrying will not win.
+ *
+ * **Three raise sites, not one.** Both CAS drivers raise it when their retry
+ * budget exhausts — `runWithCAS` (`../stores/cas.ts`) for scope state,
+ * `runResourceCAS` (`../stores/resource-cas.ts`) for resource state — and the
+ * version-checked resource `delete` in `createExecutionContext` raises it
+ * terminally on the first conflict, with no retry loop behind it (`attempts`
+ * is 1 there). Prose that names only the scope-state driver, or only budget
+ * exhaustion, is describing one of the three.
+ *
+ * **The ops below are examples, not a closed list.** On the scope-state
+ * driver a call reaches the retry loop when the scope has a durable `persist`
+ * and its `CASMutationHint` is non-commutative (`isCommutativeHint`,
+ * `../stores/cas.ts`) — `setState`, `atomicState`, multi-field `patchState`,
+ * updater-form `patchState` and multi-field `incState` qualify today, the last
+ * because its mutator recomputes from the current field value on every retry.
+ * An in-memory scope has no `persist`, no version, and never throws this. Note
+ * what that does *not* say: a commutative op is still version-checked when the
+ * adapter doesn't advertise the matching delta verb, because
+ * `createScopePersist` then falls back to a full `set` at the held numeric
+ * version — that refusal returns `false` instead of raising, which is a
+ * different report, not an exemption. The resource driver has no such split:
+ * its writes are version-checked whatever the store backs them.
+ *
+ * Read the hint routing before restating any of this narrower than it is.
  */
 export class ConcurrentModificationError extends FlowError {
   readonly attempts: number;

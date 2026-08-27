@@ -301,7 +301,15 @@ failure the shared driver would have produced — lives beside the code, in the
 | `timeout_error` | Yes | Operation timeout |
 | `rate_limit_error` | Yes | Upstream rate limiting |
 | `model_error` | Yes | LLM provider failure |
+| `context_length_error` | No | Prompt exceeded the model's context window; resending it fails identically |
+| `provider_unavailable_error` | Yes | Upstream provider outage (5xx, gateway failure) |
 | `tool_execution_error` | No | Tool block threw during generator loop |
+| `ambiguous_block_name` | No | Block name resolved to more than one execution target |
+| `resource_deleted` | No | Resource write lost to a concurrent delete — terminal, a retry would resurrect the row |
+| `resource_already_exists` | No | Create-if-absent resource write lost its race; carries the winner's state and version |
+| `concurrent_modification` | Yes | Version-checked write lost: either CAS driver exhausted its retry budget, or a version-checked resource delete conflicted (terminal, `attempts: 1`) |
+| `output_validation_error` | No | Generator output failed its `outputSchema`; `details` carries `{ rawOutput, issues, phase }` |
+| `route_unavailable` | No | Recorded router decision can't be honored on resume — the selector re-decided, or the route left the table |
 | `execution_error` | No | Generic/unknown execution failure |
 
 ### Retry Policy

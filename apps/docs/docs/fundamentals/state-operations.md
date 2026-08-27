@@ -10,7 +10,7 @@ For the conceptual overview of scopes and schema bubbling, see [State & Scopes](
 
 ## The seven operations
 
-All scope handles implement the same `ScopeStateOps` interface. Every operation returns `Promise<boolean>` — `true` when the write changed stored state, `false` when nothing was written. More than one thing produces `false`, and none of them promise the store already holds your value; see [the no-op short-circuit](#the-no-op-short-circuit).
+All scope handles implement the same `ScopeStateOps` interface. Every operation returns `Promise<boolean>` — `true` when a write was accepted, `false` when nothing was written. Neither answer describes the stored value. `true` doesn't promise it now differs from what was there, and the several things that produce `false` don't promise the store already holds yours. See [the no-op short-circuit](#the-no-op-short-circuit).
 
 ### `patchState(updates)`
 
@@ -101,8 +101,10 @@ The mutator must be a *pure function* of the current state. Don't perform side e
 
 Every operation returns `Promise<boolean>`:
 
-- `true` — the write changed state. Persisted, version bumped, `state_change` SSE event emitted.
+- `true` — the write was accepted. Persisted, version bumped, `state_change` SSE event emitted.
 - `false` — nothing was written. No version bump, no SSE event. The store may still have been called.
+
+`true` is a report about the write, not about the value. A delta operation issued from a context whose cache predates a concurrent writer is still applied: a duplicate `deleteStateRecord` for a key another context already removed, or a `patchState` setting a field to the value another context already stored, is accepted, bumps the version, and returns `true` with the stored value structurally unchanged. Don't treat `true` on its own as proof that something is different from what was there.
 
 The usual cause of `false` is a redundant write. When the update you propose is structurally equal to the state this context last read, it's skipped before the store is called, so idempotent writes don't need manual identity checks:
 
@@ -122,7 +124,7 @@ Two more things return `false`, and neither of them means "already correct":
 - **The scope's record no longer exists.** Stores refuse a missing record before they look at any version, and the write isn't turned into a create. An `incState` or `pushState` against a deleted session returns `false` and creates nothing.
 - **An unchecked write fell back to a full-record write and lost.** When the store doesn't offer the matching operation, the runtime writes the whole record at the version this run last read, in one attempt with no retry. Lose that race and the call returns `false` against a record that still exists — a lost delete looks exactly like a delete that had nothing to do.
 
-So read `false` as "nothing was written", never as "the state already matched". When you need to know what is stored, read it back.
+So read `false` as "nothing was written", never as "the state already matched". When you need to know what is stored, read it back from something other than this context's cache. `ctx.<scope>.state` is that cache, and neither the stale-cache no-op nor the lost fallback write refreshes it, so reading it back there hands you the same copy the call was decided against. A fresh execution context loads the record on the way in; so does a direct read through the store.
 
 ## Reading state
 

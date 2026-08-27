@@ -178,7 +178,7 @@ const changed = await ctx.session.atomicState(() => ({ mode: "chat" }));
 // false. Stored mode is still "agent" — the write was never sent.
 ```
 
-So `false` means "nothing was written". It does not mean "the store already holds your value". Three different things produce it: a no-op against this context's cached read, a refusal because the record is gone, and a lost version check on a full-record fallback write. The return value alone won't tell them apart. When you need to know what is stored, read it back.
+So `false` means "nothing was written". It does not mean "the store already holds your value". Three different things produce it: a no-op against this context's cached read, a refusal because the record is gone, and a lost version check on a full-record fallback write. The return value alone won't tell them apart. When you need to know what is stored, read it back from something other than this context's cache. `ctx.<scope>.state` is that cache, and a lost version check leaves it untouched, so reading it back there hands you the copy that just lost. A version-checked write refreshes it on conflict, and a fresh execution context loads the record on the way in.
 
 ### The resource state store is versioned too
 
