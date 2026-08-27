@@ -44,7 +44,8 @@ and an action-driven create adopts the existing record.
 a concurrent creator. If two callers both find no session and one wins, the
 loser can clear a tombstone the winner's session just made, and the next
 ordinary write to that resource will recreate it. Closing this needs a scope
-generation, which is tracked separately.
+generation, tracked as FIX-1000 ("A create racing session deletion lands in a
+purged, caller-reusable scope — fence the scope generation").
 
 For custom `ResourceStateStore` adapters, two changes:
 
