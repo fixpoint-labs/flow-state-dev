@@ -282,3 +282,112 @@ describe.each(HANDLE_KINDS)("FIX-1269 delta verbs on a %s", (kind) => {
     expect(await readVersion(stores, key)).toBe(before);
   });
 });
+
+/**
+ * The refusal contract on a schema that REWRITES its input, driven end to end.
+ *
+ * The suite above uses `passthrough()` schemas, which parse a cached row to
+ * itself — so a refusal that hands the basis back stays deep-equal wherever the
+ * write-path parse sits, and this hole stays invisible. A schema that fills a
+ * `.default()` the row lacks turns that untouched basis into a different object,
+ * and a refusal routed through the parse then looks like a real write.
+ *
+ * Both ref factories, per BP-035, entering through the two routes that actually
+ * put an un-normalized row in front of the verbs: a collection instance reads
+ * the raw store row, and a single reads its declared `default` verbatim when no
+ * row has ever been persisted. (`resource-registry.spec.ts` covers the same
+ * contract at the registry seam, where the stripping and stale-basis variants
+ * are reachable too.)
+ */
+describe("FIX-1269 delta refusal on a rewriting schema", () => {
+  // `tier` joined the schema after these rows were written — the ordinary
+  // BP-030 drift, not an exotic schema.
+  const drifted = z.object({ tier: z.string().default("free") }).passthrough();
+
+  function makeDriftedFlow() {
+    return defineFlow({
+      kind: "fix1269-delta-drift",
+      actions: {
+        run: {
+          inputSchema: z.string(),
+          block: handler({
+            name: "noop",
+            resources: {
+              // No row is ever persisted for this one, so the registry reads
+              // the declared default — which nothing parses on the way in.
+              legacyCounter: defineResource({
+                scope: "session",
+                stateSchema: drifted,
+                default: { calls: "not-a-number" }
+              }),
+              legacyTallies: defineResourceCollection({
+                scope: "session",
+                pattern: "legacy-tallies/**",
+                stateSchema: drifted
+              })
+            },
+            execute: () => "ok"
+          })
+        }
+      }
+    })();
+  }
+
+  const makeDriftedCtx = (stores: StoreRegistry) =>
+    createExecutionContext({
+      flow: makeDriftedFlow(),
+      actionName: "run",
+      requestId: "req_a",
+      sessionId: "sess_1",
+      userId: "user_1",
+      stores
+    });
+
+  it("refuses without creating a row for a single resource on its declared default", async () => {
+    const stores = createInMemoryStores();
+    const ctx = await makeDriftedCtx(stores);
+    // Nothing persisted yet: the refusal below has no row to leave alone, so
+    // what it must not do is bring one into existence.
+    expect(await readStored(stores, "legacyCounter")).toBeUndefined();
+
+    await expect((ctx.resources as any).legacyCounter.incState({ calls: 1 })).rejects.toThrow(
+      /"calls" is not a number \(got string\)/
+    );
+
+    expect(await readStored(stores, "legacyCounter")).toBeUndefined();
+    expect(await readVersion(stores, "legacyCounter")).toBeUndefined();
+
+    // The path can write: the same handle persists a real increment, so the
+    // absence above is a result rather than a resource that never reached the
+    // store at all.
+    await (ctx.resources as any).legacyCounter.incState({ other: 1 });
+    expect(await readStored(stores, "legacyCounter")).toEqual({
+      calls: "not-a-number",
+      other: 1,
+      tier: "free"
+    });
+  });
+
+  it("refuses without writing for a collection instance holding a pre-drift row", async () => {
+    const stores = createInMemoryStores();
+    // A row written before `tier` existed. The collection cache is the raw
+    // store row, so this is what the verbs see.
+    await stores.resourceState.set("session", "sess_1", "legacy-tallies/t1", {
+      calls: "not-a-number"
+    }, "any");
+    const before = await readVersion(stores, "legacy-tallies/t1");
+
+    const ctx = await makeDriftedCtx(stores);
+    const ref = await (ctx.resources as any).legacyTallies.get("t1");
+
+    await expect(ref.incState({ calls: 1 })).rejects.toThrow(
+      /"calls" is not a number \(got string\)/
+    );
+
+    expect(await readStored(stores, "legacy-tallies/t1")).toEqual({ calls: "not-a-number" });
+    expect(await readVersion(stores, "legacy-tallies/t1")).toBe(before);
+
+    await ref.incState({ other: 1 });
+    expect(await readVersion(stores, "legacy-tallies/t1")).toBe(before! + 1);
+  });
+});

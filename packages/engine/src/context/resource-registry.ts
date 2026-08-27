@@ -243,6 +243,41 @@ function applyPush(
 }
 
 /**
+ * A write mutator's way of saying "store nothing" — returned in place of a next
+ * state so the value reaching the CAS driver is the basis that attempt was
+ * handed, byte for byte and **unparsed**.
+ *
+ * Returning `current` instead does not survive the persist helpers, and that is
+ * the whole reason this sentinel exists. Both helpers wrap their mutator in
+ * `parseResourceWriteState`, whose job on the write path is to NORMALIZE — and
+ * normalizing is a rewrite. A schema that fills a `.default()` the stored row
+ * lacks, strips an undeclared key, or coerces a retired value turns an
+ * untouched basis into a different object, and then:
+ *
+ *  - the driver no longer sees a deep-equal no-op, so it persists the rewritten
+ *    row and bumps the version — and only afterwards does `runDeltaWrite` throw
+ *    the refusal. The call reports "refused" while the stored value moved.
+ *  - or the parse REJECTS the cached row and throws from inside the mutator,
+ *    which `runResourceCAS` calls unguarded — terminal before any conflict is
+ *    observed, never refreshing, never re-running. That is the exact failure the
+ *    deferred refusal exists to prevent, re-entering through the parse.
+ *
+ * A refusal writes nothing, so there is nothing for the schema to normalize.
+ * Non-refusing writes are unaffected: what actually gets stored is still parsed.
+ */
+const WRITE_UNCHANGED: unique symbol = Symbol("resource.write.unchanged");
+type WriteUnchanged = typeof WRITE_UNCHANGED;
+
+/**
+ * A write mutator handed to {@link persistResourceState} or its collection
+ * twin. May decline to produce a value ({@link WRITE_UNCHANGED}); only the
+ * delta verbs do.
+ */
+type ResourceWriteMutator = (
+  current: JsonObject
+) => JsonObject | WriteUnchanged | Promise<JsonObject | WriteUnchanged>;
+
+/**
  * Wrap a delta mutator so a refusal becomes terminal only against a CONFIRMED
  * basis — the row the write would actually have committed against.
  *
@@ -253,7 +288,8 @@ function applyPush(
  * value was replaced by another writer since would then fail terminally over a
  * value the store no longer holds.
  *
- * So a refusing attempt returns `current` UNCHANGED. The driver reads that as a
+ * So a refusing attempt yields {@link WRITE_UNCHANGED}, which the persist
+ * helpers turn back into the basis they were handed. The driver reads that as a
  * deep-equal no-op and *verifies* it — re-reading the live row and either
  * confirming our basis was the committed row (versions match, so the refusal
  * stands) or finding the key moved, in which case it refreshes and re-runs the
@@ -265,7 +301,7 @@ function applyPush(
  * before this ever reports, keeping their existing retryability.
  */
 function createDeltaMutator(apply: (current: JsonObject) => DeltaOutcome): {
-  mutator: (current: JsonObject) => JsonObject;
+  mutator: (current: JsonObject) => JsonObject | WriteUnchanged;
   refusal: () => FlowError | undefined;
 } {
   let refusal: FlowError | undefined;
@@ -277,7 +313,7 @@ function createDeltaMutator(apply: (current: JsonObject) => DeltaOutcome): {
       const outcome = apply(current);
       if (outcome.ok) return outcome.next;
       refusal = outcome.error;
-      return current;
+      return WRITE_UNCHANGED;
     },
     refusal: () => refusal
   };
@@ -795,12 +831,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
    * `mutate` is the op's intent, not a finished value: it is re-run against
    * refreshed state on every retry, which is what lets two contexts patching
    * different fields both land instead of the second clobbering the first.
-   * Schema parse happens inside the mutator so a retry re-validates too.
+   * Schema parse happens inside the mutator so a retry re-validates too — and
+   * only over a value the mutator actually produced. A mutator that yields
+   * {@link WRITE_UNCHANGED} gets its basis back untouched; see that symbol for
+   * what parsing an unchanged row costs.
    */
   const persistResourceState = async (
     name: string,
     config: ResourceConfig,
-    mutate: (current: JsonObject) => JsonObject | Promise<JsonObject>,
+    mutate: ResourceWriteMutator,
     seed: JsonObject
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (config.writable === false) {
@@ -812,7 +851,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
     return options.mutateResourceKey(
       name,
-      async (current) => parseResourceWriteState(config.stateSchema, await mutate(current), name),
+      async (current) => {
+        const next = await mutate(current);
+        if (next === WRITE_UNCHANGED) return current;
+        return parseResourceWriteState(config.stateSchema, next, name);
+      },
       { seed }
     );
   };
@@ -821,7 +864,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
   const persistNamespaceInstanceState = async (
     storageKey: string,
     nsConfig: ResourceCollectionConfig,
-    mutate: (current: JsonObject) => JsonObject | Promise<JsonObject>,
+    mutate: ResourceWriteMutator,
     seed: JsonObject
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (nsConfig.writable === false) {
@@ -830,8 +873,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
     return options.mutateResourceKey(
       storageKey,
-      async (current) =>
-        parseResourceWriteState(nsConfig.stateSchema, await mutate(current), storageKey),
+      async (current) => {
+        const next = await mutate(current);
+        if (next === WRITE_UNCHANGED) return current;
+        return parseResourceWriteState(nsConfig.stateSchema, next, storageKey);
+      },
       { seed }
     );
   };
