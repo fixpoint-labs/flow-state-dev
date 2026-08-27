@@ -30,20 +30,6 @@ export interface ImplementPhaseOptions {
    * test can stage both arms of the conjunction without a network.
    */
   prExists?: (run: PhaseRunContext) => boolean | Promise<boolean>;
-  /**
-   * The repository the completion probe is pinned to, validated at
-   * construction.
-   *
-   * **Without it the probe re-reads `origin` after the agent has run**, and a
-   * linked worktree shares `remote.origin.url` with the repository it was cut
-   * from — so one `git remote set-url` inside the checkout, by the agent or its
-   * tooling, repoints the lookup. The probe would then take both its `gh -R`
-   * selector and its head-repository attribution from the replacement, and a
-   * same-branch pull request over there settles the board while none exists in
-   * the configured source repository. A silent wrong success, which is the
-   * defect class this lab exists to remove.
-   */
-  repo?: RemoteRepo;
 }
 
 /**
@@ -328,31 +314,24 @@ export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
  * agree with each other about the wrong repository. Reading the remote with
  * `git` puts the answer outside `gh`'s environment, and passing it back as `-R`
  * stops the listing drifting to another one.
+ *
+ * **`repo` is required, and there is no re-read to fall back to.** It is read
+ * once at construction and travels on the run context; this function runs AFTER
+ * the agent, and a linked worktree shares `remote.origin.url` with the
+ * repository it was cut from, so a re-read here answers with whatever the agent
+ * last left there. A fallback that re-read `origin` would be the silent wrong
+ * success this probe exists to detect, reachable by making the value absent.
  */
-/** `origin` as this checkout currently spells it. The unpinned path only. */
-async function readOriginRepo(ctx: PhaseRunContext): Promise<RemoteRepo | undefined> {
-  const { stdout } = await run("git", ["remote", "get-url", "origin"], {
-    cwd: ctx.workspacePath,
-    timeoutMs: NETWORK_CALL_TIMEOUT_MS,
-    signal: ctx.ctx.signal,
-  });
-  return repoSlugFromRemote(stdout.trim());
-}
-
-async function prExistsViaGh(ctx: PhaseRunContext, pinned?: RemoteRepo): Promise<boolean> {
-  // **The pin wins, and re-reading is the fallback rather than the rule.** See
-  // {@link ImplementPhaseOptions.repo}: this runs after the agent, and the
-  // remote it would read is shared with the repository the worktree was cut
-  // from, so the agent can change the answer. A caller that constructs the
-  // phase itself and passes no pin keeps the old behaviour, and keeps the hole
-  // with it.
-  const repo = pinned ?? (await readOriginRepo(ctx));
-  if (repo === undefined) return false;
+async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
+  // Read inside the async body, not at the call site: `isDone` is declared
+  // `boolean | Promise<boolean>` and every caller awaits it, so a probe that
+  // throws synchronously on one path and rejects on the others is an asymmetry
+  // waiting to be handled in one place and not the other.
+  const repo = pinFrom(ctx);
 
   // One listing per state that counts, stopping at the first match. The whole
   // probe is bounded by a single deadline in the manager, so the second listing
-  // is not a second budget — it is the same one, already shared with the remote
-  // lookup above.
+  // is not a second budget — it is the same one.
   for (const state of COMPLETING_QUERY_STATES) {
     const { stdout } = await run("gh", prListArgs(ctx.branch, state, repo.selector), {
       cwd: ctx.workspacePath,
@@ -434,6 +413,31 @@ function assertCompletionProbeUsable(workspace: WorkspaceConfig): RemoteRepo {
   return repo;
 }
 
+/**
+ * The repository this run's completion check queries, off the run context.
+ *
+ * **Missing is a refusal, not a fallback.** `conductorFlow` binds what
+ * `validate` returned into every run context it builds, so an absent value
+ * means the phase reached a probe by some route that never validated it. The
+ * tempting recovery — re-read `origin` here — is the defect this whole pin
+ * exists to remove: the probe runs after the agent, and a linked worktree
+ * shares `remote.origin.url` with the repository it was cut from, so the answer
+ * is whatever the agent last left there. Failing is the safe direction: the
+ * attempt re-pends with a reason, where a wrong answer settles the board.
+ */
+function pinFrom(ctx: PhaseRunContext): RemoteRepo {
+  const pin = ctx.validated as RemoteRepo | undefined;
+  if (pin === undefined) {
+    throw new Error(
+      `[conductor] the implement phase's completion check has no repository to query. ` +
+        `\`conductorFlow\` binds the one \`validate\` checked at construction into every ` +
+        `run context, so this phase reached its probe another way. Build it through ` +
+        `\`conductorFlow\`, or supply your own \`prExists\`.`,
+    );
+  }
+  return pin;
+}
+
 /** Build the implement phase. */
 export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
   // **Nothing is stored on the spec.** `validate` returns the identity it
@@ -442,10 +446,17 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
   // could reach. Storing it here instead produced three defects in as many
   // rounds — shared between conductors, retained by a construction that then
   // failed, and a comparison written to paper over both.
-  const prExists =
-    options.prExists ??
-    ((ctx: PhaseRunContext) =>
-      prExistsViaGh(ctx, (ctx.validated as RemoteRepo | undefined) ?? options.repo));
+  //
+  // **And nothing is configurable either.** There used to be a `repo` option, a
+  // caller-supplied pin that `validate`'s finding then had to be reconciled
+  // with — the two could name different repositories, and no disposition was
+  // safe: query the caller's and a pull request the run opened is never found,
+  // so a finished attempt retries until its budget is gone; query the
+  // workspace's and the board settles from somewhere the caller did not
+  // configure. Nothing in this repository ever passed it. An option with no
+  // callers whose only effect is to reintroduce the ambiguity this change
+  // removes is not an escape hatch, it is the hatch left open.
+  const prExists = options.prExists ?? prExistsViaGh;
 
   return {
     phase: "implement",
@@ -458,41 +469,10 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
       ? {
           // Returns the identity rather than keeping it: see
           // {@link PhaseSpec.validate}. Pure, so a construction that fails a
-          // later check leaves nothing behind for the retry to trip over.
-          //
-          // **An explicit `repo` is checked against it, not overridden by it.**
-          // A caller passing `repo` is naming the repository the board settles
-          // against; the workspace's `origin` is the repository the run will
-          // actually work in. When those disagree, neither disposition is safe:
-          // query the explicit one and a pull request the run opened is never
-          // found, so a finished attempt retries until its budget is gone;
-          // query the workspace's and the board settles from somewhere the
-          // caller did not configure. So the conflict is refused, at
-          // construction, before a row is claimed.
-          //
-          // The stored-pin design caught this by accident — the explicit value
-          // seeded the field `validate` wrote, so a disagreement surfaced as
-          // "already pinned". Removing the pin removed the accident, and this
-          // states the rule instead. `sameRepo`, not `!==`: this module already
-          // decided repository identity folds case, and a byte comparison would
-          // refuse a legal spelling difference as a permanent configuration
-          // error.
-          validate: (workspace: WorkspaceConfig): RemoteRepo => {
-            const found = assertCompletionProbeUsable(workspace);
-            if (options.repo !== undefined && !sameRepo(options.repo.selector, found.selector)) {
-              throw new Error(
-                `[conductor] this implement phase was configured to settle against ` +
-                  `"${options.repo.selector}", but the workspace's "origin" names ` +
-                  `"${found.selector}". The run works in the second and the completion ` +
-                  `check would query one of them — so a pull request the run opens is ` +
-                  `either missed, retrying a finished attempt until its budget is gone, or ` +
-                  `the board is settled from a repository this was not configured for. ` +
-                  `Point \`workspace.sourceRepo\` at the repository you meant, or drop the ` +
-                  `explicit \`repo\`.`,
-              );
-            }
-            return found;
-          },
+          // later check leaves nothing behind for the retry to trip over, and
+          // the only route from here to the probe is the run context.
+          validate: (workspace: WorkspaceConfig): RemoteRepo =>
+            assertCompletionProbeUsable(workspace),
         }
       : {}),
     // Empty, and that is not an oversight: this phase reads no collection of its

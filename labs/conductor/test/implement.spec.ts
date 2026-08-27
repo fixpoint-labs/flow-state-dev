@@ -3,7 +3,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { seedRepo } from "./harness";
@@ -344,69 +344,36 @@ describe("the done-condition — which pull requests count", () => {
     }
   });
 
-  it("refuses an explicit repository the workspace's own remote contradicts", async () => {
-    // `options.repo` is a caller saying "settle against THIS repository", and
-    // the workspace's `origin` is the repository the run will actually work in.
-    // When they name different places one of them is wrong, and neither
-    // disposition is safe: query the explicit one and a pull request the run
-    // opened is never found, so a finished attempt retries until its budget is
-    // gone; query the workspace's and the board settles from a repository the
-    // caller did not configure.
+  it("refuses to query anything when the run context carries no repository", async () => {
+    // The pin is bound by `conductorFlow` from what `validate` returned, so an
+    // absent one means the probe was reached by a route that never validated.
     //
-    // The previous design caught this as a SIDE EFFECT of storing the pin —
-    // the explicit value seeded the same field `validate` wrote, so a
-    // disagreement surfaced as "already pinned". Removing the stored pin
-    // removed the accident with it, so the rule is stated directly here.
-    const repo = mkdtempSync(join(tmpdir(), "conductor-explicit-"));
+    // The tempting recovery is to re-read `origin` here, and it used to: that
+    // is the defect the pin exists to remove. This probe runs AFTER the agent,
+    // and a linked worktree shares `remote.origin.url` with the repository it
+    // was cut from, so the answer would be whatever the agent last left there
+    // — a same-branch pull request over in the replacement settling the board.
+    // Failing re-pends the attempt with a reason; answering wrongly settles it.
+    //
+    // Asserted through a recording `gh` as well as on the throw, because "did
+    // not query" is the half a rejected promise alone does not establish.
+    const repo = mkdtempSync(join(tmpdir(), "conductor-nopin-"));
     dirs.push(repo);
     seedRepo(repo);
-    execFileSync("git", ["remote", "set-url", "origin", "https://github.com/workspace/repo.git"], {
-      cwd: repo,
-      stdio: "pipe",
-    });
 
-    const { bin, restore } = recordingGh();
+    const { bin, log, restore } = recordingGh();
     dirs.push(bin);
     try {
-      const phase = implementPhase({
-        repo: { selector: "github.com/explicit/repo", ownerRepo: "explicit/repo" },
-      });
-      expect(() =>
-        phase.validate?.({ root: repo, sourceRepo: repo, baseRef: "main" } as never),
-      ).toThrow(/github\.com\/explicit\/repo.*github\.com\/workspace\/repo/s);
+      const phase = implementPhase();
+      await expect(
+        phase.isDone({ ...runContext(repo), validated: undefined } as never),
+      ).rejects.toThrow(/no repository to query/);
+      expect(existsSync(log)).toBe(false);
     } finally {
       restore();
     }
+
   });
-
-  it("accepts an explicit repository that differs only in casing", async () => {
-    // GitHub's owner and repository names are case-insensitive, so a remote
-    // spelled one way and a config spelled another name one repository. The
-    // guard above must not refuse that: this module already decided identity
-    // folds case, and a byte comparison would turn a legal spelling difference
-    // into a permanent configuration error.
-    const repo = mkdtempSync(join(tmpdir(), "conductor-casing-"));
-    dirs.push(repo);
-    seedRepo(repo);
-    execFileSync("git", ["remote", "set-url", "origin", "https://github.com/Owner/Repo.git"], {
-      cwd: repo,
-      stdio: "pipe",
-    });
-
-    const { bin, restore } = recordingGh();
-    dirs.push(bin);
-    try {
-      const phase = implementPhase({
-        repo: { selector: "github.com/owner/repo", ownerRepo: "owner/repo" },
-      });
-      expect(() =>
-        phase.validate?.({ root: repo, sourceRepo: repo, baseRef: "main" } as never),
-      ).not.toThrow();
-    } finally {
-      restore();
-    }
-  });
-
   it("keeps a port only when it is the API's port", () => {
     // **The earlier `:8443` fix was right, and I generalised it too far.** A
     // port survives only when the transport is the one `gh` talks to. These
