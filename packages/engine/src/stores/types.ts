@@ -383,9 +383,10 @@ export type OrgListOptions = {
  * - A number means "only write if the current stored version equals this"
  * - "any" means "write unconditionally" (used for creates, migrations, and
  *   system writes that fall outside the CAS retry loop)
- * - "absent" means "only write if no record exists at this id" — create-if-
- *   absent. An existing record at **any** version, including `0`, is a
- *   conflict carrying that record.
+ * - "absent" means "only write if no record exists at this id" — an existing
+ *   record at **any** version, including `0`, is a conflict carrying that
+ *   record. On `ResourceStateStore` a **tombstone is a record**, so it
+ *   conflicts too.
  *
  * ## `"absent"` is a distinct sentinel, not a re-use of `0`
  *
@@ -403,10 +404,14 @@ export type OrgListOptions = {
  *
  * Because the scope stores' `0` is taken, create-if-absent could not be
  * ported to them as a number. `"absent"` means the same thing in both
- * families and collides with neither. `ResourceStateStore` **refuses** it
- * (`assertExpectedVersion`) rather than aliasing it onto its `0`, so
- * `"absent"` never acquires a second, verb-dependent meaning on the resource
- * side's delete predicate.
+ * families — "no record exists" — and collides with neither.
+ *
+ * On the resource side that makes `"absent"` the **stricter** of two create
+ * expectations rather than a synonym for `0`: `0` admits a tombstone (which
+ * is what recreating a deleted resource needs) and `"absent"` refuses one
+ * (which is what stops a read-modify-write that never saw the resource from
+ * undoing a delete). `ResourceStateStore.delete` still refuses the word
+ * outright, so it never acquires a second, verb-dependent meaning.
  *
  * Two consequences for anyone branching on this type:
  *  - `expectedVersion !== "any"` no longer implies `typeof === "number"`.
@@ -1001,6 +1006,8 @@ export type VersionedResourceState = {
  *
  *  - **`expectedVersion: 0` means "no live row"** — it is create-if-absent,
  *    and it is satisfied by a tombstoned key as well as a never-existed one.
+ *    `"absent"` is the stricter form and is refused by a tombstone, which is
+ *    how a write that never observed the key is kept from undoing a delete.
  *  - **Some conflicts are terminal, not retryable.** A conflict against a
  *    tombstone must not be retried into a resurrection, and a losing
  *    create-if-absent must not be retried into an overwrite. Callers drive
@@ -1051,6 +1058,9 @@ export interface ResourceStateStore {
    * - A number writes only when the current **live** version equals it.
    * - `0` is create-if-absent: it succeeds when there is no live row
    *   (never existed, or tombstoned) and conflicts against a live one.
+   * - `"absent"` is the stricter create: it succeeds only when there is no
+   *   row **at all**, so a tombstone conflicts. Pass it when the write must
+   *   not be the thing that brings a deleted key back.
    * - `"any"` writes unconditionally — the opt-out, and the posture every
    *   caller that has not adopted CAS passes explicitly.
    *
