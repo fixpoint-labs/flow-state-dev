@@ -33,7 +33,8 @@ import type {
   VersionedResourceState
 } from "../types";
 import {
-  assertExpectedVersion,
+  assertDeleteExpectedVersion,
+  assertSetExpectedVersion,
   checkWriteVersion,
   type ResourceStateRow
 } from "../resource-state-predicate";
@@ -66,7 +67,7 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     state: JsonObject,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<JsonObject>> {
-    assertExpectedVersion(expectedVersion);
+    assertSetExpectedVersion(expectedVersion);
     const mapKey = this.key(scopeType, scopeId, resourceKey);
     const row = this.data.get(mapKey);
     const check = checkWriteVersion(row, expectedVersion);
@@ -87,7 +88,7 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
   ): Promise<SetResult<JsonObject>> {
     // Ahead of the idempotent short-circuits below: an unusable
     // `expectedVersion` is refused for every key, live or not.
-    assertExpectedVersion(expectedVersion);
+    assertDeleteExpectedVersion(expectedVersion);
     const mapKey = this.key(scopeType, scopeId, resourceKey);
     const row = this.data.get(mapKey);
 

@@ -12,8 +12,8 @@
  * | Case | Here | `runWithCAS` would |
  * |---|---|---|
  * | Conflict, live row at a newer version | Refresh, re-run the mutator, retry with backoff | same — the one row that transfers |
- * | Conflict, **no live row**, and we held a live version | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state (`cas.ts:158-159`) and retries; the tombstone's version matches, so the write lands — **resurrecting a deleted resource** |
- * | No live row and we never held one (`version === 0`) | **Not an error** — a verified no-op. The key was never persisted, and nothing was taken away | n/a — the shared driver has no absent/deleted distinction to get wrong |
+ * | Conflict, **no live row**, on a `mutate` | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state (`cas.ts:158-159`) and retries; the tombstone's version matches, so the write lands — **resurrecting a deleted resource** |
+ * | A `mutate` that **begins at version `0`** | Writes at `"absent"` — no row at all. Creates the key if none exists; **terminal** {@link ResourceDeletedError} against a tombstone | n/a — the shared driver has no absent/deleted distinction to get wrong |
  * | Conflict, **create-if-absent** | **Terminal** {@link ResourceAlreadyExistsError} | Refreshes to the winner's version and retries, **overwriting the winner** |
  * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `wait()` (`cas.ts:96-104`) is an unabortable timer — **persists after cancellation** |
  * | Retry budget exhausted | {@link ConcurrentModificationError} | same |
@@ -28,13 +28,23 @@
  * invariant the `resource_change` notification gate rests on.
  *
  * **Absent is not deleted, and the distinction is load-bearing.** "No live row"
- * covers two situations that must not report the same thing: a row we held a
- * live version for and lost, versus a key that was never persisted at all — a
- * declared resource living so far on its schema default, being touched for the
- * first time. Collapsing them makes the most ordinary write there is throw
- * `ResourceDeletedError` about a row that never existed, which is precisely the
- * "report what didn't happen" failure this store exists to stop. The container's
- * version discriminates: `0` means this context never observed a live row.
+ * covers two situations that must not report the same thing: a key with a
+ * tombstone under it, versus one that was never persisted at all — a declared
+ * resource living so far on its schema default, being touched for the first
+ * time. Collapsing them one way makes the most ordinary write there is throw
+ * `ResourceDeletedError` about a row that never existed; collapsing them the
+ * other way lands the write over the tombstone and undoes a delete. Both are
+ * the same "report what didn't happen" failure this store exists to stop.
+ *
+ * The container's version does **not** discriminate them, which is the thing to
+ * know before touching this file. `0` means only that this context is not
+ * holding a live version, and two histories produce it: a key nothing ever
+ * wrote, and one this context deleted (`deleteResourceKey` drops the cached
+ * version with the row) or never loaded. Only the store can tell them apart, so
+ * a `mutate` starting from `0` asks it to — it writes at `"absent"` ("no row at
+ * all"), which a tombstone refuses. `create` keeps writing at `0` ("no live
+ * row"), which a tombstone admits, because explicit recreation after a delete
+ * is the point of that verb.
  *
  * **Do not reach for the commutative path.** `createScopeStateOps` lives in
  * `state-container.ts` and its ops are named `patchState` / `setState` /
@@ -66,8 +76,9 @@ const DEFAULT_BASE_DELAY_MS = 10;
  * What the caller is trying to do, which decides the expected version and how
  * a conflict is classified.
  *
- * - `mutate` — read-modify-write. Writes at the version the container holds; a
- *   conflict against a live row retries, against a tombstone is terminal.
+ * - `mutate` — read-modify-write. Writes at the version the container holds, or
+ *   at `"absent"` ("no row at all") when it holds none; a conflict against a
+ *   live row retries, against a tombstone is terminal.
  * - `create` — create-if-absent. Writes at `0` ("no live row"); any conflict is
  *   terminal, because the loser must not overwrite the winner.
  * - `replace` — deliberate unconditional overwrite (`create({ replace: true })`).
@@ -216,8 +227,21 @@ export async function runResourceCAS({
     // sees the clone below, so this stays a faithful snapshot of the basis.
     const basis = container.read() as JsonObject;
     const current = cloneValue(container.read()) as JsonObject;
+    const heldVersion = container.getVersion();
+    // A `mutate` that begins at `0` is writing against a key it has never seen
+    // live, and `"absent"` is the only expectation that says so precisely: no
+    // row at all, tombstone included. `0` would say "no LIVE row", which a
+    // tombstone satisfies — and the write would land as a fresh generation over
+    // a resource somebody deleted (FIX-1258). `create` keeps `0` deliberately:
+    // recreating a deleted resource is what it is for (FIX-992).
     const expectedVersion: ExpectedVersion =
-      intent === "create" ? 0 : intent === "replace" ? "any" : container.getVersion();
+      intent === "create"
+        ? 0
+        : intent === "replace"
+          ? "any"
+          : heldVersion === 0
+            ? "absent"
+            : heldVersion;
 
     const next = await mutator(current);
 
@@ -234,13 +258,17 @@ export async function runResourceCAS({
         //
         //  - We held a live version and it is gone → our write lost to a
         //    delete, and saying so is accurate.
-        //  - We never held one (`version === 0`) → the key was never
-        //    persisted. A declared resource that exists only through its
-        //    schema default is here on its first touch, and the mutator asked
-        //    for no change. Store and cache agree there is no live row, so
-        //    nothing is written and nothing was taken away. Calling that a
-        //    deletion reports an event that never happened, to a caller doing
-        //    the most ordinary thing there is.
+        //  - We held none (`version === 0`) → nothing is written either way,
+        //    so nothing can be revived here. A declared resource that exists
+        //    only through its schema default is on its first touch and the
+        //    mutator asked for no change; calling that a deletion reports an
+        //    event that never happened, to a caller doing the most ordinary
+        //    thing there is. `reread` cannot tell that key from a tombstoned
+        //    one — both read as absent by contract — so this branch does not
+        //    try to, and deliberately reports the weaker, true thing: no write
+        //    happened. Distinguishing them would cost a second store round
+        //    trip on the most ordinary path in the framework, to change one
+        //    no-op's error class without changing what is stored.
         if (container.getVersion() === 0) {
           return {
             state: container.read() as JsonObject,
@@ -294,10 +322,12 @@ export async function runResourceCAS({
     }
 
     if (result.conflict.currentValue === undefined) {
-      // No live row, and reaching here means we asked for a positive version:
-      // `expectedVersion: 0` is satisfied by the absence of one, so it could
-      // not have conflicted this way. So the row we held really was deleted.
-      // Terminal — and specifically NOT `runWithCAS`'s
+      // No live row, and a `mutate` is the only intent that can be here: it
+      // asked either for a positive version (which a tombstone never
+      // satisfies) or for `"absent"` (which a tombstone refuses, being a row).
+      // Both mean the same thing — there is a tombstone under this key — so
+      // the resource was deleted, whether or not this context ever saw it
+      // live. Terminal, and specifically NOT `runWithCAS`'s
       // `result.currentState ?? container.read()`, which would re-run the
       // mutator over a pre-delete snapshot and write it back over a tombstone
       // whose version now matches.
