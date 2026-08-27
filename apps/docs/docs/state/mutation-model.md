@@ -100,7 +100,7 @@ One limit stated plainly: on the filesystem store the comparison is held per key
 
 ## Schema-invalid resource writes
 
-After `patchState`, `setState`, or `updateState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same three methods and the same contract.
+After `patchState`, `setState`, `updateState`, `incState`, or `pushState` returns on a `ResourceRef`, the stored state is a JSON object that satisfies that resource's `stateSchema`. Collection-instance refs from `get` or `create` expose the same five methods and the same contract.
 
 ```ts
 import { defineResource, handler, FlowError } from "@flow-state-dev/core";
@@ -155,6 +155,8 @@ Collection `create` and `upsert` refuse an invalid initial or merged state. The 
 A read of a persisted single-resource value that does not validate resolves to a schema-valid default. The read does not throw. A collection-instance read returns the stored object as-is.
 
 The refusal applies to `ResourceRef`. Scope bags (`ctx.session.patchState` and the rest) are a different surface.
+
+`incState` and `pushState` carry a second refusal alongside this one. A delta aimed at a field that holds the wrong kind of value throws `FlowError` with code `resource_delta_refused` instead of a schema error, and the stored value is unchanged either way. See [When a delta is refused](/docs/resources/overview#when-a-delta-is-refused).
 
 ## Writing an updater that may run twice
 
