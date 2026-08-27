@@ -740,6 +740,59 @@ describe("schema-invalid resource writes (FIX-1256)", () => {
   });
 });
 
+/**
+ * FIX-1269: the delta verbs ride the SAME change-notification gate as every
+ * other resource write. Two ways a write can announce a change that did not
+ * happen: a deep-equal no-op increment, and a refused one.
+ *
+ * Each case asserts the positive first. Without it the test would pass against
+ * a registry that never emits at all — the single-resource seam is gated on
+ * `client.live` / `reactTo`, so "not called" is the default, not a result.
+ */
+describe("delta-verb change notification (FIX-1269)", () => {
+  it("announces a real increment but not a no-op one, on a single resource", async () => {
+    const onChange = vi.fn();
+    const config = makeResourceConfig({ default: {}, client: { live: true } });
+    const registry = makeRegistry({
+      configs: { counter: config },
+      initialState: { counter: { calls: 1 } },
+      onResourceChanged: onChange
+    });
+    const ref = registry.get("counter");
+    onChange.mockClear();
+
+    await ref.incState({ calls: 1 });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(ref.state).toEqual({ calls: 2 });
+
+    onChange.mockClear();
+    await ref.incState({ calls: 0 });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(ref.state).toEqual({ calls: 2 });
+  });
+
+  it("announces a real append but not a refused one, on a collection instance", async () => {
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*");
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": { errors: ["first"], broken: "not-an-array" } },
+      onResourceChanged: onChange
+    });
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+
+    await ref.pushState("errors", "second");
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    onChange.mockClear();
+    // A refused write must not announce, and must leave the value alone.
+    await expect(ref.pushState("broken", "x")).rejects.toThrow(/not an array/);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(ref.state).toEqual({ errors: ["first", "second"], broken: "not-an-array" });
+  });
+});
+
 describe("createScopeResourceRegistry — collections", () => {
   it("create() adds an instance and get() retrieves it", async () => {
     const nsConfig = makeCollectionConfig("items/*", {

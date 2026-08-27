@@ -145,6 +145,144 @@ function updateObjectState(
   return next;
 }
 
+// --- Delta verbs (`incState` / `pushState`) -------------------------------
+//
+// Two more mutator bodies handed to the write path resources already use.
+// Nothing new sits underneath them and nothing on the store interface changes.
+
+/**
+ * What a delta mutator decided for one attempt: the state to write, or a
+ * refusal that is not yet final.
+ */
+type DeltaOutcome =
+  | { ok: true; next: JsonObject }
+  | { ok: false; error: FlowError };
+
+/**
+ * Name the kind of a stored JSON value, for the refusal message. Only ever
+ * called on a value already known to be neither absent nor `null` — those are
+ * a field's empty state, not a wrong kind.
+ */
+function describeJsonType(value: JsonValue): string {
+  return Array.isArray(value) ? "array" : typeof value;
+}
+
+function refuseDelta(message: string): { ok: false; error: FlowError } {
+  return {
+    ok: false,
+    // A CONFIRMED wrong-typed refusal is a caller error that retrying cannot
+    // fix — the value's type is what it is on the row we committed against.
+    error: new FlowError(message, { code: "resource_delta_refused", retryable: false })
+  };
+}
+
+/**
+ * `incState`'s mutator body: add each delta to its field.
+ *
+ * Builds a fresh object and returns it only once every field passed, so a
+ * multi-field call with one wrong-typed field applies none of it. An absent or
+ * `null` field is that field's empty state (BP-023 declares state fields
+ * `.nullable().default(null)`, so an untouched counter reads as `null`), not a
+ * wrong kind of value — it starts from `0`.
+ */
+function applyIncrements(
+  current: JsonObject,
+  label: string,
+  increments: Record<string, number | undefined>
+): DeltaOutcome {
+  const next: JsonObject = { ...current };
+
+  for (const [field, delta] of Object.entries(increments)) {
+    if (delta === undefined) continue;
+
+    const stored = current[field];
+    if (stored !== undefined && stored !== null && typeof stored !== "number") {
+      return refuseDelta(
+        `Resource "${label}" incState target "${field}" is not a number (got ${describeJsonType(stored)})`
+      );
+    }
+
+    const result = (typeof stored === "number" ? stored : 0) + delta;
+    // The check is on the RESULT, not the delta: a non-finite delta always
+    // yields a non-finite result, and only a result check catches an overflow
+    // from two finite operands (`Number.MAX_VALUE * 2`). `z.number()` accepts
+    // ±Infinity, so the write-path schema parse does not catch this — and the
+    // adapters then disagree, the memory store keeping `Infinity` where every
+    // JSON-serializing adapter stores `null`.
+    if (!Number.isFinite(result)) {
+      return refuseDelta(
+        `Resource "${label}" incState result for "${field}" is not finite (${String(result)})`
+      );
+    }
+
+    next[field] = result;
+  }
+
+  return { ok: true, next };
+}
+
+/**
+ * `pushState`'s mutator body: append one value to an array-valued field.
+ * An absent or `null` field starts from `[]` — first touch, not a wrong type.
+ */
+function applyPush(
+  current: JsonObject,
+  label: string,
+  field: string,
+  value: JsonValue
+): DeltaOutcome {
+  const stored = current[field];
+  if (stored !== undefined && stored !== null && !Array.isArray(stored)) {
+    return refuseDelta(
+      `Resource "${label}" pushState target "${field}" is not an array (got ${describeJsonType(stored)})`
+    );
+  }
+
+  const base = Array.isArray(stored) ? stored : [];
+  return { ok: true, next: { ...current, [field]: [...base, value] } };
+}
+
+/**
+ * Wrap a delta mutator so a refusal becomes terminal only against a CONFIRMED
+ * basis — the row the write would actually have committed against.
+ *
+ * A refusal cannot simply throw from inside the mutator. `runResourceCAS` calls
+ * the mutator UNGUARDED (`const next = await mutator(current)`) and reaches
+ * `persist` only afterwards, so a throw propagates before any conflict is
+ * observed: the driver never refreshes and never re-runs. A caller whose cached
+ * value was replaced by another writer since would then fail terminally over a
+ * value the store no longer holds.
+ *
+ * So a refusing attempt returns `current` UNCHANGED. The driver reads that as a
+ * deep-equal no-op and *verifies* it — re-reading the live row and either
+ * confirming our basis was the committed row (versions match, so the refusal
+ * stands) or finding the key moved, in which case it refreshes and re-runs the
+ * mutator against the winner's state with `refusal` reset for that attempt.
+ * `refusal()` therefore reports the verdict of the LAST attempt only, and it is
+ * set only where the driver verified the row it was judged against.
+ *
+ * Contention and deletion outcomes are unaffected: those throw from the driver
+ * before this ever reports, keeping their existing retryability.
+ */
+function createDeltaMutator(apply: (current: JsonObject) => DeltaOutcome): {
+  mutator: (current: JsonObject) => JsonObject;
+  refusal: () => FlowError | undefined;
+} {
+  let refusal: FlowError | undefined;
+  return {
+    mutator: (current) => {
+      // Reset per attempt: a retry runs against a different row, which may no
+      // longer mismatch.
+      refusal = undefined;
+      const outcome = apply(current);
+      if (outcome.ok) return outcome.next;
+      refusal = outcome.error;
+      return current;
+    },
+    refusal: () => refusal
+  };
+}
+
 /**
  * Outcome of a lazy on-demand load. `fetched` is true only when a real store
  * round-trip occurred (false for a cache short-circuit); `durationMs` is the
@@ -745,6 +883,38 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       );
     };
 
+    /**
+     * The write wrapper for the delta verbs: same serialize → persist → notify
+     * shape as the three mutators below, plus the confirmed-basis refusal that
+     * {@link createDeltaMutator} defers to here.
+     *
+     * Deliberately not applied to `patchState` / `setState` / `updateState`:
+     * routing the new verbs through one helper is what keeps this factory from
+     * growing two more copies of the wrapper, and rewriting three working
+     * mutators is a change no behaviour here needs.
+     */
+    const runDeltaWrite = async (
+      apply: (current: JsonObject) => DeltaOutcome
+    ): Promise<void> => {
+      const { mutator, refusal } = createDeltaMutator(apply);
+      let prev!: JsonObject;
+      let post!: JsonObject;
+      let committed = false;
+      await serializeResourceWrite(storageKey, async () => {
+        const seed = readState();
+        ({ committed, previousState: prev } = await persistNamespaceInstanceState(
+          storageKey,
+          nsConfig,
+          mutator,
+          seed
+        ));
+        post = readState();
+      });
+      const refused = refusal();
+      if (refused !== undefined) throw refused;
+      if (committed) await notifyInstanceChange(prev, post);
+    };
+
     const ref: ResourceRef<JsonObject> = {
       path: storageKey,
       scope: options.scope,
@@ -752,6 +922,16 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       config: nsConfig as unknown as ResourceConfig,
       get state() {
         return readState();
+      },
+      async incState(increments): Promise<void> {
+        await runDeltaWrite((current) =>
+          applyIncrements(current, storageKey, increments as Record<string, number | undefined>)
+        );
+      },
+      async pushState(field, value): Promise<void> {
+        await runDeltaWrite((current) =>
+          applyPush(current, storageKey, field, value as JsonValue)
+        );
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
         let prev!: JsonObject;
@@ -1540,6 +1720,33 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       );
     };
 
+    /**
+     * The write wrapper for the delta verbs — the single-resource twin of the
+     * collection-instance `runDeltaWrite`. Same reason for not applying it to
+     * the three existing mutators.
+     */
+    const runDeltaWrite = async (
+      apply: (current: JsonObject) => DeltaOutcome
+    ): Promise<void> => {
+      const { mutator, refusal } = createDeltaMutator(apply);
+      let prev!: JsonObject;
+      let post!: JsonObject;
+      let committed = false;
+      await serializeResourceWrite(storageKey, async () => {
+        const seed = readState();
+        ({ committed, previousState: prev } = await persistResourceState(
+          storageKey,
+          config,
+          mutator,
+          seed
+        ));
+        post = readState();
+      });
+      const refused = refusal();
+      if (refused !== undefined) throw refused;
+      if (committed) await notifySingleChange(prev, post);
+    };
+
     handles[resourceName] = {
       path: storageKey,
       scope: options.scope,
@@ -1547,6 +1754,16 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       config,
       get state() {
         return readState();
+      },
+      async incState(increments): Promise<void> {
+        await runDeltaWrite((current) =>
+          applyIncrements(current, storageKey, increments as Record<string, number | undefined>)
+        );
+      },
+      async pushState(field, value): Promise<void> {
+        await runDeltaWrite((current) =>
+          applyPush(current, storageKey, field, value as JsonValue)
+        );
       },
       async patchState(updates: Partial<JsonObject>): Promise<void> {
         let prev!: JsonObject;
