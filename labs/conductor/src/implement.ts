@@ -459,8 +459,40 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
           // Returns the identity rather than keeping it: see
           // {@link PhaseSpec.validate}. Pure, so a construction that fails a
           // later check leaves nothing behind for the retry to trip over.
-          validate: (workspace: WorkspaceConfig): RemoteRepo =>
-            assertCompletionProbeUsable(workspace),
+          //
+          // **An explicit `repo` is checked against it, not overridden by it.**
+          // A caller passing `repo` is naming the repository the board settles
+          // against; the workspace's `origin` is the repository the run will
+          // actually work in. When those disagree, neither disposition is safe:
+          // query the explicit one and a pull request the run opened is never
+          // found, so a finished attempt retries until its budget is gone;
+          // query the workspace's and the board settles from somewhere the
+          // caller did not configure. So the conflict is refused, at
+          // construction, before a row is claimed.
+          //
+          // The stored-pin design caught this by accident — the explicit value
+          // seeded the field `validate` wrote, so a disagreement surfaced as
+          // "already pinned". Removing the pin removed the accident, and this
+          // states the rule instead. `sameRepo`, not `!==`: this module already
+          // decided repository identity folds case, and a byte comparison would
+          // refuse a legal spelling difference as a permanent configuration
+          // error.
+          validate: (workspace: WorkspaceConfig): RemoteRepo => {
+            const found = assertCompletionProbeUsable(workspace);
+            if (options.repo !== undefined && !sameRepo(options.repo.selector, found.selector)) {
+              throw new Error(
+                `[conductor] this implement phase was configured to settle against ` +
+                  `"${options.repo.selector}", but the workspace's "origin" names ` +
+                  `"${found.selector}". The run works in the second and the completion ` +
+                  `check would query one of them — so a pull request the run opens is ` +
+                  `either missed, retrying a finished attempt until its budget is gone, or ` +
+                  `the board is settled from a repository this was not configured for. ` +
+                  `Point \`workspace.sourceRepo\` at the repository you meant, or drop the ` +
+                  `explicit \`repo\`.`,
+              );
+            }
+            return found;
+          },
         }
       : {}),
     // Empty, and that is not an oversight: this phase reads no collection of its
