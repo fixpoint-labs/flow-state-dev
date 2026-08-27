@@ -215,10 +215,14 @@ export class FlowStateDisposedError extends FlowError {
  * whether or not this caller ever held a live version for it.
  *
  * Terminal, never retryable: the only state a retry could re-apply is the
- * caller's pre-delete snapshot, so retrying would resurrect a resource somebody
- * deliberately removed. That is why resource state does not reuse
- * `runWithCAS`, whose conflict handler falls back to the container's cached
- * state and would do exactly that once a tombstone makes the version matchable.
+ * caller's pre-delete snapshot, and neither way of sending it is a recovery. At
+ * `0` ("no live row") a tombstone admits it, and a resource somebody
+ * deliberately removed comes back. At the tombstone's retained version no
+ * live-row check admits it, so the retries burn the budget and report a lost
+ * race rather than the deletion that happened. That is why resource state does
+ * not reuse `runWithCAS`, whose conflict handler falls back to the container's
+ * cached state and produces one or the other depending on the version the
+ * caller happened to hold.
  *
  * **A caller holding no live version reaches this too.** Its write goes out at
  * `"absent"` ("no row at all"), which a tombstone refuses — precisely so an

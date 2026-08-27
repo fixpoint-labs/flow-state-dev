@@ -12,8 +12,8 @@
  * | Case | Here | `runWithCAS` would |
  * |---|---|---|
  * | Conflict, live row at a newer version | Refresh, re-run the mutator, retry with backoff | same — the one row that transfers |
- * | Conflict, **no live row**, on a `mutate` | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state and retries; the tombstone's version matches, so the write lands — **resurrecting a deleted resource** |
- * | A `mutate` that **begins at version `0`** | Writes at `"absent"` — no row at all. Creates the key if none exists; **terminal** {@link ResourceDeletedError} against a tombstone | n/a — the shared driver has no absent/deleted distinction to get wrong |
+ * | Conflict, **no live row**, on a `mutate` | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state, refreshed to the tombstone's **retained** version, and retries at that number — which a tombstone never satisfies, since a positive expected version requires a **live** row. Every attempt is refused, so the whole budget goes on round trips that could not land, and it raises {@link ConcurrentModificationError}: **a lost race reported where the truth is a deleted resource** |
+ * | A `mutate` that **begins at version `0`** | Writes at `"absent"` — no row at all. Creates the key if none exists; **terminal** {@link ResourceDeletedError} against a tombstone | Cannot ask for "no row at all" — its `expectedVersion` is a plain `number`, so it sends `0`, which means "no live row" and a tombstone admits. The write lands on the first attempt with no conflict to notice — **resurrecting a deleted resource** |
  * | Conflict, **create-if-absent** | **Terminal** {@link ResourceAlreadyExistsError} | Refreshes to the winner's version and retries, **overwriting the winner** |
  * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `cas.ts`'s `wait()` is an unabortable timer — **persists after cancellation** |
  * | Retry budget exhausted | {@link ConcurrentModificationError} | same |
@@ -62,10 +62,12 @@
  * top of a tombstone.
  *
  * **Do not reach for the commutative path.** `createScopeStateOps` lives in
- * `state-container.ts` and its ops are named `patchState` / `setState` /
- * `updateState` — the same names as the registry's resource ops, one module
- * away. It is the natural thing to import and the wrong one. The same goes for
- * `createScopePersist` (`scope-persist.ts`), which downgrades
+ * `state-container.ts`, one module away, and four of its seven ops —
+ * `patchState` / `setState` / `incState` / `pushState` — carry exactly the
+ * names the registry's resource ops carry. It is the natural thing to import
+ * and the wrong one: on a scope bag `incState` / `pushState` are the unchecked
+ * commutative path, where on a resource handle they come through this driver.
+ * The same goes for `createScopePersist` (`scope-persist.ts`), which downgrades
  * `expectedVersion` to `"any"` for commutative hints **only when the store
  * advertises the matching delta verb**, and otherwise sends a single
  * version-checked full-record `set` at the held numeric version — one attempt,
@@ -347,8 +349,9 @@ export async function runResourceCAS({
       // the resource was deleted, whether or not this context ever saw it
       // live. Terminal, and specifically NOT `runWithCAS`'s
       // `result.currentState ?? container.read()`, which would re-run the
-      // mutator over a pre-delete snapshot and write it back over a tombstone
-      // whose version now matches.
+      // mutator over a pre-delete snapshot and retry it at the tombstone's
+      // retained version — a number no live-row check can admit — until the
+      // budget runs out and it reports a lost race instead of a deletion.
       throw new ResourceDeletedError(key);
     }
 
