@@ -617,11 +617,13 @@ The driver is deliberately separate from the one the four scope stores use (`run
 
 ### A resource `stateSchema` must parse its own output unchanged
 
-Resource state is parsed on the way out as well as on the way in. The read path normalizes the stored row, your updater builds its next value on top of that, and the write parses the result. So anything the schema rewrites runs once per read-modify-write cycle.
+A single resource's state is parsed on the way out as well as on the way in. The read path normalizes the stored row, your updater builds its next value on top of that, and the write parses the result. So anything the schema rewrites runs twice per read-modify-write cycle, once on each parse.
+
+Collection instances are read back as stored. The read path does not normalize them, so a rewrite runs on an instance once, on the write. The count differs; the fact that the rewrite recurs does not.
 
 That is fine when the rewrite settles. Filling a `.default()`, stripping an undeclared key, normalizing a retired enum value — all land on the same value the second time, so the row converges and then holds. It is also how a row written before its schema gained a field picks that field up.
 
-A `.transform()` that returns something different on each pass is the case that does not settle. Under `z.object({ n: z.number().transform((v) => v + 1) })` the stored `n` climbs on every write even when the caller never touches it, and because the same shift re-applies on read, the value you read back still looks plausible.
+A `.transform()` that returns something different on each pass is the case that does not settle. Under `z.object({ n: z.number().transform((v) => v + 1) })` the stored `n` climbs on every write even when the caller never touches it, and on a single resource the value you read back still looks plausible because the same shift re-applies on read.
 
 Writes through such a schema are now refused rather than allowed to corrupt the row:
 
@@ -636,7 +638,7 @@ A schema that collapses its own output — one whose second parse returns `null`
 
 Every resource write runs the check, because they all share one parse path: `setState` / `patchState` / `updateState`, the same ops on collection instances, `collection.create()` and `upsert`, and the client create route `POST /sessions/:id/resources/:ref`. That route carries no initial state, so it seeds the row from the schema's parse of `{}` — and a schema that cannot produce a valid, stable object from `{}` now gets `400` rather than a `201` over a row every later write would reject. A required field with no `.default()` is the usual cause; give it one.
 
-Rows written before this check may not satisfy it; they are read normally and converge to a stable value on their next successful write. If you need a derived value, compute it where you read the state rather than inside the state schema.
+Rows written before this check may not satisfy it, and only some of them heal on their own. A row under a schema whose parse settles is read normally and converges to a stable value on its next successful write. A row written by a schema whose parse does not settle has no next successful write: every mutation through that schema is now refused, so nothing converges until the schema itself is fixed. Make the parse idempotent and the row converges on the next write after that; a value that already drifted keeps the value it drifted to until a write corrects it. If you need a derived value, compute it where you read the state rather than inside the state schema.
 
 ```ts
 // branded — see the note under the table below
