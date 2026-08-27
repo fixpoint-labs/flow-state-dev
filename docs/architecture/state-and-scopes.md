@@ -1,6 +1,6 @@
 # State and Scopes
 
-Flow State Dev manages state across four hierarchical scopes, each with typed state operations. Concurrency control is compare-and-swap on most writes and deliberately absent on the commutative ones — [Atomicity Guarantees](#atomicity-guarantees) is the single statement of which is which.
+Flow State Dev manages state across four hierarchical scopes, each with typed state operations. Concurrency control is compare-and-swap on most writes and deliberately absent on a set of blind ones, not all of which compose — [Atomicity Guarantees](#atomicity-guarantees) is the single statement of which is which.
 
 ## Scope Hierarchy
 
@@ -53,27 +53,51 @@ by verb name. `createScopePersist` computes `expectedVersion: "any"` from the co
 before any store lookup, and only when the adapter advertises the matching delta verb; otherwise it
 falls through to a full-record `set` at the **held** version.
 
-- **Commutative, so *not* version-checked** (on an adapter advertising the verb): `pushState`,
-  `setStateRecord` and `deleteStateRecord` always; `incState` given a **single** field; `patchState`
-  given exactly one **literal** field. Each applies store-side against the record as found rather
-  than against a snapshot the caller is holding, so **writes to unrelated paths all survive** — no
-  writer clobbers a field it did not name, which a stale full-record `set` would. That is the
-  guarantee, and
-  it is narrower than "no lost updates". On the **same** path only increments and appends compose
-  (`incState` adds to, and `pushState` appends to, whatever the store finds); a literal `patchState`
-  and a `setStateRecord` on the same key **overwrite each other**, last writer wins, and the loser's
-  value is gone with no conflict reported. Use `atomicState` when a same-path update has to read what
-  is already there.
-- **Version-checked:** multi-field `incState`, the `patchState` updater form, multi-field
-  `patchState`, `setState`, and `atomicState`. These can raise `ConcurrentModificationError` on
-  retry exhaustion.
-- **Adapter capability decides the first bullet, and it varies by scope as well as by adapter.**
+Every unchecked verb applies store-side against the record as found rather than against a snapshot
+the caller is holding, so **writes to unrelated paths all survive** — no writer clobbers a field it
+did not name, which a stale full-record `set` would. That is the shared guarantee, and it is
+narrower than "no lost updates". On the **same** path the unchecked set splits in two, and what
+separates them is whether the hint carries a *delta* or an *absolute* value.
+
+- **Unchecked and genuinely commutative, so both writers land** (on an adapter advertising the
+  verb): `pushState`, and
+  `incState` given a **single** field. The hint carries the delta itself — `hint.delta` for
+  `incField`, `hint.values` for `pushToArray` — so the store adds to, or appends to, whatever it
+  finds. Two concurrent writers to the same field both survive; for an append, order affects
+  position only.
+- **Unchecked but *not* commutative** (same adapter condition): `setStateRecord` and
+  `deleteStateRecord` always, and `patchState` given exactly one **literal** field. The hint carries
+  no delta — `createScopePersist` reads an *absolute* value out of the mutator's `nextState` to send
+  with `patchField`, and `deleteField` sends the path alone — so on the same key the store
+  overwrites rather than composes. **Last write wins, the first value is gone, and both calls return
+  `true`**: neither writer is told a race happened. Use `atomicState`, or the `patchState` updater
+  form, when a same-path update has to read what is already there.
+- **Version-checked:** multi-field `incState`, multi-field `patchState`, the `patchState` updater
+  form, `setState`, and `atomicState`. These can raise `ConcurrentModificationError` on retry
+  exhaustion. **The version check is not the safety property** — it decides whether a race can be
+  reported, not whether you keep the other writer's update. What the mutator does on retry decides
+  that, and the five do not agree. `setState`'s mutator is a constant, so its retry re-applies the
+  **same whole state** and discards the winner's change outright — checked, the most destructive
+  verb here, and the one whose name most invites reaching for it. Multi-field
+  `patchState` merges its fixed values onto the refreshed state, so unnamed fields survive and named
+  ones overwrite. Multi-field `incState`, the updater form and `atomicState` **re-run** against the
+  winner's state, so they genuinely merge.
+- **Adapter capability decides the first two bullets, and it varies by scope as well as by adapter.**
   For **session / user / org**, the memory, SQLite and Postgres stores advertise all four delta
   verbs; the **filesystem** stores advertise `patchField` / `incField` / `pushToArray` but **not**
-  `deleteField`, so `deleteStateRecord` alone is version-checked there. For **request** scope no
-  shipped adapter advertises `deleteField` at all — memory, SQLite and Postgres each expose only the
-  other three on their request store — so `ctx.request.deleteStateRecord` takes the version-checked
-  full-record `set` on every adapter we ship.
+  `deleteField`, so `deleteStateRecord` alone falls back there. For **request** scope no shipped
+  adapter advertises `deleteField` at all — memory, filesystem, SQLite and Postgres each expose only
+  the other three on their request store — so `ctx.request.deleteStateRecord` takes the fallback on
+  every adapter we ship.
+- **The fallback is not the version-checked path, and it fails silently.** It does send the **held**
+  version, but nothing retries it: `runDurableMutation` branches to `runCommutative` on the hint
+  *before* any store call, and `runCommutative` calls persist exactly once. On a version mismatch
+  the store returns a conflict, `runCommutative` returns a bare `false`, and that is the whole
+  outcome — **no retry, and never `ConcurrentModificationError`**. The `false` is also
+  indistinguishable from the one the [no-op guard](#no-op-guard) returns when the write matched
+  current state. So a `setStateRecord` or `deleteStateRecord` that quietly fails to land is the
+  symptom to recognise: check whether that scope's adapter implements the verb before hunting for a
+  race.
 - **Unchecked is not immune.** Every shipped delta store refuses a **missing record** before it
   compares versions, `"any"` included — so a commutative write racing a record delete is still
   refused. Skipping the version check buys freedom from *concurrent state writes*, not from
