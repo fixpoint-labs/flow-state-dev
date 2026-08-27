@@ -155,6 +155,24 @@ describe("FIX-1258: a write after a delete does not revive the resource", () => 
     expect(await readStored(stores, "spine")).toEqual({ first: true });
   });
 
+  it("still recreates through upsert() and getOrCreate() after a delete", async () => {
+    // The "or create" APIs branch on the cached view, so a tombstoned key sends
+    // them down their create path rather than the mutation path this change
+    // tightened. Pinned because it is the first thing a reader will worry
+    // about, and because the two families are one `if` apart in the registry.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    await (ctx.resources.tasks as any).create("t1", { generation: 1 });
+    await (ctx.resources.tasks as any).delete("t1");
+
+    await (ctx.resources.tasks as any).upsert("t1", { generation: 2 });
+    expect(await readStored(stores, "tasks/t1")).toEqual({ generation: 2 });
+
+    await (ctx.resources.tasks as any).delete("t1");
+    await (ctx.resources.tasks as any).getOrCreate("t1", { generation: 3 });
+    expect(await readStored(stores, "tasks/t1")).toEqual({ generation: 3 });
+  });
+
   it("still recreates an instance through create() after a delete (FIX-992)", async () => {
     // Explicit recreation is intentional prior art, not an edge case to close.
     // It reaches the store with the same "no live row" expectation the refused
