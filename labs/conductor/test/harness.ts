@@ -22,6 +22,7 @@ import type {
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
 import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
+import { CHECKOUT_CLEANUP_TIMEOUT_MS } from "../src/exec";
 import type { PhaseSpec } from "../src/manager";
 
 export const USER_ID = "conductor-test-user";
@@ -252,7 +253,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   };
 
   // Derived, not spelled out. The manager enforces
-  // `waitMs >= staleAfterMs > runTimeoutMs + provisionTimeoutMs`, and independent constants
+  // `waitMs >= staleAfterMs > runTimeoutMs + provisionTimeoutMs + cleanup`, and independent constants
   // here let a test set one of them and get a construction error that has
   // nothing to do with what it was testing. Deriving keeps every harness
   // instance valid by construction, whichever knob a test turns.
@@ -262,8 +263,14 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   // the git budget is what keeps the suite's numbers small while the inequality
   // stays the real one.
   const provisionTimeoutMs = options.provisionTimeoutMs ?? 10_000;
+  // Derived from the SAME three terms the manager sums, not from two of them.
+  // `maxLockHeldMs` gained the cleanup allowance — a refusal late in
+  // provisioning discards the checkout it just made, under the lock — and a
+  // fixture that kept adding only `runTimeoutMs + provisionTimeoutMs` derived a
+  // stale window the manager refuses at construction.
   const staleAfterMs =
-    options.ownership?.staleAfterMs ?? runTimeoutMs + provisionTimeoutMs + 1_000;
+    options.ownership?.staleAfterMs ??
+    runTimeoutMs + provisionTimeoutMs + CHECKOUT_CLEANUP_TIMEOUT_MS + 1_000;
   const pollMs = options.ownership?.pollMs ?? 25;
   const ownership = {
     // **Strictly past the stale window, by one poll.** The manager requires it,

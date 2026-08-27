@@ -8,3 +8,5 @@ A run writes the question it needs answered to `<checkout>/.fsdev/ask/<attempt>.
 Provisioning now asks git, in the checkout, whether that path is ignored, and refuses the checkout with the line to add if it is not. Checked on reuse as well as on creation, because the rule is a tracked file the run can delete.
 
 Internal to `labs/conductor`; no published package surface changes.
+
+A refusal discards the checkout it just created, and that cleanup runs after the provisioning budget it could not draw from. The lock's advertised lifetime now carries the allowance for it, so an `ownership.staleAfterMs` sized against the old two-term bound is refused at construction rather than letting a waiter clear a lock while its holder is still cleaning up.

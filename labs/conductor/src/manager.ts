@@ -46,7 +46,7 @@ import {
   type TaskWorker,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
+import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
 import { MAX_TIMER_MS } from "./config-env";
 import {
   RUNS,
@@ -567,8 +567,17 @@ export function resolveOwnership(options: {
   // call is what makes this arithmetic true: provisioning runs up to three
   // commands back to back, so a per-call bound of N would let the real hold
   // reach 3N while this sum said N.
+  //
+  // **The third term is provisioning's own undo, and leaving it out was a real
+  // gap.** A refusal late in provisioning discards the checkout it just made,
+  // and that cleanup cannot draw from `provisionBudget` — the case it exists
+  // for is that budget running out. So it extends the hold by
+  // `CHECKOUT_CLEANUP_TIMEOUT_MS`, under the lock. Unsummed, a slow cleanup
+  // runs past the point a waiter may call this lock stale, and two attempts
+  // prune the same worktree bookkeeping: the same defeat-by-arithmetic the
+  // paragraph above describes, through the door added to prevent a wedge.
   const provisionBudget = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
-  const maxLockHeldMs = runTimeoutMs + provisionBudget;
+  const maxLockHeldMs = runTimeoutMs + provisionBudget + CHECKOUT_CLEANUP_TIMEOUT_MS;
 
   const ownership: OwnershipBounds = {
     // Sized against the lease-renewal lag that produces overlap, and well
@@ -636,10 +645,11 @@ export function resolveOwnership(options: {
     throw new Error(
       `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed the ` +
         `longest a live attempt can hold the lock (${maxLockHeldMs}ms = runTimeoutMs ` +
-        `${runTimeoutMs}ms + the provisioning budget ${provisionBudget}ms): the lock is ` +
-        `taken before the checkout is provisioned, so a window sized against the run's ` +
-        `deadline alone can elapse while the holder is still inside git. Raise the stale ` +
-        `window, lower the deadline, or lower options.provisionTimeoutMs.`,
+        `${runTimeoutMs}ms + the provisioning budget ${provisionBudget}ms + ` +
+        `${CHECKOUT_CLEANUP_TIMEOUT_MS}ms to undo a checkout provisioning refused): the ` +
+        `lock is taken before the checkout is provisioned, so a window sized against the ` +
+        `run's deadline alone can elapse while the holder is still inside git. Raise the ` +
+        `stale window, lower the deadline, or lower options.provisionTimeoutMs.`,
     );
   }
 

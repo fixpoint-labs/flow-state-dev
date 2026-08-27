@@ -45,7 +45,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { GIT_TIMEOUT_MS, run } from "./exec";
+import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "./ask";
 import { identityFromCommonDir } from "./config-env";
 import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./patterns";
@@ -1085,8 +1085,14 @@ export async function provisionCheckout(
  * silence — leaving exactly the branch this function was added to remove.
  *
  * Undoing an operation is not part of that operation's time box. The extension
- * is one `GIT_TIMEOUT_MS` and only on the refusal path, which ends the attempt
- * anyway; the alternative is a wedge no retry can clear.
+ * is one {@link CHECKOUT_CLEANUP_TIMEOUT_MS} and only on the refusal path,
+ * which ends the attempt anyway; the alternative is a wedge no retry can clear.
+ *
+ * **And the extension is counted, not assumed harmless.** It happens under the
+ * lock, so `resolveOwnership` adds the same constant to `maxLockHeldMs` — the
+ * number the stale window is derived from. Left out, a slow cleanup runs past
+ * the point another worker may declare this lock stale, and two attempts end up
+ * pruning the same worktree bookkeeping.
  *
  * **Reports whether it finished, and cleanup failures are still swallowed.**
  * The caller is already throwing something that names a real problem; replacing
@@ -1101,7 +1107,7 @@ async function discardFreshCheckout(
   branchPreexisted: boolean,
   now: () => number,
 ): Promise<boolean> {
-  const deadline = now() + GIT_TIMEOUT_MS;
+  const deadline = now() + CHECKOUT_CLEANUP_TIMEOUT_MS;
   const left = () => remainingBudget(deadline, now);
   try {
     // The same guard the half-created branch uses, for the same reason: a
