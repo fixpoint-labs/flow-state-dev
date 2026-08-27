@@ -26,6 +26,7 @@ import {
 } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { createRequestHost } from "../src/context/create-request-host";
+import { ensureSessionRecord } from "../src/context/ensure-session-record";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
@@ -282,6 +283,46 @@ describe("FIX-1258: a write after a delete does not revive the resource", () => 
       "absent"
     );
     expect(revival.ok).toBe(false);
+  });
+
+  it("creates no session record when the tombstone reclamation fails", async () => {
+    // The ordering, pinned as behaviour rather than left to a comment. There is
+    // no transaction across the session and resource-state stores, so whichever
+    // commits first can be left standing when the second fails. Creating first
+    // would strand a live session on the dead one's tombstones with nothing to
+    // retry the cleanup — a second create answers 409, and an action-driven
+    // create adopts the record instead — which is this very bug made permanent.
+    //
+    // Reclaiming first makes the failure recoverable: nothing is committed, so
+    // the caller's retry starts from a clean slate.
+    const stores = createInMemoryStores();
+    const boom = new Error("resource store unavailable");
+    const failing: StoreRegistry = {
+      ...stores,
+      resourceState: {
+        ...stores.resourceState,
+        purgeTombstones: async () => {
+          throw boom;
+        }
+      }
+    };
+
+    await expect(
+      ensureSessionRecord(failing, "sess_ordering", () => ({
+        id: "sess_ordering",
+        flowKind: "fix1258-revival",
+        userId: "user_1",
+        state: {},
+        version: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        journal: []
+      }))
+    ).rejects.toBe(boom);
+
+    // The record must not stand. If it did, the session would be permanently
+    // unwritable and no later call would reach the reclamation again.
+    expect(await stores.session.get("sess_ordering")).toBeUndefined();
   });
 
   it("still creates a never-written resource on its first touch", async () => {

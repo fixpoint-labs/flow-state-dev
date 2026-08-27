@@ -308,6 +308,17 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         ...(args.record !== undefined ? { metadata: { ...args.record } } : {})
       };
 
+      // Reclaim the id's resource-state tombstones before the create, and only
+      // on this branch — `existing === undefined`, so no child is being adopted
+      // here (FIX-1258). It matters more on this path than anywhere: a child's
+      // key is DERIVED from its seed, so the same seed always lands on the same
+      // key, and reuse is the norm rather than the exception — which is why
+      // this path has an adoption branch at all. Without it, a child whose
+      // session was deleted comes back with every static resource permanently
+      // unwritable. Before the create for the ordering reason
+      // `purgeStaleResourceState` carries: nothing may commit ahead of it.
+      await purgeStaleResourceState(stores, storageKey);
+
       // Create-if-absent: this is how a caller wins or loses a create race,
       // rather than silently overwriting a concurrent adopter's child.
       const result = await stores.session.set(storageKey, record, "absent");
@@ -329,16 +340,6 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           };
         }
         adopted = true;
-      } else {
-        // Won the create, so this is a NEW child rather than an adopted one,
-        // and it owes itself the same tombstone reclamation every other
-        // newborn session does (FIX-1258). It matters more here than anywhere:
-        // the child key is derived from the seed, so the same seed always
-        // lands on the same key — reuse is the norm on this path, not the
-        // exception, which is why adoption exists at all. Without this, a
-        // child whose session was deleted comes back with every static
-        // resource permanently unwritable.
-        await purgeStaleResourceState(stores, storageKey);
       }
     }
 

@@ -34,6 +34,12 @@ first action against an id that has none, and a detached child spawn. The spawn
 matters most, since a child's key is derived from its seed and so is reused by
 design.
 
+The clear runs immediately **before** the record is written, and only after a
+check that no record exists. There is no transaction across the two stores, so
+writing the record first would strand a live session on the old one's tombstones
+whenever the clear then failed — permanently, since a retried create answers 409
+and an action-driven create adopts the existing record.
+
 For custom `ResourceStateStore` adapters, two changes:
 
 - `set` gains a third `expectedVersion` spelling: `"absent"` means "no row at
@@ -45,6 +51,7 @@ For custom `ResourceStateStore` adapters, two changes:
   scope's tombstoned rows outright, leaving every live row untouched. In SQL it
   is one statement (`DELETE … WHERE scope_type = ? AND scope_id = ? AND
   lifecycle = 'deleted'`). A hand-written adapter will fail to compile until it
-  is added.
+  is added, and a hand-written **test double** of the store will fail at runtime
+  — a double is an implementer of the interface too.
 
 The shared conformance suite covers both.

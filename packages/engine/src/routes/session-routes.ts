@@ -189,24 +189,35 @@ export async function handleCreateSession(
     journal: []
   };
 
-  // The store decides the create race, not a `get`-then-`set` above it: two
-  // concurrent requests for one session id both passed an existence check and
-  // both wrote, and the loser silently overwrote the winner. "absent" makes
-  // the loser fail, so exactly one caller gets the 201.
+  // This route does not go through `ensureSessionRecord` — it owes the caller a
+  // 409 on a lost race, which that helper resolves into an adoption instead —
+  // so it makes the same reclamation decision explicitly. `sessionId` is
+  // caller-supplied, so this may be the second session to live under it, and
+  // the first one's resource-state tombstones would otherwise brick every
+  // static resource here (FIX-1258).
+  //
+  // This read does NOT decide the create race — `"absent"` below still does,
+  // for the reason it always did: two requests can both pass an existence check
+  // and both write, and the loser would silently overwrite the winner. What it
+  // decides is whether to reclaim at all. A retried create against a session
+  // that plainly already exists must not reclaim that live session's
+  // tombstones, and answering 409 here keeps it from reaching one.
+  if ((await ctx.stores.session.get(record.id)) !== undefined) {
+    return jsonResponse(409, {
+      error: `Session "${sessionId}" already exists`
+    });
+  }
+
+  // Before the create, so a failure leaves nothing committed for a retry to
+  // trip over. See `purgeStaleResourceState` for why this order and no other.
+  await purgeStaleResourceState(ctx.stores, record.id);
+
   const created = await ctx.stores.session.set(record.id, record, "absent");
   if (!created.ok) {
     return jsonResponse(409, {
       error: `Session "${sessionId}" already exists`
     });
   }
-
-  // This route does not go through `ensureSessionRecord` — it owes the caller a
-  // 409 on a lost race, which that helper resolves into an adoption instead —
-  // so it makes the same third decision explicitly. `sessionId` is
-  // caller-supplied, so this may be the second session to live under it, and
-  // the first one's resource-state tombstones would otherwise brick every
-  // static resource here (FIX-1258). Winner-only, after the create.
-  await purgeStaleResourceState(ctx.stores, record.id);
 
   return jsonResponse(201, {
     session: { ...record, id: sessionId }

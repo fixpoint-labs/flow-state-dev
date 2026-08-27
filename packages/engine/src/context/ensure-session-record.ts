@@ -54,8 +54,36 @@ type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
  * delete route — while the session is merely gone, the tombstones are still
  * doing their job.
  *
- * Only the caller that WON the create may run this. A loser reclaiming would
- * be operating on a scope the winner already owns.
+ * ## Run this BEFORE the create, never after
+ *
+ * There is no transaction across the two stores, so one of them commits first
+ * and the other can fail behind it. That makes the order the whole design, and
+ * only one order has a recoverable failure:
+ *
+ *  - **Create, then reclaim** leaves a committed session record above intact
+ *    tombstones when the reclamation fails or the process dies between the two.
+ *    Nothing downstream retries it — a second create returns 409 before
+ *    reaching here, and an action-driven create adopts the record and skips it
+ *    — so that session's static resources are bricked for its whole life. The
+ *    fix would reproduce the exact bug it exists to close, permanently.
+ *  - **Reclaim, then create** commits nothing until the reclamation has
+ *    succeeded. A failure at either step leaves no record, so the caller's
+ *    retry starts clean, and reclaiming twice is a no-op.
+ *
+ * The cost of reclaiming first is that a caller which then LOSES the create has
+ * reclaimed under a session it does not own. That is survivable only because
+ * this reclaims **tombstones and nothing else**: the loser cannot touch a live
+ * row, so no data is at risk — at worst a tombstone the winner made in the
+ * microseconds since it won is reclaimed, and only a straggler already holding
+ * no version could then write that key. Callers keep the exposure to a true
+ * race by checking for an existing record first; a create against a session
+ * that plainly already exists must not reach here at all.
+ *
+ * (An earlier revision of this ran after the create, on the reasoning that a
+ * loser must not touch the winner's scope. That reasoning was written when this
+ * removed every row in the scope, live ones included, where a loser really
+ * could destroy the winner's data. Narrowing it to tombstones retired the
+ * objection, and the ordering it justified with it.)
  *
  * Two residuals stay open, both far narrower than the permanent brick this
  * replaces and neither closable without a scope generation:
@@ -63,12 +91,11 @@ type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
  *  - A reclaimed key's version restarts at 1, so a straggler from the old
  *    incarnation holding version N can match a row in the new one.
  *    `purgeTombstones` in `stores/types.ts` carries this.
- *  - The reclamation lands just after the record becomes visible, so a request
- *    that sees the newborn record and writes a since-deleted key inside that
- *    window can have that write refused. Reclaiming first instead would be
- *    worse, not better: a loser of the create race would then reclaim under a
- *    scope the winner is already writing to, on a wider window and with no
- *    winner to bound it.
+ *  - A reclamation that succeeds while the create then fails leaves the dead
+ *    incarnation's keys with no tombstone and no session, so a straggler can
+ *    write orphan rows under an id nothing owns. That is a leak rather than a
+ *    revival, and the same one `deleteAll` already documents for a create of a
+ *    never-existed key.
  */
 export async function purgeStaleResourceState(
   stores: SessionBirthStores,
@@ -96,14 +123,14 @@ export async function ensureSessionRecord(
   const existing = await stores.session.get(storageKey);
   if (existing !== undefined) return existing;
 
+  // Before the create, so nothing is committed until it has succeeded — the
+  // `get` above is what keeps this off an already-existing session. See
+  // `purgeStaleResourceState` for why this order and no other.
+  await purgeStaleResourceState(stores, storageKey);
+
   const record: SessionRecord = { ...build(), lineageId: generateId("lin") };
   const created = await stores.session.set(storageKey, record, "absent");
-  if (created.ok) {
-    // Only the winner purges, and only after winning. See
-    // `purgeStaleResourceState` for why that order and no other.
-    await purgeStaleResourceState(stores, storageKey);
-    return record;
-  }
+  if (created.ok) return record;
 
   const winner = created.conflict.currentValue ?? (await stores.session.get(storageKey));
   if (winner === undefined) {

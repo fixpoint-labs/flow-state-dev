@@ -665,7 +665,9 @@ Retention is the guarantee, not an oversight: because a tombstone keeps its vers
 
 It removes tombstones only. A live row is data — state can legitimately be written under a scope id before that scope's record exists — and a blanket purge would delete it. The cost is that a reclaimed key's version restarts at `1`, so a straggler from the previous incarnation holding version `N` can match a row in the new one. That window opens only after a deliberate re-create under a reused id, and closing it properly needs a scope generation rather than a per-key predicate.
 
-**Writing an adapter:** `purgeTombstones` is required. It is one statement in SQL (`DELETE … WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'`), and the shared conformance suite covers it.
+The engine runs it immediately **before** creating the session record, not after. There is no transaction across the two stores, and creating first would leave a committed record over intact tombstones whenever the reclamation failed — with nothing to retry it, since a second create answers 409 and an action-driven create adopts the record instead. Reclaiming first commits nothing until it has succeeded, and running it twice is a no-op.
+
+**Writing an adapter:** `purgeTombstones` is required. It is one statement in SQL (`DELETE … WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'`), and the shared conformance suite covers it. Adding a required method to a published store interface breaks every implementer — including test doubles, which are implementers too.
 
 `toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
 

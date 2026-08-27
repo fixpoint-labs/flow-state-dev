@@ -1186,9 +1186,15 @@ export interface ResourceStateStore {
    * than merely detecting them needs a scope generation, not a per-key
    * predicate.
    *
-   * Callers own the ordering. A caller that purges on scope creation must win
-   * the create first and purge second, so a lost create race cannot reclaim
-   * tombstones under a scope the winner is already writing to.
+   * Callers own the ordering, and it matters: a caller that reclaims on scope
+   * creation must reclaim **first** and create second. There is no transaction
+   * across the two stores, so a create that commits ahead of a reclamation
+   * which then fails leaves a live scope over intact tombstones with nothing
+   * left to retry it — the permanent version of the very bug this closes.
+   * Reclaiming first commits nothing until it has succeeded, and reclaiming
+   * twice is a no-op. The caller should check for an existing record before
+   * reclaiming, so only a genuine create race can reclaim under a scope it
+   * loses; because this touches no live row, such a loser can destroy no data.
    */
   purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }
