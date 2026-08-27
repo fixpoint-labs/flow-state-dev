@@ -56,6 +56,7 @@ import {
 } from "../errors/flow-error";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import {
+  assertStableResourceState,
   normalizeResourceDefault,
   normalizeResourceState,
   parseResourceWriteState
@@ -1123,6 +1124,12 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           }
 
           const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
+
+          // Same rule as the mutation verbs, applied where the row is first
+          // seeded. Without it a create succeeds and every later write on the
+          // instance throws, which reads as "patch is broken" rather than "this
+          // schema can't back a resource".
+          assertStableResourceState(nsConfig.stateSchema, state, initial ?? {}, storageKey);
 
           // Capture (cloned) prior state for the updated-hook before
           // persisting. Clone so hook code that caches or mutates `prev`

@@ -615,6 +615,25 @@ Conflicts report what actually happened rather than collapsing into one error:
 
 The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable, suppresses a no-op before checking any version, and has no cancellation. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.sideChain()` tasks keep running and their writes must land.
 
+### A resource `stateSchema` must parse its own output unchanged
+
+Resource state is parsed on the way out as well as on the way in. The read path normalizes the stored row, your updater builds its next value on top of that, and the write parses the result. So anything the schema rewrites runs once per read-modify-write cycle.
+
+That is fine when the rewrite settles. Filling a `.default()`, stripping an undeclared key, normalizing a retired enum value — all land on the same value the second time, so the row converges and then holds. It is also how a row written before its schema gained a field picks that field up.
+
+A `.transform()` that returns something different on each pass is the case that does not settle. Under `z.object({ n: z.number().transform((v) => v + 1) })` the stored `n` climbs on every write even when the caller never touches it, and because the same shift re-applies on read, the value you read back still looks plausible.
+
+Writes through such a schema are now refused rather than allowed to corrupt the row:
+
+```
+Resource "counter" write failed stateSchema validation at "n": the schema does not
+parse its own output back to the same value, so every write would move the stored
+state. Make the transform idempotent — parsing an already-parsed value must yield
+that same value.
+```
+
+The check runs on `setState` / `patchState` / `updateState`, on the same ops for collection instances, and on `create`. Rows written before this check may not satisfy it; they are read normally and converge to a stable value on their next successful write. If you need a derived value, compute it where you read the state rather than inside the state schema.
+
 ```ts
 // branded — see the note under the table below
 type VersionedResourceState = { state: JsonObject; version: number };
