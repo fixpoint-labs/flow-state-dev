@@ -536,11 +536,11 @@ expensive thing this epic has already paid for.
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | — | In Spec Review · nothing about this issue is blocked. Its docs **publish** after FIX-1269 lands — a prose ordering, deliberately not a Linear blocker (theme 3) |
-| [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `incState` / `pushState` on **both** public resource handle types, `ResourceRef` and `ResourceContext`. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | — | — | Todo · Medium *(added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
+| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — **the map**: every *remaining* difference recorded in its spec as deliberate-with-a-reason or deferred, plus the API documentation that follows the verbs (D-6 Decision 3). Drops the "resources deliberately lack these verbs" framing | spec | [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445) | [#1478](https://github.com/fixpoint-labs/flow-state-dev/pull/1478) *(open)* | **In Development** · nothing about this issue is blocked. FIX-1269 has **landed** (#1488), so theme 3's publication ordering is satisfied — it was a prose ordering, deliberately never a Linear blocker |
+| [FIX-1269](https://linear.app/fixpoint-labs/issue/FIX-1269) | **Tier 1 — the handle verbs.** `incState` / `pushState` on **both** public resource handle types, `ResourceRef` and `ResourceContext`. API symmetry only: **wins no contention** and adds no store-interface surface — but **CAS atomicity is preserved**, so its docs describe the verbs as atomic (theme 2). *(Approach is its spec's, not the epic's)* | spec | [#1479](https://github.com/fixpoint-labs/flow-state-dev/pull/1479) | [#1488](https://github.com/fixpoint-labs/flow-state-dev/pull/1488) *(merged)* | **Done** *(added by [D-6](https://github.com/fixpoint-labs/flow-state-dev/issues/1446) = **A**)* |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, comparing shared declarations on `(scope, ref)` — the durable cell, not the accessor name | **bug** | — | [#1444](https://github.com/fixpoint-labs/flow-state-dev/pull/1444) *(merged)* | **Done** |
-| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | **A write issued after the delete does not revive the resource.** The condition is the **version the write begins with, not what the context observed** — a context that never saw the key and one whose held version the delete evicted both arrive at the create-if-absent seed of `0`, so a fix written for the never-observed case alone leaves the defect live. Same **held-then-lost** shape FIX-1259 fixes on the scope side (`related`). The ordinary first touch of a never-written resource is unchanged, **and so is explicit recreation after a delete** (FIX-992 behaviour, pinned in two suites; theme 1 constrains the fix) — the version-`0` hole in theme 1's tombstone row | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
-| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. **The split is the right axis and is not sufficient on its own** — the constraint that goes with it, the measured evidence ([comment `5430501537`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430501537)) and the choice of mechanism are [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260)'s, on its issue and its PR | **bug** | — | — | Todo · High *(parented child — dispatchable and **gates wrap**; note below)* |
+| [FIX-1258](https://linear.app/fixpoint-labs/issue/FIX-1258) | **A write issued after the delete does not revive the resource.** The condition is the **version the write begins with, not what the context observed** — a context that never saw the key and one whose held version the delete evicted both arrive at the create-if-absent seed of `0`, so a fix written for the never-observed case alone leaves the defect live. Same **held-then-lost** shape FIX-1259 fixes on the scope side (`related`). The ordinary first touch of a never-written resource is unchanged, **and so is explicit recreation after a delete** (FIX-992 behaviour, pinned in two suites; theme 1 constrains the fix) — the version-`0` hole in theme 1's tombstone row | **bug** | — | [#1487](https://github.com/fixpoint-labs/flow-state-dev/pull/1487) *(merged)* | **Done** |
+| [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) | A transforming or defaulting resource state schema stops drifting the stored value. **Scoped by operation, not by a count of call sites:** a **post-creation mutation** write stores the **candidate**, because the caller supplied a complete value and expects it back — `persistResourceState` and `persistNamespaceInstanceState`. A **creation** write keeps **`parsed.data`**, because the caller supplied a partial and schema defaults are what fill it — `create` / `create({ replace: true })`, whose own comment says so. **Reads keep `parsed.data`** too: that is how a row written before the schema gained a defaulted field acquires it on load. `upsert` is one of each, by branch. **The split is the right axis and is not sufficient on its own** — the constraint that goes with it, the measured evidence ([comment `5430501537`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430501537)) and the choice of mechanism are [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260)'s, on its issue and its PR | **bug** | — | [#1486](https://github.com/fixpoint-labs/flow-state-dev/pull/1486) *(open)* | **In Review** · High *(parented child — **gates wrap**; note below)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state serializes **same-context** writers in the in-memory queue while **retaining store-level CAS** for cross-context ones; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) *(merged `864fdfa2`, 2026-08-22)* | **Done** |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
@@ -559,9 +559,15 @@ longer restates it: a copied predicate has been carried here three times and cor
 and a second carrier of executable semantics goes stale the moment the workflow changes. Two
 consequences a reader here does need. A non-terminal child **left out of this table is discovered
 from that scan and entered as a row**, so omission exempts nothing. And a parented child is
-**dispatched, routed and gated on the same terms as any other** — so **FIX-1258 and FIX-1260 are
-eligible for dispatch on the next approved wake, and this epic cannot wrap until they are fixed or
-cancelled.** FIX-1259 and FIX-1207 are not children, so they are neither dispatched nor counted; the
+**dispatched, routed and gated on the same terms as any other** — which is also how one stops
+gating: **FIX-1258 landed** ([#1487](https://github.com/fixpoint-labs/flow-state-dev/pull/1487)
+merged, Linear **Done**), and so did FIX-1269
+([#1488](https://github.com/fixpoint-labs/flow-state-dev/pull/1488)). **Two children are
+non-terminal today — FIX-1154 (In Development,
+[#1478](https://github.com/fixpoint-labs/flow-state-dev/pull/1478)) and FIX-1260 (In Review,
+[#1486](https://github.com/fixpoint-labs/flow-state-dev/pull/1486)) — and this epic cannot wrap
+until both are fixed or cancelled.** FIX-1259 and FIX-1207 are not children, so they are neither
+dispatched nor counted; the
 boundary rule (§5) decides *membership*, never what happens to a child once it is one. Anything
 finer — which conditions release a row, what parks one — is read from the workflow, not from here.
 
@@ -596,6 +602,8 @@ the PR closes when the epic wraps; this document outlives it.
   worked, and this epic does not wrap until they are fixed or cancelled. That is what the graph
   means, not a defect to escalate. It also settles the second surface — a child belongs in §4's
   index, so FIX-1260 now has a row and the earlier "do not index it" ruling is withdrawn.
+  **Both halves have since played out:** FIX-1258 was worked and landed (#1487, **Done**), and
+  FIX-1260 is In Review (#1486) and still holds wrap open.
 
 - **~~Does this epic finish with the task-board fan-out crash still live?~~** *Resolved by
   events, not by a decision: **FIX-1155 shipped** — PR
@@ -863,3 +871,12 @@ retraction taught something the themes do not already say, it earns a clause.
   Tier 2 extends the `ResourceStateStore` `expectedVersion` contract FIX-992 shipped. Theme 1's
   retracted premise was swept for **paraphrase**, not just exact string — **zero**; the only
   occurrence is still the deliberate quotation inside its own retraction.
+- **Index and wrap predicate refreshed against the Linear graph (2026-08-27)** — FIX-1258 (#1487)
+  and FIX-1269 (#1488) merged and are **Done**; FIX-1154 is **In Development** (#1478), which §4 had
+  as *In Spec Review*; FIX-1260 is **In Review** (#1486). **Two children block wrap now, not four.**
+  Bookkeeping only — no decision moved, and the parent→children query was run rather than trusted
+  (FIX-1267 is confirmed **not** a child, so the Backlog row nobody indexed gates nothing).
+  *(The mermaid diagram and the "four currently block" sentence carrying the old counts live in
+  [#1365](https://github.com/fixpoint-labs/flow-state-dev/pull/1365)'s **description**, not in this
+  document, and were left alone: the API returns that body lossily — it strips angle-bracketed text,
+  so a round-trip would silently delete `ctx.resources.<name>` and every `Promise<…>` generic in it.)*
