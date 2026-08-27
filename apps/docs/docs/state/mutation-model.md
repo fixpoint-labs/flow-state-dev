@@ -184,7 +184,7 @@ So `false` means "nothing was written". It does not mean "the store already hold
 
 The four scopes above hold one state record each. **Resource state** — the state behind `ctx.resources.something`, and behind every instance of a collection — lives in a separate store, keyed per resource.
 
-Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current.
+Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current. The store is what compares, so the refusal reaches exactly as far as the store does: the in-memory, SQLite and Postgres stores compare inside the store, and the filesystem store compares under a guard held on the store instance.
 
 The resource **state** mutators take that check: `patchState`, `setState`, `updateState`, and the same three on a collection instance. The unchecked writes above belong to scope state.
 
