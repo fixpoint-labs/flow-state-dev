@@ -1117,6 +1117,98 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     // Refused, not cleared: the tree may hold the run's real work.
     expect(existsSync(join(first.path, "tracked.txt"))).toBe(true);
   });
+
+  it("does not read a leaked marker as a missing rule", async () => {
+    // `git check-ignore` consults the index by default, and reports a TRACKED
+    // path as not ignored — measured, not reasoned about: exit 1 with
+    // `**/.fsdev/` in place. The probe names the first attempt's marker, which
+    // is exactly the file this guard exists because agents were committing. So
+    // a repository that had already leaked one was refused for missing a rule
+    // it had, and the diagnosis pointed at the wrong thing.
+    //
+    // Asserted on the MESSAGE, not on "it threw": both states refuse, and the
+    // whole finding is that they were refusing with each other's reason.
+    const config = workspace();
+    execFileSync("mkdir", ["-p", join(config.sourceRepo, ".fsdev", "ask")]);
+    writeFileSync(join(config.sourceRepo, ".fsdev", "ask", "1.md"), "leaked\n");
+    execFileSync("git", ["add", "-f", ".fsdev/ask/1.md"], {
+      cwd: config.sourceRepo,
+      stdio: "pipe",
+    });
+    execFileSync("git", ["commit", "-q", "-m", "leak a marker"], {
+      cwd: config.sourceRepo,
+      stdio: "pipe",
+    });
+
+    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
+      () => undefined,
+      (error: Error) => error.message,
+    );
+
+    expect(failure).toMatch(/already tracks/);
+    expect(failure).not.toMatch(/does not ignore/);
+  });
+
+  it("leaves nothing behind, so fixing the repository fixes the task", async () => {
+    // The refusal runs after `worktree add`, so without this the checkout and
+    // its branch are durable. The next call finds a complete checkout with no
+    // interrupted-provision marker, reuses it, and asks the same question of
+    // the same branch — cut BEFORE the rule was added, so it fails identically
+    // forever. The operator fixes the repository and the task stays wedged.
+    const config = workspace();
+    dropIgnoreRule(config.sourceRepo);
+    const checkout = checkoutPathFor(config, at("FIX-1219", "implement"));
+    const branch = branchFor(at("FIX-1219", "implement"));
+
+    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+      /does not ignore/,
+    );
+
+    // Neither half of what the failed call made is still there.
+    expect(existsSync(checkout)).toBe(false);
+    expect(
+      execFileSync("git", ["branch", "--list", branch], {
+        cwd: config.sourceRepo,
+        encoding: "utf8",
+      }).trim(),
+    ).toBe("");
+
+    // And the recovery works: add the rule, provision again, no manual step.
+    writeFileSync(join(config.sourceRepo, ".gitignore"), "**/.fsdev/\n");
+    execFileSync("git", ["add", ".gitignore"], { cwd: config.sourceRepo, stdio: "pipe" });
+    execFileSync("git", ["commit", "-q", "-m", "restore the rule"], {
+      cwd: config.sourceRepo,
+      stdio: "pipe",
+    });
+
+    await expect(
+      provisionCheckout(config, at("FIX-1219", "implement")),
+    ).resolves.toMatchObject({ created: true });
+  });
+
+  it("keeps a branch it did not create, even when it refuses the checkout", async () => {
+    // `worktree add` without `-b` attaches an existing branch. Removing the
+    // tree is undoing our own call; removing someone else's branch is not, and
+    // it may carry work nothing here can see.
+    const config = workspace();
+    const branch = branchFor(at("FIX-1219", "implement"));
+    // The rule goes first, so the branch points at a commit without it —
+    // otherwise `worktree add` checks out a tree that passes and this asserts
+    // nothing about the refusal path.
+    dropIgnoreRule(config.sourceRepo);
+    execFileSync("git", ["branch", branch], { cwd: config.sourceRepo, stdio: "pipe" });
+
+    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
+      /does not ignore/,
+    );
+
+    expect(
+      execFileSync("git", ["branch", "--list", branch], {
+        cwd: config.sourceRepo,
+        encoding: "utf8",
+      }).trim(),
+    ).not.toBe("");
+  });
 });
 
 describe("two epics on one issue-phase are isolated too", () => {

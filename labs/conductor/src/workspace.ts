@@ -549,11 +549,32 @@ async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Pro
  * which is what keeps it from being paid for once per retry.
  */
 async function assertAskMarkerIgnored(checkoutPath: string, timeoutMs: number): Promise<void> {
+  // **Already committed is asked FIRST, and it is a different failure.** An
+  // ignore rule does not un-track a file: `git add -A` stages a change to a
+  // tracked path whatever the rules say. So a target that has committed a
+  // marker before is unsafe even with a correct `.gitignore`, and it needs the
+  // other instruction — remove the file, not add a line.
+  const tracked = await git(checkoutPath, ["ls-files", "--", ASK_MARKER_DIR], timeoutMs);
+  if (tracked !== "") {
+    throw new Error(
+      `[conductor] the repository behind ${checkoutPath} already tracks ${ASK_MARKER_DIR}: ` +
+        `${tracked.split("\n").join(", ")}. An ignore rule does not un-track a file — the ` +
+        `agent's \`git add -A\` stages a change to a tracked path regardless — so a run's ` +
+        `question would still be committed. Remove those files from that repository first.`,
+    );
+  }
+
   // A concrete path rather than the directory: a pattern can match a file and
   // not the directory that holds it, and the file is what has to be ignored.
   const probe = join(ASK_MARKER_DIR, "1.md");
   try {
-    await git(checkoutPath, ["check-ignore", "-q", probe], timeoutMs);
+    // **`--no-index`, and without it this check was wrong about the very repo
+    // it exists for.** Consulting the index, `check-ignore` reports a TRACKED
+    // path as not ignored — measured, exit 1 with `**/.fsdev/` in place — so a
+    // target that had already leaked a marker was refused for missing a rule it
+    // had. The tracked case is caught above, by its own name; this call asks
+    // only the question it is for, which is whether the RULE covers the path.
+    await git(checkoutPath, ["check-ignore", "-q", "--no-index", probe], timeoutMs);
     return;
   } catch (error) {
     // `check-ignore` answers "no" with exit 1 and fails with 128. Only the
@@ -970,7 +991,8 @@ export async function provisionCheckout(
   // reset: it touches bookkeeping, never a tree.
   await git(config.sourceRepo, ["worktree", "prune"], left());
 
-  const args = (await branchExists(config, branch, left()))
+  const branchPreexisted = await branchExists(config, branch, left());
+  const args = branchPreexisted
     ? ["worktree", "add", path, branch]
     : ["worktree", "add", "-b", branch, path, config.baseRef];
 
@@ -987,9 +1009,62 @@ export async function provisionCheckout(
 
   // After the tree exists, because the answer depends on the checked-out
   // `.gitignore` and there is nothing to ask git about before that.
-  await assertAskMarkerIgnored(path, left());
+  //
+  // **And a refusal here undoes what this call just made, which is the one
+  // place clearing a tree with `.git` is legitimate.** Left behind, the
+  // checkout and its branch are durable: the next call finds a complete
+  // checkout with no interrupted-provision marker, reuses it, and asks the same
+  // question of the same branch — which was cut BEFORE the operator added the
+  // rule, so it fails identically forever. Fixing the repository would not fix
+  // the task.
+  //
+  // The "never reset" rule protects the PREVIOUS attempt's work, and there is
+  // none here: this branch is between `worktree add` and this function's own
+  // return, under the lock, with no agent yet dispatched. Same argument the
+  // no-`.git` branch above makes, at the one other moment it holds.
+  try {
+    await assertAskMarkerIgnored(path, left());
+  } catch (refusal) {
+    await discardFreshCheckout(config, path, branch, branchPreexisted, left);
+    throw refusal;
+  }
 
   return { path, branch, created: true };
+}
+
+/**
+ * Undo the checkout this call just created, so its refusal is recoverable.
+ *
+ * The branch is deleted only when THIS call created it. `worktree add` without
+ * `-b` attaches an existing branch, which belongs to whoever made it and may
+ * carry work; removing the tree is ours, removing their branch is not.
+ *
+ * **Cleanup failures are swallowed, deliberately.** The caller is already
+ * throwing something that names a real problem and tells the operator what to
+ * do about it; replacing that with "and then `git branch -D` timed out" trades
+ * a diagnosis for a footnote. A leftover is what the operator had before this
+ * function existed, and the original refusal still names the path.
+ */
+async function discardFreshCheckout(
+  config: WorkspaceConfig,
+  path: string,
+  branch: string,
+  branchPreexisted: boolean,
+  left: () => number,
+): Promise<void> {
+  try {
+    // The same guard the half-created branch uses, for the same reason: a
+    // derived path stays derived only if every destructive call re-checks it.
+    const root = resolve(config.root);
+    if (!isStrictlyInside(path, root)) return;
+    rmSync(path, { recursive: true, force: true });
+    await git(config.sourceRepo, ["worktree", "prune"], left());
+    if (!branchPreexisted) {
+      await git(config.sourceRepo, ["branch", "-D", branch], left());
+    }
+  } catch {
+    // See above.
+  }
 }
 
 /**
