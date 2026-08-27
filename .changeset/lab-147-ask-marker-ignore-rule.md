@@ -20,3 +20,5 @@ The run is told to keep `.fsdev/` out of its commits rather than told the ignore
 The already-tracked refusal is limited to files whose names a run could actually write. Tracked and ignored are independent, so a target can carry the rule and still keep a `.gitkeep` or a README inside the directory it excludes — that sibling makes git descend, but an untracked marker there stays ignored and uncommittable, so refusing on it turned away a repository that was never at risk.
 
 Marker classification no longer re-tests the directory prefix case-sensitively. Where the filesystem folds case, git resolves `.FSDEV/ask/1.md` and `.fsdev/ask/1.md` to one file, so the listing can carry a spelling the run never uses — and it is exactly the file the run would collide with.
+
+On a reused checkout the refusal now says to remove the tree before deleting the branch. Git refuses to delete a branch a worktree still has checked out, and reuse leaves that tree standing on purpose — so the shorter advice was a command git rejects.

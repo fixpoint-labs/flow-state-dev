@@ -551,7 +551,7 @@ async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Pro
 async function assertAskMarkerIgnored(
   checkoutPath: string,
   left: () => number,
-  preservedBranch?: string,
+  preservedBranch?: PreservedBranch,
 ): Promise<void> {
   // **Already committed is asked FIRST, and it is a different failure.** An
   // ignore rule does not un-track a file: `git add -A` stages a change to a
@@ -646,14 +646,41 @@ async function assertAskMarkerIgnored(
  * create may carry work, and the module's rule is that unknown contents are
  * kept. So the operator is told exactly which branch and given both outs.
  */
-function staleBranchRemedy(branch: string | undefined): string {
-  if (branch === undefined) return "";
+function staleBranchRemedy(preserved: PreservedBranch | undefined): string {
+  if (preserved === undefined) return "";
+  const { branch, checkoutStillAttached } = preserved;
+  // **"Delete it" is not an instruction git will accept while a worktree has
+  // the branch checked out** — it refuses with `cannot delete branch ... used by
+  // worktree at ...`, which this repository's own specs already rely on. So the
+  // reuse path, where the tree is deliberately left standing, has to name the
+  // extra step; the create path, where the cleanup has already taken the tree
+  // away by the time anyone reads this, must not, or it sends the operator to
+  // remove a directory that is gone.
+  const deletion = checkoutStillAttached
+    ? `remove the checkout at ${preserved.checkoutPath} first and then delete "${branch}" ` +
+      `(git refuses to delete a branch a worktree still has checked out), so the next ` +
+      `attempt cuts a new one`
+    : `delete "${branch}" so the next attempt cuts a new one`;
   return (
     ` This checkout is on branch "${branch}", which nothing here removes — it may carry ` +
     `work. That branch was cut before the fix, so fixing the source repository alone ` +
     `leaves it unchanged and the next attempt reattaches it and refuses the same way: ` +
-    `bring "${branch}" up to date, or delete it so the next attempt cuts a new one.`
+    `bring "${branch}" up to date, or ${deletion}.`
   );
+}
+
+/**
+ * A branch the refusal will not remove, and what the operator can do about it.
+ *
+ * `checkoutStillAttached` is the half that decides which advice is actionable,
+ * and it is NOT derivable from the branch: on reuse the tree stays and blocks
+ * `branch -D`, while on the create path {@link discardFreshCheckout} has taken
+ * the tree away before the refusal is rethrown.
+ */
+interface PreservedBranch {
+  branch: string;
+  checkoutPath: string;
+  checkoutStillAttached: boolean;
 }
 
 /**
@@ -995,7 +1022,13 @@ export async function provisionCheckout(
     // Re-checked on reuse, not only on creation: the rule is a tracked file on
     // the branch this tree is on, so a run that deleted it leaves a checkout
     // that provisioned legally and is no longer safe to write a question into.
-    await assertAskMarkerIgnored(path, left, branch);
+    // Reuse leaves the tree standing by design, so the branch it is on is
+    // still checked out and cannot be deleted until it is removed.
+    await assertAskMarkerIgnored(path, left, {
+      branch,
+      checkoutPath: path,
+      checkoutStillAttached: true,
+    });
 
     return { path, branch, created: false };
   }
@@ -1099,7 +1132,13 @@ export async function provisionCheckout(
     // new one from the fixed `baseRef`, so "fix the repository" is the whole
     // instruction; pre-existing, it is deliberately kept and the operator has a
     // second thing to do.
-    await assertAskMarkerIgnored(path, left, branchPreexisted ? branch : undefined);
+    await assertAskMarkerIgnored(
+      path,
+      left,
+      // `checkoutStillAttached: false` because the catch below removes the tree
+      // before rethrowing — by the time anyone reads this, the branch is free.
+      branchPreexisted ? { branch, checkoutPath: path, checkoutStillAttached: false } : undefined,
+    );
   } catch (refusal) {
     const removed = await discardFreshCheckout(config, path, branch, branchPreexisted, now);
     if (removed) throw refusal;

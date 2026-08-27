@@ -1123,8 +1123,30 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     dropIgnoreRule(first.path);
 
     await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      new RegExp(`bring "${branch}" up to date, or delete it`),
+      new RegExp(`This checkout is on branch "${branch}"`),
     );
+  });
+
+  it("tells a REUSED checkout's operator to remove the tree before the branch", async () => {
+    // Measured, and this repository's own specs already lean on it: git refuses
+    // `branch -D` for a branch a linked worktree has checked out. Reuse leaves
+    // the tree standing on purpose, so "delete it" alone was advice git rejects
+    // — the operator runs it, gets `cannot delete branch ... used by worktree`,
+    // and is back where they started.
+    //
+    // Separate from the test above because they fail for different reasons: one
+    // that the branch goes unnamed, this one that naming it is not enough.
+    const config = workspace();
+    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    dropIgnoreRule(first.path);
+
+    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
+      () => undefined,
+      (error: Error) => error.message,
+    );
+
+    expect(failure).toMatch(/remove the checkout at /);
+    expect(failure).toContain(first.path);
   });
 
   it("refuses a REUSED checkout whose branch dropped the rule", async () => {
@@ -1278,9 +1300,16 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     dropIgnoreRule(config.sourceRepo);
     execFileSync("git", ["branch", branch], { cwd: config.sourceRepo, stdio: "pipe" });
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      new RegExp(`bring "${branch}" up to date, or delete it`),
+    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
+      () => undefined,
+      (error: Error) => error.message,
     );
+
+    expect(failure).toMatch(new RegExp(`bring "${branch}" up to date, or delete "${branch}"`));
+    // And NOT the reuse path's extra step: the cleanup took the tree away
+    // before this was rethrown, so sending the operator to remove it would send
+    // them after a directory that is gone.
+    expect(failure).not.toMatch(/remove the checkout at /);
   });
 
   it("refuses a rule that names one marker file rather than the directory", async () => {
