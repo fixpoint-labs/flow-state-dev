@@ -1199,9 +1199,11 @@ export interface ResourceStateStore {
    * scope somebody else owns, and a later ordinary write at `"absent"` — which
    * is what every fresh context sends for a key it holds no version for — then
    * finds no row and recreates the key. Checking for an existing record first
-   * narrows this to a true create race but cannot close it; only an atomic
-   * generation or ownership fence on scope birth can. Callers must know they
-   * are choosing between that and the permanent brick the other order causes.
+   * narrows this to a true create race but cannot close it; only a **scope
+   * generation** can, which is tracked and specced as FIX-1000 ("A create
+   * racing session deletion lands in a purged, caller-reusable scope — fence
+   * the scope generation"). Callers must know they are choosing between that
+   * and the permanent brick the other order causes.
    */
   purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }

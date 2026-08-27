@@ -94,10 +94,12 @@ type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
  * The existence check above is a narrowing, not a fence: it keeps a create
  * against a session that plainly already exists from reclaiming at all, so
  * only a genuine create race can reach step 3. It cannot close the race,
- * because there is no transaction across the two stores. Closing it needs an
- * atomic generation or ownership fence on session birth, which is a larger
- * design change than "a deleted resource stays deleted" and is deliberately
- * not attempted here.
+ * because there is no transaction across the two stores. Closing it needs a
+ * **scope generation**, which is tracked and specced as FIX-1000 ("A create
+ * racing session deletion lands in a purged, caller-reusable scope — fence the
+ * scope generation") and deliberately not attempted here. Reach for that, not
+ * for a second primitive: `lineageId` is a workstream address (FIX-1068) and
+ * answers a different question.
  *
  * The one thing the narrowing to tombstones does buy: a losing reclaimer can
  * touch no live row, so it can destroy no data. What it can do is remove a
