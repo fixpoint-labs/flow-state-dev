@@ -10,6 +10,7 @@
     "lint": "echo 'lint not configured yet'"
   },
   "devDependencies": {
+    "@flow-state-dev/fsdev": "workspace:*",
     "vitest": "^3.2.4"
   }
 }
