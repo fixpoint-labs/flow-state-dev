@@ -191,11 +191,14 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
   (FIX-744), so distinct-key writes from concurrent `parallel`/`forEach` branches all survive into
   the same-request view — a convergence `.list()` after a fan-out sees every instance. **Same-key
   concurrent writes do not share one rule.** The state mutators run through the version-checked
-  driver, which refreshes and re-runs the mutator on conflict — so `updateState` and
-  `getOrPatchState`, whose callback derives the next state from the current one, compose rather than
-  clobber (two concurrent increments both land). `setState` and `patchState` supply fixed values, so
-  the fields they name are last-writer-wins. `writeContent` carries no version predicate at all —
-  `ContentStore.set` creates or overwrites — so it is last-writer-wins outright.
+  driver, which refreshes and re-runs the op's real mutator on conflict — so `updateState`, whose
+  callback derives the next state from the current one, composes rather than clobbers (two
+  concurrent increments both land). `setState` and `patchState` supply fixed values, so the fields
+  they name are last-writer-wins. `getOrPatchState` is a first-touch memoize rather than an updater
+  — it patches a single key only when that key is absent — so it follows `patchState`, not
+  `updateState`; concurrent callers for one key inside a request are single-flighted.
+  `writeContent` carries no version predicate at all — `ContentStore.set` creates or overwrites —
+  so it is last-writer-wins outright.
 
 ### Delta verb routing (FIX-405)
 
