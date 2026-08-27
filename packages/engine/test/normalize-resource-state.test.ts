@@ -10,7 +10,6 @@ import { z } from "zod";
 import type { ResourceConfig } from "@flow-state-dev/core/types";
 import { ValidationError } from "../src/errors/flow-error";
 import {
-  assertStableResourceState,
   normalizeResourceDefault,
   normalizeResourceState,
   parseResourceWriteState
@@ -122,68 +121,49 @@ describe("parseResourceWriteState", () => {
 });
 
 /**
- * The fixed-point guard, at unit tier. The drift suite drives it through the
- * real registry; these pin the three ways a re-parse can fail the test, because
- * each one sends the schema's author somewhere different and only the first has
- * a field to name.
+ * Fixed-point check, through the public write parse. The drift suite drives
+ * the registry; these pin the three re-parse failure modes and the identity skip.
  */
-describe("assertStableResourceState", () => {
-  /** Moves `n` again on every pass — the shape the guard exists to reject. */
+describe("parseResourceWriteState — fixed point", () => {
   const drifting = z.object({ n: z.number().transform((v) => v + 1) });
 
   it("returns the value when re-parsing leaves it alone", () => {
     const schema = z.object({ n: z.number(), tag: z.string().default("") });
-    expect(assertStableResourceState(schema, { n: 1, tag: "x" }, { n: 1 }, "counter")).toEqual({
+    expect(parseResourceWriteState(schema, { n: 1 }, "counter")).toEqual({
       n: 1,
-      tag: "x"
+      tag: ""
     });
   });
 
   it("names the field the second parse moved", () => {
-    expect(() => assertStableResourceState(drifting, { n: 1 }, { n: 0 }, "counter")).toThrow(
-      ValidationError
-    );
-    expect(() => assertStableResourceState(drifting, { n: 1 }, { n: 0 }, "counter")).toThrow(
+    expect(() => parseResourceWriteState(drifting, { n: 0 }, "counter")).toThrow(ValidationError);
+    expect(() => parseResourceWriteState(drifting, { n: 0 }, "counter")).toThrow(
       /Resource "counter" write failed stateSchema validation at "n"/
     );
   });
 
   it("names the path when the second parse fails outright", () => {
-    // A type-changing transform: the output no longer satisfies the input type,
-    // so the re-parse errors rather than returning a different value.
     const retyping = z.object({ n: z.string().transform(Number) });
-    expect(() => assertStableResourceState(retyping, { n: 1 }, { n: "1" }, "counter")).toThrow(
-      /at "n"/
-    );
+    expect(() => parseResourceWriteState(retyping, { n: "1" }, "counter")).toThrow(/at "n"/);
   });
 
   it("rejects — rather than crashing — when the second parse yields a non-object", () => {
-    // A conditional transform that collapses its own output: `{phase:0}` parses
-    // to `{phase:1}`, which parses to `null`. There is no moved field to name,
-    // and indexing the re-parsed value as an object is how this became a raw
-    // TypeError instead of the resource-specific diagnostic the guard promises.
     const collapsing = z
       .object({ phase: z.number() })
       .transform((value) => (value.phase === 0 ? { phase: 1 } : null));
 
-    expect(() =>
-      assertStableResourceState(collapsing, { phase: 1 }, { phase: 0 }, "wizard")
-    ).toThrow(ValidationError);
-    // And it says what actually happened, so the author looks at the transform's
-    // null branch rather than hunting for a field that moved.
-    expect(() =>
-      assertStableResourceState(collapsing, { phase: 1 }, { phase: 0 }, "wizard")
-    ).toThrow(/Resource "wizard".*re-parsing its own output produced null, not an object/s);
+    expect(() => parseResourceWriteState(collapsing, { phase: 0 }, "wizard")).toThrow(
+      ValidationError
+    );
+    expect(() => parseResourceWriteState(collapsing, { phase: 0 }, "wizard")).toThrow(
+      /Resource "wizard".*re-parsing its own output produced null, not an object/s
+    );
   });
 
   it("skips the second parse when the first one changed nothing", () => {
-    // The identity fast path. It is the overwhelming majority of writes, and the
-    // reason it is safe to skip is that a schema's parse is a pure function of
-    // its input — see the guard's doc comment. This pins the skip so removing it
-    // is a deliberate act, not a silent regression.
     const schema = z.object({ n: z.number() });
     const spy = vi.spyOn(schema, "safeParse");
-    assertStableResourceState(schema, { n: 1 }, { n: 1 }, "counter");
-    expect(spy).not.toHaveBeenCalled();
+    parseResourceWriteState(schema, { n: 1 }, "counter");
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

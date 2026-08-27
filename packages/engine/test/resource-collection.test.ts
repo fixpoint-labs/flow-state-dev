@@ -362,11 +362,9 @@ describe("upsert", () => {
   });
 
   it("throws on schema-invalid update on the patch branch (symmetric with create)", async () => {
-    // Greptile review: prior to the fix, an invalid update on the patch
-    // branch would silently overwrite the resource with `{}` (the
-    // safeParse-fallback behavior in persistNamespaceInstanceState).
-    // We now pre-validate the merged state so callers get a loud error,
-    // matching create's behavior on bad input.
+    // An invalid update on the patch branch must throw, not silently
+    // overwrite with `{}`. Persist is the write parse, so the message
+    // matches every other resource write.
     const strictColl = defineResourceCollection({
       scope: "session",
       pattern: "strict/**",
@@ -380,7 +378,9 @@ describe("upsert", () => {
     // overwrite with `{}`.
     await expect(
       ns.upsert("k", { count: -5 } as Partial<{ count: number }>),
-    ).rejects.toThrow(/state validation failed/);
+    ).rejects.toThrow(
+      /Resource "strict\/k" write failed stateSchema validation at "count"/
+    );
 
     // Resource must remain at its prior valid state — failed patch
     // must not have written anything.

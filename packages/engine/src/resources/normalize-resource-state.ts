@@ -3,7 +3,7 @@
  * does this resource hold, given a config and a possibly-absent persisted
  * value" — plus the write-path parse that rejects a schema-invalid result
  * instead of substituting a default, and rejects a schema whose parse does not
- * settle (see {@link assertStableResourceState}).
+ * settle (see {@link parseResourceWriteState}).
  *
  * Lives in its own module so both `context/resource-registry` and
  * `routes/route-utils` can import it without creating a cycle, the same
@@ -59,80 +59,43 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
 }
 
 /**
- * Require a value the write path is about to store to be a **fixed point** of
- * its own schema — parsing it again must yield that same value.
+ * Require a value the write path is about to store to be a fixed point of its
+ * own schema. Resource state is parsed on the way out as well as on the way in,
+ * so a rewrite that does not settle would move the stored row on every cycle.
  *
- * Why the write path needs this at all, since `parsed` came straight out of
- * `safeParse`: a resource's stored row is parsed on the way out as well as on
- * the way in. The read path normalizes the row into the request's cache, the
- * caller's updater builds its next value on top of that cache, and the write
- * parses the result again. So every schema step that rewrites its input runs
- * once per read-modify-write cycle. If the step is idempotent — filling a
- * default, stripping an unknown key, normalizing a retired enum value — the
- * second application is a no-op and the row converges. If it is not, the row
- * moves a little further on every cycle, the write reports success, and
- * `ref.state` reads back a plausible value because the same shift re-applies on
- * the way out.
- *
- * The check is therefore on the parse's *stability*, not on whether the parse
- * changed anything. Rejecting any change would break the normalization the read
- * path depends on (BP-030): that is exactly how a row written before its schema
- * gained a defaulted field acquires that field.
- *
- * **Assumed: a schema's parse is a pure function of its input.** That is what
- * lets the check short-circuit when the first parse changed nothing — an
- * unchanged value is taken as its own fixed point without paying a second
- * `safeParse`, and an ordinary schema over an already-normalized value is the
- * overwhelming majority of writes. A schema that parses the same input to
- * different values on different calls is not defended against here, because it
- * is already broken past what this guard could repair: resource state is parsed
- * on the way *out* as well, so such a schema corrupts reads too, and catching it
- * at one write site would only move where the surprise surfaces.
- *
- * Returns `parsed` so call sites can use it inline.
+ * Stability, not equality: rejecting any parse change would break defaults and
+ * BP-030 normalization. Identity short-circuits the second parse — assumes a
+ * schema's parse is a pure function of its input. A schema for which that is
+ * false already corrupts reads, so this guard does not try to catch it.
  *
  * @throws {ValidationError} (`retryable: false`) when re-parsing moves the value
  */
-export function assertStableResourceState(
+function assertStableResourceState(
   stateSchema: ResourceConfig["stateSchema"],
   parsed: JsonObject,
   candidate: unknown,
   resourceLabel: string
 ): JsonObject {
-  // The parse left the candidate alone, so it is trivially its own fixed point
-  // and the second parse would only cost time. This is the common case: an
-  // ordinary schema over an already-normalized value.
   if (deepEqual(candidate, parsed)) return parsed;
 
   const reparsed = stateSchema.safeParse(parsed);
-  // Bound on its own so the `isJsonObject` narrowing reaches the `.find` callback
-  // below. The cast this replaces claimed an object the second parse need not have
-  // produced, which turned a schema that collapses its own output into a raw
-  // TypeError instead of the diagnostic this guard exists to give.
   const reparsedObject =
     reparsed.success && isJsonObject(reparsed.data) ? reparsed.data : undefined;
   if (reparsedObject !== undefined && deepEqual(reparsedObject, parsed)) {
     return parsed;
   }
 
-  // Three ways the second parse can fail the fixed-point test, and each sends the
-  // schema's author to a different line of their schema — so say which happened
-  // rather than always claiming a field moved.
   let at = "";
   let cause =
     "the schema does not parse its own output back to the same value, so every write would " +
     "move the stored state.";
 
   if (reparsedObject !== undefined) {
-    // A different object: name the first field that moved.
     const movedKey = Object.keys(parsed).find(
       (key) => !deepEqual(reparsedObject[key], parsed[key])
     );
     if (movedKey !== undefined && movedKey.length > 0) at = ` at "${movedKey}"`;
   } else if (reparsed.success) {
-    // A non-object — a conditional transform that collapses its own output, as in
-    // `{phase:0} -> {phase:1} -> null`. Nothing moved, so there is no field to
-    // name, and the row would not survive its own read path either.
     const produced =
       reparsed.data === null
         ? "null"
@@ -143,8 +106,6 @@ export function assertStableResourceState(
       `re-parsing its own output produced ${produced}, not an object, so the stored state ` +
       `would not survive its own read path.`;
   } else {
-    // A rejected re-parse: a type-changing transform (`z.string().transform(Number)`)
-    // whose output no longer satisfies its own input type. Name the path Zod flagged.
     const issuePath = reparsed.error.issues[0]?.path.join(".");
     if (issuePath !== undefined && issuePath.length > 0) at = ` at "${issuePath}"`;
   }
@@ -161,9 +122,9 @@ export function assertStableResourceState(
  * (`retryable: false`) when the result fails the schema or parses to a
  * non-null non-object, so the CAS mutator never persists a replacement default.
  *
- * A successful parse is additionally held to {@link assertStableResourceState}:
- * the value about to be stored must parse back to itself, so the row cannot be
- * moved by the schema on every read-modify-write cycle.
+ * A successful parse must also be a fixed point of the schema: the value
+ * about to be stored must parse back to itself, so the row cannot be moved
+ * by the schema on every read-modify-write cycle.
  *
  * Schema-valid `null` is the documented reset for a `.nullable()` resource
  * (`setState(null)`). The store holds `JsonObject`, so that write persists as
