@@ -18,3 +18,5 @@ The lock-lifetime bound counts the cleanup allowance against the run timeout rat
 The run is told to keep `.fsdev/` out of its commits rather than told the ignore rule will do it. Provisioning checks that rule before dispatch, and `.gitignore` is a tracked file the run may itself rewrite — so a promise that the marker cannot be committed is one nothing can keep for the length of a run, and a run given that reassurance has no reason to check what it staged.
 
 The already-tracked refusal is limited to files whose names a run could actually write. Tracked and ignored are independent, so a target can carry the rule and still keep a `.gitkeep` or a README inside the directory it excludes — that sibling makes git descend, but an untracked marker there stays ignored and uncommittable, so refusing on it turned away a repository that was never at risk.
+
+Marker classification no longer re-tests the directory prefix case-sensitively. Where the filesystem folds case, git resolves `.FSDEV/ask/1.md` and `.fsdev/ask/1.md` to one file, so the listing can carry a spelling the run never uses — and it is exactly the file the run would collide with.

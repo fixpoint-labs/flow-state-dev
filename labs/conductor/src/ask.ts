@@ -94,6 +94,17 @@ export function askMarkerPath(workspacePath: string, attempt: number): string {
  * Is `gitPath` one of THIS module's markers — as `git ls-files` prints a path,
  * `/`-separated and relative to the repository root?
  *
+ * **Requires a listing already restricted to {@link ASK_MARKER_DIR}**, which is
+ * why it checks the shape and depth of the path rather than re-testing the
+ * directory prefix. That is not a shortcut: **the caller's pathspec knows the
+ * checkout's case rules and this function cannot.** On a case-folding
+ * filesystem git resolves `.FSDEV/ask/1.md` and `.fsdev/ask/1.md` to one file,
+ * so `ls-files -- .fsdev/ask` lists the index's spelling — and a
+ * case-*sensitive* prefix test here would then drop the very entry the run is
+ * about to collide with, accepting a checkout whose marker is already tracked.
+ * Re-deriving the prefix means re-deriving `core.ignorecase` with it, and a
+ * second answer to that question is a second answer that can be wrong.
+ *
  * **Beside {@link askMarkerPath} because it is the same rule read backwards.**
  * A caller asking "would a run ever write this file?" is asking about the
  * naming above, and a second spelling of it somewhere else is a spelling that
@@ -118,11 +129,11 @@ export function askMarkerPath(workspacePath: string, attempt: number): string {
  * cannot know which numbers those will be.
  */
 export function isAskMarkerPath(gitPath: string): boolean {
-  const dir = ASK_MARKER_DIR.split(sep).join("/");
-  if (!gitPath.startsWith(`${dir}/`)) return false;
+  const segments = gitPath.split("/");
   // Direct children only — nothing writes a marker into a subdirectory, so a
   // tracked `.fsdev/ask/notes/1.md` is somebody else's file.
-  return /^\d+\.md$/.test(gitPath.slice(dir.length + 1));
+  if (segments.length !== ASK_MARKER_DIR.split(sep).length + 1) return false;
+  return /^\d+\.md$/.test(segments[segments.length - 1]!);
 }
 
 /**

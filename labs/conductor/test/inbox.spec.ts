@@ -29,7 +29,7 @@ import {
   withdrawEarlierQuestions,
   withdrawQuestion,
 } from "../src/inbox";
-import { ASK_MARKER_DIR, askMarkerPath, readAskMarker } from "../src/ask";
+import { ASK_MARKER_DIR, askMarkerPath, isAskMarkerPath, readAskMarker } from "../src/ask";
 import { contextWithInbox, fakeInbox } from "./inbox-fake";
 
 const ISSUE = "FIX-1166";
@@ -311,5 +311,39 @@ describe("the marker — inside the checkout, gitignored, and per-attempt", () =
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("classifying a tracked path as a marker", () => {
+  // The caller hands this `git ls-files -- <ASK_MARKER_DIR>` output, so every
+  // entry is already inside that directory whatever the checkout's case rules
+  // are. Shape and depth are what is left to decide.
+  it("accepts the names a run actually writes", () => {
+    expect(isAskMarkerPath(`${ASK_MARKER_DIR}/1.md`.split(sep).join("/"))).toBe(true);
+    expect(isAskMarkerPath(`${ASK_MARKER_DIR}/12.md`.split(sep).join("/"))).toBe(true);
+  });
+
+  it("accepts the index's own spelling on a case-folding checkout", () => {
+    // The one that made this depth-based rather than prefix-based. Git resolves
+    // `.FSDEV/ask/1.md` and `.fsdev/ask/1.md` to ONE file where the filesystem
+    // folds case, so `ls-files` can hand back a spelling the run never used —
+    // and it is the file the run is about to collide with. A case-sensitive
+    // prefix test dropped exactly that entry and accepted the checkout.
+    expect(isAskMarkerPath(".FSDEV/ask/1.md")).toBe(true);
+  });
+
+  it("rejects a neighbour a run could never write", () => {
+    // The round-6 finding: tracked and ignored are independent, so a target may
+    // keep a `.gitkeep` beside the markers and be in no danger from it.
+    expect(isAskMarkerPath(`${ASK_MARKER_DIR}/.gitkeep`.split(sep).join("/"))).toBe(false);
+    expect(isAskMarkerPath(`${ASK_MARKER_DIR}/README.md`.split(sep).join("/"))).toBe(false);
+    expect(isAskMarkerPath(`${ASK_MARKER_DIR}/notes/1.md`.split(sep).join("/"))).toBe(false);
+  });
+
+  it("treats a name SHAPED like a marker as one", () => {
+    // `007.md` is not what attempt 7 writes, and it is refused anyway: the
+    // check is about a repository many attempts will run in, so it cannot know
+    // which numbers those will be.
+    expect(isAskMarkerPath(`${ASK_MARKER_DIR}/007.md`.split(sep).join("/"))).toBe(true);
   });
 });

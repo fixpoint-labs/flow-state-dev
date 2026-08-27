@@ -1171,12 +1171,29 @@ async function discardFreshCheckout(
     // `baseRef` and nothing an agent built), but "small" is not "bounded".
     //
     // So the disposition is made safe instead of the duration made certain.
-    // Interrupted here — by a kill, or by the lock being taken because the
-    // delete ran long — the leftover is a partly-removed tree, and without the
+    // Interrupted here, the leftover is a partly-removed tree, and without the
     // marker the next attempt cannot distinguish it from work it must not
     // touch: it refuses and asks for a human. With it, the leftover is
     // positively identified as a provision that never finished, which the
     // reuse path above already clears on its own.
+    //
+    // **This is a trade between two interruptions, not a free win, and the
+    // losing side is written down rather than left to be rediscovered.**
+    //
+    // - *The process is killed* — ordinary, and now recoverable with no human.
+    // - *The lock is taken because the delete outran the allowance* — remote,
+    //   and now WORSE. Marked, the replacement clears the tree and provisions
+    //   while this call is still alive behind it, so the `worktree prune` and
+    //   `branch -D` below can land on bookkeeping the replacement is building —
+    //   including a `branch -D` of the branch it just created. Unmarked, that
+    //   same race ended in a loud refusal instead.
+    //
+    // Taken deliberately: a kill is a thing that happens, while reaching the
+    // second case means an `rmSync` of a tree no agent has touched outrunning
+    // `staleAfterMs`, which is bounded below by the provisioning budget plus a
+    // minute. Both sides trace to one root cause — a delete node cannot bound
+    // running under a lock — which is LAB-149, and neither is closed by
+    // choosing differently here.
     const marker = provisioningMarkerFor(path);
     writeFileSync(marker, "");
     rmSync(path, { recursive: true, force: true });
