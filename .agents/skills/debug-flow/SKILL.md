@@ -233,8 +233,16 @@ Summarize for the user:
 | **user** | Across all sessions for a user | Preferences, profile data |
 | **org** | Across sessions and users | Shared config, knowledge base |
 
-**State ops** (all atomic, CAS-guarded):
+**State ops** (not uniformly version-checked — see below):
 `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
+
+A commutative write — single-field `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`,
+or `patchState` given one literal field — goes out at `expectedVersion: "any"` wherever the adapter
+advertises the matching delta verb, so it is *not* version-checked and cannot be the source of a
+`ConcurrentModificationError`. Multi-field `incState`, the `patchState` updater form, `setState` and
+`atomicState` do take the checked CAS loop. Two consequences when you are debugging a state bug:
+a lost update on a checked verb and one on a commutative verb have different causes, and an
+unchecked write is still refused when its record has been deleted.
 
 ### Item Types
 

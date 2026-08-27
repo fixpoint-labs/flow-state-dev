@@ -48,10 +48,28 @@ await ctx.session.atomicState((state) => ({
 
 ### Atomicity Guarantees
 
-- `incState`, `pushState`, `setStateRecord`, `deleteStateRecord` are internally atomic per scope write
-- Each operation is a single CAS-guarded mutation, not client-side read-modify-write
-- Concurrent calls won't lose updates
-- `patchState`/`setState` are NOT automatically commutative — use `atomicState` for custom concurrent transforms
+The verbs do not share one guarantee, and the split is by **hint shape and adapter capability**, not
+by verb name. `createScopePersist` computes `expectedVersion: "any"` from the commutative hint alone,
+before any store lookup, and only when the adapter advertises the matching delta verb; otherwise it
+falls through to a full-record `set` at the **held** version.
+
+- **Commutative, so *not* version-checked** (on an adapter advertising the verb): single-field
+  `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, and `patchState` given exactly one
+  literal field. Each is a single store-side mutation, not a client-side read-modify-write, so
+  concurrent callers do not lose each other's updates.
+- **Version-checked:** multi-field `incState`, the `patchState` updater form, multi-field
+  `patchState`, `setState`, and `atomicState`. These can raise `ConcurrentModificationError` on
+  retry exhaustion.
+- **Adapter capability decides the first bullet.** Memory, SQLite and Postgres advertise all four
+  delta verbs. The **filesystem** session/user/org stores advertise `patchField` / `incField` /
+  `pushToArray` but **not** `deleteField`, so `deleteStateRecord` alone is version-checked there.
+- **Unchecked is not immune.** Every shipped delta store refuses a **missing record** before it
+  compares versions, `"any"` included — so a commutative write racing a record delete is still
+  refused. Skipping the version check buys freedom from *concurrent state writes*, not from
+  deletion.
+
+`patchState`/`setState` are not automatically commutative in their general form — reach for
+`atomicState` for a custom concurrent transform over multiple fields.
 
 ### No-op guard
 
@@ -142,9 +160,18 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
 
 **Concurrency guidance:**
 - Avoid read-modify-write patterns inside `parallel`/`forEach` unless using atomic ops
-- Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes
+- Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes — but read the arity and
+  the adapter before relying on it. Only the **single-field** forms are commutative (a multi-field
+  `incState` takes checked CAS like any other write), and only on an adapter advertising the
+  matching delta verb — `deleteStateRecord` stays version-checked on the filesystem stores. None of
+  this survives a concurrent **delete**: a missing record is refused before versions are compared,
+  so these verbs protect against competing writers, not against the record going away
 - Use `maxConcurrency` on `parallel`/`forEach` when shared state writes are unavoidable
-- Resource-collection instance writes (`create` / `setState` / `patchState` / `writeContent`) commit per key and update the per-scope cache in place (FIX-744), so distinct-key writes from concurrent `parallel`/`forEach` branches all survive into the same-request view — a convergence `.list()` after a fan-out sees every instance. Same-key concurrent writes are last-writer-wins.
+- Resource-collection instance writes (`create` / `setState` / `patchState` / `updateState` /
+  `getOrPatchState` / `writeContent`) commit per key and update the per-scope cache in place
+  (FIX-744), so distinct-key writes from concurrent `parallel`/`forEach` branches all survive into
+  the same-request view — a convergence `.list()` after a fan-out sees every instance. Same-key
+  concurrent writes are last-writer-wins.
 
 ### Delta verb routing (FIX-405)
 
