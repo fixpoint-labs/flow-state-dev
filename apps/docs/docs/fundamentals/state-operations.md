@@ -51,7 +51,7 @@ await ctx.session.incState({ messageCount: 1, errorCount: 0 });
 
 Each entry is added to the current value. Negative numbers decrement. Fields that don't exist start from `0`.
 
-An increment on a **single** field is sent to the store as the increment itself, so two concurrent runs bumping the same counter both land and neither has to retry. Increment more than one field in a call and the operation writes a computed record instead, under the version check described in [CAS semantics](#cas-semantics).
+An increment on a **single** field is sent to the store as the increment itself, so two concurrent runs bumping the same counter both land and neither has to retry. Increment more than one field in a call and the operation writes a computed record instead, under the version check described in [CAS semantics](#cas-semantics). The increments still compose: a retry recomputes them against the value that won.
 
 ### `pushState(field, value)`
 
@@ -203,7 +203,7 @@ Not conflicting is not the same as not losing data, and the difference splits th
 
 Increments and appends combine. A single-field `patchState`, or a `setStateRecord` on one key, does not: the store has nothing to compare, so it stores the value it was handed and the earlier one is gone. Both calls return `true`, and neither writer is told it overwrote anything. When the new value depends on the old one, reach for `patchState("field", updater)` or `atomicState` — those re-run your function against the value that won.
 
-The left-hand column isn't automatically a merge either. `atomicState` and the updater form of `patchState` re-run your function against the refreshed state, so two updates combine. `setState` re-sends the object you passed, unchanged, so it replaces whatever the other writer landed. Use it to set state to a known value, not to apply a change to it.
+The left-hand column isn't automatically a merge either, and a retry means something different per call. `atomicState`, the updater form of `patchState`, and a multi-field `incState` re-run your computation against the refreshed state, so the two updates combine. A multi-field `patchState` re-applies the fixed values you passed, so fields you didn't name survive and the ones you did are overwritten. `setState` re-sends the whole object you passed, unchanged, so it replaces whatever the other writer landed. Use it to set state to a known value, not to apply a change to it.
 
 Unchecked calls are still refused if the scope's record has been deleted. See [when `false` doesn't mean "already correct"](/docs/state/mutation-model#when-false-doesnt-mean-already-correct).
 

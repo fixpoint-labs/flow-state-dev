@@ -79,7 +79,7 @@ That is the mechanism. What you actually need is the second column: what two con
 | `patchState("field", updater)` | Yes | Your updater runs again against the value that won |
 | `atomicState(mutator)` | Yes | Your mutator runs again against the value that won |
 
-Carrying a version is not the same as merging, and `setState` is the call that catches people out. When a version-checked write loses the race, the runtime refreshes from the store and runs the write again — but "again" means different things per call. `atomicState` and the updater form of `patchState` re-run *your function* against the value that won, so the two updates combine. `setState` re-sends *the object you already passed*, unchanged, so whatever the other writer landed is replaced. Reach for `setState` when you mean "make the state exactly this", not when you mean "apply my change to it".
+Carrying a version is not the same as merging, and `setState` is the call that catches people out. When a version-checked write loses the race, the runtime refreshes from the store and runs the write again — but "again" means three different things. `atomicState`, the updater form of `patchState`, and a multi-field `incState` re-run *your computation* against the value that won, so the two updates combine. A multi-field `patchState` re-applies the fixed values you passed onto the refreshed state, so fields you didn't name survive and the ones you did are overwritten. `setState` re-sends *the whole object you already passed*, unchanged, so whatever the other writer landed is replaced. Reach for `setState` when you mean "make the state exactly this", not when you mean "apply my change to it".
 
 #### Both writers land
 

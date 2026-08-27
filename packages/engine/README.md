@@ -884,7 +884,7 @@ Right-hand-column calls never conflict and never raise `ConcurrentModificationEr
 
 Both writers get `true` in every one of those rows, the overwrite included. Where the new value depends on the old one, use `patchState("field", updater)` or `atomicState`, which re-run the mutator against the value that won.
 
-The left-hand column is a version check, not a merge. `atomicState` and the updater form of `patchState` re-run the mutator against the refreshed state. `setState` re-sends the object the caller passed, unchanged, so a retry replaces whatever the other writer landed.
+The left-hand column is a version check, not a merge, and a retry means something different per call. `atomicState`, the updater form of `patchState`, and a multi-field `incState` re-run the computation against the refreshed state, so the updates compose. A multi-field `patchState` re-applies the caller's fixed values onto the refreshed state. `setState` re-sends the whole object the caller passed, unchanged, so a retry replaces whatever the other writer landed.
 
 A store has to implement the matching operation for the write to go the right-hand way; otherwise the runtime writes the full record at the version the container holds, in a single attempt with no retry. Field deletion is the only gap in the shipped adapters: no store implements it on the request record, and the filesystem stores implement it on no scope. `deleteStateRecord` there returns `false` if the record moved first, and the key stays stored — a lost race, against a record that still exists.
 
