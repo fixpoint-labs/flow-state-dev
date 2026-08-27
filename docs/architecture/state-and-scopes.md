@@ -214,11 +214,14 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
   `getOrPatchState` / `writeContent`) commit per key and update the per-scope cache in place
   (FIX-744), so distinct-key writes from concurrent `parallel`/`forEach` branches all survive into
   the same-request view — a convergence `.list()` after a fan-out sees every instance. **Same-key
-  concurrent writes do not share one rule.** The state mutators run through the version-checked
-  driver, which refreshes and re-runs the op's real mutator on conflict — so `updateState`, whose
-  callback derives the next state from the current one, composes rather than clobbers (two
-  concurrent increments both land). `setState` and `patchState` supply fixed values, so the fields
-  they name are last-writer-wins. `getOrPatchState` is a first-touch memoize rather than an updater
+  concurrent writes do not share one rule, and what the writer supplies decides which one it gets.**
+  The state mutators run through the version-checked driver, which refreshes and re-runs the op's
+  real mutator on conflict: a writer supplying a **whole value** is last-writer-wins on the fields
+  it names, while one supplying a **derivation or a delta** is re-run against the row it commits
+  against, so both writers land. `updateState` is the second kind — its callback derives the next
+  state from the current one, so two concurrent increments both land. `setState` and `patchState`
+  supply fixed values, so the fields they name are last-writer-wins. `getOrPatchState` is a
+  first-touch memoize rather than an updater
   — it patches a single key only when that key is absent — so it follows `patchState`, not
   `updateState`; concurrent callers for one key inside a request are single-flighted.
   `writeContent` carries no version predicate at all — `ContentStore.set` creates or overwrites —

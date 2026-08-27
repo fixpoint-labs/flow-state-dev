@@ -394,7 +394,7 @@ await ctx.session.atomicState((state) => {
 A version-checked write to a store scope exhausted its CAS retry budget, because contention exceeded what optimistic concurrency can absorb at that boundary. Options:
 
 - Widen the retry budget on the persist call site.
-- Rewrite the contended write as a single-field increment or an append if the update allows it. A counter bumped with `incState({ n: 1 })` never conflicts; the same counter bumped with `atomicState` does.
+- Rewrite the contended write as a single-field increment or an append if the update allows it. Where the store offers the matching operation, a counter bumped with `incState({ n: 1 })` never conflicts; the same counter bumped with `atomicState` does. Where it doesn't ([the store has to offer the operation](#the-store-has-to-offer-the-operation)), the increment still never raises, but it becomes one version-checked attempt that can lose the race and resolve `false`.
 - Move the contended writes to a scope with no store (sequencer state on a parent block) so they go through the lock instead.
 - Restructure the contention pattern — fewer concurrent writers, batched updates, or finer-grained scopes.
 

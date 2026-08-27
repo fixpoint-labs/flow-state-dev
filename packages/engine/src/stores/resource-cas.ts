@@ -12,13 +12,13 @@
  * | Case | Here | `runWithCAS` would |
  * |---|---|---|
  * | Conflict, live row at a newer version | Refresh, re-run the mutator, retry with backoff | same — the one row that transfers |
- * | Conflict, **no live row**, and we held a live version | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state (`cas.ts:158-159`) and retries; the tombstone's version matches, so the write lands — **resurrecting a deleted resource** |
+ * | Conflict, **no live row**, and we held a live version | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state and retries; the tombstone's version matches, so the write lands — **resurrecting a deleted resource** |
  * | No live row and we never held one (`version === 0`) | **Not an error** — a verified no-op. The key was never persisted, and nothing was taken away | n/a — the shared driver has no absent/deleted distinction to get wrong |
  * | Conflict, **create-if-absent** | **Terminal** {@link ResourceAlreadyExistsError} | Refreshes to the winner's version and retries, **overwriting the winner** |
- * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `wait()` (`cas.ts:96-104`) is an unabortable timer — **persists after cancellation** |
+ * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `cas.ts`'s `wait()` is an unabortable timer — **persists after cancellation** |
  * | Retry budget exhausted | {@link ConcurrentModificationError} | same |
- * | Mutator output equals the cached state | Suppress **only against a re-read, verified version** | Returns `committed: false` *before* `persist` (`cas.ts:143-145`, ahead of the only version check at `:147`) — **silently drops a deliberate write** |
- * | Single-field literal patch | Stays on CAS — there is no hint surface here | `state-container.ts:228-229` routes a commutative hint to `runCommutative`, which persists **once, with no retry behind it** (`:267-271`). Whether that one write is version-checked is the adapter's to decide: `createScopePersist` maps `expectedVersion` to `"any"` only INSIDE its four delta-verb branches, each guarded on `typeof store.<verb> === "function"` (`scope-persist.ts:96-143`). Against an adapter advertising none, the same hint falls through to a **version-checked full-record `set` at the raw numeric version** (`:147-148`) — a single attempt that can lose the write, reported as `false` rather than retried |
+ * | Mutator output equals the cached state | Suppress **only against a re-read, verified version** | Returns `committed: false` *before* `persist`, ahead of its only version check — **silently drops a deliberate write** |
+ * | Single-field literal patch | Stays on CAS — there is no hint surface here | `runDurableMutation` (`state-container.ts`) routes a commutative hint to `runCommutative`, which persists **once, with no retry behind it**. Whether that one write is version-checked is the adapter's to decide: `createScopePersist` (`scope-persist.ts`) maps `expectedVersion` to `"any"` only INSIDE its four delta-verb branches, each guarded on `typeof store.<verb> === "function"`. Against an adapter advertising none, the same hint falls through to a **version-checked full-record `set` at the raw numeric version** — a single attempt that can lose the write, reported as `false` rather than retried |
  *
  * The no-op and commutative rows are the subtle ones. A no-op decided against an
  * unverified snapshot *is* a lost update: a context that reads `{mode:"old"}`,
@@ -40,11 +40,11 @@
  * `state-container.ts` and its ops are named `patchState` / `setState` /
  * `updateState` — the same names as the registry's resource ops, one module
  * away. It is the natural thing to import and the wrong one. The same goes for
- * `createScopePersist` (`scope-persist.ts:60`), which downgrades
+ * `createScopePersist` (`scope-persist.ts`), which downgrades
  * `expectedVersion` to `"any"` for commutative hints **only when the store
- * advertises the matching delta verb** (`:96-143`), and otherwise sends a
- * single version-checked full-record `set` at the held numeric version
- * (`:147-148`) — one attempt, which can lose the write outright.
+ * advertises the matching delta verb**, and otherwise sends a single
+ * version-checked full-record `set` at the held numeric version — one attempt,
+ * which can lose the write outright.
  */
 
 import type { CASOptions, JsonObject, StateContainer } from "@flow-state-dev/core/types";

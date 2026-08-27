@@ -873,7 +873,7 @@ The version check applies to writes computed from current state. A write that do
 | `patchState` with two or more fields | `patchState({ field: value })` — one field, plain value |
 | `incState` across two or more fields | `incState({ field: n })` — one field |
 
-Right-hand-column calls never conflict and never raise `ConcurrentModificationError`. What they do to a concurrent writer splits the column:
+Right-hand-column calls never enter the retry loop and never raise `ConcurrentModificationError`. What they do to a concurrent writer splits the column:
 
 | Unchecked call | Two execution contexts, same field |
 |---|---|
