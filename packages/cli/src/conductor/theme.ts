@@ -206,3 +206,21 @@ export function formatClock(at: number): string {
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
 }
+
+/**
+ * Compact age from `at` to `now`: `8s`, `3m`, `2h`, `5d`. Floor, not
+ * round — a 59-second gap is still `59s`.
+ */
+export function formatAge(at: number, now: number = Date.now()): string {
+  const ms = Math.max(0, now - at);
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 48) return `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
+
+/** A running row with no write for this long is painted as stalled. */
+export const STALL_AFTER_MS = 30_000;

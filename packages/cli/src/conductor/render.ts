@@ -18,6 +18,7 @@ import {
   dim,
   fileHref,
   fileText,
+  formatAge,
   formatClock,
   link,
   outcomeColor,
@@ -25,6 +26,7 @@ import {
   paint,
   shorten,
   shortenToolLine,
+  STALL_AFTER_MS,
   statusColor,
   truncate,
   visibleWidth,
@@ -35,6 +37,7 @@ import {
   currentFindHit,
   failureReason,
   findMatches,
+  lastActivityAt,
   rowFailed,
   rowRunning,
   selectedFailure,
@@ -54,6 +57,7 @@ import {
   selectedRunningRequestId,
   transcriptBody,
   visibleLive,
+  type ActivityItem,
   type StatusRow,
   type ViewState,
 } from "./types";
@@ -73,14 +77,14 @@ export interface FrameSize {
 const MIN_COLS = 72;
 const MIN_ROWS = 18;
 
-export function renderFrame(state: ViewState, size: FrameSize): string {
+export function renderFrame(state: ViewState, size: FrameSize, now: number = Date.now()): string {
   const cols = Math.max(size.cols, MIN_COLS);
   const rows = Math.max(size.rows, MIN_ROWS);
   if (state.help) return fit(renderHelp(cols), cols, rows);
 
   const header = renderHeader(state, cols);
-  const table = renderTable(state, cols);
-  const band = renderReservedBand(state, cols);
+  const table = renderTable(state, cols, now);
+  const band = renderReservedBand(state, cols, now);
   const meta = state.busy || runBandOpen(state) ? "" : renderMeta(state, cols);
   const menu = renderSlashMenu(state, cols);
   const prompt = renderPrompt(state, cols);
@@ -125,7 +129,7 @@ function renderHeader(state: ViewState, cols: number): string {
   return `${padLine(left, cols)}\n${rule(cols)}`;
 }
 
-function renderTable(state: ViewState, cols: number): string {
+function renderTable(state: ViewState, cols: number, now: number): string {
   const issueW = Math.max(10, Math.min(16, Math.floor(cols * 0.16)));
   const phaseW = 12;
   const statusW = 16;
@@ -146,7 +150,7 @@ function renderTable(state: ViewState, cols: number): string {
     return `${head}\n${padLine(dim("  no rows. /seed <issue> files one and starts it."), cols)}`;
   }
   const lines = state.rows.map((row, i) =>
-    renderTableRow(row, i === state.selected, { issueW, phaseW, statusW, attemptW, outcomeW, askW, cols }),
+    renderTableRow(row, i === state.selected, { issueW, phaseW, statusW, attemptW, outcomeW, askW, cols }, state, now),
   );
   return [head, ...lines].join("\n");
 }
@@ -163,11 +167,19 @@ function renderTableRow(
     askW: number;
     cols: number;
   },
+  state: ViewState,
+  now: number,
 ): string {
   const mark = selected ? paint(ACCENT + BOLD, "▸ ") : "  ";
   const issue = pad(row.issue ?? "—", w.issueW);
   const phase = pad(row.phase ?? "—", w.phaseW);
-  const status = pad(paint(statusColor(row.status), row.status), w.statusW);
+  const age = paintFreshness(row, state.activity, now);
+  const status = pad(
+    age === undefined
+      ? paint(statusColor(row.status), row.status)
+      : `${paint(statusColor(row.status), row.status)} ${age}`,
+    w.statusW,
+  );
   const attempt = pad(String(row.attempts), w.attemptW);
   const outcome = pad(paint(outcomeColor(row.run?.outcome ?? null), row.run?.outcome ?? "—"), w.outcomeW);
   const asked = row.questions[0]?.text;
@@ -184,12 +196,12 @@ function renderTableRow(
  * so a long transcript cannot cap it away. An open question wins; a failed
  * attempt is next.
  */
-function renderReservedBand(state: ViewState, cols: number): string {
+function renderReservedBand(state: ViewState, cols: number, now: number): string {
   const ask = renderAskBand(state, cols);
   if (ask !== "") return ask;
   const fail = renderFailBand(state, cols);
   if (fail !== "") return fail;
-  return renderRunBand(state, cols);
+  return renderRunBand(state, cols, now);
 }
 
 function renderAskBand(state: ViewState, cols: number): string {
@@ -263,7 +275,7 @@ function renderFailBand(state: ViewState, cols: number): string {
   ].join("\n");
 }
 
-function renderRunBand(state: ViewState, cols: number): string {
+function renderRunBand(state: ViewState, cols: number, now: number): string {
   const row = selectedRow(state);
   if (row === undefined || !rowRunning(row)) return "";
   const inner = Math.max(20, cols - 8);
@@ -273,16 +285,18 @@ function renderRunBand(state: ViewState, cols: number): string {
   const body: string[] = [];
   if (branch) body.push(truncate(branch, inner));
   if (tree) body.push(fileText(tree, inner));
+  const age = paintFreshness(row, state.activity, now);
   const hintBits = [
+    ...(age !== undefined ? [age] : []),
     ...renderUsageBits(row),
     id !== undefined ? `${id}  ·  x stops` : "no request id yet",
   ];
   if (row.run?.prUrl) body.push(prText(row.run.prUrl, inner));
   const hint = hintBits.join("  ·  ");
-  const now = selectedNow(state);
+  const doing = selectedNow(state);
   const nowLine =
-    now !== undefined && now !== ""
-      ? ` ${paint(GOLD, paintToolNow(now, inner, tree ?? null))}`
+    doing !== undefined && doing !== ""
+      ? ` ${paint(GOLD, paintToolNow(doing, inner, tree ?? null))}`
       : "";
   const peekLines = renderReadPeek(state, inner);
   const commandLines = renderCommandTail(state, inner);
@@ -753,6 +767,26 @@ function renderUsageBits(row: StatusRow | undefined): string[] {
   return bits;
 }
 
+/**
+ * Last-write age on a running row (`8s`, `3m`). Rust after 30s so a
+ * silent child is visible. Absent when the row is not running or we
+ * have no timestamp.
+ */
+function paintFreshness(row: StatusRow, activity: readonly ActivityItem[], now: number): string | undefined {
+  const label = freshnessLabel(row, activity, now);
+  if (label === undefined) return undefined;
+  const at = lastActivityAt(row, activity);
+  const stalled = at !== null && now - at >= STALL_AFTER_MS;
+  return paint(stalled ? RUST : GOLD, label);
+}
+
+function freshnessLabel(row: StatusRow, activity: readonly ActivityItem[], now: number): string | undefined {
+  if (!rowRunning(row)) return undefined;
+  const at = lastActivityAt(row, activity);
+  if (at === null) return undefined;
+  return formatAge(at, now);
+}
+
 function fit(frame: string, cols: number, rows: number): string {
   const lines = frame.split("\n").slice(0, rows);
   while (lines.length < rows) lines.push(" ".repeat(cols));
@@ -764,6 +798,7 @@ export function renderBoardPlain(
   rows: StatusRow[],
   json: boolean,
   views?: Readonly<Record<string, ViewState>>,
+  now: number = Date.now(),
 ): string {
   if (json) return JSON.stringify({ rows }, null, 2);
   if (rows.length === 0) return "no rows\n";
@@ -779,7 +814,7 @@ export function renderBoardPlain(
         pad(row.run?.outcome ?? "—", 12) +
         (row.questions[0] !== undefined ? truncate(row.questions[0].text, 16) : "·"),
     );
-    lines.push(...renderHeadlessAttempt(row, viewForRow(row, views)));
+    lines.push(...renderHeadlessAttempt(row, viewForRow(row, views), now));
     for (const q of row.questions) {
       lines.push(`  ? ${q.question}`);
       for (const wrapped of wrap(q.text, 78)) {
@@ -836,8 +871,10 @@ export function renderHeadlessStrip(state: ViewState): string[] {
 }
 
 /** Request id, branch, pull-request URL, spend, checkout, then the journal strip. */
-function renderHeadlessAttempt(row: StatusRow, view?: ViewState): string[] {
+function renderHeadlessAttempt(row: StatusRow, view?: ViewState, now: number = Date.now()): string[] {
   const extra: string[] = [];
+  const age = freshnessLabel(row, view?.activity ?? [], now);
+  if (age !== undefined) extra.push(`  ${age}`);
   if (row.run?.prUrl) extra.push(`  ${row.run.prUrl}`);
   if (row.run?.requestId) extra.push(`  @ ${row.run.requestId}`);
   if (row.run?.branch) extra.push(`  ${row.run.branch}`);
@@ -857,6 +894,7 @@ function renderHeadlessAttempt(row: StatusRow, view?: ViewState): string[] {
 export function renderWatchLine(
   rows: StatusRow[],
   views?: Readonly<Record<string, ViewState>>,
+  now: number = Date.now(),
 ): string {
   if (rows.length === 0) return "watch · no rows";
   return rows
@@ -866,7 +904,7 @@ export function renderWatchLine(
       const fail =
         rowFailed(row) && row.questions.length === 0 ? ` · ${failureReason(row)}` : "";
       const head = `${row.issue ?? row.taskId} ${row.status}${outcome}${ask}${fail}`;
-      return [head, ...renderHeadlessAttempt(row, viewForRow(row, views))].join("\n");
+      return [head, ...renderHeadlessAttempt(row, viewForRow(row, views), now)].join("\n");
     })
     .join("\n");
 }

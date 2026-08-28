@@ -98,7 +98,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
 
   const paint = () => {
     if (closed) return;
-    output.write(`${HOME}${ERASE}${renderFrame(state, size())}`);
+    output.write(`${HOME}${ERASE}${renderFrame(state, size(), now())}`);
   };
 
   const applyOperator = (event: RequestStreamEventWithId) => {

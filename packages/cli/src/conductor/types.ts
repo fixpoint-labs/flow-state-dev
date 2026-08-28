@@ -633,6 +633,36 @@ export function rowRunning(row: StatusRow): boolean {
   return row.run?.outcome === "running" || row.status === "in_progress";
 }
 
+/**
+ * Last child write we know about. Journal `at` for that request wins
+ * when it is newer; `run.updatedAt` is the fallback when the journal
+ * is empty. `updatedAt` is last write, not start — do not treat a
+ * missing journal as elapsed-since-start.
+ */
+export function lastActivityAt(
+  row: StatusRow,
+  activity: readonly ActivityItem[] = [],
+): number | null {
+  let last: number | null = null;
+  const id = row.run?.requestId;
+  if (id !== null && id !== undefined && id !== "") {
+    for (const item of activity) {
+      if (item.requestId === id) last = item.at;
+    }
+  }
+  const updated = row.run?.updatedAt ?? null;
+  if (last === null) return updated;
+  if (updated === null) return last;
+  return Math.max(last, updated);
+}
+
+/** Last child write on the selected row. */
+export function selectedLastActivityAt(state: ViewState): number | null {
+  const row = selectedRow(state);
+  if (row === undefined) return null;
+  return lastActivityAt(row, state.activity);
+}
+
 /** The child's request id when this row is still in flight, otherwise absent. */
 export function rowRunningRequestId(row: StatusRow): string | undefined {
   const id = row.run?.requestId;

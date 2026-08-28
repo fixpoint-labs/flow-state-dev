@@ -276,7 +276,7 @@ Interactive:
   fsdev conductor tui [issue]     same, optionally focused on one issue
 
 Headless (scripting):
-  fsdev conductor status [issue]  named issue also prints last tool, files, hunk, todo
+  fsdev conductor status [issue]  named issue also prints last tool, files, hunk, todo; a running row prints last-write age
   fsdev conductor seed <issue> [--phase implement]
   fsdev conductor start <issue>   seed, then open the TUI
   fsdev conductor wake

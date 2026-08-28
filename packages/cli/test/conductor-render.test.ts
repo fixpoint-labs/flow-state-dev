@@ -1,18 +1,53 @@
 import { describe, expect, it } from "vitest";
 import { renderBoardPlain, renderFrame, renderWatchLine, watchExitCode } from "../src/conductor/render";
-import { emptyView, selectedFailure, type StatusRow } from "../src/conductor/types";
+import { emptyView, lastActivityAt, selectedFailure, type StatusRow } from "../src/conductor/types";
 import {
   GOLD,
   RUST,
   TEAL,
   elideEnd,
   fileHref,
+  formatAge,
   link,
   shorten,
   shortenToolLine,
   stripAnsi,
   visibleWidth,
 } from "../src/conductor/theme";
+
+describe("formatAge / lastActivityAt", () => {
+  const now = 1_700_000_000_000;
+
+  it("floors to seconds, minutes, hours, then days", () => {
+    expect(formatAge(now, now)).toBe("0s");
+    expect(formatAge(now - 8_000, now)).toBe("8s");
+    expect(formatAge(now - 59_999, now)).toBe("59s");
+    expect(formatAge(now - 60_000, now)).toBe("1m");
+    expect(formatAge(now - 3 * 60_000, now)).toBe("3m");
+    expect(formatAge(now - 60 * 60_000, now)).toBe("1h");
+    expect(formatAge(now - 47 * 60 * 60_000, now)).toBe("47h");
+    expect(formatAge(now - 48 * 60 * 60_000, now)).toBe("2d");
+  });
+
+  it("uses the newer of the journal and the run record, and ignores another request", () => {
+    const row: StatusRow = {
+      ...waiting,
+      status: "in_progress",
+      questions: [],
+      run: { ...waiting.run!, outcome: "running", requestId: "req-live-1", updatedAt: now - 60_000 },
+    };
+    expect(lastActivityAt(row)).toBe(now - 60_000);
+    expect(
+      lastActivityAt(row, [
+        { at: now - 8_000, text: "tool · Write src/a.ts", requestId: "req-live-1" },
+        { at: now - 1_000, text: "tool · Write src/b.ts", requestId: "req-other" },
+      ]),
+    ).toBe(now - 8_000);
+    expect(
+      lastActivityAt(row, [{ at: now - 90_000, text: "tool · Read src/a.ts", requestId: "req-live-1" }]),
+    ).toBe(now - 60_000);
+  });
+});
 
 describe("path shortening", () => {
   it("keeps the filename and the tool name when the prefix will not fit", () => {
@@ -306,6 +341,69 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).toContain("1 running");
     expect(stripAnsi(frame)).toContain("x stop");
     expect(frame).toContain("wake-line-39");
+  });
+
+  it("shows last-write age on a running row, rust after 30s, and prefers the journal", () => {
+    const now = 1_700_000_030_000;
+    const running = (updatedAt: number): StatusRow => ({
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: { inputTokens: 12_000, outputTokens: 400 },
+        costUsd: null,
+        childSessionId: "child-1",
+        requestId: "req-live-1",
+        updatedAt,
+      },
+      questions: [],
+    });
+    const fresh = renderFrame(
+      { ...emptyView("epic"), rows: [running(now - 8_000)] },
+      { cols: 80, rows: 24 },
+      now,
+    );
+    const freshText = stripAnsi(fresh);
+    const freshBand = beforeTranscript(fresh);
+    expect(freshText).toMatch(/in_progress\s+8s/);
+    expect(freshBand).toContain("8s");
+    expect(freshBand).toContain("12.0k→400");
+    expect(fresh).toContain(GOLD);
+
+    const stalled = renderFrame(
+      { ...emptyView("epic"), rows: [running(now - 45_000)] },
+      { cols: 80, rows: 24 },
+      now,
+    );
+    expect(stripAnsi(stalled)).toContain("45s");
+    expect(stalled).toContain(RUST);
+
+    const journalNewer = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [running(now - 60_000)],
+        activity: [{ at: now - 3_000, text: "tool · Write src/a.ts", requestId: "req-live-1" }],
+      },
+      { cols: 80, rows: 24 },
+      now,
+    );
+    expect(beforeTranscript(journalNewer)).toContain("3s");
+    expect(beforeTranscript(journalNewer)).not.toContain("60s");
+
+    const settled = renderFrame({ ...emptyView("epic"), rows: [failed] }, { cols: 80, rows: 24 }, now);
+    expect(stripAnsi(settled)).not.toMatch(/\b8s\b/);
+    expect(stripAnsi(settled)).not.toMatch(/\b45s\b/);
   });
 
   it("shows the selected row's tools and keeps the other child's hunks off the pane", () => {
@@ -1400,5 +1498,50 @@ describe("renderBoardPlain / watchExitCode", () => {
     const watch = renderWatchLine([settled], { "req-fail-1": view });
     expect(watch).toContain("Write src/hello.js");
     expect(watch).toContain("[ ] Open the pull request");
+  });
+
+  it("prints last-write age on a running headless row, from the journal when newer", () => {
+    const now = 1_700_000_030_000;
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: now - 60_000,
+      },
+      questions: [],
+    };
+    const fromRecord = renderBoardPlain([running], false, undefined, now);
+    expect(fromRecord).toContain("1m");
+    expect(fromRecord).not.toContain("\x1b[");
+
+    const view = {
+      ...emptyView(""),
+      rows: [running],
+      activity: [{ at: now - 8_000, text: "tool · Write src/a.ts", requestId: "req-live-1" }],
+    };
+    const named = renderBoardPlain([running], false, { "req-live-1": view }, now);
+    expect(named).toContain("8s");
+    expect(named).toContain("Write src/a.ts");
+    expect(named).not.toContain("1m");
+
+    const watch = renderWatchLine([running], { "req-live-1": view }, now);
+    expect(watch).toContain("8s");
+    expect(renderBoardPlain([failed], false, undefined, now)).not.toContain("8s");
   });
 });
