@@ -308,7 +308,11 @@ function toolSubject(args: Record<string, unknown>): string | undefined {
   for (const key of TOOL_SUBJECT_KEYS) {
     const value = args[key];
     if (typeof value === "string" && value.trim() !== "") {
-      return value.trim().replace(/\s+/g, " ").slice(0, 72);
+      const text = value.trim().replace(/\s+/g, " ");
+      // Paths stay whole so the file list and /find keep the filename.
+      // The renderer elides the prefix when a line will not fit.
+      if (key === "file_path" || key === "path") return text;
+      return text.length <= 72 ? text : `${text.slice(0, 71)}…`;
     }
   }
   return undefined;

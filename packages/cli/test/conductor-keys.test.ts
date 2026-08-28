@@ -373,6 +373,13 @@ describe("applyKey", () => {
     const closed = applyKey(opened.state, { type: "ctrl", value: "t" });
     expect(closed.state.planExpanded).toBe(false);
   });
+
+  it("collapses the todo list when the selected row changes", () => {
+    const state = { ...board([runningRow("LIVE-1"), runningRow("LIVE-2")]), planExpanded: true };
+    const moved = applyKey(state, { type: "char", value: "j" });
+    expect(moved.state.selected).toBe(1);
+    expect(moved.state.planExpanded).toBe(false);
+  });
 });
 
 describe("findMatches", () => {

@@ -48,6 +48,50 @@ export function truncate(text: string, width: number): string {
   return `${text.slice(0, width - 1)}…`;
 }
 
+/**
+ * Keep the end of a long token. A path's filename stays visible
+ * when the checkout prefix will not fit.
+ */
+export function elideEnd(text: string, width: number): string {
+  if (width <= 0) return "";
+  if (text.length <= width) return text;
+  if (width === 1) return "…";
+  return `…${text.slice(-(width - 1))}`;
+}
+
+/** Paths keep the filename; everything else keeps the start. */
+export function shorten(text: string, width: number): string {
+  return text.includes("/") ? elideEnd(text, width) : truncate(text, width);
+}
+
+/**
+ * A tool subject: a path-only token keeps the filename; a command
+ * (spaces) keeps the start even when it contains a slash.
+ */
+export function shortenSubject(text: string, width: number): string {
+  if (text.includes("/") && !/\s/.test(text)) return elideEnd(text, width);
+  return truncate(text, width);
+}
+
+/**
+ * Keep the tool name and, for a path subject, the filename.
+ * `tool · Write /long/prefix/file.ts` → `tool · Write …/file.ts`
+ */
+export function shortenToolLine(text: string, width: number): string {
+  if (width <= 0) return "";
+  if (text.length <= width) return text;
+  const prefixed = text.startsWith("tool · ") ? "tool · " : "";
+  const rest = prefixed === "" ? text : text.slice(prefixed.length);
+  const space = rest.indexOf(" ");
+  if (space < 0) return shortenSubject(text, width);
+  const name = rest.slice(0, space);
+  const subject = rest.slice(space + 1);
+  const prefix = `${prefixed}${name} `;
+  const remain = width - prefix.length;
+  if (remain <= 0) return elideEnd(text, width);
+  return `${prefix}${shortenSubject(subject, remain)}`;
+}
+
 export function pad(text: string, width: number, align: "left" | "right" = "left"): string {
   const visible = visibleWidth(text);
   if (visible >= width) return truncate(stripAnsi(text), width);

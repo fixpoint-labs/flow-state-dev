@@ -20,6 +20,8 @@ import {
   outcomeColor,
   pad,
   paint,
+  shorten,
+  shortenToolLine,
   statusColor,
   truncate,
   wrap,
@@ -217,8 +219,8 @@ function renderRunBand(state: ViewState, cols: number): string {
   const tree = row.run?.workspacePath;
   const id = selectedRunningRequestId(state);
   const body: string[] = [];
-  if (branch) body.push(...wrap(branch, inner).slice(0, 2));
-  if (tree) body.push(...wrap(tree, inner).slice(0, 2));
+  if (branch) body.push(truncate(branch, inner));
+  if (tree) body.push(shorten(tree, inner));
   const hintBits: string[] = [];
   if (row.run?.usage) {
     hintBits.push(
@@ -232,7 +234,7 @@ function renderRunBand(state: ViewState, cols: number): string {
   const hint = hintBits.join("  ·  ");
   const now = selectedNow(state);
   const nowLine =
-    now !== undefined && now !== "" ? ` ${paint(GOLD, truncate(now, inner))}` : "";
+    now !== undefined && now !== "" ? ` ${paint(GOLD, shortenToolLine(now, inner))}` : "";
   const fileLines = renderFileLines(state, inner);
   const planLines = renderPlanLines(state, inner);
   return [
@@ -254,7 +256,7 @@ function renderFileLines(state: ViewState, inner: number): string[] {
   if (files.length === 0) return [];
   const shown = files.slice(-FILE_MAX);
   const hidden = files.length - shown.length;
-  const lines = shown.map((file) => ` ${dim(truncate(file, inner))}`);
+  const lines = shown.map((file) => ` ${dim(shorten(file, inner))}`);
   if (hidden > 0) lines.unshift(` ${dim(`… ${hidden} more`)}`);
   return lines;
 }
@@ -328,9 +330,7 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
       lines.push(` ${dim("branch")}   ${truncate(row.run.branch, cols - 12)}`);
     }
     if (row.run.workspacePath) {
-      for (const wrapped of wrap(row.run.workspacePath, cols - 12).slice(0, 2)) {
-        lines.push(` ${dim("tree")}     ${wrapped}`);
-      }
+      lines.push(` ${dim("tree")}     ${shorten(row.run.workspacePath, cols - 12)}`);
     }
     if (row.run.finalMessage && !opts.omitReason) {
       for (const wrapped of wrap(row.run.finalMessage, cols - 4).slice(0, 2)) {
@@ -357,7 +357,7 @@ function renderSelectedSummary(state: ViewState, cols: number): string {
   if (id !== undefined) lines.push(` ${dim("request")}  ${id}`);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
-    lines.push(` ${dim("last")}     ${truncate(now, inner)}`);
+    lines.push(` ${dim("last")}     ${shortenToolLine(now, inner)}`);
   }
   lines.push(...renderFileLines(state, inner));
   lines.push(...renderPlanLines(state, inner));
@@ -406,7 +406,7 @@ function renderActivity(
   });
   const lastText = activityForView(state).at(-1)?.text;
   if (following && !finding && live !== null && live !== lastText) {
-    const wrapped = wrap(live, width);
+    const wrapped = wrapActivityLine(live, width);
     wrapped.forEach((line, i) => {
       body.push({
         text: i === 0 ? ` ${paint(GOLD, "··")}  ${paint(GOLD, line)}` : `         ${paint(GOLD, line)}`,
@@ -551,6 +551,9 @@ function wrapActivityLine(text: string, width: number): string[] {
     text.startsWith("  ")
   ) {
     return [text.length <= width ? text : `${text.slice(0, Math.max(1, width - 1))}…`];
+  }
+  if (text.startsWith("tool · ") || /^[A-Z][A-Za-z]+ \S/.test(text)) {
+    return [shortenToolLine(text, width)];
   }
   return wrap(text, width);
 }

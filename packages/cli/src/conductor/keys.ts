@@ -476,7 +476,7 @@ function selectRow(state: ViewState, index: number): ViewState {
     notice: null,
   });
   if (next.selected === state.selected) return next;
-  const jumped = { ...next, scroll: 0 };
+  const jumped = { ...next, scroll: 0, planExpanded: false };
   if (jumped.find === null) return jumped;
   return applyFindQuery(jumped, jumped.find);
 }

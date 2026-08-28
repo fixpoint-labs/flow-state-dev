@@ -1,7 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { renderBoardPlain, renderFrame, watchExitCode } from "../src/conductor/render";
 import { emptyView, selectedFailure, type StatusRow } from "../src/conductor/types";
-import { GOLD, RUST, TEAL, stripAnsi } from "../src/conductor/theme";
+import {
+  GOLD,
+  RUST,
+  TEAL,
+  elideEnd,
+  shorten,
+  shortenToolLine,
+  stripAnsi,
+} from "../src/conductor/theme";
+
+describe("path shortening", () => {
+  it("keeps the filename and the tool name when the prefix will not fit", () => {
+    expect(elideEnd("src/conductor/render.ts", 11)).toBe("…/render.ts");
+    expect(shorten("/tmp/deep/src/conductor/render.ts", 11)).toBe("…/render.ts");
+    expect(shorten("pnpm test --filter fsdev", 12)).toBe("pnpm test -…");
+    expect(shortenToolLine("tool · Write /tmp/deep/src/foo.ts", 21)).toBe("tool · Write …/foo.ts");
+    expect(shortenToolLine("tool · Bash pnpm --filter @flow-state-dev/fsdev test", 28)).toBe(
+      "tool · Bash pnpm --filter …",
+    );
+  });
+});
 
 function beforeTranscript(frame: string): string {
   const text = stripAnsi(frame);
@@ -856,6 +876,53 @@ describe("renderBoardPlain / watchExitCode", () => {
     expect(watchExitCode([waiting])).toBe(2);
     expect(watchExitCode([{ ...waiting, status: "completed", questions: [] }])).toBe(0);
     expect(watchExitCode([])).toBe(1);
+  });
+
+  it("keeps the filename when a checkout or file path will not fit", () => {
+    const longTree =
+      "/tmp/conductor-checkouts/live-prove-30/very/deep/nested/workspaces/LIVE-1--implement";
+    const longFile =
+      "/tmp/conductor-checkouts/live-prove-30/very/deep/nested/src/conductor/render.ts";
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: longTree,
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [running],
+        childFiles: { "req-live-1": [longFile] },
+        activity: [{ at: 1, text: `tool · Write ${longFile}`, requestId: "req-live-1" }],
+      },
+      { cols: 72, rows: 24 },
+    );
+    const text = stripAnsi(frame);
+    const above = beforeTranscript(frame);
+    expect(above).toContain("LIVE-1--implement");
+    expect(above).toContain("render.ts");
+    expect(above).not.toMatch(/\/tmp\/conductor-checkouts\/live-prove-30\/very\/deep\/nested\/src/);
+    expect(text).toContain("render.ts");
+    expect(text).not.toMatch(/tool · Write \/tmp\/conductor-checkouts\/live-prove-30\/very/);
   });
 
   it("uses 1 when the last attempt failed, even if the row is still pending", () => {

@@ -247,6 +247,10 @@ export function clampSelected(state: ViewState): ViewState {
   return { ...state, selected, questionIndex };
 }
 
+/** Newest this many lines are kept per request, and for board-only lines. */
+export const ACTIVITY_CAP = 2000;
+
+/** Cap activity so a long implement cannot grow the TUI state without bound. */
 export function pushActivity(
   state: ViewState,
   text: string,
@@ -255,8 +259,34 @@ export function pushActivity(
 ): ViewState {
   const item: ActivityItem =
     requestId !== undefined ? { at, text, requestId } : { at, text };
-  const activity = [...state.activity, item];
-  return { ...state, activity: activity.length > 200 ? activity.slice(-200) : activity };
+  return { ...state, activity: capActivity([...state.activity, item]) };
+}
+
+/**
+ * Drop the oldest overflow per request. Another row's tools do not evict
+ * this one's transcript.
+ */
+function capActivity(activity: ActivityItem[]): ActivityItem[] {
+  const extra = new Map<string | undefined, number>();
+  for (const item of activity) {
+    extra.set(item.requestId, (extra.get(item.requestId) ?? 0) + 1);
+  }
+  let overflow = false;
+  for (const [key, count] of extra) {
+    if (count > ACTIVITY_CAP) {
+      extra.set(key, count - ACTIVITY_CAP);
+      overflow = true;
+    } else {
+      extra.set(key, 0);
+    }
+  }
+  if (!overflow) return activity;
+  return activity.filter((item) => {
+    const drop = extra.get(item.requestId) ?? 0;
+    if (drop <= 0) return true;
+    extra.set(item.requestId, drop - 1);
+    return false;
+  });
 }
 
 /**

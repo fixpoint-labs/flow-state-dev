@@ -6,8 +6,10 @@ import {
   diffBoard,
 } from "../src/conductor/transcript";
 import {
+  ACTIVITY_CAP,
   activityForView,
   emptyView,
+  pushActivity,
   selectedPlan,
   visibleLive,
   type StatusRow,
@@ -168,6 +170,28 @@ describe("createStreamTranscript", () => {
         }),
       ),
     ).toEqual({ lines: [], live: null });
+  });
+
+  it("keeps a long file path's filename so the file list can still name the file", () => {
+    const t = createStreamTranscript();
+    const file_path =
+      "/tmp/conductor-checkouts/live-prove-30/deep/nested/src/conductor/render.ts";
+    const patch = t.apply(
+      added({
+        id: "t-long",
+        type: "tool_output",
+        blockName: "Write",
+        status: "completed",
+        toolCall: {
+          callId: "c-long",
+          name: "Write",
+          arguments: JSON.stringify({ file_path }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(patch.lines[0]).toBe(`tool · Write ${file_path}`);
+    expect(patch.lines[0]).toContain("render.ts");
   });
 
   it("keeps an open tool on the live line until it settles", () => {
@@ -1185,5 +1209,34 @@ describe("activityForView / visibleLive", () => {
       live: "status · reading board",
     };
     expect(visibleLive(state)).toBe("status · reading board");
+  });
+});
+
+describe("pushActivity", () => {
+  it("keeps hundreds of lines from one request", () => {
+    let state = emptyView("epic");
+    for (let i = 0; i < 250; i += 1) {
+      state = pushActivity(state, `tool · Write src/f${i}.ts`, i, "req-a");
+    }
+    expect(state.activity).toHaveLength(250);
+    expect(state.activity[0]?.text).toBe("tool · Write src/f0.ts");
+    expect(state.activity.at(-1)?.text).toBe("tool · Write src/f249.ts");
+  });
+
+  it("drops only the oldest overflow of that request and leaves another row's tools", () => {
+    let state = emptyView("epic");
+    for (let i = 0; i < ACTIVITY_CAP + 10; i += 1) {
+      state = pushActivity(state, `a-${i}`, i, "req-a");
+    }
+    for (let i = 0; i < 50; i += 1) {
+      state = pushActivity(state, `b-${i}`, 10_000 + i, "req-b");
+    }
+    const a = state.activity.filter((item) => item.requestId === "req-a");
+    const b = state.activity.filter((item) => item.requestId === "req-b");
+    expect(a).toHaveLength(ACTIVITY_CAP);
+    expect(a[0]?.text).toBe("a-10");
+    expect(a.at(-1)?.text).toBe(`a-${ACTIVITY_CAP + 9}`);
+    expect(b).toHaveLength(50);
+    expect(b[0]?.text).toBe("b-0");
   });
 });
