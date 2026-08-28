@@ -3,7 +3,7 @@
  * assert on it. A frame that cannot be produced from a fixture is a frame
  * nobody can pin.
  */
-import { HELP_TEXT } from "./parse";
+import { HELP_TEXT, SLASH_HINTS, slashMatches } from "./parse";
 import {
   ACCENT,
   BOLD,
@@ -62,6 +62,7 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
   const table = renderTable(state, cols);
   const band = renderReservedBand(state, cols);
   const meta = state.busy || runBandOpen(state) ? "" : renderMeta(state, cols);
+  const menu = renderSlashMenu(state, cols);
   const prompt = renderPrompt(state, cols);
   const footer = renderFooter(state, cols);
   const reserved =
@@ -69,13 +70,14 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
     lineCount(table) +
     lineCount(band) +
     lineCount(meta) +
+    lineCount(menu) +
     lineCount(prompt) +
     lineCount(footer);
   const leftover = Math.max(4, rows - reserved);
   const activity = renderActivity(state, cols, leftover, band !== "");
 
   return fit(
-    [header, table, band, meta, activity, prompt, footer].filter((s) => s !== "").join("\n"),
+    [header, table, band, meta, activity, menu, prompt, footer].filter((s) => s !== "").join("\n"),
     cols,
     rows,
   );
@@ -415,6 +417,29 @@ function renderActivity(
   return [...top, heading, ...filler, ...visible].join("\n");
 }
 
+const SLASH_MENU_MAX = 6;
+
+function renderSlashMenu(state: ViewState, cols: number): string {
+  if (state.inputMode !== "command") return "";
+  const matches = slashMatches(state.input);
+  if (matches.length === 0) return "";
+  const at = Math.max(0, Math.min(state.slashAt, matches.length - 1));
+  const start = Math.max(
+    0,
+    Math.min(at - Math.floor((SLASH_MENU_MAX - 1) / 2), Math.max(0, matches.length - SLASH_MENU_MAX)),
+  );
+  const shown = matches.slice(start, start + SLASH_MENU_MAX);
+  const inner = Math.max(16, cols - 4);
+  const lines = shown.map((verb, i) => {
+    const index = start + i;
+    const hint = SLASH_HINTS[verb as keyof typeof SLASH_HINTS] ?? "";
+    const body = truncate(`/${verb}  ${hint}`, inner);
+    const line = ` ${body}`;
+    return index === at ? paint(SELECT_BG + BOLD + GOLD, padLine(line, cols)) : dim(padLine(line, cols));
+  });
+  return lines.join("\n");
+}
+
 function renderPrompt(state: ViewState, cols: number): string {
   const notice = state.notice !== null ? `\n ${paint(GOLD, state.notice)}` : "";
   let prefix = paint(ACCENT, "❯ ");
@@ -438,7 +463,10 @@ function renderFooter(state: ViewState, cols: number): string {
   const fail = selectedFailure(state);
   const running = selectedRunningRequestId(state) !== undefined;
   const finding = state.find !== null;
-  const keys = finding
+  const slashing = state.inputMode === "command" && slashMatches(state.input).length > 0;
+  const keys = slashing
+    ? "Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc"
+    : finding
     ? "n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q"
     : q
       ? "click/j/k select  ·  a answer  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"

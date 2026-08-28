@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { forwardConductorArgv } from "../src/commands/conductor";
-import { HELP_TEXT, parseArgv, parseCommand } from "../src/conductor/parse";
+import { HELP_TEXT, parseArgv, parseCommand, slashMatches } from "../src/conductor/parse";
 
 describe("parseCommand", () => {
   it("parses slash and bare verbs as the same command", () => {
@@ -122,5 +122,18 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("x or Ctrl-C stops it");
     expect(HELP_TEXT).toContain("/find [text]");
     expect(HELP_TEXT).toContain("older / newer match");
+    expect(HELP_TEXT).toContain("complete the selected slash verb");
+  });
+});
+
+describe("slashMatches", () => {
+  it("lists prefix matches until a space starts the arguments", () => {
+    expect(slashMatches("/")).toContain("status");
+    expect(slashMatches("/")).toContain("seed");
+    expect(slashMatches("/s")).toEqual(["status", "seed", "start"]);
+    expect(slashMatches("/sta")).toEqual(["status", "start"]);
+    expect(slashMatches("/status")).toEqual(["status"]);
+    expect(slashMatches("/status FIX-1")).toEqual([]);
+    expect(slashMatches("status")).toEqual([]);
   });
 });

@@ -100,6 +100,51 @@ describe("applyKey", () => {
     });
   });
 
+  it("completes a slash verb with Tab and runs it with Enter", () => {
+    let state = board([row("FIX-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    state = applyKey(state, { type: "char", value: "w" }).state;
+    expect(state.input).toBe("/w");
+    const tabbed = applyKey(state, { type: "tab" });
+    expect(tabbed.state.input).toBe("/wake");
+    expect(tabbed.effect).toBeUndefined();
+    const ran = applyKey(tabbed.state, { type: "enter" });
+    expect(ran.effect).toEqual({ type: "dispatch", command: { kind: "wake" } });
+  });
+
+  it("leaves a trailing space when the completed verb needs an argument", () => {
+    let state = board([row("FIX-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "see") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const tabbed = applyKey(state, { type: "tab" });
+    expect(tabbed.state.input).toBe("/seed ");
+    expect(tabbed.effect).toBeUndefined();
+    const entered = applyKey({ ...state, input: "/see", slashAt: 0 }, { type: "enter" });
+    expect(entered.state.input).toBe("/seed ");
+    expect(entered.effect).toBeUndefined();
+  });
+
+  it("moves the slash selection with arrows", () => {
+    let state = board([row("FIX-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    state = applyKey(state, { type: "char", value: "s" }).state;
+    expect(state.slashAt).toBe(0);
+    const down = applyKey(state, { type: "down" });
+    expect(down.state.slashAt).toBe(1);
+    const tabbed = applyKey(down.state, { type: "tab" });
+    expect(tabbed.state.input).toBe("/seed ");
+  });
+
+  it("clears a bare slash on Enter instead of running the first verb", () => {
+    let state = board([row("FIX-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.state.input).toBe("");
+    expect(submitted.effect).toBeUndefined();
+  });
+
   it("dispatches slash commands from the prompt", () => {
     let state = board([row("FIX-1")]);
     state = applyKey(state, { type: "char", value: "/" }).state;

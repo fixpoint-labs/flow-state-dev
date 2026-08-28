@@ -151,6 +151,11 @@ export interface ViewState {
    * hit; `n` steps older, `N` newer.
    */
   findAt: number;
+  /**
+   * Index into `slashMatches(input)` while a slash verb is being typed.
+   * Ignored once the line has arguments or the prompt is empty.
+   */
+  slashAt: number;
   lastRefreshAt: number | null;
 }
 
@@ -174,6 +179,7 @@ export function emptyView(epicLabel: string): ViewState {
     scroll: 0,
     find: null,
     findAt: 0,
+    slashAt: 0,
     lastRefreshAt: null,
   };
 }

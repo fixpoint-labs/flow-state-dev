@@ -26,6 +26,59 @@ const VERBS = new Set([
   "find",
 ]);
 
+/**
+ * Verbs the TUI slash menu offers. Aliases (`q`, `stop`) stay parseable
+ * but are not listed — one name per action.
+ */
+export const SLASH_VERBS = [
+  "status",
+  "seed",
+  "wake",
+  "answer",
+  "watch",
+  "start",
+  "abort",
+  "find",
+  "help",
+  "quit",
+  "refresh",
+] as const;
+
+/** Verbs that cannot run with only a name — completion leaves a trailing space. */
+export const SLASH_NEEDS_ARG = new Set(["seed", "start", "answer"]);
+
+export const SLASH_HINTS: Record<(typeof SLASH_VERBS)[number], string> = {
+  status: "refresh, or jump to a row",
+  seed: "file and start an issue",
+  wake: "process pending rows",
+  answer: "reply to a question",
+  watch: "follow until waiting or done",
+  start: "seed, then stay on the board",
+  abort: "stop a running request",
+  find: "search this row's transcript",
+  help: "this help",
+  quit: "leave the board",
+  refresh: "poll status now",
+};
+
+/**
+ * Prefix of an in-progress slash verb, or `null` once a space starts the
+ * arguments. `/sta` → `"sta"`; `/status FIX` → `null`.
+ */
+export function slashPrefix(input: string): string | null {
+  if (!input.startsWith("/")) return null;
+  const body = input.slice(1);
+  if (body.includes(" ") || body.includes("\t")) return null;
+  return body.toLowerCase();
+}
+
+/** Slash verbs whose names start with the in-progress prefix, registry order. */
+export function slashMatches(input: string): string[] {
+  const prefix = slashPrefix(input);
+  if (prefix === null) return [];
+  return SLASH_VERBS.filter((verb) => verb.startsWith(prefix));
+}
+
 function splitWords(line: string): string[] {
   const words: string[] = [];
   let current = "";
@@ -220,6 +273,8 @@ In the TUI:
   r            refresh now (runs status)
   t            expand or collapse the todo list on a running row
   /            slash command (same verbs)
+  Tab          complete the selected slash verb
+  ↑/↓          choose a slash match while / is open
   /status id   select that row, then refresh
   /find [text] search the selected row's transcript
   n / N        older / newer match

@@ -716,6 +716,20 @@ describe("renderFrame", () => {
     expect(selectedFailure({ ...emptyView("epic"), rows: [both] })).toBeUndefined();
   });
 
+  it("lists matching slash verbs above the prompt", () => {
+    const frame = renderFrame(
+      { ...emptyView("epic"), rows: [waiting], input: "/s" },
+      { cols: 80, rows: 24 },
+    );
+    const text = stripAnsi(frame);
+    expect(text).toContain("/status");
+    expect(text).toContain("refresh, or jump to a row");
+    expect(text).toContain("/seed");
+    expect(text).toContain("/start");
+    expect(text).toContain("Tab complete");
+    expect(text).not.toContain("/wake");
+  });
+
   it("pins the current find hit and paints the match", () => {
     const idle: StatusRow = {
       taskId: "FIX-1--implement",
