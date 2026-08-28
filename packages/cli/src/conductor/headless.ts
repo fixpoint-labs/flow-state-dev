@@ -106,11 +106,8 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         flushTranscript();
         const status = await readBoard(options.dispatch, undefined, onEvent);
         flushTranscript();
-        if (options.json) write(JSON.stringify(status));
-        else {
-          const views = await attemptViews(options, status.rows, undefined);
-          write(renderBoardPlain(status.rows, false, views));
-        }
+        const views = await attemptViews(options, status.rows, undefined);
+        write(renderBoardPlain(status.rows, options.json, views));
         return watchExitCode(status.rows);
       }
       case "answer": {
@@ -145,11 +142,8 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         }
         const after = await readBoard(options.dispatch, options.command.issue, onEvent);
         flushTranscript();
-        if (options.json) write(JSON.stringify(after));
-        else {
-          const views = await attemptViews(options, after.rows, options.command.issue);
-          write(renderBoardPlain(after.rows, false, views));
-        }
+        const views = await attemptViews(options, after.rows, options.command.issue);
+        write(renderBoardPlain(after.rows, options.json, views));
         return watchExitCode(after.rows);
       }
       case "watch":
@@ -194,7 +188,9 @@ async function watchBoard(
     follow.sync(runningRequestIds(status.rows));
     flush();
     const views = await attemptViews(options, status.rows, issue);
-    const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows, views);
+    const rendered = options.json
+      ? renderBoardPlain(status.rows, true, views)
+      : renderWatchLine(status.rows, views);
     if (rendered !== last) {
       out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
       last = rendered;
@@ -228,14 +224,13 @@ async function watchBoard(
  * A named issue loads that attempt — last tool, files, hunk, todo —
  * whether it is still running or already settled. A full-board verb
  * loads **running** rows only: current action, not every settled
- * history.
+ * history. `--json` uses the same rule and adds those fields on the row.
  */
 async function attemptViews(
   options: HeadlessOptions,
   rows: readonly StatusRow[],
   issue: string | undefined,
 ): Promise<Record<string, ViewState> | undefined> {
-  if (options.json) return undefined;
   const views: Record<string, ViewState> = {};
   for (const row of rows) {
     const id = row.run?.requestId;

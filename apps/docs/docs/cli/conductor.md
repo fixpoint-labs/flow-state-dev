@@ -396,7 +396,7 @@ Without `--json`, `seed` prints the taskId it created plus the plain-text board;
 
 `fsdev conductor status PR-482` reprints that issue's last attempt on stderr. Those are the same `status · …`, `message · …`, and `tool · …` lines the TRANSCRIPT pane shows when you select that row. Then it prints the board on stdout. `fsdev conductor status` with no issue prints the board, plus stream lines from the `status` action itself if any. It does not reprint every row's last attempt.
 
-`fsdev conductor status PR-482 --json` prints the JSON board and omits those last-attempt lines.
+`fsdev conductor status PR-482 --json` prints the JSON board and omits those last-attempt stream lines. Each loaded journal adds `now`, `files`, `hunk`, and `todo` on that row — the same attempt a named issue loads, or running rows only on a full-board print.
 
 When `watch PR-482` stops, it prints that attempt on stderr, then the board. While the row is running, `watch` tails it.
 

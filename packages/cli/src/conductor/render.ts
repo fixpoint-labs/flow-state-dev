@@ -827,7 +827,13 @@ export function renderBoardPlain(
   views?: Readonly<Record<string, ViewState>>,
   now: number = Date.now(),
 ): string {
-  if (json) return JSON.stringify({ rows }, null, 2);
+  if (json) {
+    return JSON.stringify(
+      { rows: rows.map((row) => jsonRow(row, viewForRow(row, views))) },
+      null,
+      2,
+    );
+  }
   if (rows.length === 0) return "no rows\n";
   const lines = [
     pad("ISSUE", 16) + pad("PHASE", 12) + pad("STATUS", 18) + pad("ATTEMPT", 8) + pad("OUTCOME", 12) + "ASK",
@@ -883,6 +889,29 @@ function viewForRow(
   const id = row.run?.requestId;
   if (id === null || id === undefined || id === "" || views === undefined) return undefined;
   return views[id];
+}
+
+/**
+ * Additive presenter fields on a status row. Scripts keep the board
+ * shape; `now` / `files` / `hunk` / `todo` appear only when that
+ * attempt's journal was loaded.
+ */
+function jsonRow(
+  row: StatusRow,
+  view?: ViewState,
+): StatusRow & { now?: string; files?: string[]; hunk?: string[]; todo?: string } {
+  if (view === undefined) return row;
+  const now = rowNow(view, row);
+  const files = selectedFiles(view);
+  const hunk = selectedHunk(view).slice(-HUNK_BAND_MAX);
+  const current = currentPlanItem(selectedPlan(view));
+  return {
+    ...row,
+    ...(now !== undefined && now !== "" ? { now } : {}),
+    ...(files.length > 0 ? { files } : {}),
+    ...(hunk.length > 0 ? { hunk } : {}),
+    ...(current !== undefined ? { todo: `[${current.mark}] ${current.text}` } : {}),
+  };
 }
 
 /**

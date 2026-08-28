@@ -1758,4 +1758,47 @@ describe("renderBoardPlain / watchExitCode", () => {
       "Write src/a.ts",
     );
   });
+
+  it("adds now and files on --json when a journal view is passed", () => {
+    const now = 1_700_000_000_000;
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: now,
+      },
+      questions: [],
+    };
+    const view = {
+      ...emptyView(""),
+      rows: [running],
+      activity: [{ at: now, text: "tool · Write src/a.ts", requestId: "req-live-1" }],
+      childFiles: { "req-live-1": ["src/a.ts"] },
+    };
+    const loaded = JSON.parse(renderBoardPlain([running], true, { "req-live-1": view }, now)) as {
+      rows: Array<{ now?: string; files?: string[] }>;
+    };
+    expect(loaded.rows[0]?.now).toBe("Write src/a.ts");
+    expect(loaded.rows[0]?.files).toEqual(["src/a.ts"]);
+    const bare = JSON.parse(renderBoardPlain([running], true, undefined, now)) as {
+      rows: Array<{ now?: string }>;
+    };
+    expect(bare.rows[0]?.now).toBeUndefined();
+  });
 });

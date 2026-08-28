@@ -443,6 +443,24 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(full.text).toContain("Write src/live.ts");
     expect(full.text).not.toContain("src/hello.js");
 
+    const asJson = capture();
+    await executeConductorCommand(["status", "--json"], {
+      cwd: fixtureDir,
+      stores,
+      output: asJson.output as unknown as NodeJS.WriteStream,
+      stderr: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    const board = JSON.parse(asJson.text) as {
+      rows: Array<{ issue: string | null; now?: string; files?: string[] }>;
+    };
+    const live = board.rows.find((row) => row.issue === "LIVE-1");
+    const failed = board.rows.find((row) => row.issue === "FAIL-1");
+    expect(live?.now).toBe("Write src/live.ts");
+    expect(live?.files).toContain("src/live.ts");
+    expect(failed?.now).toBeUndefined();
+    expect(failed?.files).toBeUndefined();
+
     const woken = capture();
     await executeConductorCommand(["wake"], {
       cwd: fixtureDir,

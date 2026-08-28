@@ -125,7 +125,8 @@ headless for a script. There is no way to redirect a run mid-flight or send it o
 errand. You can stop a live run (`abort` / `x` in the board), and you can answer
 what it asked. A full-board `status` prints each running row's current action
 (the same ASK column the TUI uses) — a tool, or `think ·` while the child is
-reasoning. `e` expands the last Read peek or command tail. A named `status ISSUE` or `watch ISSUE`
+reasoning. `--json` adds `now`, `files`, `hunk`, and `todo` on those same rows.
+`e` expands the last Read peek or command tail. A named `status ISSUE` or `watch ISSUE`
 prints that attempt's last tool, files, hunk, and current todo on stdout. A
 running row also prints how long since it last wrote (`8s`, `3m`).
 

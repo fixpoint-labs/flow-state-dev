@@ -135,6 +135,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("older / newer match");
     expect(HELP_TEXT).toContain("complete the selected slash verb or board id");
     expect(HELP_TEXT).toContain("named issue also prints last tool, files, hunk, todo");
+    expect(HELP_TEXT).toContain("--json adds now/files/hunk/todo");
     expect(HELP_TEXT).toContain("compact think · line");
   });
 });
