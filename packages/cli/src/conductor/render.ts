@@ -652,7 +652,7 @@ function renderPrompt(state: ViewState, cols: number): string {
   const shown =
     state.input === "" && state.inputMode === "command"
       ? placeholder
-      : composeTail(state.input, inner);
+      : composeTail(state.input, inner, state.caret);
   return `${rule(cols)}\n ${prefix}${shown}${notice}`;
 }
 
@@ -705,11 +705,26 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
   return padLine(dim(` ${keys}`), cols);
 }
 
-/** Keep the cursor and the end of a long compose line visible. */
-function composeTail(input: string, width: number): string {
+/** Keep the caret visible. A long line windows around it; the end stays the default. */
+function composeTail(input: string, width: number, caret: number): string {
+  const at = Math.max(0, Math.min(caret, input.length));
   const room = Math.max(1, width - 1);
-  const text = input.length <= room ? input : elideEnd(input, room);
-  return text + paint(ACCENT, "█");
+  let text: string;
+  let local: number;
+  if (input.length <= room) {
+    text = input;
+    local = at;
+  } else if (at >= input.length) {
+    text = elideEnd(input, room);
+    local = text.length;
+  } else {
+    let start = Math.max(0, at - Math.floor(room * 0.75));
+    if (start + room > input.length) start = Math.max(0, input.length - room);
+    text = input.slice(start, start + room);
+    local = at - start;
+    if (start > 0) text = `…${text.slice(1)}`;
+  }
+  return text.slice(0, local) + paint(ACCENT, "█") + text.slice(local);
 }
 
 function renderHelp(cols: number): string {

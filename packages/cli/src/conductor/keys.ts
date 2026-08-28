@@ -281,9 +281,9 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
     case "}":
       return { state: moveAttention(state, 1, now) };
     case "s":
-      return { state: { ...state, inputMode: "seed", input: "", notice: "issue id, then Enter" } };
+      return { state: { ...state, inputMode: "seed", input: "", caret: 0, notice: "issue id, then Enter" } };
     case "/":
-      return { state: { ...state, input: "/", slashAt: 0, notice: null } };
+      return { state: { ...state, input: "/", slashAt: 0, caret: 1, notice: null } };
     default:
       return idleFallback(state, value);
   }
@@ -297,36 +297,45 @@ function idleFallback(state: ViewState, value: string): KeyResult {
     const started = beginAnswer(state, selectedQuestion(state)!.question);
     return applyEditing(started.state, { type: "char", value });
   }
-  return { state: { ...state, input: value } };
+  return { state: withInput(state, value) };
 }
 
 function applyEditing(state: ViewState, key: Key): KeyResult {
   if (state.inputMode === "find") return applyFindEdit(state, key);
   const menu = slashMenu(state);
   switch (key.type) {
-    case "char":
+    case "char": {
+      const input = state.input.slice(0, state.caret) + key.value + state.input.slice(state.caret);
       return {
         state: {
-          ...state,
-          input: state.input + key.value,
+          ...withInput(state, input, state.caret + key.value.length),
           slashAt: 0,
           draftAt: null,
           draftHold: null,
         },
       };
+    }
     case "backspace":
       if (state.input === "") {
         return cancelEdit(state);
       }
+      if (state.caret <= 0) return { state };
       return {
         state: {
-          ...state,
-          input: state.input.slice(0, -1),
+          ...withInput(
+            state,
+            state.input.slice(0, state.caret - 1) + state.input.slice(state.caret),
+            state.caret - 1,
+          ),
           slashAt: 0,
           draftAt: null,
           draftHold: null,
         },
       };
+    case "left":
+      return { state: { ...state, caret: Math.max(0, state.caret - 1) } };
+    case "right":
+      return { state: { ...state, caret: Math.min(state.input.length, state.caret + 1) } };
     case "escape":
       return cancelEdit(state);
     case "tab":
@@ -364,7 +373,7 @@ function completeSlash(state: ViewState, submit: boolean): KeyResult {
   }
   const at = Math.max(0, Math.min(state.slashAt, menu.length - 1));
   const item = menu[at]!;
-  const next: ViewState = { ...state, input: item.fill, slashAt: 0 };
+  const next: ViewState = withInput({ ...state, slashAt: 0 }, item.fill);
   if (submit && !item.needsMore) return submitEdit(next);
   return { state: next };
 }
@@ -373,12 +382,12 @@ function applyFindEdit(state: ViewState, key: Key): KeyResult {
   switch (key.type) {
     case "char": {
       const input = state.input + key.value;
-      return { state: applyFindQuery({ ...state, input }, input) };
+      return { state: applyFindQuery(withInput(state, input), input) };
     }
     case "backspace": {
       if (state.input === "") return clearFind(state);
       const input = state.input.slice(0, -1);
-      return { state: applyFindQuery({ ...state, input }, input) };
+      return { state: applyFindQuery(withInput(state, input), input) };
     }
     case "escape":
       return clearFind(state);
@@ -386,8 +395,7 @@ function applyFindEdit(state: ViewState, key: Key): KeyResult {
       const hits = findMatches(state);
       return {
         state: {
-          ...state,
-          input: "",
+          ...withInput(state, ""),
           inputMode: "command",
           notice:
             state.find !== null && hits.length === 0 ? `no matches for ${state.find}` : null,
@@ -402,8 +410,7 @@ function applyFindEdit(state: ViewState, key: Key): KeyResult {
 function clearFind(state: ViewState): KeyResult {
   return {
     state: {
-      ...state,
-      input: "",
+      ...withInput(state, ""),
       inputMode: "command",
       find: null,
       findAt: 0,
@@ -415,8 +422,7 @@ function clearFind(state: ViewState): KeyResult {
 function cancelEdit(state: ViewState): KeyResult {
   return {
     state: {
-      ...state,
-      input: "",
+      ...withInput(state, ""),
       inputMode: "command",
       answering: null,
       slashAt: 0,
@@ -425,6 +431,10 @@ function cancelEdit(state: ViewState): KeyResult {
       draftHold: null,
     },
   };
+}
+
+function withInput(state: ViewState, input: string, caret: number = input.length): ViewState {
+  return { ...state, input, caret: Math.max(0, Math.min(caret, input.length)) };
 }
 
 const DRAFT_CAP = 50;
@@ -447,24 +457,24 @@ function walkDraft(state: ViewState, direction: -1 | 1): ViewState {
   if (state.drafts.length === 0) return state;
   if (state.draftAt === null) {
     if (direction === 1) return state;
-    return {
-      ...state,
-      draftHold: state.input,
-      draftAt: state.drafts.length - 1,
-      input: state.drafts[state.drafts.length - 1]!,
-    };
+    return withInput(
+      {
+        ...state,
+        draftHold: state.input,
+        draftAt: state.drafts.length - 1,
+      },
+      state.drafts[state.drafts.length - 1]!,
+    );
   }
   const next = state.draftAt + direction;
   if (next < 0) return state;
   if (next >= state.drafts.length) {
-    return {
-      ...state,
-      input: state.draftHold ?? "",
-      draftAt: null,
-      draftHold: null,
-    };
+    return withInput(
+      { ...state, draftAt: null, draftHold: null },
+      state.draftHold ?? "",
+    );
   }
-  return { ...state, draftAt: next, input: state.drafts[next]! };
+  return withInput({ ...state, draftAt: next }, state.drafts[next]!);
 }
 
 function submitEdit(state: ViewState): KeyResult {
@@ -476,8 +486,7 @@ function submitEdit(state: ViewState): KeyResult {
     }
     return {
       state: {
-        ...rememberDraft(state, text),
-        input: "",
+        ...withInput(rememberDraft(state, text), ""),
         inputMode: "command",
         answering: null,
         notice: null,
@@ -492,8 +501,7 @@ function submitEdit(state: ViewState): KeyResult {
     }
     return {
       state: {
-        ...rememberDraft(state, issue),
-        input: "",
+        ...withInput(rememberDraft(state, issue), ""),
         inputMode: "command",
         notice: null,
       },
@@ -503,15 +511,15 @@ function submitEdit(state: ViewState): KeyResult {
 
   const line = state.input.trim();
   if (line === "" || line === "/") {
-    return { state: { ...state, input: "", draftAt: null, draftHold: null } };
+    return { state: { ...withInput(state, ""), draftAt: null, draftHold: null } };
   }
   const parsed: ParseResult = parseCommand(line);
   if (!parsed.ok) {
-    return { state: { ...state, notice: parsed.message, input: "", draftAt: null, draftHold: null } };
+    return { state: { ...withInput(state, ""), notice: parsed.message, draftAt: null, draftHold: null } };
   }
   const command = parsed.command;
   const remembered = command.kind === "find" ? state : rememberDraft(state, line);
-  const cleared: ViewState = { ...remembered, input: "", slashAt: 0, notice: null };
+  const cleared: ViewState = { ...withInput(remembered, ""), slashAt: 0, notice: null };
   if (command.kind === "help") return { state: { ...cleared, help: true } };
   if (command.kind === "quit") return { state: cleared, effect: { type: "quit" } };
   if (command.kind === "refresh") return { state: cleared, effect: { type: "refresh" } };
@@ -617,6 +625,7 @@ function beginAnswer(state: ViewState, question: string): KeyResult {
       inputMode: "answer" satisfies InputMode,
       answering: question,
       input: "",
+      caret: 0,
       notice: `answering ${question}`,
     },
   };

@@ -215,6 +215,8 @@ export interface ViewState {
   draftAt: number | null;
   /** Unsent compose text stashed when the first ↑ leaves the live draft. */
   draftHold: string | null;
+  /** Index into `input` while composing (`0` is before the first character). */
+  caret: number;
 }
 
 export function emptyView(epicLabel: string): ViewState {
@@ -248,6 +250,7 @@ export function emptyView(epicLabel: string): ViewState {
     drafts: [],
     draftAt: null,
     draftHold: null,
+    caret: 0,
   };
 }
 

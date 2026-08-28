@@ -241,7 +241,7 @@ describe("renderFrame", () => {
   it("keeps the end of a long compose line so the cursor stays visible", () => {
     const long = `please retry the failed rows and then tell me ${"x".repeat(80)} done`;
     const frame = renderFrame(
-      { ...emptyView("epic"), input: long },
+      { ...emptyView("epic"), input: long, caret: long.length },
       { cols: 80, rows: 24 },
     );
     const plain = stripAnsi(frame);
@@ -251,10 +251,18 @@ describe("renderFrame", () => {
     expect(plain).not.toContain("↑ prior");
     expect(
       stripAnsi(
-        renderFrame({ ...emptyView("epic"), input: long, drafts: ["please retry"] }, { cols: 80, rows: 24 }),
+        renderFrame(
+          { ...emptyView("epic"), input: long, caret: long.length, drafts: ["please retry"] },
+          { cols: 80, rows: 24 },
+        ),
       ),
     ).toContain("↑ prior");
     expect(plain).not.toContain("please retry the failed rows");
+    const fromStart = stripAnsi(
+      renderFrame({ ...emptyView("epic"), input: long, caret: 0 }, { cols: 80, rows: 24 }),
+    );
+    expect(fromStart).toContain("please retry the failed rows");
+    expect(fromStart).not.toContain("done");
   });
 
   it("shows a you · talk line in the transcript", () => {

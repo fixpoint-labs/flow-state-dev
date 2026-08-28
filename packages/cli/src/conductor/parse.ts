@@ -317,6 +317,7 @@ In the TUI:
   /            slash command (same verbs)
   Tab          complete the selected slash verb or board id
   ↑/↓          slash match while / is open; prior lines while composing
+  ←/→          move in the line while composing
   /status id   select that row, then refresh
   /find [text] search the selected row's transcript
   n / N        older / newer match

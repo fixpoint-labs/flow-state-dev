@@ -329,6 +329,30 @@ describe("applyKey", () => {
     expect(empty.state.drafts).toEqual(["LAB-9"]);
   });
 
+  it("moves the compose caret with ←/→ and inserts in the middle", () => {
+    const idle = applyKey({ ...board([row("FIX-1", 2)]), questionIndex: 1 }, { type: "left" });
+    expect(idle.state.questionIndex).toBe(0);
+    expect(idle.state.input).toBe("");
+
+    let state = board([row("FIX-1")]);
+    for (const ch of "bc") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    expect(state.input).toBe("bc");
+    expect(state.caret).toBe(2);
+    const left = applyKey(state, { type: "left" });
+    expect(left.state.input).toBe("bc");
+    expect(left.state.caret).toBe(1);
+    const inserted = applyKey(left.state, { type: "char", value: "X" });
+    expect(inserted.state.input).toBe("bXc");
+    expect(inserted.state.caret).toBe(2);
+    const deleted = applyKey(inserted.state, { type: "backspace" });
+    expect(deleted.state.input).toBe("bc");
+    expect(deleted.state.caret).toBe(1);
+    const end = applyKey(deleted.state, { type: "right" });
+    expect(end.state.caret).toBe(2);
+  });
+
   it("keeps at most fifty submitted compose lines", () => {
     let state: ViewState = {
       ...board([row("FIX-1")]),
