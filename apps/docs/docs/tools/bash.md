@@ -247,7 +247,10 @@ A grant is a credential MOAT holds for a third-party provider (GitHub, OpenAI, a
 ## Where the workspace lives
 
 With the local provider, each workspace is a directory under
-`.fsdev/workspaces/<scope>/<id>/`. `scope` decides who shares it:
+`.fsdev/workspaces/<scope>/<org>/<user>/<id>/`. The org and user come from the
+verified principal and are always part of the path, so two tenants that happen
+to name the same session or request never land in the same directory. `scope`
+decides who shares it beyond that:
 
 | `scope` | One workspace per | Reach for it when |
 | --- | --- | --- |
@@ -259,6 +262,10 @@ With the local provider, each workspace is a directory under
 ```ts
 createBashCapability({ provider: { type: "local", scope: "run" } });
 ```
+
+`scope` and `cwd` are alternatives, not a pair. `cwd` names one directory, so a
+scope beside it would separate nothing while saying it does; setting both
+throws at construction.
 
 Read that list narrowest-first, because the ordering is the decision. Every
 scope below `run` is a workspace two runs can be inside at the same time.
@@ -305,6 +312,8 @@ A file already changed in its collection is not overwritten — the flush warns 
 ### Orphan writes
 
 Files the agent creates outside every known path are not persisted. They're logged via `console.warn` at flush time so the behavior is visible during development. If the agent genuinely needs scratch space, `./tmp/` is the explicit place: writes there are silent and never saved.
+
+A flush sees the mounted directories and the workspace root, so a stray file written beside the mounts gets its warning. It does not descend into directories nothing is mounted at — the root can be a checkout you handed the tool through `cwd`, and walking all of it after every command is not a cost worth paying. A file written into an unmounted subdirectory is dropped without a warning.
 
 ## Resource definitions
 

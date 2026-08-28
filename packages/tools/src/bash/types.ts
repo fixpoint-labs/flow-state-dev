@@ -147,13 +147,17 @@ export type SandboxProvider =
   | {
       type: "local";
       /**
-       * Explicit workspace directory. When set, `scope` is ignored.
+       * Explicit workspace directory. Cannot be combined with `scope` — one
+       * directory is one workspace, so a scope alongside it would separate
+       * nothing while claiming to, and the pair is refused at construction.
+       *
        * When omitted, the workspace is auto-created at
-       * `.fsdev/workspaces/{scope}/{scopeId}/`.
+       * `.fsdev/workspaces/{scope}/{orgId}/{userId}/{scopeId}/`.
        */
       cwd?: string;
       /**
        * Scope for the auto-created workspace directory. Default: `"session"`.
+       * Cannot be combined with `cwd`.
        * - `"run"` — one workspace per request, shared with nothing
        * - `"session"` — one workspace per session (isolated, ephemeral)
        * - `"user"` — shared across all sessions for a user

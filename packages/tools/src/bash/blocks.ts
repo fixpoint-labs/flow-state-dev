@@ -202,9 +202,15 @@ interface ScopeIdentity {
 
 /** Reserved workspace subdirectory for agent scratch space. Never persisted. */
 
-/** Per-session host dir backing the container's `/workspace`, mirroring `local`'s layout. */
-function defaultMoatWorkspace(sessionId: string): string {
-  return path.join(process.cwd(), ".fsdev", "workspaces", "session", safeSegment(sessionId));
+/**
+ * Per-session host dir backing the container's `/workspace`, mirroring
+ * `local`'s layout — tenant prefix included, for the same reason: `sessionId`
+ * comes off the request body, so without it two tenants naming one session
+ * share a directory of files.
+ */
+function defaultMoatWorkspace(identity: ScopeIdentity): string {
+  const { scopeId } = resolveScopeKey("session", identity);
+  return path.join(process.cwd(), ".fsdev", "workspaces", "session", scopeId);
 }
 
 /**
@@ -246,12 +252,33 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
  * through unchanged, so this renames no existing directory. Anything else is
  * rewritten AND given a digest of the original, because two hostile ids that
  * differ only in unsafe characters must not collapse onto one workspace.
+ *
+ * The two forms are kept in disjoint namespaces by the `enc-` prefix, and that
+ * is not decoration. Without it an encoding is itself a valid unencoded id: an
+ * attacker who wants a victim's `a/b` workspace computes the digest, submits
+ * `a-b-<digest>` as their own id, and it passes through untouched onto the same
+ * directory. So an id already starting with the prefix takes the encoded path
+ * too, and a passed-through id can never look like an encoding.
+ *
+ * Length is bounded for a plainer reason: a pass-through of 300 characters is
+ * a filename `ENAMETOOLONG` refuses, and the first write in that workspace
+ * fails.
  */
+const ENCODED_PREFIX = "enc-";
+const MAX_PASSTHROUGH = 64;
+
 function safeSegment(id: string): string {
   const safe = id.replace(/[^A-Za-z0-9_-]/g, "-");
-  if (safe === id && safe.length > 0) return safe;
+  if (
+    safe === id &&
+    safe.length > 0 &&
+    safe.length <= MAX_PASSTHROUGH &&
+    !safe.startsWith(ENCODED_PREFIX)
+  ) {
+    return safe;
+  }
   const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
-  return `${safe.slice(0, 40) || "id"}-${digest}`;
+  return `${ENCODED_PREFIX}${safe.slice(0, 40) || "id"}-${digest}`;
 }
 
 /**
@@ -266,26 +293,38 @@ export function resolveWorkspaceCwdForTest(
   return path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
 }
 
+/**
+ * The registry key and workspace directory a scope resolves to.
+ *
+ * Both are prefixed by the tenant the run belongs to, and that prefix is the
+ * multi-tenant half of the containment `safeSegment` gives the other half of.
+ * `requestId` and `sessionId` arrive on the request body — the action route
+ * validates only that they are strings — so two tenants can name the same one.
+ * Sharing a registry entry across that boundary hands one tenant's run the
+ * other's live sandbox; sharing a directory hands it their files. `orgId` and
+ * `userId` come from the verified principal, which is what makes them usable
+ * as the boundary (BP-031).
+ */
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
+  const tenant = [identity.orgId ?? "-", identity.userId ?? "-"];
+  const scoped = (id: string) => ({
+    key: [scope, ...tenant, id].join(":"),
+    scopeId: path.join(...tenant.map(safeSegment), safeSegment(id)),
+  });
   switch (scope) {
-    case "run": {
+    case "run":
       // The request is the run. Narrower than a session on purpose: this is
       // the scope where two agents working at once cannot see each other's
       // half-finished files, and where the workspace goes away with the
       // request that made it.
-      return { key: `run:${identity.requestId}`, scopeId: safeSegment(identity.requestId) };
-    }
-    case "user": {
-      const id = identity.userId ?? identity.sessionId;
-      return { key: `user:${id}`, scopeId: safeSegment(id) };
-    }
-    case "org": {
-      const id = identity.orgId ?? identity.sessionId;
-      return { key: `org:${id}`, scopeId: safeSegment(id) };
-    }
+      return scoped(identity.requestId);
+    case "user":
+      return scoped(identity.userId ?? identity.sessionId);
+    case "org":
+      return scoped(identity.orgId ?? identity.sessionId);
     case "session":
     default:
-      return { key: `session:${identity.sessionId}`, scopeId: safeSegment(identity.sessionId) };
+      return scoped(identity.sessionId);
   }
 }
 
@@ -394,7 +433,7 @@ async function createScopedSandbox(
     const overrides: Partial<typeof provider> = {};
     if (!provider.runName) overrides.runName = `fsdev-${sessionId}`;
     if (!provider.workspace) {
-      overrides.workspace = defaultMoatWorkspace(sessionId);
+      overrides.workspace = defaultMoatWorkspace(identity);
       frameworkManaged = true;
     }
     if (provider.persist === undefined) overrides.persist = true;
@@ -525,6 +564,8 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     destination = defaultDestinationFor(options.provider),
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
+
+  assertScopeIsAchievable(provider);
 
   async function getOrCreate(ctx: BlockContext): Promise<SandboxEntry> {
     const identity = getIdentity(ctx);
@@ -831,7 +872,30 @@ function resolveHostMountSourceForWrite(
   ctx: BlockContext,
 ): string | undefined {
   if (provider.type !== "moat") return undefined;
-  return provider.workspace ?? defaultMoatWorkspace(getIdentity(ctx).sessionId);
+  return provider.workspace ?? defaultMoatWorkspace(getIdentity(ctx));
+}
+
+/**
+ * Refuse a provider that asks for isolation its own configuration cannot give.
+ *
+ * `scope` decides how many runs share a workspace; `cwd` fixes that workspace
+ * to one directory. Set together, the directory wins and the scope becomes a
+ * request that quietly went nowhere — every run still gets its own registry
+ * entry and its own projection over the SAME files, each with an independent
+ * baseline, so they read and flush over each other's half-finished work while
+ * the configuration says they are isolated. No answer honours both, so this
+ * refuses rather than picking one silently.
+ *
+ * @throws {Error} naming both settings and the two ways out.
+ */
+function assertScopeIsAchievable(provider: SandboxProvider): void {
+  if (provider.type !== "local" || provider.scope === undefined || !provider.cwd) return;
+  throw new Error(
+    `[bash] provider sets both \`cwd\` ("${provider.cwd}") and \`scope: "${provider.scope}"\`. ` +
+      `A fixed directory is one workspace, so the scope cannot separate anything — runs would ` +
+      `share the files while holding separate baselines over them. Drop \`cwd\` for a workspace ` +
+      `per ${provider.scope}, or drop \`scope\` to use the directory you named.`,
+  );
 }
 
 function getIdentity(ctx: BlockContext): ScopeIdentity {
