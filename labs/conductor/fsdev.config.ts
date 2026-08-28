@@ -46,6 +46,8 @@ const baseRef = process.env.CONDUCTOR_BASE_REF ?? "main";
 // Startup, not mid-run: a ref that does not resolve fails every `worktree add`.
 assertBaseRefExists(sourceRepo, baseRef);
 
+const agentModel = process.env.CONDUCTOR_AGENT_MODEL;
+
 const { flow, drainBudgetMs } = conductorFlow({
   epic: process.env.CONDUCTOR_EPIC ?? "harness-manager",
   workspace: {
@@ -55,6 +57,11 @@ const { flow, drainBudgetMs } = conductorFlow({
   },
   maxAttempts: positiveIntFromEnv("CONDUCTOR_MAX_ATTEMPTS", 3),
   runTimeoutMs: RUN_TIMEOUT_MS,
+  // Coding-run model. Default is the Agent SDK's own. `CONDUCTOR_COORDINATOR_MODEL`
+  // is only the talk turn.
+  ...(agentModel !== undefined && agentModel !== ""
+    ? { agent: { model: agentModel } }
+    : {}),
 });
 
 export default createFlowState({
