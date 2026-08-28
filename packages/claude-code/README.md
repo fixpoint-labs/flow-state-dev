@@ -171,8 +171,12 @@ claudeCodeAgent({
   // The run's environment. This REPLACES the process environment rather than
   // adding to it — spread `process.env` when you mean to add.
   env: { ...process.env, CI: "1" },
-  // The SDK's sandbox settings, forwarded verbatim.
-  sandbox: { enabled: true },
+  // The SDK's sandbox settings. A value or a resolver — the settings that
+  // confine a run name the directory it works in, and that is per run.
+  sandbox: (input, ctx) => ({
+    enabled: true,
+    filesystem: { allowWrite: [checkoutForThisRun()] },
+  }),
   // Capabilities installed on the block, same slot any other block takes.
   uses: [myCapability],
 });

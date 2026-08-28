@@ -232,10 +232,17 @@ export interface ClaudeCodeAgentOptions {
    * The SDK's sandbox settings, forwarded verbatim. Default: unset — no
    * sandbox, as today.
    *
+   * **A value or a resolver**, and the resolver is not a convenience. The
+   * settings that confine a run to its own directory name that directory —
+   * `filesystem.allowWrite` is a list of paths — and the directory is per run
+   * while one flow build serves many. A build-time constant can express
+   * "sandboxed" but not "sandboxed to THIS run's workspace", which is the only
+   * form of it that contains anything. Same reason `cwd` is a resolver.
+   *
    * Loosely typed for the same reason `agents` is: this package treats the
    * Agent SDK as an optional peer, so its types are not imported here.
    */
-  sandbox?: unknown;
+  sandbox?: unknown | ((input: { prompt: string }, ctx: AgentCallbackContext) => unknown | Promise<unknown>);
   /**
    * Capabilities installed on the block this factory returns — the same `uses`
    * slot any other block takes, forwarded to `handler()`.
@@ -660,6 +667,17 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         resolveCwd === undefined ? undefined : await resolveCwd(input, ctx),
       );
 
+      // Resolved beside the working directory and for the same reason: the
+      // paths that confine a run are the paths it works in, and a sandbox
+      // resolved at build time cannot name them.
+      const sandboxSettings =
+        typeof sandbox === "function"
+          ? await (sandbox as (i: { prompt: string }, c: AgentCallbackContext) => unknown)(
+              { prompt: promptText },
+              ctx,
+            )
+          : sandbox;
+
       const resolved = await resolveClaudeAgent(ctx);
       const dispatchedAt = Date.now();
       const abortController = forwardSignalToController(ctx.signal);
@@ -681,7 +699,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // nothing for the other two.
         ...(settingSources !== undefined ? { settingSources } : {}),
         ...(env !== undefined ? { env } : {}),
-        ...(sandbox !== undefined ? { sandbox } : {}),
+        ...(sandboxSettings !== undefined ? { sandbox: sandboxSettings } : {}),
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(onToolApproval
           ? { canUseTool: buildCanUseTool(onToolApproval, ctx) }
