@@ -24,6 +24,7 @@ import { z } from "zod";
 import {
   createWorkspaceAgentCapability,
   containmentSandbox,
+  discoverMountsForTest,
   RELOCATION_TOOLS,
 } from "../../src/sdk/workspace";
 import { WORKSPACE_OUTCOMES } from "../../src/sdk/workspace-collections";
@@ -96,6 +97,57 @@ function flowWith(cap: unknown) {
     actions: { go: { block: gen } },
   })({ id: "default" });
 }
+
+describe("what auto-discovery will and will not mount", () => {
+  const mountsFor = (resources: Record<string, unknown>) =>
+    discoverMountsForTest({ resources } as never).map((m) => m.prefix);
+
+  const ordinary = {
+    pattern: "artifacts/**",
+    list: () => Promise.resolve([]),
+  };
+
+  it("mounts an ordinary collection", () => {
+    expect(mountsFor({ artifacts: ordinary })).toEqual(["artifacts"]);
+  });
+
+  it("leaves an external collection alone", () => {
+    // It answers the duck-type — `pattern` and `list` are both there — and is
+    // projectable through neither. Its `list` is paged, so hydrate's
+    // `for (const entry of await list())` throws before the run starts, and it
+    // carries no mutators for a writable mount to flush through.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const external = {
+        pattern: "tickets/**",
+        external: true,
+        list: () => Promise.resolve({ items: [], nextCursor: null }),
+      };
+      expect(mountsFor({ tickets: external })).toEqual([]);
+      expect(warn.mock.calls.map((c) => c[0]).join(" ")).toMatch(/tickets/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("leaves a parameterized collection alone", () => {
+    // Its prefix stops at the first parameter, so `data/[topic]/observations`
+    // would mount at `data` and come back addressed as `react/observations`.
+    // Core wants an object key for those patterns, so the flush's `getOptional`
+    // throws on the string and the run finishes having saved nothing.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const parameterized = {
+        pattern: "data/[topic]/observations",
+        list: () => Promise.resolve([]),
+      };
+      expect(mountsFor({ data: parameterized })).toEqual([]);
+      expect(warn.mock.calls.map((c) => c[0]).join(" ")).toMatch(/data/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
 
 describe("createWorkspaceAgentCapability", () => {
   it("exposes one sequencer that hydrates, runs, and flushes", () => {
@@ -293,6 +345,63 @@ describe("createWorkspaceAgentCapability", () => {
     expect(saved).toHaveLength(1);
 
     expect(callersHookRan).toBe(true);
+
+    discard(base);
+  });
+
+  it("fails the run when the collection write fails, rather than reporting success", async () => {
+    // The two rejections a flush can produce call for opposite handling. A
+    // workspace that cannot be READ decided nothing, so reporting it and
+    // carrying on loses nothing. A collection that cannot be WRITTEN means the
+    // run's work never left the directory — and the directory is about to be
+    // thrown away. Catching both alike hands back a successful run whose new
+    // file exists nowhere it will be read from again.
+    const base = scratch();
+    // A required field with no default. The projection sets `path`, `hash` and
+    // `updatedAt` because it maintains them; it cannot know about this one, and
+    // auto-discovery has no `entryState` to supply it, so `getOrCreate` rejects.
+    const strict = defineResourceCollection({
+      pattern: "artifacts/**",
+      scope: "session",
+      prefetchMode: "lazy",
+      stateSchema: z.object({
+        path: z.string().nullable().default(null),
+        hash: z.string().nullable().default(null),
+        updatedAt: z.string().nullable().default(null),
+        title: z.string(),
+      }),
+      client: { state: { read: true }, expose: ["path", "hash", "updatedAt", "title"] },
+    });
+
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          mkdirSync(join(base, "artifacts"), { recursive: true });
+          writeFileSync(join(base, "artifacts", "new.md"), "the run's work");
+          yield RESULT_OK;
+        },
+      }),
+      root: () => base,
+    });
+
+    const gen = generator({
+      name: "host",
+      model: "openai/gpt-5.4-mini",
+      prompt: "x",
+      uses: [cap as never],
+    });
+    const flow = defineFlow({
+      kind: "workspace-strict-flow",
+      resources: { artifacts: strict },
+      actions: { go: { block: gen } },
+    })({ id: "default" });
+
+    const result = (await testBlock(toolOf(cap) as never, {
+      input: { prompt: "go" },
+      flow: flow as never,
+    })) as { error?: Error | null };
+
+    expect(result.error).toBeTruthy();
 
     discard(base);
   });
