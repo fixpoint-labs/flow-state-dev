@@ -38,7 +38,7 @@ import type {
 import {
   createWorkspaceAgent,
   RELOCATION_TOOLS,
-  claudeCodeAgent,
+  type ClaudeCodeAgentOptions,
 } from "@flow-state-dev/claude-code/sdk";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
@@ -252,7 +252,7 @@ export interface ManagerOptions {
    */
   ownership?: Partial<OwnershipBounds>;
   /** Forwarded to the coding agent, so tests can script the SDK. */
-  agent?: Omit<Parameters<typeof claudeCodeAgent>[0], "detached" | "recordWork" | "cwd">;
+  agent?: Omit<ClaudeCodeAgentOptions, "detached" | "recordWork" | "cwd">;
   /**
    * Tell the coordinator session a question exists, so it learns without
    * polling. Defaults to a no-op.
