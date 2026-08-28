@@ -249,14 +249,18 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `x` | Stop the selected running row's request |
 | `t` or `Ctrl-T` | Expand or collapse the todo list on the RUN band |
 | `r` | Refresh now |
-| `/` | Type a slash command (any of the headless verbs) |
+| `/` | Type a slash command |
 | `/status [issue]` | Select that row (if it is on the board) and refresh |
+| `/find [text]` | Search the selected row's transcript |
+| `n` / `N` | Older / newer match while find is on |
 | `?` | Toggle help |
 | `q` | Quit |
 
-Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop` and `t list`; `x` or `Ctrl-C` stops that row's request. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
+Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop` and `t list`; `x` or `Ctrl-C` stops that row's request. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
 
 `/status PR-482` selects that row, if it is on the board, and refreshes. `/status` with no issue refreshes and leaves the selection. If the issue is not on the board, the notice is `no row for <issue>` and it refreshes. Headless `status [issue]` filters the printed board; the slash command does not.
+
+`/find src/foo.ts` searches immediately. `/find` with no query opens `❯ find `, prints `type to search the transcript`, and updates the query as you type; Enter keeps it, Esc clears. Bare `find` is the same command. A miss prints `no matches for <query>`. A new query starts on the newest match. The footer offers `n older · N newer · Esc clear`.
 
 ### Transcript
 
@@ -265,6 +269,8 @@ The TRANSCRIPT pane follows the selected row.
 When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` you just ran, and the row changes `status` reports.
 
 When the selected row has no `run.requestId`, the pane shows only those board and operator lines. Another row's coding stream is not shown until that row is selected.
+
+`/find` searches those lines case-insensitively. The pane is not filtered to hits; matches are highlighted in place and the current hit is pinned in the window. The heading reads `find · "src/foo.ts"  2/5` or `find · "src/foo.ts"  no matches`. Find does not hide the ASK, FAIL, or RUN band.
 
 Changing the selected row (`j`/`k`, arrows, click) jumps the transcript back to the tail.
 
@@ -351,6 +357,8 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
+
+`find` is TUI-only. `fsdev conductor find` prints `that verb is TUI-only — run \`fsdev conductor\` with no verb` and exits `1`. It does not print a hit list.
 
 On `answer`, the reply is the text you typed, including apostrophes (`don't change the path`); quote it (`answer Q1 "leave the symlink"`), and write a reply of `--json` as `answer <id> -- --json` or `/answer <id> -- --json` (`--json` on its own prints JSON).
 
@@ -486,6 +494,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Watching or aborting a running row does not start work or send an answer. Abort does not resume a session.
 - The transcript does not print reasoning or thinking text.
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
+- `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
 - Headless verbs (`status`, `watch`, and the rest) have no RUN band.
