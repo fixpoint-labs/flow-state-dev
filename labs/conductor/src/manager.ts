@@ -448,10 +448,10 @@ export function describeTenant(tenantId: string | undefined): string {
 }
 
 /** Read the typed payload off the worker input, refusing an unusable one loudly. */
-function taskPayload(input: { input?: unknown; taskId: string }): {
-  issue: string;
-  phase: string;
-} {
+function taskPayload(input: {
+  input?: unknown;
+  taskId: string;
+}): z.infer<typeof conductorTaskInputSchema> {
   const parsed = conductorTaskInputSchema.safeParse(input.input);
   if (!parsed.success) {
     throw new ConductorAttemptFailed(

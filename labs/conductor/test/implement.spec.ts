@@ -24,6 +24,7 @@ import {
   conductorTaskId,
   encodeSegment,
 } from "../src/workspace";
+import type { PromptRunContext } from "../src/manager";
 
 /** Temp trees this file made; removed after each test so none outlive the run. */
 const dirs: string[] = [];
@@ -576,18 +577,17 @@ describe("the done-condition — which pull requests count", () => {
 
 describe("the forced ask tells the run to keep the marker out of the commit", () => {
   /** The minimum a prompt builder needs; none of it is what these assert. */
-  const promptRun = (askMarkerPath: string) =>
-    ({
-      epic: EPIC,
-      issue: "FIX-1219",
-      phase: "implement",
-      attempt: 1,
-      workspacePath: "/tmp/does-not-matter",
-      branch: "conductor/FIX-1219/implement",
-      answers: [],
-      askMarkerPath,
-      ctx: {} as never,
-    }) as never;
+  const promptRun = (askMarkerPath: string): PromptRunContext => ({
+    epic: EPIC,
+    issue: "FIX-1219",
+    phase: "implement",
+    attempt: 1,
+    workspacePath: "/tmp/does-not-matter",
+    branch: "conductor/FIX-1219/implement",
+    answers: [],
+    askMarkerPath,
+    ctx: {} as never,
+  });
 
   it("instructs rather than reassures, because the rule can stop holding mid-run", async () => {
     // It used to say the file "is already gitignored, so it will not be
