@@ -12,6 +12,7 @@ import {
   selectedQuestion,
   selectedQuestions,
   selectedRow,
+  selectedRunningRequestId,
   scrollTranscript,
   type InputMode,
   type OperatorCommand,
@@ -161,6 +162,9 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
   }
 
   if (key.type === "ctrl" && key.value === "c") {
+    if (selectedRunningRequestId(state) !== undefined) {
+      return { state, effect: { type: "dispatch", command: { kind: "abort" } } };
+    }
     return { state, effect: { type: "quit" } };
   }
   if (key.type === "pageup" || (key.type === "ctrl" && key.value === "u")) {
@@ -226,6 +230,11 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
       return { state, effect: { type: "refresh" } };
     case "w":
       return { state, effect: { type: "dispatch", command: { kind: "wake" } } };
+    case "x":
+      if (selectedRunningRequestId(state) === undefined) {
+        return { state: { ...state, notice: "nothing running to stop" } };
+      }
+      return { state, effect: { type: "dispatch", command: { kind: "abort" } } };
     case "a": {
       const question = selectedQuestion(state);
       if (question === undefined) {

@@ -9,6 +9,7 @@
  */
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
+  abortConductorRequest,
   answerQuestion,
   readBoard,
   seedIssue,
@@ -108,6 +109,23 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           );
         }
         return answered.result === "declined" ? 1 : 0;
+      }
+      case "abort": {
+        const before = await readBoard(options.dispatch, options.command.issue, onEvent);
+        flushTranscript();
+        const ids = runningRequestIds(before.rows);
+        if (ids.length === 0) {
+          write("nothing running to stop");
+          return 1;
+        }
+        for (const id of ids) {
+          const result = await abortConductorRequest(options.dispatch.stores, id);
+          write(result === "signaled" ? `stop · ${id}` : `stop · ${id} was not running`);
+        }
+        const after = await readBoard(options.dispatch, options.command.issue, onEvent);
+        flushTranscript();
+        write(options.json ? JSON.stringify(after) : renderBoardPlain(after.rows, false));
+        return watchExitCode(after.rows);
       }
       case "watch":
         return await watchBoard(options, options.command.issue, onEvent, flushTranscript);

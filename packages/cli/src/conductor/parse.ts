@@ -17,6 +17,8 @@ const VERBS = new Set([
   "answer",
   "watch",
   "start",
+  "abort",
+  "stop",
   "help",
   "quit",
   "q",
@@ -86,6 +88,12 @@ export function parseCommand(line: string): ParseResult {
       return { ok: true, command: { kind: "status", ...(words[1] !== undefined ? { issue: words[1] } : {}) } };
     case "watch":
       return { ok: true, command: { kind: "watch", ...(words[1] !== undefined ? { issue: words[1] } : {}) } };
+    case "abort":
+    case "stop":
+      return {
+        ok: true,
+        command: { kind: "abort", ...(words[1] !== undefined ? { issue: words[1] } : {}) },
+      };
     case "seed":
     case "start": {
       const issue = words[1];
@@ -170,6 +178,7 @@ Headless (scripting):
   fsdev conductor seed <issue> [--phase implement]
   fsdev conductor start <issue>   seed, then open the TUI
   fsdev conductor wake
+  fsdev conductor abort [issue]   stop the running request on those rows
   fsdev conductor answer <question-id> <reply…>
   fsdev conductor watch [issue]   poll status until waiting or terminal
   fsdev conductor help
@@ -188,7 +197,8 @@ In the TUI:
 
   A row with an open question: just type. Enter sends, Esc cancels.
   A row that failed: the FAIL band holds the reason. w runs wake again.
-  A running row: the transcript tails that run's request stream.
+  A running row: the RUN band holds the checkout. x or Ctrl-C stops it.
+  The transcript tails that run's request stream.
 
 Flags: --json  --phase <name>  --user <id>  --session <id>  --config <path>
        --flow-dir  --dotenv  --quiet  --log-level`;

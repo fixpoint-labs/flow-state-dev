@@ -48,7 +48,7 @@ import { runConductorTui } from "../conductor/loop";
 export function registerConductorCommand(program: Command): void {
   program
     .command("conductor [args...]")
-    .description("Drive a conductor flow: live board, or headless seed/wake/status/answer")
+    .description("Drive a conductor flow: live board, or headless seed/wake/status/answer/abort")
     .option("-s, --session <id>", "Session id used for every wake (default: conductor-operator)")
     .option("-u, --user <id>", "Engine identity (default: cli-user)")
     .option("-m, --model <model>", "Override model for generator blocks run in this process")

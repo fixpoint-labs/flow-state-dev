@@ -44,6 +44,22 @@ describe("parseArgv", () => {
     });
   });
 
+  it("treats abort and stop as the same verb", () => {
+    expect(parseCommand("abort LIVE-1")).toEqual({
+      ok: true,
+      command: { kind: "abort", issue: "LIVE-1" },
+    });
+    expect(parseCommand("/stop")).toEqual({
+      ok: true,
+      command: { kind: "abort" },
+    });
+    expect(parseArgv(["abort", "LIVE-1"]).invocation).toEqual({
+      mode: "headless",
+      json: false,
+      command: { kind: "abort", issue: "LIVE-1" },
+    });
+  });
+
   it("puts Commander-owned --phase back on the line seed reads", () => {
     const parsed = parseArgv(forwardConductorArgv(["seed", "FIX-1"], { phase: "review" }));
     expect(parsed.invocation).toEqual({
@@ -59,5 +75,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toMatch(/--phase <name>/);
     expect(HELP_TEXT).toContain("FAIL band");
     expect(HELP_TEXT).toContain("request stream");
+    expect(HELP_TEXT).toContain("fsdev conductor abort");
+    expect(HELP_TEXT).toContain("x or Ctrl-C stops it");
   });
 });

@@ -173,6 +173,48 @@ describe("renderFrame", () => {
     expect(frame).toContain("wake-line-39");
   });
 
+  it("keeps a running checkout above the transcript even when the log is long", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child-1",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
+    const frame = renderFrame(
+      { ...emptyView("epic"), rows: [running], activity },
+      { cols: 80, rows: 24 },
+    );
+    const above = beforeTranscript(frame);
+    expect(above).toMatch(/^ RUN\s*$/m);
+    expect(above).toContain("conductor/LIVE-1--implement");
+    expect(above).toContain("/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement");
+    expect(above).toContain("req-live-1");
+    expect(above).not.toMatch(/^ ASK\s*$/m);
+    expect(above).not.toMatch(/^ FAIL\s*$/m);
+    expect(stripAnsi(frame)).toContain("1 running");
+    expect(stripAnsi(frame)).toContain("x stop");
+    expect(frame).toContain("wake-line-39");
+  });
+
   it("lets an open question win when the same row also failed", () => {
     const both: StatusRow = {
       ...failed,

@@ -196,6 +196,23 @@ export async function answerQuestion(
   return result.output;
 }
 
+/**
+ * Stop a running request the same way the HTTP abort route does: stamp
+ * `abortRequested` on the store, then fire the in-process controller if this
+ * process owns it. A child in another process picks the flag up on heartbeat.
+ */
+export async function abortConductorRequest(
+  stores: StoreRegistry,
+  requestId: string,
+): Promise<"signaled" | "not-running"> {
+  const written = await stores.request
+    .setFieldsIfStatus(requestId, { abortRequested: true }, ["in_progress"], Date.now())
+    .catch(() => undefined);
+  const inProcess = abortRequest(requestId);
+  if (written?.applied === true || inProcess) return "signaled";
+  return "not-running";
+}
+
 /** The four actions this surface needs. Missing one is a config error, not a retry. */
 export function assertConductorActions(flow: FlowInstance): void {
   const missing = CONDUCTOR_ACTIONS.filter((name) => flow.actions[name] === undefined);

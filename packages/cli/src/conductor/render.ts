@@ -26,9 +26,11 @@ import {
 import {
   failureReason,
   rowFailed,
+  rowRunning,
   selectedFailure,
   selectedQuestion,
   selectedRow,
+  selectedRunningRequestId,
   type StatusRow,
   type ViewState,
 } from "./types";
@@ -155,7 +157,9 @@ function renderTableRow(
 function renderReservedBand(state: ViewState, cols: number): string {
   const ask = renderAskBand(state, cols);
   if (ask !== "") return ask;
-  return renderFailBand(state, cols);
+  const fail = renderFailBand(state, cols);
+  if (fail !== "") return fail;
+  return renderRunBand(state, cols);
 }
 
 function renderAskBand(state: ViewState, cols: number): string {
@@ -193,6 +197,26 @@ function renderFailBand(state: ViewState, cols: number): string {
   ].join("\n");
 }
 
+function renderRunBand(state: ViewState, cols: number): string {
+  const row = selectedRow(state);
+  if (row === undefined || !rowRunning(row)) return "";
+  const inner = Math.max(20, cols - 8);
+  const branch = row.run?.branch;
+  const tree = row.run?.workspacePath;
+  const id = selectedRunningRequestId(state);
+  const body: string[] = [];
+  if (branch) body.push(...wrap(branch, inner).slice(0, 2));
+  if (tree) body.push(...wrap(tree, inner).slice(0, 2));
+  const hint = id !== undefined ? `${id}  ·  x stops` : "no request id yet";
+  return [
+    rule(cols, ACCENT),
+    ` ${paint(ACCENT + BOLD, "RUN")}`,
+    ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
+    ` ${dim(hint)}`,
+    rule(cols, ACCENT),
+  ].join("\n");
+}
+
 function renderMeta(state: ViewState, cols: number): string {
   const row = selectedRow(state);
   if (row === undefined) {
@@ -221,9 +245,16 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
       row.run.outcome !== null ? paint(outcomeColor(row.run.outcome), row.run.outcome) : dim("no outcome yet"),
     ];
     if (row.run.reason && !opts.omitReason) bits.push(truncate(row.run.reason, Math.max(20, cols - 28)));
-    if (row.run.workspacePath) bits.push(truncate(row.run.workspacePath, 24));
     if (row.run.costUsd !== null) bits.push(`$${row.run.costUsd.toFixed(3)}`);
     lines.push(` ${dim("run")}      ${bits.join(dim(" · "))}`);
+    if (row.run.branch) {
+      lines.push(` ${dim("branch")}   ${truncate(row.run.branch, cols - 12)}`);
+    }
+    if (row.run.workspacePath) {
+      for (const wrapped of wrap(row.run.workspacePath, cols - 12).slice(0, 2)) {
+        lines.push(` ${dim("tree")}     ${wrapped}`);
+      }
+    }
     if (row.run.finalMessage && !opts.omitReason) {
       for (const wrapped of wrap(row.run.finalMessage, cols - 4).slice(0, 2)) {
         lines.push(` ${dim("·")} ${wrapped}`);
@@ -291,11 +322,14 @@ function renderPrompt(state: ViewState, cols: number): string {
 function renderFooter(state: ViewState, cols: number): string {
   const q = selectedQuestion(state);
   const fail = selectedFailure(state);
+  const running = selectedRunningRequestId(state) !== undefined;
   const keys = q
     ? "click/j/k select  ·  a answer  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
     : fail !== undefined
       ? "click/j/k select  ·  w retry  ·  PgUp transcript  ·  s seed  ·  /  ·  ?  ·  q"
-      : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
+      : running
+        ? "click/j/k select  ·  x stop  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
+        : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
   return padLine(dim(` ${keys}`), cols);
 }
 

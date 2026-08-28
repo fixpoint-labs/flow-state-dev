@@ -20,6 +20,28 @@ function row(issue: string, questions = 0): StatusRow {
   };
 }
 
+function runningRow(issue: string): StatusRow {
+  return {
+    ...row(issue),
+    status: "in_progress",
+    run: {
+      attempt: 1,
+      taskId: `${issue}--implement`,
+      workspacePath: "/tmp/ws",
+      branch: `conductor/${issue}--implement`,
+      outcome: "running",
+      reason: null,
+      sessionId: "sess",
+      finalMessage: null,
+      usage: null,
+      costUsd: null,
+      childSessionId: "child-1",
+      requestId: `req-${issue}`,
+      updatedAt: 1,
+    },
+  };
+}
+
 function board(rows: StatusRow[]): ViewState {
   return { ...emptyView("epic"), rows };
 }
@@ -109,5 +131,24 @@ describe("applyKey", () => {
     const next = applyKey(state, { type: "char", value: "j" });
     expect(next.state.selected).toBe(0);
     expect(next.effect).toBeUndefined();
+  });
+
+  it("stops the selected running row with x or Ctrl-C, and quits when nothing is running", () => {
+    const running = board([runningRow("LIVE-1")]);
+    expect(applyKey(running, { type: "char", value: "x" }).effect).toEqual({
+      type: "dispatch",
+      command: { kind: "abort" },
+    });
+    expect(applyKey(running, { type: "ctrl", value: "c" }).effect).toEqual({
+      type: "dispatch",
+      command: { kind: "abort" },
+    });
+
+    const idle = board([row("FIX-1", 1)]);
+    expect(applyKey(idle, { type: "char", value: "x" })).toMatchObject({
+      state: { notice: "nothing running to stop" },
+      effect: undefined,
+    });
+    expect(applyKey(idle, { type: "ctrl", value: "c" }).effect).toEqual({ type: "quit" });
   });
 });

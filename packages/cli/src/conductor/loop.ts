@@ -7,12 +7,12 @@
  */
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
+  abortConductorRequest,
   answerInput,
   seedInput,
   startConductorAction,
   type ConductorDispatch,
 } from "./dispatch";
-import type { AnswerOutput, SeedOutput, StatusOutput } from "./types";
 import { applyKey, decodeKeys, rowAfterRefresh, type Key } from "./keys";
 import { renderFrame } from "./render";
 import {
@@ -26,7 +26,10 @@ import {
   emptyView,
   pushActivity,
   runningRequestIds,
+  selectedRunningRequestId,
+  type AnswerOutput,
   type OperatorCommand,
+  type SeedOutput,
   type StatusOutput,
   type ViewState,
 } from "./types";
@@ -60,7 +63,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
 
   if (!isTTY) {
     output.write(
-      "fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch).\n",
+      "fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch, abort).\n",
     );
     return 1;
   }
@@ -150,6 +153,34 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
               : `answer ${answered.output.result}${answered.output.drained ? " · drain ran" : ""}`;
           state = pushActivity(state, label, now());
           state = { ...state, notice: answered.output.result === "declined" ? answered.output.reason : null };
+          await refresh();
+          break;
+        }
+        case "abort": {
+          const ids =
+            command.issue !== undefined
+              ? runningRequestIds(
+                  state.rows.filter(
+                    (row) =>
+                      row.issue?.toLowerCase() === command.issue!.toLowerCase() ||
+                      row.taskId === command.issue,
+                  ),
+                )
+              : selectedRunningRequestId(state) !== undefined
+                ? [selectedRunningRequestId(state)!]
+                : [];
+          if (ids.length === 0) {
+            state = { ...state, notice: "nothing running to stop" };
+            break;
+          }
+          for (const id of ids) {
+            const result = await abortConductorRequest(options.dispatch.stores, id);
+            state = pushActivity(
+              state,
+              result === "signaled" ? `stop · ${id}` : `stop · ${id} was not running`,
+              now(),
+            );
+          }
           await refresh();
           break;
         }

@@ -209,4 +209,61 @@ describe("fsdev conductor — TUI over the same actions", () => {
     tty.input.write("q");
     await expect(running).resolves.toBe(0);
   });
+
+  it("shows the RUN band and stops the selected request with x", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    const ts = Date.now();
+    await stores.request.set(
+      "req-live-1",
+      {
+        id: "req-live-1",
+        flowKind: "conductor",
+        actionName: "wake",
+        userId: "cli-user",
+        source: "http",
+        status: "in_progress",
+        startedAtMs: ts,
+        state: {},
+        version: 0,
+        createdAt: ts,
+        updatedAt: ts,
+      },
+      "any",
+    );
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 40,
+    });
+
+    await waitFor(() => tty.text, "LIVE-1");
+    expect(tty.text).toMatch(/\bRUN\b/);
+    expect(tty.text).toContain("conductor/LIVE-1--implement");
+    expect(tty.text).toContain("/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement");
+    expect(tty.text).toContain("x stop");
+
+    tty.input.write("x");
+    await waitFor(() => tty.text, "stop · req-live-1");
+    await expect(stores.request.isAbortRequested("req-live-1")).resolves.toBe(true);
+
+    tty.input.write("q");
+    await expect(running).resolves.toBe(0);
+  });
 });

@@ -107,6 +107,8 @@ const wake = handler({
             ...emptyRun(),
             outcome: "running" as const,
             requestId: "req-live-1",
+            branch: "conductor/LIVE-1--implement",
+            workspacePath: "/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement",
           },
           questions: [],
         };

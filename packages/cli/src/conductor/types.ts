@@ -77,6 +77,7 @@ export type OperatorCommand =
   | { kind: "answer"; question: string; text: string }
   | { kind: "watch"; issue?: string }
   | { kind: "start"; issue: string; phase?: string }
+  | { kind: "abort"; issue?: string }
   | { kind: "help" }
   | { kind: "quit" }
   | { kind: "refresh" };
@@ -212,11 +213,27 @@ export function pageTranscript(state: ViewState, direction: -1 | 1): ViewState {
 export function runningRequestIds(rows: StatusRow[]): string[] {
   const ids: string[] = [];
   for (const row of rows) {
-    const id = row.run?.requestId;
-    if (id === null || id === undefined || id === "") continue;
-    if (row.run?.outcome === "running" || row.status === "in_progress") {
-      ids.push(id);
-    }
+    const id = rowRunningRequestId(row);
+    if (id !== undefined) ids.push(id);
   }
   return ids;
+}
+
+/** A row whose coding run is still in flight. */
+export function rowRunning(row: StatusRow): boolean {
+  return row.run?.outcome === "running" || row.status === "in_progress";
+}
+
+/** The child's request id when this row is still in flight, otherwise absent. */
+export function rowRunningRequestId(row: StatusRow): string | undefined {
+  const id = row.run?.requestId;
+  if (id === null || id === undefined || id === "") return undefined;
+  if (!rowRunning(row)) return undefined;
+  return id;
+}
+
+/** The selected row's in-flight request, when there is one. */
+export function selectedRunningRequestId(state: ViewState): string | undefined {
+  const row = selectedRow(state);
+  return row === undefined ? undefined : rowRunningRequestId(row);
 }

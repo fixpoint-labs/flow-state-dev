@@ -236,4 +236,72 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(code).toBe(3);
     expect(err.text).toContain("coding the checkout");
   });
+
+  it("aborts the running request id status put on the row", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+
+    const missing = capture();
+    const missingCode = await executeConductorCommand(["abort", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: missing.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(missing.text).toContain("stop · req-live-1 was not running");
+    expect(missingCode).toBe(3);
+
+    const ts = Date.now();
+    await stores.request.set(
+      "req-live-1",
+      {
+        id: "req-live-1",
+        flowKind: "conductor",
+        actionName: "wake",
+        userId: "cli-user",
+        source: "http",
+        status: "in_progress",
+        startedAtMs: ts,
+        state: {},
+        version: 0,
+        createdAt: ts,
+        updatedAt: ts,
+      },
+      "any",
+    );
+    const stopped = capture();
+    const stopCode = await executeConductorCommand(["stop", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: stopped.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(stopped.text).toContain("stop · req-live-1");
+    expect(stopped.text).not.toContain("was not running");
+    expect(stopCode).toBe(3);
+    await expect(stores.request.isAbortRequested("req-live-1")).resolves.toBe(true);
+  });
+
+  it("prints nothing running when abort finds no in-flight row", async () => {
+    const empty = capture();
+    const code = await executeConductorCommand(["abort"], {
+      cwd: fixtureDir,
+      stores: createInMemoryStores(),
+      output: empty.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(code).toBe(1);
+    expect(empty.text).toContain("nothing running to stop");
+  });
 });
