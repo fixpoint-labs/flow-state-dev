@@ -11,6 +11,7 @@ export {
   SDK_SESSION_ID_KEY,
   SDK_AGENT_RUNS_KEY,
   type ClaudeCodeAgentOptions,
+  type SandboxSettings,
 } from "./agent";
 export { createClaudeCodeAgentCapability } from "./capability";
 export {

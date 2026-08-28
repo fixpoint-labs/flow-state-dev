@@ -163,24 +163,36 @@ is recorded at the path it reached.
 Four more options travel alongside `cwd`:
 
 ```ts
-// Resolved ONCE. `checkoutForThisRun()` allocates a directory, so calling it
-// again in `sandbox` would hand the run one directory and name a different
-// one in its settings — with nothing throwing.
-const checkout = checkoutForThisRun();
+// `checkoutForThisRun()` allocates a directory, so calling it in both resolvers
+// would hand the run one directory and name a different one in its settings,
+// with nothing throwing. Calling it once at build time is the other way to get
+// it wrong: one flow build serves many runs, and they would all share the
+// directory. So: once per invocation, keyed on the run's own context, which
+// both resolvers are handed.
+const checkouts = new WeakMap<object, Promise<string>>();
+const checkoutFor = (ctx: object) => {
+  const existing = checkouts.get(ctx);
+  if (existing) return existing;
+  const fresh = checkoutForThisRun();
+  checkouts.set(ctx, fresh);
+  return fresh;
+};
 
 claudeCodeAgent({
-  cwd: () => checkout,
+  cwd: (_input, ctx) => checkoutFor(ctx),
   // Which filesystem settings the run loads. Omitted, it loads all of them,
   // exactly as the CLI does.
   settingSources: ["user"],
   // The run's environment. This REPLACES the process environment rather than
   // adding to it — spread `process.env` when you mean to add.
   env: { ...process.env, CI: "1" },
-  // The SDK's sandbox settings. A value or a resolver — the settings that
-  // confine a run name the directory it works in, and that is per run.
-  sandbox: () => ({
+  // The SDK's sandbox settings (`SandboxSettings`, an open object — the Agent
+  // SDK is an optional peer here, so its own type is not imported). A value or
+  // a resolver: the settings that confine a run name the directory it works
+  // in, and that is per run.
+  sandbox: async (_input, ctx) => ({
     enabled: true,
-    filesystem: { allowWrite: [checkout] },
+    filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),
   // Capabilities installed on the block, same slot any other block takes.
   uses: [myCapability],
