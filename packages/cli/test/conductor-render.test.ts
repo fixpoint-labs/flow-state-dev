@@ -165,8 +165,9 @@ describe("renderFrame", () => {
     );
     const above = beforeTranscript(frame);
     expect(above).toContain("Not logged in");
-    expect(above).toMatch(/\bFAIL\b/);
-    expect(above).not.toMatch(/\bASK\b/);
+    expect(above).toMatch(/^ FAIL\s*$/m);
+    expect(above).not.toMatch(/^ ASK\s*$/m);
+    expect(above.match(/Not logged in/g)?.length).toBe(1);
     expect(stripAnsi(frame)).toContain("1 failed");
     expect(stripAnsi(frame)).toContain("w retry");
     expect(frame).toContain("wake-line-39");
@@ -186,9 +187,9 @@ describe("renderFrame", () => {
     };
     const frame = renderFrame({ ...emptyView("epic"), rows: [both] }, { cols: 80, rows: 24 });
     const above = beforeTranscript(frame);
-    expect(above).toMatch(/\bASK\b/);
+    expect(above).toMatch(/^ ASK\s*$/m);
     expect(above).toContain("Which path?");
-    expect(above).not.toMatch(/\bFAIL\b/);
+    expect(above).not.toMatch(/^ FAIL\s*$/m);
     expect(selectedFailure({ ...emptyView("epic"), rows: [both] })).toBeUndefined();
   });
 });

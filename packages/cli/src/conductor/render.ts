@@ -198,8 +198,11 @@ function renderMeta(state: ViewState, cols: number): string {
   if (row === undefined) {
     return `${rule(cols, INK_3)}\n${dim("  select a row to inspect it")}`;
   }
-  if (selectedQuestion(state) !== undefined || selectedFailure(state) !== undefined) {
+  if (selectedQuestion(state) !== undefined) {
     return renderRunBits(row, cols);
+  }
+  if (selectedFailure(state) !== undefined) {
+    return renderRunBits(row, cols, { omitReason: true });
   }
   const title = `${row.issue ?? "?"} / ${row.phase ?? "?"}`;
   const lines = [
@@ -211,23 +214,23 @@ function renderMeta(state: ViewState, cols: number): string {
   return run === "" ? lines.join("\n") : `${lines.join("\n")}\n${run}`;
 }
 
-function renderRunBits(row: StatusRow, cols: number): string {
+function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolean } = {}): string {
   const lines: string[] = [];
   if (row.run !== null) {
     const bits = [
       row.run.outcome !== null ? paint(outcomeColor(row.run.outcome), row.run.outcome) : dim("no outcome yet"),
     ];
-    if (row.run.reason) bits.push(truncate(row.run.reason, Math.max(20, cols - 28)));
+    if (row.run.reason && !opts.omitReason) bits.push(truncate(row.run.reason, Math.max(20, cols - 28)));
     if (row.run.workspacePath) bits.push(truncate(row.run.workspacePath, 24));
     if (row.run.costUsd !== null) bits.push(`$${row.run.costUsd.toFixed(3)}`);
     lines.push(` ${dim("run")}      ${bits.join(dim(" · "))}`);
-    if (row.run.finalMessage) {
+    if (row.run.finalMessage && !opts.omitReason) {
       for (const wrapped of wrap(row.run.finalMessage, cols - 4).slice(0, 2)) {
         lines.push(` ${dim("·")} ${wrapped}`);
       }
     }
   }
-  if (row.feedback) {
+  if (row.feedback && !opts.omitReason) {
     lines.push(` ${dim("feedback")} ${truncate(row.feedback, cols - 12)}`);
   }
   return lines.join("\n");
