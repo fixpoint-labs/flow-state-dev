@@ -361,6 +361,86 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(fullErr.text).not.toContain("tool · Write src/hello.js");
   });
 
+  it("full-board status prints a running row's current action, not a settled journal", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["seed", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    stores.request.persistEvents("req-live-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-live-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "t1",
+          type: "tool_output",
+          blockName: "Write",
+          status: "completed",
+          toolCall: {
+            callId: "c-live",
+            name: "Write",
+            arguments: JSON.stringify({
+              file_path: "src/live.ts",
+              contents: "export const live = 1;\n",
+            }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+    ]);
+    stores.request.persistEvents("req-fail-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-fail-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "t-fail",
+          type: "tool_output",
+          blockName: "Write",
+          status: "completed",
+          toolCall: {
+            callId: "c-fail",
+            name: "Write",
+            arguments: JSON.stringify({
+              file_path: "src/hello.js",
+              contents: "export const hello = 1;\n",
+            }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+    ]);
+    const full = capture();
+    await executeConductorCommand(["status"], {
+      cwd: fixtureDir,
+      stores,
+      output: full.output as unknown as NodeJS.WriteStream,
+      stderr: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(full.text).toContain("Write src/live.ts");
+    expect(full.text).not.toContain("src/hello.js");
+  });
+
   it("watch of the full board does not replay a settled journal it never tailed", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "FAIL-1"], {

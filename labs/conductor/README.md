@@ -122,9 +122,10 @@ rows' statuses. Answering a question the job is not actually waiting on does not
 `fsdev conductor` is the operator surface: a live board in a TTY, or the same verbs
 headless for a script. There is no way to redirect a run mid-flight or send it on a side
 errand. You can stop a live run (`abort` / `x` in the board), and you can answer
-what it asked. A named `status ISSUE` or `watch ISSUE` prints that attempt's last
-tool, files, hunk, and current todo on stdout. A running row also
-prints how long since it last wrote (`8s`, `3m`).
+what it asked. A full-board `status` prints each running row's current action
+(the same ASK column the TUI uses). A named `status ISSUE` or `watch ISSUE`
+prints that attempt's last tool, files, hunk, and current todo on stdout. A
+running row also prints how long since it last wrote (`8s`, `3m`).
 
 Nothing bounds how long a question may stay open. A job waiting on a person is deliberately
 outside the lease's governance, so a question nobody answers holds its row indefinitely.

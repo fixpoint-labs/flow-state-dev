@@ -822,7 +822,7 @@ export function renderBoardPlain(
         pad(row.status, 18) +
         pad(String(row.attempts), 8) +
         pad(row.run?.outcome ?? "—", 12) +
-        (row.questions[0] !== undefined ? truncate(row.questions[0].text, 16) : "·"),
+        headlessAsk(row, views),
     );
     lines.push(...renderHeadlessAttempt(row, viewForRow(row, views), now));
     for (const q of row.questions) {
@@ -841,6 +841,24 @@ export function renderBoardPlain(
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * Same rule as the TUI ASK column: the question wins; a running row
+ * shows its current action when we have that attempt's journal.
+ */
+function headlessAsk(
+  row: StatusRow,
+  views?: Readonly<Record<string, ViewState>>,
+): string {
+  const asked = row.questions[0]?.text;
+  if (asked !== undefined) return truncate(asked, 16);
+  if (!rowRunning(row)) return "·";
+  const view = viewForRow(row, views);
+  if (view === undefined) return "·";
+  const doing = rowNow(view, row);
+  if (doing === undefined || doing === "") return "·";
+  return shortenToolLine(doing, 16);
+}
+
 function viewForRow(
   row: StatusRow,
   views?: Readonly<Record<string, ViewState>>,
@@ -852,8 +870,8 @@ function viewForRow(
 
 /**
  * Last tool, files, hunk, peek/tail, and current todo — raw paths, no
- * OSC-8. Named `status` / `watch` pass a journal view; a full-board
- * print does not.
+ * OSC-8. A named issue always passes a journal view. A full-board
+ * print passes one only for running rows.
  */
 export function renderHeadlessStrip(state: ViewState): string[] {
   const extra: string[] = [];

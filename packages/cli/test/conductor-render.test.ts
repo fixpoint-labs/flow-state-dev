@@ -1621,4 +1621,54 @@ describe("renderBoardPlain / watchExitCode", () => {
     expect(watch).toContain("8s");
     expect(renderBoardPlain([failed], false, undefined, now)).not.toContain("8s");
   });
+
+  it("puts a running row's current action on ASK when a view is passed", () => {
+    // Same rule as the TUI table: a question wins; otherwise the live
+    // child's last tool. Without a journal the column stays `·` — that
+    // is a full-board print of a settled history, not a missing verb.
+    const now = 1_700_000_000_000;
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: now,
+      },
+      questions: [],
+    };
+    const view = {
+      ...emptyView(""),
+      rows: [running],
+      activity: [{ at: now, text: "tool · Write src/a.ts", requestId: "req-live-1" }],
+    };
+    const table = renderBoardPlain([running], false, { "req-live-1": view }, now).split("\n")[1]!;
+    expect(table).toContain("Write src/a.ts");
+    expect(renderBoardPlain([running], false, undefined, now).split("\n")[1]).toMatch(/·\s*$/);
+
+    const asked: StatusRow = {
+      ...running,
+      questions: [{ question: "LIVE-1/implement/1/q", text: "Which path?" }],
+    };
+    expect(renderBoardPlain([asked], false, { "req-live-1": view }, now).split("\n")[1]).toContain(
+      "Which path?",
+    );
+    expect(renderBoardPlain([asked], false, { "req-live-1": view }, now).split("\n")[1]).not.toContain(
+      "Write src/a.ts",
+    );
+  });
 });

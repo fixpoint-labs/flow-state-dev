@@ -719,7 +719,7 @@ export function rowRunningRequestId(row: StatusRow): string | undefined {
 /**
  * Last-attempt request ids on rows that are no longer running.
  * `status ISSUE` and a `watch` that just exited catch-up these
- * journals; a full-board status does not replay every history.
+ * journals; a full-board status loads running rows only.
  */
 export function settledRequestIds(rows: readonly StatusRow[]): string[] {
   const ids: string[] = [];

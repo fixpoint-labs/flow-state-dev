@@ -22,6 +22,7 @@ import { createStreamTranscript, viewFromEvents } from "./transcript";
 import { createChildFollow } from "./follow";
 import {
   rowFailed,
+  rowRunning,
   runningRequestIds,
   settledRequestIds,
   type OperatorCommand,
@@ -78,7 +79,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           await follow.drain(settledRequestIds(status.rows));
         }
         flushTranscript();
-        const views = await namedAttemptViews(options, status.rows, options.command.issue);
+        const views = await attemptViews(options, status.rows, options.command.issue);
         write(renderBoardPlain(status.rows, options.json, views));
         return watchExitCode(status.rows);
       }
@@ -181,7 +182,7 @@ async function watchBoard(
     const status = await readBoard(options.dispatch, issue, onEvent);
     follow.sync(runningRequestIds(status.rows));
     flush();
-    const views = await namedAttemptViews(options, status.rows, issue);
+    const views = await attemptViews(options, status.rows, issue);
     const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows, views);
     if (rendered !== last) {
       out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
@@ -196,7 +197,7 @@ async function watchBoard(
         await follow.drain(ids);
         flush();
       }
-      const exitViews = await namedAttemptViews(options, status.rows, issue);
+      const exitViews = await attemptViews(options, status.rows, issue);
       if (
         !options.json &&
         (status.rows.some((r) => r.questions.length > 0) || status.rows.some(rowFailed))
@@ -211,19 +212,24 @@ async function watchBoard(
 }
 
 /**
- * Fold the named issue's last-attempt journal so stdout can print last
- * tool, files, hunk, and todo. A full-board verb leaves this empty.
+ * Fold journals so stdout can print what a row is doing.
+ *
+ * A named issue loads that attempt — last tool, files, hunk, todo —
+ * whether it is still running or already settled. A full-board verb
+ * loads **running** rows only: current action, not every settled
+ * history.
  */
-async function namedAttemptViews(
+async function attemptViews(
   options: HeadlessOptions,
   rows: readonly StatusRow[],
   issue: string | undefined,
 ): Promise<Record<string, ViewState> | undefined> {
-  if (options.json || issue === undefined) return undefined;
+  if (options.json) return undefined;
   const views: Record<string, ViewState> = {};
   for (const row of rows) {
     const id = row.run?.requestId;
     if (id === null || id === undefined || id === "") continue;
+    if (issue === undefined && !rowRunning(row)) continue;
     const events = await options.dispatch.stores.request.getEvents(id);
     views[id] = viewFromEvents(events, row);
   }
