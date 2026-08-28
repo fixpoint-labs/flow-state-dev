@@ -3,9 +3,9 @@
  *
  * `watch` re-runs `status` — it does not invent a second read. Exit codes:
  *   0  every named row is completed
- *   1  errored / cancelled / empty / a call failed
+ *   1  empty / errored / cancelled / last attempt failed / a call failed
  *   2  at least one open question
- *   3  still running or pending, no question yet
+ *   3  still running or pending, no question and no failed attempt
  */
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
@@ -18,7 +18,7 @@ import {
 import { HELP_TEXT } from "./parse";
 import { renderBoardPlain, watchExitCode } from "./render";
 import { createStreamTranscript } from "./transcript";
-import type { OperatorCommand, StatusRow } from "./types";
+import { failureReason, rowFailed, type OperatorCommand, type StatusRow } from "./types";
 
 export interface HeadlessOptions {
   dispatch: ConductorDispatch;
@@ -152,7 +152,10 @@ async function watchBoard(
     }
     const code = watchExitCode(status.rows);
     if (code !== 3) {
-      if (!options.json && status.rows.some((r) => r.questions.length > 0)) {
+      if (
+        !options.json &&
+        (status.rows.some((r) => r.questions.length > 0) || status.rows.some(rowFailed))
+      ) {
         out.write(renderBoardPlain(status.rows, false));
       }
       return code;
@@ -168,7 +171,9 @@ function renderWatchLine(rows: StatusRow[]): string {
     .map((row) => {
       const ask = row.questions.length > 0 ? ` ask=${row.questions.length}` : "";
       const outcome = row.run?.outcome != null ? ` ${row.run.outcome}` : "";
-      return `${row.issue ?? row.taskId} ${row.status}${outcome}${ask}`;
+      const fail =
+        rowFailed(row) && row.questions.length === 0 ? ` · ${failureReason(row)}` : "";
+      return `${row.issue ?? row.taskId} ${row.status}${outcome}${ask}${fail}`;
     })
     .join(" · ");
 }

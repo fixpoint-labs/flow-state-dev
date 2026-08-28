@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderBoardPlain, renderFrame, watchExitCode } from "../src/conductor/render";
-import { emptyView, type StatusRow } from "../src/conductor/types";
+import { emptyView, selectedFailure, type StatusRow } from "../src/conductor/types";
 import { stripAnsi } from "../src/conductor/theme";
 
 function beforeTranscript(frame: string): string {
@@ -39,6 +39,31 @@ const waiting: StatusRow = {
       askedAt: 1,
     },
   ],
+};
+
+const failed: StatusRow = {
+  taskId: "FAIL-1--implement",
+  issue: "FAIL-1",
+  phase: "implement",
+  status: "pending",
+  attempts: 2,
+  feedback: "Not logged in · Please run /login",
+  run: {
+    attempt: 2,
+    taskId: "FAIL-1--implement",
+    workspacePath: "/tmp/ws",
+    branch: "conductor/FAIL-1--implement",
+    outcome: "failed",
+    reason: "Not logged in · Please run /login",
+    sessionId: "sess",
+    finalMessage: null,
+    usage: null,
+    costUsd: null,
+    childSessionId: null,
+    requestId: null,
+    updatedAt: 1,
+  },
+  questions: [],
 };
 
 describe("renderFrame", () => {
@@ -131,6 +156,41 @@ describe("renderFrame", () => {
     const workingHits = working.split("wake-line-").length - 1;
     expect(workingHits).toBeGreaterThan(idleHits);
   });
+
+  it("keeps a failed attempt above the transcript even when the log is long", () => {
+    const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
+    const frame = renderFrame(
+      { ...emptyView("epic"), rows: [failed], activity },
+      { cols: 80, rows: 24 },
+    );
+    const above = beforeTranscript(frame);
+    expect(above).toContain("Not logged in");
+    expect(above).toMatch(/\bFAIL\b/);
+    expect(above).not.toMatch(/\bASK\b/);
+    expect(stripAnsi(frame)).toContain("1 failed");
+    expect(stripAnsi(frame)).toContain("w retry");
+    expect(frame).toContain("wake-line-39");
+  });
+
+  it("lets an open question win when the same row also failed", () => {
+    const both: StatusRow = {
+      ...failed,
+      questions: [
+        {
+          question: "FAIL-1/implement/1/q",
+          text: "Which path?",
+          attempt: 1,
+          askedAt: 1,
+        },
+      ],
+    };
+    const frame = renderFrame({ ...emptyView("epic"), rows: [both] }, { cols: 80, rows: 24 });
+    const above = beforeTranscript(frame);
+    expect(above).toMatch(/\bASK\b/);
+    expect(above).toContain("Which path?");
+    expect(above).not.toMatch(/\bFAIL\b/);
+    expect(selectedFailure({ ...emptyView("epic"), rows: [both] })).toBeUndefined();
+  });
 });
 
 describe("renderBoardPlain / watchExitCode", () => {
@@ -145,5 +205,14 @@ describe("renderBoardPlain / watchExitCode", () => {
     expect(watchExitCode([waiting])).toBe(2);
     expect(watchExitCode([{ ...waiting, status: "completed", questions: [] }])).toBe(0);
     expect(watchExitCode([])).toBe(1);
+  });
+
+  it("uses 1 when the last attempt failed, even if the row is still pending", () => {
+    expect(watchExitCode([failed])).toBe(1);
+    expect(watchExitCode([{ ...failed, status: "errored" }])).toBe(1);
+    const text = renderBoardPlain([failed], false);
+    expect(text).toContain("FAIL-1");
+    expect(text).toContain("! failed");
+    expect(text).toContain("Not logged in");
   });
 });

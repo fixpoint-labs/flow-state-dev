@@ -98,6 +98,20 @@ const wake = handler({
   execute: async (_input, ctx) => {
     const rows = ((ctx.session.state as Board).rows ?? []).map((row) => {
       if (row.status !== "pending") return row;
+      if (row.issue === "FAIL-1") {
+        return {
+          ...row,
+          status: "pending",
+          attempts: row.attempts + 1,
+          feedback: "Not logged in · Please run /login",
+          run: {
+            ...emptyRun(),
+            outcome: "failed" as const,
+            reason: "Not logged in · Please run /login",
+          },
+          questions: [],
+        };
+      }
       return {
         ...row,
         status: "in_progress",

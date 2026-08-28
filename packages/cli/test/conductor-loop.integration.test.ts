@@ -128,4 +128,38 @@ describe("fsdev conductor — TUI over the same actions", () => {
     tty.input.write("q");
     await expect(running).resolves.toBe(0);
   });
+
+  it("keeps a failed attempt in a FAIL band the transcript cannot bury", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+
+    await waitFor(() => tty.text, "Not logged in");
+    expect(tty.text).toMatch(/\bFAIL\b/);
+    expect(tty.text).toContain("1 failed");
+    expect(tty.text).toContain("w retry");
+
+    tty.input.write("q");
+    await expect(running).resolves.toBe(0);
+  });
 });

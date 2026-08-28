@@ -148,6 +148,33 @@ export function selectedQuestion(state: ViewState): StatusQuestion | undefined {
   return questions[state.questionIndex] ?? questions[0];
 }
 
+/**
+ * A row whose last attempt failed. `pending` plus `run.outcome === "failed"`
+ * is the usual daily shape — the row is still retryable, the attempt is not.
+ */
+export function rowFailed(row: StatusRow): boolean {
+  if (row.status === "errored" || row.status === "cancelled") return true;
+  return row.run?.outcome === "failed";
+}
+
+/** Why a failed row failed. Prefer the run reason, then feedback, then the last message. */
+export function failureReason(row: StatusRow): string {
+  const reason = row.run?.reason ?? row.feedback ?? row.run?.finalMessage;
+  if (reason !== null && reason !== undefined && reason !== "") return reason;
+  return row.status === "cancelled" ? "cancelled" : "failed";
+}
+
+/**
+ * The selected row's failure, when there is one and no open question.
+ * An open question wins — answer it before retrying.
+ */
+export function selectedFailure(state: ViewState): { reason: string } | undefined {
+  if (selectedQuestion(state) !== undefined) return undefined;
+  const row = selectedRow(state);
+  if (row === undefined || !rowFailed(row)) return undefined;
+  return { reason: failureReason(row) };
+}
+
 export function clampSelected(state: ViewState): ViewState {
   if (state.rows.length === 0) {
     return { ...state, selected: 0, questionIndex: 0 };

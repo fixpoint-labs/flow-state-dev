@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { forwardConductorArgv } from "../src/commands/conductor";
-import { parseArgv, parseCommand } from "../src/conductor/parse";
+import { HELP_TEXT, parseArgv, parseCommand } from "../src/conductor/parse";
 
 describe("parseCommand", () => {
   it("parses slash and bare verbs as the same command", () => {
@@ -51,5 +51,12 @@ describe("parseArgv", () => {
       json: false,
       command: { kind: "seed", issue: "FIX-1", phase: "review" },
     });
+  });
+});
+
+describe("HELP_TEXT", () => {
+  it("names --phase with the other flags", () => {
+    expect(HELP_TEXT).toMatch(/--phase <name>/);
+    expect(HELP_TEXT).toContain("FAIL band");
   });
 });

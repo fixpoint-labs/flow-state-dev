@@ -11,6 +11,7 @@ import {
   INK,
   INK_3,
   MAUVE,
+  RUST,
   SELECT_BG,
   TEAL,
   dim,
@@ -23,6 +24,9 @@ import {
   wrap,
 } from "./theme";
 import {
+  failureReason,
+  rowFailed,
+  selectedFailure,
   selectedQuestion,
   selectedRow,
   type StatusRow,
@@ -46,14 +50,14 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
 
   const header = renderHeader(state, cols);
   const table = renderTable(state, cols);
-  const ask = renderAskBand(state, cols);
+  const band = renderReservedBand(state, cols);
   const meta = state.busy ? "" : renderMeta(state, cols);
   const prompt = renderPrompt(state, cols);
   const footer = renderFooter(state, cols);
   const reserved =
     lineCount(header) +
     lineCount(table) +
-    lineCount(ask) +
+    lineCount(band) +
     lineCount(meta) +
     lineCount(prompt) +
     lineCount(footer);
@@ -61,7 +65,7 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
   const activity = renderActivity(state, cols, leftover);
 
   return fit(
-    [header, table, ask, meta, activity, prompt, footer].filter((s) => s !== "").join("\n"),
+    [header, table, band, meta, activity, prompt, footer].filter((s) => s !== "").join("\n"),
     cols,
     rows,
   );
@@ -70,6 +74,7 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
 function renderHeader(state: ViewState, cols: number): string {
   const waiting = state.rows.filter((r) => r.questions.length > 0).length;
   const live = state.rows.filter((r) => r.status === "in_progress").length;
+  const failed = state.rows.filter(rowFailed).length;
   const parts = [
     paint(BOLD + ACCENT, " FSDEV CONDUCTOR "),
     dim("·"),
@@ -79,6 +84,7 @@ function renderHeader(state: ViewState, cols: number): string {
   ];
   if (live > 0) parts.push(dim("·"), paint(ACCENT, ` ${live} running `));
   if (waiting > 0) parts.push(dim("·"), paint(MAUVE, ` ${waiting} waiting `));
+  if (failed > 0) parts.push(dim("·"), paint(RUST, ` ${failed} failed `));
   if (state.busy) parts.push(dim("·"), paint(GOLD, " working "));
   if (state.lastRefreshAt !== null) {
     parts.push(dim("·"), dim(` ${formatClock(state.lastRefreshAt)} `));
@@ -142,10 +148,16 @@ function renderTableRow(
 }
 
 /**
- * Reserved band for the question a person can act on. Counted in `reserved`
- * so a long transcript cannot cap it away — the last recording's test passed
- * on transcript text alone while the card was easy to miss.
+ * Reserved band for the thing a person can act on. Counted in `reserved`
+ * so a long transcript cannot cap it away. An open question wins; a failed
+ * attempt is next.
  */
+function renderReservedBand(state: ViewState, cols: number): string {
+  const ask = renderAskBand(state, cols);
+  if (ask !== "") return ask;
+  return renderFailBand(state, cols);
+}
+
 function renderAskBand(state: ViewState, cols: number): string {
   const question = selectedQuestion(state);
   if (question === undefined) return "";
@@ -165,12 +177,28 @@ function renderAskBand(state: ViewState, cols: number): string {
   ].join("\n");
 }
 
+function renderFailBand(state: ViewState, cols: number): string {
+  const failure = selectedFailure(state);
+  if (failure === undefined) return "";
+  const row = selectedRow(state);
+  const inner = Math.max(20, cols - 8);
+  const body = wrap(failure.reason, inner).slice(0, 4);
+  const hint = `${row?.issue ?? row?.taskId ?? "row"}  ·  w retries`;
+  return [
+    rule(cols, RUST),
+    ` ${paint(RUST + BOLD, "FAIL")}`,
+    ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
+    ` ${dim(hint)}`,
+    rule(cols, RUST),
+  ].join("\n");
+}
+
 function renderMeta(state: ViewState, cols: number): string {
   const row = selectedRow(state);
   if (row === undefined) {
     return `${rule(cols, INK_3)}\n${dim("  select a row to inspect it")}`;
   }
-  if (selectedQuestion(state) !== undefined) {
+  if (selectedQuestion(state) !== undefined || selectedFailure(state) !== undefined) {
     return renderRunBits(row, cols);
   }
   const title = `${row.issue ?? "?"} / ${row.phase ?? "?"}`;
@@ -259,9 +287,12 @@ function renderPrompt(state: ViewState, cols: number): string {
 
 function renderFooter(state: ViewState, cols: number): string {
   const q = selectedQuestion(state);
+  const fail = selectedFailure(state);
   const keys = q
     ? "click/j/k select  ·  a answer  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
-    : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
+    : fail !== undefined
+      ? "click/j/k select  ·  w retry  ·  PgUp transcript  ·  s seed  ·  /  ·  ?  ·  q"
+      : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
   return padLine(dim(` ${keys}`), cols);
 }
 
@@ -325,6 +356,12 @@ export function renderBoardPlain(rows: StatusRow[], json: boolean): string {
         lines.push(`    ${wrapped}`);
       }
     }
+    if (rowFailed(row) && row.questions.length === 0) {
+      lines.push(`  ! failed`);
+      for (const wrapped of wrap(failureReason(row), 78)) {
+        lines.push(`    ${wrapped}`);
+      }
+    }
   }
   return `${lines.join("\n")}\n`;
 }
@@ -333,6 +370,6 @@ export function watchExitCode(rows: StatusRow[]): number {
   if (rows.length === 0) return 1;
   if (rows.some((r) => r.questions.length > 0)) return 2;
   if (rows.every((r) => r.status === "completed")) return 0;
-  if (rows.some((r) => r.status === "errored" || r.status === "cancelled")) return 1;
+  if (rows.some(rowFailed)) return 1;
   return 3;
 }

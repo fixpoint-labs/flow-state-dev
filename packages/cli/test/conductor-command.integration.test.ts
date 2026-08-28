@@ -158,4 +158,33 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(code).toBe(2);
     expect(watched.text).toContain("Which path?");
   });
+
+  it("watch exits 1 when the last attempt failed, without spinning", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    const watched = capture();
+    const code = await executeConductorCommand(["watch", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: watched.output as unknown as NodeJS.WriteStream,
+      config: false,
+      maxPolls: 2,
+      pollMs: 1,
+      sleep: async () => {},
+    });
+    expect(code).toBe(1);
+    expect(watched.text).toContain("Not logged in");
+    expect(watched.text).toContain("! failed");
+  });
 });
