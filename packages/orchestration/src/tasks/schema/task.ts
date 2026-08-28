@@ -7,7 +7,7 @@
  * narrows them at the consumer's call site.
  */
 import { z } from "zod";
-import { persistedTaskStatusSchema, taskStatusSchema, type TaskStatus } from "./task-status";
+import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 
 /** The base Task schema. */
 export const taskSchema = z.object({
