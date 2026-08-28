@@ -6,7 +6,15 @@
  * and that content survives the round trip unchanged.
  */
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHostPlace } from "../src/host-place";
@@ -124,5 +132,84 @@ describe("a place backed by a directory", () => {
     expect(report.conflicts).toEqual([]);
 
     discard(root);
+  });
+});
+
+describe("createHostPlace symlink containment", () => {
+  it("refuses to write through a symlinked file planted in the place", async () => {
+    // The containment check is lexical — it resolves `..` and rejects what
+    // lands outside. A symlink is not a `..`: the path stays inside the root
+    // and the kernel walks out of it anyway. An agent that can write in its
+    // own workspace can plant one, and the next hydrate follows it.
+    const root = mkdtempSync(join(tmpdir(), "hp-symlink-"));
+    const outside = mkdtempSync(join(tmpdir(), "hp-outside-"));
+    const victim = join(outside, "victim.txt");
+    writeFileSync(victim, "do not touch");
+
+    mkdirSync(join(root, "artifacts"), { recursive: true });
+    symlinkSync(victim, join(root, "artifacts", "notes.md"));
+
+    const place = createHostPlace(root);
+    await expect(place.write("artifacts/notes.md", "clobbered")).rejects.toThrow();
+    expect(readFileSync(victim, "utf-8")).toBe("do not touch");
+
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it("refuses to write through a symlinked directory planted in the place", async () => {
+    // The parent, not the leaf. `mkdir -p` on a path whose parent is a link
+    // succeeds silently, and the write lands wherever the link points.
+    const root = mkdtempSync(join(tmpdir(), "hp-symlink-dir-"));
+    const outside = mkdtempSync(join(tmpdir(), "hp-outside-dir-"));
+
+    symlinkSync(outside, join(root, "artifacts"));
+
+    const place = createHostPlace(root);
+    await expect(place.write("artifacts/planted.md", "escaped")).rejects.toThrow();
+    expect(existsSync(join(outside, "planted.md"))).toBe(false);
+
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it("refuses to read through a symlink planted in the place", async () => {
+    // The other direction: a link is a way to pull a host file the run was
+    // never given into a collection that is then durable and readable.
+    const root = mkdtempSync(join(tmpdir(), "hp-symlink-read-"));
+    const outside = mkdtempSync(join(tmpdir(), "hp-outside-read-"));
+    const secret = join(outside, "secret.txt");
+    writeFileSync(secret, "host secret");
+
+    mkdirSync(join(root, "artifacts"), { recursive: true });
+    symlinkSync(secret, join(root, "artifacts", "leak.md"));
+
+    const place = createHostPlace(root);
+    await expect(place.read("artifacts/leak.md")).rejects.toThrow();
+
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it("refuses a symlink that points back inside the place", async () => {
+    // Not an escape — and still refused. `walk` does not list a symlink, so
+    // writing through one would put content in the place under a name the
+    // place will never report, and reading through one would hand the same
+    // file back under two paths. The projection keys its baseline by path;
+    // one file wearing two of them is how a flush decides a run created
+    // something it did not.
+    const root = mkdtempSync(join(tmpdir(), "hp-symlink-inside-"));
+    mkdirSync(join(root, "artifacts"), { recursive: true });
+    writeFileSync(join(root, "artifacts", "real.md"), "real content");
+    symlinkSync(join(root, "artifacts", "real.md"), join(root, "artifacts", "alias.md"));
+
+    const place = createHostPlace(root);
+    await expect(place.read("artifacts/alias.md")).rejects.toThrow();
+    await expect(place.write("artifacts/alias.md", "via the alias")).rejects.toThrow();
+    // The target is untouched, and the listing never mentioned the alias.
+    expect(readFileSync(join(root, "artifacts", "real.md"), "utf-8")).toBe("real content");
+    expect(await place.list(["artifacts"])).toEqual(["artifacts/real.md"]);
+
+    rmSync(root, { recursive: true, force: true });
   });
 });
