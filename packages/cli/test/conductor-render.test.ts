@@ -18,7 +18,7 @@ describe("path shortening", () => {
     expect(shorten("pnpm test --filter fsdev", 12)).toBe("pnpm test -…");
     expect(shortenToolLine("tool · Write /tmp/deep/src/foo.ts", 21)).toBe("tool · Write …/foo.ts");
     expect(shortenToolLine("tool · Bash pnpm --filter @flow-state-dev/fsdev test", 28)).toBe(
-      "tool · Bash pnpm --filter …",
+      "tool · Bash pnpm --filter @…",
     );
   });
 });
