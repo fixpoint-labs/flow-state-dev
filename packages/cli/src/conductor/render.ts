@@ -42,6 +42,8 @@ import {
   fileFromToolLine,
   selectedFiles,
   selectedHunk,
+  selectedHunkEntry,
+  selectedHunkStack,
   selectedNow,
   selectedPlan,
   selectedReadPeek,
@@ -338,6 +340,13 @@ function renderHunkLines(
     return ` ${dim(clipped)}`;
   });
   if (hidden > 0) lines.unshift(` ${dim(`… ${hidden} more`)}`);
+  const stack = selectedHunkStack(state);
+  const entry = selectedHunkEntry(state);
+  if (stack.length > 1 && entry !== undefined) {
+    const cwd = selectedRow(state)?.run?.workspacePath ?? null;
+    const at = stack.length - (state.hunkAt % stack.length);
+    lines.unshift(` ${dim(`${fileText(entry.file, Math.max(8, inner - 8), cwd)}  ${at}/${stack.length}`)}`);
+  }
   return lines;
 }
 
@@ -597,8 +606,14 @@ function renderFooter(state: ViewState, cols: number): string {
   const listed = selectedPlan(state).length > 0;
   const moreFiles = selectedFiles(state).length > FILE_MAX;
   const moreHunks = selectedHunk(state).length > HUNK_BAND_MAX;
+  const hunkStack = selectedHunkStack(state).length > 1;
   const filesKey = moreFiles ? "  ·  f files" : "";
-  const hunksKey = moreHunks && q === undefined ? "  ·  h hunk" : "";
+  const hunksKey =
+    q === undefined
+      ? `${moreHunks ? "  ·  h hunk" : ""}${hunkStack ? "  ·  H older" : ""}`
+      : hunkStack
+        ? "  ·  H older"
+        : "";
   const working = state.busy ? "working  ·  " : "";
   const keys = slashing
     ? `${working}Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`

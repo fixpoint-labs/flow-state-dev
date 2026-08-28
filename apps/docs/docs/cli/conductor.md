@@ -200,7 +200,7 @@ The band shows what the run is doing: a status or message (`claiming`), or a too
 
 The band lists the files that run has written, edited, or read. Last touch is last. Up to 3 paths; more starts with `… N more`. `f` expands the list (up to 12). Press again to collapse.
 
-The band also shows the last Write or Edit hunk — the changed span, not the whole file. Last 3 lines; more starts with `… N more`. `h` expands that hunk (up to 16 lines). Press again to collapse. The transcript still caps a long Write so one file cannot fill the pane.
+The band also shows the last Write or Edit hunk — the changed span, not the whole file. Last 3 lines; more starts with `… N more`. `h` expands that hunk (up to 16 lines). Press again to collapse. When the run has written more than one file, the band labels the current hunk `src/b.ts  2/2`. `H` steps to an older file's hunk. A later write to the same file replaces that entry and moves it last. The transcript still caps a long Write so one file cannot fill the pane.
 
 When the last tool is a Read, the band shows the first 3 lines of that file. A later Write, Edit, or Bash drops the peek.
 
@@ -268,6 +268,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `t` or `Ctrl-T` | Expand or collapse the selected row's todo list |
 | `f` | Expand or collapse the selected row's file list |
 | `h` | Expand or collapse the selected row's last Write / Edit hunk |
+| `H` | Show an older Write / Edit hunk from the same run |
 | `r` | Refresh now |
 | `/` | Type a slash command. Matching verbs, then board ids, list above the prompt |
 | `Tab` | Fill the selected slash verb or board id |

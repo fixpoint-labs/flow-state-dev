@@ -71,6 +71,22 @@ export interface PlanItem {
   text: string;
 }
 
+/** One Write / Edit hunk kept for the reserved band. */
+export interface HunkEntry {
+  file: string;
+  lines: string[];
+}
+
+/** How many per-request hunks the band can cycle. */
+export const HUNK_STACK_MAX = 12;
+
+/** Last-touch-last stack. A later write to the same file replaces that entry. */
+export function pushHunk(stack: readonly HunkEntry[], entry: HunkEntry): HunkEntry[] {
+  const next = stack.filter((item) => item.file !== entry.file);
+  next.push(entry);
+  return next.length <= HUNK_STACK_MAX ? next : next.slice(-HUNK_STACK_MAX);
+}
+
 /** A line in the activity log. Newest last; the renderer shows a tail. */
 export interface ActivityItem {
   at: number;
@@ -139,10 +155,15 @@ export interface ViewState {
    */
   childFiles: Record<string, string[]>;
   /**
-   * Last Write / Edit hunk for that request — the full changed span,
-   * not the ten-line transcript cap. Shown on the selected row.
+   * Write / Edit hunks for that request — last touch last, one entry
+   * per file. Each entry is the full changed span, not the ten-line
+   * transcript cap. `hunkAt` picks which one the band shows.
    */
-  childHunks: Record<string, string[]>;
+  childHunks: Record<string, HunkEntry[]>;
+  /**
+   * Offset from the latest hunk (`0` is last touch). `H` steps older.
+   */
+  hunkAt: number;
   /**
    * When true, the RUN band shows the full checklist. When false, one
    * current item and a count — the transcript keeps the rest of the height.
@@ -200,6 +221,7 @@ export function emptyView(epicLabel: string): ViewState {
     childPlan: {},
     childFiles: {},
     childHunks: {},
+    hunkAt: 0,
     planExpanded: false,
     filesExpanded: false,
     hunksExpanded: false,
@@ -378,11 +400,31 @@ export function fileFromToolLine(text: string): string | undefined {
   return path === "" ? undefined : path;
 }
 
-/** The selected row's last Write / Edit hunk, when that request wrote one. */
-export function selectedHunk(state: ViewState): string[] {
+/** The selected row's Write / Edit hunks, last touch last. */
+export function selectedHunkStack(state: ViewState): HunkEntry[] {
   const id = selectedRequestId(state);
   if (id === undefined) return [];
   return state.childHunks[id] ?? [];
+}
+
+/** The hunk the band is showing — latest, or an older one after `H`. */
+export function selectedHunkEntry(state: ViewState): HunkEntry | undefined {
+  const stack = selectedHunkStack(state);
+  if (stack.length === 0) return undefined;
+  const at = ((state.hunkAt % stack.length) + stack.length) % stack.length;
+  return stack[stack.length - 1 - at];
+}
+
+/** Lines of the hunk the band is showing. */
+export function selectedHunk(state: ViewState): string[] {
+  return selectedHunkEntry(state)?.lines ?? [];
+}
+
+/** Step to an older (`+1`) or newer (`-1`) hunk. Wraps. */
+export function stepHunk(state: ViewState, delta: number): ViewState {
+  const n = selectedHunkStack(state).length;
+  if (n <= 1) return state;
+  return { ...state, hunkAt: (state.hunkAt + delta + n) % n };
 }
 
 /**

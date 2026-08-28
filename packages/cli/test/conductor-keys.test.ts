@@ -416,6 +416,27 @@ describe("applyKey", () => {
     expect(moved.state.filesExpanded).toBe(false);
   });
 
+  it("cycles older hunks with H and resets when the row changes", () => {
+    const live1 = runningRow("LIVE-1");
+    const live2 = runningRow("LIVE-2");
+    const stack = [
+      { file: "src/a.ts", lines: ["+ a"] },
+      { file: "src/b.ts", lines: ["+ b"] },
+    ];
+    const state = {
+      ...board([live1, live2]),
+      childHunks: { "req-LIVE-1": stack, "req-LIVE-2": stack },
+    };
+    const older = applyKey(state, { type: "char", value: "H" });
+    expect(older.state.hunkAt).toBe(1);
+    expect(older.effect).toBeUndefined();
+    const wrap = applyKey(older.state, { type: "char", value: "H" });
+    expect(wrap.state.hunkAt).toBe(0);
+    const moved = applyKey(older.state, { type: "char", value: "j" });
+    expect(moved.state.selected).toBe(1);
+    expect(moved.state.hunkAt).toBe(0);
+  });
+
   it("toggles the last hunk with h and collapses it when the row changes", () => {
     const state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
     const opened = applyKey(state, { type: "char", value: "h" });

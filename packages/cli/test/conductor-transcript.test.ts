@@ -326,6 +326,7 @@ describe("createStreamTranscript", () => {
       lines: ["tool · Write src/foo.ts", "+ export const n = 1;"],
       live: "tool · Write src/foo.ts",
       hunk: ["+ export const n = 1;"],
+      hunkFile: "src/foo.ts",
     });
   });
 
@@ -354,6 +355,7 @@ describe("createStreamTranscript", () => {
       lines: ["tool · Edit src/foo.ts", "- const m = 2;", "+ const m = 4;"],
       live: "tool · Edit src/foo.ts",
       hunk: ["- const m = 2;", "+ const m = 4;"],
+      hunkFile: "src/foo.ts",
     });
   });
 
@@ -381,6 +383,7 @@ describe("createStreamTranscript", () => {
     expect(patch.hunk).toHaveLength(20);
     expect(patch.hunk?.[0]).toBe("+ line-0");
     expect(patch.hunk?.at(-1)).toBe("+ line-19");
+    expect(patch.hunkFile).toBe("big.ts");
   });
 
   it("does not reprint the hunk when a Write fails — only the tool line", () => {
@@ -1217,7 +1220,9 @@ describe("applyTranscriptPatch", () => {
       1,
       "req-live-1",
     );
-    expect(first.childHunks["req-live-1"]).toEqual(["+ export const a = 1;"]);
+    expect(first.childHunks["req-live-1"]).toEqual([
+      { file: "src/a.ts", lines: ["+ export const a = 1;"] },
+    ]);
 
     const bash = applyTranscriptPatch(
       first,
@@ -1225,7 +1230,9 @@ describe("applyTranscriptPatch", () => {
       2,
       "req-live-1",
     );
-    expect(bash.childHunks["req-live-1"]).toEqual(["+ export const a = 1;"]);
+    expect(bash.childHunks["req-live-1"]).toEqual([
+      { file: "src/a.ts", lines: ["+ export const a = 1;"] },
+    ]);
 
     const next = applyTranscriptPatch(
       bash,
@@ -1237,7 +1244,27 @@ describe("applyTranscriptPatch", () => {
       3,
       "req-live-1",
     );
-    expect(next.childHunks["req-live-1"]).toEqual(["+ export const b = 2;"]);
+    expect(next.childHunks["req-live-1"]).toEqual([
+      { file: "src/a.ts", lines: ["+ export const a = 1;"] },
+      { file: "src/b.ts", lines: ["+ export const b = 2;"] },
+    ]);
+
+    const again = applyTranscriptPatch(
+      next,
+      {
+        lines: ["tool · Write src/a.ts", "+ export const a = 3;"],
+        live: null,
+        hunk: ["+ export const a = 3;"],
+        hunkFile: "src/a.ts",
+      },
+      4,
+      "req-live-1",
+    );
+    expect(again.childHunks["req-live-1"]).toEqual([
+      { file: "src/b.ts", lines: ["+ export const b = 2;"] },
+      { file: "src/a.ts", lines: ["+ export const a = 3;"] },
+    ]);
+    expect(again.hunkAt).toBe(0);
   });
 });
 

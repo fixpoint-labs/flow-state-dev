@@ -20,6 +20,7 @@ import {
   selectedRunningRequestId,
   scrollTranscript,
   stepFind,
+  stepHunk,
   trimActivity,
   type InputMode,
   type OperatorCommand,
@@ -252,6 +253,8 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
       return { state: { ...state, filesExpanded: !state.filesExpanded } };
     case "h":
       return { state: { ...state, hunksExpanded: !state.hunksExpanded } };
+    case "H":
+      return { state: stepHunk(state, 1) };
     case "n":
       if (state.find !== null) return { state: stepFind(state, -1) };
       return idleFallback(state, value);
@@ -492,6 +495,7 @@ function selectRow(state: ViewState, index: number): ViewState {
     planExpanded: false,
     filesExpanded: false,
     hunksExpanded: false,
+    hunkAt: 0,
   });
   if (jumped.find === null) return jumped;
   return applyFindQuery(jumped, jumped.find);

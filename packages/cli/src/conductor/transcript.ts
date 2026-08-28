@@ -20,7 +20,14 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
-import { fileFromToolLine, pushActivity, type PlanItem, type StatusRow, type ViewState } from "./types";
+import {
+  fileFromToolLine,
+  pushActivity,
+  pushHunk,
+  type PlanItem,
+  type StatusRow,
+  type ViewState,
+} from "./types";
 
 export interface TranscriptPatch {
   /** Lines that just became history. */
@@ -33,10 +40,12 @@ export interface TranscriptPatch {
    */
   plan?: PlanItem[];
   /**
-   * Full last Write / Edit hunk in this patch. Absent means keep the
-   * last pinned hunk. The transcript lines stay capped.
+   * Full Write / Edit hunk in this patch. Absent means keep the
+   * pinned stack. The transcript lines stay capped.
    */
   hunk?: string[];
+  /** Path this hunk belongs to. Used to stack one entry per file. */
+  hunkFile?: string;
 }
 
 /**
@@ -70,11 +79,18 @@ export function applyTranscriptPatch(
       patch.plan === undefined
         ? next.childPlan
         : { ...next.childPlan, [requestId]: patch.plan };
-    const childHunks =
-      patch.hunk === undefined
-        ? next.childHunks
-        : { ...next.childHunks, [requestId]: patch.hunk };
-    return { ...next, childLive, childPlan, childHunks };
+    if (patch.hunk === undefined) {
+      return { ...next, childLive, childPlan };
+    }
+    const file =
+      patch.hunkFile ??
+      patch.lines.map((line) => fileFromToolLine(line)).find((path) => path !== undefined) ??
+      "?";
+    const childHunks = {
+      ...next.childHunks,
+      [requestId]: pushHunk(next.childHunks[requestId] ?? [], { file, lines: patch.hunk }),
+    };
+    return { ...next, childLive, childPlan, childHunks, hunkAt: 0 };
   }
   return { ...next, live: patch.live };
 }
@@ -143,7 +159,7 @@ export function createStreamTranscript(): {
     const formatted = formatToolLines(item);
     const plan = applyPlanTool(item, planEntries, "settled") ?? formatted.plan;
     const next = snapshot([...prior, ...nestLines(formatted.lines), ...nestLines(formatToolResult(item))]);
-    return withExtras(next, plan, formatted.hunk);
+    return withExtras(next, plan, formatted.hunk, formatted.hunkFile);
   };
 
   return {
@@ -182,7 +198,7 @@ export function createStreamTranscript(): {
                   : "settled";
             const plan = applyPlanTool(item, planEntries, phase) ?? formatted.plan;
             const next = snapshot([...prior, ...nestLines(formatted.lines)]);
-            return withExtras(next, plan, formatted.hunk);
+            return withExtras(next, plan, formatted.hunk, formatted.hunkFile);
           }
           if (item.type === "container") {
             logged.add(item.id);
@@ -352,23 +368,35 @@ function formatToolLine(item: OutputItem, settled?: "failed" | "incomplete"): st
   return base;
 }
 
-function withExtras(patch: TranscriptPatch, plan?: PlanItem[], hunk?: string[]): TranscriptPatch {
+function withExtras(
+  patch: TranscriptPatch,
+  plan?: PlanItem[],
+  hunk?: string[],
+  hunkFile?: string,
+): TranscriptPatch {
   return {
     ...patch,
     ...(plan === undefined ? {} : { plan }),
-    ...(hunk !== undefined && hunk.length > 0 ? { hunk } : {}),
+    ...(hunk !== undefined && hunk.length > 0 ? { hunk, hunkFile } : {}),
   };
 }
 
 /** Tool name plus a compact hunk or checklist when the call already carried them. */
-function formatToolLines(item: OutputItem): { lines: string[]; plan?: PlanItem[]; hunk?: string[] } {
+function formatToolLines(item: OutputItem): {
+  lines: string[];
+  plan?: PlanItem[];
+  hunk?: string[];
+  hunkFile?: string;
+} {
   const args = item.type === "tool_output" ? parseToolArgs(item.toolCall?.arguments) : {};
   const plan = readPlan(args);
   const hunk = toolHunk(args);
+  const hunkFile = stringArg(args, ["file_path", "path"]);
   return {
     lines: [formatToolLine(item), ...capHunk(hunk), ...plan.lines],
     plan: plan.items,
     hunk: hunk.length > 0 ? hunk : undefined,
+    hunkFile: hunk.length > 0 ? hunkFile : undefined,
   };
 }
 

@@ -826,9 +826,10 @@ describe("renderFrame", () => {
       questions: [],
     };
     const hunk = Array.from({ length: 20 }, (_, i) => `+ line-${i}`);
+    const stack = { "req-live-1": [{ file: "src/big.ts", lines: hunk }] };
     const above = beforeTranscript(
       renderFrame(
-        { ...emptyView("epic"), rows: [running], childHunks: { "req-live-1": hunk } },
+        { ...emptyView("epic"), rows: [running], childHunks: stack },
         { cols: 80, rows: 28 },
       ),
     );
@@ -843,7 +844,7 @@ describe("renderFrame", () => {
         {
           ...emptyView("epic"),
           rows: [running],
-          childHunks: { "req-live-1": hunk },
+          childHunks: stack,
           hunksExpanded: true,
         },
         { cols: 80, rows: 36 },
@@ -857,11 +858,65 @@ describe("renderFrame", () => {
     expect(
       stripAnsi(
         renderFrame(
-          { ...emptyView("epic"), rows: [running], childHunks: { "req-live-1": hunk } },
+          { ...emptyView("epic"), rows: [running], childHunks: stack },
           { cols: 80, rows: 28 },
         ),
       ),
     ).toContain("h hunk");
+  });
+
+  it("cycles an older file's hunk on the RUN band with H", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const childHunks = {
+      "req-live-1": [
+        { file: "src/a.ts", lines: ["+ export const a = 1;"] },
+        { file: "src/b.ts", lines: ["+ export const b = 2;"] },
+      ],
+    };
+    const latest = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [running], childHunks }, { cols: 80, rows: 24 }),
+    );
+    expect(latest).toContain("src/b.ts");
+    expect(latest).toContain("2/2");
+    expect(latest).toContain("+ export const b = 2;");
+    expect(latest).not.toContain("+ export const a = 1;");
+    expect(stripAnsi(renderFrame({ ...emptyView("epic"), rows: [running], childHunks }, { cols: 80, rows: 24 }))).toContain(
+      "H older",
+    );
+
+    const older = beforeTranscript(
+      renderFrame(
+        { ...emptyView("epic"), rows: [running], childHunks, hunkAt: 1 },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(older).toContain("src/a.ts");
+    expect(older).toContain("1/2");
+    expect(older).toContain("+ export const a = 1;");
+    expect(older).not.toContain("+ export const b = 2;");
   });
 
   it("shows the last Read peek on the RUN band, and drops it after a Write", () => {
