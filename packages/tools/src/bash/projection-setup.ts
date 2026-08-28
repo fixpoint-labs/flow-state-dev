@@ -9,6 +9,12 @@
  * So the wiring lives here once and both doors call it. What stays per-door is
  * what genuinely differs: the blocks path stamps application state on entries
  * through `createState`, and it holds a registry of live sandboxes.
+ *
+ * **Internal to the bash module.** Nothing here is re-exported from
+ * `@flow-state-dev/tools/bash`, and it is not part of the package's public
+ * API — these are `export`ed only so the two entry points in this directory
+ * can share them. The public surface stays `createBashTool`,
+ * `createBashBlocks` and `createBashCapability`.
  */
 import path from "node:path";
 import { createProjection, PlaceUnreadableError } from "@flow-state-dev/workspace";
@@ -33,6 +39,8 @@ export interface BashMount {
   prefix: string;
   writable: boolean;
   collection: ResourceCollectionRef<JsonObject>;
+  /** What the collection is durably — see `Mount.collectionId`. */
+  collectionId: string;
 }
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { createSandboxPlace, KEEP_MARKER, TMP_DIR } from "./sandbox-place";
@@ -95,6 +103,7 @@ export function createMountedProjection(
     mounts: mounts.map((m) => ({
       prefix: m.prefix,
       writable: m.writable,
+      collectionId: m.collectionId,
       collection: m.collection as unknown as ProjectionMount["collection"],
       ...(createState === undefined
         ? {}
@@ -144,6 +153,36 @@ export async function flushWithDiagnostics(
  * be is not news, and saying so would make the interesting lines the ones you
  * have to filter for.
  */
+/**
+ * The sentence a model needs when its write did not reach the collection, or
+ * `null` when it did.
+ *
+ * Both `writeFile` doors ask this, because both had the same hole: the
+ * workspace write lands either way — the workspace is the run's own — and only
+ * the durable half can be refused. Answering `{ success: true }` for a refusal
+ * is how a model moves on believing an artifact was saved, and two doors
+ * deciding that separately is how one of them keeps doing it.
+ *
+ * An orphan counts. It landed nowhere a collection owns, so by the contract
+ * the caller now states — success means the file reached its collection — it
+ * did not succeed. The first version of this excluded it on the grounds that
+ * there is nothing to retry, which was wrong twice over: the model can retry
+ * under a mounted prefix, and "nothing to retry" is not "it worked".
+ */
+export function refusalReason(outcome: FlushOutcome | undefined): string | null {
+  if (outcome === undefined) return null;
+  if (outcome.kind === "orphan") {
+    return `"${outcome.path}" is not under any mounted collection or ./${TMP_DIR}/, so it was not saved.`;
+  }
+  if (outcome.kind === "conflict") {
+    return `"${outcome.path}" changed in its collection while this run held it — the write was NOT applied.`;
+  }
+  if (outcome.kind === "contested") {
+    return `"${outcome.path}" is being written by another run — the write was NOT applied.`;
+  }
+  return null;
+}
+
 export function warnUnsettled(outcomes: readonly FlushOutcome[]): void {
   const orphans = outcomes.filter((o) => o.kind === "orphan").map((o) => o.path);
   if (orphans.length > 0) {
@@ -160,6 +199,18 @@ export function warnUnsettled(outcomes: readonly FlushOutcome[]): void {
       `[bash] ${conflicts.length} file(s) changed in their collection while this run held them, and were NOT overwritten: ${conflicts
         .map((c) => (c.ours === null ? `${c.path} (deleted here)` : c.path))
         .join(", ")}`,
+    );
+  }
+
+  // Named separately from conflicts, because the fix is different. A conflict
+  // is somebody who already wrote — you reconcile it. A contested path is
+  // somebody writing right now, so the answer is usually to run the two runs
+  // against different paths, and knowing WHICH path is what makes that
+  // possible.
+  const contested = outcomes.filter((o) => o.kind === "contested").map((o) => o.path);
+  if (contested.length > 0) {
+    console.warn(
+      `[bash] ${contested.length} file(s) are being written by another run and were NOT overwritten: ${contested.join(", ")}`,
     );
   }
 }

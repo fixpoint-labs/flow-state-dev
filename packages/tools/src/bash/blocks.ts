@@ -43,15 +43,22 @@ import type {
 import { z } from "zod";
 import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
 import { resolveSandbox } from "./resolve-sandbox";
-import { createHostPlace } from "@flow-state-dev/workspace";
+import {
+  collectionIdFor,
+  createHostPlace,
+  frameComponents,
+  principalFromContext,
+  scopeComponents,
+} from "@flow-state-dev/workspace";
 import type { Projection } from "@flow-state-dev/workspace";
 import { createHash } from "node:crypto";
-import { KEEP_MARKER } from "./sandbox-place";
+import { KEEP_MARKER, isScratch } from "./sandbox-place";
 import {
   TMP_DIR,
   createBashProjection,
   createMountedProjection,
   flushWithDiagnostics,
+  refusalReason,
   seedWorkspaceMarkers,
 } from "./projection-setup";
 import path from "node:path";
@@ -145,7 +152,17 @@ const bashWriteFileInputSchema = z.object({
 });
 
 const bashWriteFileOutputSchema = z.object({
+  /**
+   * Whether the file reached its collection.
+   *
+   * The workspace write always lands — the workspace is the run's own. What
+   * can be refused is the durable half, when another run holds the entry or
+   * changed it underneath this one. Reporting that as success is how a model
+   * moves on believing an artifact was saved.
+   */
   success: z.boolean(),
+  /** Why the durable write was refused, or `null` when it was not. */
+  refused: z.string().nullable().default(null),
 });
 
 // ---------------------------------------------------------------------------
@@ -155,6 +172,8 @@ const bashWriteFileOutputSchema = z.object({
 /** A single mounted collection inside the bash workspace. */
 interface Mount {
   collection: ResourceCollectionRef<JsonObject>;
+  /** What the collection is durably — see `Mount.collectionId` in the projection. */
+  collectionId: string;
   /** Registered accessor key on ctx.resources. Used for logging/diagnostics. */
   key: string;
   /** Pattern prefix — the collection's natural path inside the workspace. */
@@ -370,32 +389,26 @@ export function resolveWorkspaceCwdForTest(
  * directory. Presence is its own component in the key, and the directory uses
  * a segment `safeSegment` can never emit.
  */
+/**
+ * The scope a provider actually works in.
+ *
+ * Only `local` takes a `scope`; every other provider gets one sandbox per
+ * session. Read in three places — the registry key, the cold-path predicate,
+ * and cleanup — and they have to agree: a cleanup that resolved a different
+ * scope than the lookup did would release nothing and leak the sandbox.
+ */
+function effectiveScope(provider: SandboxProvider): WorkspaceScope {
+  return provider.type === "local" ? (provider.scope ?? "session") : "session";
+}
+
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
-  const tenant = identity.tenantId;
-  const tenantScoped = (id: string): (string | undefined)[] => [tenant, id];
-  const parts = ((): (string | undefined)[] => {
-    switch (scope) {
-      case "run":
-        // The request is the run. Narrower than a session on purpose: this is
-        // the scope where two agents working at once cannot see each other's
-        // half-finished files, and where the workspace goes away with the
-        // request that made it.
-        return tenantScoped(identity.requestId);
-      case "user":
-        return identity.userId !== undefined
-          ? [identity.userId]
-          : tenantScoped(identity.sessionId);
-      case "org":
-        return identity.orgId !== undefined
-          ? [identity.orgId]
-          : tenantScoped(identity.sessionId);
-      case "session":
-      default:
-        return tenantScoped(identity.sessionId);
-    }
-  })();
+  // `run` is this tool's name for the request. Core spells the same scope
+  // `request`, and the components come from core's own rule rather than a
+  // second copy of it here — the tenant boundary was wrong once already
+  // because two derivations of one identity drifted.
+  const parts = scopeComponents(scope === "run" ? "request" : scope, identity);
   return {
-    key: [scope, ...parts].map(frame).join(""),
+    key: frameComponents([scope, ...parts]),
     scopeId: path.join(...parts.map(segment)),
   };
 }
@@ -407,10 +420,6 @@ function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key:
  * absent component and a component that happens to equal the absence marker
  * stay distinct.
  */
-function frame(component: string | undefined): string {
-  return component === undefined ? "-" : `${component.length}:${component}`;
-}
-
 /**
  * One path segment for a component, absence included.
  *
@@ -449,6 +458,7 @@ function discoverMounts(
   explicit: BashCollectionSpec[] | undefined,
   exclude: string[] | undefined,
 ): Mount[] {
+  const principal = getIdentity(ctx);
   const excludeSet = new Set(exclude ?? []);
   const specs = explicit?.map(normalizeSpec);
   const wantByKey = specs ? new Map(specs.map((s) => [s.key, s])) : undefined;
@@ -475,6 +485,7 @@ function discoverMounts(
       const spec = wantByKey?.get(key);
       mounts.push({
         collection: value,
+        collectionId: collectionIdFor(value, principal),
         key,
         prefix,
         writable: spec?.writable ?? true,
@@ -514,7 +525,7 @@ async function createScopedSandbox(
 ): Promise<Sandbox> {
   let cwd: string | undefined;
   if (provider.type === "local" && !provider.cwd) {
-    const scope = provider.scope ?? "session";
+    const scope = effectiveScope(provider);
     const { scopeId } = resolveScopeKey(scope, identity);
     cwd = path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
   }
@@ -553,11 +564,6 @@ async function createScopedSandbox(
   return sandbox;
 }
 
-
-
-function isUnderTmp(relativePath: string): boolean {
-  return relativePath === TMP_DIR || relativePath.startsWith(TMP_DIR + "/");
-}
 
 /**
  * Provider types whose sandbox is *not* immediately reachable on every
@@ -615,26 +621,21 @@ async function routeWrittenFile(
   entry: SandboxEntry,
   relativePath: string,
   content: string,
-): Promise<void> {
+): Promise<string | null> {
   // The model often supplies `./artifacts/foo.md` even though the schema says
-  // paths are workspace-relative. `isUnderTmp` matches bare prefixes.
+  // paths are workspace-relative. `isScratch` matches bare prefixes.
   if (relativePath.startsWith("./")) relativePath = relativePath.slice(2);
-  if (isUnderTmp(relativePath)) return;
-  if (path.posix.basename(relativePath) === KEEP_MARKER) return;
+  if (isScratch(relativePath)) return null;
+  if (path.posix.basename(relativePath) === KEEP_MARKER) return null;
 
   const outcome = await entry.projection.put(relativePath, content);
-  if (outcome === undefined) return;
-  if (outcome.kind === "orphan") {
-    console.warn(
-      `[bash] dropped orphan write at "${relativePath}" — not under any mounted collection or ./${TMP_DIR}/`,
-    );
-    return;
-  }
-  if (outcome.kind === "conflict") {
-    console.warn(
-      `[bash] "${relativePath}" changed in its collection while this run held it — the write was NOT applied.`,
-    );
-  }
+  if (outcome === undefined) return null;
+  // Warned AND returned. The warning reaches a developer reading logs; the
+  // return reaches the model, which is the party that just asked for the write
+  // and would otherwise be told it succeeded.
+  const why = refusalReason(outcome);
+  if (why !== null) console.warn(`[bash] ${why}`);
+  return why;
 }
 
 
@@ -664,7 +665,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
 
   async function getOrCreate(ctx: BlockContext): Promise<SandboxEntry> {
     const identity = getIdentity(ctx);
-    const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
+    const scope = effectiveScope(provider);
     const { key: registryKey } = resolveScopeKey(scope, identity);
 
     const existing = registry.get(registryKey);
@@ -711,8 +712,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   // the next call must boot/connect the sandbox. Cheap: just a Map.has.
   const isCold = (_value: unknown, ctx: BlockContext): boolean => {
     const identity = getIdentity(ctx as any);
-    const scope =
-      provider.type === "local" ? (provider.scope ?? "session") : "session";
+    const scope = effectiveScope(provider);
     return !registry.has(resolveScopeKey(scope, identity).key);
   };
 
@@ -775,7 +775,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   // capability's own prompt already names the scope; a block used directly
   // would have contradicted it.
   const workspaceReach = ((): string => {
-    switch (provider.type === "local" ? (provider.scope ?? "session") : "session") {
+    switch (effectiveScope(provider)) {
       case "run":
         return "The workspace belongs to this request alone — no other run can see it, and it does not carry over to the next request.";
       case "user":
@@ -899,8 +899,8 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       const hostPath = path.join(hostMountSource, input.path);
       await fs.mkdir(path.dirname(hostPath), { recursive: true });
       await fs.writeFile(hostPath, input.content, "utf-8");
-      await routeWrittenFile(entry, input.path, input.content);
-      return { success: true };
+      const refused = await routeWrittenFile(entry, input.path, input.content);
+      return { success: refused === null, refused };
     },
   });
 
@@ -916,8 +916,8 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
       await entry.sandbox.writeFile(fullPath, input.content);
-      await routeWrittenFile(entry, input.path, input.content);
-      return { success: true };
+      const refused = await routeWrittenFile(entry, input.path, input.content);
+      return { success: refused === null, refused };
     },
   });
 
@@ -1012,13 +1012,7 @@ function assertScopeIsAchievable(provider: SandboxProvider): void {
 }
 
 function getIdentity(ctx: BlockContext): ScopeIdentity {
-  return {
-    sessionId: ctx.session.identity.id,
-    requestId: ctx.request.identity.id,
-    userId: ctx.session.identity.userId,
-    orgId: ctx.session.identity.orgId,
-    tenantId: ctx.session.identity.tenantId,
-  };
+  return principalFromContext(ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -1039,7 +1033,7 @@ export async function releaseBashSandbox(
   ctx: BlockContext,
 ): Promise<void> {
   const identity = getIdentity(ctx);
-  const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
+  const scope = effectiveScope(provider);
   const { key: registryKey } = resolveScopeKey(scope, identity);
 
   const value = registry.get(registryKey);

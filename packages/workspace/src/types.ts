@@ -65,6 +65,24 @@ export interface Mount {
   /** The durable side. */
   collection: ResourceCollectionRef<ProjectedEntryState>;
   /**
+   * What this mount's collection IS, durably — the same string for two runs
+   * addressing the same rows, a different one for two that only spell their
+   * paths alike.
+   *
+   * Arbitration is per durable row, and the path cannot name one.
+   * `artifacts/report.md` is a naming convention, so two sessions writing it
+   * are writing two rows and neither contests the other; one collection
+   * mounted under two prefixes is one row under two paths and both writers
+   * must see each other. Neither case comes out right from a path.
+   *
+   * Required rather than defaulted, because every default is wrong for one of
+   * those two: omit the scope and unrelated tenants refuse each other's
+   * writes, use the collection object and two runs in one session stop
+   * arbitrating at all. Derive it from the collection's scope, the resolved id
+   * for that scope, and its pattern.
+   */
+  collectionId: string;
+  /**
    * Whether a flush may write back. A read-only mount is hydrated and then
    * left alone — its paths are skipped, never reported as orphans.
    */
@@ -116,6 +134,17 @@ export type FlushOutcome =
    */
   | { kind: "orphan"; path: string }
   /**
+   * Another live projection is writing this path, so this one did not.
+   *
+   * Distinct from `conflict`, and the difference is who the other writer is.
+   * A conflict is somebody who already wrote — the evidence is in the
+   * collection, and three hashes describe it. A contested path is somebody
+   * writing *now*: there is nothing to compare yet, only a claim held
+   * elsewhere. Merging the two would report "the collection changed" about a
+   * collection that has not.
+   */
+  | { kind: "contested"; path: string }
+  /**
    * Two writers, and we cannot tell which is wanted. `ours: null` is the
    * delete half — the path left the place while somebody else changed it.
    */
@@ -134,8 +163,10 @@ export type FlushOutcome =
 export interface FlushReport {
   /** Every path the flush reached, in the order it reached them. */
   outcomes: readonly FlushOutcome[];
-  /** The contested subset, so a caller need not filter to find the bad news. */
+  /** The conflicted subset, so a caller need not filter to find the bad news. */
   conflicts: readonly Extract<FlushOutcome, { kind: "conflict" }>[];
+  /** Paths another live projection is writing. See the `contested` outcome. */
+  contested: readonly Extract<FlushOutcome, { kind: "contested" }>[];
 }
 
 /**

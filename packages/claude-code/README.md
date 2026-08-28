@@ -418,9 +418,11 @@ written and the path is recorded instead.
 
 #### Reading what could not be saved
 
-Two outcomes need a person: a **conflict** (two writers, one file) and an
-**orphan** (a file written outside every mounted collection). Both land in the
-`workspace-outcomes` collection, keyed by run:
+Three outcomes need a person: a **conflict** (two writers, one file), a
+**contested** path (another run was writing it at the same moment, so this one
+stood off), and an **orphan** (a file written outside every mounted
+collection). All three land in the `workspace-outcomes` collection, keyed by
+run:
 
 ```ts
 const unsettled = await ctx.resources["workspace-outcomes"].list();
@@ -429,7 +431,9 @@ const unsettled = await ctx.resources["workspace-outcomes"].list();
 A conflict carries three hashes — what the projection last wrote, what the
 collection holds now, and what the run left — which is what lets you say who
 changed what. `ours: null` means the run deleted a file somebody else had
-edited.
+edited. A contested path carries no hashes: nothing has been written yet, only
+a claim held elsewhere. Claims are per file, so two runs working on different
+files in one collection never contend.
 
 A status item says how many there were, so a run that ends with unsaved work
 doesn't end quietly.

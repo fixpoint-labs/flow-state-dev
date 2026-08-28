@@ -309,6 +309,20 @@ The same rule applies to a workspace that can't be read at all. If the walk in s
 
 SHA-256 hashes detect changes. Only files whose hash differs from the stored value are written back to resources, so flush is cheap even for large workspaces.
 
+### Two runs, one file
+
+A file already changed in its collection is not overwritten — the flush warns and leaves both versions where they are. A file another run is writing at the same moment gets the same treatment for a different reason: the other run is mid-write, so this one stands off and names the path in the warning. Two runs sharing a collection while working on different files both write.
+
+The unit is the collection entry rather than the path, so two sessions each writing their own `artifacts/report.md` never stand off — those are two files that share a name.
+
+`writeFile` says so in its result rather than only in the log, since the model is the party that asked for the write:
+
+```json
+{ "success": false, "refused": "\"artifacts/report.md\" is being written by another run — the write was NOT applied." }
+```
+
+The file is in the workspace either way; the workspace is the run's own. What `success` reports is whether it reached its collection, so a model that is told `false` can retry rather than move on believing the artifact was saved.
+
 ### Orphan writes
 
 Files the agent creates outside every known path are not persisted. They're logged via `console.warn` at flush time so the behavior is visible during development. If the agent genuinely needs scratch space, `./tmp/` is the explicit place: writes there are silent and never saved.

@@ -87,7 +87,7 @@ describe("a place backed by a directory", () => {
     const place = createHostPlace(root);
     const collection = createFakeCollection("artifacts", { "one.md": "content" });
     const projection = createProjection({
-      mounts: [{ prefix: "artifacts", collection, writable: true }],
+      mounts: [{ prefix: "artifacts", collectionId: "artifacts", collection, writable: true }],
       place,
     });
 
@@ -134,7 +134,7 @@ describe("a place backed by a directory", () => {
       "gone.md": "doomed",
     });
     const projection = createProjection({
-      mounts: [{ prefix: "artifacts", collection, writable: true }],
+      mounts: [{ prefix: "artifacts", collectionId: "artifacts", collection, writable: true }],
       place,
     });
 

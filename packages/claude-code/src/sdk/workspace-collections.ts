@@ -36,8 +36,11 @@ export const workspaceOutcomeStateSchema = z.object({
    *
    * `orphan` — written outside every writable mount, so nothing owns it.
    * `conflict` — two writers touched it and neither won.
+   * `contested` — another run was writing it at the same moment, so this one
+   * stood off. Distinct from `conflict` because nothing has been written yet:
+   * there are no hashes to disagree about, only a claim held elsewhere.
    */
-  kind: z.enum(["orphan", "conflict"]).nullable().default(null),
+  kind: z.enum(["orphan", "conflict", "contested"]).nullable().default(null),
   /** The path as the workspace holds it, e.g. `artifacts/notes.md`. */
   path: z.string().nullable().default(null),
   /**
