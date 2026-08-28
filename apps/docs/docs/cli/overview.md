@@ -6,7 +6,7 @@ sidebar_label: Overview
 
 # CLI
 
-The CLI is how you run the engine from the terminal. The command is `fsdev`. Install `@flow-state-dev/fsdev` and you can run a flow, isolate a block, hold a chat, or start the DevTool, without standing up a Next.js app first.
+The CLI is how you run the engine from the terminal. The command is `fsdev`. Install `@flow-state-dev/fsdev` and you can run a flow, isolate a block, hold a chat, drive a task board, or start the DevTool, without standing up a Next.js app first.
 
 ## Commands
 

@@ -11,11 +11,11 @@ description: "Drive a background task board from the terminal: talk to the coord
 
 Typed input that is not a slash verb is a talk turn (`steer`). The coordinator sees the current board and may call `seed`, `wake`, or `answer`. It does not implement or edit product code. Workers do that after a row is filed or woken.
 
-It is not a chat REPL — that's [`fsdev chat`](./interactive-chat.md). A conductor row is a unit of work with a status, not a conversation. On a row with an open question, typing starts an answer to that question. Slash verbs run the named action.
+A conductor row is a unit of work with a status. Talking is one coordinator turn, not a conversation REPL. For a live conversation, use [`fsdev chat`](./interactive-chat.md). On a row with an open question, typing starts an answer to that question. Slash verbs run the named action.
 
 ## What a conductor flow looks like
 
-`fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, `answer`, and `steer`. If none is found, the first line tells you to `cd` into the app that defines one (in this workspace: `labs/conductor`) or pass `--config` / `--flow-dir`. Import failures from other apps in the same repo are not printed first. Missing one of those actions is a config error that names it. Every other flow in the project is ignored.
+`fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, `answer`, and `steer`. If none is found, the error tells you to `cd` into the app that defines one, or pass `--config` / `--flow-dir`. Missing one of those actions is a config error that names it. Every other flow in the project is ignored.
 
 Those actions are yours to write. The board is whatever `status` returns. `status` is the only board read. Use `abort` or `stop` (or `x` on the board) to stop a running request. Opening the fullscreen board needs a TTY and does not need a model.
 
@@ -207,26 +207,26 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When a running row has no question, that column shows what it is doing now — the live line, or the last tool — so you can scan the board without selecting each row. When `status` already has token counts on that row, the OUTCOME column shows them (`12.0k→400`) instead of the redundant `running` label. Usage is written when the child finishes, so a live implement usually still shows `running`. At 80 columns that column still fits a tool and filename. `}` / `{` jump to the next or previous row that is waiting on you, whose last attempt failed, or whose running child has been silent for 30 seconds. They do not steal a typed answer. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When a running row has no question, that column shows what it is doing now — the live line, or the last tool — so you can scan the board without selecting each row. When `status` has token counts on that row, the OUTCOME column shows them (`12.0k→400`). A live implement usually shows `running` until the child finishes and usage is written. `}` / `{` jump to the next or previous row that is waiting on you, whose last attempt failed, or whose running child has been silent for 30 seconds. They do not steal a typed answer. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
 
 When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. Under the question it keeps a compact strip of that attempt: the pull-request URL when `status` carried one, the last tool, the files that run wrote, edited, or read, the last hunk, and the current todo. When that row's `run.usage` is present, token counts show on the band as `10→4` (input→output). The counts stay on the band while a wake or seed is in flight.
 
 When the selected row has no open question and the last attempt failed, a FAIL band sits in that same slot. A last attempt failed when `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. The band shows the reason (`run.reason`, else `feedback`, else `run.finalMessage`) and that `w` retries. Under the reason it keeps the same compact attempt strip ASK does: request id, token counts when `status` carried them, last tool, files, last hunk, and current todo. If the selected row also has an open question, the ASK band is what shows. Answer the question first.
 
-When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the branch, the checkout path, the request id, the pull-request URL when `status` carried one, and that `x` stops. A path that will not fit keeps the filename. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output). How long since that run last wrote shows as `8s` or `3m` — on the band and next to `in_progress` on the table — so a silent child is visible. After 30 seconds the age turns rust. The clock is last write (the journal, or `run.updatedAt` when the journal is empty), not elapsed since start. You can still move to another row, start an answer, and type while a wake or seed is in flight. Enter queues that next action.
+When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the branch, the checkout path, the request id, the pull-request URL when `status` carried one, and that `x` stops. A path that will not fit keeps the filename. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output). How long since that run last wrote shows as `8s` or `3m` — on the band and next to `in_progress` on the table — so a silent child is visible. After 30 seconds the age turns rust. The clock is last write, not elapsed since start. When `run.updatedAt` is the only timestamp on the row, that is what the age uses. You can move to another row, start an answer, and type while a wake or seed is in flight. Enter queues that next action.
 
-The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown on the band. The table ASK column still shows each running row's current action.
+The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown on the band. The table ASK column shows each running row's current action.
 
 The band lists the files that run has written, edited, or read. Last touch is last. Up to 3 paths; more starts with `… N more`. `f` expands the list (up to 12). Press again to collapse.
 
-The band also shows the last Write or Edit hunk — the changed span, not the whole file. Last 3 lines; more starts with `… N more`. `h` expands that hunk (up to 16 lines). Press again to collapse. When the run has written more than one file, the band labels the current hunk `src/b.ts  2/2`. `H` steps to an older file's hunk. A later write to the same file replaces that entry and moves it last. The transcript still caps a long Write so one file cannot fill the pane.
+The band also shows the last Write or Edit hunk — the changed span, not the whole file. Last 3 lines; more starts with `… N more`. `h` expands that hunk (up to 16 lines). Press again to collapse. When the run has written more than one file, the band labels the current hunk `src/b.ts  2/2`. `H` steps to an older file's hunk. A later write to the same file replaces that entry and moves it last. The transcript caps a long Write.
 
 When the last tool is a Read, the band shows the first 3 lines of that file. When the last tool is Bash, Grep, Glob, or LS, the band shows the last 3 lines of that result. A later Write, Edit, or Read drops the peek or tail.
 
 ```text
  … 2 more
  package.json
- src/conductor/render.ts
+ src/review.ts
  src/foo.ts
 ```
 
@@ -288,6 +288,8 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `f` | Expand or collapse the selected row's file list |
 | `h` | Expand or collapse the selected row's last Write / Edit hunk |
 | `H` | Show an older Write / Edit hunk from the same run |
+| `e` | Expand or collapse the last Read peek or command tail |
+| `{` / `}` | Previous / next row that is waiting, failed, or stalled |
 | `r` | Refresh now |
 | `/` | Type a slash command. Matching verbs, then board ids, list above the prompt. A line that is not a slash verb is a talk turn |
 | `Tab` | Fill the selected slash verb or board id |
@@ -313,7 +315,7 @@ After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids alread
 
 The TRANSCRIPT pane follows the selected row.
 
-When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Tools that run while a sub-agent is open are indented under that `sub ·` line. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` / `steer` you just ran, and the row changes `status` reports. A talk turn shows the operator line as `you ·` and the coordinator reply as a `message ·` line, streamed on the live line while it is in flight.
+When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/review.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Tools that run while a sub-agent is open are indented under that `sub ·` line. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` / `steer` you just ran, and the row changes `status` reports. A talk turn shows the operator line as `you ·` and the coordinator reply as a `message ·` line, streamed on the live line while it is in flight.
 
 When the selected row has no `run.requestId`, the pane shows only those board and operator lines. Another row's coding stream is not shown until that row is selected.
 
@@ -324,15 +326,15 @@ Changing the selected row (`j`/`k`, arrows, click) jumps the transcript back to 
 When a Write or Edit includes the new file text, a hunk prints under the tool line. A Write prints each new line as `+ <line>`. An Edit prints only the changed span: `-` lines, then `+` lines.
 
 ```text
-tool · Write src/conductor/render.ts
-+ export function renderFrame() {}
+tool · Write src/review.ts
++ export function review() {}
 
 tool · Edit src/foo.ts
 - const m = 2;
 + const m = 4;
 ```
 
-A hunk longer than 10 lines ends with `… N more`. If that Write or Edit fails, the transcript reprints `tool · Write src/conductor/render.ts · failed` (or `tool · Edit src/foo.ts · failed`) and does not reprint the hunk. Read, Bash, and a Write or Edit that only names the path have no hunk. The transcript does not read the checkout.
+A hunk longer than 10 lines ends with `… N more`. If that Write or Edit fails, the transcript reprints `tool · Write src/review.ts · failed` (or `tool · Edit src/foo.ts · failed`) and does not reprint the hunk. Read, Bash, and a Write or Edit that only names the path have no hunk. The transcript does not read the checkout.
 
 When `TodoWrite` writes a `todos` array, a checklist prints under the tool line. Completed items show `[x]`, the current item `[·]`, the rest `[ ]`.
 
@@ -364,8 +366,8 @@ When a Bash, Grep, or Glob call finishes, the last lines of its result print ind
 tool · Bash pnpm test
   Test Files  1 passed (1)
 
-tool · Grep renderFrame
-  src/conductor/render.ts:48:export function renderFrame()
+tool · Grep review
+  src/review.ts:48:export function review()
 ```
 
 A successful result does not reprint the tool line. A failed Bash reprints `tool · Bash pnpm test · failed`, then the result:
@@ -423,7 +425,7 @@ Without `--json`, `seed` prints the taskId it created plus the plain-text board;
 
 `fsdev conductor status PR-482` reprints that issue's last attempt on stderr. Those are the same `status · …`, `message · …`, and `tool · …` lines the TRANSCRIPT pane shows when you select that row. Then it prints the board on stdout. `fsdev conductor status` with no issue prints the board, plus stream lines from the `status` action itself if any. It does not reprint every row's last attempt.
 
-`fsdev conductor status PR-482 --json` prints the JSON board and omits those last-attempt stream lines. Each loaded journal adds `now`, `files`, `hunk`, and `todo` on that row — the same attempt a named issue loads, or running rows only on a full-board print.
+`fsdev conductor status PR-482 --json` prints the JSON board and omits those last-attempt stream lines. Each row that has a last attempt includes `now`, `files`, `hunk`, and `todo` — a named issue always, or running rows only on a full-board print.
 
 When `watch PR-482` stops, it prints that attempt on stderr, then the board. While the row is running, `watch` tails it.
 
@@ -564,7 +566,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Talking is a coordinator turn, not a coding session. The coordinator does not implement or edit product code. Workers do that after a row is filed or woken.
 - Talking needs a configured model resolver. Opening the board does not.
 - A coding worker needs whatever auth that worker uses.
-- The board is not a mega-chat. For a conversation REPL, use [`fsdev chat`](./interactive-chat.md).
+- For a conversation REPL, use [`fsdev chat`](./interactive-chat.md).
 - The board table is exactly what `status` returns.
 - Watching or aborting a running row does not start work or send an answer. Abort does not resume a session. Reprinting a last attempt does not continue that coding session.
 - The transcript does not print reasoning or thinking text.

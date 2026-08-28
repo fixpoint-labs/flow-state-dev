@@ -597,9 +597,9 @@ pnpm conductor status ISSUE</pre>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 738" role="img" aria-label="The conductor flow the lab ships, drawn against the later five-action spine. The lab declares four actions: seed which files an issue-phase row, wake which runs one drain step, status which only reads rows, and answer which writes a reply and starts a new request. Seed, wake, answer, and status are solid. Approve stays dashed. The later names startEpic and steer sit as captions under seed and answer. Four of those actions feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The board claims the next ready task, dispatches it with the topological dispatcher, and routes it by assignee. Implement logic and the harness manager are solid; spec and review stay dashed. The manager provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state.">
+      <svg viewBox="0 0 940 738" role="img" aria-label="The conductor flow the lab ships, drawn against the later five-action spine. The lab declares five actions: seed which files an issue-phase row, wake which runs one drain step, status which only reads rows, answer which writes a reply and starts a new request, and steer which talks to the coordinator. Seed, wake, answer, status, and steer are solid. Approve stays dashed. The later name startEpic sits as a caption under seed. Seed, wake, and answer feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The board claims the next ready task, dispatches it with the topological dispatcher, and routes it by assignee. Implement logic and the harness manager are solid; spec and review stay dashed. The manager provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state.">
         <rect class="n-grp" x="16" y="26" width="908" height="112" rx="5"/>
-        <text class="t-api" x="32" y="46">LAB &middot; seed / wake / status / answer &middot; later: startEpic / approve / steer</text>
+        <text class="t-api" x="32" y="46">LAB &middot; seed / wake / status / answer / steer &middot; later: startEpic / approve</text>
 
         <rect class="n-box" x="28" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="42" y="80">seed</text>
@@ -619,7 +619,7 @@ pnpm conductor status ISSUE</pre>
         <rect class="n-box" x="568" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="582" y="80">answer</text>
         <text class="t-xs" x="582" y="97">WRITES A REPLY, NEW REQUEST</text>
-        <text class="t-s" x="582" y="113">later: steer</text>
+        <text class="t-s" x="582" y="113">starts the job again</text>
 
         <rect class="n-box" x="748" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="762" y="80">status</text>
@@ -708,11 +708,11 @@ pnpm conductor status ISSUE</pre>
         <text class="t-xs" x="60" y="715">EXISTS &middot; THE WORKSTREAM SETTLES ITS OWN ROW. THE PARENT RETURNED LONG AGO, WITH terminationReason: "handed-off"</text>
       </svg>
     </div>
-    <figcaption><b>The spine.</b> Solid is what you can run today: <code>seed</code>, <code>wake</code>, <code>answer</code>, <code>status</code>, implement, and the harness manager. Dashed is the later design: <code>approve</code>, spec, and review. <code>startEpic</code> and <code>steer</code> are captions under the verbs that shipped. Note what is <em>not</em> here: three adapters. There is <b>one</b> harness manager and three small records that differ only in prompt, done-condition, and readable collections &#8212; section 7 shows the work of getting to that answer.</figcaption>
+    <figcaption><b>The spine.</b> Solid is what you can run today: <code>seed</code>, <code>wake</code>, <code>answer</code>, <code>status</code>, <code>steer</code>, implement, and the harness manager. <code>steer</code> is the talk door &#8212; it does not feed the drain itself; it may call the verbs that do. Dashed is the later design: <code>approve</code>, spec, and review. <code>startEpic</code> is still a caption under <code>seed</code>. Note what is <em>not</em> here: three adapters. There is <b>one</b> harness manager and three small records that differ only in prompt, done-condition, and readable collections &#8212; section 7 shows the work of getting to that answer.</figcaption>
   </figure>
 
-  <pre class="code"><i>// LABS/CONDUCTOR &#8212; the flow that ships. Four actions, implement only.</i>
-<i>// The later design adds approve / steer and renames seed &#8594; startEpic.</i>
+  <pre class="code"><i>// LABS/CONDUCTOR &#8212; the flow that ships. Five actions, implement only.</i>
+<i>// The later design adds approve and renames seed &#8594; startEpic.</i>
 const epicBoard = (epicId: string) => <em>taskBoard</em>({
   name: "epic",
   boardId: `epic:${epicId}`,         <i>// ONE BOARD PER EPIC &#8212; required once any worker is detached</i>
@@ -737,6 +737,7 @@ export const conductor = <em>defineFlow</em>({
     wake:   { block: conduct },      <i>// one drain step</i>
     status: { block: readBoard },    <i>// reads rows, dispatches nothing</i>
     answer: { block: answerRow },    <i>// writes a reply; a new request starts the job</i>
+    steer:  { block: steerTurn },    <i>// talk; may call the verbs as tools</i>
   },
 });</pre>
 
@@ -1835,7 +1836,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
         <tr>
           <td><strong>The harness-manager proof</strong><br><code>LAB-140</code></td>
           <td><span class="tag t-real">objective approved</span> <span class="tag t-prose">on PR #1362</span></td>
-          <td><code>LAB-138</code> turns a task row into a watched, settled coding run and records it as <code>runs/**</code>. <code>LAB-139</code> gives that run a way to ask and be answered &#8212; the inbox collection and the <code>answer</code> action. <code>LAB-151</code> is the operator door: <code>fsdev conductor</code> on the existing run host. <code>steer</code> is still the later design, not this lab. <code>FIX-150</code> sits under the same epic</td>
+          <td><code>LAB-138</code> turns a task row into a watched, settled coding run and records it as <code>runs/**</code>. <code>LAB-139</code> gives that run a way to ask and be answered &#8212; the inbox collection and the <code>answer</code> action. <code>LAB-151</code> is the operator door: <code>fsdev conductor</code> on the existing run host. <code>steer</code> is the talk turn on that door; classify-and-route is still the later design. <code>FIX-150</code> sits under the same epic</td>
           <td>Everything above the seam &#8212; the phase machine, context assembly, filing. None of them can be built on a dispatch that returns and forgets</td>
           <td>Nothing to start, and four things to finish. <code>LAB-139</code> needs <code>LAB-138</code>. The <em>Proof</em> needs the send verb (<code>FIX-1230</code>), the park (<code>FIX-1234</code>, merged), the wake (<code>FIX-1244</code>), and the resume (<code>FIX-1246</code>) &#8212; it owns none of the four, and every issue here can finish before the Proof can run</td>
         </tr>
