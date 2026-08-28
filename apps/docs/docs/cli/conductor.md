@@ -220,9 +220,13 @@ Typing on a row that has an open question starts an answer for you — you don't
 
 ### Transcript
 
-The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports. After that action returns, later work shows up as those board lines, not as streaming text.
+The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports.
 
-While an action runs, the last line can still be updating: a status (`status · claiming`) or streaming assistant text (`message · opened the pull request`). When a new status arrives, the previous one stays as its own line. Streaming text grows on that last line and remains a single line when it finishes.
+When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`) and streaming assistant text (`message · opened the pull request`). `watch` writes those same lines to stderr. Watching a running row does not start work or send input.
+
+After that request ends, further board changes show as the lines `status` reports.
+
+While a line is in flight, the last line updates: a status or streaming assistant text. When a new status arrives, the previous one stays as its own line. Streaming text grows on that last line and remains a single line when it finishes.
 
 `status` also writes here when a row actually moved: a new row (`PR-482 · pending`), a status change (`PR-482 · pending → in_progress`), a newly opened question (`PR-482 · asked Which branch should this target?`), a run outcome (`PR-482 · run failed · no pull request`), or a new run `finalMessage` (`PR-482 · stopped after the turn budget`). A poll that changed nothing adds no line.
 
@@ -242,7 +246,7 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. Every other verb prints the board (plain text or JSON) either way. Stream lines from the action (`status · …`, `message · …`) also go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 ```bash
 $ fsdev conductor seed PR-482
@@ -354,7 +358,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 
 - It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked, or a slash command.
 - The board table is exactly what `status` returns.
-- The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports. After that action returns, later work shows up as those board lines, not as streaming text.
+- Watching a running row does not start work or send input.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages

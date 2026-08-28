@@ -203,7 +203,7 @@ Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/ses
 
 ### `fsdev conductor` — Drive a conductor flow
 
-An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. When that row has no question and the last attempt failed, a FAIL band sits in that slot with the reason; `w` retries (same as wake). Headless `status`, `wake`, and `watch` print a `! failed` line plus the reason under the row. The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports. After that action returns, later work shows up as those board lines, not as streaming text. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
+An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. When that row has no question and the last attempt failed, a FAIL band sits in that slot with the reason; `w` retries (same as wake). Headless `status`, `wake`, and `watch` print a `! failed` line plus the reason under the row. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
 
 ```bash
 # Fullscreen board, live poll, slash commands
