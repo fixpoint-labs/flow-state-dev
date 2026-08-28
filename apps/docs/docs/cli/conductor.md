@@ -195,6 +195,18 @@ When the selected row has no open question and the last attempt failed, a FAIL b
 
 When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the full branch, the full checkout path, the request id, and that `x` stops. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output).
 
+When the run writes a todo list, the latest list shows on that band. Completed items show `[x]`, the current item `[·]`, the rest `[ ]`.
+
+```text
+ [x] Add the failing test
+ [·] Implement the fix
+ [ ] Open the pull request
+ [ ] Update the changelog
+ … 1 more
+```
+
+The band shows up to 4 items. A longer list ends with `… N more`. Selecting another row shows that row's latest list, or none if that row has not written one. A later list replaces the previous one. The ASK and FAIL bands do not show the list.
+
 If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`.
 
 It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
@@ -255,7 +267,7 @@ tool · TodoWrite
   [ ] Open the pull request
 ```
 
-A checklist longer than 10 items ends with `… N more`. If that tool fails, the transcript reprints `tool · TodoWrite · failed` and does not reprint the checklist.
+A checklist longer than 10 items ends with `… N more`. If that tool fails, the transcript reprints `tool · TodoWrite · failed` and does not reprint the checklist. The RUN band shows the latest list for the selected running row, up to 4 items.
 
 When a Read finishes, the first lines of the file print indented under the tool line.
 
@@ -450,6 +462,8 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - The transcript does not print reasoning or thinking text.
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
 - There is no combined transcript of every running row.
+- There is no combined todo list of every running row.
+- Headless verbs (`status`, `watch`, and the rest) have no RUN band.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages
