@@ -52,6 +52,11 @@ describe("parseArgv", () => {
   it("opens the TUI when there is no verb", () => {
     expect(parseArgv([]).invocation).toEqual({ mode: "tui" });
     expect(parseArgv(["tui", "FIX-1"]).invocation).toEqual({ mode: "tui", issue: "FIX-1" });
+    expect(parseArgv(["find"]).invocation).toEqual({
+      mode: "headless",
+      json: false,
+      command: { kind: "find" },
+    });
   });
 
   it("treats a verb as headless, and --json as a flag not a word", () => {
