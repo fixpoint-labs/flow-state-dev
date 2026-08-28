@@ -595,7 +595,7 @@ are strings, not streamed input.
 
 See also: [Tools overview](./overview.md) and [Claude Code remote
 dispatch](./claude-code-cli.md) for the fire-and-forget cloud alternative.
-\n\n## Files that outlive the run
+## Files that outlive the run
 
 A run needs a directory to work in, and that directory is usually temporary. The files it produces usually shouldn't be.
 
