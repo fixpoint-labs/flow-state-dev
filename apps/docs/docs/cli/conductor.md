@@ -224,7 +224,7 @@ When the run writes a todo list, the band shows one current item and a `done/tot
  … 1 more
 ```
 
-The list comes from that run's plan tools. `TodoWrite` with a `todos` array replaces the list. `TaskCreate` appends a pending item; the item text is `subject`. `TaskUpdate` takes `taskId` and `status`, and `subject` when you pass one, and moves that item when the tool succeeds. A failed `TaskCreate` is not on the list.
+The list comes from that run's plan tools. `TodoWrite` with a `todos` array replaces the list. `TaskCreate` adds a pending item (the create text, like `Add hello.js`). `TaskUpdate` changes that item's mark or text when it succeeds. A failed `TaskCreate` is not on the list.
 
 Selecting another row shows that row's current item, or none if that row has not written a list.
 
@@ -318,9 +318,7 @@ tool · TodoWrite
 
 A checklist longer than 10 items ends with `… N more`. If that tool fails, the transcript reprints `tool · TodoWrite · failed` and does not reprint the checklist.
 
-`TaskCreate` prints `tool · TaskCreate Add hello.js` and appends a pending item to the list. `TaskUpdate` prints `tool · TaskUpdate` and, when it succeeds, moves that item (`taskId` and `status`; `subject` when you pass one). A failed `TaskCreate` reprints `tool · TaskCreate Add hello.js · failed` and is not on the list.
-
-The board shows one current item and a `done/total` count for that row; `t` expands the list there.
+`TaskCreate` prints `tool · TaskCreate Add hello.js`. `TaskUpdate` prints `tool · TaskUpdate`. A failed `TaskCreate` reprints `tool · TaskCreate Add hello.js · failed`.
 
 When a Read finishes, the first lines of the file print indented under the tool line.
 
@@ -533,7 +531,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Headless verbs take the id on the argv. There is no list on that path.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
-- Headless verbs (`status`, `watch`, and the rest) have no RUN band and no request-id, last-tool, files, or todo strip.
+- Headless verbs (`status`, `watch`, and the rest) have no RUN band and do not print the request id, last tool, files, or todo list.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages
