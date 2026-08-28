@@ -292,6 +292,7 @@ describe("createStreamTranscript", () => {
           type: "tool_output",
           blockName: "Bash",
           status: "failed",
+          output: "FAIL  test/foo.test.ts\nAssertionError: expected 1 to be 2\n",
           toolCall: {
             callId: "c2",
             name: "Bash",
@@ -301,7 +302,110 @@ describe("createStreamTranscript", () => {
         }),
       ),
     ).toEqual({
-      lines: ["tool · Bash pnpm test · failed"],
+      lines: [
+        "tool · Bash pnpm test · failed",
+        "  FAIL  test/foo.test.ts",
+        "  AssertionError: expected 1 to be 2",
+      ],
+      live: null,
+    });
+  });
+
+  it("prints the tail of a successful Bash result so a passing command is visible", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t5",
+        type: "tool_output",
+        blockName: "Bash",
+        status: "in_progress",
+        toolCall: {
+          callId: "c5",
+          name: "Bash",
+          arguments: JSON.stringify({ command: "pnpm test" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        done({
+          id: "t5",
+          type: "tool_output",
+          blockName: "Bash",
+          status: "completed",
+          output: "Test Files  1 passed (1)\n      Tests  12 passed (12)\n",
+          toolCall: {
+            callId: "c5",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "pnpm test" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["  Test Files  1 passed (1)", "        Tests  12 passed (12)"],
+      live: null,
+    });
+  });
+
+  it("keeps only the last lines of a long Bash result", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t6",
+        type: "tool_output",
+        blockName: "Bash",
+        status: "in_progress",
+        toolCall: {
+          callId: "c6",
+          name: "Bash",
+          arguments: JSON.stringify({ command: "pnpm test" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    const output = Array.from({ length: 20 }, (_, i) => `log-${i}`).join("\n");
+    const patch = t.apply(
+      done({
+        id: "t6",
+        type: "tool_output",
+        blockName: "Bash",
+        status: "completed",
+        output,
+        toolCall: {
+          callId: "c6",
+          name: "Bash",
+          arguments: JSON.stringify({ command: "pnpm test" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(patch.lines[0]).toBe("  … 14 above");
+    expect(patch.lines.at(-1)).toBe("  log-19");
+    expect(patch.lines).toHaveLength(7);
+  });
+
+  it("joins stdout and stderr when the Bash result is an object", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        done({
+          id: "t7",
+          type: "tool_output",
+          blockName: "Bash",
+          status: "completed",
+          output: { stdout: "built\n", stderr: "warn: stale\n" },
+          toolCall: {
+            callId: "c7",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "pnpm build" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · Bash pnpm build", "  built", "  warn: stale"],
       live: null,
     });
   });

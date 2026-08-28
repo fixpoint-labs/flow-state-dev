@@ -264,6 +264,50 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "tool · Write src/conductor/render.ts");
     await waitFor(() => tty.text, "+ export function renderFrame() {}");
 
+    stores.request.persistEvents("req-live-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-live-1",
+        sequence_number: 3,
+        ts: 3,
+        item: {
+          id: "t2",
+          type: "tool_output",
+          status: "in_progress",
+          blockName: "Bash",
+          toolCall: {
+            callId: "c2",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "pnpm test" }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+      {
+        stream: "request",
+        type: "item.done",
+        requestId: "req-live-1",
+        sequence_number: 4,
+        ts: 4,
+        item: {
+          id: "t2",
+          type: "tool_output",
+          status: "failed",
+          blockName: "Bash",
+          output: "FAIL  test/foo.test.ts\nAssertionError: expected 1 to be 2\n",
+          toolCall: {
+            callId: "c2",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "pnpm test" }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+    ]);
+    await waitFor(() => tty.text, "tool · Bash pnpm test · failed");
+    await waitFor(() => tty.text, "AssertionError: expected 1 to be 2");
+
     tty.input.write("q");
     await expect(running).resolves.toBe(0);
   });

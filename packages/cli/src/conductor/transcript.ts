@@ -8,7 +8,8 @@
  * items (errors, tools, finished messages, resource changes) become activity
  * lines. A coding tool is named with the file or command it touched. A Write
  * or Edit that carries the new text also prints a compact hunk — the changed
- * span, not the whole file. `status` remains the board authority; `diffBoard`
+ * span, not the whole file. A Bash result prints the last lines of its
+ * output when it settles. `status` remains the board authority; `diffBoard`
  * turns a poll that actually moved into the same log. A running row's
  * `run.requestId` is also tailed through the request store, so a detached
  * coding run writes here as it runs.
@@ -110,15 +111,22 @@ export function createStreamTranscript(): {
           }
           if (item.type === "tool_output") {
             const failed = item.status === "failed" || item.status === "incomplete";
-            if (logged.has(item.id) && !failed) return snapshot([]);
+            if (logged.has(item.id) && !failed) {
+              return snapshot([...commitLive(), ...formatCommandOutput(item)]);
+            }
             logged.add(item.id);
             if (failed) {
               return snapshot([
                 ...commitLive(),
                 formatToolLine(item, item.status),
+                ...formatCommandOutput(item),
               ]);
             }
-            return snapshot([...commitLive(), ...formatToolLines(item)]);
+            return snapshot([
+              ...commitLive(),
+              ...formatToolLines(item),
+              ...formatCommandOutput(item),
+            ]);
           }
           if (item.type === "container") {
             const failed = item.status === "failed" || item.status === "incomplete";
@@ -279,6 +287,50 @@ function toolHunk(args: Record<string, unknown>): string[] {
     ...added.slice(start, addedEnd).map((line) => clipHunkLine("+", line)),
   ];
   return capHunk(hunk);
+}
+
+const COMMAND_OUT_OK = 6;
+const COMMAND_OUT_FAIL = 12;
+
+function isCommandTool(item: OutputItem, args: Record<string, unknown>): boolean {
+  const name =
+    item.type === "tool_output" ? (item.toolCall?.name ?? item.blockName) : "";
+  if (name === "Bash") return true;
+  return typeof args.command === "string" && args.command.trim() !== "";
+}
+
+function commandOutputText(item: OutputItem): string {
+  if (item.type !== "tool_output") return "";
+  const raw = item.output;
+  if (typeof raw === "string") return raw;
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    const parts: string[] = [];
+    if (typeof record.stdout === "string") parts.push(record.stdout);
+    if (typeof record.stderr === "string") parts.push(record.stderr);
+    if (parts.length > 0) {
+      return parts.map((part) => part.replace(/\n+$/, "")).filter((part) => part !== "").join("\n");
+    }
+  }
+  const err = item.error?.message;
+  return typeof err === "string" ? err : "";
+}
+
+/** Last lines of a Bash result. Write/Edit/Read stay silent here. */
+function formatCommandOutput(item: OutputItem): string[] {
+  if (item.type !== "tool_output") return [];
+  const args = parseToolArgs(item.toolCall?.arguments);
+  if (!isCommandTool(item, args)) return [];
+  const text = commandOutputText(item);
+  if (text.trim() === "") return [];
+  const failed = item.status === "failed" || item.status === "incomplete";
+  const max = failed ? COMMAND_OUT_FAIL : COMMAND_OUT_OK;
+  const lines = splitLines(text).map((line) => {
+    const body = line.length <= HUNK_LINE ? line : `${line.slice(0, HUNK_LINE - 1)}…`;
+    return `  ${body}`;
+  });
+  if (lines.length <= max) return lines;
+  return [`  … ${lines.length - max} above`, ...lines.slice(-max)];
 }
 
 function formatContainerLine(item: OutputItem, settled?: "failed" | "incomplete"): string {

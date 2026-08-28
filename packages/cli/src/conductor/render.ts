@@ -392,7 +392,12 @@ function runBandOpen(state: ViewState): boolean {
 }
 
 function wrapActivityLine(text: string, width: number): string[] {
-  if (text.startsWith("+ ") || text.startsWith("- ") || text.startsWith("… ")) {
+  if (
+    text.startsWith("+ ") ||
+    text.startsWith("- ") ||
+    text.startsWith("… ") ||
+    text.startsWith("  ")
+  ) {
     return [text.length <= width ? text : `${text.slice(0, Math.max(1, width - 1))}…`];
   }
   return wrap(text, width);
@@ -401,7 +406,7 @@ function wrapActivityLine(text: string, width: number): string[] {
 function paintHunkLine(line: string): string {
   if (line.startsWith("+ ")) return paint(TEAL, line);
   if (line.startsWith("- ")) return paint(RUST, line);
-  if (line.startsWith("… ")) return dim(line);
+  if (line.startsWith("… ") || line.startsWith("  ")) return dim(line);
   return line;
 }
 
