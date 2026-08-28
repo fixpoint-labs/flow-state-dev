@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyKey, decodeKeys } from "../src/conductor/keys";
+import { applyKey, decodeKeys, rowAfterRefresh } from "../src/conductor/keys";
+import { applyStatus } from "../src/conductor/loop";
 import { emptyView, type StatusRow, type ViewState } from "../src/conductor/types";
 
 function row(issue: string, questions = 0): StatusRow {
@@ -164,5 +165,29 @@ describe("applyKey", () => {
     expect(idleX.state.notice).toBe("nothing running to stop");
     expect(idleX.effect).toBeUndefined();
     expect(applyKey(idle, { type: "ctrl", value: "c" }).effect).toEqual({ type: "quit" });
+  });
+});
+
+describe("rowAfterRefresh / applyStatus", () => {
+  it("focuses an issue on first paint and does not snap back after the operator moves", () => {
+    const live1 = row("LIVE-1");
+    const live2 = row("LIVE-2");
+    const focused = rowAfterRefresh({ ...emptyView("epic"), rows: [live1, live2] }, "LIVE-2");
+    expect(focused.selected).toBe(1);
+
+    const moved = { ...focused, selected: 0, scroll: 4 };
+    const polled = applyStatus(moved, { rows: [live1, live2] }, 2);
+    expect(polled.selected).toBe(0);
+    expect(polled.scroll).toBe(4);
+  });
+
+  it("keeps the selected task when two rows share an issue", () => {
+    const review: StatusRow = { ...row("FIX-1"), taskId: "FIX-1--review", phase: "review" };
+    const implement = row("FIX-1");
+    const looking = { ...emptyView("epic"), rows: [review, implement], selected: 1, scroll: 2 };
+    const polled = applyStatus(looking, { rows: [review, implement] }, 3);
+    expect(polled.selected).toBe(1);
+    expect(polled.rows[polled.selected]?.taskId).toBe("FIX-1--implement");
+    expect(polled.scroll).toBe(2);
   });
 });

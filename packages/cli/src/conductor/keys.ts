@@ -381,11 +381,28 @@ function applyClick(state: ViewState, screenRow1: number): KeyResult {
   return { state: selectRow(state, index) };
 }
 
-export function rowAfterRefresh(state: ViewState, preferIssue?: string | null): ViewState {
-  const issue = preferIssue ?? selectedRow(state)?.issue;
-  if (issue === null || issue === undefined) return clampSelected(state);
-  const index = state.rows.findIndex((row) => row.issue === issue);
-  if (index < 0) return clampSelected(state);
-  if (index === state.selected) return clampSelected(state);
-  return clampSelected({ ...state, selected: index, scroll: 0 });
+/**
+ * Keep the selected row across a board rewrite. A previous `taskId` wins —
+ * that is the row the operator is looking at. `preferIssue` is only the
+ * first-paint focus (`tui <issue>` / `start <issue>`).
+ */
+export function rowAfterRefresh(
+  state: ViewState,
+  preferIssue?: string | null,
+  previousTaskId?: string,
+): ViewState {
+  if (previousTaskId !== undefined && previousTaskId !== "") {
+    const index = state.rows.findIndex((row) => row.taskId === previousTaskId);
+    if (index >= 0) {
+      return clampSelected(index === state.selected ? state : { ...state, selected: index });
+    }
+  }
+  if (preferIssue !== null && preferIssue !== undefined && preferIssue !== "") {
+    const index = state.rows.findIndex((row) => row.issue === preferIssue);
+    if (index >= 0) {
+      if (index === state.selected) return clampSelected(state);
+      return clampSelected({ ...state, selected: index, scroll: 0 });
+    }
+  }
+  return clampSelected(state);
 }

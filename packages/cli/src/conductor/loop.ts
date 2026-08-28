@@ -92,6 +92,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   });
 
   const paint = () => {
+    if (closed) return;
     output.write(`${HOME}${ERASE}${renderFrame(state, size())}`);
   };
 
@@ -138,9 +139,9 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   const refresh = async () => {
     const seq = ++refreshSeq;
     const result = await runAction<StatusOutput>("status", {});
-    if (seq !== refreshSeq) return;
+    if (closed || seq !== refreshSeq) return;
     if (result.error !== undefined) throw new Error(result.error);
-    state = applyStatus(state, result.output ?? { rows: [] }, now(), options.focusIssue);
+    state = applyStatus(state, result.output ?? { rows: [] }, now());
     const running = runningRequestIds(state.rows);
     follow.sync(running);
     flushFinishedChildren(running);
@@ -338,19 +339,15 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   return 0;
 }
 
-export function applyStatus(
-  state: ViewState,
-  output: StatusOutput,
-  at: number,
-  preferIssue?: string,
-): ViewState {
+export function applyStatus(state: ViewState, output: StatusOutput, at: number): ViewState {
+  const previousTaskId = state.rows[state.selected]?.taskId;
   const moved = diffBoard(state.rows, output.rows);
   let next = clampSelected({
     ...state,
     rows: output.rows,
     lastRefreshAt: at,
   });
-  next = rowAfterRefresh(next, preferIssue);
+  next = rowAfterRefresh(next, undefined, previousTaskId);
   for (const line of moved) next = pushActivity(next, line, at);
   return next;
 }
