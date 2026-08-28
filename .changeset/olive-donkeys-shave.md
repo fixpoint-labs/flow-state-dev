@@ -2,7 +2,7 @@
 "@flow-state-dev/orchestration": minor
 ---
 
-Task status `awaiting_review` is now `parked`.
+Task status `awaiting_review` is now `parked` (FIX-1245).
 
 `parked` is the word the docs and the task board already use for a task waiting on a
 person, and it is now the value on the wire too. `TaskStatus`, the transition table, and
