@@ -276,13 +276,13 @@ Interactive:
   fsdev conductor tui [issue]     same, optionally focused on one issue
 
 Headless (scripting):
-  fsdev conductor status [issue]
+  fsdev conductor status [issue]  named issue also prints last tool, files, hunk, todo
   fsdev conductor seed <issue> [--phase implement]
   fsdev conductor start <issue>   seed, then open the TUI
   fsdev conductor wake
   fsdev conductor abort [issue]   stop the running request on those rows
   fsdev conductor answer <question-id> <reply…>
-  fsdev conductor watch [issue]   poll status until waiting or terminal
+  fsdev conductor watch [issue]   named issue prints the same attempt strip
   fsdev conductor help
 
 In the TUI:

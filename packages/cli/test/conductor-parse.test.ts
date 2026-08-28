@@ -133,6 +133,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("/find [text]");
     expect(HELP_TEXT).toContain("older / newer match");
     expect(HELP_TEXT).toContain("complete the selected slash verb or board id");
+    expect(HELP_TEXT).toContain("named issue also prints last tool, files, hunk, todo");
   });
 });
 
