@@ -19,6 +19,8 @@ issue identifiers; anything under `apps/docs/` is published and may not.
 
 - `conductor.html` — the Conductor meta-harness: what it is, how a run works,
   and the threads still open. GitHub Pages entry (`index.html` redirects here).
+  Open this before working on the lab or `fsdev conductor`. The operator door
+  is LAB-151; a first run needs `CONDUCTOR_REPO` pointed at another checkout.
 - `workforce.html` — the other intended harness: Layer 2 conventions on the
   same substrate, persistent agents, not this cycle. Triangulates so Conductor
   does not harden a coding-only Layer 1.

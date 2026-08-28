@@ -2,6 +2,10 @@
 
 A row on a board becomes a supervised coding run.
 
+The map is [`docs/atlas/conductor.html`](../../docs/atlas/conductor.html) — what exists,
+what is still dashed, and the env a first run needs (`CONDUCTOR_REPO` is a different
+checkout, not this dispatcher).
+
 Something claims the row, gives the run its own checkout of the repository, stays with it until it
 stops, reads what came back, and then closes the row or lets it run again.
 
