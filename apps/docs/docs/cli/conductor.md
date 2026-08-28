@@ -215,7 +215,7 @@ It needs a TTY. Piped in or run from a script, it prints a message and exits `1`
 fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch, abort).
 ```
 
-`fsdev conductor tui PR-482` opens the same board with that row selected, if it exists.
+`fsdev conductor tui PR-482` opens the same board with that row selected, if it exists. Moving to another row (`j`/`k`, arrows, click) keeps that row selected. A live poll leaves the selection where you put it.
 
 ### Keys
 
