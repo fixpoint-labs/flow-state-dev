@@ -107,7 +107,7 @@ export function createStreamTranscript(): {
     if (failed) {
       return snapshot([
         ...prior,
-        formatToolLine(item, item.status),
+        formatToolLine(item, item.status === "incomplete" ? "incomplete" : "failed"),
         ...formatToolResult(item),
       ]);
     }
@@ -199,7 +199,10 @@ export function createStreamTranscript(): {
             logged.add(item.id);
             return snapshot([
               ...commitLive(),
-              formatContainerLine(item, failed ? item.status : undefined),
+              formatContainerLine(
+                item,
+                failed ? (item.status === "incomplete" ? "incomplete" : "failed") : undefined,
+              ),
             ]);
           }
           return snapshot([]);
