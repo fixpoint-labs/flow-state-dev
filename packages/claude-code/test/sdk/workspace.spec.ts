@@ -349,6 +349,63 @@ describe("createWorkspaceAgentCapability", () => {
     discard(base);
   });
 
+  it("runs the caller's error hook even when reconciliation itself fails", async () => {
+    // Two independent obligations on one failure path. If the reconcile
+    // rejects — the content store is down — the caller's cleanup still has to
+    // run, and the block runtime swallows hook errors to preserve the agent's
+    // own, so skipping it would be silent.
+    const base = scratch();
+    let callersHookRan = false;
+
+    const strict = defineResourceCollection({
+      pattern: "artifacts/**",
+      scope: "session",
+      prefetchMode: "lazy",
+      stateSchema: z.object({
+        path: z.string().nullable().default(null),
+        hash: z.string().nullable().default(null),
+        updatedAt: z.string().nullable().default(null),
+        title: z.string(),
+      }),
+      client: { state: { read: true }, expose: ["path", "hash", "updatedAt", "title"] },
+    });
+
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          mkdirSync(join(base, "artifacts"), { recursive: true });
+          writeFileSync(join(base, "artifacts", "half.md"), "partial");
+          throw new Error("agent exploded");
+        },
+      }),
+      root: () => base,
+      onErrored: () => {
+        callersHookRan = true;
+      },
+    });
+
+    const gen = generator({
+      name: "host",
+      model: "openai/gpt-5.4-mini",
+      prompt: "x",
+      uses: [cap as never],
+    });
+    const flow = defineFlow({
+      kind: "workspace-hook-flow",
+      resources: { artifacts: strict },
+      actions: { go: { block: gen } },
+    })({ id: "default" });
+
+    await testBlock(toolOf(cap) as never, {
+      input: { prompt: "go" },
+      flow: flow as never,
+    });
+
+    expect(callersHookRan).toBe(true);
+
+    discard(base);
+  });
+
   it("fails the run when the collection write fails, rather than reporting success", async () => {
     // The two rejections a flush can produce call for opposite handling. A
     // workspace that cannot be READ decided nothing, so reporting it and
