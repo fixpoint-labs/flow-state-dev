@@ -142,7 +142,11 @@ expect(result.output).toBeDefined();
 | [`@flow-state-dev/devtool`](packages/devtool) | Pre-built DevTool assets for `fsdev dev` |
 | [`apps/devtool`](apps/devtool) | DevTool source app |
 
-## Quick start
+## Get started
+
+If you have a project of your own, ask a coding assistant to run the `install-fsd` skill, or follow [Existing project](https://flow-state.dev/docs/getting-started/existing-project) by hand.
+
+If you are contributing to this repository, clone it and install from the root:
 
 ```bash
 # Prerequisites: Node.js >=22, pnpm@10.4.1

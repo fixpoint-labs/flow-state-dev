@@ -68,3 +68,20 @@ export const NETWORK_CALL_TIMEOUT_MS = 60_000;
  * large repository is genuinely slow, and killing a real one costs the attempt.
  */
 export const GIT_TIMEOUT_MS = 600_000;
+
+/**
+ * Undoing a checkout this process just created, and **counted in the lock's
+ * advertised lifetime** (`resolveOwnership`'s `maxLockHeldMs`).
+ *
+ * Its own constant rather than {@link GIT_TIMEOUT_MS} for both halves of that.
+ * It cannot draw from the provisioning budget — the case it exists for is that
+ * budget running out — so it extends the hold, and anything the hold can reach
+ * has to be in the number the stale window is derived from or a live attempt
+ * gets its lock stolen mid-cleanup.
+ *
+ * A minute is generous for what it covers: `worktree prune` and `branch -D`,
+ * both local bookkeeping on a tree with no history to walk. Reusing the
+ * ten-minute git budget would inflate every deployment's stale window by ten
+ * minutes to fund two commands that take milliseconds.
+ */
+export const CHECKOUT_CLEANUP_TIMEOUT_MS = 60_000;

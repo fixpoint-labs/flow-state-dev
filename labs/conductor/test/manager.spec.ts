@@ -456,7 +456,12 @@ describe("the manager — contention, and what it must not cost", () => {
       // to steal the tree as stale.
       runTimeoutMs: 1_000,
       provisionTimeoutMs: 2_000,
-      ownership: { waitMs: 5_000, pollMs: 20, staleAfterMs: 4_000 },
+      // Past `maxLockHeldMs`, which is the two budgets above PLUS the allowance
+      // for undoing a checkout provisioning refused (60s). Sized off that sum
+      // rather than spelled, so the numbers move with it; what the test needs
+      // is only that the waiter outlasts a 250ms hold without the tree ever
+      // becoming stale-eligible, and every window here is orders past that.
+      ownership: { waitMs: 65_000, pollMs: 20, staleAfterMs: 64_000 },
     });
 
     const checkout = join(live.workspaceRoot, conductorTaskId(ISSUE, PHASE));
@@ -1093,9 +1098,42 @@ describe("the manager — the stale window is refused at construction", () => {
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
       runTimeoutMs: 30_000,
       provisionTimeoutMs: 1_000,
-      ownership: { waitMs: 90_025, staleAfterMs: 90_000, pollMs: 25 },
+      // One millisecond past `maxLockHeldMs` (30s + 1s + the 60s cleanup
+      // allowance), and `waitMs` one poll past that — the tightest legal pair,
+      // which is what "exactly one poll of headroom is legal" has to mean.
+      ownership: { waitMs: 91_026, staleAfterMs: 91_001, pollMs: 25 },
     });
     h.dispose();
+  });
+
+  it("counts the refusal-cleanup allowance in the longest legitimate hold", async () => {
+    // The lock is held across provisioning, and provisioning can now spend a
+    // little longer than its own budget: a refusal late in it discards the
+    // checkout it just created, and that cleanup cannot draw from the budget
+    // whose exhaustion may have caused the refusal.
+    //
+    // So the hold is three terms, not two. Sized against the old two, a stale
+    // window elapses while the holder is still inside `worktree prune` — the
+    // waiter clears a live lock and two attempts prune the same bookkeeping.
+    // That is the failure the whole stale-window derivation exists to prevent,
+    // arriving through the door added to stop a wedge.
+    //
+    // 31_500 sits above `runTimeoutMs + provisionTimeoutMs` (31_000) and below
+    // the real bound (61_000 = provisioning's 1_000 plus the cleanup allowance,
+    // which is the longer of the two tails here), so it is accepted by the
+    // arithmetic that ignores cleanup and refused by the arithmetic that counts
+    // it. That gap is the entire assertion.
+    expect(() =>
+      createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], {
+          prompts: [],
+          cwds: [],
+        }),
+        runTimeoutMs: 30_000,
+        provisionTimeoutMs: 1_000,
+        ownership: { waitMs: 200_000, staleAfterMs: 31_500, pollMs: 25 },
+      }),
+    ).toThrow(/to undo a checkout provisioning refused/);
   });
 });
 
@@ -1348,6 +1386,56 @@ describe("the ledger is partitioned by tenant", () => {
     });
     expect(separated.collectionId).not.toBe(implement.collectionId);
     expect(separated.boardId).not.toBe(implement.boardId);
+  });
+
+  it("hands each conductor what its own `validate` returned", async () => {
+    // The flow-side half of the pin. `validate` is pure and returns the
+    // identity it checked; `conductorFlow` binds THAT value into this
+    // conductor's run contexts. Without the binding a phase has no way to carry
+    // anything from construction into a run, and the version that stored it on
+    // itself produced three defects in as many rounds.
+    //
+    // Driven through a real seed rather than by calling `isDone` directly,
+    // because what is under test is the wiring in `conductorFlow` and calling
+    // the phase by hand would supply the value the wiring is supposed to.
+    let seen: unknown = "never ran";
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      validate: () => "the-validated-value",
+      isDone: (run) => {
+        seen = run.validated;
+        return true;
+      },
+    });
+
+    await seedAndDrain(live);
+
+    expect(seen).toBe("the-validated-value");
+  });
+
+  it("hands the same value to the prompt builder, not only the done-condition", async () => {
+    // `validated` sits on `PhaseRunContext`, which `PromptRunContext` extends,
+    // so the type tells a prompt builder it receives the value. The manager
+    // builds the two contexts separately, so binding into `isDone` alone made
+    // the type a lie for the other half: a phase whose prompt depends on what
+    // `validate` found would read `undefined` and build the wrong prompt,
+    // after a construction that reported success.
+    //
+    // Separate from the done-condition's test because they fail
+    // independently — one wrapper cannot cover both hooks.
+    let seen: unknown = "never ran";
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      validate: () => "the-validated-value",
+      buildPrompt: (run) => {
+        seen = run.validated;
+        return "p";
+      },
+    });
+
+    await seedAndDrain(live);
+
+    expect(seen).toBe("the-validated-value");
   });
 
   describe("every action refuses another tenant BEFORE touching the board", () => {

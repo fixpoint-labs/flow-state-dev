@@ -59,6 +59,14 @@ pull request and *then* exhaust its turn budget.
 halves, for the same reason: a run that asked and then ran out of budget is not waiting on
 anybody, and holding the board for it would stall the job silently.
 
+**When both hold, the question wins.** A run can succeed, write a question, and satisfy the
+done-condition in the same attempt; it waits on a person rather than completing. The two are
+scoped differently — the question belongs to this attempt, while the done-condition reads the
+branch, which every attempt on the task shares. A pull request some earlier attempt left says
+nothing about whether *this* attempt's question has been answered, so completing on it would
+discard a question nobody had seen. The cost is one extra round trip when a run asked something
+and then went on to finish anyway.
+
 Anything else is a **failed attempt**. The row goes back to `pending` with the reason attached as
 feedback, or to `errored` once the retry budget is spent. A retry re-runs the agent from the
 beginning, in the checkout the last one left behind, and is told why the last one stopped.

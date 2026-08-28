@@ -5,7 +5,7 @@
  * `safeParse(undefined)`, then `safeParse({})`, then `{}` — that both call
  * paths now depend on.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { ResourceConfig } from "@flow-state-dev/core/types";
 import { ValidationError } from "../src/errors/flow-error";
@@ -117,5 +117,68 @@ describe("parseResourceWriteState", () => {
     expect(() => parseResourceWriteState(schema, { ticker: "NVDA" }, "priceHistory")).toThrow(
       /at "range"/
     );
+  });
+});
+
+/**
+ * The fixed-point guard, at unit tier and through the public write parse — the
+ * seam every caller actually uses, so these fail if the guard stops being wired
+ * as well as if it stops working. The drift suite drives the same guard through
+ * the real registry; these pin the three ways a re-parse can fail the test,
+ * because each one sends the schema's author somewhere different and only the
+ * first has a field to name.
+ */
+describe("parseResourceWriteState — fixed point", () => {
+  /** Moves `n` again on every pass — the shape the guard exists to reject. */
+  const drifting = z.object({ n: z.number().transform((v) => v + 1) });
+
+  it("returns the value when re-parsing leaves it alone", () => {
+    const schema = z.object({ n: z.number(), tag: z.string().default("") });
+    expect(parseResourceWriteState(schema, { n: 1 }, "counter")).toEqual({
+      n: 1,
+      tag: ""
+    });
+  });
+
+  it("names the field the second parse moved", () => {
+    expect(() => parseResourceWriteState(drifting, { n: 0 }, "counter")).toThrow(ValidationError);
+    expect(() => parseResourceWriteState(drifting, { n: 0 }, "counter")).toThrow(
+      /Resource "counter" write failed stateSchema validation at "n"/
+    );
+  });
+
+  it("names the path when the second parse fails outright", () => {
+    // A type-changing transform: the output no longer satisfies the input type,
+    // so the re-parse errors rather than returning a different value.
+    const retyping = z.object({ n: z.string().transform(Number) });
+    expect(() => parseResourceWriteState(retyping, { n: "1" }, "counter")).toThrow(/at "n"/);
+  });
+
+  it("rejects — rather than crashing — when the second parse yields a non-object", () => {
+    // A conditional transform that collapses its own output: `{phase:0}` parses
+    // to `{phase:1}`, which parses to `null`. There is no moved field to name.
+    const collapsing = z
+      .object({ phase: z.number() })
+      .transform((value) => (value.phase === 0 ? { phase: 1 } : null));
+
+    expect(() => parseResourceWriteState(collapsing, { phase: 0 }, "wizard")).toThrow(
+      ValidationError
+    );
+    // And it says what actually happened, so the author looks at the transform's
+    // null branch rather than hunting for a field that moved.
+    expect(() => parseResourceWriteState(collapsing, { phase: 0 }, "wizard")).toThrow(
+      /Resource "wizard".*re-parsing its own output produced null, not an object/s
+    );
+  });
+
+  it("skips the second parse when the first one changed nothing", () => {
+    // The identity fast path. It is the overwhelming majority of writes, and the
+    // reason it is safe to skip is that a schema's parse is a pure function of
+    // its input — see the guard's doc comment. One `safeParse` is the write's
+    // own; a second would mean the skip is gone.
+    const schema = z.object({ n: z.number() });
+    const spy = vi.spyOn(schema, "safeParse");
+    parseResourceWriteState(schema, { n: 1 }, "counter");
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

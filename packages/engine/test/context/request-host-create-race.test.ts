@@ -83,6 +83,10 @@ function raceLosingStores(currentValue: SessionRecord | undefined) {
         };
       }
     },
+    // Every case here LOSES the create, so the tombstone reclamation a won
+    // create runs (FIX-1258) is never reached. Present so a future case that
+    // wins fails on its assertion rather than on a missing stub.
+    resourceState: { purgeTombstones: async () => {} },
     // Per-process by default, so liveness is gated off — irrelevant here.
     activeRequests: {}
   } as never;

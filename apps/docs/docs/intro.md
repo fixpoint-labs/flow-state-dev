@@ -100,5 +100,6 @@ Read these in order. Guides sit next to Docs in the nav if you prefer a walkthro
 2. **[Installation](/docs/getting-started/installation)** — packages to install
 3. **[Setting up models](/docs/getting-started/setting-up-models)** — one API key
 4. **[Quick Start](/docs/getting-started/quick-start)** — a streaming chat in one sitting
-5. **[Your first flow](/docs/getting-started/your-first-flow)** — the same app, with the why
-6. **[Fundamentals](/docs/fundamentals/overview)** — blocks, flows, state, capabilities. Field catalogs sit on the page after each concept.
+5. **[Existing project](/docs/getting-started/existing-project)** — add a demo flow to a Next.js or Node app you already have
+6. **[Your first flow](/docs/getting-started/your-first-flow)** — the same app, with the why
+7. **[Fundamentals](/docs/fundamentals/overview)** — blocks, flows, state, capabilities. Field catalogs sit on the page after each concept.

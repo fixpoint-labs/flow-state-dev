@@ -46,32 +46,94 @@
  *   change. **What makes that fatal rather than annoying is that the run's
  *   result subtype stays `"success"`** — a refused ask is indistinguishable
  *   from an attempt that never asked.
- * - **Not committable.** `git add -A` does not stage a gitignored path, and
- *   the repo's own `.gitignore` carries a double-star `.fsdev` rule — so it is
- *   already there on every fresh clone and every worktree, with nothing to set
- *   up, remember, or crash between. *Rejected: a per-worktree
- *   `.git/info/exclude` entry* (a step at worktree-prep time) and *rejected:
- *   clearing the marker before each invocation* (a step a crash can interrupt,
- *   leaving the stale-marker stall).
+ * - **Not committable.** `git add -A` does not stage a gitignored path, so the
+ *   marker is safe exactly where git already ignores it — and **provisioning
+ *   asks git whether it does**, in the checkout, before the agent runs
+ *   (`assertAskMarkerIgnored` in `./workspace`). *Rejected: clearing the marker
+ *   before each invocation* — a step a crash can interrupt, leaving the
+ *   stale-marker stall.
  *
- * `.fsdev/` rather than `.orchestration/`, checked rather than assumed:
- * a double-star `.fsdev` rule matches at **any depth**, while `/.orchestration/` is
- * root-anchored and would silently stop covering the marker if the path ever
- * nested. `.fsdev/` is also the framework's own namespace.
+ * `.fsdev/` rather than `.orchestration/`: a double-star `.fsdev` rule matches
+ * at **any depth**, while `/.orchestration/` is root-anchored and would
+ * silently stop covering the marker if the path ever nested. `.fsdev/` is also
+ * the framework's own namespace.
  *
- * **The trade-off, stated rather than hidden:** the guarantee is now coupled to
- * that `.gitignore` entry staying accurate. Narrow the pattern or rename the
- * directory without updating it and the leak comes back silently.
+ * **Which repository's rule, which is where this was wrong.** The guarantee was
+ * written against THIS repository's `.gitignore` — the one dispatching the run.
+ * The marker lands in the product checkout, a worktree of `sourceRepo`, which
+ * this lab requires be a different repository, and a target that never adopted
+ * the pattern has no such rule. So the rule is now checked where the marker
+ * lands rather than assumed from where the code lives, and a repository that
+ * lacks it is refused with the line to add.
  */
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 /** The directory, relative to the checkout, the marker lives in. */
 export const ASK_MARKER_DIR = join(".fsdev", "ask");
 
+/**
+ * The `.gitignore` line a target repository needs, spelled once.
+ *
+ * It appears in the refusal a run gets, in the test fixture's repository, and
+ * in the assertions on both — three copies that have to agree, and a refusal
+ * naming a rule the fixture does not use is a message that has been wrong
+ * without anything failing.
+ *
+ * Double-star rather than root-anchored: it matches at any depth, so the rule
+ * keeps covering the marker if the checkout layout ever nests.
+ */
+export const ASK_MARKER_IGNORE_RULE = "**/.fsdev/";
+
 /** Where THIS attempt must write a question, if it has one. */
 export function askMarkerPath(workspacePath: string, attempt: number): string {
   return join(workspacePath, ASK_MARKER_DIR, `${attempt}.md`);
+}
+
+/**
+ * Is `gitPath` one of THIS module's markers — as `git ls-files` prints a path,
+ * `/`-separated and relative to the repository root?
+ *
+ * **Requires a listing already restricted to {@link ASK_MARKER_DIR}**, which is
+ * why it checks the shape and depth of the path rather than re-testing the
+ * directory prefix. That is not a shortcut: **the caller's pathspec knows the
+ * checkout's case rules and this function cannot.** On a case-folding
+ * filesystem git resolves `.FSDEV/ask/1.md` and `.fsdev/ask/1.md` to one file,
+ * so `ls-files -- .fsdev/ask` lists the index's spelling — and a
+ * case-*sensitive* prefix test here would then drop the very entry the run is
+ * about to collide with, accepting a checkout whose marker is already tracked.
+ * Re-deriving the prefix means re-deriving `core.ignorecase` with it, and a
+ * second answer to that question is a second answer that can be wrong.
+ *
+ * **Beside {@link askMarkerPath} because it is the same rule read backwards.**
+ * A caller asking "would a run ever write this file?" is asking about the
+ * naming above, and a second spelling of it somewhere else is a spelling that
+ * drifts.
+ *
+ * The distinction earns its keep because **tracked and ignored are independent**
+ * — measured, not reasoned about. A repository can carry `**\/.fsdev\/` and still
+ * track something inside the directory it excludes, and what happens next
+ * depends entirely on whether that something is a marker:
+ *
+ * - A tracked `.fsdev/ask/.gitkeep` forces git to descend into the directory,
+ *   and `git add -A` **still leaves an untracked `1.md` ignored**. Nothing is
+ *   at risk, so refusing such a repository refuses a safe one — and a negation
+ *   does not re-open the directory either, so the descent buys an attacker
+ *   nothing.
+ * - A tracked `.fsdev/ask/1.md` is staged the moment the run rewrites it,
+ *   whatever the rules say. That is the case the tracked check exists for.
+ *
+ * **Deliberately shape-based, not attempt-aware.** `007.md` is refused though
+ * attempt 7 writes `7.md`: a name that looks like a marker is treated as one,
+ * because the caller is checking a repository it will run many attempts in and
+ * cannot know which numbers those will be.
+ */
+export function isAskMarkerPath(gitPath: string): boolean {
+  const segments = gitPath.split("/");
+  // Direct children only — nothing writes a marker into a subdirectory, so a
+  // tracked `.fsdev/ask/notes/1.md` is somebody else's file.
+  if (segments.length !== ASK_MARKER_DIR.split(sep).length + 1) return false;
+  return /^\d+\.md$/.test(segments[segments.length - 1]!);
 }
 
 /**

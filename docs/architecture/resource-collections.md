@@ -94,7 +94,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `readContent()`, `readContentRaw()`. The `state` getter on a resolved `ResourceRef` is synchronous — you await the lookup, not the read of an already-resolved ref.
+Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `incState()`, `pushState()`, `readContent()`, `readContentRaw()`. `patchState`, `setState`, `updateState`, `incState`, and `pushState` all refuse a result that fails `stateSchema`; see [Accessing Resources](./resources-and-client-data.md#accessing-resources). The `state` getter on a resolved `ResourceRef` is synchronous — you await the lookup, not the read of an already-resolved ref.
 
 ### `ResourceRef` identity fields
 
@@ -119,7 +119,7 @@ See [State & Scopes](./state-and-scopes.md) and [Resources & Client Data](./reso
 
 **LLM content access (FIX-842).** A collection declares `llmReadable` / `llmWritable` once on its config; the runtime stamps that config onto every instance ref (`createNamespaceInstanceRef` casts `nsConfig` onto `ref.config`), so the generic content tools (`readResourceContentTool` / `writeResourceContentTool`) and content search (`grepResourceContent` / `searchResources`) gate collection instances on the same `ref.config.llmReadable` / `.llmWritable` they use for single resources. Those tools address resources by the unique `uri` above, so resolution stays unambiguous even when two collections share a pattern in different scopes.
 
-**Block writes (`writable`).** Same field as a single resource, declared once on the collection. Omit it (or set `true`) and instance `patchState` / `setState` / `updateState` / `upsert` patch / `writeContent` persist as usual. Set `writable: false` and those instance writes throw. The LLM write tool still admits on `llmWritable` alone; persist honors `writable`.
+**Block writes (`writable`).** Same field as a single resource, declared once on the collection. Omit it (or set `true`) and instance `patchState` / `setState` / `updateState` / `incState` / `pushState` / `upsert` patch / `writeContent` persist as usual. Set `writable: false` and those instance writes throw. The LLM write tool still admits on `llmWritable` alone; persist honors `writable`.
 
 ### Parameterized patterns
 

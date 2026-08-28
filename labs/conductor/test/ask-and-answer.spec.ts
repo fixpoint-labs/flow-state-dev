@@ -19,7 +19,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { conductorFlow } from "../src/flow";
-import { questionFingerprint, questionTopic } from "../src/inbox";
+import type { BlockContext } from "@flow-state-dev/core";
+import { askQuestion, questionFingerprint, questionTopic } from "../src/inbox";
 import type { AnswerOutput } from "../src/answer";
 import {
   createConductorHarness,
@@ -225,9 +226,16 @@ describe("the park — a detached worker's own hold survives its normal return",
 // ───────────────────────────────────────────────────────────────────────────
 
 describe("the decide arms — asserted on the board row AND the inbox row", () => {
-  it("completes and WITHDRAWS the question when the run answered itself", async () => {
-    // Arm 1, and behaviour 12. Withdrawn rather than deleted, so a late answer
-    // against it is reported back and not applied.
+  it("parks an attempt that asked even when the done-condition already holds", async () => {
+    // Arm 1 beats arm 2, and the precedence is the guarantee. A marker is the
+    // run saying outright that it needs a decision, and it says it about THIS
+    // attempt. The done-condition says whether the JOB is done, over a branch
+    // every attempt on the task shares — so it cannot speak for one attempt,
+    // and it must not settle one that asked for a person.
+    //
+    // The cost, stated rather than hidden: a run that asked, unblocked itself
+    // and finished anyway now parks for one human round trip instead of
+    // completing. That is the safe direction of the same mistake.
     const seen = seenTurns();
     live = createConductorHarness({
       resolveClaudeAgent: turnAgent([{ question: "which path?" }], seen),
@@ -236,20 +244,49 @@ describe("the decide arms — asserted on the board row AND the inbox row", () =
 
     const row = await seedAndSettle(live);
 
-    expect(row.status).toBe("completed");
-    // `status` reports OPEN rows, so a withdrawn one is absent from it.
-    expect(row.questions).toHaveLength(0);
+    expect(row.status).toBe("awaiting_review");
+    expect(row.questions.map((q) => q.text)).toEqual(["which path?"]);
 
-    const late = await live.call<AnswerOutput>("answer", {
+    // And the question is answerable, which is the whole point of holding it.
+    const answered = await live.call<AnswerOutput>("answer", {
       question: topicFor("which path?", 1),
-      answer: "too late",
+      answer: "the second one",
     });
-    // The row still exists — the refusal names its status rather than saying
-    // the question is unknown, which is what proves it was withdrawn and not
-    // deleted.
-    expect(late.result).toBe("declined");
-    expect(late.questionStatus).toBe("withdrawn");
-    expect(late.drained).toBe(false);
+    expect(answered.result).toBe("answered");
+  });
+
+  it("does not complete an attempt that asked, on a pull request an earlier attempt left", async () => {
+    // The branch is derived from (epic, issue, phase), so every attempt on a
+    // task shares it and the completion probe keys on nothing else. Attempt 1
+    // opens a pull request and then runs out of turns; attempt 2 asks a
+    // question and stops, having produced nothing of its own. The probe still
+    // sees attempt 1's pull request, so the done-condition holds for an attempt
+    // that did no work — and the arm order used to read that as "the run
+    // answered its own question", withdraw the question and complete the row.
+    //
+    // The visible cost of getting this wrong: a person is asked something, the
+    // question disappears from the inbox before they see it, and the phase
+    // reports done. A silent wrong success arriving through the completion
+    // check itself.
+    const seen = seenTurns();
+    live = createConductorHarness({
+      resolveClaudeAgent: turnAgent(
+        [{ subtype: "error_max_turns" }, { question: "which path?" }],
+        seen,
+      ),
+      // True from attempt 1 onwards — the pull request is on the branch and
+      // still open, which is exactly what the probe reports and all it reports.
+      isDone: () => true,
+    });
+
+    const failed = await seedAndSettle(live);
+    expect(failed.status).toBe("pending");
+
+    await live.call("wake", {});
+    const parked = await settle(live);
+
+    expect(parked.status).toBe("awaiting_review");
+    expect(parked.questions.map((q) => q.text)).toContain("which path?");
   });
 
   it("parks when the verdict did not fail and this attempt asked", async () => {
@@ -276,7 +313,7 @@ describe("the decide arms — asserted on the board row AND the inbox row", () =
 
   it("takes the FAILURE path on a marker paired with an errored verdict", async () => {
     // **The fourth combination, and the one that can fail.** A suite that pairs
-    // marker-with-success and no-marker-with-failure passes with arm 2's
+    // marker-with-success and no-marker-with-failure passes with arm 1's
     // verdict half missing, because neither of those puts a marker and a
     // failure on the same attempt — which is exactly what that half excludes.
     //
@@ -665,35 +702,42 @@ describe("reconciliation — an unanswerable row is never left displayed as answ
     // attempt 1's row `open` with **no arm having decided it** — which is a
     // different state from a row an arm withdrew.
     //
-    // Staged by throwing out of the done-condition, which the manager consults
-    // after the ask and before any arm resolves. A staging that instead let
-    // attempt 1 FAIL proves nothing here: arm 3 withdraws the row on its way
-    // out, so the reconciliation has nothing left to do and the test passes
-    // with it deleted.
+    // Staged by writing that row directly, because nothing between the commit
+    // and the park is reachable from a test seam any more. Written rather than
+    // simulated: the state under test is "an open row no arm decided", and
+    // planting it says so, where crashing a hook said it only as long as that
+    // hook happened to run in the gap. A staging that instead let attempt 1
+    // FAIL proves nothing here — arm 3 withdraws the row on its way out, so the
+    // reconciliation has nothing left to do and the test passes with it deleted.
     //
     // Left alone, the orphan satisfies the proceed guard the moment attempt 2
     // parks, and answering it re-queues the run with the real question still
     // open.
     const seen = seenTurns();
-    let attempt = 0;
+    const board = ledgerCapture();
     live = createConductorHarness({
       resolveClaudeAgent: turnAgent(
         [
-          { question: "orphaned question", subtype: "success" },
+          // Attempt 1 asks nothing and does not finish, so it re-pends with no
+          // question row of its own — the orphan below is the only one.
+          { subtype: "success" },
           { question: "the real question", subtype: "success" },
         ],
         seen,
       ),
-      isDone: () => {
-        attempt += 1;
-        if (attempt === 1) throw new Error("the manager died after the ask");
-        return false;
-      },
+      onPrompt: board.onPrompt,
+      isDone: () => false,
     });
     const crashed = await seedAndSettle(live);
     expect(crashed.status).toBe("pending");
+    expect(crashed.questions).toHaveLength(0);
+
+    await board.plantOpenQuestion(topicFor("orphaned question", 1), {
+      question: "orphaned question",
+      askedBy: crashed.taskId,
+    });
     // The orphan is genuinely open at this point — no arm reached it.
-    expect(crashed.questions.map((q) => q.text)).toEqual(["orphaned question"]);
+    expect((await readStatus(live)).questions.map((q) => q.text)).toEqual(["orphaned question"]);
 
     await live.call("wake", {});
     const parked = await settle(live);
@@ -726,7 +770,8 @@ describe("reconciliation — an unanswerable row is never left displayed as answ
     const board = ledgerCapture();
     live = createConductorHarness({
       resolveClaudeAgent: turnAgent([{ question: "which path?" }], seen),
-      isDone: board.isDone,
+      onPrompt: board.onPrompt,
+      isDone: () => false,
     });
     const parked = await seedAndSettle(live);
     expect(parked.status).toBe("awaiting_review");
@@ -752,7 +797,8 @@ describe("reconciliation — an unanswerable row is never left displayed as answ
     const board = ledgerCapture();
     live = createConductorHarness({
       resolveClaudeAgent: turnAgent([{ question: "which path?" }], seen),
-      isDone: board.isDone,
+      onPrompt: board.onPrompt,
+      isDone: () => false,
     });
     const parked = await seedAndSettle(live);
     const topic = topicFor("which path?", 1);
@@ -876,18 +922,31 @@ describe("the announcement — what is announced is already answerable", () => {
 type Ledger = { upsert(key: string, update: unknown): Promise<unknown> };
 
 function ledgerCapture(): {
-  isDone: (run: { ctx: unknown }) => boolean;
+  onPrompt: (run: { ctx: unknown }) => void;
   cancel: (taskId: string) => Promise<void>;
+  plantOpenQuestion: (topic: string, entry: { question: string; askedBy: string }) => Promise<void>;
 } {
-  let ledger: Ledger | undefined;
+  // Captured from `buildPrompt` rather than the done-condition, because that is
+  // the hook every attempt reaches. An attempt that parks on a question never
+  // reaches `isDone` — the park arm decides before it, deliberately — so a
+  // capture hung there records nothing for exactly the runs these tests stage.
+  let ctx: BlockContext | undefined;
+  const captured = (): BlockContext => {
+    if (ctx === undefined) throw new Error("no attempt ever ran, so no context was captured");
+    return ctx;
+  };
   return {
-    isDone: (run) => {
-      ledger = (run.ctx as { resources: Record<string, Ledger> }).resources[COLLECTION_ID];
-      return false;
+    onPrompt: (run) => {
+      ctx = run.ctx as BlockContext;
     },
     cancel: async (taskId) => {
-      if (ledger === undefined) throw new Error("no attempt ever ran, so no ledger was captured");
+      const ledger = (captured() as unknown as { resources: Record<string, Ledger> }).resources[
+        COLLECTION_ID
+      ]!;
       await ledger.upsert(taskId, { status: "cancelled" });
+    },
+    plantOpenQuestion: async (topic, entry) => {
+      await askQuestion(captured(), topic, { ...entry, askedAt: Date.now() });
     },
   };
 }

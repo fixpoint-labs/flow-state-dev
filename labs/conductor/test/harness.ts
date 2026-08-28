@@ -21,7 +21,9 @@ import type {
 } from "@flow-state-dev/claude-code/sdk";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
-import type { PhaseSpec } from "../src/manager";
+import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
+import { CHECKOUT_CLEANUP_TIMEOUT_MS } from "../src/exec";
+import type { PhaseSpec, PromptRunContext } from "../src/manager";
 
 export const USER_ID = "conductor-test-user";
 
@@ -64,7 +66,7 @@ export function scriptedAgent(
  * The whole ask path in one stub: the marker lands at the attempt's derived
  * path inside `cwd`, exactly where a real coding run is told to put it, and the
  * verdict is separate so a marker can be paired with a FAILED result — the
- * combination arm 2's verdict half exists to exclude.
+ * combination arm 1's verdict half exists to exclude.
  *
  * The target path is parsed back out of the PROMPT rather than derived here, so
  * a prompt that stopped naming the marker makes this stub write nowhere — which
@@ -185,6 +187,31 @@ export interface HarnessOptions {
   /** Overrides the implement phase's done-condition. Default: satisfied. */
   isDone?: PhaseSpec["isDone"];
   /**
+   * Called with each attempt's prompt context, before its run.
+   *
+   * A spy on the real builder rather than a replacement — the prompt is
+   * unchanged. It exists because `ctx.resources` is otherwise unreachable from
+   * a test, and `buildPrompt` is the one phase hook that runs on EVERY attempt:
+   * the done-condition runs only where its answer can decide something, so an
+   * attempt that parks on a question never reaches it.
+   *
+   * Distinct from {@link buildPrompt} below, which REPLACES the builder: a spy
+   * that also replaced it could not observe the real prompt, and a replacement
+   * that also spied would report on itself.
+   */
+  onPrompt?: (run: PromptRunContext) => void;
+  /**
+   * Overrides the implement phase's construction-time validation. Lets a test
+   * observe what `conductorFlow` does with the value `validate` returns.
+   */
+  validate?: PhaseSpec["validate"];
+  /**
+   * Overrides the prompt builder. The other half of what `conductorFlow` binds
+   * — `validated` reaches this hook and the done-condition through two
+   * separately-built contexts, so observing one says nothing about the other.
+   */
+  buildPrompt?: PhaseSpec["buildPrompt"];
+  /**
    * Overrides the configured phase NAME. Lets a test restart a conductor over
    * durable rows with the phase spelled differently — which is how a casing
    * mismatch between config and stored row actually arises.
@@ -216,7 +243,14 @@ export function seedRepo(dir: string): void {
   // distinction is what the provisioning marker is now corroborated against.
   // Another fixture that had drifted from the thing it stands for.
   writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
-  git("add", "tracked.txt");
+  // **A stand-in source repository ignores the ask marker, because a real one
+  // has to.** The marker lands in the product checkout, so the rule that keeps
+  // it out of a commit belongs to THAT repository — and provisioning now
+  // refuses a checkout whose repository does not carry it, before the agent
+  // runs. Third fixture in this file that had drifted from the thing it stands
+  // for, and the same tell each time: the specs passed because nothing asked.
+  writeFileSync(join(dir, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
+  git("add", "tracked.txt", ".gitignore");
   git("commit", "-m", "root");
   // **A stand-in source repository has an `origin`, because a real one does.**
   // The implement phase's completion probe reads it, and `conductorFlow` now
@@ -237,14 +271,28 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   seedRepo(sourceRepo);
 
   const base = implementPhase({ prExists: () => true });
+
+  // **The spy wraps whatever builder is in effect, not always the base one.**
+  // One option REPLACES the builder and the other OBSERVES it, so they compose;
+  // applied as competing spreads, whichever came last won and a test setting
+  // both got a spy reporting on a builder that was not the one running.
+  const builder = options.buildPrompt ?? base.buildPrompt;
   const phase: PhaseSpec = {
     ...base,
     ...(options.isDone !== undefined ? { isDone: options.isDone } : {}),
+    ...(options.validate !== undefined ? { validate: options.validate } : {}),
     ...(options.phaseName !== undefined ? { phase: options.phaseName } : {}),
+    buildPrompt:
+      options.onPrompt === undefined
+        ? builder
+        : (run: PromptRunContext) => {
+            options.onPrompt!(run);
+            return builder(run);
+          },
   };
 
   // Derived, not spelled out. The manager enforces
-  // `waitMs >= staleAfterMs > runTimeoutMs + provisionTimeoutMs`, and independent constants
+  // `waitMs >= staleAfterMs > runTimeoutMs + provisionTimeoutMs + cleanup`, and independent constants
   // here let a test set one of them and get a construction error that has
   // nothing to do with what it was testing. Deriving keeps every harness
   // instance valid by construction, whichever knob a test turns.
@@ -254,8 +302,15 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   // the git budget is what keeps the suite's numbers small while the inequality
   // stays the real one.
   const provisionTimeoutMs = options.provisionTimeoutMs ?? 10_000;
+  // Derived the SAME way the manager derives it, not from two of its terms.
+  // `maxLockHeldMs` counts the cleanup allowance — a refusal late in
+  // provisioning discards the checkout it just made, under the lock — against
+  // `runTimeoutMs` rather than alongside it, because a refusal throws before any
+  // run. A fixture adding only `runTimeoutMs + provisionTimeoutMs` derived a
+  // stale window the manager refuses at construction.
   const staleAfterMs =
-    options.ownership?.staleAfterMs ?? runTimeoutMs + provisionTimeoutMs + 1_000;
+    options.ownership?.staleAfterMs ??
+    provisionTimeoutMs + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS) + 1_000;
   const pollMs = options.ownership?.pollMs ?? 25;
   const ownership = {
     // **Strictly past the stale window, by one poll.** The manager requires it,

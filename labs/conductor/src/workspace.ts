@@ -45,7 +45,8 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { GIT_TIMEOUT_MS, run } from "./exec";
+import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
+import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { identityFromCommonDir } from "./config-env";
 import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./patterns";
 
@@ -524,6 +525,165 @@ async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Pro
 }
 
 /**
+ * Refuse a checkout whose repository does not ignore the ask marker.
+ *
+ * **The guarantee is checked where the marker LANDS, which is not where it was
+ * being checked.** A run writes its question to `<checkout>/.fsdev/ask/N.md`
+ * (see `./ask`), and nothing must commit it. That was resting on THIS
+ * repository's `.gitignore` carrying a double-star `.fsdev` rule — but the
+ * marker lands in the product checkout, a worktree of `sourceRepo`, which this
+ * lab requires be a DIFFERENT repository. A target that never adopted the same
+ * pattern has no such rule, so the agent's own `git add -A` stages the marker
+ * and it lands in someone else's commit, on a pull request conductor opened.
+ *
+ * Asked of git rather than derived: ignore rules compose from the repository's
+ * `.gitignore` files at every level, `$GIT_DIR/info/exclude` and the user's
+ * global excludes, and re-implementing that resolution here is how the two
+ * answers drift. `check-ignore` is git's own answer to the exact question.
+ *
+ * **Refused rather than fixed.** Installing the rule means writing into a
+ * repository this lab does not own — a tracked `.gitignore` is the operator's
+ * file, and `info/exclude` lives in the common dir every worktree of that
+ * repository shares. This module's standing answer for a tree it cannot use is
+ * to say so and change nothing, and the refusal lands before the agent runs,
+ * which is what keeps it from being paid for once per retry.
+ */
+async function assertAskMarkerIgnored(
+  checkoutPath: string,
+  left: () => number,
+  preservedBranch?: PreservedBranch,
+): Promise<void> {
+  // **Already committed is asked FIRST, and it is a different failure.** An
+  // ignore rule does not un-track a file: `git add -A` stages a change to a
+  // tracked path whatever the rules say. So a target that has committed a
+  // marker before is unsafe even with a correct `.gitignore`, and it needs the
+  // other instruction — remove the file, not add a line.
+  // `left` rather than one snapshot, redrawn before each command — the
+  // convention `looksHalfBuilt` already follows. Handed a single number, these
+  // two calls each get the WHOLE remaining budget, so the pair can outlast
+  // `provisionTimeoutMs`; the ownership arithmetic reads that number as the
+  // longest the lock is held, and a bound wrong by the command count is the
+  // failure `WorkspaceConfig.provisionTimeoutMs` is written against.
+  //
+  // **Filtered to marker NAMES, because tracked and ignored are independent in
+  // both directions.** `ls-files` lists everything tracked under the directory,
+  // and a target that keeps a `.gitkeep` or a README there is not endangered by
+  // it: measured, a tracked sibling forces git to descend and `git add -A`
+  // still leaves an untracked `1.md` ignored. Refusing on the whole listing
+  // refused a safe repository for a file that cannot become a question — the
+  // same shape of wrong answer `--no-index` was added to stop giving.
+  const tracked = (await git(checkoutPath, ["ls-files", "--", ASK_MARKER_DIR], left()))
+    .split("\n")
+    .filter((line) => line !== "" && isAskMarkerPath(line));
+  if (tracked.length > 0) {
+    throw new Error(
+      `[conductor] the repository behind ${checkoutPath} already tracks question markers ` +
+        `under ${ASK_MARKER_DIR}: ` +
+        `${tracked.join(", ")}. An ignore rule does not un-track a file — the ` +
+        `agent's \`git add -A\` stages a change to a tracked path regardless — so a run's ` +
+        `question would still be committed. Remove those files from that repository first.` +
+        staleBranchRemedy(preservedBranch),
+    );
+  }
+
+  // **The DIRECTORY, because the guarantee has to hold for every attempt.** A
+  // marker is named for the attempt that writes it, so a check on one filename
+  // answers about one attempt: a repository whose rule spells
+  // `.fsdev/ask/1.md` passes it and then commits attempt 2's question.
+  //
+  // An ignored directory is the one condition that cannot be defeated that way.
+  // Git does not descend into an excluded directory, so nothing inside can be
+  // staged — and a negation cannot re-open it, which the docs state and this
+  // was checked against: with `**/.fsdev/` plus `!.fsdev/ask/1.md`, `git add -A`
+  // stages nothing. No enumeration of filenames can satisfy it partially.
+  //
+  // **The cost, stated rather than hidden:** a rule that covers every marker
+  // FILE without covering the directory — `.fsdev/ask/*.md`, measured — is safe
+  // and is refused anyway. That is the safe direction of a check that cannot
+  // ask "for all n", and the message names a rule that satisfies it.
+  const probe = ASK_MARKER_DIR;
+  try {
+    // **`--no-index`, and without it this check was wrong about the very repo
+    // it exists for.** Consulting the index, `check-ignore` reports a TRACKED
+    // path as not ignored — measured, exit 1 with `**/.fsdev/` in place — so a
+    // target that had already leaked a marker was refused for missing a rule it
+    // had. The tracked case is caught above, by its own name; this call asks
+    // only the question it is for, which is whether the RULE covers the path.
+    await git(checkoutPath, ["check-ignore", "-q", "--no-index", probe], left());
+    return;
+  } catch (error) {
+    // Only a clean exit 1 is the finding; anything else is git being unable to
+    // answer, and reporting that as "not ignored" would name the wrong cause.
+    // Through the shared discriminator rather than an inlined `code === 1`,
+    // which is how this one shipped without the `killed` guard.
+    if (!gitAnsweredNo(error)) throw error;
+  }
+  throw new Error(
+    `[conductor] the repository behind ${checkoutPath} does not ignore the directory ` +
+      `"${probe}". A run writes the question it needs answered to a file named for its ` +
+      `attempt inside that directory, and nothing here can stop the coding agent's ` +
+      `\`git add -A\` from staging a file git does not already ignore — so the question ` +
+      `would be committed to the branch and land in the pull request. The DIRECTORY is ` +
+      `what is checked, because a rule naming one marker file leaves the next attempt's ` +
+      `unprotected. Add \`${ASK_MARKER_IGNORE_RULE}\` to that repository's .gitignore.` +
+      staleBranchRemedy(preservedBranch),
+  );
+}
+
+/**
+ * The rest of an ignore refusal's remedy, when the tree is on a branch that
+ * outlives the refusal.
+ *
+ * **"Fix the repository" is only the whole instruction for a checkout about to
+ * be cut fresh from `baseRef`.** On any branch that survives this call — one
+ * reused from a previous attempt, or a pre-existing branch `worktree add`
+ * attached and {@link discardFreshCheckout} therefore keeps — the tree was cut
+ * BEFORE the fix. The operator follows the instruction, the next attempt
+ * reattaches the same branch, and it refuses identically. The advertised
+ * recovery quietly does not apply, which is worse than no advice.
+ *
+ * Advice rather than automatic repair, deliberately: a branch this call did not
+ * create may carry work, and the module's rule is that unknown contents are
+ * kept. So the operator is told exactly which branch and given both outs.
+ */
+function staleBranchRemedy(preserved: PreservedBranch | undefined): string {
+  if (preserved === undefined) return "";
+  const { branch, checkoutStillAttached } = preserved;
+  // **"Delete it" is not an instruction git will accept while a worktree has
+  // the branch checked out** — it refuses with `cannot delete branch ... used by
+  // worktree at ...`, which this repository's own specs already rely on. So the
+  // reuse path, where the tree is deliberately left standing, has to name the
+  // extra step; the create path, where the cleanup has already taken the tree
+  // away by the time anyone reads this, must not, or it sends the operator to
+  // remove a directory that is gone.
+  const deletion = checkoutStillAttached
+    ? `remove the checkout at ${preserved.checkoutPath} first and then delete "${branch}" ` +
+      `(git refuses to delete a branch a worktree still has checked out), so the next ` +
+      `attempt cuts a new one`
+    : `delete "${branch}" so the next attempt cuts a new one`;
+  return (
+    ` This checkout is on branch "${branch}", which nothing here removes — it may carry ` +
+    `work. That branch was cut before the fix, so fixing the source repository alone ` +
+    `leaves it unchanged and the next attempt reattaches it and refuses the same way: ` +
+    `bring "${branch}" up to date, or ${deletion}.`
+  );
+}
+
+/**
+ * A branch the refusal will not remove, and what the operator can do about it.
+ *
+ * `checkoutStillAttached` is the half that decides which advice is actionable,
+ * and it is NOT derivable from the branch: on reuse the tree stays and blocks
+ * `branch -D`, while on the create path {@link discardFreshCheckout} has taken
+ * the tree away before the refusal is rethrown.
+ */
+interface PreservedBranch {
+  branch: string;
+  checkoutPath: string;
+  checkoutStillAttached: boolean;
+}
+
+/**
  * The branch a worktree is actually on, or `null` on a detached HEAD.
  *
  * A detached HEAD is a mismatch like any other — the run would commit to no
@@ -658,7 +818,7 @@ async function branchExists(
     );
     return true;
   } catch (err) {
-    if (isRefAbsent(err)) return false;
+    if (gitAnsweredNo(err)) return false;
     throw new Error(
       `[conductor] could not determine whether branch "${branch}" exists in ` +
         `${config.sourceRepo}: the probe failed for a reason other than the ref being ` +
@@ -669,8 +829,14 @@ async function branchExists(
 }
 
 /**
- * Did the ref probe fail **because the ref is not there**, or because the probe
- * itself did not work?
+ * Did git answer **no**, or did the probe itself fail?
+ *
+ * Two callers ask it, and neither can use a blanket `catch`: the ref probe
+ * (`rev-parse --verify --quiet`, exit 1 = the ref is absent) and the ignore
+ * probe (`check-ignore -q`, exit 1 = the path is not ignored). Named for the
+ * shape rather than for either question, because the discriminator below is the
+ * thing being shared and it is easy to re-derive slightly wrong — the ignore
+ * probe originally inlined `code === 1` without the `killed` guard.
  *
  * A blanket `catch` cannot tell those apart, and answering `false` for both is
  * wrong twice over. On the reuse path the caller reports a branch someone
@@ -687,7 +853,7 @@ async function branchExists(
  * git cannot read exits 128 unkilled, and a git that cannot be spawned carries
  * a string `code` such as `ENOENT`. Only the first is an answer.
  */
-function isRefAbsent(err: unknown): boolean {
+function gitAnsweredNo(err: unknown): boolean {
   const { code, killed } = (err ?? {}) as { code?: unknown; killed?: unknown };
   return killed !== true && code === 1;
 }
@@ -853,6 +1019,17 @@ export async function provisionCheckout(
       );
     }
 
+    // Re-checked on reuse, not only on creation: the rule is a tracked file on
+    // the branch this tree is on, so a run that deleted it leaves a checkout
+    // that provisioned legally and is no longer safe to write a question into.
+    // Reuse leaves the tree standing by design, so the branch it is on is
+    // still checked out and cannot be deleted until it is removed.
+    await assertAskMarkerIgnored(path, left, {
+      branch,
+      checkoutPath: path,
+      checkoutStillAttached: true,
+    });
+
     return { path, branch, created: false };
   }
 
@@ -918,7 +1095,8 @@ export async function provisionCheckout(
   // reset: it touches bookkeeping, never a tree.
   await git(config.sourceRepo, ["worktree", "prune"], left());
 
-  const args = (await branchExists(config, branch, left()))
+  const branchPreexisted = await branchExists(config, branch, left());
+  const args = branchPreexisted
     ? ["worktree", "add", path, branch]
     : ["worktree", "add", "-b", branch, path, config.baseRef];
 
@@ -932,7 +1110,142 @@ export async function provisionCheckout(
   writeFileSync(marker, "");
   await git(config.sourceRepo, args, left());
   rmSync(marker, { force: true });
+
+  // After the tree exists, because the answer depends on the checked-out
+  // `.gitignore` and there is nothing to ask git about before that.
+  //
+  // **And a refusal here undoes what this call just made, which is the one
+  // place clearing a tree with `.git` is legitimate.** Left behind, the
+  // checkout and its branch are durable: the next call finds a complete
+  // checkout with no interrupted-provision marker, reuses it, and asks the same
+  // question of the same branch — which was cut BEFORE the operator added the
+  // rule, so it fails identically forever. Fixing the repository would not fix
+  // the task.
+  //
+  // The "never reset" rule protects the PREVIOUS attempt's work, and there is
+  // none here: this branch is between `worktree add` and this function's own
+  // return, under the lock, with no agent yet dispatched. Same argument the
+  // no-`.git` branch above makes, at the one other moment it holds.
+  try {
+    // The branch is named in the refusal only when this call will not delete
+    // it. Fresh, `discardFreshCheckout` removes it and the next attempt cuts a
+    // new one from the fixed `baseRef`, so "fix the repository" is the whole
+    // instruction; pre-existing, it is deliberately kept and the operator has a
+    // second thing to do.
+    await assertAskMarkerIgnored(
+      path,
+      left,
+      // `checkoutStillAttached: false` because the catch below removes the tree
+      // before rethrowing — by the time anyone reads this, the branch is free.
+      branchPreexisted ? { branch, checkoutPath: path, checkoutStillAttached: false } : undefined,
+    );
+  } catch (refusal) {
+    const removed = await discardFreshCheckout(config, path, branch, branchPreexisted, now);
+    if (removed) throw refusal;
+    // Cleanup did not finish, so the leftover this function tried to prevent is
+    // there after all. Saying so beats a refusal that describes a tree the
+    // operator will not find, and beats replacing the diagnosis entirely.
+    throw new Error(
+      `${(refusal as Error).message}\n\n[conductor] and the checkout this call created ` +
+        `could not be removed, so ${path}${branchPreexisted ? "" : ` and branch "${branch}"`} ` +
+        `are still there. Fixing the repository will not be enough on its own — delete ` +
+        `them by hand, or the next attempt reuses a tree cut before the fix and fails the ` +
+        `same way.`,
+    );
+  }
+
   return { path, branch, created: true };
+}
+
+/**
+ * Undo the checkout this call just created, so its refusal is recoverable.
+ *
+ * The branch is deleted only when THIS call created it. `worktree add` without
+ * `-b` attaches an existing branch, which belongs to whoever made it and may
+ * carry work; removing the tree is ours, removing their branch is not.
+ *
+ * **Its own budget, and that is the whole reason it works.** Written against
+ * the provisioning deadline, it could not run at all in the case it exists for:
+ * `remainingBudget` THROWS once the deadline passes, so a refusal raised
+ * *because* the budget ran out reached cleanup with no budget left, every git
+ * call threw at the first `left()`, and the swallow below turned that into
+ * silence — leaving exactly the branch this function was added to remove.
+ *
+ * Undoing an operation is not part of that operation's time box. The extension
+ * is one {@link CHECKOUT_CLEANUP_TIMEOUT_MS} and only on the refusal path,
+ * which ends the attempt anyway; the alternative is a wedge no retry can clear.
+ *
+ * **And the extension is counted, not assumed harmless.** It happens under the
+ * lock, so `resolveOwnership` adds the same constant to `maxLockHeldMs` — the
+ * number the stale window is derived from. Left out, a slow cleanup runs past
+ * the point another worker may declare this lock stale, and two attempts end up
+ * pruning the same worktree bookkeeping.
+ *
+ * **Reports whether it finished, and cleanup failures are still swallowed.**
+ * The caller is already throwing something that names a real problem; replacing
+ * that with "and then `git branch -D` timed out" trades a diagnosis for a
+ * footnote. It gets a boolean instead, so it can add the leftover to its own
+ * message rather than describing a tree the operator will not find.
+ */
+async function discardFreshCheckout(
+  config: WorkspaceConfig,
+  path: string,
+  branch: string,
+  branchPreexisted: boolean,
+  now: () => number,
+): Promise<boolean> {
+  const deadline = now() + CHECKOUT_CLEANUP_TIMEOUT_MS;
+  const left = () => remainingBudget(deadline, now);
+  try {
+    // The same guard the half-created branch uses, for the same reason: a
+    // derived path stays derived only if every destructive call re-checks it.
+    const root = resolve(config.root);
+    if (!isStrictlyInside(path, root)) return false;
+
+    // **The interrupted-provision marker goes back on before the delete, and
+    // comes off after.** `rmSync` is synchronous and recursive, and node offers
+    // no way to bound it — no signal, no timeout — so this one call is the part
+    // of the cleanup the allowance above cannot actually cap. Small in practice
+    // (nothing has run in this tree yet, so it is the checked-out source at
+    // `baseRef` and nothing an agent built), but "small" is not "bounded".
+    //
+    // So the disposition is made safe instead of the duration made certain.
+    // Interrupted here, the leftover is a partly-removed tree, and without the
+    // marker the next attempt cannot distinguish it from work it must not
+    // touch: it refuses and asks for a human. With it, the leftover is
+    // positively identified as a provision that never finished, which the
+    // reuse path above already clears on its own.
+    //
+    // **This is a trade between two interruptions, not a free win, and the
+    // losing side is written down rather than left to be rediscovered.**
+    //
+    // - *The process is killed* — ordinary, and now recoverable with no human.
+    // - *The lock is taken because the delete outran the allowance* — remote,
+    //   and now WORSE. Marked, the replacement clears the tree and provisions
+    //   while this call is still alive behind it, so the `worktree prune` and
+    //   `branch -D` below can land on bookkeeping the replacement is building —
+    //   including a `branch -D` of the branch it just created. Unmarked, that
+    //   same race ended in a loud refusal instead.
+    //
+    // Taken deliberately: a kill is a thing that happens, while reaching the
+    // second case means an `rmSync` of a tree no agent has touched outrunning
+    // `staleAfterMs`, which is bounded below by the provisioning budget plus a
+    // minute. Both sides trace to one root cause — a delete node cannot bound
+    // running under a lock — which is LAB-149, and neither is closed by
+    // choosing differently here.
+    const marker = provisioningMarkerFor(path);
+    writeFileSync(marker, "");
+    rmSync(path, { recursive: true, force: true });
+    rmSync(marker, { force: true });
+
+    await git(config.sourceRepo, ["worktree", "prune"], left());
+    if (!branchPreexisted) {
+      await git(config.sourceRepo, ["branch", "-D", branch], left());
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

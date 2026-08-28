@@ -46,7 +46,7 @@ import {
   type TaskWorker,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
+import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
 import { MAX_TIMER_MS } from "./config-env";
 import {
   RUNS,
@@ -103,6 +103,15 @@ export interface PhaseRunContext {
    * a phase builds its prompt.
    */
   previousSessionId?: string;
+  /**
+   * Whatever this phase's own {@link PhaseSpec.validate} returned, for THIS
+   * conductor.
+   *
+   * `unknown` because only the phase that produced it knows its shape — the
+   * manager carries it and never reads it. Absent when the phase has no
+   * `validate`, or when one is invoked outside `conductorFlow`.
+   */
+  validated?: unknown;
   /**
    * Why the LAST attempt stopped, as the board captured it when `fail()`
    * re-pended the row. This — not the run record — is the carry-forward:
@@ -186,8 +195,17 @@ export interface PhaseSpec {
    * `origin`; a checkout whose GitHub remote is called something else fails it
    * AFTER the paid agent run, once per retry. That is the case this exists for,
    * and it is why the hook takes the workspace rather than being a boolean.
+   *
+   * **Whatever it returns is handed back to this phase's own `isDone` as
+   * {@link PhaseRunContext.validated}, once per conductor.** That is the only
+   * way a phase can carry something it learned at construction into a run:
+   * closing over it does not work, because one `PhaseSpec` can be given to two
+   * conductors and `conductorFlow`'s snapshot copies function references rather
+   * than what they close over. Three separate defects came out of a phase that
+   * tried — a pin shared between conductors, a pin retained by a construction
+   * that then failed, and a comparison written to paper over both.
    */
-  validate?(workspace: WorkspaceConfig): void;
+  validate?(workspace: WorkspaceConfig): unknown;
 }
 
 /** How the manager is wired to its board and its host. */
@@ -567,8 +585,28 @@ export function resolveOwnership(options: {
   // call is what makes this arithmetic true: provisioning runs up to three
   // commands back to back, so a per-call bound of N would let the real hold
   // reach 3N while this sum said N.
+  //
+  // **What follows provisioning is a fork, not a sequence — so the second term
+  // is a maximum, not a sum.** Provisioning either refuses, in which case it
+  // discards the checkout it just made and throws before any agent is
+  // dispatched, or it succeeds, in which case the run happens and that cleanup
+  // never does. One lock, two mutually exclusive tails.
+  //
+  // Both tails have to be counted, and leaving the cleanup one out was a real
+  // gap: it cannot draw from `provisionBudget` — the case it exists for is that
+  // budget running out — so on the refusal path the hold genuinely outlasts
+  // provisioning. Unaccounted, a slow cleanup runs past the point a waiter may
+  // call this lock stale, and two attempts prune the same worktree bookkeeping:
+  // the same defeat-by-arithmetic the paragraph above describes, through the
+  // door added to prevent a wedge.
+  //
+  // Adding all three instead would price a run and its own cancellation as if
+  // they happened back to back. That is not conservatism with no cost — this
+  // number is the floor `staleAfterMs` is REFUSED against, so every millisecond
+  // of slack rejects deployments whose configuration is in fact safe.
   const provisionBudget = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
-  const maxLockHeldMs = runTimeoutMs + provisionBudget;
+  const maxLockHeldMs =
+    provisionBudget + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS);
 
   const ownership: OwnershipBounds = {
     // Sized against the lease-renewal lag that produces overlap, and well
@@ -635,11 +673,13 @@ export function resolveOwnership(options: {
   if (ownership.staleAfterMs <= maxLockHeldMs) {
     throw new Error(
       `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed the ` +
-        `longest a live attempt can hold the lock (${maxLockHeldMs}ms = runTimeoutMs ` +
-        `${runTimeoutMs}ms + the provisioning budget ${provisionBudget}ms): the lock is ` +
-        `taken before the checkout is provisioned, so a window sized against the run's ` +
-        `deadline alone can elapse while the holder is still inside git. Raise the stale ` +
-        `window, lower the deadline, or lower options.provisionTimeoutMs.`,
+        `longest a live attempt can hold the lock (${maxLockHeldMs}ms = the provisioning ` +
+        `budget ${provisionBudget}ms + whichever of runTimeoutMs ${runTimeoutMs}ms and the ` +
+        `${CHECKOUT_CLEANUP_TIMEOUT_MS}ms to undo a checkout provisioning refused is ` +
+        `longer, since a refusal throws before any run): the ` +
+        `lock is taken before the checkout is provisioned, so a window sized against the ` +
+        `run's deadline alone can elapse while the holder is still inside git. Raise the ` +
+        `stale window, lower the deadline, or lower options.provisionTimeoutMs.`,
     );
   }
 
@@ -897,10 +937,13 @@ export function harnessManager(options: ManagerOptions) {
       // THIS attempt parks — and answering it re-queues the run while this
       // attempt's real question is still open.
       //
-      // A question from an attempt that is over is moot, which is what arms 1
-      // and 3 already say; the gap is only that a crash skips them. After this
-      // there is at most ONE `open` row per issue-phase, which is what both the
-      // proceed guard and recovery's nothing-open condition already assumed.
+      // A question from an attempt that is over is moot, which is what arm 3
+      // already says; the gap is only that a crash skips it. Arm 1 is NOT a
+      // second witness to that — it parks, and parking is the one outcome that
+      // deliberately leaves the question open, because the attempt is not over.
+      // After this there is at most ONE `open` row per issue-phase, which is
+      // what both the proceed guard and recovery's nothing-open condition
+      // already assumed.
       //
       // After the fenced open, not before: a superseded attempt stops there and
       // must not reach in and withdraw its replacement's question.
@@ -1015,23 +1058,39 @@ export function harnessManager(options: ManagerOptions) {
    * Read the verdict, then decide. **Three outcomes, in this order, and the
    * order is the design. Every arm is a conjunction.**
    *
-   * 1. **The verdict succeeded AND the done-condition holds → return.** If this
-   *    attempt asked something, the run answered it itself: withdraw the row and
-   *    complete.
-   * 2. **The verdict did NOT fail AND this attempt's marker holds a question →
+   * 1. **The verdict did NOT fail AND this attempt's marker holds a question →
    *    park.** `awaitReview`, announce, then return normally. The recorders
    *    refuse a parked row, so the workstream request ends with the row still
    *    `awaiting_review` and the run costs nothing while a person thinks.
+   * 2. **The verdict succeeded AND the done-condition holds → return.**
    * 3. **Anything else → throw**, withdrawing this attempt's question first: the
    *    attempt failed, so its question is moot, and leaving it open means an
    *    answer later lands against a row no attempt is waiting on.
    *
-   * **Arms 1 and 3 withdraw THIS attempt's row and no other, and that is
-   * sufficient rather than narrow.** Start-of-attempt reconciliation already
-   * withdrew every earlier attempt's `open` row, so at most one can exist for
-   * the issue-phase and it is this one's. Written as "withdraw any open row"
-   * the code would range over a set the reconciliation has already emptied —
-   * and the next reader would derive a guarantee from the wrong place.
+   * **The park is asked FIRST, and the order is the whole guarantee.** The
+   * done-condition is not attempt-scoped and cannot be: the branch is derived
+   * from (epic, issue, phase), so every attempt on a task shares it, and the
+   * implement phase's probe reports on the branch. Attempt 1 opens a pull
+   * request and fails; attempt 2 asks a question and stops having produced
+   * nothing; the probe still says done. Consulted first, that reading withdraws
+   * a question a person was about to be shown and records the phase as
+   * succeeded — a silent wrong success arriving through the completion check.
+   *
+   * A question marker is the run stating outright that it needs a decision.
+   * That statement is about THIS attempt and nothing else, so it is the one to
+   * believe when the two disagree. The cost is a run that asked, unblocked
+   * itself and finished anyway: it now parks for one human round trip instead
+   * of completing. Rejected alternative: keep the old order but scope the probe
+   * to this attempt, which needs a pull-request timestamp compared against a
+   * locally-stamped attempt start — a clock-skew race guarding a rarer case
+   * than the one it opens.
+   *
+   * **Arm 3 withdraws THIS attempt's row and no other, and that is sufficient
+   * rather than narrow.** Start-of-attempt reconciliation already withdrew
+   * every earlier attempt's `open` row, so at most one can exist for the
+   * issue-phase and it is this one's. Written as "withdraw any open row" the
+   * code would range over a set the reconciliation has already emptied — and
+   * the next reader would derive a guarantee from the wrong place.
    *
    * **Completion is a conjunction.** A run can open the pull request and THEN
    * exhaust its turn budget — the SDK reports that as an errored handle rather
@@ -1039,20 +1098,20 @@ export function harnessManager(options: ManagerOptions) {
    * consulted alone would complete the row for a run that failed. A successful
    * verdict whose done-condition does not hold is a failed attempt too.
    *
-   * **Arm 2's second half is the one easy to drop, and dropping it is the same
+   * **Arm 1's FIRST half is the one easy to drop, and dropping it is the same
    * defect from the other side.** A question is only worth holding the board
    * for if the run is still in a position to use the answer, and a run that
    * asked and then failed is not — the SDK reports its most common failures by
    * *returning*. An arm gated on the marker alone matches that run, parks it,
    * and waits on a person for an attempt that is already dead: the row never
    * re-pends, the retry budget is never spent, and nothing reports it. A silent
-   * stall, which is the mirror of the silent success decision 1 exists to kill.
+   * stall, which is the mirror of the silent success arm 2 exists to kill.
    *
-   * **The row is created BEFORE the arms, not inside the park arm.** Two of the
-   * three arms WITHDRAW it, and a marker with an errored verdict never reaches
-   * arm 2 at all — so creating it there means withdrawing a row that was never
-   * created, while the question history a later attempt and a late answer both
-   * read wants it durably `withdrawn`.
+   * **The row is created BEFORE the arms, not inside the park arm.** Arm 3
+   * WITHDRAWS it, and a marker with an errored verdict never reaches arm 1 at
+   * all — so creating it there means withdrawing a row that was never created,
+   * while the question history a later attempt and a late answer both read
+   * wants it durably `withdrawn`.
    *
    * The run record's `outcome` stays `running` across a park, deliberately: the
    * run is not over, and **the board row is the authority on the job's state**
@@ -1122,13 +1181,37 @@ export function harnessManager(options: ManagerOptions) {
         });
       }
 
-      /** Arms 1 and 3 both clear this attempt's question, for opposite reasons. */
+      /** Arm 3 clears this attempt's question: the attempt failed, so it is moot. */
       const withdrawOwnQuestion = async (): Promise<void> => {
         if (questionTopicKey === undefined) return;
         await withdrawQuestion(ctx as BlockContext, questionTopicKey);
       };
 
-      // ── Arm 1: succeeded AND done ──────────────────────────────────────────
+      // ── Arm 1: the verdict did NOT fail AND this attempt asked ─────────────
+      if (succeeded && question !== undefined && questionTopicKey !== undefined) {
+        const board = await boardTasks(ctx as BlockContext);
+        // The substrate's own transition, never a status this lab writes by
+        // hand: the recorders' parked-row refusal, the drain's excusal and the
+        // lease's governance all key off it.
+        await board.awaitReview(identity.taskId, question);
+
+        // **After the park, never before.** What is announced must already be
+        // answerable: a subscriber fast enough to act on an announcement sent
+        // first is refused by the parked-only guard, and then watches the task
+        // park on the question it just tried to answer.
+        await announce({ question: questionTopicKey });
+
+        // Returning normally is the point: the workstream request ends and the
+        // row stays parked, because both recorders decline a row the worker
+        // parked for review.
+        return {
+          issue: state.issue!,
+          phase: state.phase!,
+          sessionId: handle.sessionId,
+        };
+      }
+
+      // ── Arm 2: succeeded AND done ──────────────────────────────────────────
       if (succeeded) {
         // **Bounded, because the whole-worker budget already says it is.**
         // `conductorDrainBudgetMs` reserves `NETWORK_CALL_TIMEOUT_MS` for this
@@ -1152,9 +1235,9 @@ export function harnessManager(options: ManagerOptions) {
           `the ${state.phase} phase's completion check`,
         );
         if (done) {
-          // The run answered its own question on the way to finishing. Withdrawn
-          // rather than deleted, so a late answer against it is reported back.
-          await withdrawOwnQuestion();
+          // No question to withdraw: arm 1 returned on every attempt that asked
+          // one, so reaching here with a succeeded verdict means the marker was
+          // empty.
           await fenced(
             writeRunRow(ctx as BlockContext, identity, { outcome: "succeeded", reason: null }),
             "the row was completed",
@@ -1165,30 +1248,6 @@ export function harnessManager(options: ManagerOptions) {
             sessionId: handle.sessionId,
           };
         }
-      }
-
-      // ── Arm 2: the verdict did NOT fail AND this attempt asked ─────────────
-      if (succeeded && question !== undefined && questionTopicKey !== undefined) {
-        const board = await boardTasks(ctx as BlockContext);
-        // The substrate's own transition, never a status this lab writes by
-        // hand: the recorders' parked-row refusal, the drain's excusal and the
-        // lease's governance all key off it.
-        await board.awaitReview(identity.taskId, question);
-
-        // **After the park, never before.** What is announced must already be
-        // answerable: a subscriber fast enough to act on an announcement sent
-        // first is refused by the parked-only guard, and then watches the task
-        // park on the question it just tried to answer.
-        await announce({ question: questionTopicKey });
-
-        // Returning normally is the point: the workstream request ends and the
-        // row stays parked, because both recorders decline a row the worker
-        // parked for review.
-        return {
-          issue: state.issue!,
-          phase: state.phase!,
-          sessionId: handle.sessionId,
-        };
       }
 
       // ── Arm 3: anything else, INCLUDING a failed verdict with a question ───
