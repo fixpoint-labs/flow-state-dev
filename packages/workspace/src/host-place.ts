@@ -6,7 +6,7 @@
  * projected into, and it executes nothing — a place is where files live, not
  * where commands run.
  */
-import { mkdirSync, readdirSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Place } from "./types";
@@ -28,6 +28,10 @@ export interface HostPlace extends Place {
 export function createHostPlace(root: string): HostPlace {
   const absoluteRoot = resolve(root);
   mkdirSync(absoluteRoot, { recursive: true });
+  // Resolved once, and against the REAL root rather than the spelling the
+  // caller used. A root under a symlinked parent — `/tmp` on macOS is one —
+  // would otherwise make every contained path look like an escape.
+  const realRoot = realpathSync(absoluteRoot);
 
   /**
    * The absolute path for a projected path, refusing anything that would land
@@ -40,7 +44,69 @@ export function createHostPlace(root: string): HostPlace {
     if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
       throw new Error(`path escapes the workspace root: ${path}`);
     }
+    contained(absolute, path);
     return absolute;
+  };
+
+  /**
+   * The real path of the deepest component of `absolute` that exists.
+   *
+   * A path being written does not exist yet, and neither may its parents, so
+   * there is nothing to resolve at the leaf. What CAN be resolved is however
+   * much of the chain is already on disk — and that is exactly the part an
+   * attacker had to have planted a link into.
+   */
+  const deepestReal = (absolute: string): string => {
+    let current = absolute;
+    for (;;) {
+      try {
+        return realpathSync(current);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        const parent = dirname(current);
+        // Walked past the root without finding anything that exists. The root
+        // is created up front, so this means it was removed underneath us.
+        if (parent === current) throw error;
+        current = parent;
+      }
+    }
+  };
+
+  /**
+   * Refuse a path that leaves the root by following a link rather than by
+   * spelling `..`.
+   *
+   * The lexical check above resolves `..` and rejects what lands outside. A
+   * symlink defeats it completely: the path stays inside the root, and the
+   * kernel walks out of it anyway. Anything that can write in the place can
+   * plant one — an agent, a hydrated collection, another process — and then
+   * a write clobbers a host file the run was never given, or a read pulls one
+   * into a collection that is durable and client-readable.
+   *
+   * Both halves are needed. A link at the LEAF is refused outright, pointing
+   * in or out: `walk` already refuses to list one, and a place that writes
+   * through a link it will not list is a place that disagrees with itself. A
+   * link anywhere in the PARENT chain is caught by resolving the part of the
+   * chain that exists — `mkdir -p` through a symlinked directory succeeds
+   * silently and lands the file wherever the link points.
+   */
+  const contained = (absolute: string, path: string): void => {
+    let leaf;
+    try {
+      leaf = lstatSync(absolute);
+    } catch (error) {
+      // Nothing there yet, which is the ordinary case for a write.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (leaf?.isSymbolicLink()) {
+      throw new Error(`path is a symlink, which this place does not follow: ${path}`);
+    }
+
+    const real = deepestReal(absolute);
+    const rel = relative(realRoot, real);
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+      throw new Error(`path escapes the workspace root through a symlink: ${path}`);
+    }
   };
 
   /**
