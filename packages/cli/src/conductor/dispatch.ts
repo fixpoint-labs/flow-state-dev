@@ -204,7 +204,6 @@ export async function answerQuestion(
  */
 export function activityFromEvent(event: RequestStreamEventWithId): string | undefined {
   switch (event.type) {
-    case "item.added":
     case "item.done": {
       const item = (event as { item?: OutputItem }).item;
       if (item === undefined) return undefined;

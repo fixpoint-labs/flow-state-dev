@@ -116,6 +116,7 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     });
     expect(code).toBe(3);
     expect(started.text).toContain("ASK-1--implement");
+    expect(started.text).toContain("ASK-1 pending");
   });
 
   it("watch exits 2 when a question is open, without spinning", async () => {
