@@ -1660,7 +1660,7 @@ type PhaseLogic = {
     <table>
       <thead><tr><th>Setting</th><th>Default</th><th>Note</th></tr></thead>
       <tbody>
-        <tr><td><code>concurrency</code></td><td>4</td><td>We run 2, on a human-attention argument rather than a machine one</td></tr>
+        <tr><td><code>concurrency</code></td><td>4</td><td>The factory default. The lab hardcodes <code>1</code>. The later design runs 2, on a human-attention argument rather than a machine one</td></tr>
         <tr><td><code>maxEnqueuedTasks</code> / <code>maxTotalTasks</code> / <code>maxTotalRetries</code></td><td>100 / 500 / 50</td><td>An epic of 8 issues &#215; 3 phases is 24 tasks. The caps are not the binding constraint</td></tr>
         <tr><td><code>dispatcher</code></td><td><code>topological</code></td><td>All three respect <code>deps</code>: the admission predicate enforces it, not the dispatcher. They differ in ordering among eligible tasks, and <code>topological</code> names the intent</td></tr>
         <tr><td><code>onIdle</code></td><td><code>complete-or-blocked</code></td><td>Decides what a wake returns when everything is waiting. <code>awaiting_review</code> keeps the loop alive in every mode, which is useful for a short wait and deliberately not what the question channel rests on (section 6)</td></tr>
