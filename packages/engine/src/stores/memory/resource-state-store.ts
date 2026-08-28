@@ -33,7 +33,8 @@ import type {
   VersionedResourceState
 } from "../types";
 import {
-  assertExpectedVersion,
+  assertDeleteExpectedVersion,
+  assertSetExpectedVersion,
   checkWriteVersion,
   type ResourceStateRow
 } from "../resource-state-predicate";
@@ -66,7 +67,7 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     state: JsonObject,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<JsonObject>> {
-    assertExpectedVersion(expectedVersion);
+    assertSetExpectedVersion(expectedVersion);
     const mapKey = this.key(scopeType, scopeId, resourceKey);
     const row = this.data.get(mapKey);
     const check = checkWriteVersion(row, expectedVersion);
@@ -87,7 +88,7 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
   ): Promise<SetResult<JsonObject>> {
     // Ahead of the idempotent short-circuits below: an unusable
     // `expectedVersion` is refused for every key, live or not.
-    assertExpectedVersion(expectedVersion);
+    assertDeleteExpectedVersion(expectedVersion);
     const mapKey = this.key(scopeType, scopeId, resourceKey);
     const row = this.data.get(mapKey);
 
@@ -136,6 +137,20 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
       if (!key.startsWith(prefix)) continue;
       if (row.lifecycle !== "live") continue;
       this.data.set(key, { state: {}, version: row.version, lifecycle: "deleted" });
+    }
+  }
+
+  async purgeTombstones(scopeType: ContentScopeType, scopeId: string): Promise<void> {
+    // Tombstones only — the mirror of `deleteAll`'s `lifecycle !== "live"`
+    // skip, and the reason live rows written before the scope record existed
+    // survive a re-create. Deleting entries while iterating a `Map` is
+    // defined: the iterator visits each remaining key once and never revisits
+    // a removed one.
+    const prefix = this.prefix(scopeType, scopeId);
+    for (const [key, row] of this.data) {
+      if (!key.startsWith(prefix)) continue;
+      if (row.lifecycle === "live") continue;
+      this.data.delete(key);
     }
   }
 }

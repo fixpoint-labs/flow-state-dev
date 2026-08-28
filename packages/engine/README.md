@@ -615,6 +615,31 @@ Conflicts report what actually happened rather than collapsing into one error:
 
 The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable, suppresses a no-op before checking any version, and has no cancellation. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.sideChain()` tasks keep running and their writes must land.
 
+### A resource `stateSchema` must parse its own output unchanged
+
+A single resource's state is parsed on the way out as well as on the way in. The read path normalizes the stored row, your updater builds its next value on top of that, and the write parses the result. So anything the schema rewrites runs twice per read-modify-write cycle, once on each parse.
+
+Collection instances are read back as stored. The read path does not normalize them, so a rewrite runs on an instance once, on the write. The count differs; the fact that the rewrite recurs does not.
+
+That is fine when the rewrite settles. Filling a `.default()`, stripping an undeclared key, normalizing a retired enum value — all land on the same value the second time, so the row converges and then holds. It is also how a row written before its schema gained a field picks that field up.
+
+A `.transform()` that returns something different on each pass is the case that does not settle. Under `z.object({ n: z.number().transform((v) => v + 1) })` the stored `n` climbs on every write even when the caller never touches it, and on a single resource the value you read back still looks plausible because the same shift re-applies on read.
+
+Writes through such a schema are now refused rather than allowed to corrupt the row:
+
+```
+Resource "counter" write failed stateSchema validation at "n": the schema does not
+parse its own output back to the same value, so every write would move the stored
+state. Make the transform idempotent — parsing an already-parsed value must yield
+that same value.
+```
+
+A schema that collapses its own output — one whose second parse returns `null` or another non-object rather than a different object — is refused the same way, and says so instead of naming a field that did not move.
+
+Every resource write runs the check, because they all share one parse path: `setState` / `patchState` / `updateState`, the same ops on collection instances, `collection.create()` and `upsert`, and the client create route `POST /sessions/:id/resources/:ref`. That route carries no initial state, so it seeds the row from the schema's parse of `{}` — and a schema that cannot produce a valid, stable object from `{}` now gets `400` rather than a `201` over a row every later write would reject. A required field with no `.default()` is the usual cause; give it one.
+
+Rows written before this check may not satisfy it, and only some of them heal on their own. A row under a schema whose parse settles is read normally and converges to a stable value on its next successful write. A row written by a schema whose parse does not settle has no next successful write: every mutation through that schema is now refused, so nothing converges until the schema itself is fixed. Make the parse idempotent and the row converges on the next write after that; a value that already drifted keeps the value it drifted to until a write corrects it. If you need a derived value, compute it where you read the state rather than inside the state schema.
+
 ```ts
 // branded — see the note under the table below
 type VersionedResourceState = { state: JsonObject; version: number };
@@ -626,17 +651,25 @@ interface ResourceStateStore {
   getAll(scopeType, scopeId): Promise<Record<string, VersionedResourceState>>;
   getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, VersionedResourceState>>;
   deleteAll(scopeType, scopeId): Promise<void>;
+  purgeTombstones(scopeType, scopeId): Promise<void>;
 }
 ```
 
-`expectedVersion` is a non-negative integer, or `"any"` to write unconditionally. Two meanings differ from the scope stores that share these types, and both are deliberate:
+`expectedVersion` is a non-negative integer, `"any"` to write unconditionally, or `"absent"`. Two meanings differ from the scope stores that share these types, and both are deliberate:
 
 - **`0` means "no live row"** — create-if-absent. A tombstoned key satisfies it just as a never-existed one does.
 - **Some conflicts are terminal.** A conflict against a deleted resource must not be retried into a resurrection, and a losing create must not be retried into an overwrite.
 
 A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any" | "absent"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
 
-**`"absent"` throws here too.** It is the scope stores' create-if-absent sentinel, and this store keeps spelling create-if-absent `0`. Accepting it as an alias would be cheap on `set` and incoherent on `delete`, where `0` has a meaning ("no live row, so the terminal state already holds") and "delete only if absent" has none. One sentinel with a verb-dependent meaning on the subtlest predicate in these adapters is worse than two spellings that each mean one thing. Converging them — moving these callers to `"absent"` and retiring this store's `0` — is a later change that removes a spelling rather than adding one.
+**`"absent"` is the stricter of two create expectations on `set`, and throws on `delete`.** It means what it means in the scope stores — "no record exists" — and here a tombstone *is* a record, so it refuses one where `0` admits it. The pair is what lets the store tell a key nothing ever wrote from one that was written and deleted:
+
+| Write | Admitted when | Used by |
+|---|---|---|
+| `set(…, 0)` | No **live** row — never existed, or tombstoned | Explicit creation, including recreating a deleted resource |
+| `set(…, "absent")` | No row **at all** — a tombstone conflicts | A read-modify-write that started out holding no version, so it cannot undo a delete it never saw |
+
+`delete(…, "absent")` still throws. `0` already covers "no live row, so the requested terminal state holds", and "delete only if absent" asks nothing on top of that — the same call `assertDeltaExpectedVersion` makes on the scope side's delta verbs. Keeping the refusal to that one verb is what stops the word acquiring a second, verb-dependent meaning.
 
 ### Versions, deletes and retention
 
@@ -647,10 +680,19 @@ A number outside that domain — negative, fractional, `NaN`, `Infinity` — thr
 | `delete` | Takes a version like every other write, retains it, and drops the payload. A delete chosen from a stale snapshot conflicts rather than tombstoning a newer generation |
 | `delete(…, "any")` | Never reports a conflict. Finding no live row is the whole answer to a blind delete, so it succeeds at `version: 0` even if a concurrent recreate makes the key live again a moment later. A positive `expectedVersion` in the same race still conflicts — it asserted something that did not hold |
 | `deleteAll` | Bulk-marks every live key in the scope. A scope operation, so it carries no expected version |
-| Retention | Tombstones are kept **indefinitely, in every scope**. Nothing reclaims one |
+| `purgeTombstones` | Removes the scope's tombstoned rows outright and touches no live one. The only operation that reclaims a tombstone |
+| Retention | The store **never reclaims a tombstone on its own** — no sweep, no TTL, in any scope. Only an explicit `purgeTombstones` removes one |
 | Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
 
-Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it. A tombstone that is never removed is always sound. It costs one row per deleted key.
+Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it within the same incarnation of a scope id. A tombstone that is never aged out is always sound. It costs one row per deleted key.
+
+`purgeTombstones` is the deliberate exception, and it exists because scope ids are reusable. Session ids are caller-supplied, so `chat-42` can be deleted and used again — and `SessionStore.delete` keeps no tombstone of its own, so the id really is free. The resource-state tombstones of the dead session would otherwise outlive it and refuse every `"absent"` write the new one makes, leaving each **static** resource permanently unwritable (a static ref has no create-if-absent verb to fall back on, unlike a collection instance). So the engine reclaims them at the moment they stop applying: when a new session record is born under that id, not when the old one died. While the session is merely gone, the tombstones still do their job.
+
+It removes tombstones only. A live row is data — state can legitimately be written under a scope id before that scope's record exists — and a blanket purge would delete it. The cost is that a reclaimed key's version restarts at `1`, so a straggler from the previous incarnation holding version `N` can match a row in the new one. That window opens only after a deliberate re-create under a reused id, and closing it properly needs a scope generation rather than a per-key predicate.
+
+The engine runs it immediately **before** creating the session record, not after. There is no transaction across the two stores, and creating first would leave a committed record over intact tombstones whenever the reclamation failed — with nothing to retry it, since a second create answers 409 and an action-driven create adopts the record instead. Reclaiming first commits nothing until it has succeeded, and running it twice is a no-op.
+
+**Writing an adapter:** `purgeTombstones` is required. It is one statement in SQL (`DELETE … WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'`), and the shared conformance suite covers it. Adding a required method to a published store interface breaks every implementer — including test doubles, which are implementers too.
 
 `toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
 

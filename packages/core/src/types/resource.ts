@@ -275,11 +275,54 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   edges?: boolean | EdgeSlotConfig;
 };
 
+/**
+ * The shape `incState` accepts: the number-valued fields of `TState`, each
+ * optional, each taking a delta.
+ *
+ * Keyed by remap rather than as `Partial<Record<...>>` so a declared field of
+ * another type (`name: string`) is dropped from the accepted shape instead of
+ * being silently allowed. Note the ceiling: on a state type inferred from a
+ * `passthrough()` schema the JSON index signature makes every string a
+ * candidate. That is the same latitude `patchState`'s `Partial<TState>` already
+ * has — these verbs sit at parity with the existing mutators, not stricter
+ * than them — and the checking is exact on a hand-written state type.
+ */
+export type ResourceIncrements<TState> = {
+  [K in keyof TState as [Extract<NonNullable<TState[K]>, number>] extends [never]
+    ? never
+    : K]?: number;
+};
+
+/** The field names of `TState` that can hold an array — what `pushState` accepts. */
+export type ResourceArrayKeys<TState> = {
+  [K in keyof TState]-?: [Extract<NonNullable<TState[K]>, readonly unknown[]>] extends [never]
+    ? never
+    : K;
+}[keyof TState] &
+  string;
+
+/** The element type of an array-valued state field — what `pushState` appends to it. */
+export type ResourceArrayElement<T> =
+  Extract<NonNullable<T>, readonly unknown[]> extends readonly (infer E)[] ? E : never;
+
 export type ResourceContext<TState extends JsonObject = JsonObject> = {
   state: Readonly<TState>;
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
+  /**
+   * Add to number-valued state fields in one guarded write.
+   * @see ResourceRef.incState for the atomicity and refusal contract.
+   */
+  incState(increments: ResourceIncrements<TState>): Promise<void>;
+  /**
+   * Append one value to an array-valued state field in one guarded write.
+   * @see ResourceRef.pushState for the atomicity and refusal contract.
+   */
+  pushState<K extends ResourceArrayKeys<TState>>(
+    field: K,
+    value: ResourceArrayElement<TState[K]>
+  ): Promise<void>;
   /** Typed-edge graph API — present at runtime only when the resource declared `edges`. Consumers that declared edges access it via `ctx.edges!`. */
   edges?: ResourceEdgeApi;
 };
@@ -340,6 +383,43 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
+  /**
+   * Add to number-valued state fields — `incState({ calls: 1 })` — without
+   * reading, changing and writing the state back yourself.
+   *
+   * **Atomic per write, and no faster.** Each call is a single guarded
+   * mutation: a write that loses a race re-runs against the winner's stored row
+   * rather than committing a value computed from a snapshot that has since
+   * moved, so two callers incrementing one counter both land. That holds on the
+   * memory, SQLite and Postgres stores. The filesystem store guards a record's
+   * read-check-write with a per-id **in-process** lock, so two processes over
+   * one directory can still lose an increment. Concurrent writers still retry —
+   * the gain is expressing the intent, not throughput.
+   *
+   * **Refuses rather than corrupts.** Incrementing a field that holds something
+   * other than a number fails and leaves the stored value alone. An absent or
+   * `null` field is that field's empty state, not a wrong kind of value: it
+   * starts from `0`. A result that is not finite is also refused — two finite
+   * operands can overflow to `Infinity`, which `z.number()` accepts but the
+   * stores disagree about how to persist.
+   *
+   * Applies wholly or not at all: if one field of a multi-field call is
+   * wrong-typed, nothing is written.
+   */
+  incState(increments: ResourceIncrements<TState>): Promise<void>;
+  /**
+   * Append one value to an array-valued state field —
+   * `pushState("errors", "rate_limited")`.
+   *
+   * Same single-guarded-write atomicity and adapter scope as
+   * {@link ResourceRef.incState}. Appending to a field that holds something
+   * other than a list refuses and leaves the stored value alone; an absent or
+   * `null` field starts from `[]`.
+   */
+  pushState<K extends ResourceArrayKeys<TState>>(
+    field: K,
+    value: ResourceArrayElement<TState[K]>
+  ): Promise<void>;
   /**
    * Get-or-compute over this resource's state. Reads `state[key]`; if it is
    * absent (`undefined`), runs `compute`, patches the returned value under

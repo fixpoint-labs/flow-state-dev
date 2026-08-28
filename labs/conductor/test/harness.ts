@@ -21,6 +21,8 @@ import type {
 } from "@flow-state-dev/claude-code/sdk";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
+import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
+import { CHECKOUT_CLEANUP_TIMEOUT_MS } from "../src/exec";
 import type { PhaseSpec, PromptRunContext } from "../src/manager";
 
 export const USER_ID = "conductor-test-user";
@@ -241,7 +243,14 @@ export function seedRepo(dir: string): void {
   // distinction is what the provisioning marker is now corroborated against.
   // Another fixture that had drifted from the thing it stands for.
   writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
-  git("add", "tracked.txt");
+  // **A stand-in source repository ignores the ask marker, because a real one
+  // has to.** The marker lands in the product checkout, so the rule that keeps
+  // it out of a commit belongs to THAT repository — and provisioning now
+  // refuses a checkout whose repository does not carry it, before the agent
+  // runs. Third fixture in this file that had drifted from the thing it stands
+  // for, and the same tell each time: the specs passed because nothing asked.
+  writeFileSync(join(dir, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
+  git("add", "tracked.txt", ".gitignore");
   git("commit", "-m", "root");
   // **A stand-in source repository has an `origin`, because a real one does.**
   // The implement phase's completion probe reads it, and `conductorFlow` now
@@ -285,7 +294,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   };
 
   // Derived, not spelled out. The manager enforces
-  // `waitMs >= staleAfterMs > runTimeoutMs + provisionTimeoutMs`, and independent constants
+  // `waitMs >= staleAfterMs > runTimeoutMs + provisionTimeoutMs + cleanup`, and independent constants
   // here let a test set one of them and get a construction error that has
   // nothing to do with what it was testing. Deriving keeps every harness
   // instance valid by construction, whichever knob a test turns.
@@ -295,8 +304,15 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   // the git budget is what keeps the suite's numbers small while the inequality
   // stays the real one.
   const provisionTimeoutMs = options.provisionTimeoutMs ?? 10_000;
+  // Derived the SAME way the manager derives it, not from two of its terms.
+  // `maxLockHeldMs` counts the cleanup allowance — a refusal late in
+  // provisioning discards the checkout it just made, under the lock — against
+  // `runTimeoutMs` rather than alongside it, because a refusal throws before any
+  // run. A fixture adding only `runTimeoutMs + provisionTimeoutMs` derived a
+  // stale window the manager refuses at construction.
   const staleAfterMs =
-    options.ownership?.staleAfterMs ?? runTimeoutMs + provisionTimeoutMs + 1_000;
+    options.ownership?.staleAfterMs ??
+    provisionTimeoutMs + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS) + 1_000;
   const pollMs = options.ownership?.pollMs ?? 25;
   const ownership = {
     // **Strictly past the stale window, by one poll.** The manager requires it,

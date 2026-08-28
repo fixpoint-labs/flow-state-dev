@@ -43,7 +43,13 @@ function chatFlow(kind = "support"): unknown {
 function makeHost(): InboundTransportHost {
   return {
     registry: { get: () => undefined, list: () => [] } as never,
-    stores: { session: { get: async () => undefined } } as never,
+    // `resourceState` is required by `SessionBirthStores`: `ensureSessionRecord`
+    // reclaims the id's tombstones once it wins the create (FIX-1258). The cast
+    // is what let this shape be incomplete.
+    stores: {
+      session: { get: async () => undefined },
+      resourceState: { purgeTombstones: async () => {} }
+    } as never,
     logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
     dispatch: vi.fn() as never,
     resolvePrincipal: vi.fn() as never,
@@ -238,6 +244,7 @@ createInboundTransportConformanceTests({
         stores: {
           ...(host.stores as object),
           session: { get: async () => undefined, set: async () => ({ ok: true as const }) },
+          resourceState: { purgeTombstones: async () => {} },
         },
       }) as ReturnType<typeof createMockTransportHost>;
       const adapter = createChatTransportAdapter({
