@@ -107,6 +107,17 @@ interface Place {
 
 One rule matters more than the rest: **`list` must throw when the place can't be read.** Returning an empty array asserts the place is readable and empty, and a flush acts on that by deleting what it owns.
 
+`flush` re-throws that one failure as a `PlaceUnreadableError`, and nothing else. It is the only rejection a caller can safely swallow: nothing was read and nothing was written, so the run's files are still where the run left them. A collection read or write that fails is the opposite — the work did not reach the store — so catch the named error and let the rest through. Catching both alike is how a run reports success for files that went nowhere.
+
+```ts
+try {
+  await projection.flush();
+} catch (err) {
+  if (!(err instanceof PlaceUnreadableError)) throw err;
+  // Nothing was decided. Log it and carry on.
+}
+```
+
 ## Mounts
 
 ```ts

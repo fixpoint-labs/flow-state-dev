@@ -13,7 +13,7 @@
 import { mkdirSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import { getPatternPrefix } from "@flow-state-dev/core/types";
+import { getPatternPrefix, isParameterizedPattern } from "@flow-state-dev/core/types";
 import type {
   BlockContext,
   JsonObject,
@@ -22,6 +22,7 @@ import type {
 import {
   createHostPlace,
   createProjection,
+  PlaceUnreadableError,
   type FlushOutcome,
   type Mount,
   type Projection,
@@ -73,11 +74,18 @@ export interface WorkspaceAgentCapabilityOptions
    * `CLAUDE.md` or a `.claude/settings.json` among them is user input the run
    * would otherwise obey (BP-031).
    *
-   * The sandbox settings stop the run WRITING outside the workspace. `cwd` is
-   * a working directory, not a fence: absolute paths still resolve, so the
-   * boundary has to be declared. `filesystem.allowWrite` names the root, and
+   * The sandbox settings are what constrain the run's WRITES. `cwd` is a
+   * working directory, not a fence: absolute paths still resolve, so the
+   * boundary has to be declared. `enabled: true` is the boundary, and
    * `allowUnsandboxedCommands: false` closes the escape a command can ask for
    * by itself.
+   *
+   * `filesystem.allowWrite` is ADDITIVE, not a fence — the SDK's own types
+   * call it "additional paths to allow writing within the sandbox", merged
+   * with the paths its permission rules already allow. Naming the root here
+   * adds it to what the run may write, which it needs because the root is not
+   * the process's own directory. It does not narrow anything, and reading it
+   * as the boundary would credit it with work `enabled` is doing.
    *
    * And `disallowedTools` takes away the tools that would move the run OUT of
    * the workspace — see {@link RELOCATION_TOOLS}. A confined directory the run
@@ -129,6 +137,7 @@ const workspaceSequencerState = z.object({
 
 let nextWorkspaceId = 0;
 
+
 /** Duck-type check: is this entry on `ctx.resources` a collection ref? */
 function isCollectionRef(value: unknown): value is ResourceCollectionRef<JsonObject> {
   if (value === null || typeof value !== "object") return false;
@@ -147,6 +156,14 @@ const normalizeSpec = (spec: WorkspaceCollectionSpec) =>
  * converging them belongs with the change that touches both consumers. Named
  * here so that change knows where to look.
  */
+export function discoverMountsForTest(
+  ctx: WorkspaceContext,
+  explicit?: WorkspaceCollectionSpec[],
+  exclude?: string[],
+): Mount[] {
+  return discoverMounts(ctx, explicit, exclude);
+}
+
 function discoverMounts(
   ctx: WorkspaceContext,
   explicit: WorkspaceCollectionSpec[] | undefined,
@@ -168,8 +185,31 @@ function discoverMounts(
     if (key === WORKSPACE_OUTCOMES) continue;
     if (wanted ? !wanted.has(key) : excluded.has(key)) continue;
     if (!isCollectionRef(value)) continue;
+    // An external collection answers the duck-type — it has a `pattern` and a
+    // `list` — and is not projectable through either. Its `list` is paged, so
+    // hydrate's `for (const entry of await list())` throws before the run
+    // starts, and it carries no mutators for a writable mount to flush
+    // through. The brand is what separates them; the shape does not.
+    if ((value as { external?: unknown }).external === true) {
+      console.warn(
+        `[workspace-agent] collection "${key}" is external and read-through, so it cannot be projected into a directory — skipped.`,
+      );
+      continue;
+    }
     const prefix = getPatternPrefix(value.pattern);
     if (!prefix) continue;
+    // A parameterized pattern's prefix stops at the first parameter, so
+    // `data/[topic]/observations` mounts at `data` and its entries come back
+    // addressed as `react/observations`. Core requires an object key for those
+    // patterns, so the flush's `getOptional` throws on the string and the run
+    // finishes having saved nothing. Skipped until a mount can carry the
+    // parameters it would need to address them.
+    if (isParameterizedPattern(value.pattern)) {
+      console.warn(
+        `[workspace-agent] collection "${key}" has parameterized pattern "${value.pattern}", whose entries cannot be addressed from a directory path — skipped.`,
+      );
+      continue;
+    }
     mounts.push({
       prefix,
       collection: value as unknown as Mount["collection"],
@@ -202,9 +242,9 @@ export const RELOCATION_TOOLS = ["EnterWorktree", "ExitWorktree"] as const;
  * The agent resolves `cwd` through `realpath` before handing it to the SDK, so
  * a root that is a symlink means the process works in one path while anything
  * naming the unresolved spelling describes another. `filesystem.allowWrite`
- * naming the wrong one is a boundary around a directory the run is not in, and
- * macOS `/tmp` is a symlink, which makes that the ordinary case there rather
- * than an exotic one.
+ * naming the wrong one grants the run write access to a directory it is not
+ * in, and grants nothing where it is — and macOS `/tmp` is a symlink, which
+ * makes that the ordinary case there rather than an exotic one.
  *
  * Resolving here, once, is what keeps the three readers — the place, `cwd` and
  * the sandbox — on one answer. `realpath` needs the directory to exist, hence
@@ -220,7 +260,13 @@ function physicalPath(root: string): string {
   }
 }
 
-/** The sandbox settings that confine a run to `root`. See `contain`. */
+/**
+ * The sandbox settings for a run working in `root`. See `contain`.
+ *
+ * `enabled` and `allowUnsandboxedCommands: false` are the constraint;
+ * `allowWrite` adds the root to what the run may write, because the root is
+ * not the directory the process itself is in. It is additive, not a fence.
+ */
 export function containmentSandbox(root: string) {
   return {
     enabled: true,
@@ -273,12 +319,18 @@ export function createWorkspaceAgentCapability(
         mounts: discoverMounts(ctx as WorkspaceContext, collections, exclude),
       });
       const workspaceId = `${runNamespace(ctx as BlockContext)}#${nextWorkspaceId++}`;
-      openWorkspaces.set(workspaceId, { projection, root });
       await (ctx as WorkspaceContext).sequencer!.patchState({
         workspaceId,
         root,
       } as never);
       await projection.hydrate();
+      // Registered only once hydrate has succeeded. `reconcile` is reached
+      // through the agent's `onErrored` and through the tap after it, and this
+      // step runs BEFORE both — so a projection registered ahead of a hydrate
+      // that throws is one nothing will ever come back for. On a long-lived
+      // server that is a projection and a baseline retained per failed
+      // attempt.
+      openWorkspaces.set(workspaceId, { projection, root });
     },
   });
 
@@ -310,12 +362,18 @@ export function createWorkspaceAgentCapability(
       try {
         outcomes = (await entry.projection.flush()).outcomes;
       } catch (err) {
-        // The workspace could not be read. The projection refused to decide
-        // anything rather than reading an unreadable directory as an empty
-        // one — which is the whole point of it throwing — so this is reported,
-        // not rethrown into a run that has otherwise finished its work.
+        // One failure is reported rather than rethrown into a run that has
+        // otherwise finished its work: the projection refused to decide
+        // anything because it could not read the directory, which is the whole
+        // point of it throwing, and the run's files are still on disk.
+        //
+        // Every other rejection is the opposite and must reach the caller. A
+        // collection read, write or delete that failed is the run's work NOT
+        // reaching the store, and swallowing it hands back a successful run
+        // whose new file exists only in a directory about to be thrown away.
+        if (!(err instanceof PlaceUnreadableError)) throw err;
         await ctx.emit.status(
-          `Workspace could not be read at the end of this run, so nothing was saved back: ${(err as Error).message}`,
+          `Workspace could not be read at the end of this run, so nothing was saved back: ${err.message}`,
         );
         return;
       }

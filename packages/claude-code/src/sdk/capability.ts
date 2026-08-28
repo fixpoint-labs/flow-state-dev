@@ -10,6 +10,7 @@
  * `detached` is documented once, on the option itself in `./agent`.
  */
 import { defineCapability } from "@flow-state-dev/core";
+import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import {
   claudeCodeAgent,
   claudeAgentSessionStateSchema,
@@ -26,6 +27,10 @@ import { workRecorderResources } from "./work-collections";
 export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions = {}) {
   const { detached = false, recordWork = false } = options;
   const agent = claudeCodeAgent(options);
+  const resources = {
+    ...(recordWork ? workRecorderResources : {}),
+    ...promotedResources(options.uses),
+  };
 
   return defineCapability({
     name: "claude-code-agent",
@@ -60,7 +65,11 @@ export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions 
     // there a capability contributes through a channel the task board's walk
     // cannot see, here its tools contribute through a channel the flow's
     // collector cannot see. Both directions of that seam now carry a note.
-    ...(recordWork ? { resources: workRecorderResources } : {}),
+    //
+    // Which is also why a capability handed through `uses` has its resources
+    // promoted here rather than left on the agent block: installed there, it
+    // sits in the `tools` preset and hits the same wall.
+    ...(Object.keys(resources).length > 0 ? { resources } : {}),
     presets: {
       tools: {
         tools: [agent],
@@ -68,4 +77,31 @@ export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions 
       default: ["tools"],
     },
   });
+}
+
+/**
+ * The resource declarations of the statically-listed `uses` capabilities.
+ *
+ * They cannot stay where they were installed. `uses` puts them on the agent
+ * handler, the handler is a tool inside this capability's preset, and a tool's
+ * resources reach no flow — the long note above traces why. So the capability
+ * would be present at runtime with `ctx.resources` entries that resolve to
+ * nothing, and the route would 404 on a build that succeeded.
+ *
+ * Dynamic entries are skipped: they resolve per-call, and a resource has to
+ * exist before the block runs. That constraint is `UsesEntry`'s own.
+ *
+ * Two capabilities claiming one accessor name is already the framework's
+ * refusal to make, and it makes it by name at construction.
+ */
+function promotedResources(
+  uses: ClaudeCodeAgentOptions["uses"],
+): Record<string, DeclaredResourceEntry> {
+  const out: Record<string, DeclaredResourceEntry> = {};
+  for (const entry of uses ?? []) {
+    if (typeof entry === "function") continue;
+    const declared = (entry as { resources?: Record<string, DeclaredResourceEntry> }).resources;
+    Object.assign(out, declared ?? {});
+  }
+  return out;
 }

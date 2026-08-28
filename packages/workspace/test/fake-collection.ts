@@ -23,6 +23,8 @@ export interface FakeCollection extends ResourceCollectionRef<ProjectedEntryStat
    * obliges another writer to set it.
    */
   forgetStatePath(key: string): void;
+  /** Make every content write reject, the way a store that is down does. */
+  breakWrites(reason?: string): void;
 }
 
 const unsupported = (name: string) => () => {
@@ -43,6 +45,8 @@ export function createFakeCollection(
 
   const prefix = pattern.replace(/\/\*+$/, "");
 
+  let writeFailure: string | undefined;
+
   const refFor = (key: string) => ({
     // A real `ResourceRef.path` is the canonical storage key, prefix
     // included — the projection strips the mount prefix back off it.
@@ -54,6 +58,7 @@ export function createFakeCollection(
       return content.get(key) ?? null;
     },
     async writeContent(next: string) {
+      if (writeFailure !== undefined) throw new Error(writeFailure);
       content.set(key, next);
     },
     async patchState(patch: Partial<ProjectedEntryState>) {
@@ -100,6 +105,9 @@ export function createFakeCollection(
     removeExternal: (key: string) => {
       content.delete(key);
       state.delete(key);
+    },
+    breakWrites: (reason = "the store is unavailable") => {
+      writeFailure = reason;
     },
     forgetStatePath: (key: string) => {
       const current = state.get(key);

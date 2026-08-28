@@ -150,3 +150,21 @@ export interface FlushReport {
   /** Paths another live projection is writing. See the `contested` outcome. */
   contested: readonly Extract<FlushOutcome, { kind: "contested" }>[];
 }
+
+/**
+ * The place could not be listed, so the flush decided nothing.
+ *
+ * The one failure a flush can reject with that a caller may safely swallow:
+ * nothing was read, nothing was written, and the run's files are still where
+ * the run left them. Every other rejection — a collection read, a write, a
+ * delete — means the opposite, that work did not reach the store, and a caller
+ * catching both alike reports success for a run whose files went nowhere.
+ *
+ * Thrown only by `flush`, and only for `Place.list`.
+ */
+export class PlaceUnreadableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PlaceUnreadableError";
+  }
+}
