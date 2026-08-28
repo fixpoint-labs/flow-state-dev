@@ -92,8 +92,10 @@ function renderTable(state: ViewState, cols: number): string {
   const phaseW = 12;
   const statusW = 16;
   const attemptW = 8;
-  const askW = Math.max(14, Math.min(28, Math.floor(cols * 0.28)));
-  const outcomeW = Math.max(8, cols - issueW - phaseW - statusW - attemptW - askW - 10);
+  const chrome = 10;
+  const rest = Math.max(22, cols - issueW - phaseW - statusW - attemptW - chrome);
+  const askW = Math.max(12, Math.min(24, Math.floor(rest * 0.6)));
+  const outcomeW = Math.max(10, rest - askW);
   const head =
     "  " +
     pad(dim("ISSUE"), issueW) +

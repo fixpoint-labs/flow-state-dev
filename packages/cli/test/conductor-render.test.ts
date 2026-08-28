@@ -52,6 +52,8 @@ describe("renderFrame", () => {
     expect(frame).toContain("awaiting_review");
     expect(beforeTranscript(frame)).toContain("Which path?");
     expect(beforeTranscript(frame)).toMatch(/\bASK\b/);
+    expect(stripAnsi(frame)).toContain("succeeded");
+    expect(stripAnsi(frame)).not.toMatch(/succeed…Which/);
     expect(frame).toContain("1 waiting");
     expect(frame).toContain("click/j/k select");
     expect(frame).toContain("TRANSCRIPT");
