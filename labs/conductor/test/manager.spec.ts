@@ -21,6 +21,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { abortRequest } from "@flow-state-dev/engine";
 import { acquireCheckout, conductorTaskId, encodeSegment } from "../src/workspace";
 import {
   createConductorHarness,
@@ -444,6 +445,70 @@ describe("the manager — the deadline", () => {
     // The runtime ids were known at open and survive the abort write.
     expect(row.run?.requestId).toEqual(expect.any(String));
     expect(row.run?.childSessionId).toEqual(expect.any(String));
+  });
+
+  it("re-pends the row when the operator aborts the workstream", async () => {
+    // `/abort` cancels the workstream request, not a step. Resource CAS
+    // keys off that request's side-chain signal, so firing it before
+    // rescue ran left the row `in_progress`. This is the operator path —
+    // a wall-clock timeout is step-scoped and already covered above.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: hangingAgent(seen),
+      isDone: () => true,
+      maxAttempts: 3,
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+
+    const deadline = Date.now() + 10_000;
+    let requestId: string | undefined;
+    for (;;) {
+      const mid = await readStatus(live);
+      if (mid?.status === "in_progress" && typeof mid.run?.requestId === "string") {
+        requestId = mid.run.requestId;
+        break;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `workstream never opened — last seen ${JSON.stringify(mid)}`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const runtime = await (
+      live.state as {
+        getRuntime(): Promise<{
+          stores: {
+            request: {
+              setFieldsIfStatus: (
+                id: string,
+                fields: { abortRequested: true },
+                statuses: string[],
+                now: number,
+              ) => Promise<unknown>;
+            };
+          };
+        }>;
+      }
+    ).getRuntime();
+    await runtime.stores.request.setFieldsIfStatus(
+      requestId,
+      { abortRequested: true },
+      ["in_progress"],
+      Date.now(),
+    );
+    expect(abortRequest(requestId), "workstream controller was not registered").toBe(
+      true,
+    );
+
+    const row = await settle(live);
+
+    expect(row.status).toBe("pending");
+    expect(row.run?.outcome).toBe("failed");
+    expect(row.run?.reason).toMatch(/abort/i);
+    expect(row.run?.requestId).toBe(requestId);
   });
 });
 
