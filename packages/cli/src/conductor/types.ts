@@ -107,6 +107,7 @@ export type OperatorCommand =
   | { kind: "seed"; issue: string; phase?: string }
   | { kind: "wake" }
   | { kind: "answer"; question: string; text: string }
+  | { kind: "steer"; message: string }
   | { kind: "watch"; issue?: string }
   | { kind: "start"; issue: string; phase?: string }
   | { kind: "abort"; issue?: string }

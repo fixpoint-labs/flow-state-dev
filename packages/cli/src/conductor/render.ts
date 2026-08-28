@@ -636,7 +636,7 @@ function renderSlashMenu(state: ViewState, cols: number): string {
 function renderPrompt(state: ViewState, cols: number): string {
   const notice = state.notice !== null ? `\n ${paint(GOLD, state.notice)}` : "";
   let prefix = paint(ACCENT, "❯ ");
-  let placeholder = dim("/seed FIX-1   /wake   /answer <id> <text>");
+  let placeholder = dim("talk to the coordinator, or /seed /wake /answer");
   if (state.inputMode === "answer") {
     prefix = paint(MAUVE, "❯ answer ");
     placeholder = dim("type the reply · Enter sends · Esc cancels");

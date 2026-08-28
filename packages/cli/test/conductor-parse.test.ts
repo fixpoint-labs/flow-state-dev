@@ -41,6 +41,22 @@ describe("parseCommand", () => {
     expect(parseCommand("/nope")).toMatchObject({ ok: false, message: "unknown command: nope" });
   });
 
+  it("treats an unslashed line that is not a verb as talk", () => {
+    expect(parseCommand("retry the failed rows")).toEqual({
+      ok: true,
+      command: { kind: "steer", message: "retry the failed rows" },
+    });
+    expect(parseCommand("/steer start FIX-1")).toEqual({
+      ok: true,
+      command: { kind: "steer", message: "start FIX-1" },
+    });
+    expect(parseArgv(["retry", "the", "failed", "rows"]).invocation).toEqual({
+      mode: "headless",
+      json: false,
+      command: { kind: "steer", message: "retry the failed rows" },
+    });
+  });
+
   it("parses /find with and without a query", () => {
     expect(parseCommand("/find")).toEqual({ ok: true, command: { kind: "find" } });
     expect(parseCommand("/find src/foo.ts")).toEqual({
@@ -137,6 +153,8 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("named issue also prints last tool, files, hunk, todo");
     expect(HELP_TEXT).toContain("--json adds now/files/hunk/todo");
     expect(HELP_TEXT).toContain("compact think · line");
+    expect(HELP_TEXT).toContain("fsdev conductor steer");
+    expect(HELP_TEXT).toContain("talk to the coordinator");
   });
 });
 
@@ -144,7 +162,8 @@ describe("slashMatches", () => {
   it("lists prefix matches until a space starts the arguments", () => {
     expect(slashMatches("/")).toContain("status");
     expect(slashMatches("/")).toContain("seed");
-    expect(slashMatches("/s")).toEqual(["status", "seed", "start"]);
+    expect(slashMatches("/s")).toEqual(["status", "seed", "steer", "start"]);
+    expect(slashMatches("/ste")).toEqual(["steer"]);
     expect(slashMatches("/sta")).toEqual(["status", "start"]);
     expect(slashMatches("/status")).toEqual(["status"]);
     expect(slashMatches("/status FIX-1")).toEqual([]);

@@ -252,6 +252,18 @@ describe("applyKey", () => {
     expect(submitted.effect).toEqual({ type: "dispatch", command: { kind: "wake" } });
   });
 
+  it("dispatches an unslashed line as talk", () => {
+    let state = board([row("FIX-1")]);
+    for (const ch of "retry the failed rows") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.effect).toEqual({
+      type: "dispatch",
+      command: { kind: "steer", message: "retry the failed rows" },
+    });
+  });
+
   it("selects the clicked table row", () => {
     const state = board([row("FIX-1", 1), row("FIX-2")]);
     const clicked = applyKey(state, { type: "click", col: 8, row: 5 });

@@ -13,7 +13,9 @@ import {
   answerQuestion,
   readBoard,
   seedIssue,
+  steerInput,
   wakeBoard,
+  runConductorAction,
   type ConductorDispatch,
 } from "./dispatch";
 import { HELP_TEXT } from "./parse";
@@ -127,6 +129,32 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           );
         }
         return answered.result === "declined" ? 1 : 0;
+      }
+      case "steer": {
+        const steered = await runConductorAction<string>(
+          options.dispatch,
+          "steer",
+          steerInput(options.command.message),
+          onEvent,
+        );
+        flushTranscript();
+        if (steered.error !== undefined) {
+          write(steered.error);
+          return 1;
+        }
+        const said =
+          typeof steered.output === "string" && steered.output.trim() !== ""
+            ? steered.output.trim()
+            : "coordinator turn finished";
+        if (options.json) write(JSON.stringify({ message: said }));
+        else write(said);
+        const status = await readBoard(options.dispatch, undefined, onEvent);
+        flushTranscript();
+        if (!options.json) {
+          const views = await attemptViews(options, status.rows, undefined);
+          write(renderBoardPlain(status.rows, false, views));
+        }
+        return watchExitCode(status.rows);
       }
       case "abort": {
         const before = await readBoard(options.dispatch, options.command.issue, onEvent);

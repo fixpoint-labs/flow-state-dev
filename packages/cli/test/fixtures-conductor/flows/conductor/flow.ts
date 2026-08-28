@@ -1,6 +1,7 @@
 /**
- * A conductor-shaped fixture: the four operator actions, session-scoped board.
+ * A conductor-shaped fixture: the operator actions, session-scoped board.
  * Exists so `fsdev conductor` can be tested without the lab's git/Claude host.
+ * `steer` is deterministic keyword routing — no model — so talk can be tested.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -65,38 +66,48 @@ function emptyRun(): NonNullable<Row["run"]> {
   };
 }
 
+async function fileIssue(
+  ctx: { session: { state: Board; patchState: (patch: Partial<Board>) => Promise<unknown> }; emit: { status: (text: string, extra?: { transient?: boolean }) => void } },
+  issue: string,
+  phase: string,
+): Promise<string> {
+  const taskId = `${issue}--${phase}`;
+  const rows = [...((ctx.session.state as Board).rows ?? [])];
+  if (!rows.some((row) => row.taskId === taskId)) {
+    rows.push({
+      taskId,
+      issue,
+      phase,
+      status: "pending",
+      attempts: 0,
+      feedback: null,
+      run: null,
+      questions: [],
+    });
+  }
+  await ctx.session.patchState({ rows });
+  ctx.emit.status(`seeded ${taskId}`, { transient: false });
+  return taskId;
+}
+
 const seed = handler({
   name: "fixture-seed",
   inputSchema: z.object({ issue: z.string(), phase: z.string().default("implement") }),
   outputSchema: z.object({ taskId: z.string() }),
   sessionStateSchema: boardState,
   execute: async (input, ctx) => {
-    const taskId = `${input.issue}--${input.phase}`;
-    const rows = [...((ctx.session.state as Board).rows ?? [])];
-    if (!rows.some((row) => row.taskId === taskId)) {
-      rows.push({
-        taskId,
-        issue: input.issue,
-        phase: input.phase,
-        status: "pending",
-        attempts: 0,
-        feedback: null,
-        run: null,
-        questions: [],
-      });
-    }
-    await ctx.session.patchState({ rows });
-    ctx.emit.status(`seeded ${taskId}`, { transient: false });
+    const taskId = await fileIssue(ctx, input.issue, input.phase);
     return { taskId };
   },
 });
 
-const wake = handler({
-  name: "fixture-wake",
-  inputSchema: z.unknown(),
-  outputSchema: z.object({ drained: z.number() }),
-  sessionStateSchema: boardState,
-  execute: async (_input, ctx) => {
+async function drainPending(ctx: {
+  session: { state: Board; patchState: (patch: Partial<Board>) => Promise<unknown> };
+  emit: {
+    status: (text: string, extra?: { transient?: boolean }) => void;
+    message: (text: string) => void;
+  };
+}): Promise<number> {
     const rows = ((ctx.session.state as Board).rows ?? []).map((row) => {
       if (row.status !== "pending") return row;
       if (row.issue === "LIVE-1" || row.issue === "LIVE-2") {
@@ -158,7 +169,17 @@ const wake = handler({
       ctx.emit.message(`parked ${asked.issue} on ${asked.questions[0]?.text ?? "a question"}`);
     }
     ctx.emit.status(`drained ${parked.length}`, { transient: false });
-    return { drained: parked.length };
+    return parked.length;
+}
+
+const wake = handler({
+  name: "fixture-wake",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({ drained: z.number() }),
+  sessionStateSchema: boardState,
+  execute: async (_input, ctx) => {
+    const drained = await drainPending(ctx);
+    return { drained };
   },
 });
 
@@ -175,6 +196,33 @@ const status = handler({
   },
 });
 
+async function replyToQuestion(
+  ctx: {
+    session: { state: Board; patchState: (patch: Partial<Board>) => Promise<unknown> };
+    emit: { status: (text: string, extra?: { transient?: boolean }) => void };
+  },
+  question: string,
+  text: string,
+): Promise<{ result: "answered" | "declined"; reason: string | null }> {
+  const rows = ((ctx.session.state as Board).rows ?? []).map((row) => {
+    if (!row.questions.some((q) => q.question === question)) return row;
+    return {
+      ...row,
+      status: "completed",
+      questions: [],
+      feedback: text,
+      run: { ...emptyRun(), outcome: "succeeded" as const },
+    };
+  });
+  const hit = ((ctx.session.state as Board).rows ?? []).some((row) =>
+    row.questions.some((q) => q.question === question),
+  );
+  await ctx.session.patchState({ rows });
+  if (!hit) return { result: "declined", reason: "unknown-question" };
+  ctx.emit.status(`answered ${question}`, { transient: false });
+  return { result: "answered", reason: null };
+}
+
 const answer = handler({
   name: "fixture-answer",
   inputSchema: z.object({ question: z.string(), answer: z.string() }),
@@ -188,31 +236,17 @@ const answer = handler({
   }),
   sessionStateSchema: boardState,
   execute: async (input, ctx) => {
-    const rows = ((ctx.session.state as Board).rows ?? []).map((row) => {
-      if (!row.questions.some((q) => q.question === input.question)) return row;
-      return {
-        ...row,
-        status: "completed",
-        questions: [],
-        feedback: input.answer,
-        run: { ...emptyRun(), outcome: "succeeded" as const },
-      };
-    });
-    const hit = ((ctx.session.state as Board).rows ?? []).some((row) =>
-      row.questions.some((q) => q.question === input.question),
-    );
-    await ctx.session.patchState({ rows });
-    if (!hit) {
+    const decided = await replyToQuestion(ctx, input.question, input.answer);
+    if (decided.result === "declined") {
       return {
         result: "declined" as const,
-        reason: "unknown-question",
+        reason: decided.reason,
         question: input.question,
         taskStatus: null,
         questionStatus: null,
         drained: false,
       };
     }
-    ctx.emit.status(`answered ${input.question}`, { transient: false });
     return {
       result: "answered" as const,
       reason: null,
@@ -221,6 +255,48 @@ const answer = handler({
       questionStatus: "answered",
       drained: true,
     };
+  },
+});
+
+const steer = handler({
+  name: "fixture-steer",
+  inputSchema: z.object({ message: z.string().min(1) }),
+  outputSchema: z.string(),
+  sessionStateSchema: boardState,
+  execute: async (input, ctx) => {
+    const seedHit = /\b(?:seed|start|file|implement)\s+([A-Za-z][\w.-]*)/i.exec(input.message);
+    const answerHit = /\banswer\s+(\S+)\s+(.+)/is.exec(input.message);
+    const retry = /\b(?:wake|retry|again)\b/i.test(input.message);
+
+    if (seedHit?.[1] !== undefined) {
+      await fileIssue(ctx, seedHit[1], "implement");
+      await drainPending(ctx);
+      const said = `started ${seedHit[1]}`;
+      ctx.emit.message(said);
+      return said;
+    }
+    if (answerHit?.[1] !== undefined && answerHit[2] !== undefined) {
+      const result = await replyToQuestion(ctx, answerHit[1], answerHit[2].trim());
+      const said =
+        result.result === "declined"
+          ? `declined ${result.reason ?? "refused"}`
+          : `answered ${answerHit[1]}`;
+      ctx.emit.message(said);
+      return said;
+    }
+    if (retry) {
+      await drainPending(ctx);
+      ctx.emit.message("woke the board");
+      return "woke the board";
+    }
+
+    const rows = (ctx.session.state as Board).rows ?? [];
+    const said =
+      rows.length === 0
+        ? "No rows yet. Name an issue and I will start it."
+        : `Board has ${rows.length} row(s). I can start an issue, wake a retry, or answer a question.`;
+    ctx.emit.message(said);
+    return said;
   },
 });
 
@@ -233,6 +309,7 @@ const conductor = defineFlow({
     wake: { block: wake },
     status: { block: status },
     answer: { block: answer },
+    steer: { block: steer, userMessage: (input: { message: string }) => input.message },
   },
 });
 

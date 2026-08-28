@@ -1,10 +1,11 @@
 /**
- * The conductor flow — a board, one detached worker, and three zero-model
- * actions.
+ * The conductor flow — a board, one detached worker, four zero-model verbs,
+ * and one talk turn.
  *
  * `seed` files an issue-phase as a durable row. `wake` drains the board, which
  * claims a row and hands it to the manager in its own workstream. `status`
- * reads back what happened.
+ * reads back what happened. `steer` is the coordinator: the operator talks,
+ * and that turn may call the same verbs as tools. It does not implement.
  *
  * ## The board's own ledger is a deliverable, not a default
  *
@@ -53,7 +54,7 @@
  * reads as a success while the board row is still open. **The board row is the
  * authority on completion; the run record never is.**
  */
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -113,6 +114,15 @@ import {
   tenantSegment,
   type WorkspaceConfig,
 } from "./workspace";
+import {
+  COORDINATOR_HISTORY_LIMIT,
+  STEER_PROMPT,
+  coordinatorInputSchema,
+  coordinatorModelId,
+  formatCoordinatorBoard,
+  projectCoordinatorRow,
+  steerInputSchema,
+} from "./steer";
 
 /** The one assignee this board routes to. */
 export const ASSIGNEE = "harness" as const;
@@ -1026,6 +1036,101 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     },
   });
 
+  const rememberSteerMessage = handler({
+    name: "conductor-steer-remember",
+    inputSchema: steerInputSchema,
+    outputSchema: z.void(),
+    execute: async (input, ctx) => {
+      await ctx.sequencer?.patchState({ message: input.message });
+    },
+  });
+
+  const bindSteerInput = handler({
+    name: "conductor-steer-bind",
+    inputSchema: statusOutput,
+    outputSchema: coordinatorInputSchema,
+    execute: (status, ctx) => {
+      const message = (ctx.sequencer?.state as { message?: unknown } | undefined)?.message;
+      if (typeof message !== "string" || message === "") {
+        throw new Error(
+          "[conductor] steer lost the operator message before the coordinator ran.",
+        );
+      }
+      return {
+        message,
+        rows: status.rows.map(projectCoordinatorRow),
+      };
+    },
+  });
+
+  /**
+   * File an issue-phase and drain — the same two steps `seed` runs, callable
+   * as a tool so a talk turn can start work without a second operator verb.
+   */
+  const seedIssueTool = sequencer({
+    name: "seed_issue",
+    description:
+      "File an issue-phase on this epic's board and start a coding worker for it.",
+    inputSchema: z.object({
+      issue: z.string(),
+      phase: z.string().optional(),
+    }),
+    outputSchema: z.object({ taskId: z.string() }),
+    stateSchema: z.object({ taskId: z.string().nullable().default(null) }),
+  })
+    .tap((input: { issue: string; phase?: string }) => ({
+      issue: input.issue,
+      phase: input.phase ?? phase.phase,
+    }), seedTask)
+    .step(board.drain)
+    .step(returnTaskId);
+
+  const wakeBoardTool = sequencer({
+    name: "wake_board",
+    description:
+      "Claim pending or failed rows and start or retry their workers. Do not call this just to read the board.",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+  }).step(board.drain);
+
+  const answerQuestionTool = sequencer({
+    name: "answer_question",
+    description:
+      "Answer one open question and resume that worker. Pass the question id verbatim from the board snapshot.",
+    inputSchema: answerInputSchema,
+    outputSchema: answerOutputSchema,
+  })
+    .step(answerQuestionStep)
+    .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain);
+
+  const coordinator = generator({
+    name: "conductor-coordinator",
+    description: "Talk to the operator and route work through board verbs.",
+    model: coordinatorModelId(),
+    prompt: STEER_PROMPT,
+    inputSchema: coordinatorInputSchema,
+    user: (input: z.infer<typeof coordinatorInputSchema>) => input.message,
+    context: {
+      board: (input: z.infer<typeof coordinatorInputSchema>) =>
+        formatCoordinatorBoard(input.rows),
+    },
+    tools: [seedIssueTool, wakeBoardTool, answerQuestionTool],
+    history: { limit: COORDINATOR_HISTORY_LIMIT },
+    itemVisibility: { client: true, history: true },
+  });
+
+  const steerTurn = sequencer({
+    name: "conductor-steer",
+    inputSchema: steerInputSchema,
+    outputSchema: z.string(),
+    stateSchema: z.object({ message: z.string() }),
+  })
+    .tap(tenantGate)
+    .tap(rememberSteerMessage)
+    .step(readStatus)
+    .step(bindSteerInput)
+    .step(coordinator);
+
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
     actions: {
@@ -1102,6 +1207,14 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // no-op — on a `pending` row it claims and dispatches — so a
           // declined answer must not run one.
           .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain),
+      },
+      /**
+       * Talk to the coordinator. Slash verbs still run the work directly;
+       * this turn may call those same verbs as tools.
+       */
+      steer: {
+        block: steerTurn,
+        userMessage: (input: z.infer<typeof steerInputSchema>) => input.message,
       },
     },
   });

@@ -15,6 +15,7 @@ const VERBS = new Set([
   "seed",
   "wake",
   "answer",
+  "steer",
   "watch",
   "start",
   "abort",
@@ -35,6 +36,7 @@ export const SLASH_VERBS = [
   "seed",
   "wake",
   "answer",
+  "steer",
   "watch",
   "start",
   "abort",
@@ -45,7 +47,7 @@ export const SLASH_VERBS = [
 ] as const;
 
 /** Verbs that cannot run with only a name — completion leaves a trailing space. */
-export const SLASH_NEEDS_ARG = new Set(["seed", "start", "answer"]);
+export const SLASH_NEEDS_ARG = new Set(["seed", "start", "answer", "steer"]);
 
 /**
  * Verbs whose first argument is an id already on the board. `seed` /
@@ -58,6 +60,7 @@ export const SLASH_HINTS: Record<(typeof SLASH_VERBS)[number], string> = {
   seed: "file and start an issue",
   wake: "process pending rows",
   answer: "reply to a question",
+  steer: "talk to the coordinator",
   watch: "refresh; headless waits until waiting or done",
   start: "seed, then stay on the board",
   abort: "stop a running request",
@@ -150,10 +153,20 @@ function takeCliFlags(argv: string[]): { json: boolean; words: string[] } {
   return { json, words };
 }
 
-function parseWords(words: string[]): ParseResult {
+function parseWords(words: string[], options?: { slashed?: boolean; raw?: string }): ParseResult {
   const verb = (words[0] ?? "").toLowerCase();
+  if (verb === "steer") {
+    const message = words.slice(1).join(" ").trim();
+    if (message === "") return { ok: false, message: "steer needs a message" };
+    return { ok: true, command: { kind: "steer", message } };
+  }
   if (!VERBS.has(verb)) {
-    return { ok: false, message: `unknown command: ${words[0]}` };
+    if (options?.slashed === true) {
+      return { ok: false, message: `unknown command: ${words[0]}` };
+    }
+    const message = (options?.raw ?? words.join(" ")).trim();
+    if (message === "") return { ok: false, message: "empty command" };
+    return { ok: true, command: { kind: "steer", message } };
   }
 
   switch (verb) {
@@ -218,15 +231,16 @@ function parseWords(words: string[]): ParseResult {
  * Parse a slash command or a bare verb line.
  *
  * `/seed FIX-1`, `seed FIX-1`, `/answer QID the text` are the same command.
- * A line that is not a verb is not a command — the key reducer decides
- * whether that means "compose an answer" or "unknown".
+ * A line that is not a verb, and did not start with `/`, is talk — the
+ * coordinator turn. A slashed unknown name is still a typo.
  */
 export function parseCommand(line: string): ParseResult {
   const trimmed = line.trim();
   if (trimmed === "") return { ok: false, message: "empty command" };
-  const body = trimmed.startsWith("/") ? trimmed.slice(1).trim() : trimmed;
+  const slashed = trimmed.startsWith("/");
+  const body = slashed ? trimmed.slice(1).trim() : trimmed;
   if (body === "") return { ok: false, message: "empty command" };
-  return parseWords(splitWords(body));
+  return parseWords(splitWords(body), { slashed, raw: body });
 }
 
 function flagValue(words: string[], flag: string): string | undefined {
@@ -260,7 +274,7 @@ export function parseArgv(argv: string[]): ParseResult & { invocation?: Invocati
   if (words[0] === "--help" || words[0] === "-h") {
     return { ok: true, command: { kind: "help" }, invocation: { mode: "headless", command: { kind: "help" }, json } };
   }
-  const parsed = parseWords(words);
+  const parsed = parseWords(words, { raw: words.join(" ") });
   if (!parsed.ok) return parsed;
   return { ...parsed, invocation: { mode: "headless", command: parsed.command, json } };
 }
@@ -268,11 +282,11 @@ export function parseArgv(argv: string[]): ParseResult & { invocation?: Invocati
 export const HELP_TEXT = `fsdev conductor — drive a conductor flow from the terminal
 
 Uses the same runtime as fsdev run / fsdev chat (fsdev.config.*, stores,
-drain budget). seed, wake, status, and answer are flow actions; abort
+drain budget). seed, wake, status, answer, and steer are flow actions; abort
 stops a running request. The board is whatever status returns.
 
 Interactive:
-  fsdev conductor                 fullscreen board, live poll, slash commands
+  fsdev conductor                 fullscreen board; type to talk, or /seed /wake
   fsdev conductor tui [issue]     same, optionally focused on one issue
 
 Headless (scripting):
@@ -282,6 +296,7 @@ Headless (scripting):
   fsdev conductor wake
   fsdev conductor abort [issue]   stop the running request on those rows
   fsdev conductor answer <question-id> <reply…>
+  fsdev conductor steer <message…>
   fsdev conductor watch [issue]   named issue prints the same attempt strip
   fsdev conductor help
 
@@ -308,9 +323,10 @@ In the TUI:
   ?            this help
   q            quit
 
-  A row with an open question: just type. Enter sends, Esc cancels.
+  Type anything that is not a slash verb to talk to the coordinator.
+  A row with an open question: a or type after selecting it. Enter sends, Esc cancels.
   The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
-  A row that failed: the FAIL band holds the reason and that attempt's files. w runs wake again.
+  A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or w to wake.
   A running row: the RUN band holds the checkout and what the run is
   doing. t expands the todo list. h expands the last hunk. H steps to an older hunk. e expands the last Read or Bash tail. x or Ctrl-C stops it.
   While working, type an answer; Enter queues it.

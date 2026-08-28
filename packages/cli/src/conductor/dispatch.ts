@@ -19,7 +19,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { AnswerOutput, SeedOutput, StatusOutput } from "./types";
 
 export const CONDUCTOR_FLOW_KIND = "conductor";
-export const CONDUCTOR_ACTIONS = ["seed", "wake", "status", "answer"] as const;
+export const CONDUCTOR_ACTIONS = ["seed", "wake", "status", "answer", "steer"] as const;
 export type ConductorAction = (typeof CONDUCTOR_ACTIONS)[number];
 
 export const DEFAULT_USER_ID = "cli-user";
@@ -135,6 +135,10 @@ export function seedInput(issue: string, phase?: string): { issue: string; phase
 
 export function answerInput(question: string, answer: string): { question: string; answer: string } {
   return { question, answer };
+}
+
+export function steerInput(message: string): { message: string } {
+  return { message };
 }
 
 export async function readBoard(

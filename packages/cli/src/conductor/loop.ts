@@ -11,6 +11,7 @@ import {
   answerInput,
   seedInput,
   startConductorAction,
+  steerInput,
   type ConductorDispatch,
 } from "./dispatch";
 import { applyKey, decodeKeys, rowAfterRefresh, type Key } from "./keys";
@@ -186,6 +187,18 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           if (result.error !== undefined) throw new Error(result.error);
           endTurn();
           state = pushActivity(state, "wake · drain ran", now());
+          await refresh();
+          break;
+        }
+        case "steer": {
+          const steered = await runAction<string>("steer", steerInput(command.message));
+          if (steered.error !== undefined) throw new Error(steered.error);
+          endTurn();
+          const said =
+            typeof steered.output === "string" && steered.output.trim() !== ""
+              ? steered.output.trim().replace(/\s+/g, " ")
+              : "coordinator turn finished";
+          state = pushActivity(state, `coord · ${said}`, now());
           await refresh();
           break;
         }

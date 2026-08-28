@@ -1,10 +1,9 @@
 /**
  * fsdev config for the conductor lab (LAB-138).
  *
- * Filesystem `dev` profile, zero generators — the coding run goes through the
- * Claude Code Agent SDK, which resolves its own model, so an explicit throwing
- * resolver skips the ambient `FSDEV_DEFAULT_MODEL` scan that would otherwise
- * fire on a model-using environment.
+ * Filesystem `dev` profile. The coding run goes through the Claude Code Agent
+ * SDK (its own model). `steer` is the one generator action — the coordinator
+ * talk turn — and uses `createModelResolver` like every other `fsdev` host.
  *
  *   pnpm conductor                  # live board
  *   pnpm conductor seed FIX-1219
@@ -35,16 +34,9 @@
  * timeout is the real ceiling — see the README.
  */
 import path from "node:path";
-import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
-import type { ModelResolver } from "@flow-state-dev/core";
+import { createFlowState, createModelResolver, filesystemStores } from "@flow-state-dev/engine";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
 import { assertBaseRefExists, positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
-
-function neverResolvesAModel(): never {
-  throw new Error(
-    "conductor declares no generator actions; the coding run resolves its own model.",
-  );
-}
 
 const RUN_TIMEOUT_MS = positiveIntFromEnv("CONDUCTOR_RUN_TIMEOUT_MS", 1_800_000);
 const root = path.join(process.cwd(), ".fsdev");
@@ -67,9 +59,7 @@ const { flow, drainBudgetMs } = conductorFlow({
 
 export default createFlowState({
   flows: { [CONDUCTOR_FLOW_KIND]: flow },
-  modelResolver: Object.assign(neverResolvesAModel, {
-    resolveId: neverResolvesAModel,
-  }) as ModelResolver,
+  modelResolver: createModelResolver(),
   stores: { dev: { primary: filesystemStores({ rootDir: path.join(root, "data") }) } },
   defaultProfile: "dev",
   detachedDrainTimeoutMs: drainBudgetMs,

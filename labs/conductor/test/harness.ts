@@ -227,6 +227,12 @@ export interface HarnessOptions {
   provisionTimeoutMs?: number;
   /** The relay seam. Called after the park; a no-op by default. */
   announce?: NonNullable<Parameters<typeof conductorFlow>[0]["announce"]>;
+  /**
+   * Resolver for the coordinator talk turn. Tests that do not call `steer`
+   * leave this unset — the default still throws, so a stray generator call
+   * cannot silently succeed.
+   */
+  modelResolver?: ModelResolver;
 }
 
 /** A real git repository with one commit, so `worktree add` has something to cut. */
@@ -344,9 +350,10 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
     flows: { [CONDUCTOR_FLOW_KIND]: built.flow },
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
-    modelResolver: Object.assign(neverResolvesAModel, {
-      resolveId: neverResolvesAModel,
-    }) as unknown as ModelResolver,
+    modelResolver: (options.modelResolver ??
+      Object.assign(neverResolvesAModel, {
+        resolveId: neverResolvesAModel,
+      })) as unknown as ModelResolver,
     // The default is a serverless SIGTERM window, far shorter than a coding
     // run. An in-process host must raise it or a shutdown truncates one.
     detachedDrainTimeoutMs: 60_000,

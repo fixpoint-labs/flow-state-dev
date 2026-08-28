@@ -39,7 +39,7 @@ const { flow } = conductorFlow({
 });
 ```
 
-Four zero-model actions:
+Four zero-model verbs, plus one talk turn:
 
 | Action | What it does |
 |---|---|
@@ -47,6 +47,7 @@ Four zero-model actions:
 | `wake` | Drains again — claims whatever is ready, including a re-pended retry. |
 | `status` | Reads the board row beside the run's own record, and the questions the run is waiting on. |
 | `answer` | Answers one of those questions and starts the run again holding it. |
+| `steer` | The coordinator. The operator talks; this turn may call the verbs above as tools. It does not implement. |
 
 `status` reads the **board row** for completion, always. The board ledger cannot be made
 client-readable (`defineTaskCollection()` exposes no `client` option, so its collection-state route

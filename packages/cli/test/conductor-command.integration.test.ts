@@ -34,6 +34,20 @@ afterEach(() => {
 });
 
 describe("fsdev conductor — headless against a conductor-shaped flow", () => {
+  it("routes an unslashed line through steer and files the issue", async () => {
+    const stores = createInMemoryStores();
+    const talked = capture();
+    const code = await executeConductorCommand(["please", "start", "FIX-99"], {
+      cwd: fixtureDir,
+      stores,
+      output: talked.output as unknown as NodeJS.WriteStream,
+      stderr: talked.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(code).not.toBe(EXIT_INVALID_ARGS);
+    expect(talked.text).toMatch(/FIX-99/);
+  });
+
   it("seeds, wakes, reads the board through status, and answers", async () => {
     const stores = createInMemoryStores();
     const seeded = capture();
