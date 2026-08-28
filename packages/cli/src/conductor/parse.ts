@@ -38,7 +38,7 @@ function splitWords(line: string): string[] {
       }
       continue;
     }
-    if (ch === '"' || ch === "'") {
+    if ((ch === '"' || ch === "'") && current === "") {
       quote = ch;
       continue;
     }
@@ -55,20 +55,26 @@ function splitWords(line: string): string[] {
   return words;
 }
 
-/**
- * Parse a slash command or a bare verb line.
- *
- * `/seed FIX-1`, `seed FIX-1`, `/answer QID the text` are the same command.
- * A line that is not a verb is not a command — the key reducer decides
- * whether that means "compose an answer" or "unknown".
- */
-export function parseCommand(line: string): ParseResult {
-  const trimmed = line.trim();
-  if (trimmed === "") return { ok: false, message: "empty command" };
-  const body = trimmed.startsWith("/") ? trimmed.slice(1).trim() : trimmed;
-  if (body === "") return { ok: false, message: "empty command" };
+/** Pull CLI flags off an already-tokenized argv. `--` ends flag eating. */
+function takeCliFlags(argv: string[]): { json: boolean; words: string[] } {
+  const words: string[] = [];
+  let json = false;
+  let raw = false;
+  for (const w of argv) {
+    if (!raw && w === "--") {
+      raw = true;
+      continue;
+    }
+    if (!raw && w === "--json") {
+      json = true;
+      continue;
+    }
+    words.push(w);
+  }
+  return { json, words };
+}
 
-  const words = splitWords(body);
+function parseWords(words: string[]): ParseResult {
   const verb = (words[0] ?? "").toLowerCase();
   if (!VERBS.has(verb)) {
     return { ok: false, message: `unknown command: ${words[0]}` };
@@ -112,7 +118,9 @@ export function parseCommand(line: string): ParseResult {
     }
     case "answer": {
       const question = words[1];
-      const text = words.slice(2).join(" ").trim();
+      const rest = words.slice(2);
+      const textWords = rest[0] === "--" ? rest.slice(1) : rest;
+      const text = textWords.join(" ").trim();
       if (question === undefined || question === "") {
         return { ok: false, message: "answer needs a question id" };
       }
@@ -124,6 +132,21 @@ export function parseCommand(line: string): ParseResult {
     default:
       return { ok: false, message: `unknown command: ${verb}` };
   }
+}
+
+/**
+ * Parse a slash command or a bare verb line.
+ *
+ * `/seed FIX-1`, `seed FIX-1`, `/answer QID the text` are the same command.
+ * A line that is not a verb is not a command — the key reducer decides
+ * whether that means "compose an answer" or "unknown".
+ */
+export function parseCommand(line: string): ParseResult {
+  const trimmed = line.trim();
+  if (trimmed === "") return { ok: false, message: "empty command" };
+  const body = trimmed.startsWith("/") ? trimmed.slice(1).trim() : trimmed;
+  if (body === "") return { ok: false, message: "empty command" };
+  return parseWords(splitWords(body));
 }
 
 function flagValue(words: string[], flag: string): string | undefined {
@@ -145,8 +168,7 @@ export type Invocation =
  * headless and prints, then exits — the scripting door Grok Build calls `-p`.
  */
 export function parseArgv(argv: string[]): ParseResult & { invocation?: Invocation } {
-  const json = argv.includes("--json");
-  const words = argv.filter((w) => w !== "--json");
+  const { json, words } = takeCliFlags(argv);
   if (words.length === 0 || words[0] === "tui") {
     const issue = words[0] === "tui" ? words[1] : undefined;
     return {
@@ -158,7 +180,7 @@ export function parseArgv(argv: string[]): ParseResult & { invocation?: Invocati
   if (words[0] === "--help" || words[0] === "-h") {
     return { ok: true, command: { kind: "help" }, invocation: { mode: "headless", command: { kind: "help" }, json } };
   }
-  const parsed = parseCommand(words.join(" "));
+  const parsed = parseWords(words);
   if (!parsed.ok) return parsed;
   return { ...parsed, invocation: { mode: "headless", command: parsed.command, json } };
 }

@@ -14,10 +14,18 @@ describe("parseCommand", () => {
     });
   });
 
-  it("keeps the answer text intact, including quotes", () => {
+  it("keeps the answer text intact, including quotes and apostrophes", () => {
     expect(parseCommand('/answer Q1 "leave the symlink"')).toEqual({
       ok: true,
       command: { kind: "answer", question: "Q1", text: "leave the symlink" },
+    });
+    expect(parseCommand("/answer Q1 don't change the path")).toEqual({
+      ok: true,
+      command: { kind: "answer", question: "Q1", text: "don't change the path" },
+    });
+    expect(parseCommand("/answer Q1 -- --json")).toEqual({
+      ok: true,
+      command: { kind: "answer", question: "Q1", text: "--json" },
     });
   });
 
@@ -57,6 +65,24 @@ describe("parseArgv", () => {
       mode: "headless",
       json: false,
       command: { kind: "abort", issue: "LIVE-1" },
+    });
+  });
+
+  it("keeps an apostrophe and a literal --json in a tokenized answer", () => {
+    expect(parseArgv(["answer", "Q1", "don't change the path"]).invocation).toEqual({
+      mode: "headless",
+      json: false,
+      command: { kind: "answer", question: "Q1", text: "don't change the path" },
+    });
+    expect(parseArgv(["answer", "Q1", "--", "--json"]).invocation).toEqual({
+      mode: "headless",
+      json: false,
+      command: { kind: "answer", question: "Q1", text: "--json" },
+    });
+    expect(parseArgv(["answer", "Q1", "keep --json"]).invocation).toEqual({
+      mode: "headless",
+      json: false,
+      command: { kind: "answer", question: "Q1", text: "keep --json" },
     });
   });
 
