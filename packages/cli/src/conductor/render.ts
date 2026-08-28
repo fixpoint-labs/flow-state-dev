@@ -25,7 +25,6 @@ import {
 import {
   selectedQuestion,
   selectedRow,
-  type StatusQuestion,
   type StatusRow,
   type ViewState,
 } from "./types";
@@ -47,18 +46,25 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
 
   const header = renderHeader(state, cols);
   const table = renderTable(state, cols);
+  const ask = renderAskBand(state, cols);
+  const meta = state.busy ? "" : renderMeta(state, cols);
   const prompt = renderPrompt(state, cols);
   const footer = renderFooter(state, cols);
   const reserved =
-    lineCount(header) + lineCount(table) + lineCount(prompt) + lineCount(footer);
-  const leftover = Math.max(6, rows - reserved);
-  const asking = selectedQuestion(state) !== undefined;
-  const detailCap = asking ? Math.max(11, Math.min(14, leftover - 5)) : Math.min(8, leftover - 5);
-  const detail = capBlock(renderDetail(state, cols), detailCap);
-  const activityHeight = Math.max(4, leftover - lineCount(detail));
-  const activity = renderActivity(state, cols, activityHeight);
+    lineCount(header) +
+    lineCount(table) +
+    lineCount(ask) +
+    lineCount(meta) +
+    lineCount(prompt) +
+    lineCount(footer);
+  const leftover = Math.max(4, rows - reserved);
+  const activity = renderActivity(state, cols, leftover);
 
-  return fit([header, table, detail, activity, prompt, footer].filter((s) => s !== "").join("\n"), cols, rows);
+  return fit(
+    [header, table, ask, meta, activity, prompt, footer].filter((s) => s !== "").join("\n"),
+    cols,
+    rows,
+  );
 }
 
 function renderHeader(state: ViewState, cols: number): string {
@@ -82,12 +88,12 @@ function renderHeader(state: ViewState, cols: number): string {
 }
 
 function renderTable(state: ViewState, cols: number): string {
-  const issueW = Math.max(12, Math.min(18, Math.floor(cols * 0.18)));
+  const issueW = Math.max(10, Math.min(16, Math.floor(cols * 0.16)));
   const phaseW = 12;
   const statusW = 16;
   const attemptW = 8;
-  const askW = 5;
-  const outcomeW = Math.max(10, cols - issueW - phaseW - statusW - attemptW - askW - 10);
+  const askW = Math.max(14, Math.min(28, Math.floor(cols * 0.28)));
+  const outcomeW = Math.max(8, cols - issueW - phaseW - statusW - attemptW - askW - 10);
   const head =
     "  " +
     pad(dim("ISSUE"), issueW) +
@@ -124,33 +130,59 @@ function renderTableRow(
   const status = pad(paint(statusColor(row.status), row.status), w.statusW);
   const attempt = pad(String(row.attempts), w.attemptW);
   const outcome = pad(paint(outcomeColor(row.run?.outcome ?? null), row.run?.outcome ?? "—"), w.outcomeW);
-  const ask = pad(row.questions.length > 0 ? paint(MAUVE, String(row.questions.length)) : dim("·"), w.askW);
+  const asked = row.questions[0]?.text;
+  const ask = pad(
+    asked !== undefined ? paint(MAUVE, truncate(asked, w.askW)) : dim("·"),
+    w.askW,
+  );
   const line = mark + issue + phase + status + attempt + outcome + ask;
   return selected ? paint(SELECT_BG, padLine(line, w.cols)) : padLine(line, w.cols);
 }
 
-function renderDetail(state: ViewState, cols: number): string {
+/**
+ * Reserved band for the question a person can act on. Counted in `reserved`
+ * so a long transcript cannot cap it away — the last recording's test passed
+ * on transcript text alone while the card was easy to miss.
+ */
+function renderAskBand(state: ViewState, cols: number): string {
+  const question = selectedQuestion(state);
+  if (question === undefined) return "";
+  const more = selectedRow(state)?.questions.length ?? 0;
+  const inner = Math.max(20, cols - 8);
+  const body = wrap(question.text, inner).slice(0, 3);
+  const hint =
+    more > 1
+      ? `${question.question}  ·  ${state.questionIndex + 1}/${more}  ·  type to answer`
+      : `${question.question}  ·  type to answer`;
+  return [
+    rule(cols, MAUVE),
+    ` ${paint(MAUVE + BOLD, " ASK ")} ${paint(BOLD + INK, body[0] ?? "")}`,
+    ...body.slice(1).map((line) => `       ${paint(INK, line)}`),
+    `       ${dim(hint)}`,
+    rule(cols, MAUVE),
+  ].join("\n");
+}
+
+function renderMeta(state: ViewState, cols: number): string {
   const row = selectedRow(state);
-  const lines: string[] = [rule(cols, INK_3)];
   if (row === undefined) {
-    lines.push(dim("  select a row to inspect it"));
-    return lines.join("\n");
+    return `${rule(cols, INK_3)}\n${dim("  select a row to inspect it")}`;
+  }
+  if (selectedQuestion(state) !== undefined) {
+    return renderRunBits(row, cols);
   }
   const title = `${row.issue ?? "?"} / ${row.phase ?? "?"}`;
-  lines.push(` ${paint(BOLD + INK, title)}   ${paint(statusColor(row.status), row.status)}   ${dim(`attempt ${row.attempts}`)}`);
+  const lines = [
+    rule(cols, INK_3),
+    ` ${paint(BOLD + INK, title)}   ${paint(statusColor(row.status), row.status)}   ${dim(`attempt ${row.attempts}`)}`,
+    ` ${dim("ask")}      ${dim("none open")}`,
+  ];
+  const run = renderRunBits(row, cols);
+  return run === "" ? lines.join("\n") : `${lines.join("\n")}\n${run}`;
+}
 
-  const questions = row.questions;
-  if (questions.length === 0) {
-    lines.push(` ${dim("ask")}      ${dim("none open")}`);
-  } else {
-    lines.push(` ${paint(MAUVE + BOLD, "QUESTIONS")}  ${dim("type to answer · [ ] to move")}`);
-    questions.forEach((q, i) => {
-      for (const cardLine of renderQuestionCard(q, i === state.questionIndex, cols)) {
-        lines.push(cardLine);
-      }
-    });
-  }
-
+function renderRunBits(row: StatusRow, cols: number): string {
+  const lines: string[] = [];
   if (row.run !== null) {
     const bits = [
       row.run.outcome !== null ? paint(outcomeColor(row.run.outcome), row.run.outcome) : dim("no outcome yet"),
@@ -164,26 +196,11 @@ function renderDetail(state: ViewState, cols: number): string {
         lines.push(` ${dim("·")} ${wrapped}`);
       }
     }
-  } else {
-    lines.push(` ${dim("run")}      ${dim("no record yet")}`);
   }
   if (row.feedback) {
     lines.push(` ${dim("feedback")} ${truncate(row.feedback, cols - 12)}`);
   }
   return lines.join("\n");
-}
-
-function renderQuestionCard(question: StatusQuestion, selected: boolean, cols: number): string[] {
-  const inner = cols - 4;
-  const id = truncate(question.question, inner - 2);
-  const edge = selected ? MAUVE : INK_3;
-  const top = paint(edge, ` ┌─ ${id} ${"─".repeat(Math.max(0, inner - id.length - 3))}┐`);
-  const body = wrap(question.text, inner - 2).slice(0, 4);
-  const mid = body.map((line) => paint(edge, " │ ") + (selected ? paint(INK, pad(line, inner - 2)) : dim(pad(line, inner - 2))) + paint(edge, " │"));
-  const meta = dim(`attempt ${question.attempt}${question.askedAt !== null ? ` · ${formatClock(question.askedAt)}` : ""}`);
-  const metaLine = paint(edge, " │ ") + pad(meta, inner - 2) + paint(edge, " │");
-  const bot = paint(edge, ` └${"─".repeat(inner)}┘`);
-  return [top, ...mid, metaLine, bot];
 }
 
 function renderActivity(state: ViewState, cols: number, height: number): string {
@@ -221,13 +238,6 @@ function renderActivity(state: ViewState, cols: number, height: number): string 
       ? [` ${dim("nothing yet. a wake writes here as it runs.")}`, ...Array.from({ length: pad - 1 }, () => "")]
       : Array.from({ length: pad }, () => "");
   return [rule(cols, INK_3), heading, ...filler, ...visible].join("\n");
-}
-
-function capBlock(block: string, max: number): string {
-  if (max <= 0) return "";
-  const lines = block.split("\n");
-  if (lines.length <= max) return block;
-  return [...lines.slice(0, max - 1), dim("  …")].join("\n");
 }
 
 function renderPrompt(state: ViewState, cols: number): string {
@@ -305,7 +315,7 @@ export function renderBoardPlain(rows: StatusRow[], json: boolean): string {
         pad(row.status, 18) +
         pad(String(row.attempts), 8) +
         pad(row.run?.outcome ?? "—", 12) +
-        (row.questions.length > 0 ? String(row.questions.length) : "·"),
+        (row.questions[0] !== undefined ? truncate(row.questions[0].text, 16) : "·"),
     );
     for (const q of row.questions) {
       lines.push(`  ? ${q.question}`);

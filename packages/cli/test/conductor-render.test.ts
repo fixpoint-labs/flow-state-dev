@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { renderBoardPlain, renderFrame, watchExitCode } from "../src/conductor/render";
 import { emptyView, type StatusRow } from "../src/conductor/types";
+import { stripAnsi } from "../src/conductor/theme";
+
+function beforeTranscript(frame: string): string {
+  const text = stripAnsi(frame);
+  const at = text.indexOf("TRANSCRIPT");
+  return at < 0 ? text : text.slice(0, at);
+}
 
 const waiting: StatusRow = {
   taskId: "FIX-1--implement",
@@ -43,7 +50,8 @@ describe("renderFrame", () => {
     expect(frame).toContain("FSDEV CONDUCTOR");
     expect(frame).toContain("FIX-1");
     expect(frame).toContain("awaiting_review");
-    expect(frame).toContain("Which path?");
+    expect(beforeTranscript(frame)).toContain("Which path?");
+    expect(beforeTranscript(frame)).toContain(" ASK ");
     expect(frame).toContain("1 waiting");
     expect(frame).toContain("click/j/k select");
     expect(frame).toContain("TRANSCRIPT");
@@ -93,6 +101,33 @@ describe("renderFrame", () => {
     );
     expect(back).not.toContain("status · claiming ASK-1");
     expect(back).toContain("back");
+  });
+
+  it("keeps the question above the transcript even when the log is long", () => {
+    const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
+    const frame = renderFrame(
+      { ...emptyView("epic"), rows: [waiting], activity },
+      { cols: 80, rows: 24 },
+    );
+    expect(beforeTranscript(frame)).toContain("Which path?");
+    expect(beforeTranscript(frame)).toContain(" ASK ");
+    expect(frame).toContain("wake-line-39");
+  });
+
+  it("gives a live wake more transcript rows than an idle board", () => {
+    const running = { ...waiting, status: "in_progress", questions: [] };
+    const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
+    const idle = renderFrame(
+      { ...emptyView("epic"), rows: [running], activity, busy: false },
+      { cols: 80, rows: 24 },
+    );
+    const working = renderFrame(
+      { ...emptyView("epic"), rows: [running], activity, busy: true, live: "status · running" },
+      { cols: 80, rows: 24 },
+    );
+    const idleHits = idle.split("wake-line-").length - 1;
+    const workingHits = working.split("wake-line-").length - 1;
+    expect(workingHits).toBeGreaterThan(idleHits);
   });
 });
 
