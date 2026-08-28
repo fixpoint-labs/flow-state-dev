@@ -304,6 +304,7 @@ In the TUI:
   q            quit
 
   A row with an open question: just type. Enter sends, Esc cancels.
+  The ASK band keeps that attempt's files, current todo, and PR URL.
   A row that failed: the FAIL band holds the reason. w runs wake again.
   A running row: the RUN band holds the checkout and what the run is
   doing. t expands the todo list. x or Ctrl-C stops it.

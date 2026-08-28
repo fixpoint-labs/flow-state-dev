@@ -191,8 +191,23 @@ function renderAskBand(state: ViewState, cols: number): string {
     ` ${paint(MAUVE + BOLD, "ASK")}`,
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
+    ...renderAskAttempt(state, inner),
     rule(cols, MAUVE),
   ].join("\n");
+}
+
+/** Compact "what that attempt was doing" under the question — PR, last tool, files, current todo. */
+function renderAskAttempt(state: ViewState, inner: number): string[] {
+  const lines: string[] = [];
+  const prUrl = selectedRow(state)?.run?.prUrl;
+  if (prUrl) lines.push(` ${dim(shorten(prUrl, inner))}`);
+  const now = selectedNow(state);
+  if (now !== undefined && now !== "") {
+    lines.push(` ${dim(shortenToolLine(now, inner))}`);
+  }
+  lines.push(...renderFileLines(state, inner));
+  lines.push(...renderPlanLines(state, inner, { onlyCurrent: true }));
+  return lines;
 }
 
 function renderFailBand(state: ViewState, cols: number): string {
@@ -262,10 +277,14 @@ function renderFileLines(state: ViewState, inner: number): string[] {
   return lines;
 }
 
-function renderPlanLines(state: ViewState, inner: number): string[] {
+function renderPlanLines(
+  state: ViewState,
+  inner: number,
+  opts: { onlyCurrent?: boolean } = {},
+): string[] {
   const plan = selectedPlan(state);
   if (plan.length === 0) return [];
-  if (!state.planExpanded) {
+  if (opts.onlyCurrent === true || !state.planExpanded) {
     const current = currentPlanItem(plan);
     if (current === undefined) return [];
     const done = plan.filter((item) => item.mark === "x").length;
@@ -618,6 +637,7 @@ export function renderBoardPlain(rows: StatusRow[], json: boolean): string {
         pad(row.run?.outcome ?? "—", 12) +
         (row.questions[0] !== undefined ? truncate(row.questions[0].text, 16) : "·"),
     );
+    lines.push(...renderHeadlessAttempt(row));
     for (const q of row.questions) {
       lines.push(`  ? ${q.question}`);
       for (const wrapped of wrap(q.text, 78)) {
@@ -632,6 +652,30 @@ export function renderBoardPlain(rows: StatusRow[], json: boolean): string {
     }
   }
   return `${lines.join("\n")}\n`;
+}
+
+/** Request id, branch, and pull-request URL under a headless row. */
+function renderHeadlessAttempt(row: StatusRow): string[] {
+  const extra: string[] = [];
+  if (row.run?.prUrl) extra.push(`  ${row.run.prUrl}`);
+  if (row.run?.requestId) extra.push(`  @ ${row.run.requestId}`);
+  if (row.run?.branch) extra.push(`  ${row.run.branch}`);
+  return extra;
+}
+
+/** One-line watch tick, then the same attempt extras `status` prints. */
+export function renderWatchLine(rows: StatusRow[]): string {
+  if (rows.length === 0) return "watch · no rows";
+  return rows
+    .map((row) => {
+      const ask = row.questions.length > 0 ? ` ask=${row.questions.length}` : "";
+      const outcome = row.run?.outcome != null ? ` ${row.run.outcome}` : "";
+      const fail =
+        rowFailed(row) && row.questions.length === 0 ? ` · ${failureReason(row)}` : "";
+      const head = `${row.issue ?? row.taskId} ${row.status}${outcome}${ask}${fail}`;
+      return [head, ...renderHeadlessAttempt(row)].join("\n");
+    })
+    .join("\n");
 }
 
 export function watchExitCode(rows: StatusRow[]): number {

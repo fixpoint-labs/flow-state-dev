@@ -190,7 +190,7 @@ fsdev conductor
 
 With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
 
-When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. When that row's `run.usage` is present, token counts show under the band as `10→4` (input→output).
+When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. Under the question it keeps a compact strip of that attempt: the pull-request URL when `status` carried one, the last tool, the files that run wrote, edited, or read, and the current todo. When that row's `run.usage` is present, token counts show under the band as `10→4` (input→output).
 
 When the selected row has no open question and the last attempt failed, a FAIL band sits in that same slot. A last attempt failed when `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. The band shows the reason (`run.reason`, else `feedback`, else `run.finalMessage`) and that `w` retries. If the selected row also has an open question, the ASK band is what shows. Answer the question first.
 
@@ -207,7 +207,7 @@ The band lists the files that run has written, edited, or read. Last touch is la
  src/foo.ts
 ```
 
-Another row's files are not shown. A Bash (or other non-file tool) does not add a path. The ASK band does not list files.
+Another row's files are not shown. A Bash (or other non-file tool) does not add a path. The ASK band lists those files the same way.
 
 When the run writes a todo list, the band shows one current item and a `done/total` count. The current item is the one in progress (`[·]`), else the first pending (`[ ]`), else the last completed (`[x]`). The full list is not on the band until you expand it.
 
@@ -238,7 +238,7 @@ When the selected row is not running and has no open question, the board shows t
  [ ] Open the pull request  1/2
 ```
 
-When that row has an open question, the ASK band does not show the todo list.
+When that row has an open question, the ASK band shows the current todo. `t` does not expand the list on ASK.
 
 If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`.
 
@@ -385,7 +385,7 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 
 On `answer`, the reply is the text you typed, including apostrophes (`don't change the path`); quote it (`answer Q1 "leave the symlink"`), and write a reply of `--json` as `answer <id> -- --json` or `/answer <id> -- --json` (`--json` on its own prints JSON).
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Under each row, plain `status` and `watch` print the pull-request URL, `@ request-id`, and branch when that run has them. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 `fsdev conductor status PR-482` reprints that issue's last attempt on stderr. Those are the same `status · …`, `message · …`, and `tool · …` lines the TRANSCRIPT pane shows when you select that row. Then it prints the board on stdout. `fsdev conductor status` with no issue prints the board, plus stream lines from the `status` action itself if any. It does not reprint every row's last attempt.
 
@@ -532,7 +532,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Headless verbs take the id on the argv. There is no list on that path.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
-- Headless verbs (`status`, `watch`, and the rest) have no RUN band and do not print the request id, last tool, files, todo list, or pull-request URL.
+- Headless `status` and `watch` print the request id, branch, and pull-request URL when the row has them. They have no RUN band, and they do not print the last tool, files, or todo list.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages

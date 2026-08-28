@@ -17,16 +17,14 @@ import {
   type ConductorDispatch,
 } from "./dispatch";
 import { HELP_TEXT } from "./parse";
-import { renderBoardPlain, watchExitCode } from "./render";
+import { renderBoardPlain, renderWatchLine, watchExitCode } from "./render";
 import { createStreamTranscript } from "./transcript";
 import { createChildFollow } from "./follow";
 import {
-  failureReason,
   rowFailed,
   runningRequestIds,
   settledRequestIds,
   type OperatorCommand,
-  type StatusRow,
 } from "./types";
 
 export interface HeadlessOptions {
@@ -205,17 +203,4 @@ async function watchBoard(
     await sleep(pollMs);
   }
   return 3;
-}
-
-function renderWatchLine(rows: StatusRow[]): string {
-  if (rows.length === 0) return "watch · no rows";
-  return rows
-    .map((row) => {
-      const ask = row.questions.length > 0 ? ` ask=${row.questions.length}` : "";
-      const outcome = row.run?.outcome != null ? ` ${row.run.outcome}` : "";
-      const fail =
-        rowFailed(row) && row.questions.length === 0 ? ` · ${failureReason(row)}` : "";
-      return `${row.issue ?? row.taskId} ${row.status}${outcome}${ask}${fail}`;
-    })
-    .join(" · ");
 }

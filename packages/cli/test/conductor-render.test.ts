@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderBoardPlain, renderFrame, watchExitCode } from "../src/conductor/render";
+import { renderBoardPlain, renderFrame, renderWatchLine, watchExitCode } from "../src/conductor/render";
 import { emptyView, selectedFailure, type StatusRow } from "../src/conductor/types";
 import {
   GOLD,
@@ -642,7 +642,7 @@ describe("renderFrame", () => {
     expect(above).not.toContain("pnpm test");
   });
 
-  it("caps the RUN-band file list and does not put it on ASK", () => {
+  it("caps the RUN-band file list", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",
       issue: "LIVE-1",
@@ -680,34 +680,50 @@ describe("renderFrame", () => {
     expect(above).toContain("src/e.ts");
     expect(above).not.toContain("src/a.ts");
     expect(above).not.toContain("src/b.ts");
-
-    const ask = beforeTranscript(
-      renderFrame({ ...emptyView("epic"), rows: [waiting], activity: files }, { cols: 80, rows: 24 }),
-    );
-    expect(ask).toMatch(/\bASK\b/);
-    expect(ask).not.toContain("src/e.ts");
   });
 
-  it("does not pin a plan on the ASK band", () => {
+  it("keeps files, the current todo, and the PR URL on ASK", () => {
     const parked: StatusRow = {
       ...waiting,
-      run: { ...waiting.run!, requestId: "req-ask-1" },
-    };
-    const frame = renderFrame(
-      {
-        ...emptyView("epic"),
-        rows: [parked],
-        childPlan: {
-          "req-ask-1": [{ mark: "·", text: "Implement the fix" }],
-        },
+      run: {
+        ...waiting.run!,
+        requestId: "req-ask-1",
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/1496",
       },
-      { cols: 80, rows: 24 },
+    };
+    const files = ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"].map((name, i) => ({
+      at: i,
+      text: `tool · Write src/${name}`,
+      requestId: "req-ask-1",
+    }));
+    const above = beforeTranscript(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [parked],
+          activity: files,
+          childPlan: {
+            "req-ask-1": [
+              { mark: "x", text: "Read the failing test" },
+              { mark: "·", text: "Implement the fix" },
+              { mark: " ", text: "Open a pull request" },
+            ],
+          },
+          planExpanded: true,
+        },
+        { cols: 80, rows: 24 },
+      ),
     );
-    const above = beforeTranscript(frame);
     expect(above).toContain("Which path?");
     expect(above).toMatch(/\bASK\b/);
     expect(above).not.toMatch(/^ RUN\s*$/m);
-    expect(above).not.toContain("Implement the fix");
+    expect(above).toContain("pull/1496");
+    expect(above).toContain("… 2 more");
+    expect(above).toContain("src/e.ts");
+    expect(above).not.toContain("src/a.ts");
+    expect(above).toContain("Implement the fix");
+    expect(above).not.toContain("Read the failing test");
+    expect(above).not.toContain("Open a pull request");
   });
 
   it("paints a plan checklist and a Read peek in the transcript", () => {
@@ -964,5 +980,25 @@ describe("renderBoardPlain / watchExitCode", () => {
     expect(text).toContain("FAIL-1");
     expect(text).toContain("! failed");
     expect(text).toContain("Not logged in");
+  });
+
+  it("prints the pull request URL, request id, and branch under a headless row", () => {
+    const settled: StatusRow = {
+      ...failed,
+      run: {
+        ...failed.run!,
+        requestId: "req-fail-1",
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/1496",
+      },
+    };
+    const text = renderBoardPlain([settled], false);
+    expect(text).toContain("https://github.com/fixpoint-labs/flow-state-dev/pull/1496");
+    expect(text).toContain("@ req-fail-1");
+    expect(text).toContain("conductor/FAIL-1--implement");
+    const watch = renderWatchLine([settled]);
+    expect(watch).toContain("FAIL-1 pending failed");
+    expect(watch).toContain("https://github.com/fixpoint-labs/flow-state-dev/pull/1496");
+    expect(watch).toContain("@ req-fail-1");
+    expect(watch).toContain("conductor/FAIL-1--implement");
   });
 });
