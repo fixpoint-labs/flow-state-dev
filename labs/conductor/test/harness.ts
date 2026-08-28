@@ -23,7 +23,7 @@ import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
 import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS } from "../src/exec";
-import type { PhaseSpec } from "../src/manager";
+import type { PhaseSpec, PromptRunContext } from "../src/manager";
 
 export const USER_ID = "conductor-test-user";
 
@@ -66,7 +66,7 @@ export function scriptedAgent(
  * The whole ask path in one stub: the marker lands at the attempt's derived
  * path inside `cwd`, exactly where a real coding run is told to put it, and the
  * verdict is separate so a marker can be paired with a FAILED result — the
- * combination arm 2's verdict half exists to exclude.
+ * combination arm 1's verdict half exists to exclude.
  *
  * The target path is parsed back out of the PROMPT rather than derived here, so
  * a prompt that stopped naming the marker makes this stub write nowhere — which
@@ -187,6 +187,20 @@ export interface HarnessOptions {
   /** Overrides the implement phase's done-condition. Default: satisfied. */
   isDone?: PhaseSpec["isDone"];
   /**
+   * Called with each attempt's prompt context, before its run.
+   *
+   * A spy on the real builder rather than a replacement — the prompt is
+   * unchanged. It exists because `ctx.resources` is otherwise unreachable from
+   * a test, and `buildPrompt` is the one phase hook that runs on EVERY attempt:
+   * the done-condition runs only where its answer can decide something, so an
+   * attempt that parks on a question never reaches it.
+   *
+   * Distinct from {@link buildPrompt} below, which REPLACES the builder: a spy
+   * that also replaced it could not observe the real prompt, and a replacement
+   * that also spied would report on itself.
+   */
+  onPrompt?: (run: PromptRunContext) => void;
+  /**
    * Overrides the implement phase's construction-time validation. Lets a test
    * observe what `conductorFlow` does with the value `validate` returns.
    */
@@ -257,12 +271,24 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   seedRepo(sourceRepo);
 
   const base = implementPhase({ prExists: () => true });
+
+  // **The spy wraps whatever builder is in effect, not always the base one.**
+  // One option REPLACES the builder and the other OBSERVES it, so they compose;
+  // applied as competing spreads, whichever came last won and a test setting
+  // both got a spy reporting on a builder that was not the one running.
+  const builder = options.buildPrompt ?? base.buildPrompt;
   const phase: PhaseSpec = {
     ...base,
     ...(options.isDone !== undefined ? { isDone: options.isDone } : {}),
     ...(options.validate !== undefined ? { validate: options.validate } : {}),
-    ...(options.buildPrompt !== undefined ? { buildPrompt: options.buildPrompt } : {}),
     ...(options.phaseName !== undefined ? { phase: options.phaseName } : {}),
+    buildPrompt:
+      options.onPrompt === undefined
+        ? builder
+        : (run: PromptRunContext) => {
+            options.onPrompt!(run);
+            return builder(run);
+          },
   };
 
   // Derived, not spelled out. The manager enforces
