@@ -210,6 +210,20 @@ interface ScopeIdentity {
  * comes off the request body, so without it two tenants naming one session
  * share a directory of files.
  */
+/**
+ * The MOAT run name a workspace defaults to, derived from the same identity as
+ * its directory.
+ *
+ * One definition because it has two readers that must agree. `resolveMoatSandbox`
+ * reconnects by run name ALONE, and `purgeOldRuns` is told which name to spare —
+ * so a name computed one way for the sandbox and another for the purge leaves
+ * the live container unprotected, eligible for oldest-first destruction while a
+ * request is reconnecting to it.
+ */
+function defaultMoatRunName(identity: ScopeIdentity): string {
+  return `fsdev-${resolveScopeKey("session", identity).scopeId.split(path.sep).join("-")}`;
+}
+
 function defaultMoatWorkspace(identity: ScopeIdentity): string {
   const { scopeId } = resolveScopeKey("session", identity);
   return path.join(process.cwd(), ".fsdev", "workspaces", "session", scopeId);
@@ -469,9 +483,7 @@ async function createScopedSandbox(
     // reconnects by run name alone, so a name built from the session id while
     // the directory is tenant-namespaced attaches the second principal's
     // projection to the first principal's live container.
-    if (!provider.runName) {
-      overrides.runName = `fsdev-${resolveScopeKey("session", identity).scopeId.replace(/\//g, "-")}`;
-    }
+    if (!provider.runName) overrides.runName = defaultMoatRunName(identity);
     if (!provider.workspace) {
       overrides.workspace = defaultMoatWorkspace(identity);
       frameworkManaged = true;
@@ -686,8 +698,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
         name: "bash-purge-stale-containers",
         inputSchema: z.any(),
         execute: async (_input: unknown, ctx) => {
-          const runName =
-            provider.runName ?? `fsdev-${getIdentity(ctx).sessionId}`;
+          const runName = provider.runName ?? defaultMoatRunName(getIdentity(ctx));
           const { destroyed } = await purgeOldRuns({
             runName,
             bin: provider.bin,
