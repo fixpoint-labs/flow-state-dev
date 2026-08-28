@@ -67,7 +67,12 @@ export function routePath(
  * Entries whose key starts with `_` are the collection's bookkeeping. They are
  * never hydrated into a place, so a flush must never conclude from their
  * absence there that they were deleted.
+ *
+ * The BARE key only. A `_` deeper in the path is an ordinary file name —
+ * `src/_helpers.ts`, `public/_redirects`, `app/_layout.tsx` are all names
+ * people actually use — and matching those dropped them from hydrate and
+ * silently refused to persist them.
  */
 export function isMetadataKey(key: string): boolean {
-  return key.startsWith("_") || key.includes("/_");
+  return key.startsWith("_");
 }
