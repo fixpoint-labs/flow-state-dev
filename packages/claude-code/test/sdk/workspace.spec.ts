@@ -27,6 +27,7 @@ import {
   RELOCATION_TOOLS,
 } from "../../src/sdk/workspace";
 import { WORKSPACE_OUTCOMES } from "../../src/sdk/workspace-collections";
+import { sharedClaimRegistry } from "@flow-state-dev/workspace";
 import type {
   ClaudeAgentQueryOptions,
   ResolveClaudeAgent,
@@ -337,5 +338,82 @@ describe("createWorkspaceAgentCapability", () => {
     expect(options.cwd).toBe(base);
 
     discard(base);
+  });
+
+  it("stands off a path another run is holding, and records which one", async () => {
+    // The baseline stops a writer who already wrote. It says nothing about a
+    // writer working right now: a second run holds no baseline for the path,
+    // reads the collection as untouched, and overwrites. A foreign holder in
+    // the shared registry IS what the other run is — a symbol — so nothing
+    // here simulates the mechanism, only supplies the other party.
+    const base = scratch();
+    const otherRun = Symbol("other-run");
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          mkdirSync(join(base, "artifacts"), { recursive: true });
+          writeFileSync(join(base, "artifacts", "shared.md"), "ours");
+          sharedClaimRegistry.claim("artifacts/shared.md", otherRun);
+          yield RESULT_OK;
+        },
+      }),
+      root: () => base,
+    });
+
+    try {
+      const result = (await testBlock(toolOf(cap) as never, {
+        input: { prompt: "go" },
+        flow: flowWith(cap) as never,
+      })) as {
+        resources: Record<string, { list(): Promise<Array<{ state: Record<string, unknown> }>> }>;
+      };
+
+      // Not written — the other run is mid-write and neither should win by
+      // arriving second.
+      expect(await result.resources.artifacts!.list()).toHaveLength(0);
+
+      // And the path is on the record, because the fix for a contested path
+      // is to stop two runs sharing it, which needs its name.
+      const rows = await result.resources[WORKSPACE_OUTCOMES]!.list();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.state.kind).toBe("contested");
+      expect(rows[0]!.state.path).toBe("artifacts/shared.md");
+    } finally {
+      sharedClaimRegistry.releaseAll(otherRun);
+      discard(base);
+    }
+  });
+
+  it("writes a path the other run is not holding", async () => {
+    // The case the claim has to keep working, not the one it exists to stop:
+    // two runs sharing a collection while touching different files.
+    const base = scratch();
+    const otherRun = Symbol("other-run");
+    sharedClaimRegistry.claim("artifacts/theirs.md", otherRun);
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          mkdirSync(join(base, "artifacts"), { recursive: true });
+          writeFileSync(join(base, "artifacts", "ours.md"), "ours");
+          yield RESULT_OK;
+        },
+      }),
+      root: () => base,
+    });
+
+    try {
+      const result = (await testBlock(toolOf(cap) as never, {
+        input: { prompt: "go" },
+        flow: flowWith(cap) as never,
+      })) as {
+        resources: Record<string, { list(): Promise<Array<{ state: Record<string, unknown> }>> }>;
+      };
+
+      expect(await result.resources.artifacts!.list()).toHaveLength(1);
+      expect(await result.resources[WORKSPACE_OUTCOMES]!.list()).toHaveLength(0);
+    } finally {
+      sharedClaimRegistry.releaseAll(otherRun);
+      discard(base);
+    }
   });
 });

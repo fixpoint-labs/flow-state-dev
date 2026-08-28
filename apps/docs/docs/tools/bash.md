@@ -298,6 +298,10 @@ The same rule applies to a workspace that can't be read at all. If the walk in s
 
 SHA-256 hashes detect changes. Only files whose hash differs from the stored value are written back to resources, so flush is cheap even for large workspaces.
 
+### Two runs, one file
+
+A file already changed in its collection is not overwritten — the flush warns and leaves both versions where they are. A file another run is writing at the same moment gets the same treatment for a different reason: the other run holds a claim on it, so this one stands off and names the path in the warning. Claims are per file, so two runs sharing a collection while working on different files both write.
+
 ### Orphan writes
 
 Files the agent creates outside every known path are not persisted. They're logged via `console.warn` at flush time so the behavior is visible during development. If the agent genuinely needs scratch space, `./tmp/` is the explicit place: writes there are silent and never saved.

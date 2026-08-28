@@ -518,6 +518,18 @@ function reportOutcomes(entry: SandboxEntry, outcomes: readonly FlushOutcome[]):
     );
   }
 
+  // Named separately from conflicts, because the fix is different. A conflict
+  // is somebody who already wrote — you reconcile it. A contested path is
+  // somebody writing right now, so the answer is usually to run the two runs
+  // against different paths, and knowing WHICH path is what makes that
+  // possible.
+  const contested = outcomes.filter((o) => o.kind === "contested").map((o) => o.path);
+  if (contested.length > 0) {
+    console.warn(
+      `[bash] ${contested.length} file(s) are being written by another run and were NOT overwritten: ${contested.join(", ")}`,
+    );
+  }
+
   // A successful flush that reached zero files under writable mounts usually
   // means the agent's writes landed somewhere the walk never visited. Without
   // this there is no warn and no exception — just an artifact that never
@@ -564,6 +576,11 @@ async function routeWrittenFile(
   if (outcome.kind === "conflict") {
     console.warn(
       `[bash] "${relativePath}" changed in its collection while this run held it — the write was NOT applied.`,
+    );
+  }
+  if (outcome.kind === "contested") {
+    console.warn(
+      `[bash] "${relativePath}" is being written by another run — the write was NOT applied.`,
     );
   }
 }

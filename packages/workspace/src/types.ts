@@ -109,6 +109,17 @@ export type FlushOutcome =
    */
   | { kind: "orphan"; path: string }
   /**
+   * Another live projection is writing this path, so this one did not.
+   *
+   * Distinct from `conflict`, and the difference is who the other writer is.
+   * A conflict is somebody who already wrote — the evidence is in the
+   * collection, and three hashes describe it. A contested path is somebody
+   * writing *now*: there is nothing to compare yet, only a claim held
+   * elsewhere. Merging the two would report "the collection changed" about a
+   * collection that has not.
+   */
+  | { kind: "contested"; path: string }
+  /**
    * Two writers, and we cannot tell which is wanted. `ours: null` is the
    * delete half — the path left the place while somebody else changed it.
    */
@@ -127,6 +138,8 @@ export type FlushOutcome =
 export interface FlushReport {
   /** Every path the flush reached, in the order it reached them. */
   outcomes: readonly FlushOutcome[];
-  /** The contested subset, so a caller need not filter to find the bad news. */
+  /** The conflicted subset, so a caller need not filter to find the bad news. */
   conflicts: readonly Extract<FlushOutcome, { kind: "conflict" }>[];
+  /** Paths another live projection is writing. See the `contested` outcome. */
+  contested: readonly Extract<FlushOutcome, { kind: "contested" }>[];
 }

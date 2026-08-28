@@ -64,6 +64,29 @@ Comparing two values — collection against place — can't tell "I changed this
 
 `base` tracks what this projection last committed, not what it hydrated. A file the run creates and flushes belongs to the projection from then on, which is what lets a later deletion of that file propagate. A projection holding no baseline for a path owns nothing there: it writes only where the collection is untouched, and deletes nothing.
 
+## Two runs, one file
+
+The baseline tells a projection whether a file changed since *it* last wrote. It can't tell whether another run is writing that file right now — a second projection that has never committed the path holds no baseline for it, reads the collection as untouched, and writes. The later write wins and nobody is told.
+
+So a projection also **claims** each path it commits, and holds the claim until it's released:
+
+```ts
+const report = await projection.flush();
+for (const c of report.contested) {
+  console.log(`${c.path} is being written by another run`);
+}
+```
+
+The claim lasts for the flush and no longer. That's the length of the race it exists to stop — two flushes interleaving at their awaits. A claim held for the whole run would need releasing on every path a run can end, and one missed release leaves a path claimed by a projection nobody will use again, refusing every later run. Writes that don't overlap in time are already covered: the second one finds the collection changed and reports a conflict.
+
+A `contested` outcome is not a `conflict`. A conflict is somebody who already *wrote* — the evidence is in the collection and three hashes describe it. A contested path is somebody writing *now*: there's nothing to compare yet, only a claim held elsewhere.
+
+Claims are per **path**, not per collection or per mount. Two runs sharing a collection while touching disjoint files both land, and neither is refused. That case is the point of the design rather than a gap in it.
+
+Pass your own `claims` registry to `createProjection` to scope arbitration to a subset of projections; omit it and they share a process-wide one, which is what makes two projections nobody wired together still arbitrate.
+
+**In-process only.** This is the same scope the baseline has. Two servers writing one collection is a larger problem, and this doesn't pretend to solve it.
+
 ## Places
 
 `createHostPlace(root)` projects into a real directory. It creates `root` if it doesn't exist, refuses any path that would resolve outside it, and neither lists nor follows symlinks planted inside it.
@@ -103,13 +126,15 @@ A read-only mount is hydrated and then left alone. Its paths aren't written back
 
 | Export | What it is |
 | --- | --- |
-| `createProjection({ mounts, place })` | Returns `{ hydrate, flush, put, ownedPaths }`. |
+| `createProjection({ mounts, place, claims? })` | Returns `{ hydrate, flush, put, ownedPaths }`. |
 | `createHostPlace(root)` | A place backed by a directory. |
 | `createMemoryPlace(initial?)` | A place backed by a `Map`. |
 | `hashContent(content)` | The hex SHA-256 the projection compares with. |
 | `normalizePath(path)` | A path in the form the projection compares in. |
 | `routePath(mounts, path)` | Which mount owns a path, and its key inside that mount. |
 | `isMetadataKey(key)` | Whether a collection key is bookkeeping rather than a projected file. |
+| `createClaimRegistry()` | A registry scoping write arbitration to the projections you give it. |
+| `sharedClaimRegistry` | The process-wide registry projections use by default. |
 
 `ownedPaths()` returns the paths the projection currently holds a baseline for — what it would write to, and what it would delete.
 

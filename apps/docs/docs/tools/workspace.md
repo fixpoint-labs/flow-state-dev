@@ -93,6 +93,31 @@ if (outcome?.kind === "conflict") {
 
 The path becomes the projection's from then on, so a later flush can delete it if the run removes the file. `put` resolves `undefined` when there's nothing to decide — a read-only mount, or a collection's own metadata.
 
+## Two runs, one file
+
+Everything above is about one run and one collection. Concurrency needs one more thing.
+
+The baseline tells a projection whether a file changed since *it* last wrote. It can't tell whether another run is writing that file right now: a second projection that never committed the path holds no baseline for it, reads the collection as untouched, and writes. The later write wins, and nobody is told.
+
+So a projection claims each path it commits, and holds the claim until released:
+
+```ts
+const report = await projection.flush();
+for (const c of report.contested) {
+  console.log(`${c.path} is being written by another run`);
+}
+```
+
+The claim lasts for the flush and no longer — that's the length of the race it exists to stop, two flushes interleaving at their awaits. Writes that don't overlap in time are already covered: the second one finds the collection changed and reports a conflict.
+
+`contested` is not `conflict`, and the difference is who the other writer is. A conflict is somebody who already wrote — the evidence is sitting in the collection, and three hashes describe it. A contested path is somebody writing *now*: nothing to compare yet, just a claim held elsewhere.
+
+Claims are per **path**. Two runs sharing a collection while working on disjoint files both land and neither is refused — that's the case the design is for, not one it misses.
+
+Pass a `claims` registry to scope arbitration to a subset of projections. Omit it and they share a process-wide one, which is what lets two projections nobody wired together still arbitrate.
+
+This is in-process only, the same scope the baseline has. Two servers writing one collection is a bigger problem than this solves.
+
 ## Places
 
 `createHostPlace(root)` projects into a real directory. It creates `root` if needed, refuses any path resolving outside it, and neither lists nor follows symlinks planted inside it.

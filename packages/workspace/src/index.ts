@@ -23,3 +23,5 @@ export type {
   Place,
   ProjectedEntryState,
 } from "./types";
+export { createClaimRegistry, sharedClaimRegistry } from "./claims";
+export type { ClaimHolder, ClaimRegistry } from "./claims";

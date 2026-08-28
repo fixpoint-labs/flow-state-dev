@@ -321,7 +321,7 @@ export function createWorkspaceAgentCapability(
       }
 
       const unsettled = outcomes.filter(
-        (o) => o.kind === "orphan" || o.kind === "conflict",
+        (o) => o.kind === "orphan" || o.kind === "conflict" || o.kind === "contested",
       );
       if (unsettled.length === 0) return;
 
@@ -341,7 +341,11 @@ export function createWorkspaceAgentCapability(
                 at,
               }
             : {
-                kind: "orphan" as const,
+                // `outcome.kind` rather than a literal: orphan and contested
+                // share this shape — neither carries hashes — but they are not
+                // the same row, and writing one of them under the other's name
+                // is how a reader learns the wrong fix.
+                kind: outcome.kind,
                 path: outcome.path,
                 base: null,
                 theirs: null,
@@ -353,11 +357,20 @@ export function createWorkspaceAgentCapability(
       }
 
       const conflicts = unsettled.filter((o) => o.kind === "conflict").length;
-      const orphans = unsettled.length - conflicts;
+      const contested = unsettled.filter((o) => o.kind === "contested");
+      const orphans = unsettled.length - conflicts - contested.length;
       await ctx.emit.status(
         [
           conflicts > 0
             ? `${conflicts} file(s) changed elsewhere while this run held them and were not overwritten`
+            : null,
+          // The paths themselves, not just a count: the fix for a contested
+          // path is to stop two runs sharing it, and you cannot do that
+          // without knowing which one they share.
+          contested.length > 0
+            ? `${contested.length} file(s) are being written by another run and were not overwritten: ${contested
+                .map((o) => o.path)
+                .join(", ")}`
             : null,
           orphans > 0
             ? `${orphans} file(s) written outside every mounted collection and not saved`

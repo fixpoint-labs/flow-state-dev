@@ -1274,4 +1274,135 @@ describe("createBashBlocks", () => {
     expect(warn.mock.calls.flat().join(" ")).toContain("contested.md");
     warn.mockRestore();
   });
+
+  // -------------------------------------------------------------------
+  // Two runs, one collection.
+  //
+  // The baseline stops a writer who ALREADY wrote. It says nothing about a
+  // writer who is writing right now: a second run holds no baseline for the
+  // path, reads the collection as untouched, and overwrites. The claim is
+  // that half, and these assert it through the bash tool rather than only
+  // through the projection, because this tool is one of the two places it has
+  // to hold.
+  //
+  // A foreign holder stands in for the other run. It is exactly what a second
+  // projection is to this one — a symbol in the shared registry — so nothing
+  // here is simulating the mechanism, only supplying the other party.
+  // -------------------------------------------------------------------
+
+  it("refuses a write to a path another run is holding, and names it", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { sharedClaimRegistry } = await import("@flow-state-dev/workspace");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const otherRun = Symbol("other-run");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "shared.md",
+        state: { path: "shared.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("claim-refused", { session: { artifacts } });
+
+    try {
+      await runForTest(bashCommand, { command: "ls" }, ctx);
+
+      // Our run edits the file, and the other run takes the path first.
+      sandbox.files.set("/workspace/artifacts/shared.md", "ours");
+      sharedClaimRegistry.claim("artifacts/shared.md", otherRun);
+
+      await runForTest(bashCommand, { command: "ls" }, ctx);
+
+      // Not overwritten — and the warning names the path, because the fix for
+      // a contested path is to stop two runs sharing it.
+      expect(await (await artifacts.get("shared.md")).readContent()).toBe("original");
+      const warned = warn.mock.calls.flat().join(" ");
+      expect(warned).toContain("artifacts/shared.md");
+      expect(warned).toContain("another run");
+    } finally {
+      sharedClaimRegistry.releaseAll(otherRun);
+      warn.mockRestore();
+    }
+  });
+
+  it("does not contend over a path the other run is not holding", async () => {
+    // The case the claim has to keep working, not the one it exists to stop:
+    // two runs sharing a collection but touching different files. A claim per
+    // collection would fail this, which is why it is per path.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { sharedClaimRegistry } = await import("@flow-state-dev/workspace");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const otherRun = Symbol("other-run");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("claim-disjoint", { session: { artifacts } });
+
+    try {
+      await runForTest(bashCommand, { command: "ls" }, ctx);
+      sharedClaimRegistry.claim("artifacts/theirs.md", otherRun);
+
+      await runForTest(bashWriteFile, { path: "artifacts/ours.md", content: "ours" }, ctx);
+      sandbox.files.set("/workspace/artifacts/also-ours.md", "also ours");
+      await runForTest(bashCommand, { command: "ls" }, ctx);
+
+      expect(await (await artifacts.get("ours.md")).readContent()).toBe("ours");
+      expect(await (await artifacts.get("also-ours.md")).readContent()).toBe("also ours");
+      expect(warn.mock.calls.flat().join(" ")).not.toContain("another run");
+    } finally {
+      sharedClaimRegistry.releaseAll(otherRun);
+      warn.mockRestore();
+    }
+  });
+
+  it("writes the path again once the other run has released it", async () => {
+    // A claim that outlived its flush would refuse every later run for a path
+    // nobody is writing any more. The release is what keeps this tool working
+    // exactly as it did before claims existed whenever no run overlaps.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { sharedClaimRegistry } = await import("@flow-state-dev/workspace");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const otherRun = Symbol("other-run");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "shared.md",
+        state: { path: "shared.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("claim-released", { session: { artifacts } });
+
+    try {
+      await runForTest(bashCommand, { command: "ls" }, ctx);
+      sandbox.files.set("/workspace/artifacts/shared.md", "ours");
+      sharedClaimRegistry.claim("artifacts/shared.md", otherRun);
+      await runForTest(bashCommand, { command: "ls" }, ctx);
+      expect(await (await artifacts.get("shared.md")).readContent()).toBe("original");
+
+      sharedClaimRegistry.releaseAll(otherRun);
+      await runForTest(bashCommand, { command: "ls" }, ctx);
+
+      expect(await (await artifacts.get("shared.md")).readContent()).toBe("ours");
+      expect(sharedClaimRegistry.heldBy("artifacts/shared.md")).toBeUndefined();
+    } finally {
+      sharedClaimRegistry.releaseAll(otherRun);
+      warn.mockRestore();
+    }
+  });
 });

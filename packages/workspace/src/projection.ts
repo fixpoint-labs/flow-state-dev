@@ -35,6 +35,7 @@
 import { createHash } from "node:crypto";
 import type { FlushOutcome, FlushReport, Mount, Place, ProjectedEntryState } from "./types";
 import { isMetadataKey, normalizePath, routePath } from "./routing";
+import { sharedClaimRegistry, type ClaimRegistry } from "./claims";
 
 /** A hex SHA-256 of `content`. The only comparison the projection makes. */
 export function hashContent(content: string): string {
@@ -82,6 +83,14 @@ export interface Projection {
 export interface ProjectionOptions {
   mounts: readonly Mount[];
   place: Place;
+  /**
+   * Where this projection arbitrates writes against other live projections.
+   *
+   * Defaults to a process-wide registry, which is what makes two projections
+   * nobody wired together still arbitrate. Pass your own to scope arbitration
+   * to a subset — a test, or one tenant's runs.
+   */
+  claims?: ClaimRegistry;
 }
 
 /**
@@ -91,7 +100,14 @@ export interface ProjectionOptions {
  * which is what lets the whole of §10's behaviour set run against an
  * in-memory place with no sandbox, no harness and no model.
  */
-export function createProjection({ mounts, place }: ProjectionOptions): Projection {
+export function createProjection({
+  mounts,
+  place,
+  claims = sharedClaimRegistry,
+}: ProjectionOptions): Projection {
+  /** This projection's identity, and nothing else's. */
+  const holder: symbol = Symbol("projection");
+
   /** path → the hash of what we last committed there. */
   const baseline = new Map<string, string>();
 
@@ -134,6 +150,21 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
   }
 
   async function flush(): Promise<FlushReport> {
+    try {
+      return await flushOnce();
+    } finally {
+      // Held for the flush and no longer. A claim outliving the flush would
+      // need a release call at the end of every run, on every path a run can
+      // end — and one missed leaves a path claimed by a projection nobody
+      // will use again, refusing every later run. The race this exists to
+      // stop is two flushes interleaving at their awaits, which is exactly
+      // this long. Writes that do NOT overlap in time are already covered:
+      // the second finds the collection changed and reports a conflict.
+      claims.releaseAll(holder);
+    }
+  }
+
+  async function flushOnce(): Promise<FlushReport> {
     // Before anything else, and deliberately not inside a `try`: an
     // unreadable place must abort the whole flush, because the delete pass
     // below reads "absent from the place" as "deleted by the run".
@@ -179,6 +210,12 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
       if (routed === undefined || !routed.mount.writable) continue;
       const { mount, key } = routed;
 
+      // A delete is a write. Same claim, same refusal.
+      if (claims.claim(path, holder) !== holder) {
+        outcomes.push({ kind: "contested", path });
+        continue;
+      }
+
       const theirs = await theirContent(mount, key);
       const theirHash = theirs === null ? undefined : hashContent(theirs);
 
@@ -213,6 +250,9 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
       conflicts: outcomes.filter(
         (o): o is Extract<FlushOutcome, { kind: "conflict" }> => o.kind === "conflict",
       ),
+      contested: outcomes.filter(
+        (o): o is Extract<FlushOutcome, { kind: "contested" }> => o.kind === "contested",
+      ),
     };
   }
 
@@ -236,6 +276,14 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
     const theirHash = theirs === null ? undefined : hashContent(theirs);
 
     if (now === base) return { kind: "unchanged", path };
+
+    // Everything below this line writes, so the claim is taken here — AFTER
+    // the no-op branch, because claiming a path we are not about to touch
+    // would refuse a run that merely read it unchanged.
+    if (claims.claim(path, holder) !== holder) {
+      return { kind: "contested", path };
+    }
+
     if (base === undefined && theirHash === undefined) {
       await commit(mount, key, local, now);
       baseline.set(path, now);
@@ -270,7 +318,11 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
     const { mount, key } = routed;
     if (!mount.writable) return undefined;
     if (isMetadataKey(key)) return undefined;
-    return await decide(mount, key, path, content);
+    try {
+      return await decide(mount, key, path, content);
+    } finally {
+      claims.releaseAll(holder);
+    }
   }
 
   /** Write content back to the collection, keeping its state in step. */

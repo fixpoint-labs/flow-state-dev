@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryPlace } from "../src/memory-place";
 import { createProjection, hashContent } from "../src/projection";
+import { createClaimRegistry } from "../src/claims";
 import type { Mount } from "../src/types";
 import { createFakeCollection, type FakeCollection } from "./fake-collection";
 
@@ -610,5 +611,124 @@ describe("a path that vanishes between the listing and the read", () => {
     await projection.flush();
 
     expect(projection.ownedPaths()).toEqual(["artifacts/spec.md"]);
+  });
+});
+
+describe("two projections writing one collection", () => {
+  /** Two projections over one collection, arbitrating in their own registry. */
+  function pair(seed: Record<string, string> = {}) {
+    const collection = createFakeCollection("artifacts/**", seed);
+    const claims = createClaimRegistry();
+    const mounts: Mount[] = [{ prefix: "artifacts", collection, writable: true }];
+    const a = { place: createMemoryPlace(), projection: null as unknown as ReturnType<typeof createProjection> };
+    const b = { place: createMemoryPlace(), projection: null as unknown as ReturnType<typeof createProjection> };
+    a.projection = createProjection({ mounts, place: a.place, claims });
+    b.projection = createProjection({ mounts, place: b.place, claims });
+    return { collection, claims, a, b };
+  }
+
+  it("lets two runs on DISJOINT paths both land, refusing neither", async () => {
+    // The case the whole design is for. A unit coarser than the path — the
+    // collection, or the mount — would refuse one of these, which rules the
+    // goal out rather than delivering it.
+    const { collection, a, b } = pair();
+    await a.place.write("artifacts/spec.md", "from a");
+    await b.place.write("artifacts/src/impl.ts", "from b");
+
+    const [ra, rb] = await Promise.all([a.projection.flush(), b.projection.flush()]);
+
+    expect(ra.contested).toEqual([]);
+    expect(rb.contested).toEqual([]);
+    expect(collection.contents()).toEqual({
+      "spec.md": "from a",
+      "src/impl.ts": "from b",
+    });
+  });
+
+  it("refuses the second writer on ONE path, naming it", async () => {
+    const { claims, a, b } = pair();
+    await a.place.write("artifacts/shared.md", "from a");
+    await b.place.write("artifacts/shared.md", "from b");
+
+    // A holds the claim for the length of its flush; B runs inside that.
+    const held = Symbol("a");
+    expect(claims.claim("artifacts/shared.md", held)).toBe(held);
+    const report = await b.projection.flush();
+
+    expect(report.contested).toEqual([
+      { kind: "contested", path: "artifacts/shared.md" },
+    ]);
+    // Refused, not overwritten: nothing of B's reached the collection.
+    expect(report.outcomes.every((o) => o.kind === "contested")).toBe(true);
+  });
+
+  it("refuses a DELETE on a contested path too — a delete is a write", async () => {
+    const { collection, claims, b } = pair({ "gone.md": "content" });
+    await b.projection.hydrate();
+    b.place.remove("artifacts/gone.md");
+
+    const held = Symbol("somebody else");
+    claims.claim("artifacts/gone.md", held);
+    const report = await b.projection.flush();
+
+    expect(report.contested).toEqual([
+      { kind: "contested", path: "artifacts/gone.md" },
+    ]);
+    expect(collection.contents()["gone.md"]).toBe("content");
+  });
+
+  it("does not contend over a path it only read unchanged", async () => {
+    // Claiming on the no-op branch would refuse a run that touched nothing,
+    // which is most runs over most files. Asserted through a SECOND writer
+    // holding the path: checking the registry after the flush cannot see it,
+    // because the flush releases either way.
+    const { claims, a } = pair({ "spec.md": "one" });
+    await a.projection.hydrate();
+    claims.claim("artifacts/spec.md", Symbol("somebody else"));
+
+    const report = await a.projection.flush();
+
+    expect(report.contested).toEqual([]);
+    expect(kinds(report)).toEqual(["unchanged:artifacts/spec.md"]);
+  });
+
+  it("gives the claim back when the flush is over, not when the run is", async () => {
+    // A claim outliving the flush needs a release on every path a run can
+    // end. One missed leaves the path claimed by a projection nobody will use
+    // again, refusing every later run.
+    const { claims, a } = pair();
+    await a.place.write("artifacts/spec.md", "content");
+
+    await a.projection.flush();
+
+    expect(claims.heldBy("artifacts/spec.md")).toBeUndefined();
+  });
+
+  it("gives it back even when the flush throws", async () => {
+    const { claims, a } = pair();
+    await a.place.write("artifacts/spec.md", "content");
+    await a.projection.flush();
+    a.place.breakListing();
+
+    await expect(a.projection.flush()).rejects.toThrow();
+
+    expect(claims.heldBy("artifacts/spec.md")).toBeUndefined();
+  });
+
+  it("behaves exactly as before for a projection nobody contends with", async () => {
+    // BP-035's off state. The check is on by default, so "off" is the case
+    // where no second writer exists — and it must be invisible.
+    const { collection, a } = pair({ "keep.md": "kept" });
+    await a.projection.hydrate();
+    await a.place.write("artifacts/keep.md", "edited");
+    await a.place.write("artifacts/new.md", "added");
+
+    const report = await a.projection.flush();
+
+    expect(report.contested).toEqual([]);
+    expect(kinds(report)).toEqual(
+      expect.arrayContaining(["written:artifacts/keep.md", "created:artifacts/new.md"]),
+    );
+    expect(collection.contents()).toEqual({ "keep.md": "edited", "new.md": "added" });
   });
 });
