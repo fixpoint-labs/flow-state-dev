@@ -183,7 +183,7 @@ fsdev conductor answer PR-482/implement/1/q "target the release branch"
 | `seed <issue> [--phase implement]` | File a row, then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
-| `watch [issue]` | Poll `status` until the board is no longer code `3` (still running or pending, no question). An open question is code `2` and `watch` stops there |
+| `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
 | `start <issue>` | Seed, then TUI on a TTY, or seed-and-watch on a pipe |
 | `help` / `-h` | Print the help text |
 
@@ -195,6 +195,7 @@ fsdev conductor answer PR-482/implement/1/q "target the release branch"
 | `-u, --user <id>` | Engine identity (default: `cli-user`) |
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `--json` | Headless verbs print JSON instead of a plain-text board |
+| `--phase <name>` | Phase for `seed` and `start` (default: `implement`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
@@ -202,7 +203,7 @@ fsdev conductor answer PR-482/implement/1/q "target the release branch"
 | `--quiet` | Suppress runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `warn`) |
 
-**Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `watch`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, a row errored/cancelled, or the call failed, `2` at least one open question, `3` still running or pending. `seed` always returns `0`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`).
+**Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `watch`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call failed, `2` at least one open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always returns `0`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`).
 
 Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). See [Conductor](/docs/cli/conductor) for the four-action contract a conductor-shaped flow has to satisfy, the TUI keybindings, and a full walkthrough.
 

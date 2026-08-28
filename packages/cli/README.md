@@ -203,7 +203,7 @@ Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/ses
 
 ### `fsdev conductor` — Drive a conductor flow
 
-An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. The TRANSCRIPT pane is the action this process is running, plus board movement that `status` reports. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
+An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. When that row has no question and the last attempt failed, a FAIL band sits in that slot with the reason; `w` retries (same as wake). Headless `status`, `wake`, and `watch` print a `! failed` line plus the reason under the row. The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports. After that action returns, later work shows up as those board lines, not as streaming text. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
 
 ```bash
 # Fullscreen board, live poll, slash commands
@@ -216,7 +216,7 @@ fsdev conductor start PR-482
 fsdev conductor seed PR-482 --json
 fsdev conductor status PR-482 --json
 
-# Drain pending rows, then poll until the board is no longer code 3
+# Drain pending rows, then poll until the board is not code 3
 fsdev conductor wake
 fsdev conductor watch
 
@@ -234,12 +234,13 @@ Options:
 | `-u, --user <id>` | Engine identity (default: `cli-user`) |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
 | `--json` | Headless verbs print JSON instead of a plain-text board |
+| `--phase <name>` | Phase for `seed` and `start` (default: `implement`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file (repeatable, resolved from cwd) |
 | `--config <path>` / `--no-config` | Load an explicit config, or ignore any config and force directory discovery |
 | `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
 
-`status`, `wake`, `watch`, and non-interactive `start` exit with a board-outcome code, distinct from the CLI's usual startup exit codes: `0` every named row is completed, `1` the board is empty, a row errored or was cancelled, or the call itself failed, `2` at least one row has an open question, `3` still running or pending with no question yet. `seed` always exits `0`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"` and prints `declined · <reason>`. The interactive board (no verb, or `tui`) needs a TTY; without one it prints a message and exits `1`.
+`status`, `wake`, `watch`, and non-interactive `start` exit with a board-outcome code, distinct from the CLI's usual startup exit codes: `0` every named row is completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call itself failed, `2` at least one row has an open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always exits `0`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"` and prints `declined · <reason>`. The interactive board (no verb, or `tui`) needs a TTY; without one it prints a message and exits `1`.
 
 ### `fsdev block` — Execute a single block in isolation
 

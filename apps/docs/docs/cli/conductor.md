@@ -179,7 +179,7 @@ const reviewer = defineFlow({
 export default reviewer({ id: "pr-reviewer" });
 ```
 
-`seed` must return `{ taskId }`. `answer` must return the shape above: `answered` wrote the reply, `recovered` found the question already answered and started the job again, `declined` wrote nothing (`reason` says why). `wake` is reported only if it errors. The plain-text board prints issue, phase, status, attempts, outcome, and open questions; `--json` prints the full `status` payload.
+`seed` must return `{ taskId }`. `answer` must return the shape above: `answered` wrote the reply, `recovered` found the question already answered and started the job again, `declined` wrote nothing (`reason` says why). The CLI prints `answered`, `recovered`, or `declined · <reason>` from `result` and `reason`. It prints `drain ran` when `drained` is true. A successful `wake` prints the board. If `wake` fails, the command prints the error and exits `1`. The plain-text board prints issue, phase, status, attempts, outcome, and open questions. A failed row with no open question also prints a `! failed` line and the reason under the row. `--json` prints the full `status` payload.
 
 ## The board
 
@@ -187,7 +187,13 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane, shows the question text and the question id. It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. The header includes `N failed` when any row's last attempt failed.
+
+When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id.
+
+When the selected row has no open question and the last attempt failed, a FAIL band sits in that same slot. A last attempt failed when `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. The band shows the reason (`run.reason`, else `feedback`, else `run.finalMessage`) and that `w` retries. If the selected row also has an open question, the ASK band is what shows. Answer the question first.
+
+It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
 
 ```
 fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch).
@@ -204,17 +210,17 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `[` / `]` | Move between open questions on the selected row |
 | `a` | Answer the selected question |
 | `s` | Seed a new row (prompts for an issue id) |
-| `w` | Wake — process pending rows |
+| `w` | Wake. On a failed selected row with no question, the footer labels this `w retry` |
 | `r` | Refresh now |
 | `/` | Type a slash command (any of the headless verbs) |
 | `?` | Toggle help |
 | `q` | Quit |
 
-Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While a command is running, `Ctrl-C` aborts it instead of quitting; press it again once nothing is running to quit.
+Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. On a failed selected row with no question, the footer offers `w retry`. While a command is running, `Ctrl-C` aborts it instead of quitting; press it again once nothing is running to quit.
 
 ### Transcript
 
-The TRANSCRIPT pane is a log of the action this process is running, plus board movement that `status` reports.
+The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports. After that action returns, later work shows up as those board lines, not as streaming text.
 
 While an action runs, the last line can still be updating: a status (`status · claiming`) or streaming assistant text (`message · opened the pull request`). When a new status arrives, the previous one stays as its own line. Streaming text grows on that last line and remains a single line when it finishes.
 
@@ -232,7 +238,7 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | `seed <issue> [--phase implement]` | File a row for `issue` (a no-op if that `issue`/`phase` pair already has one), then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
-| `watch [issue]` | Poll `status` until the board is no longer code `3` (still running or pending, no question). An open question is code `2` and `watch` stops there |
+| `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
@@ -291,20 +297,32 @@ $ fsdev conductor answer no-such-question "whatever"
 declined · unknown-question
 ```
 
+A failed last attempt with no open question prints under the row:
+
+```bash
+$ fsdev conductor status PR-482
+ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
+PR-482          implement   pending           2       failed      ·
+  ! failed
+    no pull request
+```
+
 ### Exit codes
 
-Startup failures — an unknown verb, a missing conductor flow, a flow missing one of the four actions — use the CLI's usual codes (`2` invalid args, `3` config error, `4` discovery error). Once the command is running, `status`, `wake`, `watch`, and non-interactive `start` share a second scheme describing the board, not the process:
+Startup failures — an unknown verb, a missing conductor flow, a flow missing one of the four actions — use the CLI's usual codes (`2` invalid args, `3` config error, `4` discovery error). Once past startup, `status`, `wake`, `watch`, and non-interactive `start` use the codes below for the board:
 
 | Code | Meaning |
 |---|---|
 | `0` | Every named row is `completed` |
-| `1` | The board is empty, a row `errored` or was `cancelled`, or the action call itself failed |
+| `1` | The board is empty, the last attempt failed, or the action call itself failed |
 | `2` | At least one row has an open question |
-| `3` | Still running or pending, with no question yet |
+| `3` | Running or pending, with no open question and no failed attempt |
 
-`seed` always exits `0` — it's a write, not a read on the board's outcome. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`.
+A last attempt failed when a row's `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. An open question is code `2` and wins over a failed attempt.
 
-`watch [issue]` polls `status` every couple of seconds and reprints the board whenever it changes, stopping as soon as the code above isn't `3`. An open question is code `2` and `watch` stops there.
+`seed` always exits `0`, even when the board still has pending, failed, or open-question rows. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`.
+
+`watch [issue]` polls `status` every couple of seconds and reprints the board whenever it changes. It stops when the code is not `3`. An open question is code `2`. A failed last attempt is code `1`.
 
 ### `start`
 
@@ -322,6 +340,7 @@ fsdev conductor start PR-482
 | `-u, --user <id>` | Engine identity (default: `cli-user`) |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
 | `--json` | Headless verbs print JSON |
+| `--phase <name>` | Phase for `seed` and `start` (default: `implement`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file (repeatable, resolved from cwd) |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
@@ -335,7 +354,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 
 - It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked, or a slash command.
 - The board table is exactly what `status` returns.
-- The transcript shows the stream of the action this process is running, plus what `status` reports about rows. Live tokens are only for the `seed`, `wake`, or `answer` this command is running. Work that continues after that action returns shows up here as the board lines `status` reports, not as streaming text.
+- The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports. After that action returns, later work shows up as those board lines, not as streaming text.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages
