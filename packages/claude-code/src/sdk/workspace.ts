@@ -10,6 +10,8 @@
  * Composed as a sequencer rather than folded into the handler, because a
  * handler calling two other blocks is the thing BP-011 names.
  */
+import { mkdirSync, realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
 import type {
@@ -193,6 +195,31 @@ function discoverMounts(
  */
 export const RELOCATION_TOOLS = ["EnterWorktree", "ExitWorktree"] as const;
 
+/**
+ * A directory's physical path — symlinks resolved, created if it does not
+ * exist yet.
+ *
+ * The agent resolves `cwd` through `realpath` before handing it to the SDK, so
+ * a root that is a symlink means the process works in one path while anything
+ * naming the unresolved spelling describes another. `filesystem.allowWrite`
+ * naming the wrong one is a boundary around a directory the run is not in, and
+ * macOS `/tmp` is a symlink, which makes that the ordinary case there rather
+ * than an exotic one.
+ *
+ * Resolving here, once, is what keeps the three readers — the place, `cwd` and
+ * the sandbox — on one answer. `realpath` needs the directory to exist, hence
+ * the `mkdir`; `createHostPlace` would have made it a moment later anyway.
+ */
+function physicalPath(root: string): string {
+  const absolute = resolve(root);
+  mkdirSync(absolute, { recursive: true });
+  try {
+    return realpathSync(absolute);
+  } catch {
+    return absolute;
+  }
+}
+
 /** The sandbox settings that confine a run to `root`. See `contain`. */
 export function containmentSandbox(root: string) {
   return {
@@ -240,7 +267,7 @@ export function createWorkspaceAgentCapability(
     inputSchema: z.object({ prompt: z.string() }),
     execute: async (input, ctx) => {
       // Resolved ONCE, here, and read from the chain's state everywhere else.
-      const root = await resolveRoot(input, ctx as WorkspaceContext);
+      const root = physicalPath(await resolveRoot(input, ctx as WorkspaceContext));
       const projection = createProjection({
         place: createHostPlace(root),
         mounts: discoverMounts(ctx as WorkspaceContext, collections, exclude),
@@ -255,12 +282,20 @@ export function createWorkspaceAgentCapability(
     },
   });
 
-  const flushWorkspace = handler({
-    name: `${name}-flush`,
-    description: "Reconcile the run's workspace back into its collections.",
-    inputSchema: z.any(),
-    resources: workspaceResources,
-    execute: async (_input: unknown, ctx) => {
+  /**
+   * Reconcile the run's workspace, once.
+   *
+   * Called from two places — the flush tap on the way out, and the sequencer's
+   * `onErrored` when something threw — because a `.tap()` after a step does
+   * NOT run when that step fails. Without the second caller a failed run left
+   * its projection and baseline resident forever AND never carried its files
+   * back, which is the worse half: the run did work and the work went nowhere.
+   *
+   * The registry entry is the "already handled" flag. It is removed before the
+   * flush, so whichever caller arrives first does the work and the other
+   * returns immediately.
+   */
+  const reconcile = async (ctx: WorkspaceContext): Promise<void> => {
       const key = (ctx.sequencer?.state as { workspaceId?: string | null } | undefined)
         ?.workspaceId;
       if (typeof key !== "string") return;
@@ -331,11 +366,29 @@ export function createWorkspaceAgentCapability(
           .filter(Boolean)
           .join("; "),
       );
+  };
+
+  const flushWorkspace = handler({
+    name: `${name}-flush`,
+    description: "Reconcile the run's workspace back into its collections.",
+    inputSchema: z.any(),
+    resources: workspaceResources,
+    execute: async (_input: unknown, ctx) => {
+      await reconcile(ctx as WorkspaceContext);
     },
   });
 
   const agent = claudeCodeAgent({
     ...agentOptions,
+    // The failure path. A `.tap()` after a step does not run when that step
+    // throws, so this is the only hook that fires when the run itself fails —
+    // and a sequencer takes no lifecycle hooks, which is why it lives on the
+    // agent block rather than the chain. Composed with a caller's own hook
+    // rather than replacing it.
+    onErrored: async (error, ctx) => {
+      await reconcile(ctx as WorkspaceContext);
+      await agentOptions.onErrored?.(error, ctx);
+    },
     // Owned by this capability: the directory is the projection's, and it is
     // READ from the registry rather than re-resolved. See `openWorkspaces`.
     cwd: (_input, ctx) => rootFor(ctx as WorkspaceContext),

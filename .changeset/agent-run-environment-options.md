@@ -8,3 +8,4 @@
 - `env` — the run's environment variables. Replaces the process environment rather than adding to it.
 - `sandbox` — the SDK's sandbox settings, forwarded verbatim. A value or a resolver: the settings that confine a run name the directory it works in (`filesystem.allowWrite` is a list of paths), and that directory is per run while one flow build serves many, so a constant can say "sandboxed" but not "sandboxed to this run's workspace".
 - `uses` — capabilities installed on the block, the same slot every other block takes.
+- `onErrored` — the standard block lifecycle hook, forwarded. It runs after the block threw and does not swallow the error. A capability cannot contribute lifecycle hooks, so anything that must run when a run *fails* — releasing what it was holding, saving what it got done — had nowhere else to go.

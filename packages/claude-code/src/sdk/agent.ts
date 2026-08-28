@@ -253,6 +253,19 @@ export interface ClaudeCodeAgentOptions {
    */
   uses?: UsesSlot;
   /**
+   * Ran after this block's execution threw, with the error and the block's own
+   * context — the standard block lifecycle hook, forwarded.
+   *
+   * Reachable only through this option because nothing else can supply it: a
+   * capability contributes resources, state and tools, never lifecycle hooks,
+   * so anything that has to run when a run FAILS has nowhere else to hook.
+   * Releasing something the run was holding is the case that made it
+   * necessary.
+   *
+   * It does not swallow the error; the run still fails.
+   */
+  onErrored?: (error: Error, ctx: AgentCallbackContext) => Promise<void> | void;
+  /**
    * The directory this run works in. Default: unset, which is the directory the
    * server process itself is running in — byte for byte what every existing
    * caller has today (BP-030).
@@ -599,6 +612,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     env,
     sandbox,
     uses,
+    onErrored,
     name = "claude-code-agent",
   } = options;
 
@@ -618,6 +632,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     // the read route answers 404 — at read time, on a build that succeeded.
     ...(recordWork ? { resources: workRecorderResources } : {}),
     ...(uses !== undefined ? { uses } : {}),
+    ...(onErrored !== undefined ? { onErrored } : {}),
     // `ctx` is annotated rather than inferred. `uses` widens the context type
     // that `handler()` infers — capability namespaces and state targets appear
     // in it — and every helper below takes a plain `BlockContext`, so without

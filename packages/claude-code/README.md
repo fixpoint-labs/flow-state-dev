@@ -179,6 +179,11 @@ claudeCodeAgent({
   }),
   // Capabilities installed on the block, same slot any other block takes.
   uses: [myCapability],
+  // Runs after the block threw, with the error. It does not swallow it — the
+  // run still fails — so this is where anything the run was holding gets
+  // released. A capability cannot contribute lifecycle hooks, so this option
+  // is the only way to reach one.
+  onErrored: async (error, ctx) => { await releaseWhateverThisRunHeld(ctx); },
 });
 ```
 

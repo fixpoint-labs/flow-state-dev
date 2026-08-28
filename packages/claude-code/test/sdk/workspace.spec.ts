@@ -7,10 +7,20 @@
  * it is confined to, and what a caller can still override.
  */
 import { describe, it, expect, vi } from "vitest";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testBlock } from "@flow-state-dev/testing";
+import { defineFlow, defineResourceCollection, generator } from "@flow-state-dev/core";
+import { z } from "zod";
 import {
   createWorkspaceAgentCapability,
   containmentSandbox,
@@ -53,6 +63,39 @@ function toolOf(cap: unknown) {
 
 const scratch = () => mkdtempSync(join(tmpdir(), "ws-cap-"));
 const discard = (p: string) => rmSync(p, { recursive: true, force: true });
+
+
+/**
+ * A flow carrying one mounted collection, so `ctx.resources` has something to
+ * discover. Without it the capability mounts nothing, lists nothing, and every
+ * flush is trivially empty — which would make a test asserting on outcomes
+ * pass for the wrong reason.
+ */
+const artifactsCollection = defineResourceCollection({
+  pattern: "artifacts/**",
+  scope: "session",
+  prefetchMode: "lazy",
+  stateSchema: z.object({
+    path: z.string().nullable().default(null),
+    hash: z.string().nullable().default(null),
+    updatedAt: z.string().nullable().default(null),
+  }),
+  client: { state: { read: true }, expose: ["path", "hash", "updatedAt"] },
+});
+
+function flowWith(cap: unknown) {
+  const gen = generator({
+    name: "host",
+    model: "openai/gpt-5.4-mini",
+    prompt: "x",
+    uses: [cap as never],
+  });
+  return defineFlow({
+    kind: "workspace-flow",
+    resources: { artifacts: artifactsCollection },
+    actions: { go: { block: gen } },
+  })({ id: "default" });
+}
 
 describe("createWorkspaceAgentCapability", () => {
   it("exposes one sequencer that hydrates, runs, and flushes", () => {
@@ -105,6 +148,35 @@ describe("createWorkspaceAgentCapability", () => {
     // Once. Not once per reader.
     expect(calls).toBe(1);
     expect(existsSync(expected)).toBe(true);
+
+    discard(base);
+  });
+
+  it("confines the run to the PHYSICAL directory it works in, not the symlink", async () => {
+    // The agent resolves `cwd` through `realpath` before handing it to the
+    // SDK. A sandbox naming the unresolved spelling would confine the run to a
+    // path the process is not in — macOS `/tmp` is a symlink, so this is the
+    // ordinary case there, not an exotic one. The same divergence was already
+    // fixed once between `cwd` and the work recorder; this is the third
+    // reader.
+    const base = scratch();
+    const real = join(base, "real");
+    const link = join(base, "link");
+    mkdirSync(real);
+    symlinkSync(real, link);
+
+    const spy = vi.fn();
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: scriptedQuery(spy),
+      root: () => link,
+    });
+
+    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+
+    const options = spy.mock.calls[0][0].options;
+    const physical = realpathSync(real);
+    expect(options?.cwd).toBe(physical);
+    expect(options?.sandbox).toEqual(containmentSandbox(physical));
 
     discard(base);
   });
@@ -173,6 +245,56 @@ describe("createWorkspaceAgentCapability", () => {
 
     const disallowed = spy.mock.calls[0][0].options?.disallowedTools ?? [];
     expect(disallowed).toEqual(expect.arrayContaining(["WebFetch", ...RELOCATION_TOOLS]));
+
+    discard(base);
+  });
+
+  it("reconciles and releases even when the run itself fails", async () => {
+    // A `.tap()` after a step does not run when that step throws. Without a
+    // failure path the projection holding a failed run's files stays resident
+    // — one leak per failure on a long-lived server — and the work that run
+    // did get done goes nowhere.
+    const base = scratch();
+    let callersHookRan = false;
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          // The run wrote something, then died.
+          mkdirSync(join(base, "artifacts"), { recursive: true });
+          writeFileSync(join(base, "artifacts", "half-done.md"), "partial work");
+          throw new Error("agent exploded");
+          // eslint-disable-next-line no-unreachable
+          yield undefined as never;
+        },
+      }),
+      root: () => base,
+      onErrored: () => {
+        // Composed, not replaced: the capability's own hook runs and a
+        // caller's still fires.
+        callersHookRan = true;
+      },
+    });
+
+    const result = (await testBlock(toolOf(cap) as never, {
+      input: { prompt: "go" },
+      flow: flowWith(cap) as never,
+    })) as {
+      error?: Error | null;
+      resources: Record<string, { list(): Promise<unknown[]> }>;
+    };
+
+    // The run still fails — the hook reconciles, it does not swallow.
+    expect(result.error).toBeTruthy();
+
+    // THE discriminating assertion. The file the run wrote is under no
+    // mounted collection, so a flush records it as an orphan. No flush, no
+    // row — which is what "the work went nowhere" looks like from outside.
+    // THE discriminating assertion: the work the run DID get done is in the
+    // collection. Without a failure path it is only on a disk nobody reads.
+    const saved = await result.resources.artifacts!.list();
+    expect(saved).toHaveLength(1);
+
+    expect(callersHookRan).toBe(true);
 
     discard(base);
   });
