@@ -4,7 +4,9 @@ A row on a board becomes a supervised coding run.
 
 The map is [`docs/atlas/conductor.html`](../../docs/atlas/conductor.html) — what exists,
 what is still dashed, and the env a first run needs (`CONDUCTOR_REPO` is a different
-checkout, not this dispatcher). Run `pnpm conductor` from this directory. From the
+checkout, not this dispatcher; that checkout needs an `origin` remote the
+completion check can name, and `gh` on the PATH, or the flow will not build).
+Run `pnpm conductor` from this directory. From the
 repo root, `fsdev conductor` will not find this flow.
 
 Something claims the row, gives the run its own checkout of the repository, stays with it until it
