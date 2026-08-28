@@ -1052,9 +1052,8 @@ export function harnessManager(options: ManagerOptions) {
       // Safe in this order because `acquireCheckout` needs only the path, not a
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
-      leases.set(
-        leaseKey(ctx as BlockContext),
-        await acquireCheckout(
+      const held = leaseKey(ctx as BlockContext);
+      const lease = await acquireCheckout(
           state.workspacePath!,
           `${input.taskId}#${input.attempts}`,
           ownership,
@@ -1064,8 +1063,13 @@ export function harnessManager(options: ManagerOptions) {
           // longer record — and the wait is now long enough for that to cost a
           // replacement most of an hour.
           (ctx as BlockContext).signal,
-        ),
-      );
+        );
+      // The coding step is its own sequencer, so `ctx.sequencer` inside it is
+      // not this one. The path travels by request id, the same way the lease
+      // does. Written only after the lease is held, so a failed acquire
+      // leaves nothing to forget.
+      checkouts.set(held, state.workspacePath!);
+      leases.set(held, lease);
       const checkout = await provisionCheckout(workspace, {
         principal: runPrincipal(ctx as BlockContext),
         epic: boardCollectionId,
@@ -1422,7 +1426,15 @@ export function harnessManager(options: ManagerOptions) {
         disallowedTools: [
           ...new Set([...(agent?.disallowedTools ?? []), ...RELOCATION_TOOLS]),
         ],
-        root: (_input, ctx) => managerState(ctx).workspacePath!,
+        root: (_input, ctx) => {
+          const path = checkouts.get(leaseKey(ctx as BlockContext));
+          if (path == null) {
+            throw new Error(
+              "[conductor] no checkout is held for this request — the workspace agent ran without openRun.",
+            );
+          }
+          return path;
+        },
       }),
       {
         // The cancellable-under-a-deadline obligation, met by a primitive core
@@ -1448,6 +1460,8 @@ export function harnessManager(options: ManagerOptions) {
  * — the whole point of a board — never release each other's.
  */
 const leases = new Map<string, CheckoutLease>();
+/** Checkout path by request. The workspace agent cannot read manager state. */
+const checkouts = new Map<string, string>();
 
 function leaseKey(ctx: BlockContext): string {
   return ctx.request.identity.id;
@@ -1464,6 +1478,7 @@ function releaseLease(ctx: BlockContext): void {
   const key = leaseKey(ctx);
   leases.get(key)?.release();
   leases.delete(key);
+  checkouts.delete(key);
 }
 
 export { RUNS };
