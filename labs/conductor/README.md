@@ -34,7 +34,7 @@ const { flow } = conductorFlow({
 });
 ```
 
-Three zero-model actions:
+Four zero-model actions:
 
 | Action | What it does |
 |---|---|
@@ -117,7 +117,9 @@ rows' statuses. Answering a question the job is not actually waiting on does not
 
 `fsdev conductor` is the operator surface: a live board in a TTY, or the same verbs
 headless for a script. There is no way to redirect a run mid-flight or send it on a side
-errand. The one thing you can do to a live run is answer what it asked.
+errand. You can stop a live run (`abort` / `x` in the board), and you can answer
+what it asked. A named `status ISSUE` or `watch ISSUE` prints that attempt's last
+tool, files, hunk, and current todo on stdout.
 
 Nothing bounds how long a question may stay open. A job waiting on a person is deliberately
 outside the lease's governance, so a question nobody answers holds its row indefinitely.
@@ -130,6 +132,7 @@ pnpm conductor seed FIX-1219
 pnpm conductor wake
 pnpm conductor status FIX-1219
 pnpm conductor watch FIX-1219   # poll status until waiting or terminal
+pnpm conductor abort FIX-1219   # stop the running request on that row
 ```
 
 Or the JSON door:
