@@ -275,48 +275,32 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
  * workspaces root entirely — and `userId`/`orgId`, which DO come from a
  * verified principal, fall back to the session id when absent (BP-031).
  *
- * Ordinary ids — `req_x1y2`, `sess_abc` — are already in the safe set and pass
- * through unchanged, so this renames no existing directory. Anything else is
- * rewritten AND given a digest of the original, because two hostile ids that
- * differ only in unsafe characters must not collapse onto one workspace.
+ * **Every id is encoded. There is no pass-through branch**, and its absence is
+ * the point rather than an oversight. Keeping ordinary ids readable meant a
+ * second namespace that had to stay disjoint from the encoded one, and that
+ * disjointness failed three times in a row: an encoding was itself a valid
+ * unencoded id; an over-long id was a filename nothing could write; and on a
+ * case-insensitive filesystem — macOS APFS, Windows — `ENC-a-b-<digest>` and
+ * `enc-a-b-<digest>` name one directory while spelling two registry keys, so
+ * two runs shared files while each believed it was isolated.
  *
- * The two forms are kept in disjoint namespaces by the `enc-` prefix, and that
- * is not decoration. Without it an encoding is itself a valid unencoded id: an
- * attacker who wants a victim's `a/b` workspace computes the digest, submits
- * `a-b-<digest>` as their own id, and it passes through untouched onto the same
- * directory. So an id already starting with the prefix takes the encoded path
- * too, and a passed-through id can never look like an encoding.
+ * Encoding everything removes the second namespace instead of guarding it
+ * again. The digest is over the exact original and hex folds to itself, so two
+ * ids that differ at all still differ here, case-insensitive filesystems
+ * included. The readable prefix is a convenience for whoever reads `ls`; the
+ * digest is what makes the name mean one workspace.
  *
- * Length is bounded for a plainer reason: a pass-through of 300 characters is
- * a filename `ENAMETOOLONG` refuses, and the first write in that workspace
- * fails.
+ * The cost is that this renames existing local workspaces once. Named in the
+ * changeset; they hold a run's scratch, not durable state.
  */
 const ENCODED_PREFIX = "enc-";
-const MAX_PASSTHROUGH = 64;
 
 function safeSegment(id: string): string {
-  const safe = id.replace(/[^A-Za-z0-9_-]/g, "-");
-  if (
-    safe === id &&
-    safe.length > 0 &&
-    safe.length <= MAX_PASSTHROUGH &&
-    !safe.startsWith(ENCODED_PREFIX)
-  ) {
-    return safe;
-  }
+  const safe = id.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 40) || "id";
   const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
-  return `${ENCODED_PREFIX}${safe.slice(0, 40) || "id"}-${digest}`;
+  return `${ENCODED_PREFIX}${safe}-${digest}`;
 }
 
-/**
- * The workspace directory a scope resolves to. Exported for the test that
- * pins containment of caller-supplied ids; the resolution itself is internal.
- */
-/**
- * The registry key a scope resolves to. Exported for the test that pins two
- * different principals against sharing one live sandbox; the resolution itself
- * is internal.
- */
 /**
  * The default MOAT run name. Exported for the test that pins two identities
  * against sharing one container; the derivation itself is internal.
@@ -327,6 +311,10 @@ export function resolveMoatRunNameForTest(
   return defaultMoatRunName(identity as ScopeIdentity);
 }
 
+/**
+ * The registry key a scope resolves to. Exported for the test that pins two
+ * different principals against sharing one live sandbox.
+ */
 export function resolveRegistryKeyForTest(
   scope: WorkspaceScope,
   identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
@@ -334,6 +322,10 @@ export function resolveRegistryKeyForTest(
   return resolveScopeKey(scope, identity as ScopeIdentity).key;
 }
 
+/**
+ * The workspace directory a scope resolves to. Exported for the tests that pin
+ * containment of caller-supplied ids; the resolution itself is internal.
+ */
 export function resolveWorkspaceCwdForTest(
   scope: WorkspaceScope,
   identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,

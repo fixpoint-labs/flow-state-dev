@@ -51,10 +51,26 @@ const cwdOfCall = (n: number): string | undefined =>
 // would be a tenant id the engine accepts, and "no tenant" would then share a
 // directory with the tenant named `-`.
 const NO_TENANT = "enc-none";
-const workspaceDir = (scope: string, id: string, tenant?: string) =>
-  tenant === undefined
-    ? path.join(process.cwd(), ".fsdev", "workspaces", scope, id)
-    : path.join(process.cwd(), ".fsdev", "workspaces", scope, tenant, id);
+// Asserted by SHAPE rather than by rebuilding the encoded name here. A test
+// that re-derived the encoding would agree with a broken encoder as readily as
+// a working one; what these cases are about is which identity the directory
+// follows, so they check the scope, the tenant segment, and that the id it was
+// keyed on is still legible in the leaf.
+const expectWorkspace = (
+  actual: string | undefined,
+  scope: string,
+  id: string,
+  tenant?: string,
+) => {
+  const prefix = path.join(process.cwd(), ".fsdev", "workspaces", scope);
+  expect(actual).toBeDefined();
+  expect(actual!.startsWith(tenant === undefined ? prefix : path.join(prefix, tenant))).toBe(
+    true,
+  );
+  expect(actual!.slice(actual!.lastIndexOf("/") + 1)).toMatch(
+    new RegExp(`^enc-${id.replace(/[^A-Za-z0-9_-]/g, "-")}-[0-9a-f]{12}$`),
+  );
+};
 
 async function runOnce(
   scope: "run" | "session" | "user" | "org" | undefined,
@@ -80,8 +96,9 @@ describe("workspace scope", () => {
 
     // Two sandboxes, because the registry key moved with the request.
     expect(resolveSandbox).toHaveBeenCalledTimes(2);
-    expect(cwdOfCall(0)).toBe(workspaceDir("run", "r1", NO_TENANT));
-    expect(cwdOfCall(1)).toBe(workspaceDir("run", "r2", NO_TENANT));
+    expectWorkspace(cwdOfCall(0), "run", "r1", NO_TENANT);
+    expectWorkspace(cwdOfCall(1), "run", "r2", NO_TENANT);
+    expect(cwdOfCall(0)).not.toBe(cwdOfCall(1));
   });
 
   it("gives them ONE workspace when the scope is left at its default", async () => {
@@ -93,18 +110,18 @@ describe("workspace scope", () => {
 
     // One sandbox, reused: the second request found the first in the registry.
     expect(resolveSandbox).toHaveBeenCalledTimes(1);
-    expect(cwdOfCall(0)).toBe(workspaceDir("session", "s1", NO_TENANT));
+    expectWorkspace(cwdOfCall(0), "session", "s1", NO_TENANT);
   });
 
   it("keys the broader scopes on their own identities, not the request", async () => {
     await runOnce("user", ctxFor("s1", "r1"));
-    expect(cwdOfCall(0)).toBe(workspaceDir("user", "u1"));
+    expectWorkspace(cwdOfCall(0), "user", "u1");
 
     resolveSandbox.mockClear();
     vi.resetModules();
 
     await runOnce("org", ctxFor("s2", "r2"));
-    expect(cwdOfCall(0)).toBe(workspaceDir("org", "o1"));
+    expectWorkspace(cwdOfCall(0), "org", "o1");
   });
 });
 
@@ -123,25 +140,34 @@ describe("scope ids as directory names", () => {
     }
   });
 
-  it("leaves an ordinary id untouched, so no existing workspace is renamed", async () => {
+  it("keeps an ordinary id legible in the name it encodes to", async () => {
+    // Every id is encoded — there is no pass-through — so this does rename
+    // existing workspaces. What it keeps is readability for whoever runs `ls`.
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
     const resolved = resolveWorkspaceCwdForTest("run", { requestId: "req_x1y2", sessionId: "s" });
-    expect(resolved.endsWith("/.fsdev/workspaces/run/enc-none/req_x1y2")).toBe(true);
+    expect(resolved).toMatch(/\/\.fsdev\/workspaces\/run\/enc-none\/enc-req_x1y2-[0-9a-f]{12}$/);
   });
 
-  it("keeps an encoded id out of the pass-through namespace", async () => {
-    // Both ids are caller-supplied. Without a disjoint representation the
-    // encoding of `a/b` is itself a valid unencoded id, so an attacker who
-    // wants that workspace computes the digest, submits it as their own id,
-    // and it passes through untouched onto the same directory.
+  it("cannot be handed a name that impersonates another id's encoding", async () => {
+    // Compute the victim's encoded directory name and submit it as your own
+    // id. A guard that recognises the encoded prefix catches this spelling.
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
-    const encoded = resolveWorkspaceCwdForTest("run", { requestId: "a/b", sessionId: "s" });
-    const impostor = encoded.slice(encoded.lastIndexOf("/") + 1);
-    const passedThrough = resolveWorkspaceCwdForTest("run", {
-      requestId: impostor,
-      sessionId: "s",
-    });
-    expect(passedThrough).not.toBe(encoded);
+    const victim = resolveWorkspaceCwdForTest("run", { requestId: "a/b", sessionId: "s" });
+    const impostorId = victim.slice(victim.lastIndexOf("/") + 1);
+    const impostor = resolveWorkspaceCwdForTest("run", { requestId: impostorId, sessionId: "s" });
+    expect(impostor).not.toBe(victim);
+  });
+
+  it("cannot be impersonated by a differently-cased spelling of that encoding", async () => {
+    // The same attack with the prefix in caps. A case-SENSITIVE guard lets it
+    // through unchanged, and on macOS APFS or Windows the two names are one
+    // directory — while the raw ids still key two registry entries, so both
+    // runs write the same files believing they are isolated.
+    const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
+    const victim = resolveWorkspaceCwdForTest("run", { requestId: "a/b", sessionId: "s" });
+    const shouted = victim.slice(victim.lastIndexOf("/") + 1).toUpperCase();
+    const impostor = resolveWorkspaceCwdForTest("run", { requestId: shouted, sessionId: "s" });
+    expect(impostor.toLowerCase()).not.toBe(victim.toLowerCase());
   });
 
   it("bounds an over-long id to a name a filesystem accepts", async () => {
