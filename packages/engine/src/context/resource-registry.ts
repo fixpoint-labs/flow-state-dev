@@ -1413,23 +1413,14 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             }
           }
 
-          // Validate state via schema — throw on invalid input, never silent fallback.
           // Defaults declared on the schema (e.g. `.nullable().default(null)`,
           // per BP-023) fill missing fields on both the create and replace
           // branches, so callers only supply the non-nullable scaffold.
-          const parseResult = nsConfig.stateSchema.safeParse(initial ?? {});
-          if (!parseResult.success) {
-            const issue = parseResult.error.issues[0];
-            const issuePath = issue === undefined ? "" : issue.path.join(".");
-            const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
-            const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
-            const opLabel = replace && exists ? "create(replace)" : "create";
-            throw new Error(
-              `Namespace "${nsConfig.pattern}" ${opLabel}("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
-            );
-          }
-
-          const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
+          const state = parseResourceWriteState(
+            nsConfig.stateSchema,
+            initial ?? {},
+            storageKey
+          );
 
           // Capture (cloned) prior state for the updated-hook before
           // persisting. Clone so hook code that caches or mutates `prev`
@@ -1557,10 +1548,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             );
           }
 
-          // Patch branch: merge `update` over existing state, validate the
-          // merged shape explicitly, then persist. Persist also rejects an
-          // invalid result; the check here names the op as upsert so the
-          // diagnostic matches the create branch.
+          // Patch branch: merge `update` over existing state, then persist.
+          // Persist is the one write parse — an invalid or unstable merge is
+          // refused there, in the same words as every other resource write.
           //
           // The merge runs INSIDE the mutator so a CAS retry re-merges
           // `update` over the winner's state rather than re-applying a merge
@@ -1589,21 +1579,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
               const result = await persistNamespaceInstanceState(
                 storageKey,
                 nsConfig,
-                (current) => {
-                  const merged = updateObjectState(current, update);
-                  const parseResult = nsConfig.stateSchema.safeParse(merged);
-                  if (!parseResult.success) {
-                    const issue = parseResult.error.issues[0];
-                    const issuePath = issue === undefined ? "" : issue.path.join(".");
-                    const issueMessage =
-                      issue === undefined ? "schema validation failed" : issue.message;
-                    const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
-                    throw new Error(
-                      `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
-                    );
-                  }
-                  return merged;
-                },
+                (current) => updateObjectState(current, update),
                 seed
               );
               committed = result.committed;
