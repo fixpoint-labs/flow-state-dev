@@ -129,3 +129,4 @@ npm install @mendable/firecrawl-js  # only if using Firecrawl
 - [Bash tool](/docs/tools/bash) — sandboxed command execution with resource sync
 - [Claude Code remote dispatch](/docs/tools/claude-code-cli) — dispatch a cloud coding task via the local `claude` CLI (separate `@flow-state-dev/claude-code` package)
 - [Claude Code SDK agent](/docs/tools/claude-code-sdk) — run a Claude Code agent in-process with streaming items and a persistent session (separate `@flow-state-dev/claude-code` package, optional `@anthropic-ai/claude-agent-sdk` peer)
+- [Workspace projection](/docs/tools/workspace) — move files between resource collections and wherever an agent works, with a report of what each path did (separate `@flow-state-dev/workspace` package)
