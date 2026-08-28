@@ -274,6 +274,43 @@ createBashTool({
 });
 ```
 
+### Where the workspace lives
+
+The local provider creates a workspace directory per scope, at
+`.fsdev/workspaces/<scope>/<id>/`. `run` and `session` carry the tenant as well
+(`.fsdev/workspaces/session/<tenant>/<id>/`), because their ids reach the tool
+from the request and two tenants can name the same one. `user` and `org` don't:
+those scopes are shared across tenants by design.
+
+| `scope` | One workspace per | Reach for it when |
+| --- | --- | --- |
+| `"run"` | request | Several agents work at once and must not see each other's half-finished files. |
+| `"session"` *(default)* | session | A conversation's runs should build on each other. |
+| `"user"` | user | Work should carry across a user's sessions. |
+| `"org"` | org | Work is shared across everyone in an org. |
+
+```typescript
+createBashBlocks({ provider: { type: "local", scope: "run" } });
+```
+
+The scope you pick is also what the model is told. `bashCommand`'s description
+derives its statement of the workspace's reach from `scope`, so a run-scoped
+workspace is described as belonging to this request and not carrying over —
+otherwise an agent leaves work in the workspace expecting a later request to
+find it, and that request gets a different directory.
+
+`scope` and `cwd` are alternatives. `cwd` names one directory, so a scope beside
+it separates nothing; setting both throws at construction.
+
+The list is ordered narrowest first, and that ordering is the decision.
+Everything below `"run"` is a workspace two runs can be inside at the same
+time. That's usually what you want — runs building on each other is the point
+of a session — but it's also the only way one run sees another's partial work.
+
+`"user"` and `"org"` fall back to the session when the context carries no user
+or org identity, so anonymous callers get their own workspace rather than
+sharing one.
+
 ### Sync lifecycle
 
 1. **Hydrate** — each collection's entries are written into the sandbox under the collection's pattern prefix, so a collection matching `artifacts/**` appears at `<workspace>/artifacts/`

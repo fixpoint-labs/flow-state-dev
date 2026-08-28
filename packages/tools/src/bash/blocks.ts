@@ -45,6 +45,7 @@ import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
 import { resolveSandbox } from "./resolve-sandbox";
 import { createHostPlace } from "@flow-state-dev/workspace";
 import type { Projection } from "@flow-state-dev/workspace";
+import { createHash } from "node:crypto";
 import { KEEP_MARKER } from "./sandbox-place";
 import {
   TMP_DIR,
@@ -194,15 +195,54 @@ function isPending(value: RegistryValue): value is { pending: Promise<SandboxEnt
 /** Identity fields available on the block execution context. */
 interface ScopeIdentity {
   sessionId: string;
+  requestId: string;
   userId?: string;
   orgId?: string;
+  /** The framework's tenant boundary. Absent in a single-tenant app. */
+  tenantId?: string;
 }
 
 /** Reserved workspace subdirectory for agent scratch space. Never persisted. */
 
-/** Per-session host dir backing the container's `/workspace`, mirroring `local`'s layout. */
-function defaultMoatWorkspace(sessionId: string): string {
-  return path.join(process.cwd(), ".fsdev", "workspaces", "session", sessionId);
+/**
+ * Per-session host dir backing the container's `/workspace`, mirroring
+ * `local`'s layout — tenant prefix included, for the same reason: `sessionId`
+ * comes off the request body, so without it two tenants naming one session
+ * share a directory of files.
+ */
+/**
+ * The MOAT run name a workspace defaults to, derived from the same identity as
+ * its directory.
+ *
+ * One definition because it has two readers that must agree. `resolveMoatSandbox`
+ * reconnects by run name ALONE, and `purgeOldRuns` is told which name to spare —
+ * so a name computed one way for the sandbox and another for the purge leaves
+ * the live container unprotected, eligible for oldest-first destruction while a
+ * request is reconnecting to it.
+ *
+ * Built from a digest of the framed key, not from the path segments joined up.
+ * A run name is one flat string with no separator to spare, so joining
+ * components on `-` loses their boundaries: tenant `a-b` with session `c` and
+ * tenant `a` with session `b-c` both spell `fsdev-a-b-c`, and reconnecting by
+ * name alone hands the second principal the first's container. The digest is
+ * over the same framed key the registry uses, so two identities that differ at
+ * all differ here. The readable half is a convenience for whoever reads
+ * `moat ls`; the digest is what makes the name mean one workspace.
+ */
+function defaultMoatRunName(identity: ScopeIdentity): string {
+  const { key } = resolveScopeKey("session", identity);
+  const digest = createHash("sha256").update(key, "utf-8").digest("hex").slice(0, 12);
+  // Sanitized, not `safeSegment`ed. That helper ends in a digest of the
+  // session id alone, and truncating its output to fit a run name cut that
+  // digest off again — a hash computed and thrown away, and the wrong hash
+  // regardless: a container must be unique per (tenant, session), which only
+  // the digest below carries.
+  return `fsdev-${sanitize(identity.sessionId).slice(0, 20)}-${digest}`;
+}
+
+function defaultMoatWorkspace(identity: ScopeIdentity): string {
+  const { scopeId } = resolveScopeKey("session", identity);
+  return path.join(process.cwd(), ".fsdev", "workspaces", "session", scopeId);
 }
 
 /**
@@ -225,25 +265,164 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
 }
 
 /**
- * Resolve the workspace scope ID and registry key from context identity.
+ * A scope id as a directory name it is safe to join onto a root.
  *
- * For the `local` provider, also resolves the `cwd` when not explicitly set:
- * `.fsdev/workspaces/{scope}/{scopeId}/`
+ * Scope ids reach here from caller-controllable input: the action route takes
+ * `requestId` and `sessionId` straight off the request body, validating only
+ * that they are strings. `scopeId` then becomes a path segment under
+ * `.fsdev/workspaces/`, so `../../` in one puts a run's workspace outside the
+ * workspaces root entirely — and `userId`/`orgId`, which DO come from a
+ * verified principal, fall back to the session id when absent (BP-031).
+ *
+ * **Every id is encoded. There is no pass-through branch**, and its absence is
+ * the point rather than an oversight. Keeping ordinary ids readable meant a
+ * second namespace that had to stay disjoint from the encoded one, and that
+ * disjointness failed three times in a row: an encoding was itself a valid
+ * unencoded id; an over-long id was a filename nothing could write; and on a
+ * case-insensitive filesystem — macOS APFS, Windows — `ENC-a-b-<digest>` and
+ * `enc-a-b-<digest>` name one directory while spelling two registry keys, so
+ * two runs shared files while each believed it was isolated.
+ *
+ * Encoding everything removes the second namespace instead of guarding it
+ * again. The digest is over the exact original and hex folds to itself, so two
+ * ids that differ at all still differ here, case-insensitive filesystems
+ * included. The readable prefix is a convenience for whoever reads `ls`; the
+ * digest is what makes the name mean one workspace.
+ *
+ * The cost is that this renames existing local workspaces once. Named in the
+ * changeset; they hold a run's scratch, not durable state.
+ */
+const ENCODED_PREFIX = "enc-";
+
+/** The characters a path segment and a run name can both carry, and nothing else. */
+function sanitize(id: string): string {
+  return id.replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
+function safeSegment(id: string): string {
+  const safe = sanitize(id).slice(0, 40) || "id";
+  const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
+  return `${ENCODED_PREFIX}${safe}-${digest}`;
+}
+
+/**
+ * The default MOAT run name. Exported for the test that pins two identities
+ * against sharing one container; the derivation itself is internal.
+ */
+export function resolveMoatRunNameForTest(
+  identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
+): string {
+  return defaultMoatRunName(identity as ScopeIdentity);
+}
+
+/**
+ * The registry key a scope resolves to. Exported for the test that pins two
+ * different principals against sharing one live sandbox.
+ */
+export function resolveRegistryKeyForTest(
+  scope: WorkspaceScope,
+  identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
+): string {
+  return resolveScopeKey(scope, identity as ScopeIdentity).key;
+}
+
+/**
+ * The workspace directory a scope resolves to. Exported for the tests that pin
+ * containment of caller-supplied ids; the resolution itself is internal.
+ */
+export function resolveWorkspaceCwdForTest(
+  scope: WorkspaceScope,
+  identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
+): string {
+  const { scopeId } = resolveScopeKey(scope, identity as ScopeIdentity);
+  return path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
+}
+
+/**
+ * The registry key and workspace directory a scope resolves to.
+ *
+ * Which identities namespace a scope is not a free choice — the framework
+ * already answers it. `tenantId` "namespaces session storage … so two tenants
+ * sharing a session id never share data", while "user and org scopes stay
+ * shared across tenants by design" (`core`'s `ScopeIdentity`). So:
+ *
+ * - `run` and `session` are namespaced by tenant. Their ids arrive on the
+ *   request body — the action route validates only that they are strings — so
+ *   without it two tenants naming the same one share a live sandbox and a
+ *   directory of files.
+ * - `user` and `org` are keyed on the identity they are named for, and nothing
+ *   else. Adding the tenant, or the user to an org scope, would split the very
+ *   sharing those scopes exist to provide.
+ *
+ * The fallback to `sessionId` when `userId`/`orgId` is absent takes the tenant
+ * with it, because that id is caller-supplied again.
+ *
+ * Components are length-framed rather than delimiter-joined. Raw ids joined on
+ * `:` collide — `(org "a", user "b:c", request "d")` and `(org "a:b", user
+ * "c", request "d")` both spell `run:a:b:c:d` — and the collision is on the
+ * REGISTRY key, so the second principal is handed the first's live sandbox
+ * before its own directory is ever created (BP-031).
+ *
+ * Tenant ABSENCE is framed too, rather than written as a value. A sentinel
+ * like `"-"` is a tenant id the engine accepts — `extractTenantId` rejects
+ * only the empty string and anything containing `":"` — so a request with no
+ * tenant and a request whose tenant IS `"-"` would resolve to one key and one
+ * directory. Presence is its own component in the key, and the directory uses
+ * a segment `safeSegment` can never emit.
  */
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
-  switch (scope) {
-    case "user": {
-      const id = identity.userId ?? identity.sessionId;
-      return { key: `user:${id}`, scopeId: id };
+  const tenant = identity.tenantId;
+  const tenantScoped = (id: string): (string | undefined)[] => [tenant, id];
+  const parts = ((): (string | undefined)[] => {
+    switch (scope) {
+      case "run":
+        // The request is the run. Narrower than a session on purpose: this is
+        // the scope where two agents working at once cannot see each other's
+        // half-finished files, and where the workspace goes away with the
+        // request that made it.
+        return tenantScoped(identity.requestId);
+      case "user":
+        return identity.userId !== undefined
+          ? [identity.userId]
+          : tenantScoped(identity.sessionId);
+      case "org":
+        return identity.orgId !== undefined
+          ? [identity.orgId]
+          : tenantScoped(identity.sessionId);
+      case "session":
+      default:
+        return tenantScoped(identity.sessionId);
     }
-    case "org": {
-      const id = identity.orgId ?? identity.sessionId;
-      return { key: `org:${id}`, scopeId: id };
-    }
-    case "session":
-    default:
-      return { key: `session:${identity.sessionId}`, scopeId: identity.sessionId };
-  }
+  })();
+  return {
+    key: [scope, ...parts].map(frame).join(""),
+    scopeId: path.join(...parts.map(segment)),
+  };
+}
+
+/**
+ * One key component, length-prefixed so its content cannot forge another.
+ *
+ * `undefined` is framed as its own shape rather than as some string, so an
+ * absent component and a component that happens to equal the absence marker
+ * stay distinct.
+ */
+function frame(component: string | undefined): string {
+  return component === undefined ? "-" : `${component.length}:${component}`;
+}
+
+/**
+ * One path segment for a component, absence included.
+ *
+ * `ABSENT_SEGMENT` is chosen so `safeSegment` cannot produce it: an id
+ * spelled `enc-none` starts with the encoded prefix, so it takes the encoded
+ * branch and comes out as `enc-enc-none-<digest>`. Nothing a caller can send
+ * lands on the marker.
+ */
+const ABSENT_SEGMENT = `${ENCODED_PREFIX}none`;
+
+function segment(component: string | undefined): string {
+  return component === undefined ? ABSENT_SEGMENT : safeSegment(component);
 }
 
 // ---------------------------------------------------------------------------
@@ -347,11 +526,14 @@ async function createScopedSandbox(
   // overwrite our own yaml freely.
   let frameworkManaged = false;
   if (provider.type === "moat") {
-    const sessionId = identity.sessionId;
     const overrides: Partial<typeof provider> = {};
-    if (!provider.runName) overrides.runName = `fsdev-${sessionId}`;
+    // Derived from the same identity as the workspace below. `resolveMoatSandbox`
+    // reconnects by run name alone, so a name built from the session id while
+    // the directory is tenant-namespaced attaches the second principal's
+    // projection to the first principal's live container.
+    if (!provider.runName) overrides.runName = defaultMoatRunName(identity);
     if (!provider.workspace) {
-      overrides.workspace = defaultMoatWorkspace(sessionId);
+      overrides.workspace = defaultMoatWorkspace(identity);
       frameworkManaged = true;
     }
     if (provider.persist === undefined) overrides.persist = true;
@@ -478,6 +660,8 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
 
+  assertScopeIsAchievable(provider);
+
   async function getOrCreate(ctx: BlockContext): Promise<SandboxEntry> {
     const identity = getIdentity(ctx);
     const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
@@ -562,8 +746,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
         name: "bash-purge-stale-containers",
         inputSchema: z.any(),
         execute: async (_input: unknown, ctx) => {
-          const runName =
-            provider.runName ?? `fsdev-${getIdentity(ctx).sessionId}`;
+          const runName = provider.runName ?? defaultMoatRunName(getIdentity(ctx));
           const { destroyed } = await purgeOldRuns({
             runName,
             bin: provider.bin,
@@ -585,11 +768,30 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   // sequencer for setup-needing providers (MOAT, Vercel, Upstash).
   // -------------------------------------------------------------------
 
+  // The reach sentence is derived, not fixed. `scope` decides who else is
+  // inside this workspace and whether it outlives the request, and a model
+  // told "scoped to this session" under `scope: "run"` will leave work in the
+  // workspace for a later request that gets a different directory. The
+  // capability's own prompt already names the scope; a block used directly
+  // would have contradicted it.
+  const workspaceReach = ((): string => {
+    switch (provider.type === "local" ? (provider.scope ?? "session") : "session") {
+      case "run":
+        return "The workspace belongs to this request alone — no other run can see it, and it does not carry over to the next request.";
+      case "user":
+        return "The workspace is a persistent filesystem shared across every session you run.";
+      case "org":
+        return "The workspace is a persistent filesystem shared across your organization.";
+      default:
+        return "The workspace is a persistent filesystem scoped to this session.";
+    }
+  })();
+
   const bashCommandDescription = [
     "Execute a bash command. Your current directory is the workspace root —",
     "use relative paths (`artifacts/foo.md`, `./tmp/scratch.txt`), not absolute",
-    "paths under any special prefix. The workspace is a persistent filesystem",
-    "scoped to this session. Files created or modified under a mounted",
+    `paths under any special prefix. ${workspaceReach}`,
+    "Files created or modified under a mounted",
     "collection's directory are automatically saved;",
     `files under ./${TMP_DIR}/ are scratch space and are never saved.`,
   ].join(" ");
@@ -783,14 +985,39 @@ function resolveHostMountSourceForWrite(
   ctx: BlockContext,
 ): string | undefined {
   if (provider.type !== "moat") return undefined;
-  return provider.workspace ?? defaultMoatWorkspace(getIdentity(ctx).sessionId);
+  return provider.workspace ?? defaultMoatWorkspace(getIdentity(ctx));
+}
+
+/**
+ * Refuse a provider that asks for isolation its own configuration cannot give.
+ *
+ * `scope` decides how many runs share a workspace; `cwd` fixes that workspace
+ * to one directory. Set together, the directory wins and the scope becomes a
+ * request that quietly went nowhere — every run still gets its own registry
+ * entry and its own projection over the SAME files, each with an independent
+ * baseline, so they read and flush over each other's half-finished work while
+ * the configuration says they are isolated. No answer honours both, so this
+ * refuses rather than picking one silently.
+ *
+ * @throws {Error} naming both settings and the two ways out.
+ */
+function assertScopeIsAchievable(provider: SandboxProvider): void {
+  if (provider.type !== "local" || provider.scope === undefined || !provider.cwd) return;
+  throw new Error(
+    `[bash] provider sets both \`cwd\` ("${provider.cwd}") and \`scope: "${provider.scope}"\`. ` +
+      `A fixed directory is one workspace, so the scope cannot separate anything — runs would ` +
+      `share the files while holding separate baselines over them. Drop \`cwd\` for a workspace ` +
+      `per ${provider.scope}, or drop \`scope\` to use the directory you named.`,
+  );
 }
 
 function getIdentity(ctx: BlockContext): ScopeIdentity {
   return {
     sessionId: ctx.session.identity.id,
+    requestId: ctx.request.identity.id,
     userId: ctx.session.identity.userId,
     orgId: ctx.session.identity.orgId,
+    tenantId: ctx.session.identity.tenantId,
   };
 }
 
