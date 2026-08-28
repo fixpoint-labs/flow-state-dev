@@ -18,7 +18,8 @@ import {
 import { HELP_TEXT } from "./parse";
 import { renderBoardPlain, watchExitCode } from "./render";
 import { createStreamTranscript } from "./transcript";
-import { failureReason, rowFailed, type OperatorCommand, type StatusRow } from "./types";
+import { createChildFollow } from "./follow";
+import { failureReason, rowFailed, runningRequestIds, type OperatorCommand, type StatusRow } from "./types";
 
 export interface HeadlessOptions {
   dispatch: ConductorDispatch;
@@ -141,28 +142,34 @@ async function watchBoard(
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const pollMs = options.pollMs ?? 2_000;
   const max = options.maxPolls ?? Number.POSITIVE_INFINITY;
+  const follow = createChildFollow({ stores: options.dispatch.stores, onEvent });
   let last = "";
-  for (let i = 0; i < max; i++) {
-    const status = await readBoard(options.dispatch, issue, onEvent);
-    flush();
-    const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows);
-    if (rendered !== last) {
-      out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
-      last = rendered;
-    }
-    const code = watchExitCode(status.rows);
-    if (code !== 3) {
-      if (
-        !options.json &&
-        (status.rows.some((r) => r.questions.length > 0) || status.rows.some(rowFailed))
-      ) {
-        out.write(renderBoardPlain(status.rows, false));
+  try {
+    for (let i = 0; i < max; i++) {
+      const status = await readBoard(options.dispatch, issue, onEvent);
+      follow.sync(runningRequestIds(status.rows));
+      flush();
+      const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows);
+      if (rendered !== last) {
+        out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
+        last = rendered;
       }
-      return code;
+      const code = watchExitCode(status.rows);
+      if (code !== 3) {
+        if (
+          !options.json &&
+          (status.rows.some((r) => r.questions.length > 0) || status.rows.some(rowFailed))
+        ) {
+          out.write(renderBoardPlain(status.rows, false));
+        }
+        return code;
+      }
+      await sleep(pollMs);
     }
-    await sleep(pollMs);
+    return 3;
+  } finally {
+    follow.stop();
   }
-  return 3;
 }
 
 function renderWatchLine(rows: StatusRow[]): string {

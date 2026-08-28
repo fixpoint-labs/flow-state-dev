@@ -203,3 +203,20 @@ export function scrollTranscript(state: ViewState, delta: number): ViewState {
 export function pageTranscript(state: ViewState, direction: -1 | 1): ViewState {
   return scrollTranscript(state, direction * PAGE);
 }
+
+/**
+ * Request ids of coding runs that are still in flight. `status` puts the
+ * child's id on `run.requestId`; the operator surface follows that stream
+ * through the same store subscription the HTTP attach route uses.
+ */
+export function runningRequestIds(rows: StatusRow[]): string[] {
+  const ids: string[] = [];
+  for (const row of rows) {
+    const id = row.run?.requestId;
+    if (id === null || id === undefined || id === "") continue;
+    if (row.run?.outcome === "running" || row.status === "in_progress") {
+      ids.push(id);
+    }
+  }
+  return ids;
+}

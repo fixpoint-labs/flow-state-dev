@@ -20,10 +20,12 @@ import {
   createStreamTranscript,
   diffBoard,
 } from "./transcript";
+import { createChildFollow } from "./follow";
 import {
   clampSelected,
   emptyView,
   pushActivity,
+  runningRequestIds,
   type OperatorCommand,
   type StatusOutput,
   type ViewState,
@@ -85,6 +87,11 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     paint();
   };
 
+  const follow = createChildFollow({
+    stores: options.dispatch.stores,
+    onEvent: applyPatch,
+  });
+
   const endTurn = () => {
     state = applyTranscriptPatch(state, transcript.flush(), now());
     paint();
@@ -102,6 +109,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     if (seq !== refreshSeq) return;
     if (result.error !== undefined) throw new Error(result.error);
     state = applyStatus(state, result.output ?? { rows: [] }, now(), options.focusIssue);
+    follow.sync(runningRequestIds(state.rows));
     endTurn();
   };
 
@@ -259,6 +267,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       process.on("SIGINT", onSigint);
     });
   } finally {
+    follow.stop();
     output.off("resize", onResize);
     input.setRawMode?.(wasRaw ?? false);
     input.pause();

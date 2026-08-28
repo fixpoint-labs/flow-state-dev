@@ -187,4 +187,53 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(watched.text).toContain("Not logged in");
     expect(watched.text).toContain("! failed");
   });
+
+  it("watch tails a detached run's request stream on stderr", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    const err = capture();
+    const watched = capture();
+    const running = executeConductorCommand(["watch", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: watched.output as unknown as NodeJS.WriteStream,
+      stderr: err.output as unknown as NodeJS.WriteStream,
+      config: false,
+      maxPolls: 25,
+      pollMs: 20,
+    });
+    const start = Date.now();
+    while (!watched.text.includes("LIVE-1") && Date.now() - start < 1_000) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    stores.request.persistEvents("req-live-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-live-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "s1",
+          type: "status",
+          message: "coding the checkout",
+          transient: true,
+        },
+      } as never,
+    ]);
+    const code = await running;
+    expect(code).toBe(3);
+    expect(err.text).toContain("coding the checkout");
+  });
 });

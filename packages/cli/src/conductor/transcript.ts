@@ -7,8 +7,9 @@
  * to the live line so a generator in this process reads as a stream. Durable
  * items (errors, tools, finished messages, resource changes) become activity
  * lines. `status` remains the board authority; `diffBoard` turns a poll that
- * actually moved into the same log, which is how a detached coding run
- * shows up when this process is not the one writing tokens.
+ * actually moved into the same log. A running row's `run.requestId` is also
+ * tailed through the request store, so a detached coding run writes here
+ * as it runs.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";

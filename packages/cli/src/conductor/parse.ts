@@ -188,6 +188,7 @@ In the TUI:
 
   A row with an open question: just type. Enter sends, Esc cancels.
   A row that failed: the FAIL band holds the reason. w runs wake again.
+  A running row: the transcript tails that run's request stream.
 
 Flags: --json  --phase <name>  --user <id>  --session <id>  --config <path>
        --flow-dir  --dotenv  --quiet  --log-level`;

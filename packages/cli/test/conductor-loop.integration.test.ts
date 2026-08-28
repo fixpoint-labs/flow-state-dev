@@ -162,4 +162,51 @@ describe("fsdev conductor — TUI over the same actions", () => {
     tty.input.write("q");
     await expect(running).resolves.toBe(0);
   });
+
+  it("tails a detached run's request stream into the transcript", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 40,
+    });
+
+    await waitFor(() => tty.text, "LIVE-1");
+    stores.request.persistEvents("req-live-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-live-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "s1",
+          type: "status",
+          message: "coding the checkout",
+          transient: true,
+        },
+      } as never,
+    ]);
+    await waitFor(() => tty.text, "coding the checkout");
+
+    tty.input.write("q");
+    await expect(running).resolves.toBe(0);
+  });
 });
