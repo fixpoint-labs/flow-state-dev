@@ -25,6 +25,14 @@ function delta(itemId: string, text: string): RequestStreamEventWithId {
   return { type: "content.delta", itemId, contentIndex: 0, delta: text } as RequestStreamEventWithId;
 }
 
+function updated(
+  itemId: string,
+  patch: Record<string, unknown>,
+  key: "itemId" | "id" = "itemId",
+): RequestStreamEventWithId {
+  return { type: "item.updated", [key]: itemId, patch } as RequestStreamEventWithId;
+}
+
 function row(issue: string, status: string, extras: Partial<StatusRow> = {}): StatusRow {
   return {
     taskId: `${issue}--implement`,
@@ -142,7 +150,7 @@ describe("createStreamTranscript", () => {
       ),
     ).toEqual({
       lines: ["tool · Write src/conductor/render.ts"],
-      live: null,
+      live: "tool · Write src/conductor/render.ts",
     });
     expect(
       t.apply(
@@ -160,6 +168,112 @@ describe("createStreamTranscript", () => {
         }),
       ),
     ).toEqual({ lines: [], live: null });
+  });
+
+  it("keeps an open tool on the live line until it settles", () => {
+    const t = createStreamTranscript();
+    const open = t.apply(
+      added({
+        id: "t-live",
+        type: "tool_output",
+        blockName: "Bash",
+        status: "in_progress",
+        toolCall: {
+          callId: "c-live",
+          name: "Bash",
+          arguments: JSON.stringify({ command: "pnpm test" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(open.live).toBe("tool · Bash pnpm test");
+    expect(open.lines).toEqual(["tool · Bash pnpm test"]);
+    expect(
+      t.apply(
+        done({
+          id: "t-live",
+          type: "tool_output",
+          blockName: "Bash",
+          status: "completed",
+          output: "ok\n",
+          toolCall: {
+            callId: "c-live",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "pnpm test" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({ lines: ["  ok"], live: null });
+  });
+
+  it("prints a Bash tail on item.updated and does not reprint it on item.done", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t-upd",
+        type: "tool_output",
+        blockName: "Bash",
+        status: "in_progress",
+        toolCall: {
+          callId: "c-upd",
+          name: "Bash",
+          arguments: JSON.stringify({ command: "pnpm test" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        updated("t-upd", {
+          status: "completed",
+          output: "Test Files  1 passed (1)\n",
+        }),
+      ),
+    ).toEqual({
+      lines: ["  Test Files  1 passed (1)"],
+      live: null,
+    });
+    expect(
+      t.apply(
+        done({
+          id: "t-upd",
+          type: "tool_output",
+          blockName: "Bash",
+          status: "completed",
+          output: "Test Files  1 passed (1)\n",
+          toolCall: {
+            callId: "c-upd",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "pnpm test" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({ lines: [], live: null });
+  });
+
+  it("accepts the framework item.updated shape that names the item id", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t-id",
+        type: "tool_output",
+        blockName: "Bash",
+        status: "in_progress",
+        toolCall: {
+          callId: "c-id",
+          name: "Bash",
+          arguments: JSON.stringify({ command: "pnpm build" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        updated("t-id", { status: "completed", output: "built\n" }, "id"),
+      ),
+    ).toEqual({ lines: ["  built"], live: null });
   });
 
   it("prints the lines a Write put in the file", () => {
@@ -184,7 +298,7 @@ describe("createStreamTranscript", () => {
       ),
     ).toEqual({
       lines: ["tool · Write src/foo.ts", "+ export const n = 1;"],
-      live: null,
+      live: "tool · Write src/foo.ts",
     });
   });
 
@@ -211,7 +325,7 @@ describe("createStreamTranscript", () => {
       ),
     ).toEqual({
       lines: ["tool · Edit src/foo.ts", "- const m = 2;", "+ const m = 4;"],
-      live: null,
+      live: "tool · Edit src/foo.ts",
     });
   });
 
@@ -422,7 +536,7 @@ describe("createStreamTranscript", () => {
         "  [·] Implement the fix",
         "  [ ] Open the pull request",
       ],
-      live: null,
+      live: "tool · TodoWrite",
       plan: [
         { mark: "x", text: "Add the failing test" },
         { mark: "·", text: "Implement the fix" },

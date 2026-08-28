@@ -6,16 +6,17 @@
  * keeps a log instead of a single overwritten slot. `content.delta` appends
  * to the live line so a generator in this process reads as a stream. Durable
  * items (errors, tools, finished messages, resource changes) become activity
- * lines. A coding tool is named with the file or command it touched. A Write
- * or Edit that carries the new text also prints a compact hunk — the changed
- * span, not the whole file. A plan tool prints the checklist. A Read
- * prints the first lines of the file. A Bash, Grep, or Glob result prints
- * the last lines of its output when it settles. `status` remains the board
- * authority; `diffBoard`
- * turns a poll that actually moved into the same log. A running row's
- * `run.requestId` is also tailed through the request store, so a detached
- * coding run writes here as it runs. Each followed request has its own
- * machine; the renderer keeps the selected row's lines.
+ * lines. A coding tool is named with the file or command it touched. While
+ * that call is still open, it stays on the live line so the board reads as
+ * working. A Write or Edit that carries the new text also prints a compact
+ * hunk — the changed span, not the whole file. A plan tool prints the
+ * checklist. A Read prints the first lines of the file. A Bash, Grep, or
+ * Glob result prints the last lines of its output when the item settles
+ * (`item.updated` or `item.done`). `status` remains the board authority;
+ * `diffBoard` turns a poll that actually moved into the same log. A running
+ * row's `run.requestId` is also tailed through the request store, so a
+ * detached coding run writes here as it runs. Each followed request has
+ * its own machine; the renderer keeps the selected row's lines.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
@@ -66,19 +67,55 @@ export function createStreamTranscript(): {
   flush: () => TranscriptPatch;
 } {
   const itemTypes = new Map<string, string>();
+  const items = new Map<string, OutputItem>();
   const streamed = new Set<string>();
   const logged = new Set<string>();
+  const settled = new Set<string>();
   let live: string | null = null;
-  let liveKind: "status" | "message" | null = null;
+  let liveKind: "status" | "message" | "tool" | null = null;
 
   const snapshot = (lines: string[]): TranscriptPatch => ({ lines, live });
 
   const commitLive = (): string[] => {
     if (live === null) return [];
+    if (liveKind === "tool") {
+      live = null;
+      liveKind = null;
+      return [];
+    }
     const lines = [live];
     live = null;
     liveKind = null;
     return lines;
+  };
+
+  const holdToolLive = (item: OutputItem): void => {
+    live = formatToolLine(item);
+    liveKind = "tool";
+  };
+
+  const applyToolSettled = (item: OutputItem): TranscriptPatch => {
+    const prior = commitLive();
+    const failed = item.status === "failed" || item.status === "incomplete";
+    if (settled.has(item.id) && !failed) return snapshot(prior);
+    if (logged.has(item.id) && !failed) {
+      settled.add(item.id);
+      return snapshot([...prior, ...formatToolResult(item)]);
+    }
+    logged.add(item.id);
+    settled.add(item.id);
+    if (failed) {
+      return snapshot([
+        ...prior,
+        formatToolLine(item, item.status),
+        ...formatToolResult(item),
+      ]);
+    }
+    const formatted = formatToolLines(item);
+    return {
+      ...snapshot([...prior, ...formatted.lines, ...formatToolResult(item)]),
+      plan: formatted.plan,
+    };
   };
 
   return {
@@ -94,6 +131,7 @@ export function createStreamTranscript(): {
               return snapshot([line]);
             }
             const prior = liveKind === "status" ? commitLive() : [];
+            if (liveKind === "tool") commitLive();
             live = line;
             liveKind = "status";
             return snapshot(prior);
@@ -102,9 +140,13 @@ export function createStreamTranscript(): {
             return snapshot([...commitLive(), `error · ${item.message}`]);
           }
           if (item.type === "tool_output") {
+            items.set(item.id, item);
             logged.add(item.id);
             const formatted = formatToolLines(item);
-            return { ...snapshot([...commitLive(), ...formatted.lines]), plan: formatted.plan };
+            const prior = commitLive();
+            if (item.status === "in_progress") holdToolLive(item);
+            else settled.add(item.id);
+            return { ...snapshot([...prior, ...formatted.lines]), plan: formatted.plan };
           }
           if (item.type === "container") {
             logged.add(item.id);
@@ -125,6 +167,18 @@ export function createStreamTranscript(): {
           live = `${live ?? "message · "}${event.delta}`;
           return snapshot([]);
         }
+        case "item.updated": {
+          const itemId = updatedItemId(event);
+          const patch = updatedPatch(event);
+          if (itemId === undefined || patch === undefined) return snapshot([]);
+          const existing = items.get(itemId);
+          if (existing === undefined) return snapshot([]);
+          const merged = { ...existing, ...patch } as OutputItem;
+          items.set(itemId, merged);
+          if (merged.type !== "tool_output") return snapshot([]);
+          if (merged.status === "in_progress") return snapshot([]);
+          return applyToolSettled(merged);
+        }
         case "item.done": {
           const item = event.item;
           if (item.type === "message" && item.role === "assistant") {
@@ -136,23 +190,8 @@ export function createStreamTranscript(): {
             return snapshot([...commitLive(), `message · ${text}`]);
           }
           if (item.type === "tool_output") {
-            const failed = item.status === "failed" || item.status === "incomplete";
-            if (logged.has(item.id) && !failed) {
-              return snapshot([...commitLive(), ...formatToolResult(item)]);
-            }
-            logged.add(item.id);
-            if (failed) {
-              return snapshot([
-                ...commitLive(),
-                formatToolLine(item, item.status),
-                ...formatToolResult(item),
-              ]);
-            }
-            const formatted = formatToolLines(item);
-            return {
-              ...snapshot([...commitLive(), ...formatted.lines, ...formatToolResult(item)]),
-              plan: formatted.plan,
-            };
+            items.set(item.id, item);
+            return applyToolSettled(item);
           }
           if (item.type === "container") {
             const failed = item.status === "failed" || item.status === "incomplete";
@@ -187,6 +226,20 @@ export function createStreamTranscript(): {
       return { lines: commitLive(), live: null };
     },
   };
+}
+
+function updatedItemId(event: RequestStreamEventWithId): string | undefined {
+  if (event.type === "item.updated" && typeof event.itemId === "string" && event.itemId !== "") {
+    return event.itemId;
+  }
+  const id = (event as { id?: unknown }).id;
+  return typeof id === "string" && id !== "" ? id : undefined;
+}
+
+function updatedPatch(event: RequestStreamEventWithId): Record<string, unknown> | undefined {
+  const patch = (event as { patch?: unknown }).patch;
+  if (patch === null || typeof patch !== "object" || Array.isArray(patch)) return undefined;
+  return patch as Record<string, unknown>;
 }
 
 function messageText(item: OutputItem): string {

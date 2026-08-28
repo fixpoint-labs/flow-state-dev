@@ -276,7 +276,7 @@ export function currentPlanItem(plan: readonly PlanItem[]): PlanItem | undefined
 export function selectedNow(state: ViewState): string | undefined {
   const live = visibleLive(state);
   if (live !== null && live !== "") {
-    return live.replace(/^(status|message) · /, "");
+    return live.replace(/^(status|message|tool) · /, "");
   }
   const id = selectedRequestId(state);
   for (let i = state.activity.length - 1; i >= 0; i -= 1) {

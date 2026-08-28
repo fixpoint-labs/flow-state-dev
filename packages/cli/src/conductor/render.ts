@@ -347,7 +347,8 @@ function renderActivity(
       body.push(i === 0 ? ` ${dim(formatClock(item.at))}  ${painted}` : `         ${painted}`);
     });
   }
-  if (following && live !== null) {
+  const lastText = activityForView(state).at(-1)?.text;
+  if (following && live !== null && live !== lastText) {
     const wrapped = wrap(live, width);
     wrapped.forEach((line, i) => {
       body.push(i === 0 ? ` ${paint(GOLD, "··")}  ${paint(GOLD, line)}` : `         ${paint(GOLD, line)}`);

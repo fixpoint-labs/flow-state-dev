@@ -117,6 +117,18 @@ describe("renderFrame", () => {
     expect(follow).toContain("status · claiming ASK-1");
     expect(follow).toContain("live");
 
+    const held = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [waiting],
+        live: "tool · Bash pnpm test",
+        activity: [{ at: 1, text: "tool · Bash pnpm test" }],
+      },
+      { cols: 80, rows: 24 },
+    );
+    expect(stripAnsi(held).match(/tool · Bash pnpm test/g)?.length).toBe(1);
+    expect(held).toContain("live");
+
     const back = renderFrame(
       {
         ...emptyView("epic"),
@@ -433,6 +445,46 @@ describe("renderFrame", () => {
     );
     expect(above).toContain("Write src/a.ts");
     expect(above).not.toContain("src/b.ts");
+  });
+
+  it("shows the open tool on the RUN band without the transcript prefix", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const above = beforeTranscript(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [running],
+          childLive: { "req-live-1": "tool · Bash pnpm test" },
+          activity: [{ at: 1, text: "tool · Bash pnpm test", requestId: "req-live-1" }],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(above).toContain("Bash pnpm test");
+    expect(above).not.toContain("tool · Bash");
   });
 
   it("does not pin a plan on the ASK band", () => {
