@@ -180,6 +180,11 @@ export interface ViewState {
    */
   hunksExpanded: boolean;
   /**
+   * When true, the reserved band shows more of the last Read peek or
+   * Bash / Grep / Glob tail. When false, three lines.
+   */
+  peekExpanded: boolean;
+  /**
    * Transcript pager offset from the latest line. `0` follows new activity
    * (Grok-style). PageUp / wheel-up increase it.
    */
@@ -225,6 +230,7 @@ export function emptyView(epicLabel: string): ViewState {
     planExpanded: false,
     filesExpanded: false,
     hunksExpanded: false,
+    peekExpanded: false,
     scroll: 0,
     find: null,
     findAt: 0,
@@ -488,38 +494,43 @@ function stripLivePrefix(text: string): string {
   return transcriptBody(text).replace(/^(status|message|tool) · /, "");
 }
 
-/** Last `tool ·` line for this request, or for board-only lines when `id` is absent. */
-function lastToolForRequest(state: ViewState, id: string | undefined): string | undefined {
+/**
+ * Last `tool ·` or `think ·` line for this request, or for board-only
+ * lines when `id` is absent. A think after the last tool wins — that is
+ * what the child is doing now.
+ */
+function lastActionForRequest(state: ViewState, id: string | undefined): string | undefined {
   for (let i = state.activity.length - 1; i >= 0; i -= 1) {
     const item = state.activity[i]!;
     if (id !== undefined && item.requestId !== id) continue;
     if (id === undefined && item.requestId !== undefined) continue;
     const body = transcriptBody(item.text);
     if (body.startsWith("tool · ")) return body.slice("tool · ".length);
+    if (body.startsWith("think · ")) return body;
   }
   return undefined;
 }
 
 /**
  * What that row is doing right now. That request's live line wins;
- * otherwise its last tool. Another row's stream stays off this.
+ * otherwise its last tool or think line. Another row's stream stays off this.
  */
 export function rowNow(state: ViewState, row: StatusRow): string | undefined {
   const id = row.run?.requestId;
   if (id === null || id === undefined || id === "") return undefined;
   const live = state.childLive[id];
   if (live !== undefined && live !== "") return stripLivePrefix(live);
-  return lastToolForRequest(state, id);
+  return lastActionForRequest(state, id);
 }
 
 /**
  * What the selected run is doing right now. The live line wins; otherwise
- * the last tool name from that request's transcript.
+ * the last tool or think line from that request's transcript.
  */
 export function selectedNow(state: ViewState): string | undefined {
   const live = visibleLive(state);
   if (live !== null && live !== "") return stripLivePrefix(live);
-  return lastToolForRequest(state, selectedRequestId(state));
+  return lastActionForRequest(state, selectedRequestId(state));
 }
 
 /**

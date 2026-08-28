@@ -77,6 +77,27 @@ describe("formatAge / lastActivityAt", () => {
     expect(rowNow({ ...state, childLive: { "req-live-1": "think · look at the tests" } }, row)).toBe(
       "think · look at the tests",
     );
+    expect(
+      rowNow(
+        {
+          ...state,
+          activity: [{ at: 1, text: "think · look at the tests", requestId: "req-live-1" }],
+        },
+        row,
+      ),
+    ).toBe("think · look at the tests");
+    expect(
+      rowNow(
+        {
+          ...state,
+          activity: [
+            { at: 1, text: "tool · Read src/a.ts", requestId: "req-live-1" },
+            { at: 2, text: "think · that test is the one", requestId: "req-live-1" },
+          ],
+        },
+        row,
+      ),
+    ).toBe("think · that test is the one");
   });
 });
 
@@ -1150,6 +1171,60 @@ describe("renderFrame", () => {
     );
     expect(afterWrite).toContain("Write src/foo.ts");
     expect(afterWrite).not.toContain("return 1;");
+  });
+
+  it("expands the last Read peek with peekExpanded, and offers e more", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const peek = [
+      { at: 1, text: "tool · Read src/foo.ts", requestId: "req-live-1" },
+      { at: 1, text: "  line-1", requestId: "req-live-1" },
+      { at: 1, text: "  line-2", requestId: "req-live-1" },
+      { at: 1, text: "  line-3", requestId: "req-live-1" },
+      { at: 1, text: "  line-4", requestId: "req-live-1" },
+      { at: 1, text: "  line-5", requestId: "req-live-1" },
+    ];
+    const collapsedFrame = renderFrame(
+      { ...emptyView("epic"), rows: [running], activity: peek },
+      { cols: 80, rows: 24 },
+    );
+    const collapsed = beforeTranscript(collapsedFrame);
+    expect(collapsed).toContain("line-1");
+    expect(collapsed).toContain("line-3");
+    expect(collapsed).not.toContain("line-5");
+    expect(collapsed).toContain("… 2 more");
+    expect(stripAnsi(collapsedFrame)).toContain("e more");
+
+    const expanded = beforeTranscript(
+      renderFrame(
+        { ...emptyView("epic"), rows: [running], activity: peek, peekExpanded: true },
+        { cols: 80, rows: 28 },
+      ),
+    );
+    expect(expanded).toContain("line-5");
+    expect(expanded).not.toContain("… 2 more");
   });
 
   it("shows the last Bash tail on the RUN band, and drops it after a Write", () => {

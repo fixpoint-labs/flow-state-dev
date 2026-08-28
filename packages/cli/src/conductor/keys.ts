@@ -254,6 +254,8 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
       return { state: { ...state, filesExpanded: !state.filesExpanded } };
     case "h":
       return { state: { ...state, hunksExpanded: !state.hunksExpanded } };
+    case "e":
+      return { state: { ...state, peekExpanded: !state.peekExpanded } };
     case "H":
       return { state: stepHunk(state, 1) };
     case "n":
@@ -500,6 +502,7 @@ function selectRow(state: ViewState, index: number): ViewState {
     planExpanded: false,
     filesExpanded: false,
     hunksExpanded: false,
+    peekExpanded: false,
     hunkAt: 0,
   });
   if (jumped.find === null) return jumped;

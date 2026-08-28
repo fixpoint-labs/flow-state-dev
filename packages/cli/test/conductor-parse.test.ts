@@ -129,6 +129,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("x or Ctrl-C stops it");
     expect(HELP_TEXT).toContain("h expands the last hunk");
     expect(HELP_TEXT).toContain("H steps to an older hunk");
+    expect(HELP_TEXT).toContain("e expands the last Read or Bash tail");
     expect(HELP_TEXT).toContain("Enter queues it");
     expect(HELP_TEXT).toContain("/find [text]");
     expect(HELP_TEXT).toContain("older / newer match");

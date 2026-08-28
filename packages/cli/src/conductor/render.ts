@@ -330,10 +330,17 @@ const FILE_EXPANDED_MAX = 12;
 const HUNK_BAND_MAX = 3;
 const HUNK_EXPANDED_MAX = 16;
 const READ_BAND_MAX = 3;
+const PEEK_EXPANDED_MAX = 16;
 
 function renderReadPeek(state: ViewState, inner: number): string[] {
-  const peek = selectedReadPeek(state).slice(0, READ_BAND_MAX);
-  return peek.map((line) => ` ${dim(shorten(line, inner))}`);
+  const peek = selectedReadPeek(state);
+  if (peek.length === 0) return [];
+  const cap = state.peekExpanded ? PEEK_EXPANDED_MAX : READ_BAND_MAX;
+  const shown = peek.slice(0, cap);
+  const hidden = peek.length - shown.length;
+  const lines = shown.map((line) => ` ${dim(shorten(line, inner))}`);
+  if (hidden > 0) lines.push(` ${dim(`… ${hidden} more`)}`);
+  return lines;
 }
 
 const COMMAND_BAND_MAX = 3;
@@ -341,7 +348,12 @@ const COMMAND_BAND_MAX = 3;
 function renderCommandTail(state: ViewState, inner: number): string[] {
   const tail = selectedCommandTail(state);
   if (tail.length === 0) return [];
-  return tail.slice(-COMMAND_BAND_MAX).map((line) => ` ${dim(shorten(line, inner))}`);
+  const cap = state.peekExpanded ? PEEK_EXPANDED_MAX : COMMAND_BAND_MAX;
+  const shown = tail.slice(-cap);
+  const hidden = tail.length - shown.length;
+  const lines = shown.map((line) => ` ${dim(shorten(line, inner))}`);
+  if (hidden > 0) lines.unshift(` ${dim(`… ${hidden} more`)}`);
+  return lines;
 }
 
 function renderFileLines(state: ViewState, inner: number): string[] {
@@ -639,8 +651,12 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
   const listed = selectedPlan(state).length > 0;
   const moreFiles = selectedFiles(state).length > FILE_MAX;
   const moreHunks = selectedHunk(state).length > HUNK_BAND_MAX;
+  const morePeek =
+    selectedReadPeek(state).length > READ_BAND_MAX ||
+    selectedCommandTail(state).length > COMMAND_BAND_MAX;
   const hunkStack = selectedHunkStack(state).length > 1;
   const filesKey = moreFiles ? "  ·  f files" : "";
+  const peekKey = morePeek ? "  ·  e more" : "";
   const hunksKey =
     q === undefined
       ? `${moreHunks ? "  ·  h hunk" : ""}${hunkStack ? "  ·  H older" : ""}`
@@ -656,16 +672,16 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     : finding
     ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q`
     : q
-      ? `${working}click/j/k  ·  a answer${filesKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+      ? `${working}click/j/k  ·  a answer${filesKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
       : fail !== undefined
         ? listed
-          ? `${working}click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
-          : `${working}click/j/k  ·  w retry${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
+          ? `${working}click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
+          : `${working}click/j/k  ·  w retry${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
         : running
-          ? `${working}click/j/k  ·  x stop  ·  t list${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+          ? `${working}click/j/k  ·  x stop  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
           : listed
-            ? `${working}click/j/k  ·  t list${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
-            : `${working}click/j/k  ·  s seed${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
+            ? `${working}click/j/k  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+            : `${working}click/j/k  ·  s seed${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
   return padLine(dim(` ${keys}`), cols);
 }
 

@@ -298,6 +298,7 @@ In the TUI:
   f            expand or collapse the file list on the selected row
   h            expand or collapse the last Write / Edit hunk
   H            older Write / Edit hunk on the same run
+  e            expand or collapse the last Read peek or command tail
   /            slash command (same verbs)
   Tab          complete the selected slash verb or board id
   ↑/↓          choose a slash match while / is open
@@ -311,7 +312,7 @@ In the TUI:
   The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
   A row that failed: the FAIL band holds the reason and that attempt's files. w runs wake again.
   A running row: the RUN band holds the checkout and what the run is
-  doing. t expands the todo list. h expands the last hunk. H steps to an older hunk. x or Ctrl-C stops it.
+  doing. t expands the todo list. h expands the last hunk. H steps to an older hunk. e expands the last Read or Bash tail. x or Ctrl-C stops it.
   While working, type an answer; Enter queues it.
   A finished row keeps that attempt's files, todo list, and request id.
   The transcript tails that run's request stream. Thinking is a compact think · line.
