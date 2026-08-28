@@ -783,4 +783,28 @@ describe("routing edges two reviewers found", () => {
     // content is what the place holds — whichever order the mounts arrived in.
     expect(place.snapshot()["artifacts/drafts/x.md"]).toBe("INNER");
   });
+
+  it("does not claim ownership of a read-only mount's files", async () => {
+    // `ownedPaths()` answers "is another run holding this?". A read-only
+    // mount is hydrated and then never written or deleted — every flush and
+    // `put` path refuses it — so claiming its reference files makes the
+    // ownership API reject an overlap that was always safe.
+    const reference = createFakeCollection("skills/**", { "guide.md": "read me" });
+    const artifacts = createFakeCollection("artifacts/**", { "notes.md": "mine" });
+    const place = createMemoryPlace();
+    const projection = createProjection({
+      place,
+      mounts: [
+        { prefix: "skills", collection: reference, writable: false },
+        { prefix: "artifacts", collection: artifacts, writable: true },
+      ],
+    });
+
+    await projection.hydrate();
+
+    // Both are laid down — a read-only mount is still projected.
+    expect(place.snapshot()["skills/guide.md"]).toBe("read me");
+    // Only the writable one is owned.
+    expect(projection.ownedPaths()).toEqual(["artifacts/notes.md"]);
+  });
 });
