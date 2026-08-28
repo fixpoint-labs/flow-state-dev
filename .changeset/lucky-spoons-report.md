@@ -2,7 +2,7 @@
 "@flow-state-dev/tools": minor
 ---
 
-The bash tool now reconciles the sandbox through `@flow-state-dev/workspace` instead of its own copy of the logic.
+The bash tool now reconciles the sandbox through `@flow-state-dev/workspace` instead of its own copy of the logic (FIX-150).
 
 What changes for you: a file changed in its collection while a run held it is no longer silently overwritten or deleted. The write is skipped and a warning names the contested path, leaving both copies alone. A workspace listing that fails now skips the flush instead of being read as an empty workspace, which previously deleted everything the run owned.
 
