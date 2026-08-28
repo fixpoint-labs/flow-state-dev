@@ -43,9 +43,14 @@ function ctxFor(sessionId: string, requestId: string) {
 const cwdOfCall = (n: number): string | undefined =>
   (resolveSandbox.mock.calls[n]?.[1] as { cwd?: string } | undefined)?.cwd;
 
-// `run` and `session` carry the tenant (`-` when there is none) because their
-// ids come off the request body. `user` and `org` do not: those scopes are
-// shared across tenants by design, and a tenant segment would split them.
+// `run` and `session` carry the tenant because their ids come off the request
+// body. `user` and `org` do not: those scopes are shared across tenants by
+// design, and a tenant segment would split them.
+//
+// Absence is `enc-none`, a segment `safeSegment` cannot emit — a literal `-`
+// would be a tenant id the engine accepts, and "no tenant" would then share a
+// directory with the tenant named `-`.
+const NO_TENANT = "enc-none";
 const workspaceDir = (scope: string, id: string, tenant?: string) =>
   tenant === undefined
     ? path.join(process.cwd(), ".fsdev", "workspaces", scope, id)
@@ -75,8 +80,8 @@ describe("workspace scope", () => {
 
     // Two sandboxes, because the registry key moved with the request.
     expect(resolveSandbox).toHaveBeenCalledTimes(2);
-    expect(cwdOfCall(0)).toBe(workspaceDir("run", "r1", "-"));
-    expect(cwdOfCall(1)).toBe(workspaceDir("run", "r2", "-"));
+    expect(cwdOfCall(0)).toBe(workspaceDir("run", "r1", NO_TENANT));
+    expect(cwdOfCall(1)).toBe(workspaceDir("run", "r2", NO_TENANT));
   });
 
   it("gives them ONE workspace when the scope is left at its default", async () => {
@@ -88,7 +93,7 @@ describe("workspace scope", () => {
 
     // One sandbox, reused: the second request found the first in the registry.
     expect(resolveSandbox).toHaveBeenCalledTimes(1);
-    expect(cwdOfCall(0)).toBe(workspaceDir("session", "s1", "-"));
+    expect(cwdOfCall(0)).toBe(workspaceDir("session", "s1", NO_TENANT));
   });
 
   it("keys the broader scopes on their own identities, not the request", async () => {
@@ -113,7 +118,7 @@ describe("scope ids as directory names", () => {
     const root = process.cwd() + "/.fsdev/workspaces";
     for (const hostile of ["../../etc", "..", "a/../../b", "/abs/path"]) {
       const resolved = resolveWorkspaceCwdForTest("run", { requestId: hostile, sessionId: "s" });
-      expect(resolved.startsWith(root + "/run/-/")).toBe(true);
+      expect(resolved.startsWith(root + "/run/enc-none/")).toBe(true);
       expect(resolved).not.toContain("..");
     }
   });
@@ -121,7 +126,7 @@ describe("scope ids as directory names", () => {
   it("leaves an ordinary id untouched, so no existing workspace is renamed", async () => {
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
     const resolved = resolveWorkspaceCwdForTest("run", { requestId: "req_x1y2", sessionId: "s" });
-    expect(resolved.endsWith("/.fsdev/workspaces/run/-/req_x1y2")).toBe(true);
+    expect(resolved.endsWith("/.fsdev/workspaces/run/enc-none/req_x1y2")).toBe(true);
   });
 
   it("keeps an encoded id out of the pass-through namespace", async () => {
@@ -242,6 +247,44 @@ describe("scope ids as directory names", () => {
     const second = resolveRegistryKeyForTest("run", {
       requestId: "b:d",
       sessionId: "s",
+      tenantId: "a",
+    });
+    expect(first).not.toBe(second);
+  });
+
+  it("keeps a tenantless request out of the workspace of the tenant named `-`", async () => {
+    // `extractTenantId` rejects only the empty string and anything with `":"`,
+    // so `-` is a tenant id a deployment can really send. A literal sentinel
+    // for absence puts "no tenant" and that tenant on one key and one
+    // directory.
+    const { resolveWorkspaceCwdForTest, resolveRegistryKeyForTest } = await import(
+      "../src/bash/blocks"
+    );
+    const absent = { requestId: "r1", sessionId: "s1" };
+    const dashTenant = { requestId: "r1", sessionId: "s1", tenantId: "-" };
+
+    expect(resolveWorkspaceCwdForTest("run", absent)).not.toBe(
+      resolveWorkspaceCwdForTest("run", dashTenant),
+    );
+    expect(resolveRegistryKeyForTest("run", absent)).not.toBe(
+      resolveRegistryKeyForTest("run", dashTenant),
+    );
+  });
+
+  it("keeps component boundaries in the MOAT run name", async () => {
+    // A run name is one flat string with no separator to spare, and MOAT
+    // reconnects by name ALONE. Joining components on `-` loses their
+    // boundaries, so these two identities would name one container and the
+    // second principal would attach to the first's.
+    const { resolveMoatRunNameForTest } = await import("../src/bash/blocks");
+    const first = resolveMoatRunNameForTest({
+      requestId: "r",
+      sessionId: "c",
+      tenantId: "a-b",
+    });
+    const second = resolveMoatRunNameForTest({
+      requestId: "r",
+      sessionId: "b-c",
       tenantId: "a",
     });
     expect(first).not.toBe(second);
