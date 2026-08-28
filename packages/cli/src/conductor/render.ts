@@ -194,22 +194,30 @@ function renderAskBand(state: ViewState, cols: number): string {
   const more = selectedRow(state)?.questions.length ?? 0;
   const inner = Math.max(20, cols - 8);
   const body = wrap(question.text, inner).slice(0, 3);
-  const hint =
-    more > 1
-      ? `${question.question}  ·  ${state.questionIndex + 1}/${more}  ·  type to answer`
-      : `${question.question}  ·  type to answer`;
+  const hint = [
+    question.question,
+    more > 1 ? `${state.questionIndex + 1}/${more}` : undefined,
+    ...renderUsageBits(selectedRow(state)),
+    "type to answer",
+  ]
+    .filter((bit) => bit !== undefined && bit !== "")
+    .join("  ·  ");
   return [
     rule(cols, MAUVE),
     ` ${paint(MAUVE + BOLD, "ASK")}`,
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
-    ...renderAskAttempt(state, inner),
+    ...renderAttemptStrip(state, inner),
     rule(cols, MAUVE),
   ].join("\n");
 }
 
-/** Compact "what that attempt was doing" under the question — PR, last tool, files, current todo. */
-function renderAskAttempt(state: ViewState, inner: number): string[] {
+/**
+ * Compact "what that attempt was doing" — PR, last tool, files, last
+ * hunk, current todo. ASK and FAIL keep this on the reserved band so it
+ * still shows when inspect is hidden (busy, or a tall transcript).
+ */
+function renderAttemptStrip(state: ViewState, inner: number): string[] {
   const lines: string[] = [];
   const prUrl = selectedRow(state)?.run?.prUrl;
   if (prUrl) lines.push(` ${dim(prText(prUrl, inner))}`);
@@ -230,12 +238,21 @@ function renderFailBand(state: ViewState, cols: number): string {
   const row = selectedRow(state);
   const inner = Math.max(20, cols - 8);
   const body = wrap(failure.reason, inner).slice(0, 4);
-  const hint = `${row?.issue ?? row?.taskId ?? "row"}  ·  w retries`;
+  const id = selectedRequestId(state);
+  const hint = [
+    row?.issue ?? row?.taskId ?? "row",
+    id,
+    ...renderUsageBits(row),
+    "w retries",
+  ]
+    .filter((bit) => bit !== undefined && bit !== "")
+    .join("  ·  ");
   return [
     rule(cols, RUST),
     ` ${paint(RUST + BOLD, "FAIL")}`,
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
+    ...renderAttemptStrip(state, inner),
     rule(cols, RUST),
   ].join("\n");
 }
@@ -250,16 +267,10 @@ function renderRunBand(state: ViewState, cols: number): string {
   const body: string[] = [];
   if (branch) body.push(truncate(branch, inner));
   if (tree) body.push(fileText(tree, inner));
-  const hintBits: string[] = [];
-  if (row.run?.usage) {
-    hintBits.push(
-      `${fmtTokens(row.run.usage.inputTokens)}→${fmtTokens(row.run.usage.outputTokens)}`,
-    );
-  }
-  if (row.run?.costUsd !== null && row.run?.costUsd !== undefined) {
-    hintBits.push(`$${row.run.costUsd.toFixed(3)}`);
-  }
-  hintBits.push(id !== undefined ? `${id}  ·  x stops` : "no request id yet");
+  const hintBits = [
+    ...renderUsageBits(row),
+    id !== undefined ? `${id}  ·  x stops` : "no request id yet",
+  ];
   if (row.run?.prUrl) body.push(prText(row.run.prUrl, inner));
   const hint = hintBits.join("  ·  ");
   const now = selectedNow(state);
@@ -365,7 +376,7 @@ function renderMeta(state: ViewState, cols: number): string {
     return renderRunBits(row, cols);
   }
   if (selectedFailure(state) !== undefined) {
-    return joinBlocks(renderRunBits(row, cols, { omitReason: true }), renderSelectedSummary(state, cols));
+    return renderRunBits(row, cols, { omitReason: true });
   }
   const title = `${row.issue ?? "?"} / ${row.phase ?? "?"}`;
   const lines = [
@@ -690,6 +701,18 @@ function paintHunkLine(line: string): string {
 function fmtTokens(n: number): string {
   if (n < 1000) return String(n);
   return `${(n / 1000).toFixed(1)}k`;
+}
+
+/** Token counts and spend for the reserved-band hint. Empty when status had none. */
+function renderUsageBits(row: StatusRow | undefined): string[] {
+  const bits: string[] = [];
+  if (row?.run?.usage) {
+    bits.push(`${fmtTokens(row.run.usage.inputTokens)}→${fmtTokens(row.run.usage.outputTokens)}`);
+  }
+  if (row?.run?.costUsd !== null && row?.run?.costUsd !== undefined) {
+    bits.push(`$${row.run.costUsd.toFixed(3)}`);
+  }
+  return bits;
 }
 
 function fit(frame: string, cols: number, rows: number): string {

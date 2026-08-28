@@ -58,7 +58,7 @@ export const SLASH_HINTS: Record<(typeof SLASH_VERBS)[number], string> = {
   seed: "file and start an issue",
   wake: "process pending rows",
   answer: "reply to a question",
-  watch: "follow until waiting or done",
+  watch: "refresh; headless waits until waiting or done",
   start: "seed, then stay on the board",
   abort: "stop a running request",
   find: "search this row's transcript",
@@ -306,8 +306,8 @@ In the TUI:
   q            quit
 
   A row with an open question: just type. Enter sends, Esc cancels.
-  The ASK band keeps that attempt's files, current todo, and PR URL.
-  A row that failed: the FAIL band holds the reason. w runs wake again.
+  The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
+  A row that failed: the FAIL band holds the reason and that attempt's files. w runs wake again.
   A running row: the RUN band holds the checkout and what the run is
   doing. t expands the todo list. h expands the last hunk. x or Ctrl-C stops it.
   A finished row keeps that attempt's files, todo list, and request id.

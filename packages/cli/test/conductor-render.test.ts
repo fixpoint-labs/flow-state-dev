@@ -128,6 +128,16 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).not.toMatch(/succeed…Which/);
     expect(frame).toContain("1 waiting");
     expect(stripAnsi(frame)).toContain("10→4");
+    expect(
+      stripAnsi(
+        beforeTranscript(
+          renderFrame(
+            { ...emptyView("harness-manager"), rows: [waiting], busy: true },
+            { cols: 80, rows: 24 },
+          ),
+        ),
+      ),
+    ).toContain("10→4");
     expect(frame).toContain("click/j/k");
     expect(frame).toContain("/find");
     expect(frame).toContain("TRANSCRIPT");
@@ -547,6 +557,32 @@ describe("renderFrame", () => {
     expect(above).toContain("1/2");
     expect(above).toContain("TaskCreate Add hello.js");
     expect(stripAnsi(frame)).toContain("t list");
+
+    const busy = beforeTranscript(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [settled],
+          busy: true,
+          childPlan: {
+            "req-fail-1": [
+              { mark: "x", text: "Add hello.js" },
+              { mark: " ", text: "Open the pull request" },
+            ],
+          },
+          childFiles: { "req-fail-1": ["src/hello.js"] },
+          activity: [
+            { at: 1, text: "tool · Write src/hello.js", requestId: "req-fail-1" },
+            { at: 2, text: "tool · TaskCreate Add hello.js", requestId: "req-fail-1" },
+          ],
+        },
+        { cols: 80, rows: 28 },
+      ),
+    );
+    expect(busy).toMatch(/^ FAIL\s*$/m);
+    expect(busy).toContain("req-fail-1");
+    expect(busy).toContain("src/hello.js");
+    expect(busy).toContain("TaskCreate Add hello.js");
   });
 
   it("shows the pull request URL on a settled row", () => {
