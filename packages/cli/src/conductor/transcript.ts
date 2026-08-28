@@ -81,8 +81,14 @@ export function createStreamTranscript(): {
   const logged = new Set<string>();
   const settled = new Set<string>();
   const planEntries: Array<{ key: string; mark: PlanItem["mark"]; text: string }> = [];
+  const openContainers: string[] = [];
   let live: string | null = null;
   let liveKind: "status" | "message" | "tool" | null = null;
+
+  const nestAt = (text: string, depth: number): string =>
+    depth <= 0 ? text : `${"  ".repeat(depth)}${text}`;
+  const nest = (text: string): string => nestAt(text, openContainers.length);
+  const nestLines = (lines: string[]): string[] => lines.map(nest);
 
   const snapshot = (lines: string[]): TranscriptPatch => ({ lines, live });
 
@@ -100,7 +106,7 @@ export function createStreamTranscript(): {
   };
 
   const holdToolLive = (item: OutputItem): void => {
-    live = formatToolLine(item);
+    live = nest(formatToolLine(item));
     liveKind = "tool";
   };
 
@@ -111,7 +117,7 @@ export function createStreamTranscript(): {
     if (logged.has(item.id) && !failed) {
       settled.add(item.id);
       const plan = applyPlanTool(item, planEntries, "settled");
-      const next = snapshot([...prior, ...formatToolResult(item)]);
+      const next = snapshot([...prior, ...nestLines(formatToolResult(item))]);
       return plan === undefined ? next : { ...next, plan };
     }
     logged.add(item.id);
@@ -120,14 +126,14 @@ export function createStreamTranscript(): {
       const plan = applyPlanTool(item, planEntries, "failed");
       const next = snapshot([
         ...prior,
-        formatToolLine(item, item.status === "incomplete" ? "incomplete" : "failed"),
-        ...formatToolResult(item),
+        nest(formatToolLine(item, item.status === "incomplete" ? "incomplete" : "failed")),
+        ...nestLines(formatToolResult(item)),
       ]);
       return plan === undefined ? next : { ...next, plan };
     }
     const formatted = formatToolLines(item);
     const plan = applyPlanTool(item, planEntries, "settled") ?? formatted.plan;
-    const next = snapshot([...prior, ...formatted.lines, ...formatToolResult(item)]);
+    const next = snapshot([...prior, ...nestLines(formatted.lines), ...nestLines(formatToolResult(item))]);
     return plan === undefined ? next : { ...next, plan };
   };
 
@@ -139,7 +145,7 @@ export function createStreamTranscript(): {
           itemTypes.set(item.id, item.type);
           if (item.type === "status") {
             if (item.message.length === 0) return snapshot([]);
-            const line = `status · ${item.message}`;
+            const line = nest(`status · ${item.message}`);
             if (item.transient === false) {
               return snapshot([line]);
             }
@@ -150,7 +156,7 @@ export function createStreamTranscript(): {
             return snapshot(prior);
           }
           if (item.type === "error" && item.message.length > 0) {
-            return snapshot([...commitLive(), `error · ${item.message}`]);
+            return snapshot([...commitLive(), nest(`error · ${item.message}`)]);
           }
           if (item.type === "tool_output") {
             items.set(item.id, item);
@@ -166,12 +172,14 @@ export function createStreamTranscript(): {
                   ? "open"
                   : "settled";
             const plan = applyPlanTool(item, planEntries, phase) ?? formatted.plan;
-            const next = snapshot([...prior, ...formatted.lines]);
+            const next = snapshot([...prior, ...nestLines(formatted.lines)]);
             return plan === undefined ? next : { ...next, plan };
           }
           if (item.type === "container") {
             logged.add(item.id);
-            return snapshot([...commitLive(), formatContainerLine(item)]);
+            const depth = openContainers.length;
+            openContainers.push(item.id);
+            return snapshot([...commitLive(), nestAt(formatContainerLine(item), depth)]);
           }
           return snapshot([]);
         }
@@ -181,11 +189,11 @@ export function createStreamTranscript(): {
           streamed.add(event.itemId);
           if (liveKind !== "message") {
             const prior = commitLive();
-            live = `message · ${event.delta}`;
+            live = nest(`message · ${event.delta}`);
             liveKind = "message";
             return snapshot(prior);
           }
-          live = `${live ?? "message · "}${event.delta}`;
+          live = `${live ?? nest("message · ")}${event.delta}`;
           return snapshot([]);
         }
         case "item.updated": {
@@ -208,7 +216,7 @@ export function createStreamTranscript(): {
             }
             const text = messageText(item);
             if (text.length === 0) return snapshot([]);
-            return snapshot([...commitLive(), `message · ${text}`]);
+            return snapshot([...commitLive(), nest(`message · ${text}`)]);
           }
           if (item.type === "tool_output") {
             items.set(item.id, item);
@@ -216,13 +224,19 @@ export function createStreamTranscript(): {
           }
           if (item.type === "container") {
             const failed = item.status === "failed" || item.status === "incomplete";
+            const idx = openContainers.lastIndexOf(item.id);
+            const depth = idx >= 0 ? idx : openContainers.length;
+            if (idx >= 0) openContainers.splice(idx, 1);
             if (logged.has(item.id) && !failed) return snapshot([]);
             logged.add(item.id);
             return snapshot([
               ...commitLive(),
-              formatContainerLine(
-                item,
-                failed ? (item.status === "incomplete" ? "incomplete" : "failed") : undefined,
+              nestAt(
+                formatContainerLine(
+                  item,
+                  failed ? (item.status === "incomplete" ? "incomplete" : "failed") : undefined,
+                ),
+                depth,
               ),
             ]);
           }
@@ -231,7 +245,7 @@ export function createStreamTranscript(): {
         case "resource.changed": {
           const path = event.resourcePath;
           if (path === undefined || path === "") return snapshot([]);
-          return snapshot([...commitLive(), `resource · ${event.changeType} ${path}`]);
+          return snapshot([...commitLive(), nest(`resource · ${event.changeType} ${path}`)]);
         }
         case "request.failed": {
           const message = (event as { error?: { message?: string } }).error?.message;

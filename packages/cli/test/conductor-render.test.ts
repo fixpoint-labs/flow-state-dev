@@ -101,7 +101,8 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).not.toMatch(/succeed…Which/);
     expect(frame).toContain("1 waiting");
     expect(stripAnsi(frame)).toContain("10→4");
-    expect(frame).toContain("click/j/k select");
+    expect(frame).toContain("click/j/k");
+    expect(frame).toContain("/find");
     expect(frame).toContain("TRANSCRIPT");
   });
 
@@ -551,6 +552,38 @@ describe("renderFrame", () => {
       renderFrame({ ...emptyView("epic"), rows: [settled] }, { cols: 80, rows: 28 }),
     );
     expect(above).toContain("pull/1496");
+  });
+
+  it("shows session ids on a settled row", () => {
+    const settled: StatusRow = {
+      taskId: "FAIL-1--implement",
+      issue: "FAIL-1",
+      phase: "implement",
+      status: "pending",
+      attempts: 1,
+      feedback: "error_max_turns",
+      run: {
+        attempt: 1,
+        taskId: "FAIL-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/FAIL-1--implement",
+        outcome: "failed",
+        reason: "error_max_turns",
+        sessionId: "sess-operator",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child-claude-1",
+        requestId: "req-fail-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const above = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [settled] }, { cols: 80, rows: 28 }),
+    );
+    expect(above).toContain("sess-operator");
+    expect(above).toContain("child-claude-1");
   });
 
   it("shows the open tool on the RUN band without the transcript prefix", () => {

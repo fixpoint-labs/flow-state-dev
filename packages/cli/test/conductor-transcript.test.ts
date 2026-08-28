@@ -9,6 +9,7 @@ import {
   ACTIVITY_CAP,
   activityForView,
   emptyView,
+  fileFromToolLine,
   findMatches,
   pushActivity,
   selectedPlan,
@@ -968,6 +969,74 @@ describe("createStreamTranscript", () => {
       lines: ["sub · Sub-agent: Explore · failed"],
       live: null,
     });
+  });
+
+  it("indents tools that run while a sub-agent is open", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        added({
+          id: "c1",
+          type: "container",
+          blockName: "Explore",
+          label: "Sub-agent: Explore",
+          status: "in_progress",
+        }),
+      ),
+    ).toEqual({
+      lines: ["sub · Sub-agent: Explore"],
+      live: null,
+    });
+    expect(
+      t.apply(
+        added({
+          id: "t1",
+          type: "tool_output",
+          blockName: "Grep",
+          status: "completed",
+          toolCall: {
+            callId: "g1",
+            name: "Grep",
+            arguments: JSON.stringify({ pattern: "TODO" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["  tool · Grep TODO"],
+      live: null,
+    });
+    expect(
+      t.apply(
+        done({
+          id: "c1",
+          type: "container",
+          blockName: "Explore",
+          label: "Sub-agent: Explore",
+          status: "completed",
+        }),
+      ),
+    ).toEqual({ lines: [], live: null });
+    expect(
+      t.apply(
+        added({
+          id: "t2",
+          type: "tool_output",
+          blockName: "Write",
+          status: "completed",
+          toolCall: {
+            callId: "w1",
+            name: "Write",
+            arguments: JSON.stringify({ file_path: "src/a.ts" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · Write src/a.ts"],
+      live: null,
+    });
+    expect(fileFromToolLine("  tool · Write src/nested.ts")).toBe("src/nested.ts");
   });
 });
 

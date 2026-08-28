@@ -229,7 +229,7 @@ The list comes from that run's plan tools. `TodoWrite` with a `todos` array repl
 
 Selecting another row shows that row's current item, or none if that row has not written a list.
 
-When the selected row is not running and has no open question, the board shows that attempt's request id, pull-request URL when `status` carried one, last tool, files written, edited, or read, and the current todo with its count. `t` expands the list.
+When the selected row is not running and has no open question, the board shows that attempt's request id, session id, child session id, pull-request URL when `status` carried one, last tool, files written, edited, or read, and the current todo with its count. `t` expands the list.
 
 ```text
  request  req-fail-1
@@ -271,7 +271,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `?` | Toggle help |
 | `q` | Quit |
 
-Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop` and `t list`; `x` or `Ctrl-C` stops that row's request. On a selected row that is not running, has no open question, and has a todo list, the footer offers `t list`. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
+Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop`, `t list`, `/find`, and `r`; `x` or `Ctrl-C` stops that row's request. On a selected row that is not running, has no open question, and has a todo list, the footer offers `t list`. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
 
 A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, start. `/sta` lists status, start. A space starts the first argument. `q` and `stop` parse as `quit` and `abort`; they are not in the verb list.
 
@@ -287,7 +287,7 @@ After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids alread
 
 The TRANSCRIPT pane follows the selected row.
 
-When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` you just ran, and the row changes `status` reports.
+When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Tools that run while a sub-agent is open are indented under that `sub ·` line. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` you just ran, and the row changes `status` reports.
 
 When the selected row has no `run.requestId`, the pane shows only those board and operator lines. Another row's coding stream is not shown until that row is selected.
 

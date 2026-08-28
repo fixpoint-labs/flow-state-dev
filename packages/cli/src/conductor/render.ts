@@ -42,6 +42,7 @@ import {
   selectedRow,
   selectedRequestId,
   selectedRunningRequestId,
+  transcriptBody,
   visibleLive,
   type StatusRow,
   type ViewState,
@@ -355,6 +356,12 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
     if (row.run.prUrl) {
       lines.push(` ${dim("pr")}       ${shorten(row.run.prUrl, cols - 12)}`);
     }
+    if (row.run.sessionId) {
+      lines.push(` ${dim("session")}  ${truncate(row.run.sessionId, cols - 12)}`);
+    }
+    if (row.run.childSessionId) {
+      lines.push(` ${dim("child")}    ${truncate(row.run.childSessionId, cols - 12)}`);
+    }
     if (row.run.finalMessage && !opts.omitReason) {
       for (const wrapped of wrap(row.run.finalMessage, cols - 4).slice(0, 2)) {
         lines.push(` ${dim("·")} ${wrapped}`);
@@ -378,7 +385,10 @@ function renderSelectedSummary(state: ViewState, cols: number): string {
   const lines: string[] = [];
   const id = selectedRequestId(state);
   if (id !== undefined) lines.push(` ${dim("request")}  ${id}`);
-  const prUrl = selectedRow(state)?.run?.prUrl;
+  const run = selectedRow(state)?.run;
+  if (run?.sessionId) lines.push(` ${dim("session")}  ${truncate(run.sessionId, inner)}`);
+  if (run?.childSessionId) lines.push(` ${dim("child")}    ${truncate(run.childSessionId, inner)}`);
+  const prUrl = run?.prUrl;
   if (prUrl) lines.push(` ${dim("pr")}       ${shorten(prUrl, inner)}`);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
@@ -520,16 +530,16 @@ function renderFooter(state: ViewState, cols: number): string {
     : finding
     ? "n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q"
     : q
-      ? "click/j/k select  ·  a answer  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
+      ? "click/j/k  ·  a answer  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q"
       : fail !== undefined
         ? listed
-          ? "click/j/k select  ·  w retry  ·  t list  ·  PgUp transcript  ·  /  ·  ?  ·  q"
-          : "click/j/k select  ·  w retry  ·  PgUp transcript  ·  s seed  ·  /  ·  ?  ·  q"
+          ? "click/j/k  ·  w retry  ·  t list  ·  /find  ·  r  ·  /  ·  ?  ·  q"
+          : "click/j/k  ·  w retry  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q"
         : running
-          ? "click/j/k select  ·  x stop  ·  t list  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
+          ? "click/j/k  ·  x stop  ·  t list  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q"
           : listed
-            ? "click/j/k select  ·  t list  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
-            : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
+            ? "click/j/k  ·  t list  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q"
+            : "click/j/k  ·  s seed  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q";
   return padLine(dim(` ${keys}`), cols);
 }
 
@@ -569,16 +579,18 @@ function runBandOpen(state: ViewState): boolean {
 }
 
 function wrapActivityLine(text: string, width: number): string[] {
+  const body = transcriptBody(text);
+  const pad = text.slice(0, text.length - body.length);
   if (
-    text.startsWith("+ ") ||
-    text.startsWith("- ") ||
-    text.startsWith("… ") ||
-    text.startsWith("  ")
+    body.startsWith("+ ") ||
+    body.startsWith("- ") ||
+    body.startsWith("… ") ||
+    (text.startsWith("  ") && !body.startsWith("tool · ") && !body.startsWith("sub · "))
   ) {
     return [text.length <= width ? text : `${text.slice(0, Math.max(1, width - 1))}…`];
   }
-  if (text.startsWith("tool · ") || /^[A-Z][A-Za-z]+ \S/.test(text)) {
-    return [shortenToolLine(text, width)];
+  if (body.startsWith("tool · ") || /^[A-Z][A-Za-z]+ \S/.test(body)) {
+    return [`${pad}${shortenToolLine(body, Math.max(8, width - pad.length))}`];
   }
   return wrap(text, width);
 }

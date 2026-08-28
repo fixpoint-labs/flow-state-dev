@@ -341,10 +341,16 @@ export function selectedPlan(state: ViewState): PlanItem[] {
 
 const FILE_TOOL = /^(Write|Edit|Read) (.+)$/;
 
+/** Strip the sub-agent indent a nested tool line carries. */
+export function transcriptBody(text: string): string {
+  return text.replace(/^ +/, "");
+}
+
 /** Path from a Write / Edit / Read transcript line. Bash and search stay out. */
 export function fileFromToolLine(text: string): string | undefined {
-  if (!text.startsWith("tool · ")) return undefined;
-  const rest = text.slice("tool · ".length).replace(/ · (failed|stopped)$/, "");
+  const line = transcriptBody(text);
+  if (!line.startsWith("tool · ")) return undefined;
+  const rest = line.slice("tool · ".length).replace(/ · (failed|stopped)$/, "");
   const match = FILE_TOOL.exec(rest);
   if (match === null) return undefined;
   const path = match[2]!.trim();
@@ -388,14 +394,15 @@ export function currentPlanItem(plan: readonly PlanItem[]): PlanItem | undefined
 export function selectedNow(state: ViewState): string | undefined {
   const live = visibleLive(state);
   if (live !== null && live !== "") {
-    return live.replace(/^(status|message|tool) · /, "");
+    return transcriptBody(live).replace(/^(status|message|tool) · /, "");
   }
   const id = selectedRequestId(state);
   for (let i = state.activity.length - 1; i >= 0; i -= 1) {
     const item = state.activity[i]!;
     if (id !== undefined && item.requestId !== id) continue;
     if (id === undefined && item.requestId !== undefined) continue;
-    if (item.text.startsWith("tool · ")) return item.text.slice("tool · ".length);
+    const body = transcriptBody(item.text);
+    if (body.startsWith("tool · ")) return body.slice("tool · ".length);
   }
   return undefined;
 }
