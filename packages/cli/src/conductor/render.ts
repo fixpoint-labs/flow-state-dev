@@ -39,6 +39,7 @@ import {
   findMatches,
   lastActivityAt,
   rowFailed,
+  rowNeedsYou,
   rowNow,
   rowRunning,
   selectedFailure,
@@ -132,19 +133,19 @@ function renderHeader(state: ViewState, cols: number): string {
 
 function renderTable(state: ViewState, cols: number, now: number): string {
   const issueW = Math.max(10, Math.min(16, Math.floor(cols * 0.16)));
-  const phaseW = 12;
+  const phaseW = 10;
   const statusW = 16;
-  const attemptW = 8;
+  const attemptW = 3;
   const chrome = 10;
   const rest = Math.max(22, cols - issueW - phaseW - statusW - attemptW - chrome);
-  const askW = Math.max(12, Math.min(24, Math.floor(rest * 0.6)));
-  const outcomeW = Math.max(10, rest - askW);
+  const outcomeW = Math.max(9, Math.min(12, Math.floor(rest * 0.3)));
+  const askW = Math.max(14, rest - outcomeW);
   const head =
     "  " +
     pad(dim("ISSUE"), issueW) +
     pad(dim("PHASE"), phaseW) +
     pad(dim("STATUS"), statusW) +
-    pad(dim("ATTEMPT"), attemptW) +
+    pad(dim("N"), attemptW) +
     pad(dim("OUTCOME"), outcomeW) +
     pad(dim("ASK"), askW);
   if (state.rows.length === 0) {
@@ -647,21 +648,24 @@ function renderFooter(state: ViewState, cols: number): string {
         ? "  ·  H older"
         : "";
   const working = state.busy ? "working  ·  " : "";
+  const nextKey = state.rows.some((row, i) => i !== state.selected && rowNeedsYou(row))
+    ? "  ·  } next"
+    : "";
   const keys = slashing
     ? `${working}Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`
     : finding
     ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q`
     : q
-      ? `${working}click/j/k  ·  a answer${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+      ? `${working}click/j/k  ·  a answer${filesKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
       : fail !== undefined
         ? listed
-          ? `${working}click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
-          : `${working}click/j/k  ·  w retry${filesKey}${hunksKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
+          ? `${working}click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
+          : `${working}click/j/k  ·  w retry${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
         : running
-          ? `${working}click/j/k  ·  x stop  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+          ? `${working}click/j/k  ·  x stop  ·  t list${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
           : listed
-            ? `${working}click/j/k  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
-            : `${working}click/j/k  ·  s seed${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
+            ? `${working}click/j/k  ·  t list${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+            : `${working}click/j/k  ·  s seed${filesKey}${hunksKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
   return padLine(dim(` ${keys}`), cols);
 }
 

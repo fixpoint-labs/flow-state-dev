@@ -188,7 +188,7 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When a running row has no question, that column shows what it is doing now — the live line, or the last tool — so you can scan the board without selecting each row. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When a running row has no question, that column shows what it is doing now — the live line, or the last tool — so you can scan the board without selecting each row. At 80 columns that column still fits a tool and filename. `}` / `{` jump to the next or previous row that is waiting on you or whose last attempt failed. They do not steal a typed answer. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
 
 When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. Under the question it keeps a compact strip of that attempt: the pull-request URL when `status` carried one, the last tool, the files that run wrote, edited, or read, the last hunk, and the current todo. When that row's `run.usage` is present, token counts show on the band as `10→4` (input→output). The counts stay on the band while a wake or seed is in flight.
 

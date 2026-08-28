@@ -22,6 +22,7 @@ import {
   stepFind,
   stepHunk,
   trimActivity,
+  rowNeedsYou,
   type InputMode,
   type OperatorCommand,
   type ViewState,
@@ -273,6 +274,10 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
       }
       return beginAnswer(state, question.question);
     }
+    case "{":
+      return { state: moveAttention(state, -1) };
+    case "}":
+      return { state: moveAttention(state, 1) };
     case "s":
       return { state: { ...state, inputMode: "seed", input: "", notice: "issue id, then Enter" } };
     case "/":
@@ -504,6 +509,20 @@ function selectRow(state: ViewState, index: number): ViewState {
 function moveRow(state: ViewState, delta: number): ViewState {
   if (state.rows.length === 0) return state;
   return selectRow(state, state.selected + delta);
+}
+
+/** Next or previous row that asked something or whose last attempt failed. */
+function moveAttention(state: ViewState, direction: 1 | -1): ViewState {
+  const n = state.rows.length;
+  if (n === 0) return state;
+  if (!state.rows.some(rowNeedsYou)) {
+    return { ...state, notice: "nothing waiting or failed" };
+  }
+  for (let step = 1; step <= n; step += 1) {
+    const index = (((state.selected + direction * step) % n) + n) % n;
+    if (rowNeedsYou(state.rows[index]!)) return selectRow(state, index);
+  }
+  return state;
 }
 
 function moveQuestion(state: ViewState, delta: number): ViewState {

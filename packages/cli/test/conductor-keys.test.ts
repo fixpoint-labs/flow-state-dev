@@ -91,6 +91,44 @@ describe("applyKey", () => {
     expect(answer.state.answering).toBe("FIX-1/implement/1/q0");
   });
 
+  it("jumps to the next waiting or failed row with }, and wraps with {", () => {
+    const failed: StatusRow = {
+      ...row("FAIL-1"),
+      status: "pending",
+      run: {
+        attempt: 2,
+        taskId: "FAIL-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/FAIL-1--implement",
+        outcome: "failed",
+        reason: "Not logged in",
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: null,
+        requestId: "req-fail-1",
+        updatedAt: 1,
+      },
+    };
+    const state = board([runningRow("LIVE-1"), row("FIX-1", 1), failed]);
+    const next = applyKey(state, { type: "char", value: "}" });
+    expect(next.state.selected).toBe(1);
+    expect(next.state.rows[1]?.issue).toBe("FIX-1");
+    const after = applyKey(next.state, { type: "char", value: "}" });
+    expect(after.state.selected).toBe(2);
+    const wrap = applyKey(after.state, { type: "char", value: "}" });
+    expect(wrap.state.selected).toBe(1);
+    const back = applyKey(wrap.state, { type: "char", value: "{" });
+    expect(back.state.selected).toBe(2);
+    const quiet = applyKey(board([runningRow("LIVE-1")]), { type: "char", value: "}" });
+    expect(quiet.state.selected).toBe(0);
+    expect(quiet.state.notice).toBe("nothing waiting or failed");
+    const fromAsk = applyKey(board([row("FIX-1", 1), failed]), { type: "char", value: "}" });
+    expect(fromAsk.state.selected).toBe(1);
+    expect(fromAsk.state.inputMode).toBe("command");
+  });
+
   it("treats typing on a waiting row as composing the answer, and Enter dispatches it", () => {
     const state = board([row("FIX-1", 1)]);
     const typed = applyKey(state, { type: "char", value: "y" });

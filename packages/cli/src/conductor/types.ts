@@ -258,6 +258,11 @@ export function rowFailed(row: StatusRow): boolean {
   return row.run?.outcome === "failed";
 }
 
+/** A row a person should look at next — an open question, or a failed attempt. */
+export function rowNeedsYou(row: StatusRow): boolean {
+  return row.questions.length > 0 || rowFailed(row);
+}
+
 /** Why a failed row failed. Prefer the run reason, then feedback, then the last message. */
 export function failureReason(row: StatusRow): string {
   const reason = row.run?.reason ?? row.feedback ?? row.run?.finalMessage;

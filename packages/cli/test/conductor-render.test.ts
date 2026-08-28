@@ -521,27 +521,26 @@ describe("renderFrame", () => {
       },
       questions: [],
     });
-    const table = stripAnsi(
-      beforeTranscript(
-        renderFrame(
-          {
-            ...emptyView("epic"),
-            rows: [live("LIVE-1", "req-1"), live("LIVE-2", "req-2"), waiting],
-            selected: 0,
-            activity: [
-              { at: 1, text: "tool · Write src/a.ts", requestId: "req-1" },
-              { at: 2, text: "tool · Bash pnpm test", requestId: "req-2" },
-            ],
-          },
-          { cols: 100, rows: 24 },
-          1_700_000_008_000,
-        ),
-      ),
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [live("LIVE-1", "req-1"), live("LIVE-2", "req-2"), waiting],
+        selected: 0,
+        activity: [
+          { at: 1, text: "tool · Write src/a.ts", requestId: "req-1" },
+          { at: 2, text: "tool · Bash pnpm test", requestId: "req-2" },
+        ],
+      },
+      { cols: 80, rows: 24 },
+      1_700_000_008_000,
     );
+    const table = stripAnsi(beforeTranscript(frame));
     expect(table).toContain("Write src/a.ts");
     expect(table).toContain("Bash pnpm test");
     expect(table).toContain("Which path?");
     expect(table).toMatch(/\bASK\b/);
+    expect(table).not.toMatch(/\bATTEMPT\b/);
+    expect(stripAnsi(frame)).toContain("} next");
   });
 
   it("keeps the implement hunk on a parked row that still has its request id", () => {

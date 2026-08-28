@@ -400,12 +400,14 @@ describe("fsdev conductor — TUI over the same actions", () => {
     ]);
     await waitFor(() => lastFrame(tty.text), "tool · Write src/a.ts");
     expect(lastFrame(tty.text)).toContain("+ export const a = 1;");
-    expect(lastFrame(tty.text)).not.toContain("src/b.ts");
+    expect(lastFrame(tty.text)).toContain("Write src/b.ts");
+    expect(lastFrame(tty.text)).not.toContain("+ export const b");
 
     tty.input.write("j");
     await waitFor(() => lastFrame(tty.text), "tool · Write src/b.ts");
     expect(lastFrame(tty.text)).toContain("+ export const b = 2;");
-    expect(lastFrame(tty.text)).not.toContain("src/a.ts");
+    expect(lastFrame(tty.text)).toContain("Write src/a.ts");
+    expect(lastFrame(tty.text)).not.toContain("+ export const a");
 
     tty.input.write("q");
     await expect(running).resolves.toBe(0);
