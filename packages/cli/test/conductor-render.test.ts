@@ -51,7 +51,7 @@ describe("renderFrame", () => {
     expect(frame).toContain("FIX-1");
     expect(frame).toContain("awaiting_review");
     expect(beforeTranscript(frame)).toContain("Which path?");
-    expect(beforeTranscript(frame)).toContain(" ASK ");
+    expect(beforeTranscript(frame)).toMatch(/\bASK\b/);
     expect(frame).toContain("1 waiting");
     expect(frame).toContain("click/j/k select");
     expect(frame).toContain("TRANSCRIPT");
@@ -110,7 +110,7 @@ describe("renderFrame", () => {
       { cols: 80, rows: 24 },
     );
     expect(beforeTranscript(frame)).toContain("Which path?");
-    expect(beforeTranscript(frame)).toContain(" ASK ");
+    expect(beforeTranscript(frame)).toMatch(/\bASK\b/);
     expect(frame).toContain("wake-line-39");
   });
 

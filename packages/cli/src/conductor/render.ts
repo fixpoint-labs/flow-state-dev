@@ -156,9 +156,9 @@ function renderAskBand(state: ViewState, cols: number): string {
       : `${question.question}  ·  type to answer`;
   return [
     rule(cols, MAUVE),
-    ` ${paint(MAUVE + BOLD, " ASK ")} ${paint(BOLD + INK, body[0] ?? "")}`,
-    ...body.slice(1).map((line) => `       ${paint(INK, line)}`),
-    `       ${dim(hint)}`,
+    ` ${paint(MAUVE + BOLD, "ASK")}`,
+    ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
+    ` ${dim(hint)}`,
     rule(cols, MAUVE),
   ].join("\n");
 }
