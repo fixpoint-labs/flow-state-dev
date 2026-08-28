@@ -183,7 +183,13 @@ function renderTableRow(
     w.statusW,
   );
   const attempt = pad(String(row.attempts), w.attemptW);
-  const outcome = pad(paint(outcomeColor(row.run?.outcome ?? null), row.run?.outcome ?? "—"), w.outcomeW);
+  const usage = rowRunning(row) ? tableUsage(row) : undefined;
+  const outcome = pad(
+    usage !== undefined
+      ? dim(usage)
+      : paint(outcomeColor(row.run?.outcome ?? null), row.run?.outcome ?? "—"),
+    w.outcomeW,
+  );
   const asked = row.questions[0]?.text;
   const doing = asked === undefined && rowRunning(row) ? rowNow(state, row) : undefined;
   const ask = pad(
@@ -780,6 +786,13 @@ function paintHunkLine(line: string): string {
 function fmtTokens(n: number): string {
   if (n < 1000) return String(n);
   return `${(n / 1000).toFixed(1)}k`;
+}
+
+/** Compact in→out for the table. Absent when status had no usage. */
+function tableUsage(row: StatusRow): string | undefined {
+  const usage = row.run?.usage;
+  if (usage === undefined || usage === null) return undefined;
+  return `${fmtTokens(usage.inputTokens)}→${fmtTokens(usage.outputTokens)}`;
 }
 
 /** Token counts and spend for the reserved-band hint. Empty when status had none. */

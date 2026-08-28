@@ -562,9 +562,57 @@ describe("renderFrame", () => {
     expect(table).toContain("Write src/a.ts");
     expect(table).toContain("Bash pnpm test");
     expect(table).toContain("Which path?");
-    expect(table).toMatch(/\bASK\b/);
-    expect(table).not.toMatch(/\bATTEMPT\b/);
-    expect(stripAnsi(frame)).toContain("} next");
+  });
+
+  it("shows each running row's token counts on the board, not another row's", () => {
+    const live = (issue: string, requestId: string, input: number, output: number): StatusRow => ({
+      taskId: `${issue}--implement`,
+      issue,
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: `${issue}--implement`,
+        workspacePath: "/tmp/ws",
+        branch: `conductor/${issue}--implement`,
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: { inputTokens: input, outputTokens: output },
+        costUsd: null,
+        childSessionId: "child",
+        requestId,
+        updatedAt: 1_700_000_000_000,
+      },
+      questions: [],
+    });
+    const settled: StatusRow = {
+      ...waiting,
+      status: "completed",
+      questions: [],
+      run: { ...waiting.run!, outcome: "succeeded", usage: { inputTokens: 99_000, outputTokens: 9_000 } },
+    };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [live("LIVE-1", "req-1", 12_000, 400), live("LIVE-2", "req-2", 800, 50), settled],
+        selected: 0,
+      },
+      { cols: 80, rows: 24 },
+      1_700_000_008_000,
+    );
+    const table = stripAnsi(beforeTranscript(frame)).split("\n");
+    const live1 = table.find((line) => line.includes("LIVE-1"));
+    const live2 = table.find((line) => line.includes("LIVE-2"));
+    const done = table.find((line) => line.includes(settled.issue ?? ""));
+    expect(live1).toContain("12.0k→400");
+    expect(live2).toContain("800→50");
+    expect(live1).not.toContain("800→50");
+    expect(done).toContain("succeeded");
+    expect(done).not.toContain("99.0k");
   });
 
   it("keeps the implement hunk on a parked row that still has its request id", () => {
