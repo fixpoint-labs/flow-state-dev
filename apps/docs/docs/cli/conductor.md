@@ -9,7 +9,7 @@ description: "Drive a background task board from the terminal, with a live TUI o
 
 `fsdev conductor` is an operator surface for a flow that runs work in the background and occasionally needs a person: a table of rows, each one pending, running, waiting on a question, or done. Open it as a fullscreen board that polls live, or drive it with scripted verbs from a shell or a CI job.
 
-It is not a chat REPL — that's [`fsdev chat`](./interactive-chat.md). A conductor row isn't a conversation; it's a unit of work with a status, and the only thing you type into it is an answer to a question the work asked.
+It is not a chat REPL — that's [`fsdev chat`](./interactive-chat.md). A conductor row isn't a conversation; it's a unit of work with a status. Typed input is an answer to a question the work asked, or a slash command.
 
 ## What a conductor flow looks like
 
@@ -187,7 +187,7 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, with a detail pane for whichever row is selected. It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, a detail pane for the selected row, and a TRANSCRIPT pane under that. It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
 
 ```
 fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch).
@@ -212,6 +212,16 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 
 Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While a command is running, `Ctrl-C` aborts it instead of quitting; press it again once nothing is running to quit.
 
+### Transcript
+
+The TRANSCRIPT pane is a log of the action this process is running, plus board movement that `status` reports.
+
+While an action runs, the last line can still be updating: a status (`status · claiming`) or streaming assistant text (`message · opened the pull request`). When a new status arrives, the previous one stays as its own line. Streaming text grows on that last line and remains a single line when it finishes.
+
+`status` also writes here when a row actually moved: a new row (`PR-482 · pending`), a status change (`PR-482 · pending → in_progress`), a newly opened question (`PR-482 · asked Which branch should this target?`), a run outcome (`PR-482 · run failed · no pull request`), or a new run `finalMessage` (`PR-482 · stopped after the turn budget`). A poll that changed nothing adds no line.
+
+At the tail the heading says `follow` (or `live` while a line is in flight) and new lines appear as they arrive. Scroll back and the live line hides until you return to the tail.
+
 ## Headless verbs
 
 `--json` switches the board and action results to JSON.
@@ -222,11 +232,11 @@ Typing on a row that has an open question starts an answer for you — you don't
 | `seed <issue> [--phase implement]` | File a row for `issue` (a no-op if that `issue`/`phase` pair already has one), then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
-| `watch [issue]` | Poll `status` until it's no longer "still running" |
+| `watch [issue]` | Poll `status` until the board is no longer code `3` (still running or pending, no question). An open question is code `2` and `watch` stops there |
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. Every other verb prints the board (plain text or JSON) either way.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. Every other verb prints the board (plain text or JSON) either way. Stream lines from the action (`status · …`, `message · …`) also go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 ```bash
 $ fsdev conductor seed PR-482
@@ -294,7 +304,7 @@ Startup failures — an unknown verb, a missing conductor flow, a flow missing o
 
 `seed` always exits `0` — it's a write, not a read on the board's outcome. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`.
 
-`watch [issue]` polls `status` every couple of seconds and reprints the board whenever it changes, stopping as soon as the code above isn't `3`.
+`watch [issue]` polls `status` every couple of seconds and reprints the board whenever it changes, stopping as soon as the code above isn't `3`. An open question is code `2` and `watch` stops there.
 
 ### `start`
 
@@ -323,8 +333,9 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 
 ## What it won't do
 
-- It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked.
-- The board shows exactly what `status` returns.
+- It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked, or a slash command.
+- The board table is exactly what `status` returns.
+- The transcript shows the stream of the action this process is running, plus what `status` reports about rows. Live tokens are only for the `seed`, `wake`, or `answer` this command is running. Work that continues after that action returns shows up here as the board lines `status` reports, not as streaming text.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages

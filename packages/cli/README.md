@@ -203,7 +203,7 @@ Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/ses
 
 ### `fsdev conductor` — Drive a conductor flow
 
-An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
+An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. The fullscreen board has a TRANSCRIPT pane under the selected row: the action this process is running, and board movement that `status` reports. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
 
 ```bash
 # Fullscreen board, live poll, slash commands
@@ -216,7 +216,7 @@ fsdev conductor start PR-482
 fsdev conductor seed PR-482 --json
 fsdev conductor status PR-482 --json
 
-# Drain pending rows, then poll until nothing is left running
+# Drain pending rows, then poll until the board is no longer code 3
 fsdev conductor wake
 fsdev conductor watch
 
@@ -239,7 +239,7 @@ Options:
 | `--config <path>` / `--no-config` | Load an explicit config, or ignore any config and force directory discovery |
 | `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
 
-A headless verb other than `seed` exits with one of four board-outcome codes, distinct from the CLI's usual startup exit codes: `0` every named row is completed, `1` the board is empty, a row errored or was cancelled, or the call itself failed, `2` at least one row has an open question, `3` still running or pending with no question yet. `seed` always exits `0`. `answer` exits `1` on a decline (unknown question id) and prints `declined · <reason>`. The interactive board (no verb, or `tui`) needs a TTY; without one it prints a message and exits `1`.
+`status`, `wake`, `watch`, and non-interactive `start` exit with a board-outcome code, distinct from the CLI's usual startup exit codes: `0` every named row is completed, `1` the board is empty, a row errored or was cancelled, or the call itself failed, `2` at least one row has an open question, `3` still running or pending with no question yet. `seed` always exits `0`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"` and prints `declined · <reason>`. The interactive board (no verb, or `tui`) needs a TTY; without one it prints a message and exits `1`.
 
 ### `fsdev block` — Execute a single block in isolation
 

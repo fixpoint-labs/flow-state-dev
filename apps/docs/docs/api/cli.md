@@ -183,7 +183,7 @@ fsdev conductor answer PR-482/implement/1/q "target the release branch"
 | `seed <issue> [--phase implement]` | File a row, then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
-| `watch [issue]` | Poll `status` until it's no longer "still running" |
+| `watch [issue]` | Poll `status` until the board is no longer code `3` (still running or pending, no question). An open question is code `2` and `watch` stops there |
 | `start <issue>` | Seed, then TUI on a TTY, or seed-and-watch on a pipe |
 | `help` / `-h` | Print the help text |
 
