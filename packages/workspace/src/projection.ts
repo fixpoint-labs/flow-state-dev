@@ -156,13 +156,16 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
       if (isMetadataKey(key)) continue;
 
       const local = await place.read(path);
-      // Vanished between the listing and the read. Leaving it to the delete
-      // pass would be wrong — the run may not have deleted it — so it is
-      // simply not this flush's business.
-      if (local === null) {
-        present.delete(path);
-        continue;
-      }
+      // Vanished between the listing and the read. Not this flush's business:
+      // the run may not have removed it — a concurrent process, an editor, a
+      // temp file being replaced — and this flush saw a moment it cannot
+      // describe.
+      //
+      // It therefore stays in `present`, which is what makes the delete pass
+      // skip it. Removing it here reads as "the run deleted this" and DELETES
+      // THE COLLECTION ENTRY — the exact opposite of the sentence above, and
+      // the way this was first written.
+      if (local === null) continue;
 
       outcomes.push(await decide(mount, key, path, local));
     }
