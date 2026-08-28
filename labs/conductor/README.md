@@ -79,12 +79,19 @@ file in its own checkout. The manager reads that file, files the question as a d
 the job on hold and returns. Nothing is held open while you think about it, and the run costs
 nothing.
 
-You answer the row by name:
+You answer the row by name. Daily use is `fsdev conductor` — same host as `fsdev run`, same four actions:
+
+```bash
+pnpm conductor status FIX-1219
+# → questions: [{ question: "FIX-1219/implement/1/a3f19c…", text: "Which path did you mean?" }]
+
+pnpm conductor answer FIX-1219/implement/1/a3f19c… "Correct the path only. Leave the symlink alone."
+```
+
+The JSON door is still there if a script already speaks it:
 
 ```bash
 pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
-# → questions: [{ question: "FIX-1219/implement/1/a3f19c…", text: "Which path did you mean?" }]
-
 pnpm fsdev run conductor answer -i '{
   "question": "FIX-1219/implement/1/a3f19c…",
   "answer": "Correct the path only. Leave the symlink alone."
@@ -108,13 +115,24 @@ rows' statuses. Answering a question the job is not actually waiting on does not
 - **A second answer arriving while the first is still being applied is dropped, not refused.** The
   run comes back holding the first one. Answer once, and read `status` before answering again.
 
-There is no inbox UI, and no way to redirect a run mid-flight or send it on a side errand. The one
-thing you can do to a live run is answer what it asked.
+`fsdev conductor` is the operator surface: a live board in a TTY, or the same verbs
+headless for a script. There is no way to redirect a run mid-flight or send it on a side
+errand. The one thing you can do to a live run is answer what it asked.
 
 Nothing bounds how long a question may stay open. A job waiting on a person is deliberately
 outside the lease's governance, so a question nobody answers holds its row indefinitely.
 
 ### Reading it back
+
+```bash
+pnpm conductor                  # live board; slash commands, poll, answer in place
+pnpm conductor seed FIX-1219
+pnpm conductor wake
+pnpm conductor status FIX-1219
+pnpm conductor watch FIX-1219   # poll status until waiting or terminal
+```
+
+Or the JSON door:
 
 ```bash
 pnpm fsdev run conductor seed   -i '{"issue":"FIX-1219","phase":"implement"}'
@@ -208,7 +226,7 @@ commits land on another is the kind of agreement where every layer is wrong toge
   board's `concurrency` is set to 1, which bounds how many rows one drain hands off — but a
   detached dispatch hands off and returns, releasing the slot long before the run finishes. Two
   seeded issues produce two live runs whatever that setting is; measured, and pinned by a test.
-- **No UI.**
+- **No web UI.** The terminal surface is `fsdev conductor` (from this directory: `pnpm conductor`).
 
 ## Deployment
 

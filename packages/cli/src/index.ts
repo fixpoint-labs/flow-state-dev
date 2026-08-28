@@ -25,6 +25,8 @@ export type { FlowRunResult, FlowEvent } from "./commands/run";
 export { registerServeCommand, executeServeCommand } from "./commands/serve";
 export { registerChatCommand, executeChatCommand } from "./commands/chat";
 export type { ChatCommandOptions } from "./commands/chat";
+export { registerConductorCommand, executeConductorCommand } from "./commands/conductor";
+export type { ConductorCommandOptions } from "./commands/conductor";
 export type { ParsedInput } from "./chat/parse";
 export type { FlowActionTarget } from "./chat/targets";
 export type { ChatRenderer } from "./chat/render";

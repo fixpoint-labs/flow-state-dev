@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
-    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts"
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "conductor": "tsx ../../packages/cli/bin/fsdev.ts conductor"
   },
   "dependencies": {
     "@flow-state-dev/claude-code": "workspace:*",

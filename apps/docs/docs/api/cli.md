@@ -164,6 +164,48 @@ A `/name` that no built-in claims is sent to the flow as chat text (this is how 
 
 Startup binds a default target from the positional arguments, a config `chat.default`, or a sole discovered flow; otherwise the session starts unbound. Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). No new exit codes: startup failures reuse `EXIT_CONFIG_ERROR` / `EXIT_DISCOVERY_ERROR` / `EXIT_INVALID_ARGS`; a failed turn never exits the loop, and in piped (non-TTY) mode a run with any failed turn or built-in exits `EXIT_EXECUTION_ERROR`. See [Interactive Chat](/docs/cli/interactive-chat) for the guide.
 
+### `fsdev conductor [verb]`
+
+Operator surface for a flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, and `answer` actions. No verb (or `tui [issue]`) opens a fullscreen, live-polling board; any other verb runs headless and exits.
+
+```bash
+fsdev conductor status
+fsdev conductor seed PR-482
+fsdev conductor answer PR-482/implement/1/q "target the release branch"
+```
+
+**Verbs:**
+
+| Verb | Does |
+|------|------|
+| (none) / `tui [issue]` | Fullscreen board. Needs a TTY; without one, prints a message and exits `1` |
+| `status [issue]` | Print the board, optionally filtered to one issue |
+| `seed <issue> [--phase implement]` | File a row, then print it |
+| `wake` | Process pending rows, then print the board |
+| `answer <question-id> <reply…>` | Resolve one open question |
+| `watch [issue]` | Poll `status` until it's no longer "still running" |
+| `start <issue>` | Seed, then TUI on a TTY, or seed-and-watch on a pipe |
+| `help` / `-h` | Print the help text |
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-s, --session <id>` | Session id used for every `wake` (default: `conductor-operator`). Not a per-row session. |
+| `-u, --user <id>` | Engine identity (default: `cli-user`) |
+| `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
+| `--json` | Headless verbs print JSON instead of a plain-text board |
+| `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
+| `--no-config` | Ignore any config and force directory discovery |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
+| `--quiet` | Suppress runtime logs on stderr |
+| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `warn`) |
+
+**Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `watch`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, a row errored/cancelled, or the call failed, `2` at least one open question, `3` still running or pending. `seed` always returns `0`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`).
+
+Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). See [Conductor](/docs/cli/conductor) for the four-action contract a conductor-shaped flow has to satisfy, the TUI keybindings, and a full walkthrough.
+
 ### `fsdev block <specifier>`
 
 Execute a single block in isolation using the testing harness.
@@ -347,3 +389,5 @@ import type {
 | 3 | Configuration error (invalid port, missing devtool assets) |
 | 4 | Discovery error (flow or block not found, import failed) |
 | 10 | Internal error (unhandled exception) |
+
+This table covers startup and generic execution failures across every command. `fsdev conductor`'s headless verbs return a second, board-specific 0–3 scheme once past startup — see [its exit codes](#fsdev-conductor-verb) above.

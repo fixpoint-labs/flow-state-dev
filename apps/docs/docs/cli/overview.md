@@ -15,6 +15,7 @@ The CLI is how you run the engine from the terminal. The command is `fsdev`. Ins
 | `fsdev run <flow> <action>` | Run one action in-process. NDJSON on stdout. |
 | `fsdev block <file>` | Run one block through the test harness. |
 | `fsdev chat [flow] [action]` | Interactive multi-turn session in the terminal. |
+| `fsdev conductor [verb]` | Operator board over a background task flow — live TUI, or scripted verbs. |
 | `fsdev dev` | HTTP + DevTool UI on localhost. |
 | `fsdev serve` | Production HTTP + MCP. No DevTool. |
 | `fsdev benchmark <file>` | Score a `defineBenchmark` file. |
@@ -22,7 +23,7 @@ The CLI is how you run the engine from the terminal. The command is `fsdev`. Ins
 
 Flags, NDJSON events, and exit codes live in the [CLI API](/docs/api/cli).
 
-`run`, `block`, and `chat` call the engine in-process: no HTTP server and no SSE. That is the Flow State transport only — a generator still calls its model provider over the network and still needs that provider's key. `dev` and `serve` start a host. See [Engine setup](/docs/server/setup) and [Deployment](/guides/deployment).
+`run`, `block`, `chat`, and `conductor` call the engine in-process: no HTTP server and no SSE. That is the Flow State transport only — a generator still calls its model provider over the network and still needs that provider's key. `dev` and `serve` start a host. See [Engine setup](/docs/server/setup) and [Deployment](/guides/deployment).
 
 This page is about running *your own* flows locally. To dispatch a coding task to a Claude Code *cloud* session from inside a flow, see [Claude Code remote dispatch](/docs/tools/claude-code-cli).
 
@@ -33,6 +34,7 @@ This page is about running *your own* flows locally. To dispatch a coding task t
 - **Quick iteration** — `fsdev run` executes a flow action and prints results. No need to start a server or open a browser.
 - **Testing blocks in isolation** — Use `fsdev block` to execute a single block with the test harness. Good for verifying handler logic or generator output without wiring up a full flow.
 - **Holding a live conversation** — `fsdev chat` opens an interactive session over your flows: type messages that stream replies back, switch which flow is driving, and inspect the session, all from the terminal. See [Interactive Chat](./interactive-chat.md).
+- **Running a background task board** — `fsdev conductor` opens a live board over a flow that queues work and occasionally needs a person to answer something. Script it with headless verbs from CI, or watch it with the fullscreen TUI. See [Conductor](./conductor.md).
 - **Debugging multi-turn conversations** — Reuse sessions across invocations with `--session`. State persists between runs so you can simulate back-and-forth without a client.
 - **CI/CD scripts** — Invoke flows or blocks from pipelines. Deterministic output format, clear exit codes. Use the programmatic API (`discoverFlows`, `resolveBlock`) when you need flow discovery in Node scripts.
 
@@ -78,7 +80,7 @@ Session is the only scope you can seed.
 
 ## Background work
 
-A flow can hand a unit of work to a *workstream*, a background child session that keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
+A flow can hand a unit of work to a *workstream*, a background child session that keeps running after the request that started it has returned. `fsdev run`, `fsdev chat`, and `fsdev conductor` can each start one. What the command does about it depends on how the app is wired.
 
 | Your setup | What the command does |
 |---|---|
@@ -103,7 +105,7 @@ A run whose NDJSON already looks complete but whose shell prompt hasn't come bac
 
 Background work can start more background work, and the wait covers descendants too. The wait is bounded: it runs against `detachedDrainTimeoutMs`, a `createFlowState` option that defaults to 30 seconds, and a flow that spawns without end hits a round cap as well. When the budget runs out the command cancels what's still running, names the requests and sessions it gave up on, and exits. That report goes to stderr even under `--quiet`, since work may have been left unfinished.
 
-`fsdev chat` waits at the equivalent point in its own life, which is when you leave the session rather than at the end of each turn.
+`fsdev chat` waits at the equivalent point in its own life, which is when you leave the session rather than at the end of each turn. `fsdev conductor` waits after a headless verb's single action the same way `fsdev run` does, and after you quit the board the way `fsdev chat` does.
 
 ### With a queue, the command doesn't wait
 
@@ -137,5 +139,6 @@ Shutdown treats it as in-process work, so the process waits for it the way it wa
 
 - [Agent Dev Loop](./agent-dev-loop.md) — The recommended edit → `fsdev run` → read NDJSON loop, with worked examples and `jq` recipes. If you're iterating on a flow, start here.
 - [Interactive Chat](./interactive-chat.md) — Hold a live, multi-turn session over your flows with `fsdev chat`.
+- [Conductor](./conductor.md) — Drive a background task board with `fsdev conductor`, live or scripted.
 - [CLI API](/docs/api/cli) — Full command reference, NDJSON event types, programmatic API, exit codes.
 - [Development Tips](/guides/development-tips) — Workflow patterns for using the CLI in daily development.

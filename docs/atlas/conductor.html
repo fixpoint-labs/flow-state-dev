@@ -1928,7 +1928,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
     <li>The <strong>manager and architect roles</strong>, and the call-site and scope decisions behind them (section 1).</li>
     <li>The <strong><code>sessions/*</code> rows</strong> &#8212; what the other coordinators are working on (section 8).</li>
     <li>The <strong>config capability</strong> that holds the phase table (section 10).</li>
-    <li><strong>More than one issue on one board</strong>, and any operator UI beyond the rows themselves. Both are explicitly out of the proof's scope.</li>
+    <li><strong>More than one issue on one board</strong> is a property of how you seed, not a missing board. The terminal operator surface is <code>fsdev conductor</code> &#8212; the same host as <code>fsdev run</code> / <code>fsdev chat</code>, dispatching this flow's own actions. A web UI is still unfiled.</li>
   </ul>
 
   <p>That is not an argument for filing them now. The proof exists to make several of these cheaper to specify &#8212; a role's call site, in particular, is a question the first real role block answers better than any amount of design does (thread 11). It is an argument for not reading the sections above as a plan.</p>

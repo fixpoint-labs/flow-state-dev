@@ -1,5 +1,6 @@
 /**
- * Shared runtime-resolution prelude for `fsdev run`, `fsdev dev`, and `fsdev chat`.
+ * Shared runtime-resolution prelude for `fsdev run`, `fsdev dev`, `fsdev chat`,
+ * and `fsdev conductor`.
  *
  * Absorbs only the copy-paste-identical front of those commands: load `.env`
  * files, import an `fsdev.config.*` (or fall back to directory discovery), and

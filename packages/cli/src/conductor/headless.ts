@@ -1,0 +1,148 @@
+/**
+ * Headless verbs. Same actions as the TUI, printed and exited.
+ *
+ * `watch` re-runs `status` — it does not invent a second read. Exit codes:
+ *   0  every named row is completed
+ *   1  errored / cancelled / empty / a call failed
+ *   2  at least one open question
+ *   3  still running or pending, no question yet
+ */
+import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
+import {
+  activityFromEvent,
+  answerQuestion,
+  readBoard,
+  seedIssue,
+  wakeBoard,
+  type ConductorDispatch,
+} from "./dispatch";
+import { HELP_TEXT } from "./parse";
+import { renderBoardPlain, watchExitCode } from "./render";
+import type { OperatorCommand, StatusRow } from "./types";
+
+export interface HeadlessOptions {
+  dispatch: ConductorDispatch;
+  command: OperatorCommand;
+  json: boolean;
+  stdout?: NodeJS.WritableStream;
+  stderr?: NodeJS.WritableStream;
+  pollMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  maxPolls?: number;
+}
+
+export async function runConductorHeadless(options: HeadlessOptions): Promise<number> {
+  const out = options.stdout ?? process.stdout;
+  const err = options.stderr ?? process.stderr;
+  const write = (text: string) => {
+    out.write(text.endsWith("\n") ? text : `${text}\n`);
+  };
+  const onEvent = (event: RequestStreamEventWithId) => {
+    if (options.json) return;
+    const line = activityFromEvent(event);
+    if (line !== undefined) err.write(`${line}\n`);
+  };
+
+  try {
+    switch (options.command.kind) {
+      case "help":
+        write(HELP_TEXT);
+        return 0;
+      case "quit":
+      case "refresh":
+        write("that verb is TUI-only — run `fsdev conductor` with no verb");
+        return 1;
+      case "status": {
+        const status = await readBoard(options.dispatch, options.command.issue, onEvent);
+        write(renderBoardPlain(status.rows, options.json));
+        return watchExitCode(status.rows);
+      }
+      case "seed": {
+        const seeded = await seedIssue(
+          options.dispatch,
+          options.command.issue,
+          options.command.phase,
+          onEvent,
+        );
+        if (options.json) write(JSON.stringify(seeded));
+        else write(`seeded ${options.command.issue} → ${seeded.taskId}`);
+        const status = await readBoard(options.dispatch, options.command.issue, onEvent);
+        if (!options.json) write(renderBoardPlain(status.rows, false));
+        return 0;
+      }
+      case "wake": {
+        await wakeBoard(options.dispatch, onEvent);
+        const status = await readBoard(options.dispatch, undefined, onEvent);
+        write(options.json ? JSON.stringify(status) : renderBoardPlain(status.rows, false));
+        return watchExitCode(status.rows);
+      }
+      case "answer": {
+        const answered = await answerQuestion(
+          options.dispatch,
+          options.command.question,
+          options.command.text,
+          onEvent,
+        );
+        if (options.json) write(JSON.stringify(answered));
+        else {
+          write(
+            answered.result === "declined"
+              ? `declined · ${answered.reason ?? "refused"}`
+              : `${answered.result}${answered.drained ? " · drain ran" : ""}`,
+          );
+        }
+        return answered.result === "declined" ? 1 : 0;
+      }
+      case "watch":
+        return await watchBoard(options, options.command.issue, onEvent);
+      case "start":
+        // Interactive start is handled by the command (seed, then TUI).
+        // Headless start seeds and watches.
+        await seedIssue(options.dispatch, options.command.issue, options.command.phase, onEvent);
+        return await watchBoard(options, options.command.issue, onEvent);
+    }
+  } catch (error) {
+    err.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
+  }
+}
+
+async function watchBoard(
+  options: HeadlessOptions,
+  issue: string | undefined,
+  onEvent: (event: RequestStreamEventWithId) => void,
+): Promise<number> {
+  const out = options.stdout ?? process.stdout;
+  const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const pollMs = options.pollMs ?? 2_000;
+  const max = options.maxPolls ?? Number.POSITIVE_INFINITY;
+  let last = "";
+  for (let i = 0; i < max; i++) {
+    const status = await readBoard(options.dispatch, issue, onEvent);
+    const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows);
+    if (rendered !== last) {
+      out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
+      last = rendered;
+    }
+    const code = watchExitCode(status.rows);
+    if (code !== 3) {
+      if (!options.json && status.rows.some((r) => r.questions.length > 0)) {
+        out.write(renderBoardPlain(status.rows, false));
+      }
+      return code;
+    }
+    await sleep(pollMs);
+  }
+  return 3;
+}
+
+function renderWatchLine(rows: StatusRow[]): string {
+  if (rows.length === 0) return "watch · no rows";
+  return rows
+    .map((row) => {
+      const ask = row.questions.length > 0 ? ` ask=${row.questions.length}` : "";
+      const outcome = row.run?.outcome != null ? ` ${row.run.outcome}` : "";
+      return `${row.issue ?? row.taskId} ${row.status}${outcome}${ask}`;
+    })
+    .join(" · ");
+}

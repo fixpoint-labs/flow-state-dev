@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { registerBenchmarkCommand } from "./commands/benchmark";
 import { registerBlockCommand } from "./commands/block";
 import { registerChatCommand } from "./commands/chat";
+import { registerConductorCommand } from "./commands/conductor";
 import { registerDevCommand } from "./commands/dev";
 import { registerRunCommand } from "./commands/run";
 import { registerServeCommand } from "./commands/serve";
@@ -19,6 +20,7 @@ program
 
 registerBlockCommand(program);
 registerChatCommand(program);
+registerConductorCommand(program);
 registerDevCommand(program);
 registerRunCommand(program);
 registerServeCommand(program);

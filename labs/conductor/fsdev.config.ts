@@ -6,9 +6,10 @@
  * resolver skips the ambient `FSDEV_DEFAULT_MODEL` scan that would otherwise
  * fire on a model-using environment.
  *
+ *   pnpm conductor                  # live board
+ *   pnpm conductor seed FIX-1219
+ *   pnpm conductor status FIX-1219
  *   pnpm fsdev run conductor seed   -i '{"issue":"FIX-1219","phase":"implement"}'
- *   pnpm fsdev run conductor wake   -i '{}'
- *   pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
  *
  * No `-s` needed. The CLI mints a fresh session per invocation, and both the
  * board row and the run record are `user`-scoped, so `status` answers with the
