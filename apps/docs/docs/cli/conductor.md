@@ -246,14 +246,39 @@ tool · Edit src/foo.ts
 
 A hunk longer than 10 lines ends with `… N more`. If that Write or Edit fails, the transcript reprints `tool · Write src/conductor/render.ts · failed` (or `tool · Edit src/foo.ts · failed`) and does not reprint the hunk. Read, Bash, and a Write or Edit that only names the path have no hunk. The transcript does not read the checkout.
 
-When a Bash call finishes, the last lines of its result print indented under the tool line.
+When the run writes a todo list, a checklist prints under the tool line. Completed items show `[x]`, the current item `[·]`, the rest `[ ]`.
+
+```text
+tool · TodoWrite
+  [x] Add the failing test
+  [·] Implement the fix
+  [ ] Open the pull request
+```
+
+A checklist longer than 10 items ends with `… N more`. If that tool fails, the transcript reprints `tool · TodoWrite · failed` and does not reprint the checklist.
+
+When a Read finishes, the first lines of the file print indented under the tool line.
+
+```text
+tool · Read src/foo.ts
+  export function foo() {
+    return 1;
+  }
+```
+
+A long file keeps the first 6 lines and ends with `… N more`. Write and Edit do not print the file under the tool line.
+
+When a Bash, Grep, or Glob call finishes, the last lines of its result print indented under the tool line.
 
 ```text
 tool · Bash pnpm test
   Test Files  1 passed (1)
+
+tool · Grep renderFrame
+  src/conductor/render.ts:48:export function renderFrame()
 ```
 
-A successful Bash does not reprint the tool line. A failed Bash reprints `tool · Bash pnpm test · failed`, then the result:
+A successful result does not reprint the tool line. A failed Bash reprints `tool · Bash pnpm test · failed`, then the result:
 
 ```text
 tool · Bash pnpm test · failed
@@ -261,13 +286,13 @@ tool · Bash pnpm test · failed
   AssertionError: expected 1 to be 2
 ```
 
-A long successful result keeps the last 6 lines and starts with `… N above`. Write, Edit, and Read print no command result.
+A long successful result keeps the last 6 lines and starts with `… N above`.
 
 A sub-agent prints `sub · Sub-agent: Explore` when it opens, and `sub · Sub-agent: Explore · failed` only if it fails.
 
 Reasoning and thinking text are not printed.
 
-Headless `watch` writes those same lines to stderr. Tool, hunk, Bash result, and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
+Headless `watch` writes those same lines to stderr. Tool, hunk, checklist, result, and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
 
 After that request ends, further board changes show as the lines `status` reports.
 
@@ -292,7 +317,7 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, Bash result lines, `sub · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 ```bash
 $ fsdev conductor seed PR-482
