@@ -604,7 +604,7 @@ pnpm conductor status ISSUE</pre>
         <rect class="n-prop" x="28" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="42" y="80">startEpic</text>
         <text class="t-xs" x="42" y="97">OBJECTIVE &#8594; TASKS</text>
-        <text class="t-s" x="42" y="113">seeds the board</text>
+        <text class="t-s" x="42" y="113">lab ships seed</text>
 
         <rect class="n-box" x="208" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="222" y="80">wake</text>
@@ -619,7 +619,7 @@ pnpm conductor status ISSUE</pre>
         <rect class="n-prop" x="568" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="582" y="80">steer</text>
         <text class="t-xs" x="582" y="97">CLASSIFY &#8594; ROUTE</text>
-        <text class="t-s" x="582" y="113">answers the inbox</text>
+        <text class="t-s" x="582" y="113">lab ships answer</text>
 
         <rect class="n-box" x="748" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="762" y="80">status</text>
@@ -925,7 +925,7 @@ export const conductor = <em>defineFlow</em>({
         <text class="t-lbl" x="470" y="368" text-anchor="middle">ONE INBOX. THE COORDINATOR SERIALIZES. THE ANSWER GOES BACK TO THE RUN THAT ASKED.</text>
       </svg>
     </div>
-    <figcaption><b>Out, and back in.</b> One subsystem with two directions, and a manager on the workstream end of it. The coordinator's context is the middle box &#8212; the open rows &#8212; and nothing larger. Everything a workstream knows stays in the workstream.</figcaption>
+    <figcaption><b>Out, and back in.</b> One subsystem with two directions, and a manager on the workstream end of it. The coordinator box is the later design. In the lab the operator is <code>fsdev conductor</code>, and <code>answer</code> is the wake that writes the reply and starts a new request. The open rows are the context; everything a workstream knows stays in the workstream.</figcaption>
   </figure>
 
   <h3>Out &#8212; the inbox resource</h3>
