@@ -316,8 +316,10 @@ In the TUI:
   e            expand or collapse the last Read peek or command tail
   /            slash command (same verbs)
   Tab          complete the selected slash verb or board id
-  ↑/↓          slash match while / is open; prior lines while composing
+  ↑/↓          slash match while / is open; lines, then prior compose
   ←/→          move in the line while composing
+  Ctrl-J       new line while composing (Alt-Enter / Shift-Enter too)
+  Ctrl-A / E   start / end of the current compose line
   /status id   select that row, then refresh
   /find [text] search the selected row's transcript
   n / N        older / newer match

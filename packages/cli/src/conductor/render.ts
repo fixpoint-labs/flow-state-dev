@@ -640,7 +640,7 @@ function renderPrompt(state: ViewState, cols: number): string {
   let placeholder = dim("talk to the coordinator, or /seed /wake /answer");
   if (state.inputMode === "answer") {
     prefix = paint(MAUVE, "❯ answer ");
-    placeholder = dim("type the reply · Enter sends · Esc cancels");
+    placeholder = dim("type the reply · Enter sends · Ctrl-J new line · Esc cancels");
   } else if (state.inputMode === "seed") {
     prefix = paint(TEAL, "❯ seed ");
     placeholder = dim("issue id · Enter files and starts it");
@@ -652,8 +652,13 @@ function renderPrompt(state: ViewState, cols: number): string {
   const shown =
     state.input === "" && state.inputMode === "command"
       ? placeholder
-      : composeTail(state.input, inner, state.caret);
-  return `${rule(cols)}\n ${prefix}${shown}${notice}`;
+      : composeView(state.input, inner, state.caret);
+  const pad = " ".repeat(visibleWidth(prefix));
+  const aligned = shown
+    .split("\n")
+    .map((line, i) => (i === 0 ? ` ${prefix}${line}` : ` ${pad}${line}`))
+    .join("\n");
+  return `${rule(cols)}\n${aligned}${notice}`;
 }
 
 function renderFooter(state: ViewState, cols: number, now: number): string {
@@ -686,7 +691,7 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     !finding &&
     (state.inputMode === "answer" || state.inputMode === "seed" || state.input !== "");
   const keys = composing
-    ? `${working}${state.drafts.length > 0 ? "↑ prior  ·  " : ""}Enter send  ·  Esc`
+    ? `${working}${state.drafts.length > 0 ? "↑ prior  ·  " : ""}Ctrl-J line  ·  Enter send  ·  Esc`
     : slashing
     ? `${working}Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`
     : finding
@@ -703,6 +708,35 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
             ? `${working}click/j/k  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
             : `${working}click/j/k  ·  s seed${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
   return padLine(dim(` ${keys}`), cols);
+}
+
+/** How many compose lines the prompt may occupy. */
+const COMPOSE_MAX_LINES = 6;
+
+/** Multi-line compose, or a single long line windowed around the caret. */
+function composeView(input: string, width: number, caret: number): string {
+  if (!input.includes("\n")) return composeTail(input, width, caret);
+  const lines = input.split("\n");
+  let col = Math.max(0, Math.min(caret, input.length));
+  let lineAt = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const len = lines[i]!.length;
+    if (col <= len) {
+      lineAt = i;
+      break;
+    }
+    col -= len + 1;
+    lineAt = i;
+  }
+  const start = Math.max(0, lineAt - COMPOSE_MAX_LINES + 1);
+  return lines
+    .slice(start, start + COMPOSE_MAX_LINES)
+    .map((line, i) => {
+      const abs = start + i;
+      if (abs === lineAt) return composeTail(line, width, col);
+      return line.length <= width ? line : elideEnd(line, width);
+    })
+    .join("\n");
 }
 
 /** Keep the caret visible. A long line windows around it; the end stays the default. */

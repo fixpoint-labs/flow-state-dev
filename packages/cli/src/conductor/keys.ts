@@ -42,7 +42,11 @@ export type Key =
   | { type: "click"; col: number; row: number }
   | { type: "wheel"; delta: number }
   | { type: "pageup" }
-  | { type: "pagedown" };
+  | { type: "pagedown" }
+  | { type: "home" }
+  | { type: "end" }
+  | { type: "newline" }
+  | { type: "paste"; value: string };
 
 export type Effect =
   | { type: "dispatch"; command: OperatorCommand }
@@ -57,8 +61,9 @@ export interface KeyResult {
 
 /**
  * Decode a raw-mode stdin chunk into keys. A paste arrives as many printable
- * chars; an arrow is one CSI sequence. Incomplete CSI at the end of a chunk
- * is returned as `rest` so the loop can prepend it to the next read.
+ * chars unless the terminal wrapped it in bracketed-paste CSI; an arrow is
+ * one CSI sequence. Incomplete CSI at the end of a chunk is returned as
+ * `rest` so the loop can prepend it to the next read.
  */
 export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: string } {
   const input = pending + chunk;
@@ -69,7 +74,20 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
     const code = ch.charCodeAt(0);
     if (ch === "\x1b") {
       if (i + 1 >= input.length) return { keys, rest: input.slice(i) };
-      if (input[i + 1] === "[") {
+      const next = input[i + 1]!;
+      if (next === "\r" || next === "\n") {
+        keys.push({ type: "newline" });
+        i += 2;
+        continue;
+      }
+      if (next === "O") {
+        if (i + 2 >= input.length) return { keys, rest: input.slice(i) };
+        if (input[i + 2] === "H") keys.push({ type: "home" });
+        else if (input[i + 2] === "F") keys.push({ type: "end" });
+        i += 3;
+        continue;
+      }
+      if (next === "[") {
         if (i + 2 >= input.length) return { keys, rest: input.slice(i) };
         const third = input[i + 2];
         if (third === "<") {
@@ -86,6 +104,28 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
             else if (btn === 65) keys.push({ type: "wheel", delta: 1 });
             else if (btn === 0) keys.push({ type: "click", col, row });
           }
+          continue;
+        }
+        if (input.startsWith("\x1b[200~", i)) {
+          const start = i + 6;
+          const end = input.indexOf("\x1b[201~", start);
+          if (end < 0) return { keys, rest: input.slice(i) };
+          keys.push({ type: "paste", value: normalizePaste(input.slice(start, end)) });
+          i = end + 6;
+          continue;
+        }
+        if (input.startsWith("\x1b[201~", i)) {
+          i += 6;
+          continue;
+        }
+        if (input.startsWith("\x1b[27;2;13~", i)) {
+          keys.push({ type: "newline" });
+          i += 11;
+          continue;
+        }
+        if (input.startsWith("\x1b[13;2u", i)) {
+          keys.push({ type: "newline" });
+          i += 7;
           continue;
         }
         if (third === "A") {
@@ -108,12 +148,24 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
           i += 3;
           continue;
         }
-        if (third === "3" || third === "5" || third === "6") {
+        if (third === "H") {
+          keys.push({ type: "home" });
+          i += 3;
+          continue;
+        }
+        if (third === "F") {
+          keys.push({ type: "end" });
+          i += 3;
+          continue;
+        }
+        if (third === "1" || third === "3" || third === "4" || third === "5" || third === "6" || third === "7" || third === "8") {
           if (i + 3 >= input.length) return { keys, rest: input.slice(i) };
           if (input[i + 3] === "~") {
             if (third === "3") keys.push({ type: "backspace" });
             else if (third === "5") keys.push({ type: "pageup" });
-            else keys.push({ type: "pagedown" });
+            else if (third === "6") keys.push({ type: "pagedown" });
+            else if (third === "1" || third === "7") keys.push({ type: "home" });
+            else keys.push({ type: "end" });
             i += 4;
             continue;
           }
@@ -126,8 +178,13 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
       i += 1;
       continue;
     }
-    if (ch === "\r" || ch === "\n") {
+    if (ch === "\r") {
       keys.push({ type: "enter" });
+      i += 1;
+      continue;
+    }
+    if (ch === "\n") {
+      keys.push({ type: "newline" });
       i += 1;
       continue;
     }
@@ -152,6 +209,10 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
     i += 1;
   }
   return { keys, rest: "" };
+}
+
+function normalizePaste(text: string): string {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
 export function applyKey(state: ViewState, key: Key, now: number = Date.now()): KeyResult {
@@ -211,8 +272,11 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
       return { state: moveQuestion(state, 1) };
     case "char":
       return applyIdleChar(state, key.value, now);
+    case "paste":
+      return applyIdlePaste(state, key.value);
     case "click":
       return applyClick(state, key.row);
+    case "newline":
     case "enter": {
       const question = selectedQuestion(state);
       if (question !== undefined) {
@@ -300,21 +364,38 @@ function idleFallback(state: ViewState, value: string): KeyResult {
   return { state: withInput(state, value) };
 }
 
+function applyIdlePaste(state: ViewState, value: string): KeyResult {
+  if (value === "") return { state };
+  if (selectedQuestion(state) !== undefined) {
+    const started = beginAnswer(state, selectedQuestion(state)!.question);
+    return applyEditing(started.state, { type: "paste", value });
+  }
+  return { state: withInput(state, value) };
+}
+
 function applyEditing(state: ViewState, key: Key): KeyResult {
   if (state.inputMode === "find") return applyFindEdit(state, key);
   const menu = slashMenu(state);
   switch (key.type) {
-    case "char": {
-      const input = state.input.slice(0, state.caret) + key.value + state.input.slice(state.caret);
-      return {
-        state: {
-          ...withInput(state, input, state.caret + key.value.length),
-          slashAt: 0,
-          draftAt: null,
-          draftHold: null,
-        },
-      };
-    }
+    case "char":
+      return { state: insertText(state, key.value) };
+    case "newline":
+      return { state: insertText(state, "\n") };
+    case "paste":
+      return { state: insertText(state, key.value) };
+    case "home":
+      return { state: { ...state, caret: lineBounds(state.input, state.caret).start } };
+    case "end":
+      return { state: { ...state, caret: lineBounds(state.input, state.caret).end } };
+    case "ctrl":
+      if (key.value === "a") {
+        return { state: { ...state, caret: lineBounds(state.input, state.caret).start } };
+      }
+      if (key.value === "e") {
+        return { state: { ...state, caret: lineBounds(state.input, state.caret).end } };
+      }
+      if (key.value === "j") return { state: insertText(state, "\n") };
+      return { state };
     case "backspace":
       if (state.input === "") {
         return cancelEdit(state);
@@ -351,12 +432,12 @@ function applyEditing(state: ViewState, key: Key): KeyResult {
           state: { ...state, slashAt: (state.slashAt - 1 + menu.length) % menu.length },
         };
       }
-      return { state: walkDraft(state, -1) };
+      return { state: moveComposeLine(state, -1) ?? walkDraft(state, -1) };
     case "down":
       if (menu.length > 0) {
         return { state: { ...state, slashAt: (state.slashAt + 1) % menu.length } };
       }
-      return { state: walkDraft(state, 1) };
+      return { state: moveComposeLine(state, 1) ?? walkDraft(state, 1) };
     default:
       return { state };
   }
@@ -382,6 +463,10 @@ function applyFindEdit(state: ViewState, key: Key): KeyResult {
   switch (key.type) {
     case "char": {
       const input = state.input + key.value;
+      return { state: applyFindQuery(withInput(state, input), input) };
+    }
+    case "paste": {
+      const input = state.input + key.value.replace(/\n/g, " ");
       return { state: applyFindQuery(withInput(state, input), input) };
     }
     case "backspace": {
@@ -435,6 +520,41 @@ function cancelEdit(state: ViewState): KeyResult {
 
 function withInput(state: ViewState, input: string, caret: number = input.length): ViewState {
   return { ...state, input, caret: Math.max(0, Math.min(caret, input.length)) };
+}
+
+function insertText(state: ViewState, text: string): ViewState {
+  if (text === "") return state;
+  const input = state.input.slice(0, state.caret) + text + state.input.slice(state.caret);
+  return {
+    ...withInput(state, input, state.caret + text.length),
+    slashAt: 0,
+    draftAt: null,
+    draftHold: null,
+  };
+}
+
+function lineBounds(input: string, caret: number): { start: number; end: number; col: number } {
+  const at = Math.max(0, Math.min(caret, input.length));
+  const start = input.lastIndexOf("\n", at - 1) + 1;
+  const nl = input.indexOf("\n", at);
+  const end = nl < 0 ? input.length : nl;
+  return { start, end, col: at - start };
+}
+
+/** Move the caret to the previous or next compose line. `null` means walk history instead. */
+function moveComposeLine(state: ViewState, direction: -1 | 1): ViewState | null {
+  const { start, end, col } = lineBounds(state.input, state.caret);
+  if (direction < 0) {
+    if (start === 0) return null;
+    const prevEnd = start - 1;
+    const prevStart = state.input.lastIndexOf("\n", prevEnd - 1) + 1;
+    return { ...state, caret: prevStart + Math.min(col, prevEnd - prevStart) };
+  }
+  if (end === state.input.length) return null;
+  const nextStart = end + 1;
+  const nextNl = state.input.indexOf("\n", nextStart);
+  const nextEnd = nextNl < 0 ? state.input.length : nextNl;
+  return { ...state, caret: nextStart + Math.min(col, nextEnd - nextStart) };
 }
 
 const DRAFT_CAP = 50;
@@ -495,10 +615,10 @@ function submitEdit(state: ViewState): KeyResult {
     };
   }
   if (state.inputMode === "seed") {
-    const issue = state.input.trim();
-    if (issue === "") {
-      return { state: { ...state, notice: "type an issue id, or Esc to cancel" } };
-    }
+      const issue = (state.input.split("\n")[0] ?? "").trim();
+      if (issue === "") {
+        return { state: { ...state, notice: "type an issue id, or Esc to cancel" } };
+      }
     return {
       state: {
         ...withInput(rememberDraft(state, issue), ""),

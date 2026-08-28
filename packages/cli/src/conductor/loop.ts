@@ -44,6 +44,8 @@ const HIDE_CURSOR = "\x1b[?25l";
 const SHOW_CURSOR = "\x1b[?25h";
 const MOUSE_ON = "\x1b[?1000h\x1b[?1006h";
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l";
+const PASTE_ON = "\x1b[?2004h";
+const PASTE_OFF = "\x1b[?2004l";
 const HOME = "\x1b[H";
 const ERASE = "\x1b[J";
 const POLL_MS = 1_000;
@@ -290,7 +292,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   const wasRaw = input.isRaw;
   input.setRawMode?.(true);
   input.resume();
-  output.write(`${ENTER_ALT}${MOUSE_ON}${HIDE_CURSOR}`);
+  output.write(`${ENTER_ALT}${MOUSE_ON}${PASTE_ON}${HIDE_CURSOR}`);
   paint();
 
   const onResize = () => paint();
@@ -391,7 +393,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     output.off("resize", onResize);
     input.setRawMode?.(wasRaw ?? false);
     input.pause();
-    output.write(`${MOUSE_OFF}${SHOW_CURSOR}${LEAVE_ALT}`);
+    output.write(`${PASTE_OFF}${MOUSE_OFF}${SHOW_CURSOR}${LEAVE_ALT}`);
   }
   return 0;
 }

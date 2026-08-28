@@ -88,7 +88,7 @@ file in its own checkout. The manager reads that file, files the question as a d
 the job on hold and returns. Nothing is held open while you think about it, and the run costs
 nothing.
 
-You answer the row by name. Daily use is `fsdev conductor` — same host as `fsdev run`. Type to talk, or use a slash verb. While composing, ↑/↓ recall a prior line and ←/→ move in it:
+You answer the row by name. Daily use is `fsdev conductor` — same host as `fsdev run`. Type to talk, or use a slash verb. While composing, ↑/↓ recall a prior line, ←/→ move in it, and Ctrl-J starts a new line:
 
 ```bash
 pnpm conductor status FIX-1219

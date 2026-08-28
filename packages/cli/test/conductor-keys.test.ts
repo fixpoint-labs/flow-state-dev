@@ -59,6 +59,7 @@ describe("decodeKeys", () => {
   it("decodes arrows, enter, and a paste of printable chars", () => {
     expect(decodeKeys("\x1b[A").keys).toEqual([{ type: "up" }]);
     expect(decodeKeys("\r").keys).toEqual([{ type: "enter" }]);
+    expect(decodeKeys("\n").keys).toEqual([{ type: "newline" }]);
     expect(decodeKeys("ab").keys).toEqual([
       { type: "char", value: "a" },
       { type: "char", value: "b" },
@@ -70,6 +71,20 @@ describe("decodeKeys", () => {
     expect(decodeKeys("\x1b[<65;1;1M").keys).toEqual([{ type: "wheel", delta: 1 }]);
     expect(decodeKeys("\x1b[5~").keys).toEqual([{ type: "pageup" }]);
     expect(decodeKeys("\x1b[6~").keys).toEqual([{ type: "pagedown" }]);
+    expect(decodeKeys("\x1b[H").keys).toEqual([{ type: "home" }]);
+    expect(decodeKeys("\x1b[F").keys).toEqual([{ type: "end" }]);
+    expect(decodeKeys("\x1b[27;2;13~").keys).toEqual([{ type: "newline" }]);
+    expect(decodeKeys("\x1b[13;2u").keys).toEqual([{ type: "newline" }]);
+    expect(decodeKeys("\x1b\r").keys).toEqual([{ type: "newline" }]);
+  });
+
+  it("decodes a bracketed paste as one insert, including newlines", () => {
+    expect(decodeKeys("\x1b[200~hello\r\nworld\x1b[201~").keys).toEqual([
+      { type: "paste", value: "hello\nworld" },
+    ]);
+    const first = decodeKeys("\x1b[200~hel");
+    expect(first.keys).toEqual([]);
+    expect(decodeKeys("lo\x1b[201~", first.rest).keys).toEqual([{ type: "paste", value: "hello" }]);
   });
 
   it("holds an incomplete CSI so the next chunk can finish it", () => {
@@ -351,6 +366,52 @@ describe("applyKey", () => {
     expect(deleted.state.caret).toBe(1);
     const end = applyKey(deleted.state, { type: "right" });
     expect(end.state.caret).toBe(2);
+  });
+
+  it("inserts a compose line with newline, and Enter still sends", () => {
+    let state = board([row("FIX-1")]);
+    for (const ch of "please") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    state = applyKey(state, { type: "newline" }).state;
+    for (const ch of "retry") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    expect(state.input).toBe("please\nretry");
+    expect(state.caret).toBe("please\nretry".length);
+    const up = applyKey(state, { type: "up" });
+    expect(up.state.input).toBe("please\nretry");
+    expect(up.state.caret).toBe("retry".length);
+    const home = applyKey(up.state, { type: "home" });
+    expect(home.state.caret).toBe(0);
+    const sent = applyKey(state, { type: "enter" });
+    expect(sent.effect).toEqual({
+      type: "dispatch",
+      command: { kind: "steer", message: "please\nretry" },
+    });
+    expect(sent.state.drafts).toEqual(["please\nretry"]);
+  });
+
+  it("pastes into compose without sending, including on a waiting row", () => {
+    const idle = applyKey(board([row("FIX-1")]), { type: "paste", value: "please\nretry" });
+    expect(idle.state.input).toBe("please\nretry");
+    expect(idle.effect).toBeUndefined();
+    const waiting = applyKey(board([row("FIX-1", 1)]), { type: "paste", value: "ship\nit" });
+    expect(waiting.state.inputMode).toBe("answer");
+    expect(waiting.state.input).toBe("ship\nit");
+    expect(waiting.effect).toBeUndefined();
+  });
+
+  it("moves to the start and end of the current compose line with Ctrl-A / Ctrl-E", () => {
+    const state = {
+      ...board([row("FIX-1")]),
+      input: "please\nretry",
+      caret: "please\nre".length,
+    };
+    const start = applyKey(state, { type: "ctrl", value: "a" });
+    expect(start.state.caret).toBe("please\n".length);
+    const end = applyKey(start.state, { type: "ctrl", value: "e" });
+    expect(end.state.caret).toBe("please\nretry".length);
   });
 
   it("keeps at most fifty submitted compose lines", () => {

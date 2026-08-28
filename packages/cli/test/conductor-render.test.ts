@@ -248,6 +248,7 @@ describe("renderFrame", () => {
     expect(plain).toContain("done");
     expect(plain).toContain("…");
     expect(plain).toContain("Enter send");
+    expect(plain).toContain("Ctrl-J line");
     expect(plain).not.toContain("↑ prior");
     expect(
       stripAnsi(
@@ -263,6 +264,14 @@ describe("renderFrame", () => {
     );
     expect(fromStart).toContain("please retry the failed rows");
     expect(fromStart).not.toContain("done");
+    const stacked = stripAnsi(
+      renderFrame(
+        { ...emptyView("epic"), input: "please\nretry the failed rows", caret: "please\n".length },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(stacked).toContain("please");
+    expect(stacked).toContain("retry the failed rows");
   });
 
   it("shows a you · talk line in the transcript", () => {
