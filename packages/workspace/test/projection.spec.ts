@@ -564,3 +564,51 @@ async function stateOf(collection: FakeCollection, key: string) {
   const ref = await collection.getOptional(key);
   return ref?.state as unknown as Record<string, unknown>;
 }
+
+describe("a path that vanishes between the listing and the read", () => {
+  /** A place that lists a path but no longer holds it by the time it is read. */
+  function vanishingPlace(path: string) {
+    const inner = createMemoryPlace();
+    return {
+      ...inner,
+      async read(p: string) {
+        return p === path ? null : inner.read(p);
+      },
+      async list() {
+        return [path];
+      },
+    };
+  }
+
+  it("is left alone, not deleted from the collection", async () => {
+    // The run may not have removed it — a concurrent process, an editor, a
+    // temp file being replaced. This flush simply saw a moment it cannot
+    // describe, and deleting durable content on that basis is the failure the
+    // whole delete pass is written to avoid.
+    const collection = createFakeCollection("artifacts/**", { "spec.md": "one" });
+    const projection = createProjection({
+      mounts: [{ prefix: "artifacts", collection, writable: true }],
+      place: vanishingPlace("artifacts/spec.md"),
+    });
+    await projection.hydrate();
+
+    const report = await projection.flush();
+
+    expect(collection.contents()["spec.md"]).toBe("one");
+    expect(kinds(report)).toEqual([]);
+  });
+
+  it("stays owned, so a later flush that CAN read it still works", async () => {
+    // Dropping the baseline would quietly disown the path: the next flush
+    // would find no baseline and refuse to write where it previously could.
+    const collection = createFakeCollection("artifacts/**", { "spec.md": "one" });
+    const projection = createProjection({
+      mounts: [{ prefix: "artifacts", collection, writable: true }],
+      place: vanishingPlace("artifacts/spec.md"),
+    });
+    await projection.hydrate();
+    await projection.flush();
+
+    expect(projection.ownedPaths()).toEqual(["artifacts/spec.md"]);
+  });
+});
