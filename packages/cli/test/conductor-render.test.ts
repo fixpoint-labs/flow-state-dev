@@ -562,6 +562,14 @@ describe("renderFrame", () => {
     expect(table).toContain("Write src/a.ts");
     expect(table).toContain("Bash pnpm test");
     expect(table).toContain("Which path?");
+    // Lab usage is verdict-only. A live row almost always has usage: null,
+    // so OUTCOME stays `running` — do not invent a spend the scan cannot see.
+    const live1 = table.split("\n").find((line) => line.includes("LIVE-1"));
+    const live2 = table.split("\n").find((line) => line.includes("LIVE-2"));
+    expect(live1).toContain("running");
+    expect(live2).toContain("running");
+    expect(live1).not.toMatch(/\d+(?:\.\d+k)?→\d/);
+    expect(live2).not.toMatch(/\d+(?:\.\d+k)?→\d/);
   });
 
   it("shows each running row's token counts on the board, not another row's", () => {
