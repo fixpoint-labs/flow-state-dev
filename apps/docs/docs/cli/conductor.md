@@ -227,9 +227,9 @@ Typing on a row that has an open question starts an answer for you — you don't
 
 The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports.
 
-When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, that line becomes `tool · Bash pnpm test · failed`.
+When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`.
 
-When a Write or Edit call includes the new file text, a hunk prints under the tool line. A Write with `contents` or `content` prints each new line as `+ <line>`. An Edit with `old_string` and `new_string` prints only the changed span: `-` lines, then `+` lines.
+When a Write or Edit includes the new file text, a hunk prints under the tool line. A Write prints each new line as `+ <line>`. An Edit prints only the changed span: `-` lines, then `+` lines.
 
 ```text
 tool · Write src/conductor/render.ts
