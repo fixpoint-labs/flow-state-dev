@@ -69,6 +69,17 @@ export interface Mount {
    * left alone — its paths are skipped, never reported as orphans.
    */
   writable: boolean;
+  /**
+   * Extra state to stamp on an entry this projection commits, keyed by the
+   * entry's own key.
+   *
+   * The projection sets `path`, `hash` and `updatedAt` because it needs them
+   * to do its job. Anything else an application shows about a file — a title,
+   * an author, a timestamp in the shape its UI expects — is the application's
+   * to decide, and it applies last so a mount can override what the
+   * projection chose.
+   */
+  entryState?: (key: string) => Record<string, unknown>;
 }
 
 /**

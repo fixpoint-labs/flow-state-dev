@@ -38,6 +38,8 @@ Nested prefixes work: a collection mounted at `artifacts/drafts` inside one moun
 
 A mount with `writable: false` is hydrated and then left alone. It's reference material the run can read and can't change.
 
+The projection sets `path`, `hash`, and `updatedAt` on every entry it commits. If your collection carries more than that — a title, an author, a timestamp in a different shape — give the mount an `entryState(key)` function. It's applied last, so it can override what the projection chose.
+
 ## Reading the flush report
 
 `flush` doesn't throw when two writers disagree. It resolves, and hands back an outcome for every path it reached.

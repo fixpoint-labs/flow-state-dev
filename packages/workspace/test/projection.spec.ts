@@ -483,3 +483,72 @@ describe("put commits one named path without walking the place", () => {
     expect(collection.contents()).toEqual({});
   });
 });
+
+describe("a mount can stamp its own state on what the projection commits", () => {
+  /** A collection whose entries carry a title alongside the projection's fields. */
+  function titled(seed: Record<string, string> = {}) {
+    const collection = createFakeCollection("artifacts/**", seed);
+    const place = createMemoryPlace();
+    const projection = createProjection({
+      mounts: [
+        {
+          prefix: "artifacts",
+          collection,
+          writable: true,
+          entryState: (key) => ({ title: key.replace(/\.md$/, "") }),
+        },
+      ],
+      place,
+    });
+    return { collection, place, projection };
+  }
+
+  it("stamps the mount's fields on a created entry", async () => {
+    const { collection, place, projection } = titled();
+
+    await place.write("artifacts/notes.md", "content");
+    await projection.flush();
+
+    expect(await stateOf(collection, "notes.md")).toMatchObject({ title: "notes" });
+  });
+
+  it("stamps them on an entry that already existed, not only on create", async () => {
+    // `getOrCreate` applies its initial state only when it creates, so an
+    // entry hydrated from the collection would never receive them otherwise.
+    const { collection, place, projection } = titled({ "notes.md": "first" });
+    await projection.hydrate();
+
+    await place.write("artifacts/notes.md", "second");
+    await projection.flush();
+
+    expect(collection.contents()["notes.md"]).toBe("second");
+    expect(await stateOf(collection, "notes.md")).toMatchObject({ title: "notes" });
+  });
+
+  it("lets the mount override a field the projection also sets", async () => {
+    const collection = createFakeCollection("artifacts/**");
+    const place = createMemoryPlace();
+    const projection = createProjection({
+      mounts: [
+        {
+          prefix: "artifacts",
+          collection,
+          writable: true,
+          entryState: () => ({ updatedAt: 1234 }),
+        },
+      ],
+      place,
+    });
+
+    await place.write("artifacts/notes.md", "content");
+    await projection.flush();
+
+    expect(await stateOf(collection, "notes.md")).toMatchObject({ updatedAt: 1234 });
+  });
+});
+
+/** The state a collection holds for `key`. */
+async function stateOf(collection: FakeCollection, key: string) {
+  const ref = await collection.getOptional(key);
+  return ref?.state as unknown as Record<string, unknown>;
+}
