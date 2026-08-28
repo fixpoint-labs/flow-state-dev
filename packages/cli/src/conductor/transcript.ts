@@ -59,6 +59,18 @@ export interface TranscriptPatch {
  * stay with that request. Omit it for an operator action — tagging those
  * with the parent request would hide them when a child row is selected.
  */
+/**
+ * Hide host credentials that a coding child prints (`git remote -v`,
+ * `gh auth`). The board is an operator surface; a token in the transcript
+ * is a leak, and a child that sees one will try to reuse it.
+ */
+export function redactSecrets(text: string): string {
+  return text
+    .replace(/x-access-token:[^\s@\\/]+/g, "x-access-token:***")
+    .replace(/ghs_[A-Za-z0-9_]+/g, "ghs_***")
+    .replace(/github_pat_[A-Za-z0-9_]+/g, "github_pat_***");
+}
+
 export function applyTranscriptPatch(
   state: ViewState,
   patch: TranscriptPatch,
@@ -66,7 +78,8 @@ export function applyTranscriptPatch(
   requestId?: string,
 ): ViewState {
   let next = state;
-  for (const text of patch.lines) {
+  for (const raw of patch.lines) {
+    const text = redactSecrets(raw);
     if (requestId === undefined && text.startsWith("you · ")) {
       next = echoTalk(next, text.slice("you · ".length), at);
       continue;
@@ -83,7 +96,7 @@ export function applyTranscriptPatch(
   if (requestId !== undefined) {
     const childLive = { ...next.childLive };
     if (patch.live === null) delete childLive[requestId];
-    else childLive[requestId] = patch.live;
+    else childLive[requestId] = redactSecrets(patch.live);
     const childPlan =
       patch.plan === undefined
         ? next.childPlan
@@ -101,7 +114,7 @@ export function applyTranscriptPatch(
     };
     return { ...next, childLive, childPlan, childHunks, hunkAt: 0 };
   }
-  return { ...next, live: patch.live };
+  return { ...next, live: patch.live === null ? null : redactSecrets(patch.live) };
 }
 
 /** Give a persisted journal event the `id` `createStreamTranscript` expects. */
@@ -155,7 +168,10 @@ export function createStreamTranscript(): {
   const nest = (text: string): string => nestAt(text, openContainers.length);
   const nestLines = (lines: string[]): string[] => lines.map(nest);
 
-  const snapshot = (lines: string[]): TranscriptPatch => ({ lines, live });
+  const snapshot = (lines: string[]): TranscriptPatch => ({
+    lines: lines.map(redactSecrets),
+    live: live === null ? null : redactSecrets(live),
+  });
 
   const commitLive = (): string[] => {
     if (live === null) return [];
@@ -758,7 +774,7 @@ function commandOutputText(item: OutputItem): string {
 }
 
 function indentResultLines(text: string): string[] {
-  return splitLines(text).map((line) => {
+  return splitLines(redactSecrets(text)).map((line) => {
     const body = line.length <= HUNK_LINE ? line : `${line.slice(0, HUNK_LINE - 1)}…`;
     return `  ${body}`;
   });

@@ -606,6 +606,13 @@ describe("the forced ask tells the run to keep the marker out of the commit", ()
     expect(prompt).not.toMatch(/will not be committed/);
   });
 
+  it("treats a failed pull-request open as a question, not as done", async () => {
+    const prompt = await implementPhase().buildPrompt(promptRun("/w/.fsdev/ask/1.md"));
+    expect(prompt).toContain("A pushed branch is not done");
+    expect(prompt).toContain("question for a person");
+    expect(prompt).toContain("Do not declare the work complete");
+  });
+
   it("still spells the marker path in full", async () => {
     // The instruction not to commit it is useless if the run cannot find where
     // to write it. Asserted separately: one is the seam, the other is the

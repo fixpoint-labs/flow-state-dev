@@ -512,6 +512,9 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
         "",
         `You are working in ${ctx.workspacePath}, on branch ${ctx.branch}.`,
         "Commit your work and open a pull request for that branch when the change is done.",
+        "A pushed branch is not done. The job is done when a pull request exists for this branch.",
+        "If you cannot open one — missing auth, a permission error, gh refusing — that is a",
+        "question for a person. Write it to the ask file and stop. Do not declare the work complete.",
         "",
         // **The forced ask.** The harness offers no seam for a question, so this
         // instruction IS the seam: nothing else tells the run how to reach a

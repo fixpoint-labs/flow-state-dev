@@ -4,6 +4,7 @@ import {
   applyTranscriptPatch,
   createStreamTranscript,
   diffBoard,
+  redactSecrets,
   viewFromEvents,
 } from "../src/conductor/transcript";
 import {
@@ -1040,6 +1041,36 @@ describe("createStreamTranscript", () => {
       lines: ["  src/conductor/render.ts:48:export function renderFrame()"],
       live: null,
     });
+  });
+
+  it("redacts host tokens in a Bash tail so the board cannot paint them", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        done({
+          id: "t-secret",
+          type: "tool_output",
+          blockName: "Bash",
+          status: "completed",
+          output: "origin  https://x-access-token:ghs_EXAMPLETOKENVALUE@github.com/org/repo.git\n",
+          toolCall: {
+            callId: "c-secret",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "git remote -v" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: [
+        "tool · Bash git remote -v",
+        "  origin  https://x-access-token:***@github.com/org/repo.git",
+      ],
+      live: null,
+    });
+    expect(redactSecrets("token ghs_EXAMPLETOKENVALUE and github_pat_EXAMPLEPATVALUE")).toBe(
+      "token ghs_*** and github_pat_***",
+    );
   });
 
   it("joins stdout and stderr when the Bash result is an object", () => {
