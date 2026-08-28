@@ -6,8 +6,8 @@
  * projected into, and it executes nothing — a place is where files live, not
  * where commands run.
  */
-import { lstatSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { constants, lstatSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { mkdir, open } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Place } from "./types";
 import { normalizePath } from "./routing";
@@ -25,6 +25,16 @@ export interface HostPlace extends Place {
  * files" deletes what it owns, so a root that vanished mid-run has to throw,
  * while a mount's own subdirectory being absent is genuinely nothing to sync.
  */
+/**
+ * `O_NOFOLLOW` where the platform has it.
+ *
+ * Windows has no such flag and no symlink-following open to refuse, so the
+ * lexical and `lstat` checks stand alone there. Everywhere else this is what
+ * makes the leaf check atomic with the write rather than a check the caller
+ * races.
+ */
+const noFollow = constants.O_NOFOLLOW ?? 0;
+
 export function createHostPlace(root: string): HostPlace {
   const absoluteRoot = resolve(root);
   mkdirSync(absoluteRoot, { recursive: true });
@@ -144,17 +154,52 @@ export function createHostPlace(root: string): HostPlace {
   return {
     root: absoluteRoot,
     async read(path) {
+      const absolute = within(path);
+      let handle;
       try {
-        return await readFile(within(path), "utf-8");
+        handle = await open(absolute, constants.O_RDONLY | noFollow);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") return null;
+        // ELOOP is the kernel refusing a symlink at the leaf, which is this
+        // place's policy rather than a fault: report it as one.
+        if (code === "ELOOP") {
+          throw new Error(`path is a symlink, which this place does not follow: ${path}`);
+        }
         throw error;
+      }
+      try {
+        return await handle.readFile("utf-8");
+      } finally {
+        await handle.close();
       }
     },
     async write(path, content) {
       const absolute = within(path);
       await mkdir(dirname(absolute), { recursive: true });
-      await writeFile(absolute, content, "utf-8");
+      // `within` validated the path, but validation and use are two syscalls
+      // with an await between them: something that can write here could swap
+      // the leaf for a symlink in the gap. `O_NOFOLLOW` moves that one check
+      // into the open itself, so the kernel refuses rather than this code
+      // re-checking. A symlinked PARENT is still check-then-use — closing that
+      // needs `openat` on directory descriptors, which Node does not expose.
+      let handle;
+      try {
+        handle = await open(
+          absolute,
+          constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollow,
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ELOOP") {
+          throw new Error(`path is a symlink, which this place does not follow: ${path}`);
+        }
+        throw error;
+      }
+      try {
+        await handle.writeFile(content, "utf-8");
+      } finally {
+        await handle.close();
+      }
     },
     async list(prefixes) {
       // Not caught: if the root itself is gone, the place is broken, and a
@@ -163,7 +208,13 @@ export function createHostPlace(root: string): HostPlace {
       readdirSync(absoluteRoot);
       const out: string[] = [];
       for (const prefix of prefixes) walk(within(prefix), out);
-      return out;
+      // Nested prefixes are supported, and the walk runs per prefix — so a
+      // file under `artifacts/drafts` is reached by both the `artifacts` walk
+      // and the `artifacts/drafts` one. A flush that saw it twice would decide
+      // one physical file twice and report `written` then `unchanged` for the
+      // same path. `createMemoryPlace` filters one key set and never doubled;
+      // these two have to agree.
+      return [...new Set(out)];
     },
   };
 }

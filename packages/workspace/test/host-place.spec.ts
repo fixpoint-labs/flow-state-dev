@@ -212,4 +212,24 @@ describe("createHostPlace symlink containment", () => {
 
     rmSync(root, { recursive: true, force: true });
   });
+
+  it("lists a file once when nested prefixes both cover it", async () => {
+    // Nested mounts are supported — `routePath` resolves them by longest
+    // prefix. The walk runs per prefix, so the outer one reaches
+    // `artifacts/drafts/x.md` and the inner one reaches it again. A flush
+    // then decides one physical file twice and reports `written` followed by
+    // `unchanged` for the same path, which is not a report anyone can read.
+    // `createMemoryPlace` filters one key set and never doubled.
+    const root = mkdtempSync(join(tmpdir(), "hp-nested-"));
+    mkdirSync(join(root, "artifacts", "drafts"), { recursive: true });
+    writeFileSync(join(root, "artifacts", "drafts", "x.md"), "nested");
+    writeFileSync(join(root, "artifacts", "top.md"), "outer");
+
+    const place = createHostPlace(root);
+    const listed = await place.list(["artifacts", "artifacts/drafts"]);
+
+    expect([...listed].sort()).toEqual(["artifacts/drafts/x.md", "artifacts/top.md"]);
+
+    rmSync(root, { recursive: true, force: true });
+  });
 });
