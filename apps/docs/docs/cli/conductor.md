@@ -206,7 +206,7 @@ The band lists the files that run has written, edited, or read. Last touch is la
  src/foo.ts
 ```
 
-Another row's files are not shown. A Bash (or other non-file tool) does not add a path. The ASK and FAIL bands do not list files.
+Another row's files are not shown. A Bash (or other non-file tool) does not add a path. The ASK band does not list files.
 
 When the run writes a todo list, the band shows one current item and a `done/total` count. The current item is the one in progress (`[·]`), else the first pending (`[ ]`), else the last completed (`[x]`). The full list is not on the band until you expand it.
 
@@ -214,7 +214,7 @@ When the run writes a todo list, the band shows one current item and a `done/tot
  [·] Implement the fix  1/5
 ```
 
-`t` or `Ctrl-T` expands the list on the band (up to 4 items, then `… N more`). Press again to collapse.
+`t` or `Ctrl-T` expands the list (up to 4 items, then `… N more`). Press again to collapse.
 
 ```text
  [x] Add the failing test
@@ -224,7 +224,20 @@ When the run writes a todo list, the band shows one current item and a `done/tot
  … 1 more
 ```
 
-Selecting another row shows that row's current item, or none if that row has not written a list. A later list replaces the previous one. The ASK and FAIL bands do not show the list.
+The list comes from that run's plan tools. `TodoWrite` with a `todos` array replaces the list. `TaskCreate` appends a pending item; the item text is `subject`. `TaskUpdate` takes `taskId` and `status`, and `subject` when you pass one, and moves that item when the tool succeeds. A failed `TaskCreate` is not on the list.
+
+Selecting another row shows that row's current item, or none if that row has not written a list.
+
+When the selected row is not running and has no open question, the board shows that attempt's request id, last tool, files written, edited, or read, and the current todo with its count. `t` expands the list.
+
+```text
+ request  req-fail-1
+ last     TaskCreate Add hello.js
+ src/hello.js
+ [ ] Open the pull request  1/2
+```
+
+When that row has an open question, the ASK band does not show the todo list.
 
 If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`.
 
@@ -247,7 +260,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `s` | Seed a new row (prompts for an issue id) |
 | `w` | Wake. On a failed selected row with no question, the footer labels this `w retry` |
 | `x` | Stop the selected running row's request |
-| `t` or `Ctrl-T` | Expand or collapse the todo list on the RUN band |
+| `t` or `Ctrl-T` | Expand or collapse the selected row's todo list |
 | `r` | Refresh now |
 | `/` | Type a slash command. Matching verbs, then board ids, list above the prompt |
 | `Tab` | Fill the selected slash verb or board id |
@@ -257,7 +270,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `?` | Toggle help |
 | `q` | Quit |
 
-Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop` and `t list`; `x` or `Ctrl-C` stops that row's request. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
+Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop` and `t list`; `x` or `Ctrl-C` stops that row's request. On a selected row that is not running, has no open question, and has a todo list, the footer offers `t list`. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
 
 A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, start. `/sta` lists status, start. A space starts the first argument. `q` and `stop` parse as `quit` and `abort`; they are not in the verb list.
 
@@ -294,7 +307,7 @@ tool · Edit src/foo.ts
 
 A hunk longer than 10 lines ends with `… N more`. If that Write or Edit fails, the transcript reprints `tool · Write src/conductor/render.ts · failed` (or `tool · Edit src/foo.ts · failed`) and does not reprint the hunk. Read, Bash, and a Write or Edit that only names the path have no hunk. The transcript does not read the checkout.
 
-When the run writes a todo list, a checklist prints under the tool line. Completed items show `[x]`, the current item `[·]`, the rest `[ ]`.
+When `TodoWrite` writes a `todos` array, a checklist prints under the tool line. Completed items show `[x]`, the current item `[·]`, the rest `[ ]`.
 
 ```text
 tool · TodoWrite
@@ -303,7 +316,11 @@ tool · TodoWrite
   [ ] Open the pull request
 ```
 
-A checklist longer than 10 items ends with `… N more`. If that tool fails, the transcript reprints `tool · TodoWrite · failed` and does not reprint the checklist. The RUN band shows one current item and a `done/total` count for that row; `t` expands the list there.
+A checklist longer than 10 items ends with `… N more`. If that tool fails, the transcript reprints `tool · TodoWrite · failed` and does not reprint the checklist.
+
+`TaskCreate` prints `tool · TaskCreate Add hello.js` and appends a pending item to the list. `TaskUpdate` prints `tool · TaskUpdate` and, when it succeeds, moves that item (`taskId` and `status`; `subject` when you pass one). A failed `TaskCreate` reprints `tool · TaskCreate Add hello.js · failed` and is not on the list.
+
+The board shows one current item and a `done/total` count for that row; `t` expands the list there.
 
 When a Read finishes, the first lines of the file print indented under the tool line.
 
@@ -516,7 +533,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Headless verbs take the id on the argv. There is no list on that path.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
-- Headless verbs (`status`, `watch`, and the rest) have no RUN band.
+- Headless verbs (`status`, `watch`, and the rest) have no RUN band and no request-id, last-tool, files, or todo strip.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages
