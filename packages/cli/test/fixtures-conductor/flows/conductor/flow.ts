@@ -172,12 +172,28 @@ async function drainPending(ctx: {
     return parked.length;
 }
 
+function waitUntilAborted(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    const fail = () => reject(new DOMException("Aborted", "AbortError"));
+    if (signal.aborted) {
+      fail();
+      return;
+    }
+    signal.addEventListener("abort", fail, { once: true });
+  });
+}
+
 const wake = handler({
   name: "fixture-wake",
   inputSchema: z.unknown(),
   outputSchema: z.object({ drained: z.number() }),
   sessionStateSchema: boardState,
   execute: async (_input, ctx) => {
+    const hanging = ((ctx.session.state as Board).rows ?? []).some((row) => row.issue === "HANG-1");
+    if (hanging) {
+      ctx.emit.status("hanging until abort", { transient: false });
+      await waitUntilAborted(ctx.signal);
+    }
     const drained = await drainPending(ctx);
     return { drained };
   },

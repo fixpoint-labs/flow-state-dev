@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyKey, decodeKeys, rowAfterRefresh } from "../src/conductor/keys";
-import { applyStatus } from "../src/conductor/loop";
+import { applyStatus, bindsOperatorAbort, canStartBoardRefresh } from "../src/conductor/loop";
 import {
   ACTIVITY_CAP,
   applyFindQuery,
@@ -748,5 +748,22 @@ describe("rowAfterRefresh / applyStatus", () => {
     expect(polled.selected).toBe(1);
     expect(polled.rows[polled.selected]?.taskId).toBe("FIX-1--implement");
     expect(polled.scroll).toBe(2);
+  });
+});
+
+describe("operator abort / refresh policy", () => {
+  it("binds Ctrl-C to a drain, not a board read", () => {
+    expect(bindsOperatorAbort("wake")).toBe(true);
+    expect(bindsOperatorAbort("seed")).toBe(true);
+    expect(bindsOperatorAbort("answer")).toBe(true);
+    expect(bindsOperatorAbort("steer")).toBe(true);
+    expect(bindsOperatorAbort("status")).toBe(false);
+  });
+
+  it("refuses a second board read while a drain or a poll is already in flight", () => {
+    expect(canStartBoardRefresh(false, false)).toBe(true);
+    expect(canStartBoardRefresh(true, false)).toBe(false);
+    expect(canStartBoardRefresh(false, true)).toBe(false);
+    expect(canStartBoardRefresh(true, true)).toBe(false);
   });
 });

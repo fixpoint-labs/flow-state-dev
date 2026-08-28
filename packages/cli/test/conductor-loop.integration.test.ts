@@ -469,4 +469,50 @@ describe("fsdev conductor — TUI over the same actions", () => {
     tty.input.write("q");
     await expect(running).resolves.toBe(0);
   });
+
+  it("Ctrl-C during a drain aborts the wake even if the operator hits r first", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "HANG-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 10_000,
+    });
+
+    await waitFor(() => tty.text, "HANG-1");
+    tty.input.write("w");
+    await waitFor(() => tty.text, "hanging until abort");
+    expect(stripAnsi(lastFrame(tty.text))).toContain("working");
+
+    tty.input.write("r");
+    tty.input.write("\x03");
+    await waitFor(() => tty.text, "abort requested");
+
+    const deadline = Date.now() + 2_000;
+    let wake;
+    while (Date.now() < deadline) {
+      const records = await stores.request.list();
+      wake = records.find((record) => record.actionName === "wake");
+      if (wake?.abortRequested === true || wake?.status === "aborted") break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(wake, "wake request should exist").toBeDefined();
+    expect(wake?.abortRequested === true || wake?.status === "aborted").toBe(true);
+
+    const statusReads = (await stores.request.list()).filter((record) => record.actionName === "status");
+    expect(statusReads.some((record) => record.abortRequested === true)).toBe(false);
+
+    tty.input.write("q");
+    await expect(running).resolves.toBe(0);
+  });
 });

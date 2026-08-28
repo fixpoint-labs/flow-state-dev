@@ -12,6 +12,7 @@ import {
   seedInput,
   startConductorAction,
   steerInput,
+  type ConductorAction,
   type ConductorDispatch,
 } from "./dispatch";
 import { applyKey, decodeKeys, rowAfterRefresh, type Key } from "./keys";
@@ -49,6 +50,24 @@ const PASTE_OFF = "\x1b[?2004l";
 const HOME = "\x1b[H";
 const ERASE = "\x1b[J";
 const POLL_MS = 1_000;
+
+/**
+ * Status is a board read. Binding Ctrl-C to it lets a poll or an `r` steal
+ * the abort from a drain that is still running.
+ */
+export function bindsOperatorAbort(action: ConductorAction): boolean {
+  return action !== "status";
+}
+
+/**
+ * A second board read while one is already in flight, or while a drain is
+ * running, is the same race: two `status` actions, and the later one owns
+ * `abortInFlight`. Skip. The in-flight read or the post-drain refresh will
+ * paint the board.
+ */
+export function canStartBoardRefresh(busy: boolean, refreshInFlight: boolean): boolean {
+  return !busy && !refreshInFlight;
+}
 
 export interface LoopOptions {
   dispatch: ConductorDispatch;
@@ -136,9 +155,11 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     paint();
   };
 
-  const runAction = <T>(action: "seed" | "wake" | "status" | "answer" | "steer", input: unknown) => {
+  const runAction = <T>(action: ConductorAction, input: unknown) => {
     const running = startConductorAction<T>(options.dispatch, action, input, applyOperator);
-    abortInFlight = running.requestAbort;
+    if (bindsOperatorAbort(action)) {
+      abortInFlight = running.requestAbort;
+    }
     return running.done;
   };
 
@@ -151,6 +172,19 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     follow.sync(idsToFollow(state));
     void loadSelectedJournal();
     endTurn();
+  };
+
+  const beginRefresh = () => {
+    if (closed || !canStartBoardRefresh(state.busy, refreshInFlight)) return;
+    refreshInFlight = true;
+    void refresh()
+      .catch((err: unknown) => {
+        state = { ...state, notice: err instanceof Error ? err.message : String(err) };
+        paint();
+      })
+      .finally(() => {
+        refreshInFlight = false;
+      });
   };
 
   const loadSelectedJournal = async () => {
@@ -309,16 +343,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
 
     await new Promise<void>((resolve) => {
       const poll = setInterval(() => {
-        if (closed || state.busy || refreshInFlight) return;
-        refreshInFlight = true;
-        void refresh()
-          .catch((err: unknown) => {
-            state = { ...state, notice: err instanceof Error ? err.message : String(err) };
-            paint();
-          })
-          .finally(() => {
-            refreshInFlight = false;
-          });
+        beginRefresh();
       }, pollMs);
 
       const finish = () => {
@@ -349,10 +374,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           return;
         }
         if (result.effect.type === "refresh") {
-          void refresh().catch((err: unknown) => {
-            state = { ...state, notice: err instanceof Error ? err.message : String(err) };
-            paint();
-          });
+          beginRefresh();
           return;
         }
         if (result.effect.type === "hold") {
