@@ -197,6 +197,17 @@ When the selected row is running and has no open question and no failed last att
 
 The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown.
 
+The band lists the files that run has written, edited, or read. Last touch is last. Up to 3 paths; more starts with `… N more`.
+
+```text
+ … 2 more
+ package.json
+ src/conductor/render.ts
+ src/foo.ts
+```
+
+Another row's files are not shown. A Bash (or other non-file tool) does not add a path. The ASK and FAIL bands do not list files.
+
 When the run writes a todo list, the band shows one current item and a `done/total` count. The current item is the one in progress (`[·]`), else the first pending (`[ ]`), else the last completed (`[x]`). The full list is not on the band until you expand it.
 
 ```text
@@ -239,10 +250,13 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `t` or `Ctrl-T` | Expand or collapse the todo list on the RUN band |
 | `r` | Refresh now |
 | `/` | Type a slash command (any of the headless verbs) |
+| `/status [issue]` | Select that row (if it is on the board) and refresh |
 | `?` | Toggle help |
 | `q` | Quit |
 
 Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop` and `t list`; `x` or `Ctrl-C` stops that row's request. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
+
+`/status PR-482` selects that row, if it is on the board, and refreshes. `/status` with no issue refreshes and leaves the selection. If the issue is not on the board, the notice is `no row for <issue>` and it refreshes. Headless `status [issue]` filters the printed board; the slash command does not.
 
 ### Transcript
 
