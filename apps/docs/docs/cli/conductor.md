@@ -229,11 +229,24 @@ The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran,
 
 When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, that line becomes `tool · Bash pnpm test · failed`.
 
+When a Write or Edit call includes the new file text, a hunk prints under the tool line. A Write with `contents` or `content` prints each new line as `+ <line>`. An Edit with `old_string` and `new_string` prints only the changed span: `-` lines, then `+` lines.
+
+```text
+tool · Write src/conductor/render.ts
++ export function renderFrame() {}
+
+tool · Edit src/foo.ts
+- const m = 2;
++ const m = 4;
+```
+
+A hunk longer than 10 lines ends with `… N more`. If that Write or Edit fails, the transcript reprints `tool · Write src/conductor/render.ts · failed` (or `tool · Edit src/foo.ts · failed`) and does not reprint the hunk. Read, Bash, and a Write that only names the path have no hunk. The transcript does not read the checkout.
+
 A sub-agent prints `sub · Sub-agent: Explore` when it opens, and `sub · Sub-agent: Explore · failed` only if it fails.
 
 Reasoning and thinking text are not printed.
 
-`watch` writes those same lines to stderr. Tool and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
+`watch` writes those same lines to stderr. Tool, hunk, and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
 
 After that request ends, further board changes show as the lines `status` reports.
 
@@ -258,7 +271,7 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`, `tool · …`, `sub · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, `sub · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 ```bash
 $ fsdev conductor seed PR-482
@@ -389,6 +402,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - The board table is exactly what `status` returns.
 - Watching or aborting a running row does not start work or send an answer. Abort does not resume a session.
 - The transcript does not print reasoning or thinking text.
+- The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages
