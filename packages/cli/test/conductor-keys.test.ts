@@ -166,6 +166,15 @@ describe("applyKey", () => {
     expect(idleX.effect).toBeUndefined();
     expect(applyKey(idle, { type: "ctrl", value: "c" }).effect).toEqual({ type: "quit" });
   });
+
+  it("toggles the RUN-band todo list with t or Ctrl-T", () => {
+    const state = board([runningRow("LIVE-1")]);
+    const opened = applyKey(state, { type: "char", value: "t" });
+    expect(opened.state.planExpanded).toBe(true);
+    expect(opened.effect).toBeUndefined();
+    const closed = applyKey(opened.state, { type: "ctrl", value: "t" });
+    expect(closed.state.planExpanded).toBe(false);
+  });
 });
 
 describe("rowAfterRefresh / applyStatus", () => {

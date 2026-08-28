@@ -130,6 +130,11 @@ export interface ViewState {
    */
   childPlan: Record<string, PlanItem[]>;
   /**
+   * When true, the RUN band shows the full checklist. When false, one
+   * current item and a count — the transcript keeps the rest of the height.
+   */
+  planExpanded: boolean;
+  /**
    * Transcript pager offset from the latest line. `0` follows new activity
    * (Grok-style). PageUp / wheel-up increase it.
    */
@@ -153,6 +158,7 @@ export function emptyView(epicLabel: string): ViewState {
     live: null,
     childLive: {},
     childPlan: {},
+    planExpanded: false,
     scroll: 0,
     lastRefreshAt: null,
   };
@@ -252,6 +258,34 @@ export function selectedPlan(state: ViewState): PlanItem[] {
   const id = selectedRequestId(state);
   if (id === undefined) return [];
   return state.childPlan[id] ?? [];
+}
+
+/** The item in progress, else the first pending, else the last completed. */
+export function currentPlanItem(plan: readonly PlanItem[]): PlanItem | undefined {
+  return (
+    plan.find((item) => item.mark === "·") ??
+    plan.find((item) => item.mark === " ") ??
+    plan.at(-1)
+  );
+}
+
+/**
+ * What the selected run is doing right now. The live line wins; otherwise
+ * the last tool name from that request's transcript.
+ */
+export function selectedNow(state: ViewState): string | undefined {
+  const live = visibleLive(state);
+  if (live !== null && live !== "") {
+    return live.replace(/^(status|message) · /, "");
+  }
+  const id = selectedRequestId(state);
+  for (let i = state.activity.length - 1; i >= 0; i -= 1) {
+    const item = state.activity[i]!;
+    if (id !== undefined && item.requestId !== id) continue;
+    if (id === undefined && item.requestId !== undefined) continue;
+    if (item.text.startsWith("tool · ")) return item.text.slice("tool · ".length);
+  }
+  return undefined;
 }
 
 /**

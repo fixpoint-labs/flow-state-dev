@@ -191,13 +191,15 @@ In the TUI:
   s            seed a new issue
   w            wake
   r            refresh now (runs status)
+  t            expand or collapse the todo list on a running row
   /            slash command (same verbs)
   ?            this help
   q            quit
 
   A row with an open question: just type. Enter sends, Esc cancels.
   A row that failed: the FAIL band holds the reason. w runs wake again.
-  A running row: the RUN band holds the checkout. x or Ctrl-C stops it.
+  A running row: the RUN band holds the checkout and what the run is
+  doing. t expands the todo list. x or Ctrl-C stops it.
   The transcript tails that run's request stream.
 
 Flags: --json  --phase <name>  --user <id>  --session <id>  --config <path>

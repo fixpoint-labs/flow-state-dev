@@ -161,6 +161,9 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
     return { state };
   }
 
+  if (key.type === "ctrl" && key.value === "t") {
+    return { state: { ...state, planExpanded: !state.planExpanded } };
+  }
   if (key.type === "ctrl" && key.value === "c") {
     if (selectedRunningRequestId(state) !== undefined) {
       return { state, effect: { type: "dispatch", command: { kind: "abort" } } };
@@ -230,6 +233,8 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
       return { state, effect: { type: "refresh" } };
     case "w":
       return { state, effect: { type: "dispatch", command: { kind: "wake" } } };
+    case "t":
+      return { state: { ...state, planExpanded: !state.planExpanded } };
     case "x":
       if (selectedRunningRequestId(state) === undefined) {
         return { state: { ...state, notice: "nothing running to stop" } };

@@ -29,6 +29,8 @@ import {
   rowFailed,
   rowRunning,
   selectedFailure,
+  currentPlanItem,
+  selectedNow,
   selectedPlan,
   selectedQuestion,
   selectedRow,
@@ -221,9 +223,41 @@ function renderRunBand(state: ViewState, cols: number): string {
   }
   hintBits.push(id !== undefined ? `${id}  ·  x stops` : "no request id yet");
   const hint = hintBits.join("  ·  ");
+  const now = selectedNow(state);
+  const nowLine =
+    now !== undefined && now !== "" ? ` ${paint(GOLD, truncate(now, inner))}` : "";
+  const planLines = renderPlanLines(state, inner);
+  return [
+    rule(cols, ACCENT),
+    ` ${paint(ACCENT + BOLD, "RUN")}`,
+    ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
+    ` ${dim(hint)}`,
+    ...(nowLine !== "" ? [nowLine] : []),
+    ...planLines,
+    rule(cols, ACCENT),
+  ].join("\n");
+}
+
+function renderPlanLines(state: ViewState, inner: number): string[] {
   const plan = selectedPlan(state);
+  if (plan.length === 0) return [];
+  if (!state.planExpanded) {
+    const current = currentPlanItem(plan);
+    if (current === undefined) return [];
+    const done = plan.filter((item) => item.mark === "x").length;
+    const mark = `[${current.mark}]`;
+    const label = truncate(current.text, Math.max(12, inner - 10));
+    const count = dim(`${done}/${plan.length}`);
+    const painted =
+      current.mark === "·"
+        ? `${paint(GOLD, mark)} ${paint(BOLD + INK, label)}`
+        : current.mark === "x"
+          ? `${paint(TEAL, mark)} ${dim(label)}`
+          : `${dim(mark)} ${dim(label)}`;
+    return [` ${painted}  ${count}`];
+  }
   const shown = plan.slice(0, 4);
-  const planLines = shown.map((item) => {
+  const lines = shown.map((item) => {
     const mark = `[${item.mark}]`;
     const label = truncate(item.text, inner);
     if (item.mark === "·") return ` ${paint(GOLD, mark)} ${paint(BOLD + INK, label)}`;
@@ -231,16 +265,9 @@ function renderRunBand(state: ViewState, cols: number): string {
     return ` ${dim(mark)} ${dim(label)}`;
   });
   if (plan.length > shown.length) {
-    planLines.push(` ${dim(`… ${plan.length - shown.length} more`)}`);
+    lines.push(` ${dim(`… ${plan.length - shown.length} more`)}`);
   }
-  return [
-    rule(cols, ACCENT),
-    ` ${paint(ACCENT + BOLD, "RUN")}`,
-    ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
-    ` ${dim(hint)}`,
-    ...planLines,
-    rule(cols, ACCENT),
-  ].join("\n");
+  return lines;
 }
 
 function renderMeta(state: ViewState, cols: number): string {
@@ -368,7 +395,7 @@ function renderFooter(state: ViewState, cols: number): string {
     : fail !== undefined
       ? "click/j/k select  ·  w retry  ·  PgUp transcript  ·  s seed  ·  /  ·  ?  ·  q"
       : running
-        ? "click/j/k select  ·  x stop  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
+        ? "click/j/k select  ·  x stop  ·  t list  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
         : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
   return padLine(dim(` ${keys}`), cols);
 }

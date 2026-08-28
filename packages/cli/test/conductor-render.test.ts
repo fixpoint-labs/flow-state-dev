@@ -314,7 +314,7 @@ describe("renderFrame", () => {
     expect(frame).not.toContain("src/other.ts");
   });
 
-  it("pins the selected run's latest checklist on the RUN band", () => {
+  it("pins the selected run's current todo on the RUN band and expands on demand", () => {
     const live = (issue: string, requestId: string): StatusRow => ({
       taskId: `${issue}--implement`,
       issue,
@@ -351,19 +351,37 @@ describe("renderFrame", () => {
     };
     const rows = [live("LIVE-1", "req-live-1"), live("LIVE-2", "req-live-2")];
     const first = renderFrame(
-      { ...emptyView("epic"), rows, selected: 0, childPlan },
+      {
+        ...emptyView("epic"),
+        rows,
+        selected: 0,
+        childPlan,
+        childLive: { "req-live-1": "status · coding A" },
+        activity: [{ at: 1, text: "tool · Write src/a.ts", requestId: "req-live-1" }],
+      },
       { cols: 80, rows: 24 },
     );
     const firstAbove = beforeTranscript(first);
     expect(firstAbove).toMatch(/^ RUN\s*$/m);
-    expect(firstAbove).toContain("[x] Add the failing test");
+    expect(firstAbove).toContain("coding A");
     expect(firstAbove).toContain("[·] Implement the fix");
-    expect(firstAbove).toContain("[ ] Open the pull request");
-    expect(firstAbove).toContain("[ ] Update the changelog");
-    expect(firstAbove).toContain("… 1 more");
-    expect(firstAbove).not.toContain("Notify review");
+    expect(firstAbove).toContain("1/5");
+    expect(firstAbove).not.toContain("Add the failing test");
+    expect(firstAbove).not.toContain("Open the pull request");
     expect(firstAbove).not.toContain("Other child's work");
-    expect(first).not.toContain("tool · TodoWrite");
+    expect(stripAnsi(first)).toContain("t list");
+
+    const expanded = renderFrame(
+      { ...emptyView("epic"), rows, selected: 0, childPlan, planExpanded: true },
+      { cols: 80, rows: 24 },
+    );
+    const expandedAbove = beforeTranscript(expanded);
+    expect(expandedAbove).toContain("[x] Add the failing test");
+    expect(expandedAbove).toContain("[·] Implement the fix");
+    expect(expandedAbove).toContain("[ ] Open the pull request");
+    expect(expandedAbove).toContain("[ ] Update the changelog");
+    expect(expandedAbove).toContain("… 1 more");
+    expect(expandedAbove).not.toContain("Notify review");
 
     const second = renderFrame(
       { ...emptyView("epic"), rows, selected: 1, childPlan },
@@ -372,6 +390,49 @@ describe("renderFrame", () => {
     const secondAbove = beforeTranscript(second);
     expect(secondAbove).toContain("[x] Other child's work");
     expect(secondAbove).not.toContain("Implement the fix");
+  });
+
+  it("shows the last tool on the RUN band when nothing is mid-stream", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const above = beforeTranscript(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [running],
+          activity: [
+            { at: 1, text: "LIVE-1 · in_progress" },
+            { at: 2, text: "tool · Write src/a.ts", requestId: "req-live-1" },
+            { at: 3, text: "tool · Write src/b.ts", requestId: "req-live-2" },
+          ],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(above).toContain("Write src/a.ts");
+    expect(above).not.toContain("src/b.ts");
   });
 
   it("does not pin a plan on the ASK band", () => {
