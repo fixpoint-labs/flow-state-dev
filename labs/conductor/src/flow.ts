@@ -1093,15 +1093,21 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     inputSchema: z.object({
       issue: z.string(),
       phase: z.string().optional(),
+      /** Ticket text the operator already said. Absent means only the id. */
+      brief: z.string().optional(),
     }),
     outputSchema: z.object({ taskId: z.string() }),
     stateSchema: z.object({ taskId: z.string().nullable().default(null) }),
   })
     .tap(phaseReady)
-    .tap((input: { issue: string; phase?: string }) => ({
-      issue: input.issue,
-      phase: input.phase ?? phase.phase,
-    }), seedTask)
+    .tap((input: { issue: string; phase?: string; brief?: string }) => {
+      const brief = input.brief?.trim();
+      return {
+        issue: input.issue,
+        phase: input.phase ?? phase.phase,
+        ...(brief !== undefined && brief !== "" ? { brief } : {}),
+      };
+    }, seedTask)
     .step(drainWhenReady)
     .step(returnTaskId);
 

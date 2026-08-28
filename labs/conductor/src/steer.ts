@@ -75,7 +75,7 @@ export const STEER_PROMPT = [
   "Use tools when the operator wants work started, retried, or a question answered.",
   "If they only asked what is on the board, answer from <board> and do not wake anything.",
   "",
-  "seed_issue — file an issue-phase and start a worker.",
+  "seed_issue — file an issue-phase and start a worker. When the operator already said what the ticket is, pass that as brief so attempt 1 has it.",
   "wake_board — claim pending or failed rows and start or retry their workers.",
   "answer_question — reply to one open question (use the question id verbatim) and resume that worker.",
   "",

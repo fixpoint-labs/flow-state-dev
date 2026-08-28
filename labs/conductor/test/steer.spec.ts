@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
+  STEER_PROMPT,
   formatCoordinatorBoard,
   projectCoordinatorRow,
 } from "../src/steer";
@@ -9,6 +10,12 @@ import {
   scriptedAgent,
   sdkResult,
 } from "./harness";
+
+describe("STEER_PROMPT", () => {
+  it("tells the coordinator to pass a brief when the operator already said the ticket", () => {
+    expect(STEER_PROMPT).toContain("pass that as brief");
+  });
+});
 
 describe("formatCoordinatorBoard", () => {
   it("says the board is empty rather than inventing a row", () => {
@@ -95,6 +102,51 @@ describe("steer", () => {
         rows: Array<{ issue: string | null; taskId: string }>;
       }>("status", {});
       expect(status.rows.map((row) => row.issue)).toContain("FIX-1");
+    } finally {
+      conductor.dispose();
+    }
+  });
+
+  it("files the operator's brief when the coordinator calls seed_issue", async () => {
+    let seen: string | undefined;
+    const conductor = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      buildPrompt: (run) => {
+        seen = run.brief;
+        return "p";
+      },
+      modelResolver: createMockModelResolver({
+        generators: {
+          "conductor-coordinator": mockGenerator({
+            name: "conductor-coordinator",
+            script: [
+              {
+                toolCalls: [
+                  {
+                    toolCallId: "c1",
+                    toolName: "seed_issue",
+                    args: {
+                      issue: "FIX-1",
+                      brief: "Rename getSession in client.md",
+                    },
+                  },
+                ],
+              },
+              { text: "Started FIX-1." },
+            ],
+          }),
+        },
+      }),
+    });
+    try {
+      await conductor.call<string>("steer", {
+        message: "start FIX-1: Rename getSession in client.md",
+      });
+      const deadline = Date.now() + 8_000;
+      while (seen === undefined && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(seen).toBe("Rename getSession in client.md");
     } finally {
       conductor.dispose();
     }
