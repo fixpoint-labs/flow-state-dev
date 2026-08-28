@@ -1073,6 +1073,22 @@ describe("createStreamTranscript", () => {
     );
   });
 
+  it("redacts a flushed live line so a leftover status cannot leak a token", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "s-secret",
+        type: "status",
+        message: "origin https://x-access-token:ghs_EXAMPLETOKENVALUE@github.com/org/repo.git",
+        transient: true,
+      }),
+    );
+    expect(t.flush()).toEqual({
+      lines: ["status · origin https://x-access-token:***@github.com/org/repo.git"],
+      live: null,
+    });
+  });
+
   it("joins stdout and stderr when the Bash result is an object", () => {
     const t = createStreamTranscript();
     expect(

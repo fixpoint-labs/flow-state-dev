@@ -275,8 +275,16 @@ export function selectedQuestion(state: ViewState): StatusQuestion | undefined {
  * is the usual daily shape — the row is still retryable, the attempt is not.
  */
 export function rowFailed(row: StatusRow): boolean {
-  if (row.status === "errored" || row.status === "cancelled") return true;
+  if (rowSpent(row)) return true;
   return row.run?.outcome === "failed";
+}
+
+/**
+ * The board will not take this row again. `/wake` is a no-op here —
+ * `errored` spent the retry budget; `cancelled` was withdrawn.
+ */
+export function rowSpent(row: StatusRow): boolean {
+  return row.status === "errored" || row.status === "cancelled";
 }
 
 /** A running row with no write for this long is stalled. */

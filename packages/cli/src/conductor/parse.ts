@@ -329,7 +329,7 @@ In the TUI:
   Letters talk. r still refreshes. /quit or Ctrl-C leaves.
   A row with an open question: type the reply. Letters are the answer, not board keys. Enter sends, Esc cancels.
   The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
-  A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or /wake.
+  A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or /wake if it is still pending. An errored or cancelled row is spent — /wake will not take it.
   A running row: the RUN band holds the checkout and what the run is
   doing. Ctrl-T expands the todo list. x or Ctrl-C stops it.
   While working, type an answer; Enter queues it.

@@ -40,6 +40,7 @@ import {
   lastActivityAt,
   rowFailed,
   rowNeedsYou,
+  rowSpent,
   rowNow,
   rowRunning,
   STALL_AFTER_MS,
@@ -275,7 +276,7 @@ function renderFailBand(state: ViewState, cols: number): string {
     row?.issue ?? row?.taskId ?? "row",
     id,
     ...renderUsageBits(row),
-    "/wake",
+    row !== undefined && rowSpent(row) ? "spent" : "/wake",
   ]
     .filter((bit) => bit !== undefined && bit !== "")
     .join("  ·  ");
@@ -637,7 +638,12 @@ function renderSlashMenu(state: ViewState, cols: number): string {
 function renderPrompt(state: ViewState, cols: number): string {
   const notice = state.notice !== null ? `\n ${paint(GOLD, state.notice)}` : "";
   let prefix = paint(ACCENT, "❯ ");
-  let placeholder = dim("talk to the coordinator, or /seed /wake /answer");
+  const selected = selectedRow(state);
+  let placeholder = dim(
+    selected !== undefined && rowSpent(selected)
+      ? "talk to the coordinator — this row is spent"
+      : "talk to the coordinator, or /seed /wake /answer",
+  );
   if (state.inputMode === "answer") {
     prefix = paint(MAUVE, "❯ answer ");
     placeholder = dim("type the reply · Enter sends · Ctrl-J new line · Esc cancels");
@@ -664,6 +670,8 @@ function renderPrompt(state: ViewState, cols: number): string {
 function renderFooter(state: ViewState, cols: number, now: number): string {
   const q = selectedQuestion(state);
   const fail = selectedFailure(state);
+  const selected = selectedRow(state);
+  const spent = selected !== undefined && rowSpent(selected);
   const running = selectedRunningRequestId(state) !== undefined;
   const finding = state.find !== null;
   const slashing = state.inputMode === "command" && slashMenu(state).length > 0;
@@ -701,7 +709,7 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     : q
       ? `${working}type to answer  ·  click/↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
       : fail !== undefined
-        ? `${working}type to talk  ·  click/↑/↓  ·  /wake${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`
+        ? `${working}type to talk  ·  click/↑/↓  ·  ${spent ? "spent" : "/wake"}${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`
         : running
           ? `${working}type to talk  ·  click/↑/↓  ·  x stop${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
           : `${working}type to talk  ·  click/↑/↓${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`;

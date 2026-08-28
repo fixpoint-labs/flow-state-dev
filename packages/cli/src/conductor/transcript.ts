@@ -398,7 +398,7 @@ export function createStreamTranscript(): {
       }
     },
     flush(): TranscriptPatch {
-      return { lines: commitLive(), live: null };
+      return snapshot(commitLive());
     },
   };
 }

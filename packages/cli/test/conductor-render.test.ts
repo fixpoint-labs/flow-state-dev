@@ -414,6 +414,18 @@ describe("renderFrame", () => {
     expect(frame).toContain("wake-line-39");
   });
 
+  it("does not advertise /wake on a spent row — the board will not take it", () => {
+    const spent: StatusRow = { ...failed, status: "errored", attempts: 3 };
+    const frame = renderFrame({ ...emptyView("epic"), rows: [spent] }, { cols: 80, rows: 24 });
+    const text = stripAnsi(frame);
+    const above = beforeTranscript(frame);
+    expect(above).toMatch(/^ FAIL\s*$/m);
+    expect(above).toContain("spent");
+    expect(above).not.toContain("/wake");
+    expect(text).toContain("spent");
+    expect(text).not.toContain("/wake");
+  });
+
   it("keeps a running checkout above the transcript even when the log is long", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",
