@@ -166,12 +166,14 @@ Startup binds a default target from the positional arguments, a config `chat.def
 
 ### `fsdev conductor [verb]`
 
-Operator surface for a flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, and `answer` actions. No verb (or `tui [issue]`) opens a fullscreen, live-polling board; any other verb runs headless and exits.
+Operator surface for a flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, `answer`, and `steer` actions. No verb (or `tui [issue]`) opens a fullscreen, live-polling board; any other verb runs headless and exits. Typed input that is not a slash verb is a talk turn (`steer`).
 
 ```bash
 fsdev conductor status
 fsdev conductor seed PR-482
 fsdev conductor answer PR-482/implement/1/q "target the release branch"
+fsdev conductor steer "retry the failed rows"
+fsdev conductor please start FIX-99
 fsdev conductor abort PR-482
 ```
 
@@ -184,6 +186,7 @@ fsdev conductor abort PR-482
 | `seed <issue> [--phase implement]` | File a row, then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
+| `steer <message…>` | Talk to the coordinator. An unslashed line that is not a known verb is the same command |
 | `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
 | `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
 | `start <issue>` | Seed, then TUI on a TTY, or seed-and-watch on a pipe |
@@ -205,11 +208,11 @@ fsdev conductor abort PR-482
 | `--quiet` | Suppress runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `warn`) |
 
-**Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `watch`, `abort`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call failed, `2` at least one open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always returns `0`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`). `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and returns that board code. With no running request id it prints `nothing running to stop` and returns `1`.
+**Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `steer`, `watch`, `abort`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call failed, `2` at least one open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always returns `0`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`). After a `steer` that ran, the exit code is that board code. `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and returns that board code. With no running request id it prints `nothing running to stop` and returns `1`.
 
-On a selected running row, `x` or `Ctrl-C` stops that request. A RUN band (full branch, full checkout path, request id, and the current todo item plus a `done/total` count when the run wrote a list; `t` expands it) sits in the ASK / FAIL slot between the table and TRANSCRIPT. In the TUI, `/` lists matching verbs and board ids for `Tab` to complete, and `/find` searches the selected row's transcript. `Ctrl-C` with nothing running quits. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action.
+On a selected running row, `x` or `Ctrl-C` stops that request. A RUN band (full branch, full checkout path, request id, and the current todo item plus a `done/total` count when the run wrote a list; `t` expands it) sits in the ASK / FAIL slot between the table and TRANSCRIPT. In the TUI, `/` lists matching verbs and board ids for `Tab` to complete, and `/find` searches the selected row's transcript. `Ctrl-C` with nothing running quits. While a seed, wake, answer, steer, or status is in flight, `Ctrl-C` aborts that operator action.
 
-Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). See [Conductor](/docs/cli/conductor) for the four-action contract a conductor-shaped flow has to satisfy, the TUI keybindings, the RUN band, and a full walkthrough.
+Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). See [Conductor](/docs/cli/conductor) for the action contract a conductor-shaped flow has to satisfy, the TUI keybindings, the RUN band, and a full walkthrough.
 
 ### `fsdev block <specifier>`
 

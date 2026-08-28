@@ -34,7 +34,7 @@ This page is about running *your own* flows locally. To dispatch a coding task t
 - **Quick iteration** — `fsdev run` executes a flow action and prints results. No need to start a server or open a browser.
 - **Testing blocks in isolation** — Use `fsdev block` to execute a single block with the test harness. Good for verifying handler logic or generator output without wiring up a full flow.
 - **Holding a live conversation** — `fsdev chat` opens an interactive session over your flows: type messages that stream replies back, switch which flow is driving, and inspect the session, all from the terminal. See [Interactive Chat](./interactive-chat.md).
-- **Running a background task board** — `fsdev conductor` opens a live board over a flow that queues work and occasionally needs a person to answer something. Script it with headless verbs from CI, or watch it with the fullscreen TUI. See [Conductor](./conductor.md).
+- **Running a background task board** — `fsdev conductor` opens a live board over a flow that queues work. Talk to the coordinator, answer a question a row raised, or script it with headless verbs from CI. See [Conductor](./conductor.md).
 - **Debugging multi-turn conversations** — Reuse sessions across invocations with `--session`. State persists between runs so you can simulate back-and-forth without a client.
 - **CI/CD scripts** — Invoke flows or blocks from pipelines. Deterministic output format, clear exit codes. Use the programmatic API (`discoverFlows`, `resolveBlock`) when you need flow discovery in Node scripts.
 
