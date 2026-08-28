@@ -129,7 +129,7 @@ describe("createStreamTranscript", () => {
           toolCall: {
             callId: "c1",
             name: "Write",
-            arguments: JSON.stringify({ file_path: "src/conductor/render.ts", contents: "huge" }),
+            arguments: JSON.stringify({ file_path: "src/conductor/render.ts" }),
             generatorBlock: "agent",
           },
         }),
@@ -154,6 +154,119 @@ describe("createStreamTranscript", () => {
         }),
       ),
     ).toEqual({ lines: [], live: null });
+  });
+
+  it("prints the lines a Write put in the file", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        added({
+          id: "t1",
+          type: "tool_output",
+          blockName: "Write",
+          status: "in_progress",
+          toolCall: {
+            callId: "c1",
+            name: "Write",
+            arguments: JSON.stringify({
+              file_path: "src/foo.ts",
+              contents: "export const n = 1;\n",
+            }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · Write src/foo.ts", "+ export const n = 1;"],
+      live: null,
+    });
+  });
+
+  it("prints the changed span of an Edit, not the whole file", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        added({
+          id: "t2",
+          type: "tool_output",
+          blockName: "Edit",
+          status: "in_progress",
+          toolCall: {
+            callId: "c2",
+            name: "Edit",
+            arguments: JSON.stringify({
+              file_path: "src/foo.ts",
+              old_string: "const n = 1;\nconst m = 2;\nconst p = 3;\n",
+              new_string: "const n = 1;\nconst m = 4;\nconst p = 3;\n",
+            }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · Edit src/foo.ts", "- const m = 2;", "+ const m = 4;"],
+      live: null,
+    });
+  });
+
+  it("caps a long Write so one file cannot fill the transcript", () => {
+    const t = createStreamTranscript();
+    const contents = Array.from({ length: 20 }, (_, i) => `line-${i}`).join("\n");
+    const patch = t.apply(
+      added({
+        id: "t3",
+        type: "tool_output",
+        blockName: "Write",
+        status: "in_progress",
+        toolCall: {
+          callId: "c3",
+          name: "Write",
+          arguments: JSON.stringify({ file_path: "big.ts", content: contents }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(patch.lines[0]).toBe("tool · Write big.ts");
+    expect(patch.lines[1]).toBe("+ line-0");
+    expect(patch.lines.at(-1)).toBe("… 10 more");
+    expect(patch.lines).toHaveLength(12);
+  });
+
+  it("does not reprint the hunk when a Write fails — only the tool line", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t4",
+        type: "tool_output",
+        blockName: "Write",
+        status: "in_progress",
+        toolCall: {
+          callId: "c4",
+          name: "Write",
+          arguments: JSON.stringify({ file_path: "src/foo.ts", contents: "x" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        done({
+          id: "t4",
+          type: "tool_output",
+          blockName: "Write",
+          status: "failed",
+          toolCall: {
+            callId: "c4",
+            name: "Write",
+            arguments: JSON.stringify({ file_path: "src/foo.ts", contents: "x" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · Write src/foo.ts · failed"],
+      live: null,
+    });
   });
 
   it("prints a Bash command and a failed tool once it settles", () => {

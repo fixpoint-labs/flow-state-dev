@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderBoardPlain, renderFrame, watchExitCode } from "../src/conductor/render";
 import { emptyView, selectedFailure, type StatusRow } from "../src/conductor/types";
-import { stripAnsi } from "../src/conductor/theme";
+import { RUST, TEAL, stripAnsi } from "../src/conductor/theme";
 
 function beforeTranscript(frame: string): string {
   const text = stripAnsi(frame);
@@ -214,6 +214,51 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).toContain("1 running");
     expect(stripAnsi(frame)).toContain("x stop");
     expect(frame).toContain("wake-line-39");
+  });
+
+  it("paints a Write hunk in the transcript", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: { inputTokens: 12_000, outputTokens: 400 },
+        costUsd: null,
+        childSessionId: "child-1",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [running],
+        activity: [
+          { at: 1, text: "tool · Write src/foo.ts" },
+          { at: 1, text: "- const n = 1;" },
+          { at: 1, text: "+ const n = 2;" },
+        ],
+      },
+      { cols: 80, rows: 24 },
+    );
+    const text = stripAnsi(frame);
+    expect(text).toContain("tool · Write src/foo.ts");
+    expect(text).toContain("- const n = 1;");
+    expect(text).toContain("+ const n = 2;");
+    expect(frame).toContain(TEAL);
+    expect(frame).toContain(RUST);
   });
 
   it("lets an open question win when the same row also failed", () => {

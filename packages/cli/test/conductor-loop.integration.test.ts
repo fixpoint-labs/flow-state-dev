@@ -252,13 +252,17 @@ describe("fsdev conductor — TUI over the same actions", () => {
           toolCall: {
             callId: "c1",
             name: "Write",
-            arguments: JSON.stringify({ file_path: "src/conductor/render.ts" }),
+            arguments: JSON.stringify({
+              file_path: "src/conductor/render.ts",
+              contents: "export function renderFrame() {}\n",
+            }),
             generatorBlock: "agent",
           },
         },
       } as never,
     ]);
     await waitFor(() => tty.text, "tool · Write src/conductor/render.ts");
+    await waitFor(() => tty.text, "+ export function renderFrame() {}");
 
     tty.input.write("q");
     await expect(running).resolves.toBe(0);

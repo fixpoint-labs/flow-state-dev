@@ -6,10 +6,12 @@
  * keeps a log instead of a single overwritten slot. `content.delta` appends
  * to the live line so a generator in this process reads as a stream. Durable
  * items (errors, tools, finished messages, resource changes) become activity
- * lines. A coding tool is named with the file or command it touched. `status`
- * remains the board authority; `diffBoard` turns a poll that actually moved
- * into the same log. A running row's `run.requestId` is also tailed through
- * the request store, so a detached coding run writes here as it runs.
+ * lines. A coding tool is named with the file or command it touched. A Write
+ * or Edit that carries the new text also prints a compact hunk — the changed
+ * span, not the whole file. `status` remains the board authority; `diffBoard`
+ * turns a poll that actually moved into the same log. A running row's
+ * `run.requestId` is also tailed through the request store, so a detached
+ * coding run writes here as it runs.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
@@ -75,7 +77,7 @@ export function createStreamTranscript(): {
           }
           if (item.type === "tool_output") {
             logged.add(item.id);
-            return snapshot([...commitLive(), formatToolLine(item)]);
+            return snapshot([...commitLive(), ...formatToolLines(item)]);
           }
           if (item.type === "container") {
             logged.add(item.id);
@@ -110,10 +112,13 @@ export function createStreamTranscript(): {
             const failed = item.status === "failed" || item.status === "incomplete";
             if (logged.has(item.id) && !failed) return snapshot([]);
             logged.add(item.id);
-            return snapshot([
-              ...commitLive(),
-              formatToolLine(item, failed ? item.status : undefined),
-            ]);
+            if (failed) {
+              return snapshot([
+                ...commitLive(),
+                formatToolLine(item, item.status),
+              ]);
+            }
+            return snapshot([...commitLive(), ...formatToolLines(item)]);
           }
           if (item.type === "container") {
             const failed = item.status === "failed" || item.status === "incomplete";
@@ -206,6 +211,74 @@ function formatToolLine(item: OutputItem, settled?: "failed" | "incomplete"): st
   if (settled === "failed") return `${base} · failed`;
   if (settled === "incomplete") return `${base} · stopped`;
   return base;
+}
+
+/** Tool name plus a compact hunk when the call carried the new file text. */
+function formatToolLines(item: OutputItem): string[] {
+  const args = item.type === "tool_output" ? parseToolArgs(item.toolCall?.arguments) : {};
+  return [formatToolLine(item), ...toolHunk(args)];
+}
+
+const HUNK_MAX = 10;
+const HUNK_LINE = 72;
+
+function stringArg(args: Record<string, unknown>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === "string") return value;
+  }
+  return undefined;
+}
+
+function splitLines(text: string): string[] {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const trimmed = normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
+  if (trimmed === "") return [];
+  return trimmed.split("\n");
+}
+
+function clipHunkLine(mark: "+" | "-", text: string): string {
+  const body = text.length <= HUNK_LINE ? text : `${text.slice(0, HUNK_LINE - 1)}…`;
+  return `${mark} ${body}`;
+}
+
+function capHunk(lines: string[]): string[] {
+  if (lines.length <= HUNK_MAX) return lines;
+  return [...lines.slice(0, HUNK_MAX), `… ${lines.length - HUNK_MAX} more`];
+}
+
+/**
+ * Compact hunk from the args a Write or Edit already sent. Presenter only —
+ * it does not read the checkout. An Edit shows the changed span; a Write
+ * shows the new file as additions. No contents, no hunk.
+ */
+function toolHunk(args: Record<string, unknown>): string[] {
+  const after = stringArg(args, ["new_string", "contents", "content"]);
+  if (after === undefined) return [];
+  const before = stringArg(args, ["old_string"]);
+  const added = splitLines(after);
+  if (before === undefined) {
+    return capHunk(added.map((line) => clipHunkLine("+", line)));
+  }
+  const removed = splitLines(before);
+  let start = 0;
+  const shared = Math.min(removed.length, added.length);
+  while (start < shared && removed[start] === added[start]) start += 1;
+  let removedEnd = removed.length;
+  let addedEnd = added.length;
+  while (
+    removedEnd > start &&
+    addedEnd > start &&
+    removed[removedEnd - 1] === added[addedEnd - 1]
+  ) {
+    removedEnd -= 1;
+    addedEnd -= 1;
+  }
+  const hunk = [
+    ...removed.slice(start, removedEnd).map((line) => clipHunkLine("-", line)),
+    ...added.slice(start, addedEnd).map((line) => clipHunkLine("+", line)),
+  ];
+  return capHunk(hunk);
 }
 
 function formatContainerLine(item: OutputItem, settled?: "failed" | "incomplete"): string {

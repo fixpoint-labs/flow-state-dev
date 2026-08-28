@@ -282,9 +282,10 @@ function renderActivity(state: ViewState, cols: number, height: number): string 
   const width = Math.max(16, cols - 10);
   const body: string[] = [];
   for (const item of state.activity) {
-    const wrapped = wrap(item.text, width);
+    const wrapped = wrapActivityLine(item.text, width);
     wrapped.forEach((line, i) => {
-      body.push(i === 0 ? ` ${dim(formatClock(item.at))}  ${line}` : `         ${line}`);
+      const painted = paintHunkLine(line);
+      body.push(i === 0 ? ` ${dim(formatClock(item.at))}  ${painted}` : `         ${painted}`);
     });
   }
   if (following && state.live !== null) {
@@ -361,6 +362,20 @@ function padLine(text: string, cols: number): string {
 function lineCount(block: string): number {
   if (block === "") return 0;
   return block.split("\n").length;
+}
+
+function wrapActivityLine(text: string, width: number): string[] {
+  if (text.startsWith("+ ") || text.startsWith("- ") || text.startsWith("… ")) {
+    return [text.length <= width ? text : `${text.slice(0, Math.max(1, width - 1))}…`];
+  }
+  return wrap(text, width);
+}
+
+function paintHunkLine(line: string): string {
+  if (line.startsWith("+ ")) return paint(TEAL, line);
+  if (line.startsWith("- ")) return paint(RUST, line);
+  if (line.startsWith("… ")) return dim(line);
+  return line;
 }
 
 function fmtTokens(n: number): string {
