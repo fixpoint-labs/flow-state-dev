@@ -37,6 +37,8 @@ describe("decodeKeys", () => {
   it("decodes an SGR click and a wheel tick", () => {
     expect(decodeKeys("\x1b[<0;12;5M").keys).toEqual([{ type: "click", col: 12, row: 5 }]);
     expect(decodeKeys("\x1b[<65;1;1M").keys).toEqual([{ type: "wheel", delta: 1 }]);
+    expect(decodeKeys("\x1b[5~").keys).toEqual([{ type: "pageup" }]);
+    expect(decodeKeys("\x1b[6~").keys).toEqual([{ type: "pagedown" }]);
   });
 
   it("holds an incomplete CSI so the next chunk can finish it", () => {
@@ -89,8 +91,17 @@ describe("applyKey", () => {
     const state = board([row("FIX-1", 1), row("FIX-2")]);
     const clicked = applyKey(state, { type: "click", col: 8, row: 5 });
     expect(clicked.state.selected).toBe(1);
-    const wheeled = applyKey(clicked.state, { type: "wheel", delta: -1 });
-    expect(wheeled.state.selected).toBe(0);
+  });
+
+  it("scrolls the transcript with the wheel and PageUp, including while busy", () => {
+    const state = board([row("FIX-1")]);
+    const up = applyKey(state, { type: "wheel", delta: -1 });
+    expect(up.state.scroll).toBe(1);
+    expect(up.state.selected).toBe(0);
+    const page = applyKey(up.state, { type: "pageup" });
+    expect(page.state.scroll).toBe(9);
+    const busy = applyKey({ ...state, busy: true }, { type: "pagedown" });
+    expect(busy.state.scroll).toBe(0);
   });
 
   it("does not move the board while an action is in flight", () => {

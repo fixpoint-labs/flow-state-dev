@@ -199,7 +199,8 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 
 | Key | Does |
 |---|---|
-| `j` / `k` or `↓` / `↑` | Move the selected row (click a row; mouse wheel also moves) |
+| `j` / `k` or `↓` / `↑` | Move the selected row (click a row) |
+| `PgUp` / `PgDn` | Scroll the transcript (mouse wheel and `Ctrl-U` / `Ctrl-D` too) |
 | `[` / `]` | Move between open questions on the selected row |
 | `a` | Answer the selected question |
 | `s` | Seed a new row (prompts for an issue id) |

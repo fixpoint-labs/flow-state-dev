@@ -47,23 +47,18 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
 
   const header = renderHeader(state, cols);
   const table = renderTable(state, cols);
-  const detail = renderDetail(state, cols);
-  const activity = renderActivity(state, cols, 4);
   const prompt = renderPrompt(state, cols);
   const footer = renderFooter(state, cols);
+  const reserved =
+    lineCount(header) + lineCount(table) + lineCount(prompt) + lineCount(footer);
+  const leftover = Math.max(6, rows - reserved);
+  const asking = selectedQuestion(state) !== undefined;
+  const detailCap = asking ? Math.max(11, Math.min(14, leftover - 5)) : Math.min(8, leftover - 5);
+  const detail = capBlock(renderDetail(state, cols), detailCap);
+  const activityHeight = Math.max(4, leftover - lineCount(detail));
+  const activity = renderActivity(state, cols, activityHeight);
 
-  const chrome = 2; // header + footer rules live inside those helpers
-  const used =
-    lineCount(header) +
-    lineCount(table) +
-    lineCount(detail) +
-    lineCount(activity) +
-    lineCount(prompt) +
-    lineCount(footer) +
-    chrome;
-  const filler = Math.max(0, rows - used);
-  const gap = filler > 0 ? "\n".repeat(filler) : "";
-  return fit([header, table, detail, activity, gap, prompt, footer].filter((s) => s !== "").join("\n"), cols, rows);
+  return fit([header, table, detail, activity, prompt, footer].filter((s) => s !== "").join("\n"), cols, rows);
 }
 
 function renderHeader(state: ViewState, cols: number): string {
@@ -143,22 +138,29 @@ function renderDetail(state: ViewState, cols: number): string {
   }
   const title = `${row.issue ?? "?"} / ${row.phase ?? "?"}`;
   lines.push(` ${paint(BOLD + INK, title)}   ${paint(statusColor(row.status), row.status)}   ${dim(`attempt ${row.attempts}`)}`);
+
+  const questions = row.questions;
+  if (questions.length === 0) {
+    lines.push(` ${dim("ask")}      ${dim("none open")}`);
+  } else {
+    lines.push(` ${paint(MAUVE + BOLD, "QUESTIONS")}  ${dim("type to answer · [ ] to move")}`);
+    questions.forEach((q, i) => {
+      for (const cardLine of renderQuestionCard(q, i === state.questionIndex, cols)) {
+        lines.push(cardLine);
+      }
+    });
+  }
+
   if (row.run !== null) {
     const bits = [
       row.run.outcome !== null ? paint(outcomeColor(row.run.outcome), row.run.outcome) : dim("no outcome yet"),
     ];
     if (row.run.reason) bits.push(truncate(row.run.reason, Math.max(20, cols - 28)));
+    if (row.run.workspacePath) bits.push(truncate(row.run.workspacePath, 24));
+    if (row.run.costUsd !== null) bits.push(`$${row.run.costUsd.toFixed(3)}`);
     lines.push(` ${dim("run")}      ${bits.join(dim(" · "))}`);
-    if (row.run.workspacePath) lines.push(` ${dim("checkout")} ${truncate(row.run.workspacePath, cols - 12)}`);
-    if (row.run.branch) lines.push(` ${dim("branch")}   ${row.run.branch}`);
-    const cost: string[] = [];
-    if (row.run.costUsd !== null) cost.push(`$${row.run.costUsd.toFixed(3)}`);
-    if (row.run.usage !== null) {
-      cost.push(`${fmtTokens(row.run.usage.inputTokens)} in / ${fmtTokens(row.run.usage.outputTokens)} out`);
-    }
-    if (cost.length > 0) lines.push(` ${dim("spend")}    ${cost.join(dim(" · "))}`);
     if (row.run.finalMessage) {
-      for (const wrapped of wrap(row.run.finalMessage, cols - 4).slice(0, 3)) {
+      for (const wrapped of wrap(row.run.finalMessage, cols - 4).slice(0, 2)) {
         lines.push(` ${dim("·")} ${wrapped}`);
       }
     }
@@ -168,18 +170,6 @@ function renderDetail(state: ViewState, cols: number): string {
   if (row.feedback) {
     lines.push(` ${dim("feedback")} ${truncate(row.feedback, cols - 12)}`);
   }
-
-  const questions = row.questions;
-  if (questions.length === 0) {
-    lines.push(` ${dim("ask")}      ${dim("none open")}`);
-    return lines.join("\n");
-  }
-  lines.push(` ${paint(MAUVE + BOLD, "QUESTIONS")}  ${dim("type to answer · [ ] to move")}`);
-  questions.forEach((q, i) => {
-    for (const cardLine of renderQuestionCard(q, i === state.questionIndex, cols)) {
-      lines.push(cardLine);
-    }
-  });
   return lines.join("\n");
 }
 
@@ -196,14 +186,27 @@ function renderQuestionCard(question: StatusQuestion, selected: boolean, cols: n
   return [top, ...mid, metaLine, bot];
 }
 
-function renderActivity(state: ViewState, cols: number, max: number): string {
-  if (state.activity.length === 0) return "";
-  const tail = state.activity.slice(-max);
-  const lines = [rule(cols, INK_3), ` ${dim("ACTIVITY")}`];
-  for (const item of tail) {
-    lines.push(` ${dim(formatClock(item.at))}  ${truncate(item.text, cols - 10)}`);
-  }
-  return lines.join("\n");
+function renderActivity(state: ViewState, cols: number, height: number): string {
+  const heading = ` ${dim("TRANSCRIPT")}${state.scroll > 0 ? dim(`  ·  ${state.scroll} back`) : dim("  ·  follow")}`;
+  const body = state.activity.map((item) => ` ${dim(formatClock(item.at))}  ${truncate(item.text, cols - 10)}`);
+  const window = height - 2;
+  if (window <= 0) return `${rule(cols, INK_3)}\n${heading}`;
+  const maxScroll = Math.max(0, body.length - window);
+  const scroll = Math.min(state.scroll, maxScroll);
+  const start = Math.max(0, body.length - window - scroll);
+  const visible = body.slice(start, start + window);
+  const pad = Math.max(0, window - visible.length);
+  const filler = pad > 0 && visible.length === 0
+    ? [` ${dim("nothing yet. a wake writes here as it runs.")}`, ...Array.from({ length: pad - 1 }, () => "")]
+    : Array.from({ length: pad }, () => "");
+  return [rule(cols, INK_3), heading, ...filler, ...visible].join("\n");
+}
+
+function capBlock(block: string, max: number): string {
+  if (max <= 0) return "";
+  const lines = block.split("\n");
+  if (lines.length <= max) return block;
+  return [...lines.slice(0, max - 1), dim("  …")].join("\n");
 }
 
 function renderPrompt(state: ViewState, cols: number): string {
@@ -224,8 +227,8 @@ function renderPrompt(state: ViewState, cols: number): string {
 function renderFooter(state: ViewState, cols: number): string {
   const q = selectedQuestion(state);
   const keys = q
-    ? "click/j/k select  ·  a answer  ·  w wake  ·  / command  ·  r refresh  ·  ? help  ·  q quit"
-    : "click/j/k select  ·  s seed  ·  w wake  ·  / command  ·  r refresh  ·  ? help  ·  q quit";
+    ? "click/j/k select  ·  a answer  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
+    : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
   return padLine(dim(` ${keys}`), cols);
 }
 

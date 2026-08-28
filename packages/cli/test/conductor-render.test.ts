@@ -46,6 +46,26 @@ describe("renderFrame", () => {
     expect(frame).toContain("Which path?");
     expect(frame).toContain("1 waiting");
     expect(frame).toContain("click/j/k select");
+    expect(frame).toContain("TRANSCRIPT");
+  });
+
+  it("fills leftover rows with the transcript and PageUp looks further back", () => {
+    const activity = Array.from({ length: 30 }, (_, i) => ({ at: i, text: `line-${i}` }));
+    const follow = renderFrame(
+      { ...emptyView("epic"), rows: [waiting], activity, scroll: 0 },
+      { cols: 80, rows: 24 },
+    );
+    expect(follow).toContain("line-29");
+    expect(follow).not.toContain("line-0");
+    expect(follow).toContain("follow");
+
+    const back = renderFrame(
+      { ...emptyView("epic"), rows: [waiting], activity, scroll: 200 },
+      { cols: 80, rows: 24 },
+    );
+    expect(back).toContain("line-0");
+    expect(back).not.toContain("line-29");
+    expect(back).toContain("back");
   });
 });
 

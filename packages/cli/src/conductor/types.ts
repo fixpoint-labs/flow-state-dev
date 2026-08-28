@@ -100,6 +100,11 @@ export interface ViewState {
   busy: boolean;
   notice: string | null;
   activity: ActivityItem[];
+  /**
+   * Transcript pager offset from the latest line. `0` follows new activity
+   * (Grok-style). PageUp / wheel-up increase it.
+   */
+  scroll: number;
   lastRefreshAt: number | null;
 }
 
@@ -116,6 +121,7 @@ export function emptyView(epicLabel: string): ViewState {
     busy: false,
     notice: null,
     activity: [],
+    scroll: 0,
     lastRefreshAt: null,
   };
 }
@@ -151,5 +157,16 @@ export function clampSelected(state: ViewState): ViewState {
 
 export function pushActivity(state: ViewState, text: string, at: number = Date.now()): ViewState {
   const activity = [...state.activity, { at, text }];
-  return { ...state, activity: activity.length > 80 ? activity.slice(-80) : activity };
+  return { ...state, activity: activity.length > 200 ? activity.slice(-200) : activity };
+}
+
+const PAGE = 8;
+
+/** Scroll the transcript. Positive looks further back. Clamped at render time. */
+export function scrollTranscript(state: ViewState, delta: number): ViewState {
+  return { ...state, scroll: Math.max(0, state.scroll + delta) };
+}
+
+export function pageTranscript(state: ViewState, direction: -1 | 1): ViewState {
+  return scrollTranscript(state, direction * PAGE);
 }

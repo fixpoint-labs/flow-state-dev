@@ -8,9 +8,11 @@
 import { parseCommand, type ParseResult } from "./parse";
 import {
   clampSelected,
+  pageTranscript,
   selectedQuestion,
   selectedQuestions,
   selectedRow,
+  scrollTranscript,
   type InputMode,
   type OperatorCommand,
   type ViewState,
@@ -28,7 +30,9 @@ export type Key =
   | { type: "tab" }
   | { type: "ctrl"; value: string }
   | { type: "click"; col: number; row: number }
-  | { type: "wheel"; delta: number };
+  | { type: "wheel"; delta: number }
+  | { type: "pageup" }
+  | { type: "pagedown" };
 
 export type Effect =
   | { type: "dispatch"; command: OperatorCommand }
@@ -93,10 +97,15 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
           i += 3;
           continue;
         }
-        if (third === "3" && input[i + 3] === "~") {
-          keys.push({ type: "backspace" });
-          i += 4;
-          continue;
+        if (third === "3" || third === "5" || third === "6") {
+          if (i + 3 >= input.length) return { keys, rest: input.slice(i) };
+          if (input[i + 3] === "~") {
+            if (third === "3") keys.push({ type: "backspace" });
+            else if (third === "5") keys.push({ type: "pageup" });
+            else keys.push({ type: "pagedown" });
+            i += 4;
+            continue;
+          }
         }
         // Unknown CSI — drop the ESC and keep going.
         i += 1;
@@ -142,12 +151,26 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
     return { state: { ...state, help: false } };
   }
 
-  if (state.busy && key.type !== "ctrl") {
+  const scrolling =
+    key.type === "wheel" ||
+    key.type === "pageup" ||
+    key.type === "pagedown" ||
+    (key.type === "ctrl" && (key.value === "u" || key.value === "d"));
+  if (state.busy && key.type !== "ctrl" && !scrolling) {
     return { state };
   }
 
   if (key.type === "ctrl" && key.value === "c") {
     return { state, effect: { type: "quit" } };
+  }
+  if (key.type === "pageup" || (key.type === "ctrl" && key.value === "u")) {
+    return { state: pageTranscript(state, 1) };
+  }
+  if (key.type === "pagedown" || (key.type === "ctrl" && key.value === "d")) {
+    return { state: pageTranscript(state, -1) };
+  }
+  if (key.type === "wheel") {
+    return { state: scrollTranscript(state, key.delta < 0 ? 1 : -1) };
   }
 
   if (state.inputMode !== "command") {
@@ -169,8 +192,6 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
       return { state: moveQuestion(state, 1) };
     case "char":
       return applyIdleChar(state, key.value);
-    case "wheel":
-      return { state: moveRow(state, key.delta) };
     case "click":
       return applyClick(state, key.row);
     case "enter": {
