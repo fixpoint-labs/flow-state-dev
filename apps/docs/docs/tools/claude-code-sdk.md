@@ -525,3 +525,49 @@ are strings, not streamed input.
 
 See also: [Tools overview](./overview.md) and [Claude Code remote
 dispatch](./claude-code-cli.md) for the fire-and-forget cloud alternative.
+\n\n## Files that outlive the run
+
+A run needs a directory to work in, and that directory is usually temporary. The files it produces usually shouldn't be.
+
+`createWorkspaceAgentCapability` fills the directory from your resource collections before the run and reconciles what changed back afterwards:
+
+```ts
+import { createWorkspaceAgentCapability } from "@flow-state-dev/claude-code/sdk";
+
+const workspace = createWorkspaceAgentCapability({
+  root: async () => mkdtemp(join("/var/agent-checkouts", "run-")),
+});
+
+generator({
+  name: "coder",
+  model: "openai/gpt-5.4-mini",
+  prompt: "Use the workspace agent to make the change.",
+  uses: [workspace],
+});
+```
+
+Each collection is mounted at its pattern prefix, so one matching `artifacts/**` shows up at `<root>/artifacts/`. `collections` and `exclude` narrow the set.
+
+### When two writers touch one file
+
+A run isn't the only thing that can change a collection. Another run, an action block, a person in the UI — any of them can edit a file while a run holds it.
+
+The reconcile checks before it writes: does the collection still hold what this run was given? If it does, the write goes through. If it doesn't, nothing is written and the path is recorded. Deletes go through the same check, so a file the run removed and somebody else edited stays put.
+
+Two outcomes end up in the `workspace-outcomes` collection, keyed by run:
+
+- **conflict** — two writers, one file. Carries three hashes: what the run was given, what the collection holds now, and what the run left. `ours: null` means the run deleted a file somebody else had edited.
+- **orphan** — a file written outside every mounted collection, so nothing owns it.
+
+A status item reports how many there were, so a run that ends with unsaved work doesn't end quietly.
+
+### Containment
+
+By default the run is confined to the workspace it was given, through two settings that answer different halves of the same question.
+
+`settingSources: []` stops the run reading its **configuration** out of the workspace. This one is easy to miss. A projected directory holds whatever your collections hold, and in a real application your users write those. A `CLAUDE.md` or a `.claude/settings.json` sitting among them is user input — and an agent reading its instructions out of user input is a different product than the one you shipped.
+
+The sandbox settings stop the run **writing** outside the workspace. A working directory is not a fence: absolute paths still resolve from inside it. The default names the root as the only writable path and refuses commands that ask to run unsandboxed.
+
+Set either option yourself and yours wins. `contain: false` turns both off, which is what you want when you control everything in the workspace and nothing else.
+

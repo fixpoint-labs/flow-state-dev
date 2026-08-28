@@ -78,3 +78,18 @@ export {
   type RemoteAgentSource,
   type RemoteAgentStatus,
 } from "../shared/handle";
+
+export {
+  createWorkspaceAgentCapability,
+  containmentSandbox,
+} from "./workspace";
+export type {
+  WorkspaceAgentCapabilityOptions,
+  WorkspaceCollectionSpec,
+} from "./workspace";
+export {
+  WORKSPACE_OUTCOMES,
+  workspaceOutcomesCollection,
+  workspaceOutcomeStateSchema,
+  workspaceResources,
+} from "./workspace-collections";
