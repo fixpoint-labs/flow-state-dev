@@ -1342,17 +1342,25 @@ describe("renderBoardPlain / watchExitCode", () => {
         ...failed.run!,
         requestId: "req-fail-1",
         prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/1496",
+        usage: { inputTokens: 1200, outputTokens: 400 },
+        costUsd: 0.042,
+        finalMessage: "opened the pull request then exhausted the turn budget",
       },
     };
     const text = renderBoardPlain([settled], false);
     expect(text).toContain("https://github.com/fixpoint-labs/flow-state-dev/pull/1496");
     expect(text).toContain("@ req-fail-1");
     expect(text).toContain("conductor/FAIL-1--implement");
+    expect(text).toContain("/tmp/ws");
+    expect(text).toContain("1.2k→400");
+    expect(text).toContain("$0.042");
+    expect(text).toContain("opened the pull request then exhausted the turn budget");
     const watch = renderWatchLine([settled]);
     expect(watch).toContain("FAIL-1 pending failed");
     expect(watch).toContain("https://github.com/fixpoint-labs/flow-state-dev/pull/1496");
     expect(watch).toContain("@ req-fail-1");
     expect(watch).toContain("conductor/FAIL-1--implement");
+    expect(watch).toContain("1.2k→400");
   });
 
   it("prints last tool, files, hunk, and todo when a named row has a journal view", () => {

@@ -835,12 +835,20 @@ export function renderHeadlessStrip(state: ViewState): string[] {
   return extra;
 }
 
-/** Request id, branch, pull-request URL, then the journal strip when one was folded. */
+/** Request id, branch, pull-request URL, spend, checkout, then the journal strip. */
 function renderHeadlessAttempt(row: StatusRow, view?: ViewState): string[] {
   const extra: string[] = [];
   if (row.run?.prUrl) extra.push(`  ${row.run.prUrl}`);
   if (row.run?.requestId) extra.push(`  @ ${row.run.requestId}`);
   if (row.run?.branch) extra.push(`  ${row.run.branch}`);
+  if (row.run?.workspacePath) extra.push(`  ${row.run.workspacePath}`);
+  const usage = renderUsageBits(row);
+  if (usage.length > 0) extra.push(`  ${usage.join("  ·  ")}`);
+  if (row.run?.finalMessage) {
+    for (const wrapped of wrap(row.run.finalMessage, 78).slice(0, 2)) {
+      extra.push(`  ${wrapped}`);
+    }
+  }
   if (view !== undefined) extra.push(...renderHeadlessStrip(view));
   return extra;
 }
