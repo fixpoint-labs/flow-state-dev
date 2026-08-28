@@ -195,7 +195,7 @@ When the selected row has no open question and the last attempt failed, a FAIL b
 
 When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the full branch, the full checkout path, the request id, and that `x` stops.
 
-If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`. On a running row the meta lists `branch` and `tree` each on their own line; the checkout path wraps.
+If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`. On a running row the meta lists `branch` and `tree` each on their own line; the checkout path wraps. When the selected row's `run.usage` is present, the meta shows token counts as `10→4` (input→output).
 
 It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
 
@@ -227,7 +227,13 @@ Typing on a row that has an open question starts an answer for you — you don't
 
 The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports.
 
-When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`) and streaming assistant text (`message · opened the pull request`). `watch` writes those same lines to stderr. Watching a running row does not start work or send an answer.
+When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, that line becomes `tool · Bash pnpm test · failed`.
+
+A sub-agent prints `sub · Sub-agent: Explore` when it opens, and `sub · Sub-agent: Explore · failed` only if it fails.
+
+Reasoning and thinking text are not printed.
+
+`watch` writes those same lines to stderr. Tool and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
 
 After that request ends, further board changes show as the lines `status` reports.
 
@@ -252,7 +258,7 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`, `tool · …`, `sub · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 ```bash
 $ fsdev conductor seed PR-482
@@ -382,6 +388,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked, a slash command, or a stop on a running row.
 - The board table is exactly what `status` returns.
 - Watching or aborting a running row does not start work or send an answer. Abort does not resume a session.
+- The transcript does not print reasoning or thinking text.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages
