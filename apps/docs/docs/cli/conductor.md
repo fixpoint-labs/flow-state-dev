@@ -2,20 +2,20 @@
 sidebar_position: 5
 title: "Conductor"
 sidebar_label: "Conductor"
-description: "Drive a background task board from the terminal, with a live TUI or scripted seed/wake/status/answer verbs."
+description: "Drive a background task board from the terminal, with a live TUI or scripted seed/wake/status/answer/abort verbs."
 ---
 
 # Conductor
 
 `fsdev conductor` is an operator surface for a flow that runs work in the background and occasionally needs a person: a table of rows, each one pending, running, waiting on a question, or done. Open it as a fullscreen board that polls live, or drive it with scripted verbs from a shell or a CI job.
 
-It is not a chat REPL — that's [`fsdev chat`](./interactive-chat.md). A conductor row isn't a conversation; it's a unit of work with a status. Typed input is an answer to a question the work asked, or a slash command.
+It is not a chat REPL — that's [`fsdev chat`](./interactive-chat.md). A conductor row isn't a conversation; it's a unit of work with a status. Typed input is an answer to a question the work asked, a slash command, or a stop on a running row.
 
 ## What a conductor flow looks like
 
 `fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with four actions: `seed`, `wake`, `status`, and `answer`. If none is found, it exits with a discovery error; if the flow is missing one of the four actions, it exits with a config error naming which one. Every other flow in the project is ignored.
 
-The four actions are yours to write. The board is whatever `status` returns.
+The four actions are yours to write. The board is whatever `status` returns. Use `abort` or `stop` to stop a running request.
 
 ```ts title="src/flows/reviewer/flow.ts"
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -187,16 +187,20 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. The header includes `N failed` when any row's last attempt failed.
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
 
 When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id.
 
 When the selected row has no open question and the last attempt failed, a FAIL band sits in that same slot. A last attempt failed when `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. The band shows the reason (`run.reason`, else `feedback`, else `run.finalMessage`) and that `w` retries. If the selected row also has an open question, the ASK band is what shows. Answer the question first.
 
+When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the full branch, the full checkout path, the request id, and that `x` stops.
+
+If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`. On a running row the meta lists `branch` and `tree` each on their own line; the checkout path wraps.
+
 It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
 
 ```
-fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch).
+fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch, abort).
 ```
 
 `fsdev conductor tui PR-482` opens the same board with that row selected, if it exists.
@@ -211,18 +215,19 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `a` | Answer the selected question |
 | `s` | Seed a new row (prompts for an issue id) |
 | `w` | Wake. On a failed selected row with no question, the footer labels this `w retry` |
+| `x` | Stop the selected running row's request |
 | `r` | Refresh now |
 | `/` | Type a slash command (any of the headless verbs) |
 | `?` | Toggle help |
 | `q` | Quit |
 
-Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. On a failed selected row with no question, the footer offers `w retry`. While a command is running, `Ctrl-C` aborts it instead of quitting; press it again once nothing is running to quit.
+Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop`; `x` or `Ctrl-C` stops that row's request. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
 
 ### Transcript
 
 The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports.
 
-When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`) and streaming assistant text (`message · opened the pull request`). `watch` writes those same lines to stderr. Watching a running row does not start work or send input.
+When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`) and streaming assistant text (`message · opened the pull request`). `watch` writes those same lines to stderr. Watching a running row does not start work or send an answer.
 
 After that request ends, further board changes show as the lines `status` reports.
 
@@ -242,11 +247,12 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | `seed <issue> [--phase implement]` | File a row for `issue` (a no-op if that `issue`/`phase` pair already has one), then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
+| `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
 | `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 ```bash
 $ fsdev conductor seed PR-482
@@ -311,9 +317,26 @@ PR-482          implement   pending           2       failed      ·
     no pull request
 ```
 
+`abort` (alias `stop`) stops the running request on matching rows, then reprints the board. Each request prints its own line: `stop · <requestId>` when the request was stopped, or `stop · <requestId> was not running` when that request is not in progress. After a stop the exit code is the board-outcome code below.
+
+```bash
+$ fsdev conductor abort PR-482
+stop · req-pr-482
+ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
+PR-482          implement   in_progress       1       running     ·
+
+$ fsdev conductor stop PR-482
+stop · req-pr-482 was not running
+ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
+PR-482          implement   in_progress       1       running     ·
+
+$ fsdev conductor abort
+nothing running to stop
+```
+
 ### Exit codes
 
-Startup failures — an unknown verb, a missing conductor flow, a flow missing one of the four actions — use the CLI's usual codes (`2` invalid args, `3` config error, `4` discovery error). Once past startup, `status`, `wake`, `watch`, and non-interactive `start` use the codes below for the board:
+Startup failures — an unknown verb, a missing conductor flow, a flow missing one of the four actions — use the CLI's usual codes (`2` invalid args, `3` config error, `4` discovery error). Once past startup, `status`, `wake`, `watch`, `abort`, and non-interactive `start` use the codes below for the board:
 
 | Code | Meaning |
 |---|---|
@@ -324,7 +347,7 @@ Startup failures — an unknown verb, a missing conductor flow, a flow missing o
 
 A last attempt failed when a row's `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. An open question is code `2` and wins over a failed attempt.
 
-`seed` always exits `0`, even when the board still has pending, failed, or open-question rows. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`.
+`seed` always exits `0`, even when the board still has pending, failed, or open-question rows. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`. `abort` with no running request id exits `1` and prints `nothing running to stop`. After a stop, or when the printed id was not running, it reprints the board and uses the codes above.
 
 `watch [issue]` polls `status` every couple of seconds and reprints the board whenever it changes. It stops when the code is not `3`. An open question is code `2`. A failed last attempt is code `1`.
 
@@ -356,9 +379,9 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 
 ## What it won't do
 
-- It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked, or a slash command.
+- It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked, a slash command, or a stop on a running row.
 - The board table is exactly what `status` returns.
-- Watching a running row does not start work or send input.
+- Watching or aborting a running row does not start work or send an answer. Abort does not resume a session.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages

@@ -203,7 +203,7 @@ Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/ses
 
 ### `fsdev conductor` — Drive a conductor flow
 
-An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. When that row has no question and the last attempt failed, a FAIL band sits in that slot with the reason; `w` retries (same as wake). Headless `status`, `wake`, and `watch` print a `! failed` line plus the reason under the row. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
+An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. When that row has no question and the last attempt failed, a FAIL band sits in that slot with the reason; `w` retries (same as wake). When that row is running and has no question and no failed last attempt, a RUN band sits in that slot with the full branch, the full checkout path, the request id, and that `x` stops. `x` or `Ctrl-C` on a running row stops that request (`abort` / `stop` from a script). Headless `status`, `wake`, and `watch` print a `! failed` line plus the reason under the row. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
 
 ```bash
 # Fullscreen board, live poll, slash commands
@@ -222,9 +222,12 @@ fsdev conductor watch
 
 # Answer an open question
 fsdev conductor answer PR-482/implement/1/q "target the release branch"
+
+# Stop a running request, then print the board
+fsdev conductor abort PR-482
 ```
 
-It needs a registered flow whose `kind` is `"conductor"` with `seed`, `wake`, `status`, and `answer` actions; other flows in the project are ignored. See [Conductor](https://flow-state.dev/docs/cli/conductor) for the exact contract each action has to satisfy and the full verb reference.
+It needs a registered flow whose `kind` is `"conductor"` with `seed`, `wake`, `status`, and `answer` actions; other flows in the project are ignored. Stopping a running request is a CLI verb (`abort` / `stop`). See [Conductor](https://flow-state.dev/docs/cli/conductor) for the exact contract each action has to satisfy and the full verb reference.
 
 Options:
 
@@ -240,7 +243,7 @@ Options:
 | `--config <path>` / `--no-config` | Load an explicit config, or ignore any config and force directory discovery |
 | `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
 
-`status`, `wake`, `watch`, and non-interactive `start` exit with a board-outcome code, distinct from the CLI's usual startup exit codes: `0` every named row is completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call itself failed, `2` at least one row has an open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always exits `0`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"` and prints `declined · <reason>`. The interactive board (no verb, or `tui`) needs a TTY; without one it prints a message and exits `1`.
+`status`, `wake`, `watch`, `abort`, and non-interactive `start` exit with a board-outcome code, distinct from the CLI's usual startup exit codes: `0` every named row is completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call itself failed, `2` at least one row has an open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always exits `0`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"` and prints `declined · <reason>`. `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and uses that board code. With no running request id it prints `nothing running to stop` and exits `1`. The interactive board (no verb, or `tui`) needs a TTY; without one it prints a message and exits `1`.
 
 ### `fsdev block` — Execute a single block in isolation
 

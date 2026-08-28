@@ -61,7 +61,7 @@ Turns and the engine identity that owns them default to `cli-user`. The DevTool 
 - **`fsdev chat`** — a live, multi-turn conversation from the terminal. Reach for it to prod a flow interactively, test that history threads, or drive one flow then switch to another.
 - **`fsdev run`** — one action, one result, NDJSON to stdout. Best for scripts and the edit → run → read loop.
 - **`fsdev dev`** — the DevTool in a browser, with rich rendering and resource inspection. Best when you want to *see* the stream and state, not just read it.
-- **`fsdev conductor`** — also opens a live terminal surface, but over a task board rather than a conversation. There's no free-text message; the only input is an answer to a question a row raised. See [Conductor](./conductor.md).
+- **`fsdev conductor`** — also opens a live terminal surface, but over a task board rather than a conversation. There's no free-text message; typed input is an answer to a question a row raised, a slash command, or a stop on a running row. See [Conductor](./conductor.md).
 
 ## A session
 
