@@ -163,8 +163,13 @@ is recorded at the path it reached.
 Four more options travel alongside `cwd`:
 
 ```ts
+// Resolved ONCE. `checkoutForThisRun()` allocates a directory, so calling it
+// again in `sandbox` would hand the run one directory and name a different
+// one in its settings — with nothing throwing.
+const checkout = checkoutForThisRun();
+
 claudeCodeAgent({
-  cwd: () => checkoutForThisRun(),
+  cwd: () => checkout,
   // Which filesystem settings the run loads. Omitted, it loads all of them,
   // exactly as the CLI does.
   settingSources: ["user"],
@@ -173,9 +178,9 @@ claudeCodeAgent({
   env: { ...process.env, CI: "1" },
   // The SDK's sandbox settings. A value or a resolver — the settings that
   // confine a run name the directory it works in, and that is per run.
-  sandbox: (input, ctx) => ({
+  sandbox: () => ({
     enabled: true,
-    filesystem: { allowWrite: [checkoutForThisRun()] },
+    filesystem: { allowWrite: [checkout] },
   }),
   // Capabilities installed on the block, same slot any other block takes.
   uses: [myCapability],
@@ -193,6 +198,15 @@ that directory is one your server assembled — from resources your application'
 users can write — then those files are user input, and the run reading
 configuration out of them means your users configure your agent. Pass `[]` to
 load none, or list only the sources you control.
+
+**`allowWrite` is not a fence.** The SDK documents it as *additional* paths to
+allow writing, merged with the paths that `Edit(...)` permission rules already
+grant — so listing your workspace there widens what the run may write, it does
+not narrow it to that directory. What confines a run is `enabled: true` turning
+sandboxing on at all, plus `denyWrite` and the permission rules; `allowWrite` is
+how you punch your workspace through those. If you need a hard boundary, say so
+with `denyWrite` and verify it against a real run rather than assuming this
+option gives you one.
 
 Nothing here changes by default: leave an option out and the run behaves exactly
 as it does today.
