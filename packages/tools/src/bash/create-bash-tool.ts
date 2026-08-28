@@ -35,12 +35,13 @@ import type {
   CreateBashToolResult,
 } from "./types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
-import type { Mount } from "@flow-state-dev/workspace";
+import { unscopedCollectionId } from "@flow-state-dev/workspace";
 import {
   createBashProjection,
   flushWithDiagnostics,
   seedWorkspaceMarkers,
   warnUnsettled,
+  type BashMount,
 } from "./projection-setup";
 import { resolveSandbox } from "./resolve-sandbox";
 
@@ -92,7 +93,7 @@ export async function createBashTool(
   //    sandbox. A collection whose pattern has no prefix cannot be routed to
   //    without guessing, so it is skipped loudly rather than made the default
   //    owner of every loose file.
-  const mounts: Mount[] = [];
+  const mounts: BashMount[] = [];
   for (const [name, collection] of Object.entries(collections)) {
     const prefix = getPatternPrefix(collection.pattern);
     if (!prefix) {
@@ -104,6 +105,9 @@ export async function createBashTool(
     mounts.push({
       prefix,
       collection,
+      // No execution context here, so no scope instance to name — see
+      // `unscopedCollectionId` for why that resolves toward arbitrating.
+      collectionId: unscopedCollectionId(collection),
       writable: true,
     });
   }

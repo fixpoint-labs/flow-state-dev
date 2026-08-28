@@ -28,7 +28,12 @@ import {
   RELOCATION_TOOLS,
 } from "../../src/sdk/workspace";
 import { WORKSPACE_OUTCOMES } from "../../src/sdk/workspace-collections";
-import { sharedClaimRegistry } from "@flow-state-dev/workspace";
+import {
+  claimKey,
+  collectionIdFor,
+  principalFromContext,
+  sharedClaimRegistry,
+} from "@flow-state-dev/workspace";
 import type {
   ClaudeAgentQueryOptions,
   ResolveClaudeAgent,
@@ -100,8 +105,14 @@ function flowWith(cap: unknown) {
 }
 
 describe("what auto-discovery will and will not mount", () => {
+  // The identity is what a mount's `collectionId` is derived from, so a
+  // context without one is not a context discovery can run against.
   const mountsFor = (resources: Record<string, unknown>) =>
-    discoverMountsForTest({ resources } as never).map((m) => m.prefix);
+    discoverMountsForTest({
+      resources,
+      session: { identity: { id: "s1" } },
+      request: { identity: { id: "r1" } },
+    } as never).map((m) => m.prefix);
 
   const ordinary = {
     pattern: "artifacts/**",
@@ -515,11 +526,17 @@ describe("createWorkspaceAgentCapability", () => {
     const base = scratch();
     const otherRun = Symbol("other-run");
     const cap = createWorkspaceAgentCapability({
-      resolveClaudeAgent: () => ({
+      resolveClaudeAgent: (ctx: never) => ({
         query: async function* () {
           mkdirSync(join(base, "artifacts"), { recursive: true });
           writeFileSync(join(base, "artifacts", "shared.md"), "ours");
-          sharedClaimRegistry.claim("artifacts/shared.md", otherRun);
+          sharedClaimRegistry.claim(
+            claimKey(
+              collectionIdFor(artifactsCollection, principalFromContext(ctx)),
+              "shared.md",
+            ),
+            otherRun,
+          );
           yield RESULT_OK;
         },
       }),
@@ -555,12 +572,21 @@ describe("createWorkspaceAgentCapability", () => {
     // two runs sharing a collection while touching different files.
     const base = scratch();
     const otherRun = Symbol("other-run");
-    sharedClaimRegistry.claim("artifacts/theirs.md", otherRun);
     const cap = createWorkspaceAgentCapability({
-      resolveClaudeAgent: () => ({
+      // Claimed off the same context, for the same reason as above: a key
+      // spelled by hand would match nothing the projection asks about, and
+      // this test would then pass with no claim held at all.
+      resolveClaudeAgent: (ctx: never) => ({
         query: async function* () {
           mkdirSync(join(base, "artifacts"), { recursive: true });
           writeFileSync(join(base, "artifacts", "ours.md"), "ours");
+          sharedClaimRegistry.claim(
+            claimKey(
+              collectionIdFor(artifactsCollection, principalFromContext(ctx)),
+              "theirs.md",
+            ),
+            otherRun,
+          );
           yield RESULT_OK;
         },
       }),

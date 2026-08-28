@@ -43,7 +43,13 @@ import type {
 import { z } from "zod";
 import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
 import { resolveSandbox } from "./resolve-sandbox";
-import { createHostPlace } from "@flow-state-dev/workspace";
+import {
+  collectionIdFor,
+  createHostPlace,
+  frameComponents,
+  principalFromContext,
+  scopeComponents,
+} from "@flow-state-dev/workspace";
 import type { Projection } from "@flow-state-dev/workspace";
 import { createHash } from "node:crypto";
 import { KEEP_MARKER } from "./sandbox-place";
@@ -155,6 +161,8 @@ const bashWriteFileOutputSchema = z.object({
 /** A single mounted collection inside the bash workspace. */
 interface Mount {
   collection: ResourceCollectionRef<JsonObject>;
+  /** What the collection is durably — see `Mount.collectionId` in the projection. */
+  collectionId: string;
   /** Registered accessor key on ctx.resources. Used for logging/diagnostics. */
   key: string;
   /** Pattern prefix — the collection's natural path inside the workspace. */
@@ -367,31 +375,13 @@ export function resolveWorkspaceCwdForTest(
  * a segment `safeSegment` can never emit.
  */
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
-  const tenant = identity.tenantId;
-  const tenantScoped = (id: string): (string | undefined)[] => [tenant, id];
-  const parts = ((): (string | undefined)[] => {
-    switch (scope) {
-      case "run":
-        // The request is the run. Narrower than a session on purpose: this is
-        // the scope where two agents working at once cannot see each other's
-        // half-finished files, and where the workspace goes away with the
-        // request that made it.
-        return tenantScoped(identity.requestId);
-      case "user":
-        return identity.userId !== undefined
-          ? [identity.userId]
-          : tenantScoped(identity.sessionId);
-      case "org":
-        return identity.orgId !== undefined
-          ? [identity.orgId]
-          : tenantScoped(identity.sessionId);
-      case "session":
-      default:
-        return tenantScoped(identity.sessionId);
-    }
-  })();
+  // `run` is this tool's name for the request. Core spells the same scope
+  // `request`, and the components come from core's own rule rather than a
+  // second copy of it here — the tenant boundary was wrong once already
+  // because two derivations of one identity drifted.
+  const parts = scopeComponents(scope === "run" ? "request" : scope, identity);
   return {
-    key: [scope, ...parts].map(frame).join(""),
+    key: frameComponents([scope, ...parts]),
     scopeId: path.join(...parts.map(segment)),
   };
 }
@@ -403,10 +393,6 @@ function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key:
  * absent component and a component that happens to equal the absence marker
  * stay distinct.
  */
-function frame(component: string | undefined): string {
-  return component === undefined ? "-" : `${component.length}:${component}`;
-}
-
 /**
  * One path segment for a component, absence included.
  *
@@ -445,6 +431,7 @@ function discoverMounts(
   explicit: BashCollectionSpec[] | undefined,
   exclude: string[] | undefined,
 ): Mount[] {
+  const principal = getIdentity(ctx);
   const excludeSet = new Set(exclude ?? []);
   const specs = explicit?.map(normalizeSpec);
   const wantByKey = specs ? new Map(specs.map((s) => [s.key, s])) : undefined;
@@ -471,6 +458,7 @@ function discoverMounts(
       const spec = wantByKey?.get(key);
       mounts.push({
         collection: value,
+        collectionId: collectionIdFor(value, principal),
         key,
         prefix,
         writable: spec?.writable ?? true,
@@ -995,13 +983,7 @@ function assertScopeIsAchievable(provider: SandboxProvider): void {
 }
 
 function getIdentity(ctx: BlockContext): ScopeIdentity {
-  return {
-    sessionId: ctx.session.identity.id,
-    requestId: ctx.request.identity.id,
-    userId: ctx.session.identity.userId,
-    orgId: ctx.session.identity.orgId,
-    tenantId: ctx.session.identity.tenantId,
-  };
+  return principalFromContext(ctx);
 }
 
 // ---------------------------------------------------------------------------

@@ -65,6 +65,24 @@ export interface Mount {
   /** The durable side. */
   collection: ResourceCollectionRef<ProjectedEntryState>;
   /**
+   * What this mount's collection IS, durably — the same string for two runs
+   * addressing the same rows, a different one for two that only spell their
+   * paths alike.
+   *
+   * Arbitration is per durable row, and the path cannot name one.
+   * `artifacts/report.md` is a naming convention, so two sessions writing it
+   * are writing two rows and neither contests the other; one collection
+   * mounted under two prefixes is one row under two paths and both writers
+   * must see each other. Neither case comes out right from a path.
+   *
+   * Required rather than defaulted, because every default is wrong for one of
+   * those two: omit the scope and unrelated tenants refuse each other's
+   * writes, use the collection object and two runs in one session stop
+   * arbitrating at all. Derive it from the collection's scope, the resolved id
+   * for that scope, and its pattern.
+   */
+  collectionId: string;
+  /**
    * Whether a flush may write back. A read-only mount is hydrated and then
    * left alone — its paths are skipped, never reported as orphans.
    */

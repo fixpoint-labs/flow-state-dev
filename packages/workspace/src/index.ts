@@ -22,5 +22,13 @@ export type {
   Place,
   ProjectedEntryState,
 } from "./types";
-export { createClaimRegistry, sharedClaimRegistry } from "./claims";
+export { claimKey, createClaimRegistry, sharedClaimRegistry } from "./claims";
 export type { ClaimHolder, ClaimRegistry } from "./claims";
+export {
+  collectionIdFor,
+  frameComponents,
+  principalFromContext,
+  scopeComponents,
+  unscopedCollectionId,
+} from "./scope-identity";
+export type { ScopeName, ScopePrincipal } from "./scope-identity";

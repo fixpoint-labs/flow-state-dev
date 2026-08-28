@@ -14,7 +14,7 @@
 import { describe, it, expect } from "vitest";
 import { createProjection } from "../src/projection";
 import { createMemoryPlace } from "../src/memory-place";
-import { createClaimRegistry } from "../src/claims";
+import { claimKey, createClaimRegistry } from "../src/claims";
 import { createFakeCollection, type FakeCollection } from "./fake-collection";
 
 /**
@@ -125,7 +125,7 @@ describe("two flushes interleaving", () => {
     const collection = createFakeCollection("artifacts/**", { "shared.md": "original" });
     const { gated, arm, parked, release } = gateRead(collection, "shared.md");
 
-    const mount = (c: FakeCollection) => [{ prefix: "artifacts", collection: c, writable: true }];
+    const mount = (c: FakeCollection) => [{ prefix: "artifacts", collectionId: "artifacts", collection: c, writable: true }];
     const slowPlace = createMemoryPlace();
     const fastPlace = createMemoryPlace();
     const slowRun = createProjection({ place: slowPlace, mounts: mount(gated), claims });
@@ -156,17 +156,18 @@ describe("two flushes interleaving", () => {
   });
 
   it("keeps a flush's claims when a put finishes underneath it", async () => {
-    // `put` and `flush` are two operations on ONE projection, and a projection
-    // has one identity. Releasing "everything this projection holds" at the
-    // end of the shorter one drops the claims the longer one is still relying
-    // on, and another run can take those paths mid-commit.
+    // Releasing is per HOLDER, and the holder has to be narrow enough that
+    // "everything this one holds" is only ever its own. Widen it to the
+    // projection — which a session-scoped sandbox shares across requests — and
+    // the shorter operation's release drops the claims the longer one is still
+    // relying on, handing another run those paths mid-commit.
     const claims = createClaimRegistry();
     const collection = createFakeCollection("artifacts/**", { "held.md": "original" });
     const { gated, arm, release } = gateWrite(collection, "held.md");
     const place = createMemoryPlace();
     const projection = createProjection({
       place,
-      mounts: [{ prefix: "artifacts", collection: gated, writable: true }],
+      mounts: [{ prefix: "artifacts", collectionId: "artifacts", collection: gated, writable: true }],
       claims,
     });
     await projection.hydrate();
@@ -175,16 +176,89 @@ describe("two flushes interleaving", () => {
 
     arm();
     const flushing = projection.flush(); // claims held.md, parks in its write
-    await until(() => claims.heldBy("artifacts/held.md") !== undefined);
-    expect(claims.heldBy("artifacts/held.md")).toBeDefined();
+    await until(() => claims.heldBy(claimKey("artifacts", "held.md")) !== undefined);
+    expect(claims.heldBy(claimKey("artifacts", "held.md"))).toBeDefined();
 
     await projection.put("artifacts/other.md", "unrelated");
 
     // THE discriminating assertion: the in-flight flush still holds its path.
-    expect(claims.heldBy("artifacts/held.md")).toBeDefined();
+    expect(claims.heldBy(claimKey("artifacts", "held.md"))).toBeDefined();
 
     release();
     await flushing;
-    expect(claims.heldBy("artifacts/held.md")).toBeUndefined();
+    expect(claims.heldBy(claimKey("artifacts", "held.md"))).toBeUndefined();
+  });
+});
+
+describe("two runs sharing one projection", () => {
+  it("does not let one of them silently overwrite the other", async () => {
+    // A session-scoped sandbox is ONE entry in the registry, so two requests
+    // that overlap in it share one projection — and therefore one claim
+    // holder. `claim` grants a path to the holder that already holds it, so
+    // neither request is refused, both read the same base, and both commit.
+    const claims = createClaimRegistry();
+    const collection = createFakeCollection("artifacts/**", { "shared.md": "original" });
+    const { gated, arm, parked, release } = gateRead(collection, "shared.md");
+    const projection = createProjection({
+      place: createMemoryPlace(),
+      mounts: [{ prefix: "artifacts", collectionId: "artifacts", collection: gated, writable: true }],
+      claims,
+    });
+    await projection.hydrate();
+
+    arm();
+    const first = projection.put("artifacts/shared.md", "from request one");
+    await until(parked);
+    const second = await projection.put("artifacts/shared.md", "from request two");
+    release();
+    const firstOutcome = await first;
+
+    const kinds = [firstOutcome?.kind, second?.kind];
+    // Same assertion as two projections racing, and for the same reason: one
+    // file, two writers overlapping in time, exactly one may write.
+    expect(kinds.filter((k) => k === "written")).toHaveLength(1);
+    expect(kinds).toContain("contested");
+  });
+});
+
+describe("two runs on unrelated collections", () => {
+  it("lets both write a path they only share the spelling of", async () => {
+    // `artifacts/report.md` is a conventional name, not a shared resource.
+    // Two sessions writing it are writing two durable rows, and refusing the
+    // second is a refusal of a write that was never contested.
+    const claims = createClaimRegistry();
+    const theirs = createFakeCollection("artifacts/**", { "report.md": "theirs" });
+    const ours = createFakeCollection("artifacts/**", { "report.md": "ours" });
+    const { gated, arm, parked, release } = gateRead(theirs, "report.md");
+
+    const theirPlace = createMemoryPlace();
+    const ourPlace = createMemoryPlace();
+    const theirRun = createProjection({
+      place: theirPlace,
+      // Same prefix, same path, two DIFFERENT durable collections — which is
+      // the whole case: one session's `artifacts` is not another's.
+      mounts: [{ prefix: "artifacts", collectionId: "their-session", collection: gated, writable: true }],
+      claims,
+    });
+    const ourRun = createProjection({
+      place: ourPlace,
+      mounts: [{ prefix: "artifacts", collectionId: "our-session", collection: ours, writable: true }],
+      claims,
+    });
+    await theirRun.hydrate();
+    await ourRun.hydrate();
+    await theirPlace.write("artifacts/report.md", "their edit");
+    await ourPlace.write("artifacts/report.md", "our edit");
+
+    arm();
+    const theirFlush = theirRun.flush();
+    await until(parked);
+    const ourReport = await ourRun.flush();
+    release();
+    const theirReport = await theirFlush;
+
+    const kinds = [...theirReport.outcomes, ...ourReport.outcomes].map((o) => o.kind);
+    expect(kinds.filter((k) => k === "written")).toHaveLength(2);
+    expect(kinds).not.toContain("contested");
   });
 });

@@ -36,7 +36,7 @@ import { createHash } from "node:crypto";
 import type { FlushOutcome, FlushReport, Mount, Place, ProjectedEntryState } from "./types";
 import { PlaceUnreadableError } from "./types";
 import { isMetadataKey, normalizePath, routePath } from "./routing";
-import { sharedClaimRegistry, type ClaimRegistry } from "./claims";
+import { claimKey, sharedClaimRegistry, type ClaimHolder, type ClaimRegistry } from "./claims";
 
 /** A hex SHA-256 of `content`. The only comparison the projection makes. */
 export function hashContent(content: string): string {
@@ -106,8 +106,6 @@ export function createProjection({
   place,
   claims = sharedClaimRegistry,
 }: ProjectionOptions): Projection {
-  /** This projection's identity, and nothing else's. */
-  const holder: symbol = Symbol("projection");
 
   /** path → the hash of what we last committed there. */
   const baseline = new Map<string, string>();
@@ -162,35 +160,28 @@ export function createProjection({
   }
 
   /**
-   * How many of this projection's operations are writing right now.
+   * Run one claiming operation under a holder that is ITS OWN.
    *
-   * `releaseAll` drops everything one HOLDER holds, and `flush` and `put` are
-   * two operations sharing one. Releasing at the end of whichever finishes
-   * first would drop the claims the other is still relying on — a `put`
-   * returning mid-flush hands every path that flush is committing to the next
-   * run that asks. Both consumers can have the two in flight at once, so the
-   * release waits for the last one out.
+   * Not the projection's. A session-scoped sandbox is one registry entry, so
+   * two requests that overlap in it share one projection — and a holder
+   * belonging to the projection is then the same holder for both. `claim`
+   * grants a key to whoever already holds it, so neither request is refused,
+   * both read the same base, and both commit with both told they wrote.
+   *
+   * Held for the operation and no longer. A claim outliving it would need a
+   * release call at the end of every run, on every path a run can end — and
+   * one missed leaves an entry claimed by an operation nobody will run again,
+   * refusing every later one. The race this exists to stop is two operations
+   * interleaving at their awaits, which is exactly this long. Writes that do
+   * NOT overlap in time are already covered: the second finds the collection
+   * changed and reports a conflict.
    */
-  let writing = 0;
-
-  /**
-   * Run one claiming operation, releasing this projection's claims only once
-   * no other one is still in flight.
-   */
-  async function claiming<T>(operation: () => Promise<T>): Promise<T> {
-    writing += 1;
+  async function claiming<T>(operation: (holder: ClaimHolder) => Promise<T>): Promise<T> {
+    const holder: ClaimHolder = Symbol("operation");
     try {
-      return await operation();
+      return await operation(holder);
     } finally {
-      writing -= 1;
-      // Held for the operation and no longer. A claim outliving it would need
-      // a release call at the end of every run, on every path a run can end —
-      // and one missed leaves a path claimed by a projection nobody will use
-      // again, refusing every later run. The race this exists to stop is two
-      // flushes interleaving at their awaits, which is exactly this long.
-      // Writes that do NOT overlap in time are already covered: the second
-      // finds the collection changed and reports a conflict.
-      if (writing === 0) claims.releaseAll(holder);
+      claims.releaseAll(holder);
     }
   }
 
@@ -198,7 +189,7 @@ export function createProjection({
     return await claiming(flushOnce);
   }
 
-  async function flushOnce(): Promise<FlushReport> {
+  async function flushOnce(holder: ClaimHolder): Promise<FlushReport> {
     // Before anything else: an unreadable place must abort the whole flush,
     // because the delete pass below reads "absent from the place" as "deleted
     // by the run".
@@ -246,7 +237,7 @@ export function createProjection({
       // the way this was first written.
       if (local === null) continue;
 
-      outcomes.push(await decide(mount, key, path, local));
+      outcomes.push(await decide(mount, key, path, local, holder));
     }
 
     // The delete pass walks what we OWN, not what we hydrated. A path this
@@ -259,7 +250,7 @@ export function createProjection({
       const { mount, key } = routed;
 
       // A delete is a write. Same claim, same refusal.
-      if (claims.claim(path, holder) !== holder) {
+      if (claims.claim(claimKey(mount.collectionId, key), holder) !== holder) {
         outcomes.push({ kind: "contested", path });
         continue;
       }
@@ -317,6 +308,7 @@ export function createProjection({
     key: string,
     path: string,
     local: string,
+    holder: ClaimHolder,
   ): Promise<FlushOutcome> {
     const now = hashContent(local);
     const base = baseline.get(path);
@@ -336,7 +328,7 @@ export function createProjection({
     // that predates it, is granted a claim proving nothing, and overwrites
     // work it never saw — with both writers told they succeeded. The claim
     // has to cover the read-compare-write, not just the write.
-    if (claims.claim(path, holder) !== holder) {
+    if (claims.claim(claimKey(mount.collectionId, key), holder) !== holder) {
       return { kind: "contested", path };
     }
 
@@ -377,7 +369,7 @@ export function createProjection({
     const { mount, key } = routed;
     if (!mount.writable) return undefined;
     if (isMetadataKey(key)) return undefined;
-    return await claiming(() => decide(mount, key, path, content));
+    return await claiming((holder) => decide(mount, key, path, content, holder));
   }
 
   /** Write content back to the collection, keeping its state in step. */

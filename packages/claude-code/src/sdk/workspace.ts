@@ -20,9 +20,11 @@ import type {
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
 import {
+  collectionIdFor,
   createHostPlace,
   createProjection,
   PlaceUnreadableError,
+  principalFromContext,
   type FlushOutcome,
   type Mount,
   type Projection,
@@ -169,6 +171,7 @@ function discoverMounts(
   explicit: WorkspaceCollectionSpec[] | undefined,
   exclude: string[] | undefined,
 ): Mount[] {
+  const principal = principalFromContext(ctx as unknown as Parameters<typeof principalFromContext>[0]);
   const excluded = new Set(exclude ?? []);
   const wanted = explicit
     ? new Map(explicit.map((s) => [normalizeSpec(s).key, normalizeSpec(s)]))
@@ -213,6 +216,7 @@ function discoverMounts(
     mounts.push({
       prefix,
       collection: value as unknown as Mount["collection"],
+      collectionId: collectionIdFor(value, principal),
       writable: wanted?.get(key)?.writable ?? true,
     });
   }

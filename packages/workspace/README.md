@@ -79,11 +79,13 @@ for (const c of report.contested) {
 
 The claim covers the whole read-compare-write, not just the write. Taking it after reading the collection would leave the read unprotected: another projection can commit and release inside that await, and this one then writes from a snapshot that predates it — granted a claim that proves nothing.
 
-The claim lasts for the operation and no longer. That's the length of the race it exists to stop — two flushes interleaving at their awaits. When a `put` and a `flush` are in flight together the release waits for the last one out, since both speak for the same projection. A claim held for the whole run would need releasing on every path a run can end, and one missed release leaves a path claimed by a projection nobody will use again, refusing every later run. Writes that don't overlap in time are already covered: the second one finds the collection changed and reports a conflict.
+The claim lasts for the operation and no longer, and it belongs to that operation rather than to the projection. Those are two separate things and both matter. A session-scoped workspace is one projection shared by every request that overlaps in it, so a claim belonging to the projection is the same claim for all of them — each one is granted a key somebody already holds, and they commit over each other with everyone told they wrote. A claim held for the whole run, at the other extreme, would need releasing on every path a run can end, and one missed release leaves an entry claimed by an operation nobody will run again, refusing every later one. Writes that don't overlap in time need none of this: the second one finds the collection changed and reports a conflict.
 
 A `contested` outcome is not a `conflict`. A conflict is somebody who already *wrote* — the evidence is in the collection and three hashes describe it. A contested path is somebody writing *now*: there's nothing to compare yet, only a claim held elsewhere.
 
-Claims are per **path**, not per collection or per mount. Two runs sharing a collection while touching disjoint files both land, and neither is refused. That case is the point of the design rather than a gap in it.
+Claims are per **durable entry**, not per collection, per mount, or per path. Two runs sharing a collection while touching disjoint files both land, and neither is refused — that case is the point of the design rather than a gap in it.
+
+An entry is named by its mount's `collectionId` plus its key, never by its path. A path can't name a durable row: `artifacts/report.md` is a naming convention, so two sessions writing their own copy would refuse each other over a row they don't share, and one collection mounted under two prefixes would evade arbitration over a row that genuinely is one.
 
 Pass your own `claims` registry to `createProjection` to scope arbitration to a subset of projections; omit it and they share a process-wide one, which is what makes two projections nobody wired together still arbitrate.
 
@@ -124,10 +126,29 @@ try {
 interface Mount {
   prefix: string;      // where the collection appears in the place
   collection: ResourceCollectionRef<ProjectedEntryState>;
+  collectionId: string; // what the collection IS, durably
   writable: boolean;   // may a flush write back?
   entryState?: (key: string) => Record<string, unknown>;
 }
 ```
+
+`collectionId` is what write arbitration is keyed on: the same string for two runs addressing the same rows, a different one for two that only spell their paths alike. It's required rather than defaulted because both plausible defaults are wrong in one direction — omit the scope and unrelated tenants refuse each other's writes; use the collection object and two runs in one session stop arbitrating at all.
+
+You don't usually build it by hand. `principalFromContext(ctx)` reads the scoping identity off a block's execution context, and `collectionIdFor(collection, principal)` turns that plus the collection into the id:
+
+```ts
+const principal = principalFromContext(ctx);
+const mounts = collections.map((collection) => ({
+  prefix: getPatternPrefix(collection.pattern),
+  collection,
+  collectionId: collectionIdFor(collection, principal),
+  writable: true,
+}));
+```
+
+For a door with no execution context — plain tools rather than blocks — `unscopedCollectionId(collection)` is the fallback. It names only the scope and the pattern, so two tool sets over one pattern arbitrate whether or not they share rows. That over-arbitrates on purpose: a false refusal is reported and retryable, a missed claim is a silent overwrite.
+
+This is close to the engine's storage key, not equal to it. The engine also folds per-resource flow isolation into where a user- or org-scoped resource lands, and that rule belongs to the engine. So two flows that isolate the same user's resources from each other share an id here while their rows are separate, and one can be told `contested` over a row it doesn't share — the safe direction, and the same reason as above.
 
 The projection sets `path`, `hash`, and `updatedAt` on every entry it commits, because it needs them. Anything else your collection carries — a title, an author, a timestamp in the shape your UI expects — comes from `entryState`, which is applied last, so a mount can override what the projection chose.
 
@@ -145,6 +166,10 @@ A read-only mount is hydrated and then left alone. Its paths aren't written back
 | `hashContent(content)` | The hex SHA-256 the projection compares with. |
 | `createClaimRegistry()` | A registry scoping write arbitration to the projections you give it. |
 | `sharedClaimRegistry` | The process-wide registry projections use by default. |
+| `claimKey(collectionId, entryKey)` | The key one durable entry is claimed under. |
+| `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
+| `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
+| `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
 
 `ownedPaths()` returns the paths the projection currently holds a baseline for — what it would write to, and what it would delete.
 

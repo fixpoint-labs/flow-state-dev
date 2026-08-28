@@ -377,7 +377,13 @@ describe("createBashTool", () => {
     });
 
     try {
-      sharedClaimRegistry.claim("files/hello.txt", otherRun);
+      // `createBashTool` has no execution context, so its mounts are named by
+      // scope and pattern alone — the same fallback production uses here.
+      const { claimKey, unscopedCollectionId } = await import("@flow-state-dev/workspace");
+      sharedClaimRegistry.claim(
+        claimKey(unscopedCollectionId(collection as never), "hello.txt"),
+        otherRun,
+      );
       const writeFile = tools.writeFile as {
         execute: (a: { path: string; content: string }) => Promise<unknown>;
       };
@@ -915,6 +921,28 @@ describe("createBashBlocks", () => {
   // they're all flattened into the unified `ctx.resources` registry. The
   // collection's intrinsic `scope` (set on `defineResourceCollection`) is
   // what routes reads/writes to the right storage layer.
+  /**
+   * The registry key a projection would claim `key` under, for a collection
+   * mounted on `ctx`.
+   *
+   * Derived through the same two helpers production uses rather than spelled
+   * out: a hand-written key matches nothing the projection asks about, and a
+   * test seeding one passes with no claim held at all.
+   */
+  async function claimKeyOn(
+    ctx: unknown,
+    collection: unknown,
+    key: string,
+  ): Promise<string> {
+    const { claimKey, collectionIdFor, principalFromContext } = await import(
+      "@flow-state-dev/workspace"
+    );
+    return claimKey(
+      collectionIdFor(collection as never, principalFromContext(ctx as never)),
+      key,
+    );
+  }
+
   function buildCtx(
     sessionId: string,
     scopes: {
@@ -1532,7 +1560,7 @@ describe("createBashBlocks", () => {
 
       // Our run edits the file, and the other run takes the path first.
       sandbox.files.set("/workspace/artifacts/shared.md", "ours");
-      sharedClaimRegistry.claim("artifacts/shared.md", otherRun);
+      sharedClaimRegistry.claim(await claimKeyOn(ctx, artifacts, "shared.md"), otherRun);
 
       await runForTest(bashCommand, { command: "ls" }, ctx);
 
@@ -1567,7 +1595,7 @@ describe("createBashBlocks", () => {
 
     try {
       await runForTest(bashCommand, { command: "ls" }, ctx);
-      sharedClaimRegistry.claim("artifacts/theirs.md", otherRun);
+      sharedClaimRegistry.claim(await claimKeyOn(ctx, artifacts, "theirs.md"), otherRun);
 
       await runForTest(bashWriteFile, { path: "artifacts/ours.md", content: "ours" }, ctx);
       sandbox.files.set("/workspace/artifacts/also-ours.md", "also ours");
@@ -1608,7 +1636,8 @@ describe("createBashBlocks", () => {
     try {
       await runForTest(bashCommand, { command: "ls" }, ctx);
       sandbox.files.set("/workspace/artifacts/shared.md", "ours");
-      sharedClaimRegistry.claim("artifacts/shared.md", otherRun);
+      const held = await claimKeyOn(ctx, artifacts, "shared.md");
+      sharedClaimRegistry.claim(held, otherRun);
       await runForTest(bashCommand, { command: "ls" }, ctx);
       expect(await (await artifacts.get("shared.md")).readContent()).toBe("original");
 
@@ -1616,7 +1645,7 @@ describe("createBashBlocks", () => {
       await runForTest(bashCommand, { command: "ls" }, ctx);
 
       expect(await (await artifacts.get("shared.md")).readContent()).toBe("ours");
-      expect(sharedClaimRegistry.heldBy("artifacts/shared.md")).toBeUndefined();
+      expect(sharedClaimRegistry.heldBy(held)).toBeUndefined();
     } finally {
       sharedClaimRegistry.releaseAll(otherRun);
       warn.mockRestore();

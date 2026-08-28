@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryPlace } from "../src/memory-place";
 import { createProjection, hashContent } from "../src/projection";
-import { createClaimRegistry } from "../src/claims";
+import { claimKey, createClaimRegistry } from "../src/claims";
 import { PlaceUnreadableError } from "../src/types";
 import type { Mount } from "../src/types";
 import { createFakeCollection, type FakeCollection } from "./fake-collection";
@@ -18,7 +18,7 @@ import { createFakeCollection, type FakeCollection } from "./fake-collection";
 function setup(seed: Record<string, string> = {}) {
   const collection = createFakeCollection("artifacts/**", seed);
   const place = createMemoryPlace();
-  const mounts: Mount[] = [{ prefix: "artifacts", collection, writable: true }];
+  const mounts: Mount[] = [{ prefix: "artifacts", collectionId: "artifacts", collection, writable: true }];
   const projection = createProjection({ mounts, place });
   return { collection, place, projection };
 }
@@ -234,7 +234,7 @@ describe("two runs over one collection", () => {
     // path rules this out rather than delivering it.
     const collection = createFakeCollection("artifacts/**", { "spec.md": "spec" });
     const mountsFor = (place: ReturnType<typeof createMemoryPlace>): Mount[] => [
-      { prefix: "artifacts", collection, writable: true },
+      { prefix: "artifacts", collectionId: "artifacts", collection, writable: true },
     ];
     const placeA = createMemoryPlace();
     const placeB = createMemoryPlace();
@@ -262,7 +262,7 @@ describe("two runs over one collection", () => {
     const collection = createFakeCollection("artifacts/**", { "spec.md": "spec" });
     const placeA = createMemoryPlace();
     const placeB = createMemoryPlace();
-    const mounts = (): Mount[] => [{ prefix: "artifacts", collection, writable: true }];
+    const mounts = (): Mount[] => [{ prefix: "artifacts", collectionId: "artifacts", collection, writable: true }];
     const runA = createProjection({ mounts: mounts(), place: placeA });
     const runB = createProjection({ mounts: mounts(), place: placeB });
 
@@ -300,8 +300,8 @@ describe("routing and the things a flush must not touch", () => {
     const place = createMemoryPlace();
     const projection = createProjection({
       mounts: [
-        { prefix: "artifacts", collection: outer, writable: true },
-        { prefix: "artifacts/drafts", collection: inner, writable: true },
+        { prefix: "artifacts", collectionId: "artifacts", collection: outer, writable: true },
+        { prefix: "artifacts/drafts", collectionId: "artifacts/drafts", collection: inner, writable: true },
       ],
       place,
     });
@@ -351,7 +351,7 @@ describe("routing and the things a flush must not touch", () => {
     const readonly = createFakeCollection("skills/**", { "how-to.md": "reference" });
     const place = createMemoryPlace();
     const projection = createProjection({
-      mounts: [{ prefix: "skills", collection: readonly, writable: false }],
+      mounts: [{ prefix: "skills", collectionId: "skills", collection: readonly, writable: false }],
       place,
     });
     await projection.hydrate();
@@ -505,7 +505,7 @@ describe("put commits one named path without walking the place", () => {
   it("has nothing to decide for a read-only mount", async () => {
     const reference = createFakeCollection("reference/**", { "doc.md": "read me" });
     const projection = createProjection({
-      mounts: [{ prefix: "reference", collection: reference, writable: false }],
+      mounts: [{ prefix: "reference", collectionId: "reference", collection: reference, writable: false }],
       place: createMemoryPlace(),
     });
 
@@ -530,6 +530,7 @@ describe("a mount can stamp its own state on what the projection commits", () =>
       mounts: [
         {
           prefix: "artifacts",
+          collectionId: "artifacts",
           collection,
           writable: true,
           entryState: (key) => ({ title: key.replace(/\.md$/, "") }),
@@ -569,6 +570,7 @@ describe("a mount can stamp its own state on what the projection commits", () =>
       mounts: [
         {
           prefix: "artifacts",
+          collectionId: "artifacts",
           collection,
           writable: true,
           entryState: () => ({ updatedAt: 1234 }),
@@ -612,7 +614,7 @@ describe("a path that vanishes between the listing and the read", () => {
     // whole delete pass is written to avoid.
     const collection = createFakeCollection("artifacts/**", { "spec.md": "one" });
     const projection = createProjection({
-      mounts: [{ prefix: "artifacts", collection, writable: true }],
+      mounts: [{ prefix: "artifacts", collectionId: "artifacts", collection, writable: true }],
       place: vanishingPlace("artifacts/spec.md"),
     });
     await projection.hydrate();
@@ -628,7 +630,7 @@ describe("a path that vanishes between the listing and the read", () => {
     // would find no baseline and refuse to write where it previously could.
     const collection = createFakeCollection("artifacts/**", { "spec.md": "one" });
     const projection = createProjection({
-      mounts: [{ prefix: "artifacts", collection, writable: true }],
+      mounts: [{ prefix: "artifacts", collectionId: "artifacts", collection, writable: true }],
       place: vanishingPlace("artifacts/spec.md"),
     });
     await projection.hydrate();
@@ -643,7 +645,7 @@ describe("two projections writing one collection", () => {
   function pair(seed: Record<string, string> = {}) {
     const collection = createFakeCollection("artifacts/**", seed);
     const claims = createClaimRegistry();
-    const mounts: Mount[] = [{ prefix: "artifacts", collection, writable: true }];
+    const mounts: Mount[] = [{ prefix: "artifacts", collectionId: "artifacts", collection, writable: true }];
     const a = { place: createMemoryPlace(), projection: null as unknown as ReturnType<typeof createProjection> };
     const b = { place: createMemoryPlace(), projection: null as unknown as ReturnType<typeof createProjection> };
     a.projection = createProjection({ mounts, place: a.place, claims });
@@ -676,7 +678,7 @@ describe("two projections writing one collection", () => {
 
     // A holds the claim for the length of its flush; B runs inside that.
     const held = Symbol("a");
-    expect(claims.claim("artifacts/shared.md", held)).toBe(held);
+    expect(claims.claim(claimKey("artifacts", "shared.md"), held)).toBe(held);
     const report = await b.projection.flush();
 
     expect(report.contested).toEqual([
@@ -692,7 +694,7 @@ describe("two projections writing one collection", () => {
     b.place.remove("artifacts/gone.md");
 
     const held = Symbol("somebody else");
-    claims.claim("artifacts/gone.md", held);
+    claims.claim(claimKey("artifacts", "gone.md"), held);
     const report = await b.projection.flush();
 
     expect(report.contested).toEqual([
@@ -771,7 +773,7 @@ describe("routing edges two reviewers found", () => {
     const place = createMemoryPlace();
     const projection = createProjection({
       place,
-      mounts: [{ prefix: "artifacts", collection, writable: true }],
+      mounts: [{ prefix: "artifacts", collectionId: "artifacts", collection, writable: true }],
     });
 
     await projection.hydrate();
@@ -796,8 +798,8 @@ describe("routing edges two reviewers found", () => {
     const projection = createProjection({
       place,
       mounts: [
-        { prefix: "artifacts/drafts", collection: inner, writable: true },
-        { prefix: "artifacts", collection: outer, writable: true },
+        { prefix: "artifacts/drafts", collectionId: "artifacts/drafts", collection: inner, writable: true },
+        { prefix: "artifacts", collectionId: "artifacts", collection: outer, writable: true },
       ],
     });
 
@@ -819,8 +821,8 @@ describe("routing edges two reviewers found", () => {
     const projection = createProjection({
       place,
       mounts: [
-        { prefix: "skills", collection: reference, writable: false },
-        { prefix: "artifacts", collection: artifacts, writable: true },
+        { prefix: "skills", collectionId: "skills", collection: reference, writable: false },
+        { prefix: "artifacts", collectionId: "artifacts", collection: artifacts, writable: true },
       ],
     });
 

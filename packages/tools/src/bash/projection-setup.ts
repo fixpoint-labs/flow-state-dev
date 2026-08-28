@@ -39,6 +39,8 @@ export interface BashMount {
   prefix: string;
   writable: boolean;
   collection: ResourceCollectionRef<JsonObject>;
+  /** What the collection is durably — see `Mount.collectionId`. */
+  collectionId: string;
 }
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { createSandboxPlace, KEEP_MARKER, TMP_DIR } from "./sandbox-place";
@@ -101,6 +103,7 @@ export function createMountedProjection(
     mounts: mounts.map((m) => ({
       prefix: m.prefix,
       writable: m.writable,
+      collectionId: m.collectionId,
       collection: m.collection as unknown as ProjectionMount["collection"],
       ...(createState === undefined
         ? {}
