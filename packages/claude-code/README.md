@@ -391,7 +391,9 @@ capability's `tools` contributes no resource declarations to the flow.
 ### A run whose files are resources (`/sdk`)
 
 `cwd` hands a run a directory. It doesn't put anything in it, and it doesn't
-bring anything back. `createWorkspaceAgentCapability` does both:
+bring anything back. The workspace agent does both.
+
+Install it as a capability when a generator should choose when to run it:
 
 ```ts
 import { createWorkspaceAgentCapability } from "@flow-state-dev/claude-code/sdk";
@@ -408,9 +410,31 @@ generator({
 });
 ```
 
-Every resource collection on the block's context is mounted at its pattern
+When the host decides to run it, step the sequencer. Same options as the
+capability. You cannot set `cwd`; the factory sets the working directory from
+`root`.
+
+```ts
+import { createWorkspaceAgent } from "@flow-state-dev/claude-code/sdk";
+
+const workspace = createWorkspaceAgent({
+  root: async () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
+});
+// seq.step(workspace) with input { prompt: "Make the change." }
+```
+
+Input is `{ prompt: string }`. Output is the same handle `claudeCodeAgent`
+returns. `root` is resolved once per run; the working directory and the
+default sandbox both use that path.
+
+Every collection on the block's context is mounted at its pattern
 prefix, so a collection matching `artifacts/**` appears at `<root>/artifacts/`.
-Narrow it with `collections` or `exclude` if you want fewer.
+External collections and parameterized patterns are skipped. Narrow the set
+with `collections` or `exclude`. Pass `collections: []` to mount nothing;
+files already on disk at `root` stay there.
+
+Call the sequencer the factory returns. Running the inner agent on its own
+throws: no workspace is open for that run.
 
 After the run, what changed goes back to the collection it came from — unless
 something else changed the same file while the run held it. Then nothing is
@@ -462,7 +486,9 @@ Set `settingSources` or `sandbox` yourself and yours wins — containment is a
 default, not a lock. `disallowedTools` merges instead, so adding your own
 doesn't silently take the relocation ones away. `contain: false` turns all
 three off, which is what a trusted-workspace deployment wants and what nothing
-else should.
+else should. A checkout that is already a git worktree, and whose files must
+not be treated as collection mounts, takes `contain: false` and
+`collections: []`.
 
 ## Limitations
 
