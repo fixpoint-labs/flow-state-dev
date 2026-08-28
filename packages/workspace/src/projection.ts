@@ -34,6 +34,7 @@
  */
 import { createHash } from "node:crypto";
 import type { FlushOutcome, FlushReport, Mount, Place, ProjectedEntryState } from "./types";
+import { PlaceUnreadableError } from "./types";
 import { isMetadataKey, normalizePath, routePath } from "./routing";
 
 /** A hex SHA-256 of `content`. The only comparison the projection makes. */
@@ -145,10 +146,24 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
   }
 
   async function flush(): Promise<FlushReport> {
-    // Before anything else, and deliberately not inside a `try`: an
-    // unreadable place must abort the whole flush, because the delete pass
-    // below reads "absent from the place" as "deleted by the run".
-    const listed = await place.list(prefixes);
+    // Before anything else: an unreadable place must abort the whole flush,
+    // because the delete pass below reads "absent from the place" as "deleted
+    // by the run".
+    //
+    // Wrapped, and only here, so a caller can tell this failure from every
+    // other one a flush can reject with. They call for opposite handling: a
+    // walk that failed decided nothing, so swallowing it loses nothing, while
+    // a collection write that failed means the run's work never left the
+    // place — and a caller that catches both alike reports success for it.
+    let listed: readonly string[];
+    try {
+      listed = await place.list(prefixes);
+    } catch (err) {
+      throw new PlaceUnreadableError(
+        `the workspace could not be listed: ${(err as Error)?.message ?? String(err)}`,
+        { cause: err },
+      );
+    }
     const present = new Set(listed.map(normalizePath));
 
     const outcomes: FlushOutcome[] = [];

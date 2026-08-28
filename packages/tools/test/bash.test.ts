@@ -829,18 +829,29 @@ describe("createBashBlocks", () => {
     destination: string,
   ): Sandbox & { files: Map<string, string> } {
     const files = new Map<string, string>();
-    const destPrefix = destination.endsWith("/") ? destination : destination + "/";
     return {
       files,
       async executeCommand(command: string): Promise<CommandResult> {
         if (command.startsWith("find ")) {
-          // Mirror real `find` output: when invoked with absolute path
-          // arguments, find emits absolute paths (the framework's
-          // walkMountsViaExec passes absolute paths anchored at the
-          // destination). The mock holds files keyed by absolute path.
+          // Mirror real `find` semantics, arguments included. A mock that
+          // returned every file under the destination regardless of the paths
+          // it was handed would hide exactly the bug this walk can have: a
+          // file outside every searched directory is not listed, and the
+          // flush never learns it exists.
+          const targets = [...command.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) =>
+            JSON.parse(`"${m[1]}"`),
+          );
+          const maxdepth1 = command.includes("-maxdepth 1");
           const out: string[] = [];
           for (const key of files.keys()) {
-            if (!key.startsWith(destPrefix)) continue;
+            const under = targets.find(
+              (t: string) => key === t || key.startsWith(t.endsWith("/") ? t : `${t}/`),
+            );
+            if (under === undefined) continue;
+            if (maxdepth1) {
+              const rel = key.slice(under.endsWith("/") ? under.length : under.length + 1);
+              if (rel.includes("/")) continue;
+            }
             out.push(key);
           }
           return { stdout: out.join("\n"), stderr: "", exitCode: 0 };
@@ -1091,6 +1102,85 @@ describe("createBashBlocks", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it("reports a shell-written file outside every mount as an orphan", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("orphan-walk-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    // The write-file tool names its path, so it can refuse an orphan up front.
+    // A shell command cannot be intercepted that way — the only thing that can
+    // notice `stray.txt` is the flush walk, and a walk confined to the mount
+    // prefixes never visits it. Silently losing it on release is the bug.
+    sandbox.files.set("/workspace/stray.txt", "written by the shell");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await runForTest(bashCommand, { command: "echo hi > stray.txt" }, ctx);
+      expect(await artifacts.count()).toBe(0);
+      const msg = warn.mock.calls.map((c) => c[0]).join(" ");
+      expect(msg).toMatch(/orphan/);
+      expect(msg).toMatch(/stray\.txt/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("keeps a .keep the collection itself holds — the marker filter is by path", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    await artifacts.getOrCreate("empty-dir/.keep", { path: "empty-dir/.keep" });
+    await (await artifacts.getOptional("empty-dir/.keep"))!.writeContent("");
+
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("keep-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    expect(sandbox.files.has("/workspace/artifacts/empty-dir/.keep")).toBe(true);
+
+    // A basename filter drops it from the listing while the baseline still
+    // owns it, and the delete pass reads that as the run having removed it.
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    expect(await artifacts.getOptional("empty-dir/.keep")).toBeDefined();
+  });
+
+  it("propagates a collection write failure instead of reporting success", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("store-fail-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    sandbox.files.set("/workspace/artifacts/note.md", "the run's work");
+    // The store is down. Swallowing this alongside a failed walk would return
+    // success for a command whose file never left the sandbox.
+    artifacts.getOrCreate = async () => {
+      throw new Error("resource store unavailable");
+    };
+
+    await expect(
+      runForTest(bashCommand, { command: "echo x" }, ctx),
+    ).rejects.toThrow(/resource store unavailable/);
   });
 
   it("does NOT drop or warn on files under ./tmp/ — scratch is silent", async () => {
