@@ -58,6 +58,23 @@ export function coordinatorModelId(): string {
 export const COORDINATOR_HISTORY_LIMIT = 8;
 
 /**
+ * Phase a talk-turn `seed_issue` should file.
+ *
+ * Models often pass `default` for an optional field. That is not a phase
+ * this board runs, so treat it — and an empty string — as omitted.
+ */
+export function coordinatorPhase(
+  supplied: string | undefined,
+  boardPhase: string,
+): string {
+  const trimmed = supplied?.trim();
+  if (trimmed === undefined || trimmed === "" || trimmed.toLowerCase() === "default") {
+    return boardPhase;
+  }
+  return trimmed;
+}
+
+/**
  * The coordinator's job, stated as instructions the model cannot outgrow.
  *
  * It classifies and routes. It does not hold a workstream's transcript, edit
@@ -75,7 +92,7 @@ export const STEER_PROMPT = [
   "Use tools when the operator wants work started, retried, or a question answered.",
   "If they only asked what is on the board, answer from <board> and do not wake anything.",
   "",
-  "seed_issue — file an issue-phase and start a worker. When the operator already said what the ticket is, pass that as brief so attempt 1 has it.",
+  "seed_issue — file an issue-phase and start a worker. When the operator already said what the ticket is, pass that as brief so attempt 1 has it. Omit phase unless they named one. Never pass default.",
   "wake_board — claim pending or failed rows and start or retry their workers.",
   "answer_question — reply to one open question (use the question id verbatim) and resume that worker.",
   "",

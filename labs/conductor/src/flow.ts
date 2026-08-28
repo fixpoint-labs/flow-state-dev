@@ -119,6 +119,7 @@ import {
   STEER_PROMPT,
   coordinatorInputSchema,
   coordinatorModelId,
+  coordinatorPhase,
   formatCoordinatorBoard,
   projectCoordinatorRow,
   steerInputSchema,
@@ -1092,7 +1093,10 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
       "File an issue-phase on this epic's board and start a coding worker for it. When the operator already said what the ticket is, pass that as brief.",
     inputSchema: z.object({
       issue: z.string().describe("Issue id to file, such as FIX-1049."),
-      phase: z.string().optional().describe("Phase to run. Omit to use this board's phase."),
+      phase: z
+        .string()
+        .optional()
+        .describe("Phase the operator named. Omit to use this board's phase. Never pass default."),
       brief: z
         .string()
         .optional()
@@ -1106,7 +1110,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
       const brief = input.brief?.trim();
       return {
         issue: input.issue,
-        phase: input.phase ?? phase.phase,
+        phase: coordinatorPhase(input.phase, phase.phase),
         ...(brief !== undefined && brief !== "" ? { brief } : {}),
       };
     }, seedTask)
