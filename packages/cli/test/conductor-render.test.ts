@@ -974,6 +974,64 @@ describe("renderFrame", () => {
     expect(afterWrite).not.toContain("return 1;");
   });
 
+  it("shows the last Bash tail on the RUN band, and drops it after a Write", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const output = [
+      { at: 1, text: "tool · Bash pnpm test", requestId: "req-live-1" },
+      { at: 1, text: "  … 14 above", requestId: "req-live-1" },
+      { at: 1, text: "  Test Files  1 passed (1)", requestId: "req-live-1" },
+      { at: 1, text: "  Tests  12 passed (12)", requestId: "req-live-1" },
+    ];
+    const runningBand = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [running], activity: output }, { cols: 80, rows: 24 }),
+    );
+    expect(runningBand).toMatch(/^ RUN\s*$/m);
+    expect(runningBand).toContain("Bash pnpm test");
+    expect(runningBand).toContain("Test Files  1 passed (1)");
+    expect(runningBand).toContain("Tests  12 passed (12)");
+    expect(runningBand).toContain("… 14 above");
+
+    const afterWrite = beforeTranscript(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [running],
+          activity: [
+            ...output,
+            { at: 2, text: "tool · Write src/foo.ts", requestId: "req-live-1" },
+            { at: 2, text: "+ export const n = 1;", requestId: "req-live-1" },
+          ],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(afterWrite).toContain("Write src/foo.ts");
+    expect(afterWrite).not.toContain("Test Files  1 passed (1)");
+  });
+
   it("keeps files, the current todo, and the PR URL on ASK", () => {
     const parked: StatusRow = {
       ...waiting,

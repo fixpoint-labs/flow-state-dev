@@ -202,7 +202,7 @@ The band lists the files that run has written, edited, or read. Last touch is la
 
 The band also shows the last Write or Edit hunk — the changed span, not the whole file. Last 3 lines; more starts with `… N more`. `h` expands that hunk (up to 16 lines). Press again to collapse. When the run has written more than one file, the band labels the current hunk `src/b.ts  2/2`. `H` steps to an older file's hunk. A later write to the same file replaces that entry and moves it last. The transcript still caps a long Write so one file cannot fill the pane.
 
-When the last tool is a Read, the band shows the first 3 lines of that file. A later Write, Edit, or Bash drops the peek.
+When the last tool is a Read, the band shows the first 3 lines of that file. When the last tool is Bash, Grep, Glob, or LS, the band shows the last 3 lines of that result. A later Write, Edit, or Read drops the peek or tail.
 
 ```text
  … 2 more

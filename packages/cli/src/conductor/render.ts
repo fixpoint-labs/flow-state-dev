@@ -47,6 +47,7 @@ import {
   selectedNow,
   selectedPlan,
   selectedReadPeek,
+  selectedCommandTail,
   selectedQuestion,
   selectedRow,
   selectedRequestId,
@@ -230,6 +231,7 @@ function renderAttemptStrip(state: ViewState, inner: number): string[] {
     lines.push(` ${dim(paintToolNow(now, inner, cwd))}`);
   }
   lines.push(...renderReadPeek(state, inner));
+  lines.push(...renderCommandTail(state, inner));
   lines.push(...renderFileLines(state, inner));
   lines.push(...renderHunkLines(state, inner, { onlyCurrent: true }));
   lines.push(...renderPlanLines(state, inner, { onlyCurrent: true }));
@@ -283,6 +285,7 @@ function renderRunBand(state: ViewState, cols: number): string {
       ? ` ${paint(GOLD, paintToolNow(now, inner, tree ?? null))}`
       : "";
   const peekLines = renderReadPeek(state, inner);
+  const commandLines = renderCommandTail(state, inner);
   const fileLines = renderFileLines(state, inner);
   const hunkLines = renderHunkLines(state, inner);
   const planLines = renderPlanLines(state, inner);
@@ -293,6 +296,7 @@ function renderRunBand(state: ViewState, cols: number): string {
     ` ${dim(hint)}`,
     ...(nowLine !== "" ? [nowLine] : []),
     ...peekLines,
+    ...commandLines,
     ...fileLines,
     ...hunkLines,
     ...planLines,
@@ -309,6 +313,14 @@ const READ_BAND_MAX = 3;
 function renderReadPeek(state: ViewState, inner: number): string[] {
   const peek = selectedReadPeek(state).slice(0, READ_BAND_MAX);
   return peek.map((line) => ` ${dim(shorten(line, inner))}`);
+}
+
+const COMMAND_BAND_MAX = 3;
+
+function renderCommandTail(state: ViewState, inner: number): string[] {
+  const tail = selectedCommandTail(state);
+  if (tail.length === 0) return [];
+  return tail.slice(-COMMAND_BAND_MAX).map((line) => ` ${dim(shorten(line, inner))}`);
 }
 
 function renderFileLines(state: ViewState, inner: number): string[] {

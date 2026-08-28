@@ -483,17 +483,36 @@ export function selectedNow(state: ViewState): string | undefined {
  * or the command result is what the band should show then.
  */
 export function selectedReadPeek(state: ViewState): string[] {
+  return lastToolFollowLines(state, (name) => name === "Read");
+}
+
+/**
+ * Last lines of the selected run's last Bash / Grep / Glob / LS, when
+ * that tool is still the last one. A later Write or Read drops the tail.
+ */
+export function selectedCommandTail(state: ViewState): string[] {
+  return lastToolFollowLines(state, (name) =>
+    name === "Bash" || name === "Grep" || name === "Glob" || name === "LS",
+  );
+}
+
+function lastToolFollowLines(
+  state: ViewState,
+  match: (name: string) => boolean,
+): string[] {
   const items = activityForView(state);
   let start = -1;
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const body = transcriptBody(items[i]!.text);
     if (!body.startsWith("tool · ")) continue;
-    if (!body.startsWith("tool · Read ")) return [];
+    const rest = body.slice("tool · ".length).replace(/ · (failed|stopped)$/, "");
+    const name = rest.split(" ")[0] ?? "";
+    if (!match(name)) return [];
     start = i;
     break;
   }
   if (start < 0) return [];
-  const peek: string[] = [];
+  const follow: string[] = [];
   for (let i = start + 1; i < items.length; i += 1) {
     const body = transcriptBody(items[i]!.text);
     if (
@@ -504,9 +523,9 @@ export function selectedReadPeek(state: ViewState): string[] {
     ) {
       break;
     }
-    peek.push(body.replace(/^ {2}/, ""));
+    follow.push(body.replace(/^ {2}/, ""));
   }
-  return peek;
+  return follow;
 }
 
 /**
