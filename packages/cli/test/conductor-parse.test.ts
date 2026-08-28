@@ -18,6 +18,27 @@ describe("parseCommand", () => {
       ok: true,
       command: { kind: "seed", issue: "FIX-1", phase: "review" },
     });
+    expect(parseCommand("seed FIX-1 Rename getSession in the docs")).toEqual({
+      ok: true,
+      command: {
+        kind: "seed",
+        issue: "FIX-1",
+        brief: "Rename getSession in the docs",
+      },
+    });
+    expect(parseCommand("seed FIX-1 --phase implement Rename getSession")).toEqual({
+      ok: true,
+      command: {
+        kind: "seed",
+        issue: "FIX-1",
+        phase: "implement",
+        brief: "Rename getSession",
+      },
+    });
+    expect(parseCommand("seed FIX-1 -- --phase is the ticket")).toEqual({
+      ok: true,
+      command: { kind: "seed", issue: "FIX-1", brief: "--phase is the ticket" },
+    });
   });
 
   it("keeps the answer text intact, including quotes and apostrophes", () => {
@@ -133,6 +154,28 @@ describe("parseArgv", () => {
       command: { kind: "seed", issue: "FIX-1", phase: "review" },
     });
   });
+
+  it("takes words after the issue id as the seed brief", () => {
+    expect(parseArgv(["seed", "FIX-1", "Rename", "getSession"]).invocation).toEqual({
+      mode: "headless",
+      json: false,
+      command: { kind: "seed", issue: "FIX-1", brief: "Rename getSession" },
+    });
+    expect(
+      parseArgv(
+        forwardConductorArgv(["seed", "FIX-1", "Rename", "getSession"], { phase: "review" }),
+      ).invocation,
+    ).toEqual({
+      mode: "headless",
+      json: false,
+      command: {
+        kind: "seed",
+        issue: "FIX-1",
+        phase: "review",
+        brief: "Rename getSession",
+      },
+    });
+  });
 });
 
 describe("HELP_TEXT", () => {
@@ -158,7 +201,8 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("r still refreshes");
     expect(HELP_TEXT).toContain("Letters are the answer, not board keys");
     expect(HELP_TEXT).toContain("errored or cancelled row is spent");
-    expect(HELP_TEXT).toContain("More lines are the brief attempt 1 reads");
+    expect(HELP_TEXT).toContain("More lines — or words after the id — are the brief attempt 1 reads");
+    expect(HELP_TEXT).toContain("seed <issue> [--phase implement] [brief…]");
     expect(HELP_TEXT).toContain("lines, then prior compose");
     expect(HELP_TEXT).toContain("move in the line while composing");
     expect(HELP_TEXT).toContain("new line while composing");

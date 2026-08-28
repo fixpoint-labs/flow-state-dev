@@ -91,6 +91,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           options.command.issue,
           options.command.phase,
           onEvent,
+          options.command.brief,
         );
         flushTranscript();
         if (options.json) write(JSON.stringify(seeded));
@@ -184,6 +185,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           options.command.issue,
           options.command.phase,
           onEvent,
+          options.command.brief,
         );
         flushTranscript();
         if (options.json) write(JSON.stringify(seeded));

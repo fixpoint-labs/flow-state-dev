@@ -57,7 +57,7 @@ export const SLASH_TAKES_ID = new Set(["status", "watch", "abort", "stop", "answ
 
 export const SLASH_HINTS: Record<(typeof SLASH_VERBS)[number], string> = {
   status: "refresh, or jump to a row",
-  seed: "file an issue; more lines are the brief",
+  seed: "file an issue; more words are the brief",
   wake: "process pending rows",
   answer: "reply to a question",
   steer: "talk to the coordinator",
@@ -199,13 +199,13 @@ function parseWords(words: string[], options?: { slashed?: boolean; raw?: string
       if (issue === undefined || issue === "") {
         return { ok: false, message: `${verb} needs an issue id` };
       }
-      const phaseFlag = flagValue(words, "--phase");
+      const tail = takeSeedTail(words.slice(2));
       return {
         ok: true,
         command: {
           kind: verb,
           issue,
-          ...(phaseFlag !== undefined ? { phase: phaseFlag } : {}),
+          ...tail,
         },
       };
     }
@@ -243,11 +243,35 @@ export function parseCommand(line: string): ParseResult {
   return parseWords(splitWords(body), { slashed, raw: body });
 }
 
-function flagValue(words: string[], flag: string): string | undefined {
-  const at = words.indexOf(flag);
-  if (at < 0) return undefined;
-  const value = words[at + 1];
-  return value === undefined || value.startsWith("--") ? undefined : value;
+/**
+ * After the issue id: `--phase` is a flag, `--` starts a literal brief,
+ * and every other word is the ticket attempt 1 reads.
+ */
+function takeSeedTail(rest: string[]): { phase?: string; brief?: string } {
+  const kept: string[] = [];
+  let phase: string | undefined;
+  let raw = false;
+  for (let i = 0; i < rest.length; i++) {
+    const word = rest[i]!;
+    if (!raw && word === "--") {
+      raw = true;
+      continue;
+    }
+    if (!raw && word === "--phase") {
+      const value = rest[i + 1];
+      if (value !== undefined && !value.startsWith("--")) {
+        phase = value;
+        i += 1;
+      }
+      continue;
+    }
+    kept.push(word);
+  }
+  const brief = kept.join(" ").trim();
+  return {
+    ...(phase !== undefined ? { phase } : {}),
+    ...(brief !== "" ? { brief } : {}),
+  };
 }
 
 /** How the process was invoked. */
@@ -291,8 +315,8 @@ Interactive:
 
 Headless (scripting):
   fsdev conductor status [issue]  running rows print current action; a named issue also prints last tool, files, hunk, todo; a running row prints last-write age; --json adds now/files/hunk/todo on those same rows
-  fsdev conductor seed <issue> [--phase implement]
-  fsdev conductor start <issue>   seed, then open the TUI
+  fsdev conductor seed <issue> [--phase implement] [brief…]
+  fsdev conductor start <issue> [brief…]  seed, then open the TUI
   fsdev conductor wake
   fsdev conductor abort [issue]   stop the running request on those rows
   fsdev conductor answer <question-id> <reply…>
@@ -330,7 +354,7 @@ In the TUI:
   A row with an open question: type the reply. Letters are the answer, not board keys. Enter sends, Esc cancels.
   The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
   A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or /wake if it is still pending. An errored or cancelled row is spent — /wake will not take it.
-  s / seed: first line is the issue id. More lines are the brief attempt 1 reads, so the run does not have to ask what the ticket is.
+  s / seed: first line is the issue id. More lines — or words after the id — are the brief attempt 1 reads, so the run does not have to ask what the ticket is.
   A running row: the RUN band holds the checkout and what the run is
   doing. Ctrl-T expands the todo list. x or Ctrl-C stops it.
   While working, type an answer; Enter queues it.

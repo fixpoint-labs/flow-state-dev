@@ -284,7 +284,12 @@ export async function executeConductorCommand(
     if (invocation.command.kind === "start" && isInteractive(options)) {
       const seedCode = await runConductorHeadless({
         dispatch,
-        command: { kind: "seed", issue: invocation.command.issue, phase: invocation.command.phase },
+        command: {
+          kind: "seed",
+          issue: invocation.command.issue,
+          ...(invocation.command.phase !== undefined ? { phase: invocation.command.phase } : {}),
+          ...(invocation.command.brief !== undefined ? { brief: invocation.command.brief } : {}),
+        },
         json: false,
         stdout: options.output,
         stderr: options.stderr,
