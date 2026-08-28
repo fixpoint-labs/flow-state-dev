@@ -597,14 +597,14 @@ pnpm conductor status ISSUE</pre>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 738" role="img" aria-label="The conductor flow the lab ships, drawn against the later five-action spine. The lab declares four actions: seed which files an issue-phase row, wake which runs one drain step, status which only reads rows, and answer which writes a reply and starts a new request. The diagram still shows the later names startEpic, approve, and steer as dashed. Wake and status are solid. Four of the later actions feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The board claims the next ready task, dispatches it with the topological dispatcher, and routes it by assignee. Implement logic and the harness manager are solid; spec and review stay dashed. The manager provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state.">
+      <svg viewBox="0 0 940 738" role="img" aria-label="The conductor flow the lab ships, drawn against the later five-action spine. The lab declares four actions: seed which files an issue-phase row, wake which runs one drain step, status which only reads rows, and answer which writes a reply and starts a new request. Seed, wake, answer, and status are solid. Approve stays dashed. The later names startEpic and steer sit as captions under seed and answer. Four of those actions feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The board claims the next ready task, dispatches it with the topological dispatcher, and routes it by assignee. Implement logic and the harness manager are solid; spec and review stay dashed. The manager provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state.">
         <rect class="n-grp" x="16" y="26" width="908" height="112" rx="5"/>
         <text class="t-api" x="32" y="46">LAB &middot; seed / wake / status / answer &middot; later: startEpic / approve / steer</text>
 
-        <rect class="n-prop" x="28" y="58" width="168" height="64" rx="4"/>
-        <text class="t-b f-accent" x="42" y="80">startEpic</text>
-        <text class="t-xs" x="42" y="97">OBJECTIVE &#8594; TASKS</text>
-        <text class="t-s" x="42" y="113">lab ships seed</text>
+        <rect class="n-box" x="28" y="58" width="168" height="64" rx="4"/>
+        <text class="t-b f-accent" x="42" y="80">seed</text>
+        <text class="t-xs" x="42" y="97">FILES AN ISSUE-PHASE ROW</text>
+        <text class="t-s" x="42" y="113">later: startEpic</text>
 
         <rect class="n-box" x="208" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="222" y="80">wake</text>
@@ -616,10 +616,10 @@ pnpm conductor status ISSUE</pre>
         <text class="t-xs" x="402" y="97">RELEASES A PARKED ROW</text>
         <text class="t-s" x="402" y="113">answers a gate</text>
 
-        <rect class="n-prop" x="568" y="58" width="168" height="64" rx="4"/>
-        <text class="t-b f-accent" x="582" y="80">steer</text>
-        <text class="t-xs" x="582" y="97">CLASSIFY &#8594; ROUTE</text>
-        <text class="t-s" x="582" y="113">lab ships answer</text>
+        <rect class="n-box" x="568" y="58" width="168" height="64" rx="4"/>
+        <text class="t-b f-accent" x="582" y="80">answer</text>
+        <text class="t-xs" x="582" y="97">WRITES A REPLY, NEW REQUEST</text>
+        <text class="t-s" x="582" y="113">later: steer</text>
 
         <rect class="n-box" x="748" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="762" y="80">status</text>
@@ -708,7 +708,7 @@ pnpm conductor status ISSUE</pre>
         <text class="t-xs" x="60" y="715">EXISTS &middot; THE WORKSTREAM SETTLES ITS OWN ROW. THE PARENT RETURNED LONG AGO, WITH terminationReason: "handed-off"</text>
       </svg>
     </div>
-    <figcaption><b>The spine.</b> Solid is what you can run today: <code>wake</code>, <code>status</code>, implement, and the harness manager, on a flow whose other two verbs are <code>seed</code> and <code>answer</code>. Dashed is the later design: <code>startEpic</code>, <code>approve</code>, <code>steer</code>, spec, and review. Note what is <em>not</em> here: three adapters. There is <b>one</b> harness manager and three small records that differ only in prompt, done-condition, and readable collections &#8212; section 7 shows the work of getting to that answer.</figcaption>
+    <figcaption><b>The spine.</b> Solid is what you can run today: <code>seed</code>, <code>wake</code>, <code>answer</code>, <code>status</code>, implement, and the harness manager. Dashed is the later design: <code>approve</code>, spec, and review. <code>startEpic</code> and <code>steer</code> are captions under the verbs that shipped. Note what is <em>not</em> here: three adapters. There is <b>one</b> harness manager and three small records that differ only in prompt, done-condition, and readable collections &#8212; section 7 shows the work of getting to that answer.</figcaption>
   </figure>
 
   <pre class="code"><i>// LABS/CONDUCTOR &#8212; the flow that ships. Four actions, implement only.</i>
@@ -882,7 +882,7 @@ export const conductor = <em>defineFlow</em>({
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 400" role="img" aria-label="The question channel as a cycle. A harness manager wraps each workstream, runs the turn, reads the outcome, and posts what it cannot answer to the inbox. The inbox is a user-scoped collection holding one row per open question, moving from open to answered or withdrawn. The lab operator reads the inbox through status and answers with the answer action. The later design still shows a coordinator that classifies a reply into a steer back into the running workstream.">
+      <svg viewBox="0 0 940 400" role="img" aria-label="The question channel as a cycle. A harness manager wraps each workstream, runs the turn, reads the outcome, and posts what it cannot answer to the inbox. The inbox is a user-scoped collection holding one row per open question, moving from open to answered or withdrawn. The lab operator is fsdev conductor: it reads the inbox through status and answers with the answer action, which writes the reply and starts a new request. Steer remains the later name for that wake.">
         <rect class="n-box" x="16" y="46" width="268" height="104" rx="4"/>
         <text class="t-b f-accent" x="34" y="72">harness manager</text>
         <text class="t-xs" x="34" y="90">EXISTS &middot; ONE PER RUN</text>
@@ -899,13 +899,13 @@ export const conductor = <em>defineFlow</em>({
         <text class="t-s" x="354" y="132">open &#8594; answered &#183; withdrawn</text>
 
         <path class="ln" d="M604,98 L656,98"/>
-        <text class="t-lbl" x="630" y="88" text-anchor="middle">WAKE</text>
+        <text class="t-lbl" x="630" y="88" text-anchor="middle">ANSWER</text>
 
-        <rect class="n-prop" x="656" y="46" width="268" height="104" rx="4"/>
-        <text class="t-b f-accent" x="674" y="72">coordinator</text>
-        <text class="t-xs" x="674" y="90">THE MAIN SESSION</text>
-        <text class="t-s" x="674" y="112">asks one open row at a time</text>
-        <text class="t-s" x="674" y="132">classifies the reply, routes it</text>
+        <rect class="n-box" x="656" y="46" width="268" height="104" rx="4"/>
+        <text class="t-b f-accent" x="674" y="72">fsdev conductor</text>
+        <text class="t-xs" x="674" y="90">EXISTS &middot; LAB OPERATOR</text>
+        <text class="t-s" x="674" y="112">reads the inbox through status</text>
+        <text class="t-s" x="674" y="132">types an answer, starts a new request</text>
 
         <path class="ln" d="M790,150 L790,182"/>
 
@@ -915,9 +915,9 @@ export const conductor = <em>defineFlow</em>({
 
         <path class="ln" d="M790,248 L790,300 L610,300"/>
 
-        <rect class="n-prop" x="330" y="274" width="280" height="52" rx="4"/>
-        <text class="t-b f-accent" x="470" y="296" text-anchor="middle">steer</text>
-        <text class="t-xs" x="470" y="314" text-anchor="middle">ONE KIND &middot; ANSWER</text>
+        <rect class="n-box" x="330" y="274" width="280" height="52" rx="4"/>
+        <text class="t-b f-accent" x="470" y="296" text-anchor="middle">answer</text>
+        <text class="t-xs" x="470" y="314" text-anchor="middle">LAB VERB &middot; later: steer</text>
 
         <path class="ln" d="M330,300 L150,300 L150,150"/>
         <text class="t-lbl" x="196" y="292">IN</text>
