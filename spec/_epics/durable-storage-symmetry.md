@@ -390,9 +390,13 @@ below the themes had both gone stale against the code that merged.
    `stores/types.ts`). Routing a native `incField` / `pushToArray` there would make an ordinary first
    write throw. **`0` is not the escape**: it admits a tombstone, which is the revival theme 1 just
    closed. Two shapes are visible from here — **fall back to `set` for the absent case**, keeping the
-   delta verb for rows that already exist, or **extend the delta contract to accept `"absent"`**,
-   which changes `DeltaStoreOps` and so reaches the scope side too. **This document does not choose
-   between them.** FIX-1267 is deferred and unparented, and its mechanism is its spec's
+   delta verb for rows that already exist, or **let the resource-side delta verbs accept `"absent"`**.
+   How far the second reaches is itself open: `ResourceStateStore` does **not** extend
+   `DeltaStoreOps` (`stores/types.ts` — only `SessionStore`, `RequestStore`, `UserStore` and
+   `OrgStore` do), so a resource-local delta surface could take `"absent"` without touching the
+   scope contract at all, while widening `DeltaStoreOps` itself would reach the scope stores. That
+   choice is part of the question, not a settled cost of it. **This document does not choose between
+   them.** FIX-1267 is deferred and unparented, and its mechanism is its spec's
    ([`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) → *Out of scope*). What
    is recorded here is only that the question exists, so whoever specs that tier meets it as a known
    constraint rather than discovering it as a contradiction between two themes.
