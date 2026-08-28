@@ -387,9 +387,13 @@ describe("createBashTool", () => {
       const writeFile = tools.writeFile as {
         execute: (a: { path: string; content: string }) => Promise<unknown>;
       };
-      await writeFile.execute({ path: "files/hello.txt", content: "ours" });
+      const result = await writeFile.execute({ path: "files/hello.txt", content: "ours" });
 
       expect(await (await collection.get("hello.txt")).readContent()).toBe("original");
+      // Told to the MODEL, not only to the log. A `success: true` here is how
+      // a model moves on believing the artifact was saved.
+      expect(result).toMatchObject({ success: false });
+      expect((result as { refused: string }).refused).toContain("another run");
       const warned = warn.mock.calls.flat().join(" ");
       expect(warned).toContain("files/hello.txt");
       expect(warned).toContain("another run");
@@ -900,6 +904,15 @@ describe("createBashBlocks", () => {
             out.push(key);
           }
           return { stdout: out.join("\n"), stderr: "", exitCode: 0 };
+        }
+        if (command.startsWith("test -e ")) {
+          // Honoured rather than answered `0` for everything, for the same
+          // reason `find` honours its arguments: the place asks this only
+          // after a read failed, to tell a file that vanished from one that
+          // would not read. A mock that always says "present" turns every
+          // benign vanish into a thrown flush.
+          const target = JSON.parse(command.slice("test -e ".length).trim());
+          return { stdout: "", stderr: "", exitCode: files.has(target) ? 0 : 1 };
         }
         return { stdout: "", stderr: "", exitCode: 0 };
       },
@@ -1650,6 +1663,69 @@ describe("createBashBlocks", () => {
       sharedClaimRegistry.releaseAll(otherRun);
       warn.mockRestore();
     }
+  });
+
+  it("fails loudly when a file in the workspace will not read", async () => {
+    // A read that fails and a file that is absent look identical here: the
+    // adapters signal "no such file" by throwing and do not agree on the
+    // shape. Answering `null` for both tells the flush "the place does not
+    // hold this" about a file the run edited — the edit never reaches the
+    // collection and the command reports success.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("unreadable-file", { session: { artifacts } });
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    // Listed by the walk, and unreadable — a permission or encoding failure,
+    // not a file that went away.
+    sandbox.files.set("/workspace/artifacts/locked.md", "edited");
+    const readFile = sandbox.readFile.bind(sandbox);
+    sandbox.readFile = async (p: string) => {
+      if (p === "/workspace/artifacts/locked.md") throw new Error("EACCES");
+      return readFile(p);
+    };
+
+    await expect(runForTest(bashCommand, { command: "ls" }, ctx)).rejects.toThrow(
+      /artifacts\/locked\.md/,
+    );
+  });
+
+  it("passes over a file that left the workspace between the walk and the read", async () => {
+    // The other side of the same question, and the benign one: a temp file
+    // replaced, an editor's swap. Nothing was decided about it and nothing
+    // should be — treating this as a failure would break flushes that work.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("vanished-file", { session: { artifacts } });
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    sandbox.files.set("/workspace/artifacts/kept.md", "kept");
+    const readFile = sandbox.readFile.bind(sandbox);
+    sandbox.readFile = async (p: string) => {
+      if (p === "/workspace/artifacts/gone.md") {
+        sandbox.files.delete("/workspace/artifacts/gone.md");
+        throw new Error("File not found");
+      }
+      return readFile(p);
+    };
+    sandbox.files.set("/workspace/artifacts/gone.md", "doomed");
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    expect(await (await artifacts.get("kept.md")).readContent()).toBe("kept");
+    expect(await artifacts.getOptional("gone.md")).toBeUndefined();
   });
 
   it("says nothing when a flush over an empty workspace finds nothing", async () => {

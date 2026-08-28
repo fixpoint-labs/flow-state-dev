@@ -38,14 +38,31 @@ export const TMP_DIR = "tmp";
 export function createSandboxPlace(sandbox: Sandbox, destination: string): Place {
   return {
     async read(relativePath) {
+      const absolute = path.join(destination, relativePath);
       try {
-        return await sandbox.readFile(path.join(destination, relativePath));
-      } catch {
-        // The adapters signal "no such file" by throwing, and they do not
-        // agree on the error shape. A read that fails for another reason
-        // looks the same here, which is survivable: the projection treats a
-        // null as "the place does not hold this" and moves on without
-        // deciding anything about it.
+        return await sandbox.readFile(absolute);
+      } catch (err) {
+        // The adapters signal "no such file" by throwing and do not agree on
+        // the error shape, so the failure cannot be classified from the error.
+        // Ask the sandbox instead.
+        //
+        // Both answers matter and they are opposites. A path that is GONE is
+        // the benign case the flush is built for — a temp file replaced, an
+        // editor's swap — and `null` means "the place does not hold this", so
+        // the flush passes over it. A path that is still THERE and would not
+        // read is a permission, I/O or encoding failure, and the same `null`
+        // would tell the flush the run deleted a file it edited: the edit
+        // never reaches the collection and the command reports success.
+        //
+        // Loud, therefore, and not a `PlaceUnreadableError`: that one says the
+        // walk decided nothing and is safe to swallow, while this says one
+        // file's content is unaccounted for.
+        if (await stillPresent(sandbox, absolute)) {
+          throw new Error(
+            `[bash] ${relativePath} is in the workspace but could not be read: ` +
+              `${(err as Error)?.message ?? String(err)}`,
+          );
+        }
         return null;
       }
     },
@@ -117,6 +134,23 @@ async function walkViaExec(
  * directory case, so a failure that survives it is the walk itself being
  * broken, and the projection must not proceed to its delete pass.
  */
+/**
+ * Whether the sandbox still holds `absolute`.
+ *
+ * Asked only after a read has already failed, so the extra round trip costs
+ * nothing on the ordinary path. A probe that cannot run at all is reported as
+ * present: the honest answer to "did this file vanish" is then "no idea", and
+ * the failure that follows is louder than a silently dropped edit.
+ */
+async function stillPresent(sandbox: Sandbox, absolute: string): Promise<boolean> {
+  try {
+    const probe = await sandbox.executeCommand(`test -e ${JSON.stringify(absolute)}`);
+    return probe.exitCode === 0;
+  } catch {
+    return true;
+  }
+}
+
 async function execFind(
   sandbox: Sandbox,
   targets: readonly string[],

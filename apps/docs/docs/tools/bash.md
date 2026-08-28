@@ -311,7 +311,17 @@ SHA-256 hashes detect changes. Only files whose hash differs from the stored val
 
 ### Two runs, one file
 
-A file already changed in its collection is not overwritten — the flush warns and leaves both versions where they are. A file another run is writing at the same moment gets the same treatment for a different reason: the other run holds a claim on it, so this one stands off and names the path in the warning. Claims are per file, so two runs sharing a collection while working on different files both write.
+A file already changed in its collection is not overwritten — the flush warns and leaves both versions where they are. A file another run is writing at the same moment gets the same treatment for a different reason: the other run is mid-write, so this one stands off and names the path in the warning. Two runs sharing a collection while working on different files both write.
+
+The unit is the collection entry rather than the path, so two sessions each writing their own `artifacts/report.md` never stand off — those are two files that share a name.
+
+`writeFile` says so in its result rather than only in the log, since the model is the party that asked for the write:
+
+```json
+{ "success": false, "refused": "\"artifacts/report.md\" is being written by another run — the write was NOT applied." }
+```
+
+The file is in the workspace either way; the workspace is the run's own. What `success` reports is whether it reached its collection, so a model that is told `false` can retry rather than move on believing the artifact was saved.
 
 ### Orphan writes
 

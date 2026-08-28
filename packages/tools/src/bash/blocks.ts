@@ -58,6 +58,7 @@ import {
   createBashProjection,
   createMountedProjection,
   flushWithDiagnostics,
+  refusalReason,
   seedWorkspaceMarkers,
 } from "./projection-setup";
 import path from "node:path";
@@ -151,7 +152,17 @@ const bashWriteFileInputSchema = z.object({
 });
 
 const bashWriteFileOutputSchema = z.object({
+  /**
+   * Whether the file reached its collection.
+   *
+   * The workspace write always lands — the workspace is the run's own. What
+   * can be refused is the durable half, when another run holds the entry or
+   * changed it underneath this one. Reporting that as success is how a model
+   * moves on believing an artifact was saved.
+   */
   success: z.boolean(),
+  /** Why the durable write was refused, or `null` when it was not. */
+  refused: z.string().nullable().default(null),
 });
 
 // ---------------------------------------------------------------------------
@@ -600,31 +611,27 @@ async function routeWrittenFile(
   entry: SandboxEntry,
   relativePath: string,
   content: string,
-): Promise<void> {
+): Promise<string | null> {
   // The model often supplies `./artifacts/foo.md` even though the schema says
   // paths are workspace-relative. `isUnderTmp` matches bare prefixes.
   if (relativePath.startsWith("./")) relativePath = relativePath.slice(2);
-  if (isUnderTmp(relativePath)) return;
-  if (path.posix.basename(relativePath) === KEEP_MARKER) return;
+  if (isUnderTmp(relativePath)) return null;
+  if (path.posix.basename(relativePath) === KEEP_MARKER) return null;
 
   const outcome = await entry.projection.put(relativePath, content);
-  if (outcome === undefined) return;
+  if (outcome === undefined) return null;
   if (outcome.kind === "orphan") {
     console.warn(
       `[bash] dropped orphan write at "${relativePath}" — not under any mounted collection or ./${TMP_DIR}/`,
     );
-    return;
+    return null;
   }
-  if (outcome.kind === "conflict") {
-    console.warn(
-      `[bash] "${relativePath}" changed in its collection while this run held it — the write was NOT applied.`,
-    );
-  }
-  if (outcome.kind === "contested") {
-    console.warn(
-      `[bash] "${relativePath}" is being written by another run — the write was NOT applied.`,
-    );
-  }
+  // Warned AND returned. The warning reaches a developer reading logs; the
+  // return reaches the model, which is the party that just asked for the write
+  // and would otherwise be told it succeeded.
+  const why = refusalReason(outcome);
+  if (why !== null) console.warn(`[bash] ${why}`);
+  return why;
 }
 
 
@@ -870,8 +877,8 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       const hostPath = path.join(hostMountSource, input.path);
       await fs.mkdir(path.dirname(hostPath), { recursive: true });
       await fs.writeFile(hostPath, input.content, "utf-8");
-      await routeWrittenFile(entry, input.path, input.content);
-      return { success: true };
+      const refused = await routeWrittenFile(entry, input.path, input.content);
+      return { success: refused === null, refused };
     },
   });
 
@@ -887,8 +894,8 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
       await entry.sandbox.writeFile(fullPath, input.content);
-      await routeWrittenFile(entry, input.path, input.content);
-      return { success: true };
+      const refused = await routeWrittenFile(entry, input.path, input.content);
+      return { success: refused === null, refused };
     },
   });
 

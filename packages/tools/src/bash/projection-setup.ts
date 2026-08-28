@@ -153,6 +153,31 @@ export async function flushWithDiagnostics(
  * be is not news, and saying so would make the interesting lines the ones you
  * have to filter for.
  */
+/**
+ * The sentence a model needs when its write did not reach the collection, or
+ * `null` when it did.
+ *
+ * Both `writeFile` doors ask this, because both had the same hole: the
+ * workspace write lands either way — the workspace is the run's own — and only
+ * the durable half can be refused. Answering `{ success: true }` for a refusal
+ * is how a model moves on believing an artifact was saved, and two doors
+ * deciding that separately is how one of them keeps doing it.
+ *
+ * An orphan is NOT a refusal. Nothing held it and nothing changed underneath
+ * it; it landed nowhere because it was written nowhere a collection owns,
+ * which is a configuration answer rather than something to retry.
+ */
+export function refusalReason(outcome: FlushOutcome | undefined): string | null {
+  if (outcome === undefined) return null;
+  if (outcome.kind === "conflict") {
+    return `"${outcome.path}" changed in its collection while this run held it — the write was NOT applied.`;
+  }
+  if (outcome.kind === "contested") {
+    return `"${outcome.path}" is being written by another run — the write was NOT applied.`;
+  }
+  return null;
+}
+
 export function warnUnsettled(outcomes: readonly FlushOutcome[]): void {
   const orphans = outcomes.filter((o) => o.kind === "orphan").map((o) => o.path);
   if (orphans.length > 0) {

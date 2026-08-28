@@ -40,6 +40,7 @@ import {
   createBashProjection,
   flushWithDiagnostics,
   seedWorkspaceMarkers,
+  refusalReason,
   warnUnsettled,
   type BashMount,
 } from "./projection-setup";
@@ -196,7 +197,8 @@ export async function createBashTool(
         await sandbox.writeFile(fullPath, content);
         const outcome = await projection.put(filePath, content);
         if (outcome !== undefined) warnUnsettled([outcome]);
-        return { success: true };
+        const refused = refusalReason(outcome);
+        return { success: refused === null, refused };
       },
     }),
   };
