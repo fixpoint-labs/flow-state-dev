@@ -43,14 +43,8 @@ import type {
 import { z } from "zod";
 import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
 import { resolveSandbox } from "./resolve-sandbox";
-import { createProjection, createHostPlace } from "@flow-state-dev/workspace";
-import type {
-  FlushOutcome,
-  FlushReport,
-  Mount as ProjectionMount,
-  Place,
-  Projection,
-} from "@flow-state-dev/workspace";
+import { createHostPlace } from "@flow-state-dev/workspace";
+import type { Projection } from "@flow-state-dev/workspace";
 import { createHash } from "node:crypto";
 import { KEEP_MARKER } from "./sandbox-place";
 import {
