@@ -93,7 +93,7 @@ export type ExecutionLimits = {
 };
 
 /** Workspace scope for the local provider. Determines the workspace directory. */
-export type WorkspaceScope = "session" | "user" | "org";
+export type WorkspaceScope = "session" | "user" | "org" | "run";
 
 // ---------------------------------------------------------------------------
 // Third-party SDK shapes
@@ -154,9 +154,17 @@ export type SandboxProvider =
       cwd?: string;
       /**
        * Scope for the auto-created workspace directory. Default: `"session"`.
+       * - `"run"` — one workspace per request, shared with nothing
        * - `"session"` — one workspace per session (isolated, ephemeral)
        * - `"user"` — shared across all sessions for a user
        * - `"org"` — shared across all sessions in an org
+       *
+       * The list is ordered narrowest first, and that ordering is the whole
+       * decision: everything below `"run"` is a workspace two runs can be
+       * inside at once. That is usually what you want — a session's runs
+       * building on each other is the point of a session — but it is also the
+       * only way one run sees another's half-finished work, so a workflow
+       * running several agents at once wants `"run"`.
        */
       scope?: WorkspaceScope;
       /**
@@ -335,17 +343,11 @@ export interface CreateBashToolOptions {
   /** Persist sandbox across sessions via the `bashSession` resource. Default: `false`. */
   persist?: boolean;
 
-  /** Sync strategy: `"full"` re-reads everything; `"diff"` uses content hashing. Default: `"diff"`. */
-  syncMode?: "full" | "diff";
-
   /** Hook called before every bash command. Return a string to rewrite the command. */
   onBeforeCommand?: (cmd: string) => string | void;
 
   /** Hook called after every bash command. Return a `CommandResult` to override the result. */
   onAfterCommand?: (cmd: string, result: CommandResult) => CommandResult | void;
-
-  /** Filter which workspace files are synced back to resources. Return `false` to skip a path. */
-  fileFilter?: (path: string) => boolean;
 }
 
 // ---------------------------------------------------------------------------

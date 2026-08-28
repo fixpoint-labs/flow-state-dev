@@ -244,6 +244,32 @@ A grant is a credential MOAT holds for a third-party provider (GitHub, OpenAI, a
 - A crashed container is not auto-restarted. The next command surfaces the failure.
 - Process termination outside the cleanup path (SIGTERM, host crash) leaves the container running. Configure a MOAT-side TTL (`moat clean`) as a backstop.
 
+## Where the workspace lives
+
+With the local provider, each workspace is a directory under
+`.fsdev/workspaces/<scope>/<id>/`. `scope` decides who shares it:
+
+| `scope` | One workspace per | Reach for it when |
+| --- | --- | --- |
+| `run` | request | Several agents work at once and must not see each other's half-finished files. |
+| `session` *(default)* | session | A conversation's runs should build on each other. |
+| `user` | user | Work should carry across a user's sessions. |
+| `org` | org | Work is shared across everyone in an org. |
+
+```ts
+createBashCapability({ provider: { type: "local", scope: "run" } });
+```
+
+Read that list narrowest-first, because the ordering is the decision. Every
+scope below `run` is a workspace two runs can be inside at the same time.
+Usually that's the point — runs building on each other is what a session is
+for. It's also the only way one run reads another's partial work, so a flow
+that fans several agents out at once wants `run`.
+
+`user` and `org` fall back to the session when the context carries no user or
+org identity. An anonymous caller gets their own workspace rather than joining
+a shared one.
+
 ## Sync lifecycle
 
 On the first bash call in a session:
@@ -256,9 +282,17 @@ On the first bash call in a session:
    - Under a read-only mount → skip.
    - Under `./tmp/` → skip silently.
    - Under nothing known → log a warning and drop.
-5. **Delete** — per-mount: refs whose bare key isn't in the current sandbox walk are removed from their collection.
+5. **Delete** — a file the run removed is deleted from its collection.
 
 Flush runs after `bash` and after `bash-write-file`. It does NOT run after `bash-read-file` — reads don't change state.
+
+### When something else changed the file too
+
+Steps 4 and 5 both check the same thing before they act: does the collection still hold what this run was given? If it does, the write or the delete goes through. If it doesn't, something else changed that file while the run held it, and nothing happens to it — the run's copy and the collection's copy are both left where they are, and a warning names the contested path.
+
+That check is what keeps two runs sharing one collection from quietly overwriting each other. It's also why a file a *different* run added mid-flight isn't deleted: this run never held it, so its absence from this workspace says nothing.
+
+The same rule applies to a workspace that can't be read at all. If the walk in step 4 fails, the flush is skipped and logged rather than treated as an empty workspace — an empty walk would otherwise look exactly like the run having deleted everything.
 
 ### Content hashing
 
@@ -311,7 +345,7 @@ const { tools, sandbox } = await createBashTool({
 });
 ```
 
-This returns AI SDK `tool()` objects you can pass to a generator via `providerTools`. It's a thinner layer than the capability — no auto-discovery, no guidance text, no flush-routing behavior beyond what `FileSync` provides directly. Reach for it only when you need AI SDK-shaped tools.
+This returns AI SDK `tool()` objects you can pass to a generator via `providerTools`. It's a thinner layer than the capability — no auto-discovery of collections, no guidance text. Each collection you pass is mounted at its pattern prefix and reconciled by the same rules as above. Reach for it only when you need AI SDK-shaped tools.
 
 ## Next steps
 
