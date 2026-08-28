@@ -134,7 +134,12 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
         // the next flush would attribute it to the owner.
         if (routePath(mounts, path)?.mount !== mount) continue;
         await place.write(path, content);
-        baseline.set(path, hashContent(content));
+        // Only a WRITABLE mount's paths enter the baseline. A read-only mount
+        // is projected and then never written or deleted, so a baseline for it
+        // buys nothing — and `ownedPaths()` answers "is another run holding
+        // this?", where claiming immutable reference files refuses an overlap
+        // that was always safe.
+        if (mount.writable) baseline.set(path, hashContent(content));
       }
     }
   }
