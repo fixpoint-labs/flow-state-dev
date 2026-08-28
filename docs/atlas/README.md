@@ -25,3 +25,7 @@ issue identifiers; anything under `apps/docs/` is published and may not.
 - `workforce.html` — the other intended harness: Layer 2 conventions on the
   same substrate, persistent agents, not this cycle. Triangulates so Conductor
   does not harden a coding-only Layer 1.
+- `roadmap.html` — the public product horizon: three jobs (framework,
+  Workforce as a component, Conductor as the user product), the clocks, and
+  collaboration as wait on the existing Relay door. Sibling to Conductor and
+  Workforce; owned conceptually by FSD Strategy.
