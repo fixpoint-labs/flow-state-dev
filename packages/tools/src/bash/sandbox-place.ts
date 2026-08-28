@@ -91,7 +91,7 @@ export function createSandboxPlace(sandbox: Sandbox, destination: string): Place
 }
 
 /** Is this path the run's scratch space, which never reaches a collection? */
-function isScratch(relativePath: string): boolean {
+export function isScratch(relativePath: string): boolean {
   return relativePath === TMP_DIR || relativePath.startsWith(`${TMP_DIR}/`);
 }
 

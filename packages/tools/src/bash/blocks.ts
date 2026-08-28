@@ -52,7 +52,7 @@ import {
 } from "@flow-state-dev/workspace";
 import type { Projection } from "@flow-state-dev/workspace";
 import { createHash } from "node:crypto";
-import { KEEP_MARKER } from "./sandbox-place";
+import { KEEP_MARKER, isScratch } from "./sandbox-place";
 import {
   TMP_DIR,
   createBashProjection,
@@ -385,6 +385,18 @@ export function resolveWorkspaceCwdForTest(
  * directory. Presence is its own component in the key, and the directory uses
  * a segment `safeSegment` can never emit.
  */
+/**
+ * The scope a provider actually works in.
+ *
+ * Only `local` takes a `scope`; every other provider gets one sandbox per
+ * session. Read in three places — the registry key, the cold-path predicate,
+ * and cleanup — and they have to agree: a cleanup that resolved a different
+ * scope than the lookup did would release nothing and leak the sandbox.
+ */
+function effectiveScope(provider: SandboxProvider): WorkspaceScope {
+  return provider.type === "local" ? (provider.scope ?? "session") : "session";
+}
+
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
   // `run` is this tool's name for the request. Core spells the same scope
   // `request`, and the components come from core's own rule rather than a
@@ -509,7 +521,7 @@ async function createScopedSandbox(
 ): Promise<Sandbox> {
   let cwd: string | undefined;
   if (provider.type === "local" && !provider.cwd) {
-    const scope = provider.scope ?? "session";
+    const scope = effectiveScope(provider);
     const { scopeId } = resolveScopeKey(scope, identity);
     cwd = path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
   }
@@ -549,11 +561,6 @@ async function createScopedSandbox(
   return sandbox;
 }
 
-
-
-function isUnderTmp(relativePath: string): boolean {
-  return relativePath === TMP_DIR || relativePath.startsWith(TMP_DIR + "/");
-}
 
 /**
  * Provider types whose sandbox is *not* immediately reachable on every
@@ -613,9 +620,9 @@ async function routeWrittenFile(
   content: string,
 ): Promise<string | null> {
   // The model often supplies `./artifacts/foo.md` even though the schema says
-  // paths are workspace-relative. `isUnderTmp` matches bare prefixes.
+  // paths are workspace-relative. `isScratch` matches bare prefixes.
   if (relativePath.startsWith("./")) relativePath = relativePath.slice(2);
-  if (isUnderTmp(relativePath)) return null;
+  if (isScratch(relativePath)) return null;
   if (path.posix.basename(relativePath) === KEEP_MARKER) return null;
 
   const outcome = await entry.projection.put(relativePath, content);
@@ -661,7 +668,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
 
   async function getOrCreate(ctx: BlockContext): Promise<SandboxEntry> {
     const identity = getIdentity(ctx);
-    const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
+    const scope = effectiveScope(provider);
     const { key: registryKey } = resolveScopeKey(scope, identity);
 
     const existing = registry.get(registryKey);
@@ -708,8 +715,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   // the next call must boot/connect the sandbox. Cheap: just a Map.has.
   const isCold = (_value: unknown, ctx: BlockContext): boolean => {
     const identity = getIdentity(ctx as any);
-    const scope =
-      provider.type === "local" ? (provider.scope ?? "session") : "session";
+    const scope = effectiveScope(provider);
     return !registry.has(resolveScopeKey(scope, identity).key);
   };
 
@@ -1011,7 +1017,7 @@ export async function releaseBashSandbox(
   ctx: BlockContext,
 ): Promise<void> {
   const identity = getIdentity(ctx);
-  const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
+  const scope = effectiveScope(provider);
   const { key: registryKey } = resolveScopeKey(scope, identity);
 
   const value = registry.get(registryKey);
