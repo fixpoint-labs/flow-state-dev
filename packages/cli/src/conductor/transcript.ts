@@ -20,7 +20,7 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
-import { pushActivity, type PlanItem, type StatusRow, type ViewState } from "./types";
+import { fileFromToolLine, pushActivity, type PlanItem, type StatusRow, type ViewState } from "./types";
 
 export interface TranscriptPatch {
   /** Lines that just became history. */
@@ -47,7 +47,16 @@ export function applyTranscriptPatch(
   requestId?: string,
 ): ViewState {
   let next = state;
-  for (const text of patch.lines) next = pushActivity(next, text, at, requestId);
+  for (const text of patch.lines) {
+    next = pushActivity(next, text, at, requestId);
+    if (requestId === undefined) continue;
+    const file = fileFromToolLine(text);
+    if (file === undefined) continue;
+    const prior = next.childFiles[requestId] ?? [];
+    const files = prior.filter((path) => path !== file);
+    files.push(file);
+    next = { ...next, childFiles: { ...next.childFiles, [requestId]: files } };
+  }
   if (requestId !== undefined) {
     const childLive = { ...next.childLive };
     if (patch.live === null) delete childLive[requestId];
@@ -71,6 +80,7 @@ export function createStreamTranscript(): {
   const streamed = new Set<string>();
   const logged = new Set<string>();
   const settled = new Set<string>();
+  const planEntries: Array<{ key: string; mark: PlanItem["mark"]; text: string }> = [];
   let live: string | null = null;
   let liveKind: "status" | "message" | "tool" | null = null;
 
@@ -100,22 +110,25 @@ export function createStreamTranscript(): {
     if (settled.has(item.id) && !failed) return snapshot(prior);
     if (logged.has(item.id) && !failed) {
       settled.add(item.id);
-      return snapshot([...prior, ...formatToolResult(item)]);
+      const plan = applyPlanTool(item, planEntries, "settled");
+      const next = snapshot([...prior, ...formatToolResult(item)]);
+      return plan === undefined ? next : { ...next, plan };
     }
     logged.add(item.id);
     settled.add(item.id);
     if (failed) {
-      return snapshot([
+      const plan = applyPlanTool(item, planEntries, "failed");
+      const next = snapshot([
         ...prior,
         formatToolLine(item, item.status === "incomplete" ? "incomplete" : "failed"),
         ...formatToolResult(item),
       ]);
+      return plan === undefined ? next : { ...next, plan };
     }
     const formatted = formatToolLines(item);
-    return {
-      ...snapshot([...prior, ...formatted.lines, ...formatToolResult(item)]),
-      plan: formatted.plan,
-    };
+    const plan = applyPlanTool(item, planEntries, "settled") ?? formatted.plan;
+    const next = snapshot([...prior, ...formatted.lines, ...formatToolResult(item)]);
+    return plan === undefined ? next : { ...next, plan };
   };
 
   return {
@@ -146,7 +159,15 @@ export function createStreamTranscript(): {
             const prior = commitLive();
             if (item.status === "in_progress") holdToolLive(item);
             else settled.add(item.id);
-            return { ...snapshot([...prior, ...formatted.lines]), plan: formatted.plan };
+            const phase =
+              item.status === "failed" || item.status === "incomplete"
+                ? "failed"
+                : item.status === "in_progress"
+                  ? "open"
+                  : "settled";
+            const plan = applyPlanTool(item, planEntries, phase) ?? formatted.plan;
+            const next = snapshot([...prior, ...formatted.lines]);
+            return plan === undefined ? next : { ...next, plan };
           }
           if (item.type === "container") {
             logged.add(item.id);
@@ -261,6 +282,7 @@ const TOOL_SUBJECT_KEYS = [
   "command",
   "pattern",
   "glob",
+  "subject",
   "description",
   "url",
   "query",
@@ -402,6 +424,110 @@ function readPlan(args: Record<string, unknown>): { lines: string[]; items?: Pla
     lines: [...lines.slice(0, HUNK_MAX), `  … ${lines.length - HUNK_MAX} more`],
     items,
   };
+}
+
+type PlanEntry = { key: string; mark: PlanItem["mark"]; text: string };
+type PlanPhase = "open" | "settled" | "failed";
+
+function planSnapshot(entries: readonly PlanEntry[]): PlanItem[] | undefined {
+  if (entries.length === 0) return undefined;
+  return entries.map(({ mark, text }) => ({ mark, text }));
+}
+
+function clipPlanText(text: string): string {
+  const body = text.trim().replace(/\s+/g, " ");
+  return body.length <= HUNK_LINE ? body : `${body.slice(0, HUNK_LINE - 1)}…`;
+}
+
+function planMark(status: string | undefined): PlanItem["mark"] | undefined {
+  if (status === "completed") return "x";
+  if (status === "in_progress") return "·";
+  if (status === "pending") return " ";
+  return undefined;
+}
+
+function recoverTaskId(output: unknown): string | undefined {
+  if (typeof output === "string") {
+    const match = /task\s*#\s*([A-Za-z0-9_.-]+)/i.exec(output);
+    return match?.[1];
+  }
+  if (output === null || typeof output !== "object" || Array.isArray(output)) return undefined;
+  const task = (output as { task?: unknown }).task;
+  if (task === null || typeof task !== "object" || Array.isArray(task)) return undefined;
+  const id = (task as { id?: unknown }).id;
+  if (typeof id === "string" && id !== "") return id;
+  if (typeof id === "number" && Number.isFinite(id)) return String(id);
+  return undefined;
+}
+
+/**
+ * Pin the selected row's checklist from the coding run's own plan tools.
+ * `TodoWrite` replaces the list. `TaskCreate` / `TaskUpdate` are per-item
+ * — the Claude Agent SDK surface — so a create appends and an update
+ * moves one row. A failed create is dropped.
+ */
+function applyPlanTool(
+  item: OutputItem,
+  entries: PlanEntry[],
+  phase: PlanPhase,
+): PlanItem[] | undefined {
+  const name = toolName(item);
+  const args = item.type === "tool_output" ? parseToolArgs(item.toolCall?.arguments) : {};
+  if (name === "TodoWrite") {
+    if (phase === "failed") return undefined;
+    const parsed = readPlan(args);
+    if (parsed.items === undefined) return undefined;
+    entries.length = 0;
+    for (const next of parsed.items) {
+      entries.push({ key: `todo:${next.text}`, mark: next.mark, text: next.text });
+    }
+    return planSnapshot(entries);
+  }
+  if (name === "TaskCreate") {
+    const callId =
+      item.type === "tool_output" && item.toolCall?.callId !== undefined && item.toolCall.callId !== ""
+        ? item.toolCall.callId
+        : item.id;
+    const subject = stringArg(args, ["subject", "description"]);
+    if (phase === "failed") {
+      const at = entries.findIndex((entry) => entry.key === callId);
+      if (at >= 0) entries.splice(at, 1);
+      return planSnapshot(entries) ?? [];
+    }
+    if (subject !== undefined) {
+      const existing = entries.find((entry) => entry.key === callId);
+      if (existing === undefined) entries.push({ key: callId, mark: " ", text: clipPlanText(subject) });
+      else existing.text = clipPlanText(subject);
+    }
+    if (phase === "settled") {
+      const id = recoverTaskId(item.type === "tool_output" ? item.output : undefined);
+      if (id !== undefined) {
+        const existing = entries.find((entry) => entry.key === callId);
+        if (existing !== undefined) existing.key = id;
+      }
+    }
+    return planSnapshot(entries);
+  }
+  if (name === "TaskUpdate") {
+    if (phase !== "settled") return undefined;
+    const taskId = stringArg(args, ["taskId"]);
+    if (taskId === undefined) return undefined;
+    const mark = planMark(stringArg(args, ["status"]));
+    const subject = stringArg(args, ["subject"]);
+    const existing = entries.find((entry) => entry.key === taskId);
+    if (existing !== undefined) {
+      if (mark !== undefined) existing.mark = mark;
+      if (subject !== undefined) existing.text = clipPlanText(subject);
+    } else {
+      entries.push({
+        key: taskId,
+        mark: mark ?? " ",
+        text: subject !== undefined ? clipPlanText(subject) : taskId,
+      });
+    }
+    return planSnapshot(entries);
+  }
+  return undefined;
 }
 
 const COMMAND_OUT_OK = 6;

@@ -38,6 +38,7 @@ import {
   selectedPlan,
   selectedQuestion,
   selectedRow,
+  selectedRequestId,
   selectedRunningRequestId,
   visibleLive,
   type StatusRow,
@@ -299,7 +300,7 @@ function renderMeta(state: ViewState, cols: number): string {
     return renderRunBits(row, cols);
   }
   if (selectedFailure(state) !== undefined) {
-    return renderRunBits(row, cols, { omitReason: true });
+    return joinBlocks(renderRunBits(row, cols, { omitReason: true }), renderSelectedSummary(state, cols));
   }
   const title = `${row.issue ?? "?"} / ${row.phase ?? "?"}`;
   const lines = [
@@ -308,7 +309,7 @@ function renderMeta(state: ViewState, cols: number): string {
     ` ${dim("ask")}      ${dim("none open")}`,
   ];
   const run = renderRunBits(row, cols);
-  return run === "" ? lines.join("\n") : `${lines.join("\n")}\n${run}`;
+  return joinBlocks(lines.join("\n"), run, renderSelectedSummary(state, cols));
 }
 
 function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolean } = {}): string {
@@ -341,6 +342,30 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
     lines.push(` ${dim("feedback")} ${truncate(row.feedback, cols - 12)}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * What the selected attempt did — files, plan, last tool, request id.
+ * The RUN band already holds these while the row is in flight; after
+ * it settles they stay here so the board still shows that attempt.
+ */
+function renderSelectedSummary(state: ViewState, cols: number): string {
+  if (selectedRequestId(state) === undefined) return "";
+  const inner = Math.max(20, cols - 8);
+  const lines: string[] = [];
+  const id = selectedRequestId(state);
+  if (id !== undefined) lines.push(` ${dim("request")}  ${id}`);
+  const now = selectedNow(state);
+  if (now !== undefined && now !== "") {
+    lines.push(` ${dim("last")}     ${truncate(now, inner)}`);
+  }
+  lines.push(...renderFileLines(state, inner));
+  lines.push(...renderPlanLines(state, inner));
+  return lines.join("\n");
+}
+
+function joinBlocks(...blocks: string[]): string {
+  return blocks.filter((block) => block !== "").join("\n");
 }
 
 function renderActivity(
@@ -464,6 +489,7 @@ function renderFooter(state: ViewState, cols: number): string {
   const running = selectedRunningRequestId(state) !== undefined;
   const finding = state.find !== null;
   const slashing = state.inputMode === "command" && slashMenu(state).length > 0;
+  const listed = selectedPlan(state).length > 0;
   const keys = slashing
     ? "Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc"
     : finding
@@ -471,10 +497,14 @@ function renderFooter(state: ViewState, cols: number): string {
     : q
       ? "click/j/k select  ·  a answer  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
       : fail !== undefined
-        ? "click/j/k select  ·  w retry  ·  PgUp transcript  ·  s seed  ·  /  ·  ?  ·  q"
+        ? listed
+          ? "click/j/k select  ·  w retry  ·  t list  ·  PgUp transcript  ·  /  ·  ?  ·  q"
+          : "click/j/k select  ·  w retry  ·  PgUp transcript  ·  s seed  ·  /  ·  ?  ·  q"
         : running
           ? "click/j/k select  ·  x stop  ·  t list  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
-          : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
+          : listed
+            ? "click/j/k select  ·  t list  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
+            : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
   return padLine(dim(` ${keys}`), cols);
 }
 

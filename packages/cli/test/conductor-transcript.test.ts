@@ -545,6 +545,126 @@ describe("createStreamTranscript", () => {
     });
   });
 
+  it("pins TaskCreate then TaskUpdate as the run's plan", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        added({
+          id: "tc1",
+          type: "tool_output",
+          blockName: "TaskCreate",
+          status: "in_progress",
+          toolCall: {
+            callId: "c-create",
+            name: "TaskCreate",
+            arguments: JSON.stringify({
+              subject: "Add hello.js",
+              description: "export hello",
+              activeForm: "Adding",
+            }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · TaskCreate Add hello.js"],
+      live: "tool · TaskCreate Add hello.js",
+      plan: [{ mark: " ", text: "Add hello.js" }],
+    });
+    t.apply(
+      done({
+        id: "tc1",
+        type: "tool_output",
+        blockName: "TaskCreate",
+        status: "completed",
+        output: { task: { id: "5", subject: "Add hello.js" } },
+        toolCall: {
+          callId: "c-create",
+          name: "TaskCreate",
+          arguments: JSON.stringify({ subject: "Add hello.js" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        added({
+          id: "tu1",
+          type: "tool_output",
+          blockName: "TaskUpdate",
+          status: "in_progress",
+          toolCall: {
+            callId: "c-update",
+            name: "TaskUpdate",
+            arguments: JSON.stringify({ taskId: "5", status: "completed" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toMatchObject({
+      lines: ["tool · TaskUpdate"],
+      live: "tool · TaskUpdate",
+    });
+    expect(
+      t.apply(
+        done({
+          id: "tu1",
+          type: "tool_output",
+          blockName: "TaskUpdate",
+          status: "completed",
+          toolCall: {
+            callId: "c-update",
+            name: "TaskUpdate",
+            arguments: JSON.stringify({ taskId: "5", status: "completed" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: [],
+      live: null,
+      plan: [{ mark: "x", text: "Add hello.js" }],
+    });
+  });
+
+  it("drops a TaskCreate that failed", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "tc-fail",
+        type: "tool_output",
+        blockName: "TaskCreate",
+        status: "in_progress",
+        toolCall: {
+          callId: "c-fail",
+          name: "TaskCreate",
+          arguments: JSON.stringify({ subject: "Should not stay" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        done({
+          id: "tc-fail",
+          type: "tool_output",
+          blockName: "TaskCreate",
+          status: "failed",
+          toolCall: {
+            callId: "c-fail",
+            name: "TaskCreate",
+            arguments: JSON.stringify({ subject: "Should not stay" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · TaskCreate Should not stay · failed"],
+      live: null,
+      plan: [],
+    });
+  });
+
   it("does not pin a Read of checklist markdown as the run's plan", () => {
     const t = createStreamTranscript();
     t.apply(

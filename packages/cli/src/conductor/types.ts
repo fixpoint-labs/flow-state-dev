@@ -127,9 +127,15 @@ export interface ViewState {
   childLive: Record<string, string>;
   /**
    * Latest checklist per followed child request. Replaced when that
-   * request emits a new todo list; shown on the selected running row.
+   * request emits a new todo list; shown on the selected row.
    */
   childPlan: Record<string, PlanItem[]>;
+  /**
+   * Files that request has written, edited, or read — last touch last.
+   * Kept beside the transcript so a long run does not drop them when
+   * activity is capped.
+   */
+  childFiles: Record<string, string[]>;
   /**
    * When true, the RUN band shows the full checklist. When false, one
    * current item and a count — the transcript keeps the rest of the height.
@@ -175,6 +181,7 @@ export function emptyView(epicLabel: string): ViewState {
     live: null,
     childLive: {},
     childPlan: {},
+    childFiles: {},
     planExpanded: false,
     scroll: 0,
     find: null,
@@ -298,6 +305,10 @@ export function fileFromToolLine(text: string): string | undefined {
  * stay off this list.
  */
 export function selectedFiles(state: ViewState): string[] {
+  const id = selectedRequestId(state);
+  if (id !== undefined && state.childFiles[id] !== undefined) {
+    return state.childFiles[id] ?? [];
+  }
   const files: string[] = [];
   for (const item of activityForView(state)) {
     const file = fileFromToolLine(item.text);

@@ -307,6 +307,7 @@ In the TUI:
   A row that failed: the FAIL band holds the reason. w runs wake again.
   A running row: the RUN band holds the checkout and what the run is
   doing. t expands the todo list. x or Ctrl-C stops it.
+  A finished row keeps that attempt's files, todo list, and request id.
   The transcript tails that run's request stream.
 
 Flags: --json  --phase <name>  --user <id>  --session <id>  --config <path>

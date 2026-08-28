@@ -447,6 +447,60 @@ describe("renderFrame", () => {
     expect(above).not.toContain("src/b.ts");
   });
 
+  it("keeps files, plan, last tool, and request id after the row settles", () => {
+    const settled: StatusRow = {
+      taskId: "FAIL-1--implement",
+      issue: "FAIL-1",
+      phase: "implement",
+      status: "pending",
+      attempts: 1,
+      feedback: "Not logged in",
+      run: {
+        attempt: 1,
+        taskId: "FAIL-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/FAIL-1--implement",
+        outcome: "failed",
+        reason: "Not logged in",
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-fail-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [settled],
+        childPlan: {
+          "req-fail-1": [
+            { mark: "x", text: "Add hello.js" },
+            { mark: " ", text: "Open the pull request" },
+          ],
+        },
+        childFiles: { "req-fail-1": ["src/hello.js"] },
+        activity: [
+          { at: 1, text: "tool · Write src/hello.js", requestId: "req-fail-1" },
+          { at: 2, text: "tool · TaskCreate Add hello.js", requestId: "req-fail-1" },
+        ],
+      },
+      { cols: 80, rows: 28 },
+    );
+    const above = beforeTranscript(frame);
+    expect(above).toMatch(/^ FAIL\s*$/m);
+    expect(above).not.toMatch(/^ RUN\s*$/m);
+    expect(above).toContain("req-fail-1");
+    expect(above).toContain("src/hello.js");
+    expect(above).toContain("[ ] Open the pull request");
+    expect(above).toContain("1/2");
+    expect(above).toContain("TaskCreate Add hello.js");
+    expect(stripAnsi(frame)).toContain("t list");
+  });
+
   it("shows the open tool on the RUN band without the transcript prefix", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",
