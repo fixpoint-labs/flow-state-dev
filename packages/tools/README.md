@@ -293,6 +293,12 @@ those scopes are shared across tenants by design.
 createBashBlocks({ provider: { type: "local", scope: "run" } });
 ```
 
+The scope you pick is also what the model is told. `bashCommand`'s description
+derives its statement of the workspace's reach from `scope`, so a run-scoped
+workspace is described as belonging to this request and not carrying over —
+otherwise an agent leaves work in the workspace expecting a later request to
+find it, and that request gets a different directory.
+
 `scope` and `cwd` are alternatives. `cwd` names one directory, so a scope beside
 it separates nothing; setting both throws at construction.
 
