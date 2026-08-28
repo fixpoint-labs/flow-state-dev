@@ -158,6 +158,36 @@ The run's file tools address relative paths inside that directory, and so does
 boundary — a run can still reach an absolute path outside it, and that operation
 is recorded at the path it reached.
 
+### Controlling what a run reads and what it runs in (`/sdk`)
+
+Four more options travel alongside `cwd`:
+
+```ts
+claudeCodeAgent({
+  cwd: () => checkoutForThisRun(),
+  // Which filesystem settings the run loads. Omitted, it loads all of them,
+  // exactly as the CLI does.
+  settingSources: ["user"],
+  // The run's environment. This REPLACES the process environment rather than
+  // adding to it — spread `process.env` when you mean to add.
+  env: { ...process.env, CI: "1" },
+  // The SDK's sandbox settings, forwarded verbatim.
+  sandbox: { enabled: true },
+  // Capabilities installed on the block, same slot any other block takes.
+  uses: [myCapability],
+});
+```
+
+`settingSources` is the one worth reading twice. `"project"` is what makes a run
+read `CLAUDE.md` and `.claude/settings.json` **out of its working directory**. If
+that directory is one your server assembled — from resources your application's
+users can write — then those files are user input, and the run reading
+configuration out of them means your users configure your agent. Pass `[]` to
+load none, or list only the sources you control.
+
+Nothing here changes by default: leave an option out and the run behaves exactly
+as it does today.
+
 #### Reusing a directory across runs
 
 A throwaway directory is the easy case. If you want runs that belong together to

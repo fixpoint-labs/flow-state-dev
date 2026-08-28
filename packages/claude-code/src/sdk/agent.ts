@@ -15,7 +15,8 @@
  * `detached: true` turns the conversation-state half off — see the option.
  */
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { AnyResourceRef, BlockContext } from "@flow-state-dev/core/types";
+import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   closeStreamingItems,
@@ -46,6 +47,7 @@ import {
   type ClaudeAgentSession,
 } from "./session";
 import { ClaudeAgentRunError } from "./errors";
+import type { ClaudeAgentSettingSource } from "./types";
 import {
   sdkAgentHandleSchema,
   type ClaudeAgentQueryOptions,
@@ -75,13 +77,40 @@ const inputSchema = z.object({
 });
 
 /** Options for {@link claudeCodeAgent}. */
+/**
+ * The block context as an option callback receives it.
+ *
+ * Loose in every slot, deliberately. The slots are filled in by this factory's
+ * OWN configuration — `sessionStateSchema` decides the session state, `uses`
+ * decides the capability namespaces and the state targets — so pinning them
+ * here would mean a callback stops type-checking because of an option set
+ * beside it, which is not a signal a caller can act on. `ResolveClaudeAgent`
+ * already carried this reasoning for one slot; `uses` was the second cause of
+ * the same problem, which is what made it worth naming once.
+ */
+type AgentCallbackContext = BlockContext<
+  Record<string, unknown>,
+  // Session state: present or absent depending on `detached`, so it is not one
+  // static shape here.
+  any,
+  Record<string, unknown>,
+  Record<string, unknown>,
+  Record<string, AnyResourceRef>,
+  Record<string, unknown>,
+  unknown,
+  // Targets and capability namespaces: both derived from `uses`. These two are
+  // the whole reason this alias exists — everything above stays checked.
+  any,
+  any
+>;
+
 export interface ClaudeCodeAgentOptions {
   /** Host hook resolving the SDK `query`. Default: lazy SDK import. */
   resolveClaudeAgent?: ResolveClaudeAgent;
   /** Session-continuity provider. Default: resume-by-id provider. */
   sessionProvider?: BindingProvider<ClaudeAgentSession>;
   /** Derive the prompt from input/ctx. Default: `input.prompt`. */
-  prompt?: (input: { prompt: string }, ctx: BlockContext) => string;
+  prompt?: (input: { prompt: string }, ctx: AgentCallbackContext) => string;
   /** Model id forwarded to the SDK. */
   model?: string;
   /** System prompt forwarded to the SDK. */
@@ -105,7 +134,7 @@ export interface ClaudeCodeAgentOptions {
    */
   onToolApproval?: (
     req: ToolApprovalRequest,
-    ctx: BlockContext,
+    ctx: AgentCallbackContext,
   ) => ToolApprovalDecision | Promise<ToolApprovalDecision>;
   /**
    * Run the agent as **detached background work** — a task board worker
@@ -173,6 +202,49 @@ export interface ClaudeCodeAgentOptions {
    * renders into a latest-wins slot, so two identical skips collapse to one.
    */
   recordWork?: boolean;
+  /**
+   * Which filesystem settings this run loads — `"user"`, `"project"`,
+   * `"local"`. Default: unset, which loads all three, exactly as today.
+   *
+   * **This is the canonical explanation; everywhere else links here.**
+   *
+   * `"project"` is the load-bearing one: it is what makes the run read
+   * `CLAUDE.md` and `.claude/settings.json` **out of its working directory**.
+   * When that directory is one the server assembled from an application's own
+   * resources, its contents are caller-controllable input, and a run reading
+   * configuration out of them means callers configure the agent (BP-031). Pass
+   * `[]` to load none.
+   *
+   * Left unset by default deliberately: this option is the plumbing, not the
+   * policy. Nothing changes for a caller who does not set it.
+   */
+  settingSources?: ClaudeAgentSettingSource[];
+  /**
+   * Environment variables for the run's own process. Default: unset, which is
+   * the server process's own environment — what every existing caller has.
+   *
+   * Setting it REPLACES the environment rather than adding to it, which is the
+   * SDK's own behaviour and the reason to spread `process.env` yourself when
+   * you mean to add.
+   */
+  env?: Record<string, string | undefined>;
+  /**
+   * The SDK's sandbox settings, forwarded verbatim. Default: unset — no
+   * sandbox, as today.
+   *
+   * Loosely typed for the same reason `agents` is: this package treats the
+   * Agent SDK as an optional peer, so its types are not imported here.
+   */
+  sandbox?: unknown;
+  /**
+   * Capabilities installed on the block this factory returns — the same `uses`
+   * slot any other block takes, forwarded to `handler()`.
+   *
+   * Without it, a caller who wants the agent to carry a capability has to stop
+   * using this factory and hand-roll the block. That is the whole reason the
+   * slot is here rather than a wrapper around it.
+   */
+  uses?: UsesSlot;
   /**
    * The directory this run works in. Default: unset, which is the directory the
    * server process itself is running in — byte for byte what every existing
@@ -303,7 +375,7 @@ export interface ClaudeCodeAgentOptions {
    */
   cwd?: (
     input: { prompt: string },
-    ctx: BlockContext,
+    ctx: AgentCallbackContext,
   ) => string | Promise<string>;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
@@ -516,6 +588,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     detached = false,
     recordWork = false,
     cwd: resolveCwd,
+    settingSources,
+    env,
+    sandbox,
+    uses,
     name = "claude-code-agent",
   } = options;
 
@@ -534,7 +610,16 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     // declared is not registered on the flow, so `findResourceConfig` misses and
     // the read route answers 404 — at read time, on a build that succeeded.
     ...(recordWork ? { resources: workRecorderResources } : {}),
-    execute: async (input, ctx): Promise<SdkAgentHandle> => {
+    ...(uses !== undefined ? { uses } : {}),
+    // `ctx` is annotated rather than inferred. `uses` widens the context type
+    // that `handler()` infers — capability namespaces and state targets appear
+    // in it — and every helper below takes a plain `BlockContext`, so without
+    // this the widening propagates into two dozen signatures that have no
+    // interest in it. Narrowing here keeps the option's cost at the option.
+    execute: async (
+      input,
+      ctx: AgentCallbackContext,
+    ): Promise<SdkAgentHandle> => {
       const promptText = (
         pickPrompt ? pickPrompt(input, ctx) : input.prompt
       )?.trim();
@@ -590,6 +675,13 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         includePartialMessages,
         abortController,
         ...(workingDirectory !== undefined ? { cwd: workingDirectory } : {}),
+        // Spread conditionally rather than passed as `undefined`. For
+        // `settingSources` the two are different instructions — absent means
+        // "load all of them", `[]` means "load none" — and the same care costs
+        // nothing for the other two.
+        ...(settingSources !== undefined ? { settingSources } : {}),
+        ...(env !== undefined ? { env } : {}),
+        ...(sandbox !== undefined ? { sandbox } : {}),
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(onToolApproval
           ? { canUseTool: buildCanUseTool(onToolApproval, ctx) }

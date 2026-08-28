@@ -45,6 +45,7 @@ export {
   type ResolvedClaudeAgent,
   type ClaudeAgentQuery,
   type ClaudeAgentQueryOptions,
+  type ClaudeAgentSettingSource,
   type ToolApprovalRequest,
   type ToolApprovalDecision,
 } from "./types";
