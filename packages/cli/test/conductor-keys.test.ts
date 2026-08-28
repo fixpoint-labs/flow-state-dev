@@ -46,7 +46,7 @@ function runningRow(issue: string): StatusRow {
       costUsd: null,
       childSessionId: "child-1",
       requestId: `req-${issue}`,
-      updatedAt: 1,
+      updatedAt: Date.now(),
     },
   };
 }
@@ -123,10 +123,24 @@ describe("applyKey", () => {
     expect(back.state.selected).toBe(2);
     const quiet = applyKey(board([runningRow("LIVE-1")]), { type: "char", value: "}" });
     expect(quiet.state.selected).toBe(0);
-    expect(quiet.state.notice).toBe("nothing waiting or failed");
+    expect(quiet.state.notice).toBe("nothing waiting, failed, or stalled");
     const fromAsk = applyKey(board([row("FIX-1", 1), failed]), { type: "char", value: "}" });
     expect(fromAsk.state.selected).toBe(1);
     expect(fromAsk.state.inputMode).toBe("command");
+  });
+
+  it("jumps to a running row that has gone silent", () => {
+    const now = 1_700_000_030_000;
+    const fresh = runningRow("LIVE-1");
+    fresh.run = { ...fresh.run!, updatedAt: now - 8_000 };
+    const stale = runningRow("LIVE-2");
+    stale.run = { ...stale.run!, updatedAt: now - 45_000 };
+    const jumped = applyKey(board([fresh, stale]), { type: "char", value: "}" }, now);
+    expect(jumped.state.selected).toBe(1);
+    expect(jumped.state.rows[1]?.issue).toBe("LIVE-2");
+    const still = applyKey(board([fresh]), { type: "char", value: "}" }, now);
+    expect(still.state.selected).toBe(0);
+    expect(still.state.notice).toBe("nothing waiting, failed, or stalled");
   });
 
   it("treats typing on a waiting row as composing the answer, and Enter dispatches it", () => {

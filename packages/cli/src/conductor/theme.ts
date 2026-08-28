@@ -221,6 +221,3 @@ export function formatAge(at: number, now: number = Date.now()): string {
   if (hr < 48) return `${hr}h`;
   return `${Math.floor(hr / 24)}d`;
 }
-
-/** A running row with no write for this long is painted as stalled. */
-export const STALL_AFTER_MS = 30_000;

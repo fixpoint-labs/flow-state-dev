@@ -26,7 +26,6 @@ import {
   paint,
   shorten,
   shortenToolLine,
-  STALL_AFTER_MS,
   statusColor,
   truncate,
   visibleWidth,
@@ -42,6 +41,7 @@ import {
   rowNeedsYou,
   rowNow,
   rowRunning,
+  STALL_AFTER_MS,
   selectedFailure,
   currentPlanItem,
   fileFromToolLine,
@@ -90,7 +90,7 @@ export function renderFrame(state: ViewState, size: FrameSize, now: number = Dat
   const meta = state.busy || runBandOpen(state) ? "" : renderMeta(state, cols);
   const menu = renderSlashMenu(state, cols);
   const prompt = renderPrompt(state, cols);
-  const footer = renderFooter(state, cols);
+  const footer = renderFooter(state, cols, now);
   const reserved =
     lineCount(header) +
     lineCount(table) +
@@ -630,7 +630,7 @@ function renderPrompt(state: ViewState, cols: number): string {
   return `${rule(cols)}\n ${prefix}${truncate(shown, cols - 12)}${notice}`;
 }
 
-function renderFooter(state: ViewState, cols: number): string {
+function renderFooter(state: ViewState, cols: number, now: number): string {
   const q = selectedQuestion(state);
   const fail = selectedFailure(state);
   const running = selectedRunningRequestId(state) !== undefined;
@@ -648,7 +648,7 @@ function renderFooter(state: ViewState, cols: number): string {
         ? "  ·  H older"
         : "";
   const working = state.busy ? "working  ·  " : "";
-  const nextKey = state.rows.some((row, i) => i !== state.selected && rowNeedsYou(row))
+  const nextKey = state.rows.some((row, i) => i !== state.selected && rowNeedsYou(row, state.activity, now))
     ? "  ·  } next"
     : "";
   const keys = slashing

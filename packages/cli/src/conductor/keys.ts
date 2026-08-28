@@ -154,8 +154,8 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
   return { keys, rest: "" };
 }
 
-export function applyKey(state: ViewState, key: Key): KeyResult {
-  const result = reduceKey(state, key);
+export function applyKey(state: ViewState, key: Key, now: number = Date.now()): KeyResult {
+  const result = reduceKey(state, key, now);
   if (state.busy && result.effect?.type === "dispatch") {
     return {
       state: { ...result.state, notice: "queued — runs when this action finishes" },
@@ -165,7 +165,7 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
   return result;
 }
 
-function reduceKey(state: ViewState, key: Key): KeyResult {
+function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
   if (state.help && (key.type === "escape" || key.type === "char" || key.type === "enter" || key.type === "click")) {
     if (key.type === "char" && key.value === "?") {
       return { state: { ...state, help: false } };
@@ -210,7 +210,7 @@ function reduceKey(state: ViewState, key: Key): KeyResult {
     case "right":
       return { state: moveQuestion(state, 1) };
     case "char":
-      return applyIdleChar(state, key.value);
+      return applyIdleChar(state, key.value, now);
     case "click":
       return applyClick(state, key.row);
     case "enter": {
@@ -230,7 +230,7 @@ function reduceKey(state: ViewState, key: Key): KeyResult {
   }
 }
 
-function applyIdleChar(state: ViewState, value: string): KeyResult {
+function applyIdleChar(state: ViewState, value: string, now: number): KeyResult {
   switch (value) {
     case "j":
       return { state: moveRow(state, 1) };
@@ -275,9 +275,9 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
       return beginAnswer(state, question.question);
     }
     case "{":
-      return { state: moveAttention(state, -1) };
+      return { state: moveAttention(state, -1, now) };
     case "}":
-      return { state: moveAttention(state, 1) };
+      return { state: moveAttention(state, 1, now) };
     case "s":
       return { state: { ...state, inputMode: "seed", input: "", notice: "issue id, then Enter" } };
     case "/":
@@ -511,16 +511,17 @@ function moveRow(state: ViewState, delta: number): ViewState {
   return selectRow(state, state.selected + delta);
 }
 
-/** Next or previous row that asked something or whose last attempt failed. */
-function moveAttention(state: ViewState, direction: 1 | -1): ViewState {
+/** Next or previous row that asked, failed, or has gone silent. */
+function moveAttention(state: ViewState, direction: 1 | -1, now: number): ViewState {
   const n = state.rows.length;
   if (n === 0) return state;
-  if (!state.rows.some(rowNeedsYou)) {
-    return { ...state, notice: "nothing waiting or failed" };
+  const needsYou = (row: (typeof state.rows)[number]) => rowNeedsYou(row, state.activity, now);
+  if (!state.rows.some(needsYou)) {
+    return { ...state, notice: "nothing waiting, failed, or stalled" };
   }
   for (let step = 1; step <= n; step += 1) {
     const index = (((state.selected + direction * step) % n) + n) % n;
-    if (rowNeedsYou(state.rows[index]!)) return selectRow(state, index);
+    if (needsYou(state.rows[index]!)) return selectRow(state, index);
   }
   return state;
 }

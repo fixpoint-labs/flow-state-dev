@@ -258,9 +258,31 @@ export function rowFailed(row: StatusRow): boolean {
   return row.run?.outcome === "failed";
 }
 
-/** A row a person should look at next — an open question, or a failed attempt. */
-export function rowNeedsYou(row: StatusRow): boolean {
-  return row.questions.length > 0 || rowFailed(row);
+/** A running row with no write for this long is stalled. */
+export const STALL_AFTER_MS = 30_000;
+
+/** A running row whose last write is older than `STALL_AFTER_MS`. */
+export function rowStalled(
+  row: StatusRow,
+  activity: readonly ActivityItem[] = [],
+  now: number = Date.now(),
+): boolean {
+  if (!rowRunning(row)) return false;
+  const at = lastActivityAt(row, activity);
+  if (at === null) return false;
+  return now - at >= STALL_AFTER_MS;
+}
+
+/**
+ * A row a person should look at next — an open question, a failed
+ * attempt, or a running child that has gone silent.
+ */
+export function rowNeedsYou(
+  row: StatusRow,
+  activity: readonly ActivityItem[] = [],
+  now: number = Date.now(),
+): boolean {
+  return row.questions.length > 0 || rowFailed(row) || rowStalled(row, activity, now);
 }
 
 /** Why a failed row failed. Prefer the run reason, then feedback, then the last message. */

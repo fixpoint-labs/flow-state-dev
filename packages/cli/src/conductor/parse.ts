@@ -289,7 +289,7 @@ In the TUI:
   j/k or ↑/↓   select a row (click a row)
   PgUp/PgDn    scroll the transcript (wheel and Ctrl-u/d too)
   [/]          previous/next question on the row
-  { / }        previous / next waiting or failed row
+  { / }        previous / next waiting, failed, or stalled row
   a            answer the selected question
   s            seed a new issue
   w            wake
