@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { PassThrough } from "node:stream";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { executeConductorCommand } from "../src/commands/conductor";
+import { stripAnsi } from "../src/conductor/theme";
 
 const fixtureDir = resolve(import.meta.dirname, "fixtures-conductor");
 
@@ -253,11 +254,11 @@ describe("fsdev conductor — TUI over the same actions", () => {
       pollMs: 40,
     });
 
-    await waitFor(() => tty.text, "LIVE-1");
-    expect(tty.text).toMatch(/\bRUN\b/);
-    expect(tty.text).toContain("conductor/LIVE-1--implement");
-    expect(tty.text).toContain("/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement");
-    expect(tty.text).toContain("x stop");
+    await waitFor(() => tty.text, "conductor/LIVE-1--implement");
+    const above = stripAnsi(tty.text);
+    expect(above).toMatch(/^ RUN\s*$/m);
+    expect(above).toContain("/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement");
+    expect(above).toContain("x stop");
 
     tty.input.write("x");
     await waitFor(() => tty.text, "stop · req-live-1");

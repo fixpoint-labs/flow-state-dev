@@ -145,10 +145,9 @@ describe("applyKey", () => {
     });
 
     const idle = board([row("FIX-1", 1)]);
-    expect(applyKey(idle, { type: "char", value: "x" })).toMatchObject({
-      state: { notice: "nothing running to stop" },
-      effect: undefined,
-    });
+    const idleX = applyKey(idle, { type: "char", value: "x" });
+    expect(idleX.state.notice).toBe("nothing running to stop");
+    expect(idleX.effect).toBeUndefined();
     expect(applyKey(idle, { type: "ctrl", value: "c" }).effect).toEqual({ type: "quit" });
   });
 });
