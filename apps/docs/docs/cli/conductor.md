@@ -225,9 +225,13 @@ Typing on a row that has an open question starts an answer for you — you don't
 
 ### Transcript
 
-The transcript shows the stream of the `seed`, `wake`, or `answer` you just ran, plus the board lines `status` reports.
+The TRANSCRIPT pane follows the selected row.
 
-When a row is running and `status` returns `run.requestId`, that request's stream is tailed into the same pane. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`.
+When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` you just ran, and the row changes `status` reports.
+
+When the selected row has no `run.requestId`, the pane shows only those board and operator lines. Another row's coding stream is not shown until that row is selected.
+
+Changing the selected row (`j`/`k`, arrows, click) jumps the transcript back to the tail.
 
 When a Write or Edit includes the new file text, a hunk prints under the tool line. A Write prints each new line as `+ <line>`. An Edit prints only the changed span: `-` lines, then `+` lines.
 
@@ -263,7 +267,7 @@ A sub-agent prints `sub · Sub-agent: Explore` when it opens, and `sub · Sub-ag
 
 Reasoning and thinking text are not printed.
 
-`watch` writes those same lines to stderr. Tool, hunk, Bash result, and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
+Headless `watch` writes those same lines to stderr. It is not a selected-row view. Tool, hunk, Bash result, and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
 
 After that request ends, further board changes show as the lines `status` reports.
 
@@ -420,6 +424,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Watching or aborting a running row does not start work or send an answer. Abort does not resume a session.
 - The transcript does not print reasoning or thinking text.
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
+- There is no combined transcript of every running row.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages
