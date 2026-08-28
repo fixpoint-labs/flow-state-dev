@@ -10,6 +10,12 @@ turn that files or retries refuse before they claim if the completion check
 cannot name a repository. Run `pnpm conductor` from this directory. From the
 repo root, `fsdev conductor` will not find this flow.
 
+A live Claude child authenticates through the Agent SDK. If `ANTHROPIC_API_KEY` is set
+and invalid, it wins over `CLAUDE_CODE_OAUTH_TOKEN` and every implement 401s — unset the
+key and leave the OAuth token when that is the credential that works.
+`CONDUCTOR_AGENT_MODEL` picks the coding-run model. `CONDUCTOR_COORDINATOR_MODEL` is
+only the talk turn.
+
 Something claims the row, gives the run its own checkout of the repository, stays with it until it
 stops, reads what came back, and then closes the row or lets it run again.
 
