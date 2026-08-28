@@ -18,13 +18,15 @@ import {
 } from "./dispatch";
 import { HELP_TEXT } from "./parse";
 import { renderBoardPlain, renderWatchLine, watchExitCode } from "./render";
-import { createStreamTranscript } from "./transcript";
+import { createStreamTranscript, viewFromEvents } from "./transcript";
 import { createChildFollow } from "./follow";
 import {
   rowFailed,
   runningRequestIds,
   settledRequestIds,
   type OperatorCommand,
+  type StatusRow,
+  type ViewState,
 } from "./types";
 
 export interface HeadlessOptions {
@@ -76,7 +78,8 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           await follow.drain(settledRequestIds(status.rows));
         }
         flushTranscript();
-        write(renderBoardPlain(status.rows, options.json));
+        const views = await namedAttemptViews(options, status.rows, options.command.issue);
+        write(renderBoardPlain(status.rows, options.json, views));
         return watchExitCode(status.rows);
       }
       case "seed": {
@@ -178,7 +181,8 @@ async function watchBoard(
     const status = await readBoard(options.dispatch, issue, onEvent);
     follow.sync(runningRequestIds(status.rows));
     flush();
-    const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows);
+    const views = await namedAttemptViews(options, status.rows, issue);
+    const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows, views);
     if (rendered !== last) {
       out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
       last = rendered;
@@ -192,15 +196,36 @@ async function watchBoard(
         await follow.drain(ids);
         flush();
       }
+      const exitViews = await namedAttemptViews(options, status.rows, issue);
       if (
         !options.json &&
         (status.rows.some((r) => r.questions.length > 0) || status.rows.some(rowFailed))
       ) {
-        out.write(renderBoardPlain(status.rows, false));
+        out.write(renderBoardPlain(status.rows, false, exitViews));
       }
       return code;
     }
     await sleep(pollMs);
   }
   return 3;
+}
+
+/**
+ * Fold the named issue's last-attempt journal so stdout can print last
+ * tool, files, hunk, and todo. A full-board verb leaves this empty.
+ */
+async function namedAttemptViews(
+  options: HeadlessOptions,
+  rows: readonly StatusRow[],
+  issue: string | undefined,
+): Promise<Record<string, ViewState> | undefined> {
+  if (options.json || issue === undefined) return undefined;
+  const views: Record<string, ViewState> = {};
+  for (const row of rows) {
+    const id = row.run?.requestId;
+    if (id === null || id === undefined || id === "") continue;
+    const events = await options.dispatch.stores.request.getEvents(id);
+    views[id] = viewFromEvents(events, row);
+  }
+  return Object.keys(views).length === 0 ? undefined : views;
 }

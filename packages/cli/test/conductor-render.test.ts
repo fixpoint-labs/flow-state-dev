@@ -1354,4 +1354,43 @@ describe("renderBoardPlain / watchExitCode", () => {
     expect(watch).toContain("@ req-fail-1");
     expect(watch).toContain("conductor/FAIL-1--implement");
   });
+
+  it("prints last tool, files, hunk, and todo when a named row has a journal view", () => {
+    const settled: StatusRow = {
+      ...failed,
+      run: { ...failed.run!, requestId: "req-fail-1" },
+    };
+    const view = {
+      ...emptyView(""),
+      rows: [settled],
+      childFiles: { "req-fail-1": ["src/hello.js"] },
+      childHunks: { "req-fail-1": [{ file: "src/hello.js", lines: ["+ export const hello = 1;"] }] },
+      childPlan: {
+        "req-fail-1": [
+          { mark: "x" as const, text: "Add hello.js" },
+          { mark: " " as const, text: "Open the pull request" },
+        ],
+      },
+      activity: [
+        { at: 1, text: "tool · Write src/hello.js", requestId: "req-fail-1" },
+        { at: 2, text: "  first line of the file", requestId: "req-fail-1" },
+      ],
+    };
+    const text = renderBoardPlain([settled], false, { "req-fail-1": view });
+    expect(text).toContain("Write src/hello.js");
+    expect(text).toContain("src/hello.js");
+    expect(text).toContain("+ export const hello = 1;");
+    expect(text).toContain("[ ] Open the pull request");
+    expect(text).toContain("1/2");
+    expect(text).not.toContain("\x1b]8;;");
+
+    const without = renderBoardPlain([settled], false);
+    expect(without).not.toContain("Write src/hello.js");
+    expect(without).not.toContain("+ export const hello = 1;");
+    expect(without).not.toContain("Open the pull request");
+
+    const watch = renderWatchLine([settled], { "req-fail-1": view });
+    expect(watch).toContain("Write src/hello.js");
+    expect(watch).toContain("[ ] Open the pull request");
+  });
 });

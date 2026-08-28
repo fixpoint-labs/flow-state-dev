@@ -379,12 +379,12 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 
 | Verb | Does |
 |---|---|
-| `status [issue]` | Print the board, optionally filtered to one issue. A named issue also reprints that row's last attempt on stderr |
+| `status [issue]` | Print the board, optionally filtered to one issue. A named issue also reprints that row's last attempt on stderr, and prints last tool, files, hunk, and current todo on stdout |
 | `seed <issue> [--phase implement]` | File a row for `issue` (a no-op if that `issue`/`phase` pair already has one), then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
 | `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
-| `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1`. A stop on a named issue reprints that last attempt on stderr |
+| `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1`. A stop on a named issue reprints that last attempt on stderr, and prints last tool, files, hunk, and current todo on stdout |
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
@@ -392,7 +392,7 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 
 On `answer`, the reply is the text you typed, including apostrophes (`don't change the path`); quote it (`answer Q1 "leave the symlink"`), and write a reply of `--json` as `answer <id> -- --json` or `/answer <id> -- --json` (`--json` on its own prints JSON).
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Under each row, plain `status` and `watch` print the pull-request URL, `@ request-id`, and branch when that run has them. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Under each row, plain `status` and `watch` print the pull-request URL, `@ request-id`, and branch when that run has them. A named issue also prints that attempt's last tool, files, last hunk, Read peek or Bash tail when those apply, and current todo — raw paths, no OSC-8. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 `fsdev conductor status PR-482` reprints that issue's last attempt on stderr. Those are the same `status · …`, `message · …`, and `tool · …` lines the TRANSCRIPT pane shows when you select that row. Then it prints the board on stdout. `fsdev conductor status` with no issue prints the board, plus stream lines from the `status` action itself if any. It does not reprint every row's last attempt.
 
@@ -539,7 +539,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Headless verbs take the id on the argv. There is no list on that path.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
-- Headless `status` and `watch` print the request id, branch, and pull-request URL when the row has them. They have no RUN band, and they do not print the last tool, files, or todo list.
+- Headless `status` and `watch` have no RUN band. A named issue prints last tool, files, last hunk, and current todo on stdout. A full-board print does not.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages

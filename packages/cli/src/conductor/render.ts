@@ -760,7 +760,11 @@ function fit(frame: string, cols: number, rows: number): string {
 }
 
 /** Compact board for headless stdout. No alternate screen, no spinner. */
-export function renderBoardPlain(rows: StatusRow[], json: boolean): string {
+export function renderBoardPlain(
+  rows: StatusRow[],
+  json: boolean,
+  views?: Readonly<Record<string, ViewState>>,
+): string {
   if (json) return JSON.stringify({ rows }, null, 2);
   if (rows.length === 0) return "no rows\n";
   const lines = [
@@ -775,7 +779,7 @@ export function renderBoardPlain(rows: StatusRow[], json: boolean): string {
         pad(row.run?.outcome ?? "—", 12) +
         (row.questions[0] !== undefined ? truncate(row.questions[0].text, 16) : "·"),
     );
-    lines.push(...renderHeadlessAttempt(row));
+    lines.push(...renderHeadlessAttempt(row, viewForRow(row, views)));
     for (const q of row.questions) {
       lines.push(`  ? ${q.question}`);
       for (const wrapped of wrap(q.text, 78)) {
@@ -792,17 +796,60 @@ export function renderBoardPlain(rows: StatusRow[], json: boolean): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** Request id, branch, and pull-request URL under a headless row. */
-function renderHeadlessAttempt(row: StatusRow): string[] {
+function viewForRow(
+  row: StatusRow,
+  views?: Readonly<Record<string, ViewState>>,
+): ViewState | undefined {
+  const id = row.run?.requestId;
+  if (id === null || id === undefined || id === "" || views === undefined) return undefined;
+  return views[id];
+}
+
+/**
+ * Last tool, files, hunk, peek/tail, and current todo — raw paths, no
+ * OSC-8. Named `status` / `watch` pass a journal view; a full-board
+ * print does not.
+ */
+export function renderHeadlessStrip(state: ViewState): string[] {
+  const extra: string[] = [];
+  const now = selectedNow(state);
+  if (now !== undefined && now !== "") extra.push(`  ${now}`);
+  for (const line of selectedReadPeek(state).slice(0, READ_BAND_MAX)) {
+    extra.push(`  ${line}`);
+  }
+  for (const line of selectedCommandTail(state).slice(-COMMAND_BAND_MAX)) {
+    extra.push(`  ${line}`);
+  }
+  for (const file of selectedFiles(state).slice(-FILE_MAX)) {
+    extra.push(`  ${file}`);
+  }
+  for (const line of selectedHunk(state).slice(-HUNK_BAND_MAX)) {
+    extra.push(`  ${line}`);
+  }
+  const plan = selectedPlan(state);
+  const current = currentPlanItem(plan);
+  if (current !== undefined) {
+    const done = plan.filter((item) => item.mark === "x").length;
+    extra.push(`  [${current.mark}] ${current.text}  ${done}/${plan.length}`);
+  }
+  return extra;
+}
+
+/** Request id, branch, pull-request URL, then the journal strip when one was folded. */
+function renderHeadlessAttempt(row: StatusRow, view?: ViewState): string[] {
   const extra: string[] = [];
   if (row.run?.prUrl) extra.push(`  ${row.run.prUrl}`);
   if (row.run?.requestId) extra.push(`  @ ${row.run.requestId}`);
   if (row.run?.branch) extra.push(`  ${row.run.branch}`);
+  if (view !== undefined) extra.push(...renderHeadlessStrip(view));
   return extra;
 }
 
 /** One-line watch tick, then the same attempt extras `status` prints. */
-export function renderWatchLine(rows: StatusRow[]): string {
+export function renderWatchLine(
+  rows: StatusRow[],
+  views?: Readonly<Record<string, ViewState>>,
+): string {
   if (rows.length === 0) return "watch · no rows";
   return rows
     .map((row) => {
@@ -811,7 +858,7 @@ export function renderWatchLine(rows: StatusRow[]): string {
       const fail =
         rowFailed(row) && row.questions.length === 0 ? ` · ${failureReason(row)}` : "";
       const head = `${row.issue ?? row.taskId} ${row.status}${outcome}${ask}${fail}`;
-      return [head, ...renderHeadlessAttempt(row)].join("\n");
+      return [head, ...renderHeadlessAttempt(row, viewForRow(row, views))].join("\n");
     })
     .join("\n");
 }

@@ -18,9 +18,10 @@
  * detached coding run writes here as it runs. Each followed request has
  * its own machine; the renderer keeps the selected row's lines.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
+  emptyView,
   fileFromToolLine,
   pushActivity,
   pushHunk,
@@ -95,6 +96,36 @@ export function applyTranscriptPatch(
   return { ...next, live: patch.live };
 }
 
+/** Give a persisted journal event the `id` `createStreamTranscript` expects. */
+export function asRequestEvent(event: RequestStreamEvent): RequestStreamEventWithId {
+  const existing = (event as RequestStreamEventWithId).id;
+  if (typeof existing === "string" && existing !== "") return event as RequestStreamEventWithId;
+  return { ...event, id: `${event.requestId}:${event.sequence_number}` };
+}
+
+/**
+ * Fold a request journal into a view the headless strip can read.
+ * Same machines the TUI uses; a missing `requestId` on an event falls
+ * back to the row's last attempt.
+ */
+export function viewFromEvents(
+  events: readonly RequestStreamEvent[],
+  row: StatusRow,
+): ViewState {
+  const machine = createStreamTranscript();
+  const requestId =
+    row.run?.requestId !== null && row.run?.requestId !== undefined && row.run.requestId !== ""
+      ? row.run.requestId
+      : undefined;
+  let view: ViewState = { ...emptyView(""), rows: [row], selected: 0 };
+  for (const event of events) {
+    const id =
+      typeof event.requestId === "string" && event.requestId !== "" ? event.requestId : requestId;
+    const at = typeof event.ts === "number" ? event.ts : Date.now();
+    view = applyTranscriptPatch(view, machine.apply(asRequestEvent(event)), at, id);
+  }
+  return applyTranscriptPatch(view, machine.flush(), Date.now(), requestId);
+}
 
 export function createStreamTranscript(): {
   apply: (event: RequestStreamEventWithId) => TranscriptPatch;

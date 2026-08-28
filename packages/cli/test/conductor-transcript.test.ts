@@ -4,6 +4,7 @@ import {
   applyTranscriptPatch,
   createStreamTranscript,
   diffBoard,
+  viewFromEvents,
 } from "../src/conductor/transcript";
 import {
   ACTIVITY_CAP,
@@ -12,6 +13,9 @@ import {
   fileFromToolLine,
   findMatches,
   pushActivity,
+  selectedFiles,
+  selectedHunk,
+  selectedNow,
   selectedPlan,
   visibleLive,
   type StatusRow,
@@ -1410,5 +1414,86 @@ describe("pushActivity", () => {
     expect(mine).toHaveLength(ACTIVITY_CAP + 6);
     expect(mine[0]?.text).toBe("tool · Write src/early.ts");
     expect(findMatches({ ...state, find: "early.ts" })).toHaveLength(1);
+  });
+});
+
+describe("viewFromEvents", () => {
+  it("folds a Write and a plan into the same fields the reserved band reads", () => {
+    const settled: StatusRow = {
+      taskId: "FAIL-1--implement",
+      issue: "FAIL-1",
+      phase: "implement",
+      status: "pending",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "FAIL-1--implement",
+        workspacePath: null,
+        branch: null,
+        outcome: "failed",
+        reason: "stopped",
+        sessionId: null,
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: null,
+        requestId: "req-fail-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const view = viewFromEvents(
+      [
+        {
+          ...added({
+            id: "t1",
+            type: "tool_output",
+            blockName: "Write",
+            status: "completed",
+            toolCall: {
+              callId: "c1",
+              name: "Write",
+              arguments: JSON.stringify({
+                file_path: "src/hello.js",
+                contents: "export const hello = 1;\n",
+              }),
+              generatorBlock: "agent",
+            },
+          }),
+          requestId: "req-fail-1",
+          ts: 1,
+        },
+        {
+          ...added({
+            id: "t2",
+            type: "tool_output",
+            blockName: "TodoWrite",
+            status: "completed",
+            toolCall: {
+              callId: "c2",
+              name: "TodoWrite",
+              arguments: JSON.stringify({
+                todos: [
+                  { content: "Add hello.js", status: "completed" },
+                  { content: "Open the pull request", status: "pending" },
+                ],
+              }),
+              generatorBlock: "agent",
+            },
+          }),
+          requestId: "req-fail-1",
+          ts: 2,
+        },
+      ],
+      settled,
+    );
+    expect(selectedNow(view)).toBe("TodoWrite");
+    expect(selectedFiles(view)).toEqual(["src/hello.js"]);
+    expect(selectedHunk(view)).toEqual(["+ export const hello = 1;"]);
+    expect(selectedPlan(view)).toEqual([
+      { mark: "x", text: "Add hello.js" },
+      { mark: " ", text: "Open the pull request" },
+    ]);
   });
 });

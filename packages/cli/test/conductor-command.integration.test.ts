@@ -261,6 +261,106 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(full.text).not.toContain("Please run /login");
   });
 
+  it("named status prints last tool, files, hunk, and todo on stdout", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    stores.request.persistEvents("req-fail-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-fail-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "t1",
+          type: "tool_output",
+          blockName: "TodoWrite",
+          status: "completed",
+          toolCall: {
+            callId: "c2",
+            name: "TodoWrite",
+            arguments: JSON.stringify({
+              todos: [
+                { content: "Add hello.js", status: "completed" },
+                { content: "Open the pull request", status: "pending" },
+              ],
+            }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-fail-1",
+        sequence_number: 2,
+        ts: 2,
+        item: {
+          id: "t2",
+          type: "tool_output",
+          blockName: "Write",
+          status: "completed",
+          toolCall: {
+            callId: "c1",
+            name: "Write",
+            arguments: JSON.stringify({
+              file_path: "src/hello.js",
+              contents: "export const hello = 1;\n",
+            }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-fail-1",
+        sequence_number: 3,
+        ts: 3,
+      } as never,
+    ]);
+    const named = capture();
+    const namedErr = capture();
+    const code = await executeConductorCommand(["status", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: named.output as unknown as NodeJS.WriteStream,
+      stderr: namedErr.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(code).toBe(1);
+    expect(named.text).toContain("Write src/hello.js");
+    expect(named.text).toContain("src/hello.js");
+    expect(named.text).toContain("+ export const hello = 1;");
+    expect(named.text).toContain("[ ] Open the pull request");
+    expect(named.text).not.toContain("\x1b]8;;");
+
+    const fullOut = capture();
+    const fullErr = capture();
+    await executeConductorCommand(["status"], {
+      cwd: fixtureDir,
+      stores,
+      output: fullOut.output as unknown as NodeJS.WriteStream,
+      stderr: fullErr.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(fullOut.text).not.toContain("Write src/hello.js");
+    expect(fullOut.text).not.toContain("Open the pull request");
+    expect(fullErr.text).not.toContain("tool · Write src/hello.js");
+  });
+
   it("watch of the full board does not replay a settled journal it never tailed", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "FAIL-1"], {
