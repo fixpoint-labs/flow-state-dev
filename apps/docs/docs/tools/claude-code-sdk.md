@@ -376,6 +376,76 @@ you would have to remember are a list nobody finishes.
 
 Prefer a key your own code assigned over one that arrived with the request.
 
+## Configuring the run
+
+Four options travel with `cwd`. All are unset by default, so a run that ignores
+them behaves exactly as it did before you knew they existed.
+
+```ts
+// One checkout per invocation, shared by both resolvers. They receive the same
+// context object, so a WeakMap keyed on it hands them the same directory and
+// releases it when the run is done.
+const checkouts = new WeakMap<object, Promise<string>>();
+const checkoutFor = (ctx: object) => {
+  const existing = checkouts.get(ctx);
+  if (existing) return existing;
+  const fresh = allocateCheckout();
+  checkouts.set(ctx, fresh);
+  return fresh;
+};
+
+claudeCodeAgent({
+  cwd: (_input, ctx) => checkoutFor(ctx),
+  settingSources: ["user"],
+  env: { ...process.env, CI: "1" },
+  sandbox: async (_input, ctx) => ({
+    enabled: true,
+    filesystem: { allowWrite: [await checkoutFor(ctx)] },
+  }),
+  uses: [myCapability],
+  onErrored: async (error, ctx) => {
+    await releaseWhateverThisRunHeld(ctx);
+  },
+});
+```
+
+**`settingSources`** picks which filesystem settings the run loads: `"user"`,
+`"project"`, `"local"`. Leave it out and it loads all three, the way the CLI
+does. This is the one to read twice. `"project"` is what makes a run read
+`CLAUDE.md` and `.claude/settings.json` **out of its working directory**. If that
+directory is one your server assembled out of resources your own users can
+write, then those files are user input, and the run reading configuration from
+them means your users configure your agent. Pass `[]` to load none, or list only
+the sources you control.
+
+**`env`** sets the run's environment variables. It replaces the process
+environment rather than adding to it, so spread `process.env` when you meant to
+add.
+
+**`sandbox`** is the Agent SDK's sandbox settings, forwarded as given. Take a
+value or write a resolver. The resolver form is the one that matters: the
+settings that confine a run name the directory it works in, and that directory
+is per run while one flow build serves many. A constant can say "sandboxed"; it
+cannot say "sandboxed to this run's workspace."
+
+`filesystem.allowWrite` adds paths to what the run may write. It does not
+replace the default set, and it is not a fence on its own — `enabled` is what
+turns sandboxing on, and `denyWrite` and the permission rules are what narrow
+it.
+
+**`uses`** installs capabilities on the agent block, the same slot every other
+block takes. A capability handed here that declares resources has them
+registered on the flow, so `ctx.resources` resolves for them at run time.
+Capabilities resolved dynamically, by a function rather than a static entry,
+contribute context and tools only — a resource has to exist before the block
+runs.
+
+**`onErrored`** runs after the block threw, with the error and the block's
+context. It does not swallow the error; the run still fails. A capability can
+contribute resources, state and tools but never lifecycle hooks, so this is the
+only way to reach one. Releasing something the run was holding is what it is
+for.
+
 ## Recording what the run did
 
 The item stream tells you what the agent said. `recordWork: true` also records

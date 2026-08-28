@@ -158,6 +158,71 @@ The run's file tools address relative paths inside that directory, and so does
 boundary — a run can still reach an absolute path outside it, and that operation
 is recorded at the path it reached.
 
+### Controlling what a run reads and what it runs in (`/sdk`)
+
+Four more options travel alongside `cwd`:
+
+```ts
+// `checkoutForThisRun()` allocates a directory, so calling it in both resolvers
+// would hand the run one directory and name a different one in its settings,
+// with nothing throwing. Calling it once at build time is the other way to get
+// it wrong: one flow build serves many runs, and they would all share the
+// directory. So: once per invocation, keyed on the run's own context, which
+// both resolvers are handed.
+const checkouts = new WeakMap<object, Promise<string>>();
+const checkoutFor = (ctx: object) => {
+  const existing = checkouts.get(ctx);
+  if (existing) return existing;
+  const fresh = checkoutForThisRun();
+  checkouts.set(ctx, fresh);
+  return fresh;
+};
+
+claudeCodeAgent({
+  cwd: (_input, ctx) => checkoutFor(ctx),
+  // Which filesystem settings the run loads. Omitted, it loads all of them,
+  // exactly as the CLI does.
+  settingSources: ["user"],
+  // The run's environment. This REPLACES the process environment rather than
+  // adding to it — spread `process.env` when you mean to add.
+  env: { ...process.env, CI: "1" },
+  // The SDK's sandbox settings (`SandboxSettings`, an open object — the Agent
+  // SDK is an optional peer here, so its own type is not imported). A value or
+  // a resolver: the settings that confine a run name the directory it works
+  // in, and that is per run.
+  sandbox: async (_input, ctx) => ({
+    enabled: true,
+    filesystem: { allowWrite: [await checkoutFor(ctx)] },
+  }),
+  // Capabilities installed on the block, same slot any other block takes.
+  uses: [myCapability],
+  // Runs after the block threw, with the error. It does not swallow it — the
+  // run still fails — so this is where anything the run was holding gets
+  // released. A capability cannot contribute lifecycle hooks, so this option
+  // is the only way to reach one.
+  onErrored: async (error, ctx) => { await releaseWhateverThisRunHeld(ctx); },
+});
+```
+
+`settingSources` is the one worth reading twice. `"project"` is what makes a run
+read `CLAUDE.md` and `.claude/settings.json` **out of its working directory**. If
+that directory is one your server assembled — from resources your application's
+users can write — then those files are user input, and the run reading
+configuration out of them means your users configure your agent. Pass `[]` to
+load none, or list only the sources you control.
+
+**`allowWrite` is not a fence.** The SDK documents it as *additional* paths to
+allow writing, merged with the paths that `Edit(...)` permission rules already
+grant — so listing your workspace there widens what the run may write, it does
+not narrow it to that directory. What confines a run is `enabled: true` turning
+sandboxing on at all, plus `denyWrite` and the permission rules; `allowWrite` is
+how you punch your workspace through those. If you need a hard boundary, say so
+with `denyWrite` and verify it against a real run rather than assuming this
+option gives you one.
+
+Nothing here changes by default: leave an option out and the run behaves exactly
+as it does today.
+
 #### Reusing a directory across runs
 
 A throwaway directory is the easy case. If you want runs that belong together to

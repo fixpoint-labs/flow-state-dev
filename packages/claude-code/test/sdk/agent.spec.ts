@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
+import { defineCapability } from "@flow-state-dev/core";
+import { z } from "zod";
 import {
   claudeCodeAgent,
   forwardSignalToController,
@@ -257,6 +259,110 @@ describe("claudeCodeAgent", () => {
     // Called once per invocation, with the block's own input — not once at
     // build time, which would make one directory serve every run.
     expect(seen).toEqual(["FIX-1219"]);
+  });
+
+  it("installs the capabilities it is handed on the block itself", async () => {
+    // Without this slot a caller who wants the agent to carry a capability has
+    // to abandon the factory and hand-roll the block. The capability carries
+    // session state rather than tools, because the agent is a handler and
+    // tools are a generator-only slot.
+    const cap = defineCapability({
+      name: "agent-uses-probe",
+      sessionStateSchema: z.object({
+        probe: z.string().nullable().default(null),
+      }),
+    });
+    const block = claudeCodeAgent({ uses: [cap] }) as unknown as {
+      config: { uses?: unknown[]; __resolvedCapabilities?: unknown[] };
+    };
+
+    expect(block.config.uses).toEqual([cap]);
+    // Stored is not the same as installed: assert it was actually resolved,
+    // which is what a capability has to be to do anything.
+    expect(block.config.__resolvedCapabilities).toHaveLength(1);
+  });
+
+  it("declares no capabilities when handed none", async () => {
+    // BP-035's off state. Absent must stay absent rather than becoming an
+    // empty array — a block that declares an empty capability set is not the
+    // same shape as one that declares none.
+    const block = claudeCodeAgent({}) as unknown as {
+      config: Record<string, unknown>;
+    };
+
+    expect("uses" in block.config).toBe(false);
+  });
+
+  it("forwards the run's environment, settings sources and sandbox settings", async () => {
+    const spy = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      settingSources: ["user"],
+      env: { PATH: "/usr/bin", CI: "1" },
+      sandbox: { enabled: true },
+    });
+
+    await testBlock(block, { input: { prompt: "go" } });
+
+    const options = spy.mock.calls[0][0].options;
+    expect(options?.settingSources).toEqual(["user"]);
+    expect(options?.env).toEqual({ PATH: "/usr/bin", CI: "1" });
+    expect(options?.sandbox).toEqual({ enabled: true });
+  });
+
+  it("resolves sandbox settings per run, so they can name the run's own paths", async () => {
+    // The settings that confine a run name the directory it works in, and one
+    // flow build serves many runs. A build-time constant can say "sandboxed"
+    // but not "sandboxed to THIS workspace" — the only form that contains
+    // anything.
+    const spy = vi.fn();
+    const seen: string[] = [];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      sandbox: (input) => {
+        seen.push(input.prompt);
+        return { filesystem: { allowWrite: [`/work/${input.prompt}`] } };
+      },
+    });
+
+    await testBlock(block, { input: { prompt: "run-7" } });
+
+    expect(spy.mock.calls[0][0].options?.sandbox).toEqual({
+      filesystem: { allowWrite: ["/work/run-7"] },
+    });
+    expect(seen).toEqual(["run-7"]);
+  });
+
+  it("loads no filesystem settings when handed an empty list", async () => {
+    // `[]` and absent are DIFFERENT instructions: absent loads every source,
+    // `[]` loads none. Passing the option through as `undefined` would collapse
+    // the isolating one into the permissive one, silently.
+    const spy = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      settingSources: [],
+    });
+
+    await testBlock(block, { input: { prompt: "go" } });
+
+    expect(spy.mock.calls[0][0].options?.settingSources).toEqual([]);
+  });
+
+  it("names none of the three when they are not set, so the SDK's own defaults stand", async () => {
+    // BP-035: the off state. A key present with `undefined` is not the same as
+    // an absent key to a callee that checks `in` — and for `settingSources` the
+    // difference decides whether the run reads CLAUDE.md out of its workspace.
+    const spy = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+    });
+
+    await testBlock(block, { input: { prompt: "go" } });
+
+    const options = spy.mock.calls[0][0].options ?? {};
+    expect("settingSources" in options).toBe(false);
+    expect("env" in options).toBe(false);
+    expect("sandbox" in options).toBe(false);
   });
 
   it("resolves a symlinked directory to one physical path for both halves", async () => {
@@ -1742,4 +1848,37 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     expect(winContains("sess_normal_123")).toBe(true);
     expect(winContains("../../server-repo")).toBe(true);
   });
+
+  it("hands cwd and sandbox the same resolved input", async () => {
+    // They used to differ: `cwd` got the raw block input while `sandbox` got a
+    // freshly built `{ prompt }`. With `pickPrompt` or a padded prompt those
+    // are different strings, so a caller deriving coordinated paths from them
+    // got a sandbox confining a directory the run was never given.
+    const seen: Array<Record<string, unknown>> = [];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          yield RESULT_OK;
+        },
+      }),
+      prompt: (input: { prompt: string }) => `picked:${input.prompt}`,
+      cwd: (input) => {
+        seen.push({ ...input });
+        return "/tmp/agent-cwd";
+      },
+      sandbox: (input) => {
+        seen.push({ ...input });
+        return { enabled: true };
+      },
+    } as never);
+
+    await testBlock(block as never, { input: { prompt: "  raw  " } });
+
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toEqual(seen[1]);
+    // And the prompt they see is the one the run actually runs: picked, then
+    // trimmed, exactly as it reaches the SDK.
+    expect(seen[0]!.prompt).toBe("picked:  raw");
+  });
+
 });
