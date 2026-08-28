@@ -170,7 +170,7 @@ Operator surface for a flow whose `kind` is `"conductor"`, with `seed`, `wake`, 
 
 ```bash
 fsdev conductor status
-fsdev conductor seed PR-482
+fsdev conductor seed PR-482 Rename getSession in the docs
 fsdev conductor answer PR-482/implement/1/q "target the release branch"
 fsdev conductor steer "retry the failed rows"
 fsdev conductor please start FIX-99
@@ -183,13 +183,13 @@ fsdev conductor abort PR-482
 |------|------|
 | (none) / `tui [issue]` | Fullscreen board. Needs a TTY; without one, prints a message and exits `1` |
 | `status [issue]` | Print the board, optionally filtered to one issue |
-| `seed <issue> [--phase implement]` | File a row, then print it |
+| `seed <issue> [--phase implement] [brief…]` | File a row, then print it. Extra words after the issue id are the brief attempt 1 reads. `--` starts a literal brief |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
-| `steer <message…>` | Talk to the coordinator. An unslashed line that is not a known verb is the same command |
+| `steer <message…>` | Talk to the coordinator. An unslashed line that is not a known verb is the same command. Talking can start work. The coordinator may file a row. `--json` prints `{ "message": "<reply>" }` and omits the board |
 | `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
 | `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
-| `start <issue>` | Seed, then TUI on a TTY, or seed-and-watch on a pipe |
+| `start <issue> [brief…]` | Seed, then TUI on a TTY, or seed-and-watch on a pipe. Extra words after the issue id are the brief |
 | `help` / `-h` | Print the help text |
 
 **Options:**
@@ -210,7 +210,7 @@ fsdev conductor abort PR-482
 
 **Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `steer`, `watch`, `abort`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call failed, `2` at least one open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always returns `0`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`). After a `steer` that ran, the exit code is that board code. `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and returns that board code. With no running request id it prints `nothing running to stop` and returns `1`.
 
-On a selected running row, `x` or `Ctrl-C` stops that request. A RUN band (full branch, full checkout path, request id, and the current todo item plus a `done/total` count when the run wrote a list; `t` expands it) sits in the ASK / FAIL slot between the table and TRANSCRIPT. In the TUI, `/` lists matching verbs and board ids for `Tab` to complete, and `/find` searches the selected row's transcript. `Ctrl-C` with nothing running quits. While a seed, wake, answer, steer, or status is in flight, `Ctrl-C` aborts that operator action.
+On a selected running row, `x` or `Ctrl-C` stops that request. On a row that is not running, `x` is a letter. A RUN band (full branch, full checkout path, request id, and the current todo item plus a `done/total` count when the run wrote a list; `Ctrl-T` expands it) sits in the ASK / FAIL slot between the table and TRANSCRIPT. In the TUI, `/` lists matching verbs and board ids for `Tab` to complete, and `/find` searches the selected row's transcript. `/quit` or `Ctrl-C` with nothing running leaves (`q` is a letter). While a seed, wake, answer, steer, or status is in flight, `Ctrl-C` aborts that operator action.
 
 Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). See [Conductor](/docs/cli/conductor) for the action contract a conductor-shaped flow has to satisfy, the TUI keybindings, the RUN band, and a full walkthrough.
 

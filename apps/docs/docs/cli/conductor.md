@@ -9,7 +9,7 @@ description: "Drive a background task board from the terminal: talk to the coord
 
 `fsdev conductor` is an operator board for a flow whose `kind` is `"conductor"`: a table of rows, each one pending, running, waiting on a question, or done. Open it as a fullscreen board that polls live, or drive it with scripted verbs from a shell or a CI job.
 
-Typed input that is not a slash verb is a talk turn (`steer`). The coordinator sees the current board and may call `seed`, `wake`, or `answer`. It does not implement or edit product code. Workers do that after a row is filed or woken.
+Typed input that is not a slash verb is a talk turn (`steer`). The coordinator sees the current board and may file a row, wake pending work, or answer a question. Talking can start work. It does not implement or edit product code. Workers do that after a row is filed or woken.
 
 A conductor row is a unit of work with a status. Talking is one coordinator turn, not a conversation REPL. For a live conversation, use [`fsdev chat`](./interactive-chat.md). On a row with an open question, typing starts an answer to that question. Slash verbs run the named action.
 
@@ -62,7 +62,11 @@ const boardState = z.object({ rows: z.array(rowSchema).default([]) });
 
 const seed = handler({
   name: "reviewer-seed",
-  inputSchema: z.object({ issue: z.string(), phase: z.string() }),
+  inputSchema: z.object({
+    issue: z.string(),
+    phase: z.string(),
+    brief: z.string().optional(),
+  }),
   outputSchema: z.object({ taskId: z.string() }),
   sessionStateSchema: boardState,
   execute: async (input, ctx) => {
@@ -199,7 +203,7 @@ const reviewer = defineFlow({
 export default reviewer({ id: "pr-reviewer" });
 ```
 
-`seed` must return `{ taskId }`. `answer` must return the shape above: `answered` wrote the reply, `recovered` found the question already answered and started the job again, `declined` wrote nothing (`reason` says why). The CLI prints `answered`, `recovered`, or `declined · <reason>` from `result` and `reason`. It prints `drain ran` when `drained` is true. A successful `wake` prints the board. If `wake` fails, the command prints the error and exits `1`. `steer` takes `{ message }` and returns a string. The CLI prints that string, or `coordinator turn finished` if the action returned nothing, then the board. `--json` on `steer` prints `{ "message": "<reply>" }` and omits the board. A failed `steer` prints the error and exits `1`. The plain-text board prints issue, phase, status, attempts, outcome, and open questions. A failed row with no open question also prints a `! failed` line and the reason under the row. `--json` on `status` prints the full `status` payload.
+`seed` takes `{ issue, phase, brief? }` and must return `{ taskId }`. Extra words after the issue id are `brief`. `--` starts a literal brief. In the TUI, the first seed line is the issue id and the lines after it are `brief`. The brief is filed with the row so attempt 1 already has the ticket. `answer` must return the shape above: `answered` wrote the reply, `recovered` found the question already answered and started the job again, `declined` wrote nothing (`reason` says why). The CLI prints `answered`, `recovered`, or `declined · <reason>` from `result` and `reason`. It prints `drain ran` when `drained` is true. A successful `wake` prints the board. If `wake` fails, the command prints the error and exits `1`. `steer` takes `{ message }` and returns a string. The CLI prints that string, or `coordinator turn finished` if the action returned nothing, then the board. `--json` on `steer` prints `{ "message": "<reply>" }` and omits the board. A failed `steer` prints the error and exits `1`. The plain-text board prints issue, phase, status, attempts, outcome, and open questions. A failed row with no open question also prints a `! failed` line and the reason under the row. `--json` on `status` prints the full `status` payload.
 
 ## The board
 
@@ -207,13 +211,13 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When a running row has no question, that column shows what it is doing now — the live line, or the last tool — so you can scan the board without selecting each row. When `status` has token counts on that row, the OUTCOME column shows them (`12.0k→400`). A live implement usually shows `running` until the child finishes and usage is written. `}` / `{` jump to the next or previous row that is waiting on you, whose last attempt failed, or whose running child has been silent for 30 seconds. They do not steal a typed answer. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When a running row has no question, that column shows the live line, or the last tool, so you can scan the board without selecting each row. When `status` has token counts on that row, the OUTCOME column shows them (`12.0k→400`). A running row shows `running` when `status` has no token counts. `}` / `{` jump to the next or previous row that is waiting on you, whose last attempt failed, or that is running and has been silent for 30 seconds. They do not steal a typed answer. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
 
-When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. Under the question it keeps a compact strip of that attempt: the pull-request URL when `status` carried one, the last tool, the files that run wrote, edited, or read, the last hunk, and the current todo. When that row's `run.usage` is present, token counts show on the band as `10→4` (input→output). The counts stay on the band while a wake or seed is in flight.
+When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. The hint says `type to answer`. Under the question it keeps a compact strip of that attempt: the pull-request URL when `status` carried one, the last tool, the files that run wrote, edited, or read, the last hunk, and the current todo. When that row's `run.usage` is present, token counts show on the band as `10→4` (input→output). The counts stay on the band while a wake or seed is in flight.
 
-When the selected row has no open question and the last attempt failed, a FAIL band sits in that same slot. A last attempt failed when `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. The band shows the reason (`run.reason`, else `feedback`, else `run.finalMessage`) and that `w` retries. Under the reason it keeps the same compact attempt strip ASK does: request id, token counts when `status` carried them, last tool, files, last hunk, and current todo. If the selected row also has an open question, the ASK band is what shows. Answer the question first.
+When the selected row has no open question and the last attempt failed, a FAIL band sits in that same slot. A last attempt failed when `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. The band shows the reason (`run.reason`, else `feedback`, else `run.finalMessage`). The hint is `/wake` when the row is pending, or `spent` when `status` is `errored` or `cancelled`. `/wake` will not take a spent row. Talk, or `/wake` if the row is pending. Under the reason it keeps the same compact attempt strip ASK does: request id, token counts when `status` carried them, last tool, files, last hunk, and current todo. If the selected row also has an open question, the ASK band is what shows. Answer the question first.
 
-When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the branch, the checkout path, the request id, the pull-request URL when `status` carried one, and that `x` stops. A path that will not fit keeps the filename. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output). How long since that run last wrote shows as `8s` or `3m` — on the band and next to `in_progress` on the table — so a silent child is visible. After 30 seconds the age turns rust. The clock is last write, not elapsed since start. When `run.updatedAt` is the only timestamp on the row, that is what the age uses. You can move to another row, start an answer, and type while a wake or seed is in flight. Enter queues that next action.
+When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the branch, the checkout path, the request id, the pull-request URL when `status` carried one, and that `x` stops. A path that will not fit keeps the filename. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output). Last-write age shows as `8s` or `3m` on the band and next to `in_progress` on the table. After 30 seconds the age turns rust. The clock is last write, not elapsed since start. You can move to another row, start an answer, and type while a wake or seed is in flight. Enter queues that next action.
 
 The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown on the band. The table ASK column shows each running row's current action.
 
@@ -238,7 +242,7 @@ When the run writes a todo list, the band shows one current item and a `done/tot
  [·] Implement the fix  1/5
 ```
 
-`t` or `Ctrl-T` expands the list (up to 4 items, then `… N more`). Press again to collapse.
+`Ctrl-T` expands the list (up to 4 items, then `… N more`). Press again to collapse.
 
 ```text
  [x] Add the failing test
@@ -252,7 +256,7 @@ The list comes from that run's plan tools. `TodoWrite` with a `todos` array repl
 
 Selecting another row shows that row's current item, or none if that row has not written a list.
 
-When the selected row is not running and has no open question, the board shows that attempt's request id, session id, child session id, pull-request URL when `status` carried one, last tool, files written, edited, or read, the last hunk, and the current todo with its count. `t` expands the list. `h` expands the hunk. A terminal that understands OSC-8 can open that URL, and can open a Write / Edit / Read path the same way.
+When the selected row is not running and has no open question, the board shows that attempt's request id, session id, child session id, pull-request URL when `status` carried one, last tool, files written, edited, or read, the last hunk, and the current todo with its count. `Ctrl-T` expands the list. `h` expands the hunk. A terminal that understands OSC-8 can open that URL, and can open a Write / Edit / Read path the same way.
 
 ```text
  request  req-fail-1
@@ -261,7 +265,7 @@ When the selected row is not running and has no open question, the board shows t
  [ ] Open the pull request  1/2
 ```
 
-When that row has an open question, the ASK band shows the current todo and the last hunk. `t` does not expand the list on ASK. `h` does not expand the hunk on ASK.
+When that row has an open question, the ASK band shows the current todo and the last hunk. Letters are the answer. `Ctrl-T` expands the todo list.
 
 If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`.
 
@@ -271,40 +275,43 @@ It needs a TTY. Piped in or run from a script, it prints a message and exits `1`
 fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, steer, watch, abort).
 ```
 
-`fsdev conductor tui PR-482` opens the same board with that row selected, if it exists. Moving to another row (`j`/`k`, arrows, click) keeps that row selected. A live poll leaves the selection where you put it.
+`fsdev conductor tui PR-482` opens the same board with that row selected, if it exists. Moving to another row (arrows, click) keeps that row selected. A live poll leaves the selection where you put it.
 
 ### Keys
 
 | Key | Does |
 |---|---|
-| `j` / `k` or `↓` / `↑` | Move the selected row (click a row). While the slash list is open, `↑`/`↓` choose a verb or board id. While composing, `↑`/`↓` move between lines. `↑` on the first line and `↓` on the last line step through earlier sends |
+| `↓` / `↑` | Move the selected row when the prompt is empty (click a row). While the slash list is open, choose a verb or board id. While composing, move between lines, then prior sends |
 | `PgUp` / `PgDn` | Scroll the transcript (mouse wheel and `Ctrl-U` / `Ctrl-D` too) |
 | `[` / `]` | Move between open questions on the selected row |
 | `←` / `→` | Move the caret while you are typing, answering, or seeding. When the prompt is empty and you are not answering or seeding, move between open questions on the selected row |
 | `Home` / `End` or `Ctrl-A` / `Ctrl-E` | Start or end of the current compose line |
 | `Ctrl-J` / `Alt-Enter` / `Shift-Enter` | New line while composing |
-| `a` | Answer the selected question |
-| `s` | Seed a new row (prompts for an issue id) |
-| `w` | Wake. On a failed selected row with no question, the footer labels this `w retry` |
-| `x` | Stop the selected running row's request |
-| `t` or `Ctrl-T` | Expand or collapse the selected row's todo list |
-| `f` | Expand or collapse the selected row's file list |
-| `h` | Expand or collapse the selected row's last Write / Edit hunk |
-| `H` | Show an older Write / Edit hunk from the same run |
-| `e` | Expand or collapse the last Read peek or command tail |
+| `s` | Seed. First line is the issue id. More lines are the brief attempt 1 reads |
+| `x` | Stop the selected running request. On a row that is not running, `x` is a letter (talk) |
+| `Ctrl-T` | Expand or collapse the todo list |
+| `f` | Expand or collapse the selected row's file list, when the row has no open question |
+| `h` | Expand or collapse the selected row's last Write / Edit hunk, when the row has no open question |
+| `H` | Show an older Write / Edit hunk from the same run, when the row has no open question |
+| `e` | Expand or collapse the last Read peek or command tail, when the row has no open question |
 | `{` / `}` | Previous / next row that is waiting, failed, or stalled |
 | `r` | Refresh now |
 | `/` | Type a slash command. Matching verbs, then board ids, list above the prompt. A line that is not a slash verb is a talk turn |
 | `Tab` | Fill the selected slash verb or board id |
+| `/wake` | Process pending rows |
 | `/status [issue]` | Select that row (if it is on the board) and refresh |
 | `/find [text]` | Search the selected row's transcript |
 | `n` / `N` | Older / newer match while find is on |
 | `?` | Toggle help |
-| `q` | Quit |
+| `/quit` or `Ctrl-C` | Leave when nothing is running. `q` is a letter |
 
-On a row with no open question, typing that is not a slash verb is a talk turn (`steer`). On a row with an open question, typing starts an answer to that question — you don't have to press `a` first. Slash verbs run the named action either way. `Enter` sends every compose line. `Ctrl-J`, `Alt-Enter`, or `Shift-Enter` inserts a new line. `Esc` cancels. A paste inserts at the caret, including newlines, and does not send. On an idle board, a paste starts a talk turn, or an answer on a waiting row. Seeding uses the first compose line as the issue id. While composing, `↑`/`↓` move between lines. On the first line, `↑` steps through earlier sends. On the last line, `↓` steps toward newer ones. The first `↑` keeps the draft you were typing. `↓` past the newest recall puts that draft back. Empty lines and `/find` queries are not recalled. The footer is `↑ prior  ·  Ctrl-J line  ·  Enter send  ·  Esc` when at least one line is stored, otherwise `Ctrl-J line  ·  Enter send  ·  Esc`. While find is on, `n` and `N` step matches instead of starting an answer, `↑`/`↓` do not walk stored lines, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop`, `t list`, `/find`, and `r`; `x` or `Ctrl-C` stops that row's request. `f files` and `h hunk` appear when those lists have more than three entries. On a selected row that is not running, has no open question, and has a todo list, the footer offers `t list`. `/abort` with no issue does the same. While a seed, wake, answer, steer, or status is in flight, the board stays usable: you can change rows, expand lists, start an answer, and type. Enter queues that next action and runs it when the current one finishes. `Ctrl-C` aborts the operator action in flight. `Ctrl-C` with nothing running quits.
+On a row with no open question, typing that is not a slash verb is a talk turn (`steer`). Letters talk. `j`, `k`, `a`, `w`, `q`, and `t` are letters. On a row with an open question, typing starts an answer. Letters are the answer, not board keys, including `f`, `h`, `e`, and `H`. `Ctrl-T` expands the todo list. The footer says `type to answer`. `Enter` sends. `Esc` cancels. Slash verbs run the named action either way.
 
-A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, steer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, steer, start. `/sta` lists status, start. `/ste` lists steer. A space starts the first argument. `q` and `stop` parse as `quit` and `abort`; they are not in the verb list.
+`Enter` sends every compose line. `Ctrl-J`, `Alt-Enter`, or `Shift-Enter` inserts a new line. A paste inserts at the caret, including newlines, and does not send. On an idle board, a paste starts a talk turn, or an answer on a waiting row. `s` opens seed compose: first line is the issue id, more lines are the brief attempt 1 reads. While composing, `↑`/`↓` move between lines. On the first line, `↑` steps through earlier sends. On the last line, `↓` steps toward newer ones. The first `↑` keeps the draft you were typing. `↓` past the newest recall puts that draft back. Empty lines and `/find` queries are not recalled. The footer is `↑ prior  ·  Ctrl-J line  ·  Enter send  ·  Esc` when at least one line is stored, otherwise `Ctrl-J line  ·  Enter send  ·  Esc`. While find is on, `n` and `N` step matches instead of starting an answer, `↑`/`↓` do not walk stored lines, and `Esc` clears find.
+
+On a failed selected row that is pending, talk, or `/wake`. The FAIL band and footer show `/wake`. On a spent row (`errored` or `cancelled`), the footer and FAIL band say `spent`. `/wake` will not take that row. On a selected running row, the footer offers `x stop`. `x` or `Ctrl-C` stops that row's request. On a row that is not running, `x` is a letter. `Ctrl-T` expands or collapses the todo list. `f files` and `h hunk` appear when those lists have more than three entries. `/abort` with no issue stops running requests the same way `x` does on a running row. `/quit` or `Ctrl-C` (when nothing is running) leaves. `q` is a letter. While a seed, wake, answer, steer, or status is in flight, the board stays usable: you can change rows, expand lists, start an answer, and type. Enter queues that next action and runs it when the current one finishes. `Ctrl-C` aborts the operator action in flight.
+
+A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, steer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, steer, start. `/sta` lists status, start. `/ste` lists steer. A space starts the first argument. `/q` and `stop` parse as `quit` and `abort`; they are not in the verb list.
 
 After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids already on the board. `/status`, `/watch`, and `/abort` offer each row's issue, or that row's id when it has no issue (the same id `seed` prints). The hint is the row's status. The selected row is first, except `/abort`, which lists running rows first. Type a prefix to filter (`/status FI`); matching is case-insensitive. `/answer` lists open question ids: the selected row's questions first, then other rows. The hint is the question text, or the other row's issue (or that row's id when it has no issue). A second argument closes the list (`/status FIX-1 extra`, `/answer Q hello`). `/seed ` and `/start ` do not list board ids; they file a new issue. `/steer ` does not list board ids. `/find` does not complete a query.
 
@@ -324,7 +331,7 @@ When the selected row has no `run.requestId`, the pane shows only those board an
 
 `/find` searches those lines case-insensitively. The pane is not filtered to hits; matches are highlighted in place and the current hit is pinned in the window. The heading reads `find · "src/foo.ts"  2/5` or `find · "src/foo.ts"  no matches`. Find does not hide the ASK, FAIL, or RUN band.
 
-Changing the selected row (`j`/`k`, arrows, click) jumps the transcript back to the tail.
+Changing the selected row (arrows, click) jumps the transcript back to the tail.
 
 When a Write or Edit includes the new file text, a hunk prints under the tool line. A Write prints each new line as `+ <line>`. An Edit prints only the changed span: `-` lines, then `+` lines.
 
@@ -404,24 +411,25 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | Verb | Does |
 |---|---|
 | `status [issue]` | Print the board, optionally filtered to one issue. A named issue also reprints that row's last attempt on stderr, and prints last tool, files, hunk, and current todo on stdout. A running row also prints last-write age (`8s`, `3m`) |
-| `seed <issue> [--phase implement]` | File a row for `issue` (a no-op if that `issue`/`phase` pair already has one), then print it |
+| `seed <issue> [--phase implement] [brief…]` | File a row for `issue` (a no-op if that `issue`/`phase` pair already has one), then print it. Extra words after the issue id are the brief attempt 1 reads. `--` starts a literal brief |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
 | `steer <message…>` | Talk to the coordinator. An unslashed line that is not a known verb is the same command (`fsdev conductor please start FIX-99`) |
 | `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
 | `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1`. A stop on a named issue reprints that last attempt on stderr, and prints last tool, files, hunk, and current todo on stdout |
-| `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
+| `start <issue> [brief…]` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe. Extra words after the issue id are the brief |
 | `help` | Print the built-in help text |
 
 `find` is TUI-only. `fsdev conductor find` prints `that verb is TUI-only — run \`fsdev conductor\` with no verb` and exits `1`. It does not print a hit list.
 
 On `answer`, the reply is the text you typed, including apostrophes (`don't change the path`); quote it (`answer Q1 "leave the symlink"`), and write a reply of `--json` as `answer <id> -- --json` or `/answer <id> -- --json` (`--json` on its own prints JSON).
 
-`steer` needs a message. `fsdev conductor steer` prints `steer needs a message` and exits `2`. An unslashed line that is not a known verb is the same command:
+`steer` needs a message. `fsdev conductor steer` prints `steer needs a message` and exits `2`. An unslashed line that is not a known verb is the same command. Talking can start work. The coordinator may file a row.
 
 ```bash
 fsdev conductor steer "retry the failed rows"
 fsdev conductor please start FIX-99
+fsdev conductor steer "start PR-482: Rename getSession in the docs"
 ```
 
 Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `steer` prints the coordinator reply plus the plain-text board; with `--json` it prints only `{ "message": "<reply>" }`. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Under each row, plain `status` and `watch` print last-write age when the row is still running, then the pull-request URL, `@ request-id`, branch, checkout, token counts, spend, and last message when that run has them. A named issue also prints that attempt's last tool, files, last hunk, Read peek or Bash tail when those apply, and current todo — raw paths, no OSC-8. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
@@ -435,10 +443,13 @@ When `watch PR-482` stops, it prints that attempt on stderr, then the board. Whi
 If there is nothing to print for that attempt, the board prints and the command exits.
 
 ```bash
-$ fsdev conductor seed PR-482
+$ fsdev conductor seed PR-482 Rename getSession in the docs
 seeded PR-482 → PR-482--implement
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
 PR-482          implement   pending           0       —           ·
+
+$ fsdev conductor seed PR-482 -- --phase is the ticket
+seeded PR-482 → PR-482--implement
 
 $ fsdev conductor wake
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
@@ -542,6 +553,7 @@ A last attempt failed when a row's `status` is `errored` or `cancelled`, or when
 
 ```bash
 fsdev conductor start PR-482
+fsdev conductor start PR-482 Rename getSession in the docs
 ```
 
 `start` seeds the row, then hands off: on a TTY it opens the board focused on that row; on a pipe it seeds and then behaves like `watch <issue>`, same polling and exit codes.
@@ -574,12 +586,12 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Watching or aborting a running row does not start work or send an answer. Abort does not resume a session. Reprinting a last attempt does not continue that coding session.
 - The transcript does not print reasoning or thinking text.
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
-- `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem. An unselected request keeps the newest two thousand lines. The selected attempt stays whole, so `/find` can still match an early tool.
+- `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem. An unselected request keeps the newest two thousand lines. The selected attempt is kept in full.
 - Slash completion does not invent ids that are not on the board. It does not complete `/seed`, `/start`, `/steer`, or `/find`.
 - Headless verbs take the id on the argv. There is no list on that path.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
-- Headless `status` and `watch` have no RUN band. They print last-write age on a running row, plus checkout, token counts, spend, and last message when the row has them. A named issue also prints last tool, files, last hunk, and current todo on stdout. A full-board print does not reprint those journal extras.
+- Headless `status` and `watch` have no RUN band. They print last-write age on a running row, plus checkout, token counts, spend, and last message when the row has them. A named issue also prints last tool, files, last hunk, and current todo on stdout. A full-board print does not reprint last tool, files, hunk, or todo on a settled row.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 
 ## Related pages

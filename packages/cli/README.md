@@ -203,16 +203,18 @@ Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/ses
 
 ### `fsdev conductor` — Drive a conductor flow
 
-An operator board for a flow whose `kind` is `"conductor"`: a table of rows, each one pending, running, or waiting on a person. Typed input that is not a slash verb talks to the coordinator (`steer`). On a row with an open question, typing starts an answer. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. When that row has no question and the last attempt failed, a FAIL band sits in that slot with the reason; `w` retries (same as wake). When that row is running and has no question and no failed last attempt, a RUN band sits in that slot with the full branch, the full checkout path, the request id, that `x` stops, and the current todo item plus a `done/total` count when the run wrote a list (`t` expands it). When the selected row is not running and has no open question, the board shows that attempt's request id, last tool, files, and current todo (`t` expands the list). In the TUI, `/` lists matching verbs and board ids above the prompt (`Tab` completes), and `/find` searches the selected row's transcript. `x` or `Ctrl-C` on a running row stops that request (`abort` / `stop` from a script). Headless `status`, `wake`, and `watch` print a `! failed` line plus the reason under the row. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
+An operator board for a flow whose `kind` is `"conductor"`: a table of rows, each one pending, running, or waiting on a person. Typed input that is not a slash verb talks to the coordinator (`steer`). Letters talk. On a row with an open question, typing starts an answer; the footer says type to answer. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. When that row has no question and the last attempt failed, a FAIL band sits in that slot with the reason. The hint is `/wake` when the row is pending, or `spent` when `status` is `errored` or `cancelled` (`/wake` will not take a spent row). When that row is running and has no question and no failed last attempt, a RUN band sits in that slot with the full branch, the full checkout path, the request id, that `x` stops, and the current todo item plus a `done/total` count when the run wrote a list (`Ctrl-T` expands it). When the selected row is not running and has no open question, the board shows that attempt's request id, last tool, files, and current todo (`Ctrl-T` expands the list). `s` opens seed compose: first line is the issue id, more lines are the brief attempt 1 reads. Extra words after `seed` / `start` `<issue>` are that same brief; `--` starts a literal brief. Talking can start work. The coordinator may file a row. `steer` prints the coordinator reply (or `coordinator turn finished`), then the board; `--json` prints `{ "message": "<reply>" }` and omits the board. In the TUI, `/` lists matching verbs and board ids above the prompt (`Tab` completes), and `/find` searches the selected row's transcript. `x` or `Ctrl-C` on a running row stops that request (`abort` / `stop` from a script); on a row that is not running, `x` is a letter. `/quit` or `Ctrl-C` (when nothing is running) leaves; `q` is a letter. Headless `status`, `wake`, and `watch` print a `! failed` line plus the reason under the row. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
 
 ```bash
 # Fullscreen board, live poll, slash commands
 fsdev conductor
 
 # File a row and open the board focused on it
-fsdev conductor start PR-482
+fsdev conductor start PR-482 Rename getSession in the docs
 
-# Script it: file a row, then read the board back as JSON
+# Script it: file a row (extra words are the brief), then read the board back as JSON
+fsdev conductor seed PR-482 Rename getSession in the docs
+fsdev conductor seed PR-482 -- --phase is the ticket
 fsdev conductor seed PR-482 --json
 fsdev conductor status PR-482 --json
 
