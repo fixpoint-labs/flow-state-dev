@@ -163,7 +163,6 @@ describe("applyKey", () => {
     const typed = applyKey(state, { type: "char", value: "y" });
     expect(typed.state.inputMode).toBe("answer");
     expect(typed.state.input).toBe("y");
-    const more = applyKey(typed.state, { type: "char", value: "es" });
     // decodeKeys would split "es"; applyKey sees one char at a time.
     const done = applyKey(
       { ...typed.state, input: "yes" },

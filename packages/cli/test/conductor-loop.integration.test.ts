@@ -470,6 +470,52 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("opening on an issue selects it once; later polls keep the row the operator moved to", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+
+    await waitFor(() => lastFrame(tty.text), "LIVE-2");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-2/);
+
+    tty.input.write("k");
+    await waitFor(() => lastFrame(tty.text), "LIVE-1");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const afterPoll = stripAnsi(lastFrame(tty.text));
+    expect(afterPoll).toMatch(/▸\s+LIVE-1/);
+    expect(afterPoll).not.toMatch(/▸\s+LIVE-2/);
+
+    tty.input.write("q");
+    await expect(running).resolves.toBe(0);
+  });
+
   it("Ctrl-C during a drain aborts the wake even if the operator hits r first", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "HANG-1"], {
