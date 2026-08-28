@@ -391,6 +391,194 @@ describe("createStreamTranscript", () => {
     expect(patch.lines).toHaveLength(7);
   });
 
+  it("prints a plan checklist under the tool line", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        added({
+          id: "t8",
+          type: "tool_output",
+          blockName: "TodoWrite",
+          status: "in_progress",
+          toolCall: {
+            callId: "c8",
+            name: "TodoWrite",
+            arguments: JSON.stringify({
+              todos: [
+                { content: "Add the failing test", status: "completed" },
+                { content: "Implement the fix", status: "in_progress" },
+                { content: "Open the pull request", status: "pending" },
+              ],
+            }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: [
+        "tool · TodoWrite",
+        "  [x] Add the failing test",
+        "  [·] Implement the fix",
+        "  [ ] Open the pull request",
+      ],
+      live: null,
+    });
+  });
+
+  it("does not reprint the checklist when a plan tool fails", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t9",
+        type: "tool_output",
+        blockName: "TodoWrite",
+        status: "in_progress",
+        toolCall: {
+          callId: "c9",
+          name: "TodoWrite",
+          arguments: JSON.stringify({
+            todos: [{ content: "Add the failing test", status: "pending" }],
+          }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        done({
+          id: "t9",
+          type: "tool_output",
+          blockName: "TodoWrite",
+          status: "failed",
+          toolCall: {
+            callId: "c9",
+            name: "TodoWrite",
+            arguments: JSON.stringify({
+              todos: [{ content: "Add the failing test", status: "pending" }],
+            }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · TodoWrite · failed"],
+      live: null,
+    });
+  });
+
+  it("prints the first lines of a Read so the file is visible", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t10",
+        type: "tool_output",
+        blockName: "Read",
+        status: "in_progress",
+        toolCall: {
+          callId: "c10",
+          name: "Read",
+          arguments: JSON.stringify({ file_path: "src/foo.ts" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        done({
+          id: "t10",
+          type: "tool_output",
+          blockName: "Read",
+          status: "completed",
+          output: "export function foo() {\n  return 1;\n}\n",
+          toolCall: {
+            callId: "c10",
+            name: "Read",
+            arguments: JSON.stringify({ file_path: "src/foo.ts" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["  export function foo() {", "    return 1;", "  }"],
+      live: null,
+    });
+  });
+
+  it("keeps only the start of a long Read", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t11",
+        type: "tool_output",
+        blockName: "Read",
+        status: "in_progress",
+        toolCall: {
+          callId: "c11",
+          name: "Read",
+          arguments: JSON.stringify({ file_path: "big.ts" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    const output = Array.from({ length: 20 }, (_, i) => `line-${i}`).join("\n");
+    const patch = t.apply(
+      done({
+        id: "t11",
+        type: "tool_output",
+        blockName: "Read",
+        status: "completed",
+        output,
+        toolCall: {
+          callId: "c11",
+          name: "Read",
+          arguments: JSON.stringify({ file_path: "big.ts" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(patch.lines[0]).toBe("  line-0");
+    expect(patch.lines.at(-1)).toBe("  … 14 more");
+    expect(patch.lines).toHaveLength(7);
+  });
+
+  it("prints the tail of a Grep result", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t12",
+        type: "tool_output",
+        blockName: "Grep",
+        status: "in_progress",
+        toolCall: {
+          callId: "c12",
+          name: "Grep",
+          arguments: JSON.stringify({ pattern: "renderFrame" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        done({
+          id: "t12",
+          type: "tool_output",
+          blockName: "Grep",
+          status: "completed",
+          output: "src/conductor/render.ts:48:export function renderFrame()\n",
+          toolCall: {
+            callId: "c12",
+            name: "Grep",
+            arguments: JSON.stringify({ pattern: "renderFrame" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["  src/conductor/render.ts:48:export function renderFrame()"],
+      live: null,
+    });
+  });
+
   it("joins stdout and stderr when the Bash result is an object", () => {
     const t = createStreamTranscript();
     expect(

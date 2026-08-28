@@ -314,6 +314,53 @@ describe("renderFrame", () => {
     expect(frame).not.toContain("src/other.ts");
   });
 
+  it("paints a plan checklist and a Read peek in the transcript", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: { inputTokens: 12_000, outputTokens: 400 },
+        costUsd: null,
+        childSessionId: "child-1",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [running],
+        activity: [
+          { at: 1, text: "tool · TodoWrite" },
+          { at: 1, text: "  [x] Add the failing test" },
+          { at: 1, text: "  [·] Implement the fix" },
+          { at: 2, text: "tool · Read src/foo.ts" },
+          { at: 2, text: "  export function foo() {" },
+        ],
+      },
+      { cols: 80, rows: 24 },
+    );
+    const text = stripAnsi(frame);
+    expect(text).toContain("tool · TodoWrite");
+    expect(text).toContain("[x] Add the failing test");
+    expect(text).toContain("[·] Implement the fix");
+    expect(text).toContain("tool · Read src/foo.ts");
+    expect(text).toContain("export function foo() {");
+  });
+
   it("paints a Write hunk in the transcript", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",

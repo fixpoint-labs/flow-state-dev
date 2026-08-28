@@ -8,8 +8,10 @@
  * items (errors, tools, finished messages, resource changes) become activity
  * lines. A coding tool is named with the file or command it touched. A Write
  * or Edit that carries the new text also prints a compact hunk — the changed
- * span, not the whole file. A Bash result prints the last lines of its
- * output when it settles. `status` remains the board authority; `diffBoard`
+ * span, not the whole file. A plan tool prints the checklist. A Read
+ * prints the first lines of the file. A Bash, Grep, or Glob result prints
+ * the last lines of its output when it settles. `status` remains the board
+ * authority; `diffBoard`
  * turns a poll that actually moved into the same log. A running row's
  * `run.requestId` is also tailed through the request store, so a detached
  * coding run writes here as it runs. Each followed request has its own
@@ -125,20 +127,20 @@ export function createStreamTranscript(): {
           if (item.type === "tool_output") {
             const failed = item.status === "failed" || item.status === "incomplete";
             if (logged.has(item.id) && !failed) {
-              return snapshot([...commitLive(), ...formatCommandOutput(item)]);
+              return snapshot([...commitLive(), ...formatToolResult(item)]);
             }
             logged.add(item.id);
             if (failed) {
               return snapshot([
                 ...commitLive(),
                 formatToolLine(item, item.status),
-                ...formatCommandOutput(item),
+                ...formatToolResult(item),
               ]);
             }
             return snapshot([
               ...commitLive(),
               ...formatToolLines(item),
-              ...formatCommandOutput(item),
+              ...formatToolResult(item),
             ]);
           }
           if (item.type === "container") {
@@ -234,10 +236,10 @@ function formatToolLine(item: OutputItem, settled?: "failed" | "incomplete"): st
   return base;
 }
 
-/** Tool name plus a compact hunk when the call carried the new file text. */
+/** Tool name plus a compact hunk or checklist when the call already carried them. */
 function formatToolLines(item: OutputItem): string[] {
   const args = item.type === "tool_output" ? parseToolArgs(item.toolCall?.arguments) : {};
-  return [formatToolLine(item), ...toolHunk(args)];
+  return [formatToolLine(item), ...toolHunk(args), ...toolPlan(args)];
 }
 
 const HUNK_MAX = 10;
@@ -302,14 +304,49 @@ function toolHunk(args: Record<string, unknown>): string[] {
   return capHunk(hunk);
 }
 
+/**
+ * Compact checklist from a plan tool. Presenter only — it does not invent
+ * a second work record. No checklist in the call, no lines.
+ */
+function toolPlan(args: Record<string, unknown>): string[] {
+  const todos = args.todos;
+  if (!Array.isArray(todos) || todos.length === 0) return [];
+  const lines: string[] = [];
+  for (const todo of todos) {
+    if (todo === null || typeof todo !== "object" || Array.isArray(todo)) continue;
+    const content = (todo as { content?: unknown }).content;
+    if (typeof content !== "string" || content.trim() === "") continue;
+    const status = (todo as { status?: unknown }).status;
+    const mark =
+      status === "completed" ? "x" : status === "in_progress" ? "·" : " ";
+    const body = content.trim().replace(/\s+/g, " ");
+    const clipped = body.length <= HUNK_LINE ? body : `${body.slice(0, HUNK_LINE - 1)}…`;
+    lines.push(`  [${mark}] ${clipped}`);
+  }
+  if (lines.length === 0) return [];
+  if (lines.length <= HUNK_MAX) return lines;
+  return [...lines.slice(0, HUNK_MAX), `  … ${lines.length - HUNK_MAX} more`];
+}
+
 const COMMAND_OUT_OK = 6;
 const COMMAND_OUT_FAIL = 12;
 
+function toolName(item: OutputItem): string {
+  return item.type === "tool_output" ? (item.toolCall?.name ?? item.blockName) : "";
+}
+
 function isCommandTool(item: OutputItem, args: Record<string, unknown>): boolean {
-  const name =
-    item.type === "tool_output" ? (item.toolCall?.name ?? item.blockName) : "";
-  if (name === "Bash") return true;
+  if (toolName(item) === "Bash") return true;
   return typeof args.command === "string" && args.command.trim() !== "";
+}
+
+function isSearchTool(item: OutputItem): boolean {
+  const name = toolName(item);
+  return name === "Grep" || name === "Glob" || name === "LS";
+}
+
+function isReadTool(item: OutputItem): boolean {
+  return toolName(item) === "Read";
 }
 
 function commandOutputText(item: OutputItem): string {
@@ -324,26 +361,54 @@ function commandOutputText(item: OutputItem): string {
     if (parts.length > 0) {
       return parts.map((part) => part.replace(/\n+$/, "")).filter((part) => part !== "").join("\n");
     }
+    if (typeof record.content === "string") return record.content;
+    if (typeof record.text === "string") return record.text;
   }
   const err = item.error?.message;
   return typeof err === "string" ? err : "";
 }
 
-/** Last lines of a Bash result. Write/Edit/Read stay silent here. */
-function formatCommandOutput(item: OutputItem): string[] {
-  if (item.type !== "tool_output") return [];
-  const args = parseToolArgs(item.toolCall?.arguments);
-  if (!isCommandTool(item, args)) return [];
-  const text = commandOutputText(item);
-  if (text.trim() === "") return [];
-  const failed = item.status === "failed" || item.status === "incomplete";
-  const max = failed ? COMMAND_OUT_FAIL : COMMAND_OUT_OK;
-  const lines = splitLines(text).map((line) => {
+function indentResultLines(text: string): string[] {
+  return splitLines(text).map((line) => {
     const body = line.length <= HUNK_LINE ? line : `${line.slice(0, HUNK_LINE - 1)}…`;
     return `  ${body}`;
   });
+}
+
+function resultCap(item: OutputItem): number {
+  return item.status === "failed" || item.status === "incomplete"
+    ? COMMAND_OUT_FAIL
+    : COMMAND_OUT_OK;
+}
+
+/** Last lines of a Bash / Grep / Glob result. Write and Edit stay silent here. */
+function formatCommandOutput(item: OutputItem): string[] {
+  if (item.type !== "tool_output") return [];
+  const args = parseToolArgs(item.toolCall?.arguments);
+  if (!isCommandTool(item, args) && !isSearchTool(item)) return [];
+  const text = commandOutputText(item);
+  if (text.trim() === "") return [];
+  const lines = indentResultLines(text);
+  const max = resultCap(item);
   if (lines.length <= max) return lines;
   return [`  … ${lines.length - max} above`, ...lines.slice(-max)];
+}
+
+/** First lines of a Read. The start of the file is the peek; the end is not. */
+function formatReadPeek(item: OutputItem): string[] {
+  if (item.type !== "tool_output" || !isReadTool(item)) return [];
+  const text = commandOutputText(item);
+  if (text.trim() === "") return [];
+  const lines = indentResultLines(text);
+  const max = resultCap(item);
+  if (lines.length <= max) return lines;
+  return [...lines.slice(0, max), `  … ${lines.length - max} more`];
+}
+
+/** Result lines for a settled tool — command tail, search tail, or Read peek. */
+function formatToolResult(item: OutputItem): string[] {
+  if (isReadTool(item)) return formatReadPeek(item);
+  return formatCommandOutput(item);
 }
 
 function formatContainerLine(item: OutputItem, settled?: "failed" | "incomplete"): string {
