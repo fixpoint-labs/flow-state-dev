@@ -232,14 +232,28 @@ describe("applyKey", () => {
     expect(busy.state.scroll).toBe(0);
   });
 
-  it("lets you change rows while an action is in flight, and does not dispatch", () => {
+  it("lets you change rows while an action is in flight, and holds a new wake", () => {
     const state = { ...board([row("FIX-1"), row("FIX-2")]), busy: true };
     const next = applyKey(state, { type: "char", value: "j" });
     expect(next.state.selected).toBe(1);
     expect(next.effect).toBeUndefined();
     const wake = applyKey(state, { type: "char", value: "w" });
     expect(wake.state.selected).toBe(0);
-    expect(wake.effect).toBeUndefined();
+    expect(wake.effect).toEqual({ type: "hold", command: { kind: "wake" } });
+    expect(wake.state.notice).toMatch(/queued/);
+  });
+
+  it("lets you start an answer while an action is in flight", () => {
+    const state = { ...board([row("FIX-1", 1)]), busy: true };
+    const typed = applyKey(state, { type: "char", value: "l" });
+    expect(typed.state.inputMode).toBe("answer");
+    expect(typed.state.input).toBe("l");
+    expect(typed.effect).toBeUndefined();
+    const sent = applyKey({ ...typed.state, input: "leave the symlink" }, { type: "enter" });
+    expect(sent.effect).toEqual({
+      type: "hold",
+      command: { kind: "answer", question: "FIX-1/implement/1/q0", text: "leave the symlink" },
+    });
   });
 
   it("stops the selected running row with x or Ctrl-C, and quits when nothing is running", () => {

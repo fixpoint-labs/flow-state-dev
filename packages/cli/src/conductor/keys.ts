@@ -2,8 +2,10 @@
  * Key decoding and the TUI reducer.
  *
  * The loop is I/O. This file is the behaviour: given a view and a key, what
- * is the next view, and does anything need to be dispatched. Tests drive it
- * without a terminal.
+ * is the next view, and does anything need to be dispatched. While the
+ * board is working, compose still updates the view; a new action is
+ * `hold` so the loop can run it when the current one finishes. Tests
+ * drive it without a terminal.
  */
 import { parseCommand, slashPrefix, type ParseResult } from "./parse";
 import { slashMenu } from "./slash";
@@ -42,6 +44,7 @@ export type Key =
 
 export type Effect =
   | { type: "dispatch"; command: OperatorCommand }
+  | { type: "hold"; command: OperatorCommand }
   | { type: "quit" }
   | { type: "refresh" };
 
@@ -150,28 +153,22 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
 }
 
 export function applyKey(state: ViewState, key: Key): KeyResult {
+  const result = reduceKey(state, key);
+  if (state.busy && result.effect?.type === "dispatch") {
+    return {
+      state: { ...result.state, notice: "queued — runs when this action finishes" },
+      effect: { type: "hold", command: result.effect.command },
+    };
+  }
+  return result;
+}
+
+function reduceKey(state: ViewState, key: Key): KeyResult {
   if (state.help && (key.type === "escape" || key.type === "char" || key.type === "enter" || key.type === "click")) {
     if (key.type === "char" && key.value === "?") {
       return { state: { ...state, help: false } };
     }
     return { state: { ...state, help: false } };
-  }
-
-  const scrolling =
-    key.type === "wheel" ||
-    key.type === "pageup" ||
-    key.type === "pagedown" ||
-    (key.type === "ctrl" && (key.value === "u" || key.value === "d"));
-  const browsing =
-    key.type === "click" ||
-    key.type === "up" ||
-    key.type === "down" ||
-    key.type === "left" ||
-    key.type === "right" ||
-    key.type === "escape" ||
-    (key.type === "char" && "jk[]tfh?nN".includes(key.value));
-  if (state.busy && key.type !== "ctrl" && !scrolling && !browsing) {
-    return { state };
   }
 
   if (key.type === "ctrl" && key.value === "t") {

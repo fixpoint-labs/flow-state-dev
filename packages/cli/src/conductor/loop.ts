@@ -78,6 +78,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   let refreshSeq = 0;
   let refreshInFlight = false;
   let loadedRequestId: string | undefined;
+  let queued: OperatorCommand | undefined;
   const operatorTranscript = createStreamTranscript();
   const childTranscripts = new Map<string, ReturnType<typeof createStreamTranscript>>();
 
@@ -253,8 +254,14 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       state = { ...pushActivity(state, message, now()), notice: message };
     } finally {
       abortInFlight = undefined;
+      const next = queued;
+      queued = undefined;
       state = { ...state, busy: false };
-      paint();
+      if (next !== undefined && !closed) {
+        void dispatchCommand(next);
+      } else {
+        paint();
+      }
     }
   };
 
@@ -322,6 +329,11 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
             state = { ...state, notice: err instanceof Error ? err.message : String(err) };
             paint();
           });
+          return;
+        }
+        if (result.effect.type === "hold") {
+          queued = result.effect.command;
+          paint();
           return;
         }
         void dispatchCommand(result.effect.command).then(() => {

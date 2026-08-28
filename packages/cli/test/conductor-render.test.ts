@@ -138,6 +138,14 @@ describe("renderFrame", () => {
         ),
       ),
     ).toContain("10→4");
+    expect(
+      stripAnsi(
+        renderFrame(
+          { ...emptyView("harness-manager"), rows: [waiting], busy: true },
+          { cols: 80, rows: 24 },
+        ),
+      ),
+    ).toContain("working");
     expect(frame).toContain("click/j/k");
     expect(frame).toContain("/find");
     expect(frame).toContain("TRANSCRIPT");

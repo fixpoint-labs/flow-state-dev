@@ -128,6 +128,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("fsdev conductor abort");
     expect(HELP_TEXT).toContain("x or Ctrl-C stops it");
     expect(HELP_TEXT).toContain("h expands the last hunk");
+    expect(HELP_TEXT).toContain("Enter queues it");
     expect(HELP_TEXT).toContain("/find [text]");
     expect(HELP_TEXT).toContain("older / newer match");
     expect(HELP_TEXT).toContain("complete the selected slash verb or board id");

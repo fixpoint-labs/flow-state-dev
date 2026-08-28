@@ -310,6 +310,7 @@ In the TUI:
   A row that failed: the FAIL band holds the reason and that attempt's files. w runs wake again.
   A running row: the RUN band holds the checkout and what the run is
   doing. t expands the todo list. h expands the last hunk. x or Ctrl-C stops it.
+  While working, type an answer; Enter queues it.
   A finished row keeps that attempt's files, todo list, and request id.
   The transcript tails that run's request stream.
 

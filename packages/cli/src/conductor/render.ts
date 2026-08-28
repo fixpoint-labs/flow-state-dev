@@ -599,21 +599,22 @@ function renderFooter(state: ViewState, cols: number): string {
   const moreHunks = selectedHunk(state).length > HUNK_BAND_MAX;
   const filesKey = moreFiles ? "  ·  f files" : "";
   const hunksKey = moreHunks && q === undefined ? "  ·  h hunk" : "";
+  const working = state.busy ? "working  ·  " : "";
   const keys = slashing
-    ? "Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc"
+    ? `${working}Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`
     : finding
-    ? "n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q"
+    ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q`
     : q
-      ? `click/j/k  ·  a answer${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+      ? `${working}click/j/k  ·  a answer${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
       : fail !== undefined
         ? listed
-          ? `click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
-          : `click/j/k  ·  w retry${filesKey}${hunksKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
+          ? `${working}click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
+          : `${working}click/j/k  ·  w retry${filesKey}${hunksKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
         : running
-          ? `click/j/k  ·  x stop  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+          ? `${working}click/j/k  ·  x stop  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
           : listed
-            ? `click/j/k  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
-            : `click/j/k  ·  s seed${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
+            ? `${working}click/j/k  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+            : `${working}click/j/k  ·  s seed${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
   return padLine(dim(` ${keys}`), cols);
 }
 
