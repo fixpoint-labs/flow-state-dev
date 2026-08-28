@@ -38,6 +38,26 @@ describe("a place backed by a directory", () => {
     discard(root);
   });
 
+  it("throws when the root is gone rather than reading it as empty", async () => {
+    // The failure the projection cannot survive: a walk that reports emptiness
+    // for a workspace it could not read, which the delete pass acts on.
+    const root = scratch();
+    const place = createHostPlace(root);
+    await place.write("artifacts/one.md", "first");
+    discard(root);
+
+    await expect(place.list(["artifacts"])).rejects.toThrow();
+  });
+
+  it("reads a genuinely empty mount as empty", async () => {
+    // The other half: a prefix that was never created is a collection with
+    // nothing in it, and must not fail the walk.
+    const root = scratch();
+    const place = createHostPlace(root);
+    expect(await place.list(["never-hydrated"])).toEqual([]);
+    discard(root);
+  });
+
   it("reports a missing file as absent, not as a failure", async () => {
     const root = scratch();
     const place = createHostPlace(root);

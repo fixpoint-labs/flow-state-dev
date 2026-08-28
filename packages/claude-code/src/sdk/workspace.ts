@@ -457,8 +457,15 @@ export function createWorkspaceAgentCapability(
     // agent block rather than the chain. Composed with a caller's own hook
     // rather than replacing it.
     onErrored: async (error, ctx) => {
-      await reconcile(ctx as WorkspaceContext);
-      await agentOptions.onErrored?.(error, ctx);
+      // `finally`, not a second statement. A reconcile that rejects — the
+      // content store is down, say — would otherwise exit this hook before the
+      // caller's ran, and the block runtime swallows hook errors to preserve
+      // the agent's own, so their cleanup is skipped with nothing said.
+      try {
+        await reconcile(ctx as WorkspaceContext);
+      } finally {
+        await agentOptions.onErrored?.(error, ctx);
+      }
     },
     // Owned by this capability: the directory is the projection's, and it is
     // READ from the registry rather than re-resolved. See `openWorkspaces`.
