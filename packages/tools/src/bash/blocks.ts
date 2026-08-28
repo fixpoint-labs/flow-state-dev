@@ -198,6 +198,8 @@ interface ScopeIdentity {
   requestId: string;
   userId?: string;
   orgId?: string;
+  /** The framework's tenant boundary. Absent in a single-tenant app. */
+  tenantId?: string;
 }
 
 /** Reserved workspace subdirectory for agent scratch space. Never persisted. */
@@ -285,6 +287,18 @@ function safeSegment(id: string): string {
  * The workspace directory a scope resolves to. Exported for the test that
  * pins containment of caller-supplied ids; the resolution itself is internal.
  */
+/**
+ * The registry key a scope resolves to. Exported for the test that pins two
+ * different principals against sharing one live sandbox; the resolution itself
+ * is internal.
+ */
+export function resolveRegistryKeyForTest(
+  scope: WorkspaceScope,
+  identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
+): string {
+  return resolveScopeKey(scope, identity as ScopeIdentity).key;
+}
+
 export function resolveWorkspaceCwdForTest(
   scope: WorkspaceScope,
   identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
@@ -296,36 +310,56 @@ export function resolveWorkspaceCwdForTest(
 /**
  * The registry key and workspace directory a scope resolves to.
  *
- * Both are prefixed by the tenant the run belongs to, and that prefix is the
- * multi-tenant half of the containment `safeSegment` gives the other half of.
- * `requestId` and `sessionId` arrive on the request body — the action route
- * validates only that they are strings — so two tenants can name the same one.
- * Sharing a registry entry across that boundary hands one tenant's run the
- * other's live sandbox; sharing a directory hands it their files. `orgId` and
- * `userId` come from the verified principal, which is what makes them usable
- * as the boundary (BP-031).
+ * Which identities namespace a scope is not a free choice — the framework
+ * already answers it. `tenantId` "namespaces session storage … so two tenants
+ * sharing a session id never share data", while "user and org scopes stay
+ * shared across tenants by design" (`core`'s `ScopeIdentity`). So:
+ *
+ * - `run` and `session` are namespaced by tenant. Their ids arrive on the
+ *   request body — the action route validates only that they are strings — so
+ *   without it two tenants naming the same one share a live sandbox and a
+ *   directory of files.
+ * - `user` and `org` are keyed on the identity they are named for, and nothing
+ *   else. Adding the tenant, or the user to an org scope, would split the very
+ *   sharing those scopes exist to provide.
+ *
+ * The fallback to `sessionId` when `userId`/`orgId` is absent takes the tenant
+ * with it, because that id is caller-supplied again.
+ *
+ * Components are length-framed rather than delimiter-joined. Raw ids joined on
+ * `:` collide — `(org "a", user "b:c", request "d")` and `(org "a:b", user
+ * "c", request "d")` both spell `run:a:b:c:d` — and the collision is on the
+ * REGISTRY key, so the second principal is handed the first's live sandbox
+ * before its own directory is ever created (BP-031).
  */
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
-  const tenant = [identity.orgId ?? "-", identity.userId ?? "-"];
-  const scoped = (id: string) => ({
-    key: [scope, ...tenant, id].join(":"),
-    scopeId: path.join(...tenant.map(safeSegment), safeSegment(id)),
-  });
-  switch (scope) {
-    case "run":
-      // The request is the run. Narrower than a session on purpose: this is
-      // the scope where two agents working at once cannot see each other's
-      // half-finished files, and where the workspace goes away with the
-      // request that made it.
-      return scoped(identity.requestId);
-    case "user":
-      return scoped(identity.userId ?? identity.sessionId);
-    case "org":
-      return scoped(identity.orgId ?? identity.sessionId);
-    case "session":
-    default:
-      return scoped(identity.sessionId);
-  }
+  const tenant = identity.tenantId ?? "-";
+  const parts = ((): string[] => {
+    switch (scope) {
+      case "run":
+        // The request is the run. Narrower than a session on purpose: this is
+        // the scope where two agents working at once cannot see each other's
+        // half-finished files, and where the workspace goes away with the
+        // request that made it.
+        return [tenant, identity.requestId];
+      case "user":
+        return identity.userId !== undefined ? [identity.userId] : [tenant, identity.sessionId];
+      case "org":
+        return identity.orgId !== undefined ? [identity.orgId] : [tenant, identity.sessionId];
+      case "session":
+      default:
+        return [tenant, identity.sessionId];
+    }
+  })();
+  return {
+    key: [scope, ...parts].map(frame).join(""),
+    scopeId: path.join(...parts.map(safeSegment)),
+  };
+}
+
+/** One key component, length-prefixed so its content cannot forge another. */
+function frame(component: string): string {
+  return `${component.length}:${component}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +465,13 @@ async function createScopedSandbox(
   if (provider.type === "moat") {
     const sessionId = identity.sessionId;
     const overrides: Partial<typeof provider> = {};
-    if (!provider.runName) overrides.runName = `fsdev-${sessionId}`;
+    // Derived from the same identity as the workspace below. `resolveMoatSandbox`
+    // reconnects by run name alone, so a name built from the session id while
+    // the directory is tenant-namespaced attaches the second principal's
+    // projection to the first principal's live container.
+    if (!provider.runName) {
+      overrides.runName = `fsdev-${resolveScopeKey("session", identity).scopeId.replace(/\//g, "-")}`;
+    }
     if (!provider.workspace) {
       overrides.workspace = defaultMoatWorkspace(identity);
       frameworkManaged = true;
@@ -899,6 +939,7 @@ function getIdentity(ctx: BlockContext): ScopeIdentity {
     requestId: ctx.request.identity.id,
     userId: ctx.session.identity.userId,
     orgId: ctx.session.identity.orgId,
+    tenantId: ctx.session.identity.tenantId,
   };
 }
 

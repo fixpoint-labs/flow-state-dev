@@ -247,10 +247,7 @@ A grant is a credential MOAT holds for a third-party provider (GitHub, OpenAI, a
 ## Where the workspace lives
 
 With the local provider, each workspace is a directory under
-`.fsdev/workspaces/<scope>/<org>/<user>/<id>/`. The org and user come from the
-verified principal and are always part of the path, so two tenants that happen
-to name the same session or request never land in the same directory. `scope`
-decides who shares it beyond that:
+`.fsdev/workspaces/<scope>/<id>/`. `scope` decides who shares it:
 
 | `scope` | One workspace per | Reach for it when |
 | --- | --- | --- |
@@ -262,6 +259,13 @@ decides who shares it beyond that:
 ```ts
 createBashCapability({ provider: { type: "local", scope: "run" } });
 ```
+
+`run` and `session` also carry the tenant in their path
+(`.fsdev/workspaces/session/<tenant>/<id>/`). Their ids reach the tool from the
+request, so without it two tenants that happen to name the same session share a
+directory of files. `user` and `org` do not carry it: those scopes are shared
+across tenants by design, and a tenant segment would split the sharing they
+exist to provide.
 
 `scope` and `cwd` are alternatives, not a pair. `cwd` names one directory, so a
 scope beside it would separate nothing while saying it does; setting both

@@ -277,9 +277,10 @@ createBashTool({
 ### Where the workspace lives
 
 The local provider creates a workspace directory per scope, at
-`.fsdev/workspaces/<scope>/<org>/<user>/<id>/`. The org and user come from the
-verified principal and are always part of the path, so two tenants naming the
-same session or request never share a directory.
+`.fsdev/workspaces/<scope>/<id>/`. `run` and `session` carry the tenant as well
+(`.fsdev/workspaces/session/<tenant>/<id>/`), because their ids reach the tool
+from the request and two tenants can name the same one. `user` and `org` don't:
+those scopes are shared across tenants by design.
 
 | `scope` | One workspace per | Reach for it when |
 | --- | --- | --- |
