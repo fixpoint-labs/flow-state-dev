@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryPlace } from "../src/memory-place";
 import { createProjection, hashContent } from "../src/projection";
+import { PlaceUnreadableError } from "../src/types";
 import type { Mount } from "../src/types";
 import { createFakeCollection, type FakeCollection } from "./fake-collection";
 
@@ -373,6 +374,29 @@ describe("an unreadable place aborts the flush", () => {
 
     await expect(projection.flush()).rejects.toThrow(/permission denied/);
     expect(collection.contents()).toEqual({ "spec.md": "one" });
+  });
+
+  it("names itself, so a caller can tell it from a store that failed", async () => {
+    // The two call for opposite handling. A walk that failed decided nothing,
+    // so swallowing it loses nothing. A collection write that failed means the
+    // run's work never left the place, and a caller catching both alike
+    // reports success for a run whose files went nowhere.
+    const { projection, place } = setup({ "spec.md": "one" });
+    await projection.hydrate();
+    place.breakListing("find: permission denied");
+
+    await expect(projection.flush()).rejects.toBeInstanceOf(PlaceUnreadableError);
+  });
+
+  it("lets a failing collection write through unwrapped", async () => {
+    const { collection, projection, place } = setup({ "spec.md": "one" });
+    await projection.hydrate();
+    await place.write("artifacts/spec.md", "edited");
+    collection.breakWrites("store unavailable");
+
+    const rejection = await projection.flush().catch((e: unknown) => e);
+    expect(rejection).not.toBeInstanceOf(PlaceUnreadableError);
+    expect((rejection as Error).message).toMatch(/store unavailable/);
   });
 });
 

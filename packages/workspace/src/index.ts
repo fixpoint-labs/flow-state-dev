@@ -14,6 +14,7 @@ export { createMemoryPlace } from "./memory-place";
 export type { MemoryPlace } from "./memory-place";
 export { createHostPlace } from "./host-place";
 export type { HostPlace } from "./host-place";
+export { PlaceUnreadableError } from "./types";
 export type {
   FlushOutcome,
   FlushReport,
