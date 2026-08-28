@@ -1046,6 +1046,7 @@ describe("renderBoardPlain / watchExitCode", () => {
     expect(text).toContain("render.ts");
     expect(text).not.toMatch(/tool · Write \/tmp\/conductor-checkouts\/live-prove-30\/very/);
     expect(frame).toContain(`\x1b]8;;file://${longFile}`);
+    expect(frame).toContain(`\x1b]8;;file://${longTree}`);
     expect(text).not.toContain("\x1b]8;;");
   });
 
