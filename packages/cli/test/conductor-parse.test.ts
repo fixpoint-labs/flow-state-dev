@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { forwardConductorArgv } from "../src/commands/conductor";
 import { parseArgv, parseCommand } from "../src/conductor/parse";
 
 describe("parseCommand", () => {
@@ -40,6 +41,15 @@ describe("parseArgv", () => {
       mode: "headless",
       json: true,
       command: { kind: "status", issue: "FIX-1" },
+    });
+  });
+
+  it("puts Commander-owned --phase back on the line seed reads", () => {
+    const parsed = parseArgv(forwardConductorArgv(["seed", "FIX-1"], { phase: "review" }));
+    expect(parsed.invocation).toEqual({
+      mode: "headless",
+      json: false,
+      command: { kind: "seed", issue: "FIX-1", phase: "review" },
     });
   });
 });

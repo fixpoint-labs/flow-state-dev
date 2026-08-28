@@ -53,6 +53,7 @@ export function registerConductorCommand(program: Command): void {
     .option("-u, --user <id>", "Engine identity (default: cli-user)")
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("--json", "Headless verbs print JSON")
+    .option("--phase <phase>", "Phase for seed/start (default: implement)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.* in cwd)")
@@ -62,9 +63,7 @@ export function registerConductorCommand(program: Command): void {
     .addHelpText("after", `\n${HELP_TEXT}`)
     .action(async (args: string[] | undefined, options: ConductorCommandOptions) => {
       try {
-        const argv = [...(args ?? [])];
-        if (options.json === true) argv.push("--json");
-        process.exitCode = await executeConductorCommand(argv, options);
+        process.exitCode = await executeConductorCommand(forwardConductorArgv(args, options), options);
       } catch (err) {
         if (err instanceof CliError) {
           process.stderr.write(err.message + "\n");
@@ -82,6 +81,8 @@ export interface ConductorCommandOptions {
   user?: string;
   model?: string;
   json?: boolean;
+  /** Phase for `seed` / `start`. */
+  phase?: string;
   flowDir?: string[];
   dotenv?: string[];
   config?: string | boolean;
@@ -109,6 +110,23 @@ function isInteractive(options: ConductorCommandInternalOptions): boolean {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   return Boolean(input.isTTY && output.isTTY);
+}
+
+/**
+ * Rebuild the verb argv after Commander has taken its own flags.
+ * `--phase` and `--json` are registered on the command so they survive
+ * parse; they still have to be put back on the line `parseArgv` reads.
+ */
+export function forwardConductorArgv(
+  args: string[] | undefined,
+  options: Pick<ConductorCommandOptions, "json" | "phase">,
+): string[] {
+  const argv = [...(args ?? [])];
+  if (options.json === true) argv.push("--json");
+  if (options.phase !== undefined && options.phase !== "") {
+    argv.push("--phase", options.phase);
+  }
+  return argv;
 }
 
 /** Core execution. Separated so tests do not go through process.exit. */

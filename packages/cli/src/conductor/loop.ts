@@ -7,12 +7,12 @@
  */
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
-  answerQuestion,
-  readBoard,
-  seedIssue,
+  answerInput,
+  seedInput,
   startConductorAction,
   type ConductorDispatch,
 } from "./dispatch";
+import type { AnswerOutput, SeedOutput, StatusOutput } from "./types";
 import { applyKey, decodeKeys, rowAfterRefresh, type Key } from "./keys";
 import { renderFrame } from "./render";
 import {
@@ -67,6 +67,8 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   let pending = "";
   let closed = false;
   let abortInFlight: (() => void) | undefined;
+  let refreshSeq = 0;
+  let refreshInFlight = false;
   const transcript = createStreamTranscript();
 
   const size = () => ({
@@ -88,9 +90,18 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     paint();
   };
 
+  const runAction = <T>(action: "seed" | "wake" | "status" | "answer", input: unknown) => {
+    const running = startConductorAction<T>(options.dispatch, action, input, applyPatch);
+    abortInFlight = running.requestAbort;
+    return running.done;
+  };
+
   const refresh = async () => {
-    const result = await readBoard(options.dispatch, undefined, applyPatch);
-    state = applyStatus(state, result, now(), options.focusIssue);
+    const seq = ++refreshSeq;
+    const result = await runAction<StatusOutput>("status", {});
+    if (seq !== refreshSeq) return;
+    if (result.error !== undefined) throw new Error(result.error);
+    state = applyStatus(state, result.output ?? { rows: [] }, now(), options.focusIssue);
     endTurn();
   };
 
@@ -101,17 +112,16 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       switch (command.kind) {
         case "seed":
         case "start": {
-          const seeded = await seedIssue(options.dispatch, command.issue, command.phase, applyPatch);
+          const seeded = await runAction<SeedOutput>("seed", seedInput(command.issue, command.phase));
+          if (seeded.error !== undefined) throw new Error(seeded.error);
+          if (seeded.output === undefined) throw new Error("conductor seed returned no task id");
           endTurn();
-          state = pushActivity(state, `seeded ${command.issue} → ${seeded.taskId}`, now());
+          state = pushActivity(state, `seeded ${command.issue} → ${seeded.output.taskId}`, now());
           await refresh();
           break;
         }
         case "wake": {
-          const running = startConductorAction(options.dispatch, "wake", {}, applyPatch);
-          abortInFlight = running.requestAbort;
-          const result = await running.done;
-          abortInFlight = undefined;
+          const result = await runAction<unknown>("wake", {});
           if (result.error !== undefined) throw new Error(result.error);
           endTurn();
           state = pushActivity(state, "wake · drain ran", now());
@@ -119,19 +129,19 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           break;
         }
         case "answer": {
-          const answered = await answerQuestion(
-            options.dispatch,
-            command.question,
-            command.text,
-            applyPatch,
+          const answered = await runAction<AnswerOutput>(
+            "answer",
+            answerInput(command.question, command.text),
           );
+          if (answered.error !== undefined) throw new Error(answered.error);
+          if (answered.output === undefined) throw new Error("conductor answer returned nothing");
           endTurn();
           const label =
-            answered.result === "declined"
-              ? `answer declined · ${answered.reason ?? "refused"}`
-              : `answer ${answered.result}${answered.drained ? " · drain ran" : ""}`;
+            answered.output.result === "declined"
+              ? `answer declined · ${answered.output.reason ?? "refused"}`
+              : `answer ${answered.output.result}${answered.output.drained ? " · drain ran" : ""}`;
           state = pushActivity(state, label, now());
-          state = { ...state, notice: answered.result === "declined" ? answered.reason : null };
+          state = { ...state, notice: answered.output.result === "declined" ? answered.output.reason : null };
           await refresh();
           break;
         }
@@ -176,11 +186,16 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
 
     await new Promise<void>((resolve) => {
       const poll = setInterval(() => {
-        if (closed || state.busy) return;
-        void refresh().catch((err: unknown) => {
-          state = { ...state, notice: err instanceof Error ? err.message : String(err) };
-          paint();
-        });
+        if (closed || state.busy || refreshInFlight) return;
+        refreshInFlight = true;
+        void refresh()
+          .catch((err: unknown) => {
+            state = { ...state, notice: err instanceof Error ? err.message : String(err) };
+            paint();
+          })
+          .finally(() => {
+            refreshInFlight = false;
+          });
       }, pollMs);
 
       const finish = () => {

@@ -81,6 +81,18 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(status.text).toContain("completed");
   });
 
+  it("seeds a named phase onto the task id", async () => {
+    const seeded = capture();
+    const code = await executeConductorCommand(["seed", "ASK-1", "--phase", "review"], {
+      cwd: fixtureDir,
+      stores: createInMemoryStores(),
+      output: seeded.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(code).toBe(0);
+    expect(seeded.text).toContain("ASK-1--review");
+  });
+
   it("refuses a verb the parser does not know", async () => {
     await expect(
       executeConductorCommand(["nope"], {
