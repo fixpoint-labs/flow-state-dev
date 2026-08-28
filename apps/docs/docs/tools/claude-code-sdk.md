@@ -618,7 +618,7 @@ generator({
 });
 ```
 
-When the host decides to run it, step the sequencer. Same options as the capability. You cannot set `cwd`; the factory sets the working directory from `root`.
+To run it as a step, pass the sequencer to `.step`. Same options as the capability. You cannot set `cwd`; the factory sets the working directory from `root`.
 
 ```ts
 import { createWorkspaceAgent } from "@flow-state-dev/claude-code/sdk";
@@ -633,7 +633,7 @@ Input is `{ prompt: string }`. The step returns the same handle `claudeCodeAgent
 
 Each collection on the block's context is mounted at its pattern prefix, so one matching `artifacts/**` shows up at `<root>/artifacts/`. External collections and parameterized patterns are skipped. `collections` and `exclude` narrow the set. Pass `collections: []` to mount nothing; files already on disk at `root` stay there.
 
-Call the sequencer the factory returns. Running the inner agent on its own throws: no workspace is open for that run.
+Call the sequencer the factory returns.
 
 ### When two writers touch one file
 
@@ -661,5 +661,5 @@ The sandbox settings stop the run **writing** outside the workspace. A working d
 
 A third setting stops the run **leaving** the workspace. The SDK's worktree tools relocate a run mid-flight when the model asks for it, and a projection that filled one directory would then be reconciling a tree the run had already walked away from. Those tools are taken out of the run's reach.
 
-Set `settingSources` or `sandbox` yourself and yours wins. The disallowed tools merge instead, so adding your own doesn't quietly give the relocation ones back. `contain: false` turns all three off, which is what you want when you control everything in the workspace and nothing else. A checkout that is already a git worktree, and whose files must not be treated as collection mounts, takes `contain: false` and `collections: []`.
+Set `settingSources` or `sandbox` yourself and yours wins. The disallowed tools merge instead, so adding your own doesn't quietly give the relocation ones back. `contain: false` turns all three off. Use it when you already control the workspace. A checkout that is already a git worktree, and whose files must not be treated as collection mounts, takes `contain: false` and `collections: []`.
 

@@ -1,5 +1,6 @@
 /**
- * `createWorkspaceAgentCapability` — a coding run whose files are resources.
+ * `createWorkspaceAgent` / `createWorkspaceAgentCapability` — a coding run
+ * whose files are resources.
  *
  * The agent block on its own is handed a directory and left there: whatever it
  * writes stays on that disk, and nothing carries it back. This capability
@@ -283,15 +284,17 @@ export function containmentSandbox(root: string) {
 }
 
 /**
- * Create the workspace-agent capability.
+ * The workspace-agent chain as a sequencer step.
+ *
+ * Same hydrate → agent → flush as {@link createWorkspaceAgentCapability}.
+ * Use this when the caller *is* the coding run (a harness manager, a
+ * sequencer step) rather than a generator holding the chain as a tool.
  *
  * Every `claudeCodeAgent` option is forwarded except `cwd`, which this
- * capability owns: the directory is the projection's, and a caller setting it
+ * chain owns: the directory is the projection's, and a caller setting it
  * would point the run at a tree the projection never filled.
  */
-export function createWorkspaceAgentCapability(
-  options: WorkspaceAgentCapabilityOptions,
-) {
+export function createWorkspaceAgent(options: WorkspaceAgentCapabilityOptions) {
   const {
     root: resolveRoot,
     collections,
@@ -305,7 +308,7 @@ export function createWorkspaceAgentCapability(
     const root = (ctx.sequencer?.state as { root?: string | null } | undefined)?.root;
     if (typeof root !== "string" || root === "") {
       throw new Error(
-        "[workspace-agent] no workspace is open for this run — the agent block ran without its hydrate step. It is only usable inside the sequencer this capability builds.",
+        "[workspace-agent] no workspace is open for this run — the agent block ran without its hydrate step. It is only usable inside the sequencer this factory builds.",
       );
     }
     return root;
@@ -492,7 +495,7 @@ export function createWorkspaceAgentCapability(
       : {}),
   });
 
-  const workspaceAgent = sequencer({
+  return sequencer({
     name,
     description:
       "Run the Claude Code Agent SDK against a workspace projected from resource collections, and reconcile what it changed back into them.",
@@ -503,9 +506,20 @@ export function createWorkspaceAgentCapability(
     .tap(hydrateWorkspace)
     .step(agent)
     .tap(flushWorkspace);
+}
 
+/**
+ * Create the workspace-agent capability.
+ *
+ * Installs {@link createWorkspaceAgent} as a tool. A caller that wants the
+ * same chain as a sequencer step should call that factory instead.
+ */
+export function createWorkspaceAgentCapability(
+  options: WorkspaceAgentCapabilityOptions,
+) {
+  const workspaceAgent = createWorkspaceAgent(options);
   return defineCapability({
-    name,
+    name: options.name ?? "workspace-agent",
     // Declared HERE, not inherited from the blocks below. A capability's
     // `tools` do not carry resource declarations up to the flow — see
     // `./capability` for the full account of that seam.

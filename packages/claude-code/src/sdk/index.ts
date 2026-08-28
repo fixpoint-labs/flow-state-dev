@@ -81,8 +81,10 @@ export {
 } from "../shared/handle";
 
 export {
+  createWorkspaceAgent,
   createWorkspaceAgentCapability,
   containmentSandbox,
+  RELOCATION_TOOLS,
 } from "./workspace";
 export type {
   WorkspaceAgentCapabilityOptions,

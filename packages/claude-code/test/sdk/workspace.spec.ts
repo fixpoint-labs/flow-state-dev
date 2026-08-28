@@ -22,6 +22,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import { defineFlow, defineResourceCollection, generator } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
+  createWorkspaceAgent,
   createWorkspaceAgentCapability,
   containmentSandbox,
   discoverMountsForTest,
@@ -513,6 +514,25 @@ describe("createWorkspaceAgentCapability", () => {
     // The directory is still projected — containment and projection are
     // separate decisions.
     expect(options.cwd).toBe(base);
+
+    discard(base);
+  });
+
+  it("is the same chain as a sequencer step", async () => {
+    // A harness that IS the coding run cannot hold the chain as a tool.
+    const base = scratch();
+    const spy = vi.fn();
+    const block = createWorkspaceAgent({
+      resolveClaudeAgent: scriptedQuery(spy),
+      root: () => base,
+      contain: false,
+      collections: [],
+    });
+
+    expect(block.kind).toBe("sequencer");
+    await testBlock(block as never, { input: { prompt: "go" } });
+    expect(spy.mock.calls[0][0].options?.cwd).toBe(base);
+    expect("sandbox" in (spy.mock.calls[0][0].options ?? {})).toBe(false);
 
     discard(base);
   });

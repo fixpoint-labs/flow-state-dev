@@ -5,13 +5,12 @@
  * ## Why a file at all
  *
  * **The harness offers no seam for a question, and that was checked rather
- * than assumed.** `claudeCodeAgent`'s options are `model`, `systemPrompt`,
- * `allowedTools`, `disallowedTools`, `permissionMode`, `agents`, `maxTurns`,
- * `includePartialMessages`, `onToolApproval`, `detached`, `recordWork`, plus
- * LAB-138's per-run working directory. There is no MCP-server option and no
- * way to hand the run an FSD tool, so a conductor-owned "ask" tool the model
- * calls cannot be built without widening the framework — which LAB-138's
- * decision 3 rules out.
+ * than assumed.** The coding step is the workspace-agent chain, which
+ * forwards every `claudeCodeAgent` option except `cwd` (it owns the
+ * directory). There is still no MCP-server option and no way to hand the
+ * run an FSD tool, so a conductor-owned "ask" tool the model calls cannot
+ * be built without widening the framework — which LAB-138's decision 3
+ * rules out.
  *
  * So the question travels as a file the implement prompt names, written before
  * the run opens the PR. That is why the ask is **forced** rather than

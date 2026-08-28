@@ -15,6 +15,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -198,13 +199,48 @@ describe("the manager — the verdict at each exit", () => {
     expect(row.run?.prUrl).toBe("https://github.com/fixpoint-labs/flow-state-dev/pull/12");
     expect(row.run?.sessionId).toBe("sess_stub");
     expect(row.run?.costUsd).toBe(0.02);
-    // The run was given a checkout that is not the server's directory, and the
-    // row records the one it was given.
-    expect(seen.cwds[0]).toBe(row.run?.workspacePath);
+    // The run was given a checkout that is not the server's directory. The
+    // workspace chain hands the SDK the physical path; the row records the
+    // derived one, which is the same directory.
+    expect(seen.cwds[0]).toBe(realpathSync(row.run!.workspacePath!));
     expect(row.run?.workspacePath).toContain(conductorTaskId(ISSUE, PHASE));
     // Principal- and epic-namespaced: two users, or two epics, never share a ref.
     expect(row.run?.branch).toBe(
       `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${conductorTaskId(ISSUE, PHASE)}`,
+    );
+  });
+
+  it("runs the coding agent as a trusted workspace on that checkout", async () => {
+    // contain: false so Bash / git / gh can write the tree. Relocation tools
+    // stay off so the model cannot leave the checkout the operator is watching
+    // — which is the failure that looks like "bash did nothing".
+    const seen = {
+      cwds: [] as (string | undefined)[],
+      sandboxes: [] as unknown[],
+      disallowed: [] as (readonly string[] | undefined)[],
+    };
+    live = createConductorHarness({
+      resolveClaudeAgent: () => ({
+        query: async function* (args) {
+          seen.cwds.push(args.options?.cwd);
+          seen.sandboxes.push(args.options?.sandbox);
+          seen.disallowed.push(args.options?.disallowedTools);
+          yield sdkResult("success");
+        },
+      }),
+      isDone: () => ({
+        done: true,
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/12",
+      }),
+    });
+
+    const row = await seedAndDrain(live);
+
+    expect(row.status).toBe("completed");
+    expect(seen.cwds[0]).toBe(realpathSync(row.run!.workspacePath!));
+    expect(seen.sandboxes[0]).toBeUndefined();
+    expect(seen.disallowed[0]).toEqual(
+      expect.arrayContaining(["EnterWorktree", "ExitWorktree"]),
     );
   });
 

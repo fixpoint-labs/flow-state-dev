@@ -35,7 +35,11 @@ import type {
   BlockContext,
   DeclaredResourceEntry,
 } from "@flow-state-dev/core/types";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import {
+  createWorkspaceAgent,
+  RELOCATION_TOOLS,
+  claudeCodeAgent,
+} from "@flow-state-dev/claude-code/sdk";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
@@ -1397,16 +1401,28 @@ export function harnessManager(options: ManagerOptions) {
     .tap(openRun)
     .step(prepare)
     .step(
-      claudeCodeAgent({
+      createWorkspaceAgent({
         ...agent,
         // The board-construction shim: a detached board refuses a worker whose
         // block authors a session-state schema.
         detached: true,
         recordWork: true,
-        // The framework's one addition, and the reason this lab needs it: the
-        // run edits ITS checkout, and the record of what it touched is keyed
-        // there too.
-        cwd: (_input, ctx) => managerState(ctx).workspacePath!,
+        // The checkout is already on disk (a git worktree). This chain owns
+        // `cwd` so the agent, the place, and any sandbox stay on one resolved
+        // root — pointing `claudeCodeAgent` at a directory by itself is the
+        // half that leaves Bash writing a tree the operator is not watching.
+        //
+        // `contain: false` is the trusted-workspace door. The product tree is
+        // not assembled from user-writable collections, so the run may load
+        // the checkout's own CLAUDE.md, run git / gh, and write without a
+        // sandbox. Relocation tools stay disallowed so the model cannot leave
+        // the checkout the manager provisioned.
+        contain: false,
+        collections: [],
+        disallowedTools: [
+          ...new Set([...(agent?.disallowedTools ?? []), ...RELOCATION_TOOLS]),
+        ],
+        root: (_input, ctx) => managerState(ctx).workspacePath!,
       }),
       {
         // The cancellable-under-a-deadline obligation, met by a primitive core

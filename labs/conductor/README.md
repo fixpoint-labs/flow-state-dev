@@ -16,7 +16,9 @@ stops, reads what came back, and then closes the row or lets it run again.
 Two things make that supervision real:
 
 - **The checkout is the run's own.** Without one, a coding agent edits whatever directory the
-  server happens to sit in — which is the conductor's.
+  server happens to sit in — which is the conductor's. The coding step is the workspace
+  agent on that tree (`contain: false`, so Bash / git / gh can write it) and cannot
+  relocate into a different worktree.
 - **One place decides the verdict**, before the row is settled. A run that exhausts its turn
   budget or its spend does not fail: it finishes normally and reports the bad news *inside* its
   result. Anything that treats a normal finish as success records a run that produced nothing as

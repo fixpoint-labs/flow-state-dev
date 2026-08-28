@@ -697,7 +697,7 @@ pnpm conductor status ISSUE</pre>
         <path class="ln" d="M470,560 L470,578"/>
 
         <rect class="n-box" x="210" y="578" width="520" height="78" rx="4"/>
-        <text class="t-s" x="470" y="601" text-anchor="middle">claudeCodeAgent({ detached: true })</text>
+        <text class="t-s" x="470" y="601" text-anchor="middle">createWorkspaceAgent({ contain: false })</text>
         <text class="t-xs" x="470" y="620" text-anchor="middle">inputSchema { prompt } &middot; OWN SESSION &middot; OWN ITEMS &middot; NO SESSION STATE</text>
         <text class="t-xs" x="470" y="638" text-anchor="middle">detached IS A CONSTRUCTION SHIM &middot; THE RESUME HANDLE RIDES THE TASK (SECTION 06)</text>
 
@@ -757,7 +757,7 @@ export const conductor = <em>defineFlow</em>({
         <tr><td><code>dispatcher: "topological"</code></td><td><span class="tag t-real">exists</span></td><td>All three dispatchers respect <code>deps</code>: the collection's admission predicate enforces it, not the dispatcher. <code>fifo</code> and <code>topological</code> are byte-identical today, and <code>priority</code> adds only an <code>order</code> comparator. They differ in ordering among eligible tasks, and <code>topological</code> is chosen because it names the intent</td></tr>
         <tr><td>Routing by <code>assignee</code></td><td><span class="tag t-real">exists</span></td><td>A router. Worker input is <code>{ taskId, goal, title?, context?, input?, attempts, feedback?, metadata?, deps? }</code></td></tr>
         <tr><td>The harness manager</td><td><span class="tag t-real">exists</span></td><td><code>labs/conductor/src/manager.ts</code> provisions a workspace, starts the detached run, writes the run record, and settles or re-pends the row. It is the one block of substance this lab adds</td></tr>
-        <tr><td><code>claudeCodeAgent(options)</code></td><td><span class="tag t-real">exists</span></td><td>A factory returning a handler with <code>inputSchema: z.object({ prompt: z.string() })</code> &#8212; <em>not</em> <code>taskWorkerInputSchema</code>, so it is never a board worker directly. Options include <code>model, systemPrompt, allowedTools, permissionMode, maxTurns, onToolApproval</code></td></tr>
+        <tr><td><code>createWorkspaceAgent(options)</code></td><td><span class="tag t-real">exists</span></td><td>The coding step. Hydrate &#8594; <code>claudeCodeAgent</code> &#8594; flush, with <code>cwd</code> owned by the chain. Conductor passes <code>contain: false</code> (trusted checkout: real Bash / git / gh) and disallows the SDK worktree tools so the run cannot leave the tree the manager provisioned. <code>collections: []</code> &#8212; the product files are already on disk, not projected from flow collections</td></tr>
         <tr><td><code>dispatch: { mode: "detached" }</code></td><td><span class="tag t-real">exists</span></td><td>Needs <code>boardId</code> and a durable collection. Spawns via <code>requireRequestHost(ctx).startDetached({ seed, input, provenance })</code>; the parent returns immediately with the row <code>in_progress</code></td></tr>
         <tr><td><code>ctx.suspend(options)</code></td><td><span class="tag t-real">exists</span></td><td>Durable human gate. <code>{ reason, message?, data?, resumeSchema?, timeoutMs?, render?, allow? }</code>. Pauses the request that calls it &#8212; including inside a workstream, where nothing refuses the call and nothing upstream notices. Which is why a workstream's question cannot use it (section 6)</td></tr>
       </tbody>
@@ -1301,7 +1301,7 @@ export const inbox = <em>defineResourceCollection</em>({
       <thead><tr><th>Per turn, the manager</th><th>Status</th><th>Mechanism</th></tr></thead>
       <tbody>
         <tr><td>Provisions the workspace, once</td><td><span class="tag t-real">exists</span></td><td>Section 5's sub-flow. Idempotent per issue-phase. <code>labs/conductor/src/workspace.ts</code></td></tr>
-        <tr><td>Starts the run and lets the turn finish</td><td><span class="tag t-real">exists</span></td><td><code>claudeCodeAgent</code> runs the SDK's own agentic loop to completion and returns a handle carrying status, usage and cost. <code>maxTurns</code> bounds it</td></tr>
+        <tr><td>Starts the run and lets the turn finish</td><td><span class="tag t-real">exists</span></td><td><code>createWorkspaceAgent</code> runs the SDK's own agentic loop to completion against the provisioned checkout and returns a handle carrying status, usage and cost. <code>maxTurns</code> bounds it</td></tr>
         <tr><td>Reads the outcome</td><td><span class="tag t-real">exists</span></td><td>A terminal SDK subtype other than <code>"success"</code> is an <em>outcome</em>, not a throw &#8212; a handle with <code>status: "errored"</code> plus an error item. An SDK throw mid-stream is wrapped and rethrown</td></tr>
         <tr><td>Decides: settle, retry, wait, or ask</td><td><span class="tag t-real">exists</span></td><td><code>labs/conductor/src/manager.ts</code>. Its inputs are the handle, the done-condition, and the attempt count</td></tr>
         <tr><td>Posts a row to the inbox when it must ask</td><td><span class="tag t-real">exists</span></td><td>Writes <code>inbox/&lt;issue&gt;/&lt;phase&gt;/&lt;attempt&gt;/&lt;fingerprint&gt;</code>, then <strong>parks the task and ends its request</strong>, so nothing is held open while the question waits. <code>answer</code> brings the reply back as a new request and drains. Blocking in <code>awaiting_review</code> instead keeps the request open; that is not this lab. Relay watch and <code>steer</code> are still the later design</td></tr>
@@ -1819,7 +1819,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
   <div class="note">
     <span class="lbl">The one thing that makes this sequence work</span>
     <p><strong>The harness proof does not wait on the workspace layer</strong> &#8212; which is a narrower claim than it used to make here, and the narrowing matters. It does wait on four pieces of substrate it does not own: the send verb, the park, the wake, and the resume. Every issue in the set can finish and the Proof still will not run until those land. What it does not wait on is <em>files</em>. Its value is exposing surprises while they are still cheap, and the surprises live in the join &#8212; a run that asks something on its first turn, a done-condition that has to be re-evaluated rather than computed once, a liveness answer that is a hint rather than a fact. None of that needs a real workspace layer to show itself. It needs <code>git worktree add</code> plus a <code>cwd</code> pointed at the result &#8212; ordinary shell work, and the half that could have failed is measured: a probe on the workspaces spec branch confirmed that pointing a run at a directory relocates its filesystem, with the server&#8217;s own directory untouched.</p>
-    <p>So the provisioning that proof uses is <strong>explicitly throwaway</strong>, and saying so out loud is what stops it quietly becoming a second implementation. LAB-138 names the seam in its own scope: a deliberately small placeholder that workspaces' sub-PR <code>c</code> subsumes. Run the proof beside Relay rather than behind it, and the two meet in the middle.</p>
+    <p>Workspaces landed. The coding step is now that chain &#8212; <code>createWorkspaceAgent</code> on the existing git worktree, trusted (<code>contain: false</code>), with nothing projected into the product tree. The worktree itself stays this module's job: a place is not a branch. The throwaway half was pointing <code>claudeCodeAgent</code> at a directory by hand, which is what left Bash able to relocate out from under the tree the operator is watching.</p>
   </div>
 
   <div class="tw">
@@ -1842,9 +1842,9 @@ export const conductorConfig = <b>createConductorCapability</b>({
         </tr>
         <tr>
           <td><strong>Workspaces</strong><br><code>FIX-150</code></td>
-          <td><span class="tag t-real">spec approved</span></td>
-          <td>One file projection with a remembered baseline, both existing callers moved onto it, containment defaults for the coding path, and a per-run isolation scope. Subsumes the concurrent-flush data-loss bug</td>
-          <td>The harness manager's real provisioning, via sub-PR <code>c</code></td>
+          <td><span class="tag t-real">shipped</span></td>
+          <td>One file projection with a remembered baseline, both existing callers moved onto it, containment defaults for the coding path, and a per-run isolation scope. The harness manager's coding step is now that chain</td>
+          <td>A coding run whose Bash writes the checkout the operator is watching</td>
           <td>Nothing. Sub-PRs run <code>a</code>, then <code>b</code> and <code>c</code> in parallel, then <code>d</code></td>
         </tr>
         <tr>

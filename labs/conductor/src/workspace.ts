@@ -1,8 +1,10 @@
 /**
  * The run's own checkout: where it is, how it is made, and who holds it.
  *
- * Three things live here, and they are separable on purpose — FIX-150's
- * workspaces replace this module, not the manager's shape.
+ * Three things live here, and they are separable on purpose. FIX-150's
+ * workspace chain now owns the coding step (`createWorkspaceAgent` in the
+ * manager) — this module is still the git worktree: where it is, how it is
+ * cut, and who holds it. The projection does not do that work.
  *
  * 1. **Derivation.** Where an issue-phase's checkout is, as a pure function of
  *    the durable task. Never read back from anywhere.

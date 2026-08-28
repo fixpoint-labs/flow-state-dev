@@ -410,7 +410,7 @@ generator({
 });
 ```
 
-When the host decides to run it, step the sequencer. Same options as the
+To run it as a step, pass the sequencer to `.step`. Same options as the
 capability. You cannot set `cwd`; the factory sets the working directory from
 `root`.
 
@@ -433,8 +433,7 @@ External collections and parameterized patterns are skipped. Narrow the set
 with `collections` or `exclude`. Pass `collections: []` to mount nothing;
 files already on disk at `root` stay there.
 
-Call the sequencer the factory returns. Running the inner agent on its own
-throws: no workspace is open for that run.
+Call the sequencer the factory returns.
 
 After the run, what changed goes back to the collection it came from — unless
 something else changed the same file while the run held it. Then nothing is
@@ -485,10 +484,9 @@ answering different halves of the same question:
 Set `settingSources` or `sandbox` yourself and yours wins — containment is a
 default, not a lock. `disallowedTools` merges instead, so adding your own
 doesn't silently take the relocation ones away. `contain: false` turns all
-three off, which is what a trusted-workspace deployment wants and what nothing
-else should. A checkout that is already a git worktree, and whose files must
-not be treated as collection mounts, takes `contain: false` and
-`collections: []`.
+three off. Use it when you already control the workspace. A checkout that is
+already a git worktree, and whose files must not be treated as collection
+mounts, takes `contain: false` and `collections: []`.
 
 ## Limitations
 
