@@ -314,7 +314,7 @@ describe("boardQuiescence - work handed to a Workstream", () => {
   );
 
   it("keeps a parked detached row holding the drain, and says so on purpose", async () => {
-    // A documented bound, not an oversight: `awaiting_review` waits on an
+    // A documented bound, not an oversight: `parked` waits on an
     // external actor whichever way the row was dispatched, so it is left alone.
     // Pinned here so removing the limit is a deliberate edit to this line
     // rather than a silent widening of the exclusion.

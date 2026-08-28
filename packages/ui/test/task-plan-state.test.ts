@@ -149,7 +149,7 @@ describe("extractTaskPlanState", () => {
         errored: 0,
         cancelled: 0,
         blocked: 0,
-        awaiting_review: 0,
+        parked: 0,
         in_progress: 0,
         pending: 0,
       }),
@@ -342,7 +342,7 @@ describe("discoverCollections", () => {
 describe("humanizeStatus", () => {
   it.each([
     ["in_progress", "In progress"],
-    ["awaiting_review", "Awaiting review"],
+    ["parked", "Parked"],
     ["needs-revision", "Needs revision"],
     ["planning", "Planning"],
     ["", ""],

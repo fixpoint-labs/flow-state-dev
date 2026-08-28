@@ -189,7 +189,7 @@ describe("retry budget — the boundary lands exactly the budget's worth", () =>
 });
 
 describe("retry budget — the denial is scoped to attempt-owned failures", () => {
-  // `errored` is reachable from `in_progress` and `awaiting_review` and from
+  // `errored` is reachable from `in_progress` and `parked` and from
   // NEITHER `pending` nor `blocked`. The routing predicate is status-blind, so
   // without this gate a `fail()` on a pending/blocked task carrying
   // `maxAttempts` would attempt an illegal transition and THROW instead of

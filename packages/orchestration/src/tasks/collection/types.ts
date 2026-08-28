@@ -31,7 +31,7 @@ import type { TaskWriteToken } from "../write-provenance";
  * - `disallowed` — the state machine rejects the move from a **non**-terminal
  *   status (`pending → errored`, `blocked → errored`).
  * - `parked` — the caller passed `refuseWhenParked` and the task is sitting in
- *   `awaiting_review`. **Not a lost claim:** nobody took the row, the attempt
+ *   `parked`. **Not a lost claim:** nobody took the row, the attempt
  *   still owns it, and a person is deciding what happens to it. The recoveries
  *   are opposite — `lost-claim` says re-claim and redo, `parked` says do
  *   neither, because the work is done.
@@ -55,7 +55,7 @@ import type { TaskWriteToken } from "../write-provenance";
  * **Where `parked` sits, and the one case it takes from `lost-claim`.** It is
  * evaluated after the transition arms and before the ownership arms. For the
  * caller it is meant for — a worker reporting the result of its own run — the
- * two never compete: `awaiting_review` is an attempt-owned status and the lease
+ * two never compete: `parked` is an attempt-owned status and the lease
  * does not govern it, so neither ownership arm fires and the order is
  * immaterial. They overlap on one narrow row: a *displaced* attempt writing to
  * a task that was parked, resumed, re-claimed, and parked again reports
@@ -235,7 +235,7 @@ export interface TaskTransitionOptions {
    *   is why it replaced one.
    * - **Do I still hold it?** Declines `lost-claim` unless `task.attempts`
    *   equals the ticket's attempt *and* the task is still `in_progress` or
-   *   `awaiting_review`. The status half is not belt-and-braces: `reclaim()`
+   *   `parked`. The status half is not belt-and-braces: `reclaim()`
    *   returns a task to `pending` without advancing `attempts`, so between a
    *   reclaim and the next claim a displaced worker matches the counter by
    *   construction — and since `blocked` is reachable only from `pending`, a
@@ -253,8 +253,8 @@ export interface TaskTransitionOptions {
    * result recorders are the ones in tree. A worker that called `awaitReview()`
    * on the task it was holding has handed that task to a person and owes the
    * substrate no result, but nothing else refuses its write-back on the way out:
-   * `awaiting_review` is a status the attempt still owns, and both
-   * `awaiting_review → completed` and `→ errored` are legal. So the settlement
+   * `parked` is a status the attempt still owns, and both
+   * `parked → completed` and `→ errored` are legal. So the settlement
    * would land and erase the park, and a failure with retries left would go
    * further and re-queue the row for a sibling worker while the person is still
    * being asked.

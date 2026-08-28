@@ -13,13 +13,43 @@ export const taskStatusSchema = z.enum([
   "pending",
   "in_progress",
   "blocked",
-  "awaiting_review",
+  "parked",
   "completed",
   "errored",
   "cancelled",
 ]);
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
+
+/**
+ * The member `parked` replaced (FIX-1245). Rows persisted before that change
+ * still carry it, so it stays readable — as a value on the way in, never one a
+ * caller may write.
+ */
+const LEGACY_PARKED_STATUS = "awaiting_review";
+
+/**
+ * The status as it is read back off a **persisted** row: `taskStatusSchema`,
+ * plus the legacy member mapped forward.
+ *
+ * This is not politeness about a name. Persisted resource state is parsed on
+ * every read, and a value that fails its schema is never surfaced — the engine
+ * substitutes the resource's default (`normalizeResourceState`). An enum that
+ * simply dropped the old member would therefore not mislabel a task written
+ * before the rename; it would silently reset the whole collection instance.
+ *
+ * The mapping is a **fixed point**, which is what makes it safe to use on a
+ * persisted schema at all: `assertStableResourceState` re-parses any value a
+ * schema rewrote and rejects the write if the second parse moves it again.
+ * Parsing `parked` yields `parked`, so the second parse is a no-op.
+ *
+ * Use this wherever a stored row is decoded. Use {@link taskStatusSchema} for
+ * everything a caller writes or a type is derived from.
+ */
+export const persistedTaskStatusSchema = z.preprocess(
+  (value) => (value === LEGACY_PARKED_STATUS ? "parked" : value),
+  taskStatusSchema
+);
 
 const TERMINAL_STATUSES = new Set<TaskStatus>(["completed", "errored", "cancelled"]);
 
@@ -30,9 +60,9 @@ export function isTerminalStatus(status: TaskStatus): boolean {
 
 const ALLOWED_TRANSITIONS: Record<TaskStatus, ReadonlyArray<TaskStatus>> = {
   pending: ["in_progress", "blocked", "cancelled"],
-  in_progress: ["completed", "errored", "awaiting_review", "pending", "cancelled"],
+  in_progress: ["completed", "errored", "parked", "pending", "cancelled"],
   blocked: ["pending", "cancelled"],
-  awaiting_review: ["pending", "completed", "cancelled", "errored"],
+  parked: ["pending", "completed", "cancelled", "errored"],
   completed: [],
   errored: [],
   cancelled: [],

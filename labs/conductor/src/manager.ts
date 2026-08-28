@@ -1061,7 +1061,7 @@ export function harnessManager(options: ManagerOptions) {
    * 1. **The verdict did NOT fail AND this attempt's marker holds a question →
    *    park.** `awaitReview`, announce, then return normally. The recorders
    *    refuse a parked row, so the workstream request ends with the row still
-   *    `awaiting_review` and the run costs nothing while a person thinks.
+   *    `parked` and the run costs nothing while a person thinks.
    * 2. **The verdict succeeded AND the done-condition holds → return.**
    * 3. **Anything else → throw**, withdrawing this attempt's question first: the
    *    attempt failed, so its question is moot, and leaving it open means an

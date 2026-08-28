@@ -120,7 +120,7 @@ export function isHandedOff(
  * - a `pending` detached row is work this drain has yet to claim and dispatch,
  *   so excluding it would let the drain exit *before* spawning anything — the
  *   feature inverted into a board that silently runs nothing;
- * - an `awaiting_review` row is parked for an external actor whichever way it
+ * - a `parked` row is parked for an external actor whichever way it
  *   was dispatched, so the *routing* exclusion never reaches it. Whether that
  *   row holds the drain open is a different question with a different answer,
  *   asked by `excuseParked` below.
@@ -128,7 +128,7 @@ export function isHandedOff(
  * ## The second exclusion: rows parked for a human
  *
  * `excuseParked` (FIX-1234) is the board's `onReview: "exit"` mode reaching
- * this count. It drops `awaiting_review` rows, and it is a **predicate of its
+ * this count. It drops `parked` rows, and it is a **predicate of its
  * own beside** the routing one rather than a widening of it, because the two
  * answer different questions. `runsElsewhere` asks *where this row's work
  * belongs*, derived from the board's detached declarations. This one asks
@@ -200,7 +200,7 @@ function countWaitable(
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
     if (isHandedOff(row, now, runsElsewhere)) continue;
-    if (excuseParked && row.status === "awaiting_review") {
+    if (excuseParked && row.status === "parked") {
       excusedParked = true;
       continue;
     }
@@ -222,7 +222,7 @@ function countWaitable(
  *
  * A flag rather than a count, because every reader asks only whether the
  * exclusion fired. How many rows are parked is already on the completion item
- * as `counts.awaiting_review`, read fresh, which is the number a caller
+ * as `counts.parked`, read fresh, which is the number a caller
  * actually wants.
  */
 export interface WaitableCount {
@@ -234,7 +234,7 @@ export interface WaitableCount {
 
 /**
  * Count tasks the loop must wait on. `pending`, `in_progress`, and
- * `awaiting_review` are all in-flight — `awaiting_review` per FIX-443
+ * `parked` are all in-flight — `parked` per FIX-443
  * §10.1, the others by definition. Terminal statuses don't count.
  *
  * `runsElsewhere` (FIX-982) drops the rows a Workstream is running;
@@ -249,7 +249,7 @@ export function inFlightCount(
 ): WaitableCount {
   return countWaitable(
     collection,
-    ["pending", "in_progress", "awaiting_review"],
+    ["pending", "in_progress", "parked"],
     runsElsewhere,
     excuseParked
   );
@@ -257,7 +257,7 @@ export function inFlightCount(
 
 /**
  * Count the rows an active worker is holding — `in_progress` or
- * `awaiting_review`. The `complete-or-blocked` arm reads this to ask whether
+ * `parked`. The `complete-or-blocked` arm reads this to ask whether
  * anything is still producing state changes *in this drain*.
  *
  * Split out of `boardQuiescence`'s inline `count` so it takes the same
@@ -280,7 +280,7 @@ export function activeWorkerCount(
 ): WaitableCount {
   return countWaitable(
     collection,
-    ["in_progress", "awaiting_review"],
+    ["in_progress", "parked"],
     runsElsewhere,
     excuseParked
   );

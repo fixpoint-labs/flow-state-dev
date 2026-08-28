@@ -781,7 +781,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async awaitReview(id, feedback, options) {
       return transitionRef(
         id,
-        "awaiting_review",
+        "parked",
         "review_requested",
         () => (feedback !== undefined ? { feedback } : {}),
         options

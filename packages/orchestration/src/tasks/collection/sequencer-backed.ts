@@ -648,7 +648,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     async awaitReview(id, feedback, options) {
       return transitionTo(
         id,
-        "awaiting_review",
+        "parked",
         "review_requested",
         () => (feedback !== undefined ? { feedback } : {}),
         options

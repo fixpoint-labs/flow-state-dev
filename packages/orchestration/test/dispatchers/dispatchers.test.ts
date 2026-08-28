@@ -2,7 +2,7 @@
  * Dispatcher eligibility tests against an in-memory sequencer-backed
  * collection. Each standard dispatcher is exercised against a mixed-
  * status task set + a HITL-status check (every dispatcher must skip
- * `awaiting_review` per FIX-443 §10.1).
+ * `parked` per FIX-443 §10.1).
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -46,7 +46,7 @@ describe("fifoDispatcher", () => {
     expect(claimed?.id).toBe("second");
   });
 
-  it("skips awaiting_review tasks", async () => {
+  it("skips parked tasks", async () => {
     const c = buildCollection();
     await c.addTask({ id: "review-me", goal: "r" });
     await c.claim("w");
@@ -99,7 +99,7 @@ describe("topologicalDispatcher", () => {
     expect(winners[0]?.id).toBe("d");
   });
 
-  it("skips awaiting_review tasks", async () => {
+  it("skips parked tasks", async () => {
     const c = buildCollection();
     await c.addTask({ id: "a", goal: "a" });
     await c.claim("w");
@@ -136,7 +136,7 @@ describe("priorityDispatcher", () => {
     expect(claimed?.id).toBe("u");
   });
 
-  it("skips awaiting_review tasks", async () => {
+  it("skips parked tasks", async () => {
     const c = buildCollection();
     await c.addTask({ id: "hi", goal: "hi", priority: 9 });
     await c.claim("w");
@@ -173,7 +173,7 @@ describe("classifierDispatcher", () => {
     expect(claimed).toBeNull();
   });
 
-  it("filters awaiting_review tasks before passing to classify", async () => {
+  it("filters parked tasks before passing to classify", async () => {
     const c = buildCollection();
     await c.addTask({ id: "review-me", goal: "r" });
     await c.claim("w");
@@ -245,7 +245,7 @@ describe("eventDispatcher", () => {
     expect((await dispatcher.claim(c, "w2", fakeCtx))?.id).toBe("a");
   });
 
-  it("skips awaiting_review tasks", async () => {
+  it("skips parked tasks", async () => {
     const c = buildCollection();
     await c.addTask({ id: "x", goal: "x", metadata: { topic: "t" } });
     await c.claim("w");

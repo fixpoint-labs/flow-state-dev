@@ -94,10 +94,10 @@ const DEFAULT_STATUS_CONFIG: Record<string, StatusConfig> = {
     iconClassName: "text-amber-500",
     label: "Blocked",
   },
-  awaiting_review: {
+  parked: {
     icon: EyeIcon,
     iconClassName: "text-cyan-500",
-    label: "Awaiting review",
+    label: "Parked",
   },
   completed: {
     icon: CheckCircle2Icon,
@@ -274,7 +274,7 @@ export function TaskPlan({
         entry.task.status !== "pending" &&
         entry.task.status !== "in_progress" &&
         entry.task.status !== "blocked" &&
-        entry.task.status !== "awaiting_review"
+        entry.task.status !== "parked"
     );
   }, [state.boardMeta.status, state.tasks]);
 
@@ -564,7 +564,7 @@ function TaskPlanRow({
   const showFeedback =
     task.feedback !== undefined &&
     (task.status === "blocked" ||
-      task.status === "awaiting_review" ||
+      task.status === "parked" ||
       entry.kind === "retried");
   const deps = formatDeps(task);
 

@@ -5,7 +5,7 @@
  * per-task worker routing. The unified Plan/Task primitive's canonical
  * validation case: dispatch is CAS-safe, workers are routed by
  * `task.assignee`, mid-drain enqueues are picked up automatically, and
- * `awaiting_review` is correctly handled (skip + wait) for the HITL
+ * `parked` is correctly handled (skip + wait) for the HITL
  * forward-compat surface that ships in Wave 2.
  *
  * ## Pipeline shape
@@ -48,10 +48,10 @@
  *   two outcomes apart without inspecting `counts`.
  *
  * - `onIdle: 'complete'`: exit only when no `pending`, `in_progress`,
- *   or `awaiting_review` tasks remain. Legacy default. Use when a
+ *   or `parked` tasks remain. Legacy default. Use when a
  *   pending task with a non-completed dep is a transient state an
  *   external pump will eventually resolve.
- *   `awaiting_review` keeps the loop alive — workers idle-poll until
+ *   `parked` keeps the loop alive — workers idle-poll until
  *   an external actor transitions the task out.
  *
  * - `onIdle: 'wait'`: never exit on drained-ness. Defer to
@@ -59,7 +59,7 @@
  *   `maxIterations` trips.
  *
  * `onReview` is the second, independent knob (FIX-1234). On the default
- * `'hold'` an `awaiting_review` task holds the drain open in every mode
+ * `'hold'` a `parked` task holds the drain open in every mode
  * above. On `'exit'` it does not: parked rows are excused from the
  * board's waitable count, the drain returns reporting
  * `terminationReason: "parked-for-review"`, and the task stays parked
@@ -463,7 +463,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    *   `terminationReason` field distinguishes `"all-completed"` from
    *   `"blocked-by-failures"`.
    * - `"complete"`: exit only when no `pending`, `in_progress`, or
-   *   `awaiting_review` tasks remain. Pre-FIX-626 default; preserved
+   *   `parked` tasks remain. Pre-FIX-626 default; preserved
    *   for boards that wait on an external pump to mark deps complete.
    * - `"wait"`: never auto-exit; defer to `shouldExit`. Long-running
    *   session-scoped boards.
@@ -474,7 +474,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * What the board does when the only work left is parked for review
    * (FIX-1234). Default `"hold"`.
    *
-   * - `"hold"`: an `awaiting_review` task keeps the drain open, and the
+   * - `"hold"`: a `parked` task keeps the drain open, and the
    *   launching request with it, until an external actor moves the task out.
    *   What every board does today.
    * - `"exit"`: a parked task is not this drain's to wait on. The drain
@@ -524,7 +524,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
    * Sleep duration when a worker's claim returns null. Bounds the
    * busy-wait cost while waiting for new pending tasks (or for an
-   * `awaiting_review` task to be resumed). Default: 50ms.
+   * `parked` task to be resumed). Default: 50ms.
    */
   idlePollMs?: number;
 

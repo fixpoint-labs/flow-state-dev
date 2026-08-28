@@ -234,7 +234,7 @@ interface ClaimView {
  * claim a displaced worker matches the counter by construction. This mirrors
  * the substrate's own `ATTEMPT_OWNED_STATUSES` rather than guessing at it.
  */
-const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "awaiting_review"]);
+const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "parked"]);
 
 /**
  * The substrate's lease rule, mirrored here for the same reason
@@ -250,7 +250,7 @@ const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "awaiting_review"]);
  * remove, so the conjunct is taken from the same rule rather than reasoned
  * about separately.
  *
- * Only `in_progress` rows can lapse. A parked (`awaiting_review`) row is
+ * Only `in_progress` rows can lapse. A `parked` row is
  * waiting on a person, not on a lease, so its writes still apply — which is the
  * behaviour the substrate has too.
  *

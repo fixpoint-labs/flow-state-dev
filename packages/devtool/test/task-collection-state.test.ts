@@ -77,7 +77,7 @@ function meta(options: {
         pending: 0,
         in_progress: 0,
         blocked: 0,
-        awaiting_review: 0,
+        parked: 0,
         completed: options.total,
         errored: 0,
         cancelled: 0,

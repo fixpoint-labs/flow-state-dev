@@ -4,7 +4,7 @@
  * refuses the resumed re-entry, and the row is stranded permanently.
  *
  * The composition looks safe on paper: `awaitReview` moves the row to
- * `awaiting_review`, which the lease deliberately does not govern
+ * `parked`, which the lease deliberately does not govern
  * (`leaseLapsed` is scoped to `in_progress` — see `tasks/collection/internal.ts`),
  * so the row survives an arbitrarily long human pause without being reclaimed.
  * `ctx.suspend()` keeps `recordSuccess` from stomping the row to `completed` on
@@ -15,11 +15,11 @@
  * it re-executes in full on every re-entry, including a `continueRequest`
  * resume of ITS OWN suspended dispatch, not just a genuinely fresh dispatch.
  * The gate's identity check requires `row.status === "in_progress"`
- * unconditionally; `awaitReview` already moved it to `awaiting_review`, so the
+ * unconditionally; `awaitReview` already moved it to `parked`, so the
  * gate throws `StaleDetachedClaimError` before the worker (and therefore
  * `recordSuccess`) is ever reached again. `recordError`'s `fail()` write is
- * itself declined (`awaiting_review → failed` is not a legal transition), so
- * the row is left at `awaiting_review` — silently, since the outer request
+ * itself declined (`parked → failed` is not a legal transition), so
+ * the row is left at `parked` — silently, since the outer request
  * still resolves as `error: undefined`. See the resumed-write-back test below
  * for the exact error text and the ANTI-GAME test for a real ABA the fence
  * DOES catch, pinning that the harness can produce a genuine decline.
@@ -186,7 +186,7 @@ function buildScenario() {
   // review back to `pending` and lets a different worker claim it (bumping
   // `attempts`), so we can confirm this harness produces a real decline rather
   // than being unable to fail at all. `resumeFromReview` + `claim`, NOT
-  // `reclaim()` — an `awaiting_review` row is lease-exempt, as the first test
+  // `reclaim()` — a `parked` row is lease-exempt, as the first test
   // shows, so the reclaim path is unreachable from here.
   const bump = handler({
     name: "bump-attempts",
@@ -273,7 +273,7 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
 
       // === OBSERVATION A ===
       const afterSuspend = await durableRow(stores, "t1");
-      expect(afterSuspend?.status).toBe("awaiting_review");
+      expect(afterSuspend?.status).toBe("parked");
       expect(childRecord?.status).toBe("suspended");
 
       // === OBSERVATION B === force the lease window to have lapsed (a real
@@ -293,9 +293,9 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
         reclaimedCount: number;
         statusAfter: string;
       };
-      expect(probeOut.statusBefore).toBe("awaiting_review");
+      expect(probeOut.statusBefore).toBe("parked");
       expect(probeOut.reclaimedCount).toBe(0); // NOT reclaimed
-      expect(probeOut.statusAfter).toBe("awaiting_review"); // untouched
+      expect(probeOut.statusAfter).toBe("parked"); // untouched
 
       // === OBSERVATION C === resume via continueRequest with the persisted
       // {requestId, suspensionId} and see whether the fenced write-back lands.
@@ -326,14 +326,14 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
       // `awaitReview` already moved its status off `in_progress`. The worker
       // (and therefore `recordSuccess`'s `complete()`) is never reached.
       expect((resumed.output as { error?: string } | undefined)?.error).toContain(
-        'the row is "awaiting_review", so no claim is outstanding on it'
+        'the row is "parked", so no claim is outstanding on it'
       );
       // `recordError`'s own `fail()` write-back is itself declined
-      // (`awaiting_review -> failed` is not a legal transition), so the row is
+      // (`parked -> failed` is not a legal transition), so the row is
       // left exactly where the human review left it — NOT `completed`, and
       // NOT `errored` either. Nothing further will ever touch this attempt:
       // the outer request has already resolved.
-      expect(afterResume?.status).toBe("awaiting_review");
+      expect(afterResume?.status).toBe("parked");
       expect(resumed.error).toBeUndefined();
       expect(resumedRecord?.status).toBe("completed");
     },
@@ -350,7 +350,7 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
       //
       // **Two things this does NOT do, both of which earlier prose claimed.**
       // It does not `reclaim()`: the test above establishes that an
-      // `awaiting_review` row is ineligible for reclamation, so a real
+      // `parked` row is ineligible for reclamation, so a real
       // lease-reclaim is not reachable from this state at all. And the refusal
       // comes from the start gate's `attempts` conjunct
       // (`detached-runner.ts`), not from a fenced write-back — the worker never
@@ -435,7 +435,7 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
       // and its whole job is to show the harness can produce a real decline
       // rather than being green whatever happens. A broken fence would let the
       // worker re-enter `awaitReview` and suspend again, leaving the row at
-      // `awaiting_review` — also "not completed". So it passed in both worlds.
+      // `parked` — also "not completed". So it passed in both worlds.
       //
       // Asserted on the decline the fence actually emits, read from a run
       // rather than guessed: the ATTEMPT fence fires here, not the status gate

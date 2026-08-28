@@ -32,7 +32,7 @@ export type TaskStatus =
   | "pending"
   | "in_progress"
   | "blocked"
-  | "awaiting_review"
+  | "parked"
   | "completed"
   | "errored"
   | "cancelled"
@@ -84,7 +84,7 @@ export type BoardCounts = {
   pending: number;
   in_progress: number;
   blocked: number;
-  awaiting_review: number;
+  parked: number;
   completed: number;
   errored: number;
   cancelled: number;

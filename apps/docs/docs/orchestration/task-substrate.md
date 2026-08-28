@@ -61,16 +61,16 @@ pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ errored
          │                ├─→ pending           (reclaim, after a stale lease)
          │                ├─→ cancelled
-         │                └─→ awaiting_review ─┬─→ completed
-         │                                     ├─→ errored
-         │                                     ├─→ pending    (resumeFromReview)
-         │                                     └─→ cancelled
+         │                └─→ parked ─┬─→ completed
+         │                            ├─→ errored
+         │                            ├─→ pending    (resumeFromReview)
+         │                            └─→ cancelled
          ├─→ blocked ─┬─→ pending               (unblock)
          │            └─→ cancelled
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
+`completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `blocked`, and `parked` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
 
 Anything not on that diagram is refused. You cannot drop a `completed` task back into `in_progress`; the call throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
 
@@ -89,7 +89,7 @@ import {
 
 isTerminalStatus("completed"); // true
 isTransitionAllowed("pending", "completed"); // false — must go through in_progress
-allowedTransitionsFrom("in_progress"); // ["completed", "errored", "awaiting_review", "pending", "cancelled"]
+allowedTransitionsFrom("in_progress"); // ["completed", "errored", "parked", "pending", "cancelled"]
 ```
 
 ### Soft fail vs hard fail
@@ -179,7 +179,7 @@ await tasks.complete(task.id, output, {
 
 `ifAllowed` asks whether the task can take this write right now. It declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else recorded, and when the state machine has no transition from the task's current status to the one the call targets.
 
-`refuseWhenParked` is a third guard, for the caller reporting the result of its own run. It declines with reason `parked` when the task is sitting in `awaiting_review`, and it is worth having because nothing else refuses that write: `awaiting_review` is a status your attempt still owns, and both `awaiting_review → completed` and `awaiting_review → errored` are legal moves. So a worker that parked the task it was holding and then finished would settle it a moment later and erase the review — and if the task carries `maxAttempts`, a failure would re-queue it for another worker while the person is still being asked. Pass it on `complete` and `fail` when the work you are reporting is your own:
+`refuseWhenParked` is a third guard, for the caller reporting the result of its own run. It declines with reason `parked` when the task is sitting in `parked`, and it is worth having because nothing else refuses that write: `parked` is a status your attempt still owns, and both `parked → completed` and `parked → errored` are legal moves. So a worker that parked the task it was holding and then finished would settle it a moment later and erase the review — and if the task carries `maxAttempts`, a failure would re-queue it for another worker while the person is still being asked. Pass it on `complete` and `fail` when the work you are reporting is your own:
 
 ```ts
 await tasks.complete(task.id, output, {
@@ -196,12 +196,12 @@ A legal status transition is necessary but not sufficient. A verb that owns a si
 | Returning a task to `pending` from | Call |
 |------------------------------------|------|
 | `blocked` | `unblock(id)` |
-| `awaiting_review` | `resumeFromReview(id, feedback?)` |
+| `parked` | `resumeFromReview(id, feedback?)` |
 | `in_progress`, once its lease has expired | `reclaim()` |
 
 `unblock` runs on a blocked task and refuses every other status, raising the same `IllegalTaskTransitionError` an illegal transition raises, or declining with reason `disallowed` when you passed `ifAllowed`. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `resumeFromReview`, which clears its lease on the way.
 
-`claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `awaiting_review`). Two refusals come out of it, and they mean different things:
+`claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `parked`). Two refusals come out of it, and they mean different things:
 
 - The ticket names a different task, a different board, or an id that has since been reused for a new task: `not-my-task`. Nothing about the target's state can make that write legal.
 - The ticket names the right task but a claim that has moved on, or an `in_progress` task whose lease has run out: `lost-claim`. Somebody else holds it now, or is entitled to.
@@ -214,7 +214,7 @@ A skipped write resolves to `{ outcome: "declined", reason, status }` instead of
 
 While a task is `in_progress`, your writes are good for as long as you hold the lease. Present a ticket after the deadline has passed and the write is declined `lost-claim`, the same as any other lost claim, because by then the task is the queue's to hand out again. That is the reason to size a lease to the job it covers.
 
-The lease answers one question: is a live worker on this right now? A task in `awaiting_review` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: a `resumeFromReview` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
+The lease answers one question: is a live worker on this right now? A task in `parked` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: a `resumeFromReview` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
 
 With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing, because it runs the terminal check whether you pass options or not.
 
@@ -244,7 +244,7 @@ type TaskWriteOutcome =
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
-- `parked` — you passed `refuseWhenParked` and the task is sitting in `awaiting_review`. This is not a lost claim: nobody took the task from you, and a person is deciding what happens to it. The two ask for opposite responses, which is why they are separate reasons — `lost-claim` means re-claim the task and redo the work, `parked` means do neither, because the work is done.
+- `parked` — you passed `refuseWhenParked` and the task is sitting in `parked`. This is not a lost claim: nobody took the task from you, and a person is deciding what happens to it. The two ask for opposite responses, which is why they are separate reasons — `lost-claim` means re-claim the task and redo the work, `parked` means do neither, because the work is done.
 - `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it, or its lease ran out while it was still `in_progress`.
 
 When more than one condition applies, `reason` reports the first that holds in that order: `immutable-assignee`, then `terminal`, then `not-my-task`, then `disallowed`, then `parked`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.

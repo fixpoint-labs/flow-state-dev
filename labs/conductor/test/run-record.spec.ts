@@ -249,7 +249,7 @@ describe("the run record — obligation A", () => {
     await board.upsert(TASK, claimed(1));
     await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
     await board.upsert(TASK, {
-      ...claimed(1, "awaiting_review"),
+      ...claimed(1, "parked"),
       leaseUntil: Date.now() - 1_000,
     });
 

@@ -488,7 +488,7 @@ describe("termination ladder — equivalence with the pre-FIX-1234 classifier", 
       const collection = freshCollection();
       const runsElsewhere = await shape.build(collection);
       // Nothing parked — the precondition this property is scoped to.
-      expect(collection.count({ status: "awaiting_review" })).toBe(0);
+      expect(collection.count({ status: "parked" })).toBe(0);
 
       const expected = legacyReason(collection, runsElsewhere);
       // `plainExit` is the only pool output these boards can produce, and that
@@ -536,7 +536,7 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     const collection = freshCollection();
     await park(collection, "ask");
     await collection.resumeFromReview("ask", "answered while the pool was still running");
-    expect(collection.count({ status: "awaiting_review" })).toBe(0);
+    expect(collection.count({ status: "parked" })).toBe(0);
 
     // Falls through to what a board in this shape reported before FIX-1234: one
     // un-completed row remaining, nothing stuck, nothing handed off.
@@ -553,7 +553,7 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     // row to actually be parked.
     //
     // Why the row had to move: the same observable state — verdict carried,
-    // `awaiting_review: 0`, one `pending` row — is reachable two ways, and they
+    // `parked: 0`, one `pending` row — is reachable two ways, and they
     // want opposite answers. §9's way is a race in the completion window, where
     // the drain really did stop for the review. The other is a resume landing
     // BEFORE the pool finishes, on a board whose remaining workers then stop for
@@ -563,7 +563,7 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     //
     // Ruling for the guard costs §9's case a reason that reads as a stall. Ruling
     // against it ships completion items that say `parked-for-review` beside
-    // `counts.awaiting_review: 0` — two incompatible claims in one payload, and
+    // `counts.parked: 0` — two incompatible claims in one payload, and
     // it sends an operator looking for a review that no longer exists.
     //
     // ## Do not "restore" §9 by pointing at the test below
@@ -571,12 +571,12 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     // "Keeps the review reason for a row added after the pool classified" looks
     // like it contradicts this one and does not. The difference is which row
     // moved. There, an UNRELATED row appears while the parked row is still
-    // parked: `awaiting_review > 0`, the guard passes, and the review really is
+    // parked: `parked > 0`, the guard passes, and the review really is
     // still outstanding. Here, THE PARKED ROW ITSELF was resumed: nothing is
     // parked, and there is no review left to point an operator at.
     //
     // So the two are told apart by the one thing the report can check —
-    // `counts.awaiting_review` — which is why the guard is a property check and
+    // `counts.parked` — which is why the guard is a property check and
     // not a reconstruction of how the verdict got here.
     const collection = freshCollection();
     await park(collection, "ask");

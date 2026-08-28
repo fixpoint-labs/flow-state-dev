@@ -1540,7 +1540,7 @@ describe("the ledger is partitioned by tenant", () => {
       });
       await live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, OTHER);
       const parked = await settleAsTenant(live, OTHER);
-      expect(parked.status).toBe("awaiting_review");
+      expect(parked.status).toBe("parked");
       const topic = parked.questions[0]!.question;
       const runsBefore = seen.prompts.length;
 
@@ -1552,7 +1552,7 @@ describe("the ledger is partitioned by tenant", () => {
       // tenant, or the read would be refused too and this would pass because it
       // saw nothing either way.
       const after = await settleAsTenant(live, OTHER);
-      expect(after.status).toBe("awaiting_review");
+      expect(after.status).toBe("parked");
       expect(after.questions[0]?.question).toBe(topic);
       expect(after.attempts).toBe(parked.attempts);
       expect(seen.prompts).toHaveLength(runsBefore);
