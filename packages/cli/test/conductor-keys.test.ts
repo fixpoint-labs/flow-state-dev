@@ -402,6 +402,23 @@ describe("applyKey", () => {
     expect(moved.state.filesExpanded).toBe(false);
   });
 
+  it("toggles the last hunk with h and collapses it when the row changes", () => {
+    const state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
+    const opened = applyKey(state, { type: "char", value: "h" });
+    expect(opened.state.hunksExpanded).toBe(true);
+    expect(opened.effect).toBeUndefined();
+    const moved = applyKey(opened.state, { type: "char", value: "j" });
+    expect(moved.state.selected).toBe(1);
+    expect(moved.state.hunksExpanded).toBe(false);
+  });
+
+  it("expands the hunk while an action is in flight, and does not dispatch", () => {
+    const state = { ...board([runningRow("LIVE-1")]), busy: true };
+    const opened = applyKey(state, { type: "char", value: "h" });
+    expect(opened.state.hunksExpanded).toBe(true);
+    expect(opened.effect).toBeUndefined();
+  });
+
   it("trims the unselected request when the row changes", () => {
     let state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
     for (let i = 0; i < ACTIVITY_CAP + 5; i += 1) {

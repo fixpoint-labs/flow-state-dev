@@ -756,6 +756,70 @@ describe("renderFrame", () => {
     );
   });
 
+  it("caps the RUN-band last hunk and expands it with h", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const hunk = Array.from({ length: 20 }, (_, i) => `+ line-${i}`);
+    const above = beforeTranscript(
+      renderFrame(
+        { ...emptyView("epic"), rows: [running], childHunks: { "req-live-1": hunk } },
+        { cols: 80, rows: 28 },
+      ),
+    );
+    expect(above).toContain("… 17 more");
+    expect(above).toContain("+ line-17");
+    expect(above).toContain("+ line-19");
+    expect(above).not.toContain("+ line-0");
+    expect(above).not.toContain("+ line-16");
+
+    const expanded = beforeTranscript(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [running],
+          childHunks: { "req-live-1": hunk },
+          hunksExpanded: true,
+        },
+        { cols: 80, rows: 36 },
+      ),
+    );
+    expect(expanded).toContain("+ line-4");
+    expect(expanded).toContain("+ line-19");
+    expect(expanded).not.toContain("+ line-0");
+    expect(expanded).not.toContain("+ line-3");
+    expect(expanded).toContain("… 4 more");
+    expect(
+      stripAnsi(
+        renderFrame(
+          { ...emptyView("epic"), rows: [running], childHunks: { "req-live-1": hunk } },
+          { cols: 80, rows: 28 },
+        ),
+      ),
+    ).toContain("h hunk");
+  });
+
   it("keeps files, the current todo, and the PR URL on ASK", () => {
     const parked: StatusRow = {
       ...waiting,

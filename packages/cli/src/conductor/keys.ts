@@ -169,7 +169,7 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
     key.type === "left" ||
     key.type === "right" ||
     key.type === "escape" ||
-    (key.type === "char" && "jk[]tf?nN".includes(key.value));
+    (key.type === "char" && "jk[]tfh?nN".includes(key.value));
   if (state.busy && key.type !== "ctrl" && !scrolling && !browsing) {
     return { state };
   }
@@ -253,6 +253,8 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
       return { state: { ...state, planExpanded: !state.planExpanded } };
     case "f":
       return { state: { ...state, filesExpanded: !state.filesExpanded } };
+    case "h":
+      return { state: { ...state, hunksExpanded: !state.hunksExpanded } };
     case "n":
       if (state.find !== null) return { state: stepFind(state, -1) };
       return idleFallback(state, value);
@@ -492,6 +494,7 @@ function selectRow(state: ViewState, index: number): ViewState {
     scroll: 0,
     planExpanded: false,
     filesExpanded: false,
+    hunksExpanded: false,
   });
   if (jumped.find === null) return jumped;
   return applyFindQuery(jumped, jumped.find);

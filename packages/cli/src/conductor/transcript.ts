@@ -32,6 +32,11 @@ export interface TranscriptPatch {
    * last pinned plan; present replaces it. A Read or Bash never sets this.
    */
   plan?: PlanItem[];
+  /**
+   * Full last Write / Edit hunk in this patch. Absent means keep the
+   * last pinned hunk. The transcript lines stay capped.
+   */
+  hunk?: string[];
 }
 
 /**
@@ -65,7 +70,11 @@ export function applyTranscriptPatch(
       patch.plan === undefined
         ? next.childPlan
         : { ...next.childPlan, [requestId]: patch.plan };
-    return { ...next, childLive, childPlan };
+    const childHunks =
+      patch.hunk === undefined
+        ? next.childHunks
+        : { ...next.childHunks, [requestId]: patch.hunk };
+    return { ...next, childLive, childPlan, childHunks };
   }
   return { ...next, live: patch.live };
 }
@@ -134,7 +143,7 @@ export function createStreamTranscript(): {
     const formatted = formatToolLines(item);
     const plan = applyPlanTool(item, planEntries, "settled") ?? formatted.plan;
     const next = snapshot([...prior, ...nestLines(formatted.lines), ...nestLines(formatToolResult(item))]);
-    return plan === undefined ? next : { ...next, plan };
+    return withExtras(next, plan, formatted.hunk);
   };
 
   return {
@@ -173,7 +182,7 @@ export function createStreamTranscript(): {
                   : "settled";
             const plan = applyPlanTool(item, planEntries, phase) ?? formatted.plan;
             const next = snapshot([...prior, ...nestLines(formatted.lines)]);
-            return plan === undefined ? next : { ...next, plan };
+            return withExtras(next, plan, formatted.hunk);
           }
           if (item.type === "container") {
             logged.add(item.id);
@@ -343,13 +352,23 @@ function formatToolLine(item: OutputItem, settled?: "failed" | "incomplete"): st
   return base;
 }
 
+function withExtras(patch: TranscriptPatch, plan?: PlanItem[], hunk?: string[]): TranscriptPatch {
+  return {
+    ...patch,
+    ...(plan === undefined ? {} : { plan }),
+    ...(hunk !== undefined && hunk.length > 0 ? { hunk } : {}),
+  };
+}
+
 /** Tool name plus a compact hunk or checklist when the call already carried them. */
-function formatToolLines(item: OutputItem): { lines: string[]; plan?: PlanItem[] } {
+function formatToolLines(item: OutputItem): { lines: string[]; plan?: PlanItem[]; hunk?: string[] } {
   const args = item.type === "tool_output" ? parseToolArgs(item.toolCall?.arguments) : {};
   const plan = readPlan(args);
+  const hunk = toolHunk(args);
   return {
-    lines: [formatToolLine(item), ...toolHunk(args), ...plan.lines],
+    lines: [formatToolLine(item), ...capHunk(hunk), ...plan.lines],
     plan: plan.items,
+    hunk: hunk.length > 0 ? hunk : undefined,
   };
 }
 
@@ -392,7 +411,7 @@ function toolHunk(args: Record<string, unknown>): string[] {
   const before = stringArg(args, ["old_string"]);
   const added = splitLines(after);
   if (before === undefined) {
-    return capHunk(added.map((line) => clipHunkLine("+", line)));
+    return added.map((line) => clipHunkLine("+", line));
   }
   const removed = splitLines(before);
   let start = 0;
@@ -408,11 +427,10 @@ function toolHunk(args: Record<string, unknown>): string[] {
     removedEnd -= 1;
     addedEnd -= 1;
   }
-  const hunk = [
+  return [
     ...removed.slice(start, removedEnd).map((line) => clipHunkLine("-", line)),
     ...added.slice(start, addedEnd).map((line) => clipHunkLine("+", line)),
   ];
-  return capHunk(hunk);
 }
 
 /**

@@ -41,6 +41,7 @@ import {
   currentPlanItem,
   fileFromToolLine,
   selectedFiles,
+  selectedHunk,
   selectedNow,
   selectedPlan,
   selectedQuestion,
@@ -218,6 +219,7 @@ function renderAskAttempt(state: ViewState, inner: number): string[] {
     lines.push(` ${dim(paintToolNow(now, inner, cwd))}`);
   }
   lines.push(...renderFileLines(state, inner));
+  lines.push(...renderHunkLines(state, inner, { onlyCurrent: true }));
   lines.push(...renderPlanLines(state, inner, { onlyCurrent: true }));
   return lines;
 }
@@ -266,6 +268,7 @@ function renderRunBand(state: ViewState, cols: number): string {
       ? ` ${paint(GOLD, paintToolNow(now, inner, tree ?? null))}`
       : "";
   const fileLines = renderFileLines(state, inner);
+  const hunkLines = renderHunkLines(state, inner);
   const planLines = renderPlanLines(state, inner);
   return [
     rule(cols, ACCENT),
@@ -274,6 +277,7 @@ function renderRunBand(state: ViewState, cols: number): string {
     ` ${dim(hint)}`,
     ...(nowLine !== "" ? [nowLine] : []),
     ...fileLines,
+    ...hunkLines,
     ...planLines,
     rule(cols, ACCENT),
   ].join("\n");
@@ -281,6 +285,8 @@ function renderRunBand(state: ViewState, cols: number): string {
 
 const FILE_MAX = 3;
 const FILE_EXPANDED_MAX = 12;
+const HUNK_BAND_MAX = 3;
+const HUNK_EXPANDED_MAX = 16;
 
 function renderFileLines(state: ViewState, inner: number): string[] {
   const files = selectedFiles(state);
@@ -290,6 +296,26 @@ function renderFileLines(state: ViewState, inner: number): string[] {
   const hidden = files.length - shown.length;
   const cwd = selectedRow(state)?.run?.workspacePath ?? null;
   const lines = shown.map((file) => ` ${dim(fileText(file, inner, cwd))}`);
+  if (hidden > 0) lines.unshift(` ${dim(`… ${hidden} more`)}`);
+  return lines;
+}
+
+function renderHunkLines(
+  state: ViewState,
+  inner: number,
+  opts: { onlyCurrent?: boolean } = {},
+): string[] {
+  const hunk = selectedHunk(state);
+  if (hunk.length === 0) return [];
+  const cap = opts.onlyCurrent === true || !state.hunksExpanded ? HUNK_BAND_MAX : HUNK_EXPANDED_MAX;
+  const shown = hunk.slice(-cap);
+  const hidden = hunk.length - shown.length;
+  const lines = shown.map((line) => {
+    const clipped = shorten(line, inner);
+    if (line.startsWith("+ ")) return ` ${paint(TEAL, clipped)}`;
+    if (line.startsWith("- ")) return ` ${paint(RUST, clipped)}`;
+    return ` ${dim(clipped)}`;
+  });
   if (hidden > 0) lines.unshift(` ${dim(`… ${hidden} more`)}`);
   return lines;
 }
@@ -411,6 +437,7 @@ function renderSelectedSummary(state: ViewState, cols: number): string {
     lines.push(` ${dim("last")}     ${paintToolNow(now, inner, run?.workspacePath ?? null)}`);
   }
   lines.push(...renderFileLines(state, inner));
+  lines.push(...renderHunkLines(state, inner));
   lines.push(...renderPlanLines(state, inner));
   return lines.join("\n");
 }
@@ -548,7 +575,9 @@ function renderFooter(state: ViewState, cols: number): string {
   const slashing = state.inputMode === "command" && slashMenu(state).length > 0;
   const listed = selectedPlan(state).length > 0;
   const moreFiles = selectedFiles(state).length > FILE_MAX;
+  const moreHunks = selectedHunk(state).length > HUNK_BAND_MAX;
   const filesKey = moreFiles ? "  ·  f files" : "";
+  const hunksKey = moreHunks && q === undefined ? "  ·  h hunk" : "";
   const keys = slashing
     ? "Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc"
     : finding
@@ -557,13 +586,13 @@ function renderFooter(state: ViewState, cols: number): string {
       ? `click/j/k  ·  a answer${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
       : fail !== undefined
         ? listed
-          ? `click/j/k  ·  w retry  ·  t list${filesKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
-          : `click/j/k  ·  w retry${filesKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
+          ? `click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
+          : `click/j/k  ·  w retry${filesKey}${hunksKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
         : running
-          ? `click/j/k  ·  x stop  ·  t list${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+          ? `click/j/k  ·  x stop  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
           : listed
-            ? `click/j/k  ·  t list${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
-            : `click/j/k  ·  s seed${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
+            ? `click/j/k  ·  t list${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+            : `click/j/k  ·  s seed${filesKey}${hunksKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
   return padLine(dim(` ${keys}`), cols);
 }
 

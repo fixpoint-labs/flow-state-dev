@@ -190,7 +190,7 @@ fsdev conductor
 
 With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
 
-When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. Under the question it keeps a compact strip of that attempt: the pull-request URL when `status` carried one, the last tool, the files that run wrote, edited, or read, and the current todo. When that row's `run.usage` is present, token counts show under the band as `10→4` (input→output).
+When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. Under the question it keeps a compact strip of that attempt: the pull-request URL when `status` carried one, the last tool, the files that run wrote, edited, or read, the last hunk, and the current todo. When that row's `run.usage` is present, token counts show under the band as `10→4` (input→output).
 
 When the selected row has no open question and the last attempt failed, a FAIL band sits in that same slot. A last attempt failed when `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. The band shows the reason (`run.reason`, else `feedback`, else `run.finalMessage`) and that `w` retries. If the selected row also has an open question, the ASK band is what shows. Answer the question first.
 
@@ -199,6 +199,8 @@ When the selected row is running and has no open question and no failed last att
 The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown.
 
 The band lists the files that run has written, edited, or read. Last touch is last. Up to 3 paths; more starts with `… N more`. `f` expands the list (up to 12). Press again to collapse.
+
+The band also shows the last Write or Edit hunk — the changed span, not the whole file. Last 3 lines; more starts with `… N more`. `h` expands that hunk (up to 16 lines). Press again to collapse. The transcript still caps a long Write so one file cannot fill the pane.
 
 ```text
  … 2 more
@@ -229,7 +231,7 @@ The list comes from that run's plan tools. `TodoWrite` with a `todos` array repl
 
 Selecting another row shows that row's current item, or none if that row has not written a list.
 
-When the selected row is not running and has no open question, the board shows that attempt's request id, session id, child session id, pull-request URL when `status` carried one, last tool, files written, edited, or read, and the current todo with its count. `t` expands the list. A terminal that understands OSC-8 can open that URL, and can open a Write / Edit / Read path the same way.
+When the selected row is not running and has no open question, the board shows that attempt's request id, session id, child session id, pull-request URL when `status` carried one, last tool, files written, edited, or read, the last hunk, and the current todo with its count. `t` expands the list. `h` expands the hunk. A terminal that understands OSC-8 can open that URL, and can open a Write / Edit / Read path the same way.
 
 ```text
  request  req-fail-1
@@ -238,7 +240,7 @@ When the selected row is not running and has no open question, the board shows t
  [ ] Open the pull request  1/2
 ```
 
-When that row has an open question, the ASK band shows the current todo. `t` does not expand the list on ASK.
+When that row has an open question, the ASK band shows the current todo and the last hunk. `t` does not expand the list on ASK. `h` does not expand the hunk on ASK.
 
 If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`.
 
@@ -263,6 +265,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `x` | Stop the selected running row's request |
 | `t` or `Ctrl-T` | Expand or collapse the selected row's todo list |
 | `f` | Expand or collapse the selected row's file list |
+| `h` | Expand or collapse the selected row's last Write / Edit hunk |
 | `r` | Refresh now |
 | `/` | Type a slash command. Matching verbs, then board ids, list above the prompt |
 | `Tab` | Fill the selected slash verb or board id |
@@ -272,7 +275,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `?` | Toggle help |
 | `q` | Quit |
 
-Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop`, `t list`, `/find`, and `r`; `x` or `Ctrl-C` stops that row's request. On a selected row that is not running, has no open question, and has a todo list, the footer offers `t list`. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
+Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop`, `t list`, `/find`, and `r`; `x` or `Ctrl-C` stops that row's request. `f files` and `h hunk` appear when those lists have more than three entries. On a selected row that is not running, has no open question, and has a todo list, the footer offers `t list`. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
 
 A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, start. `/sta` lists status, start. A space starts the first argument. `q` and `stop` parse as `quit` and `abort`; they are not in the verb list.
 

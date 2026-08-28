@@ -295,6 +295,7 @@ In the TUI:
   r            refresh now (runs status)
   t            expand or collapse the todo list on a running row
   f            expand or collapse the file list on the selected row
+  h            expand or collapse the last Write / Edit hunk
   /            slash command (same verbs)
   Tab          complete the selected slash verb or board id
   ↑/↓          choose a slash match while / is open
@@ -308,7 +309,7 @@ In the TUI:
   The ASK band keeps that attempt's files, current todo, and PR URL.
   A row that failed: the FAIL band holds the reason. w runs wake again.
   A running row: the RUN band holds the checkout and what the run is
-  doing. t expands the todo list. x or Ctrl-C stops it.
+  doing. t expands the todo list. h expands the last hunk. x or Ctrl-C stops it.
   A finished row keeps that attempt's files, todo list, and request id.
   The transcript tails that run's request stream.
 

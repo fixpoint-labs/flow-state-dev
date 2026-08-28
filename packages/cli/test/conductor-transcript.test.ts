@@ -325,6 +325,7 @@ describe("createStreamTranscript", () => {
     ).toEqual({
       lines: ["tool · Write src/foo.ts", "+ export const n = 1;"],
       live: "tool · Write src/foo.ts",
+      hunk: ["+ export const n = 1;"],
     });
   });
 
@@ -352,6 +353,7 @@ describe("createStreamTranscript", () => {
     ).toEqual({
       lines: ["tool · Edit src/foo.ts", "- const m = 2;", "+ const m = 4;"],
       live: "tool · Edit src/foo.ts",
+      hunk: ["- const m = 2;", "+ const m = 4;"],
     });
   });
 
@@ -376,6 +378,9 @@ describe("createStreamTranscript", () => {
     expect(patch.lines[1]).toBe("+ line-0");
     expect(patch.lines.at(-1)).toBe("… 10 more");
     expect(patch.lines).toHaveLength(12);
+    expect(patch.hunk).toHaveLength(20);
+    expect(patch.hunk?.[0]).toBe("+ line-0");
+    expect(patch.hunk?.at(-1)).toBe("+ line-19");
   });
 
   it("does not reprint the hunk when a Write fails — only the tool line", () => {
@@ -1199,6 +1204,40 @@ describe("applyTranscriptPatch", () => {
       { mark: "x", text: "Implement the fix" },
       { mark: "·", text: "Open the pull request" },
     ]);
+  });
+
+  it("pins a child's last hunk and keeps it when the next patch has none", () => {
+    const first = applyTranscriptPatch(
+      emptyView("epic"),
+      {
+        lines: ["tool · Write src/a.ts", "+ export const a = 1;"],
+        live: null,
+        hunk: ["+ export const a = 1;"],
+      },
+      1,
+      "req-live-1",
+    );
+    expect(first.childHunks["req-live-1"]).toEqual(["+ export const a = 1;"]);
+
+    const bash = applyTranscriptPatch(
+      first,
+      { lines: ["  Test Files  1 passed (1)"], live: null },
+      2,
+      "req-live-1",
+    );
+    expect(bash.childHunks["req-live-1"]).toEqual(["+ export const a = 1;"]);
+
+    const next = applyTranscriptPatch(
+      bash,
+      {
+        lines: ["tool · Write src/b.ts", "+ export const b = 2;"],
+        live: null,
+        hunk: ["+ export const b = 2;"],
+      },
+      3,
+      "req-live-1",
+    );
+    expect(next.childHunks["req-live-1"]).toEqual(["+ export const b = 2;"]);
   });
 });
 

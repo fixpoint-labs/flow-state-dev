@@ -139,6 +139,11 @@ export interface ViewState {
    */
   childFiles: Record<string, string[]>;
   /**
+   * Last Write / Edit hunk for that request — the full changed span,
+   * not the ten-line transcript cap. Shown on the selected row.
+   */
+  childHunks: Record<string, string[]>;
+  /**
    * When true, the RUN band shows the full checklist. When false, one
    * current item and a count — the transcript keeps the rest of the height.
    */
@@ -148,6 +153,11 @@ export interface ViewState {
    * file list. When false, the last three paths.
    */
   filesExpanded: boolean;
+  /**
+   * When true, the reserved band and inspect pane show more of the
+   * last hunk. When false, the last three changed lines.
+   */
+  hunksExpanded: boolean;
   /**
    * Transcript pager offset from the latest line. `0` follows new activity
    * (Grok-style). PageUp / wheel-up increase it.
@@ -189,8 +199,10 @@ export function emptyView(epicLabel: string): ViewState {
     childLive: {},
     childPlan: {},
     childFiles: {},
+    childHunks: {},
     planExpanded: false,
     filesExpanded: false,
+    hunksExpanded: false,
     scroll: 0,
     find: null,
     findAt: 0,
@@ -280,9 +292,12 @@ export function trimActivity(state: ViewState): ViewState {
 
 /** Drop one request's in-memory lines so a journal reload can replace them. */
 export function dropRequestActivity(state: ViewState, requestId: string): ViewState {
+  const childHunks = { ...state.childHunks };
+  delete childHunks[requestId];
   return {
     ...state,
     activity: state.activity.filter((item) => item.requestId !== requestId),
+    childHunks,
   };
 }
 
@@ -361,6 +376,13 @@ export function fileFromToolLine(text: string): string | undefined {
   if (match === null) return undefined;
   const path = match[2]!.trim();
   return path === "" ? undefined : path;
+}
+
+/** The selected row's last Write / Edit hunk, when that request wrote one. */
+export function selectedHunk(state: ViewState): string[] {
+  const id = selectedRequestId(state);
+  if (id === undefined) return [];
+  return state.childHunks[id] ?? [];
 }
 
 /**
