@@ -249,7 +249,7 @@ export function clampSelected(state: ViewState): ViewState {
   return { ...state, selected, questionIndex };
 }
 
-/** Newest this many lines are kept per request, and for board-only lines. */
+/** Newest this many lines are kept per unselected request, and for board-only lines. */
 export const ACTIVITY_CAP = 2000;
 
 /** Cap activity so a long implement cannot grow the TUI state without bound. */
@@ -261,20 +261,40 @@ export function pushActivity(
 ): ViewState {
   const item: ActivityItem =
     requestId !== undefined ? { at, text, requestId } : { at, text };
-  return { ...state, activity: capActivity([...state.activity, item]) };
+  return { ...state, activity: capActivity([...state.activity, item], selectedRequestId(state)) };
+}
+
+/**
+ * Re-apply the per-request cap. The selected attempt stays whole so
+ * `/find` can still match an early tool.
+ */
+export function trimActivity(state: ViewState): ViewState {
+  return { ...state, activity: capActivity(state.activity, selectedRequestId(state)) };
+}
+
+/** Drop one request's in-memory lines so a journal reload can replace them. */
+export function dropRequestActivity(state: ViewState, requestId: string): ViewState {
+  return {
+    ...state,
+    activity: state.activity.filter((item) => item.requestId !== requestId),
+  };
 }
 
 /**
  * Drop the oldest overflow per request. Another row's tools do not evict
- * this one's transcript.
+ * this one's transcript. The selected request is not capped.
  */
-function capActivity(activity: ActivityItem[]): ActivityItem[] {
+function capActivity(activity: ActivityItem[], keep?: string): ActivityItem[] {
   const extra = new Map<string | undefined, number>();
   for (const item of activity) {
     extra.set(item.requestId, (extra.get(item.requestId) ?? 0) + 1);
   }
   let overflow = false;
   for (const [key, count] of extra) {
+    if (key !== undefined && key === keep) {
+      extra.set(key, 0);
+      continue;
+    }
     if (count > ACTIVITY_CAP) {
       extra.set(key, count - ACTIVITY_CAP);
       overflow = true;

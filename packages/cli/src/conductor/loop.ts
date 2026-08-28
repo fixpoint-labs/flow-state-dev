@@ -23,10 +23,12 @@ import {
 import { createChildFollow } from "./follow";
 import {
   clampSelected,
+  dropRequestActivity,
   emptyView,
   pushActivity,
   idsToFollow,
   runningRequestIds,
+  selectedRequestId,
   selectedRunningRequestId,
   type AnswerOutput,
   type OperatorCommand,
@@ -75,6 +77,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   let abortInFlight: (() => void) | undefined;
   let refreshSeq = 0;
   let refreshInFlight = false;
+  let loadedRequestId: string | undefined;
   const operatorTranscript = createStreamTranscript();
   const childTranscripts = new Map<string, ReturnType<typeof createStreamTranscript>>();
 
@@ -142,7 +145,24 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     if (result.error !== undefined) throw new Error(result.error);
     state = applyStatus(state, result.output ?? { rows: [] }, now());
     follow.sync(idsToFollow(state));
+    void loadSelectedJournal();
     endTurn();
+  };
+
+  const loadSelectedJournal = async () => {
+    const id = selectedRequestId(state);
+    if (id === loadedRequestId) return;
+    if (id === undefined) {
+      loadedRequestId = undefined;
+      return;
+    }
+    if (selectedRunningRequestId(state) !== undefined) return;
+    loadedRequestId = id;
+    state = dropRequestActivity(state, id);
+    childTranscripts.delete(id);
+    const events = await follow.reload(id);
+    if (closed || selectedRequestId(state) !== id) return;
+    for (const event of events) applyChild(event);
   };
 
   const dispatchCommand = async (command: OperatorCommand) => {
@@ -252,6 +272,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     if (options.focusIssue !== undefined) {
       state = rowAfterRefresh(state, options.focusIssue);
       follow.sync(idsToFollow(state));
+      void loadSelectedJournal();
       paint();
     }
 
@@ -286,6 +307,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
         const result = applyKey(state, key);
         state = result.state;
         follow.sync(idsToFollow(state));
+        void loadSelectedJournal();
         if (result.effect === undefined) {
           paint();
           return;

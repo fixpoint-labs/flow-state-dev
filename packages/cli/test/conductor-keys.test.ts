@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { applyKey, decodeKeys, rowAfterRefresh } from "../src/conductor/keys";
 import { applyStatus } from "../src/conductor/loop";
-import { applyFindQuery, emptyView, findMatches, type StatusRow, type ViewState } from "../src/conductor/types";
+import {
+  ACTIVITY_CAP,
+  applyFindQuery,
+  emptyView,
+  findMatches,
+  pushActivity,
+  type StatusRow,
+  type ViewState,
+} from "../src/conductor/types";
 
 function row(issue: string, questions = 0): StatusRow {
   return {
@@ -382,6 +390,20 @@ describe("applyKey", () => {
     const moved = applyKey(state, { type: "char", value: "j" });
     expect(moved.state.selected).toBe(1);
     expect(moved.state.planExpanded).toBe(false);
+  });
+
+  it("trims the unselected request when the row changes", () => {
+    let state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
+    for (let i = 0; i < ACTIVITY_CAP + 5; i += 1) {
+      state = pushActivity(state, `early-${i}`, i, "req-LIVE-1");
+    }
+    expect(state.activity.filter((item) => item.requestId === "req-LIVE-1")).toHaveLength(
+      ACTIVITY_CAP + 5,
+    );
+    const moved = applyKey(state, { type: "char", value: "j" });
+    const trimmed = moved.state.activity.filter((item) => item.requestId === "req-LIVE-1");
+    expect(trimmed).toHaveLength(ACTIVITY_CAP);
+    expect(trimmed[0]?.text).toBe("early-5");
   });
 });
 

@@ -30,6 +30,13 @@ export interface ChildFollow {
   drain(requestIds: readonly string[]): Promise<void>;
   /** True if this process started a tail for the id (still open or already ended). */
   followed(requestId: string): boolean;
+  /**
+   * The persisted journal for a finished request. Selecting a settled
+   * row whose in-memory tail was capped uses this so `/find` can still
+   * match an early tool. An active tail returns [] — that stream is
+   * still the authority.
+   */
+  reload(requestId: string): Promise<RequestStreamEventWithId[]>;
   /** Abort every tail. */
   stop(): void;
 }
@@ -121,6 +128,12 @@ export function createChildFollow(options: {
     },
     followed(requestId) {
       return active.has(requestId) || finished.has(requestId);
+    },
+    async reload(requestId) {
+      if (requestId === "" || active.has(requestId)) return [];
+      const events = await options.stores.request.getEvents(requestId);
+      finished.add(requestId);
+      return events.map(withEventId);
     },
     stop() {
       for (const [id, controller] of active) {

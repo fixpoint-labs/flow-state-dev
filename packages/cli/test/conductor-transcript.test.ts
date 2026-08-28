@@ -9,6 +9,7 @@ import {
   ACTIVITY_CAP,
   activityForView,
   emptyView,
+  findMatches,
   pushActivity,
   selectedPlan,
   visibleLive,
@@ -1238,5 +1239,41 @@ describe("pushActivity", () => {
     expect(a.at(-1)?.text).toBe(`a-${ACTIVITY_CAP + 9}`);
     expect(b).toHaveLength(50);
     expect(b[0]?.text).toBe("b-0");
+  });
+
+  it("does not cap the selected request so /find can still match an early tool", () => {
+    const selected: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-a",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    let state = { ...emptyView("epic"), rows: [selected] };
+    state = pushActivity(state, "tool · Write src/early.ts", 0, "req-a");
+    for (let i = 0; i < ACTIVITY_CAP + 5; i += 1) {
+      state = pushActivity(state, `later-${i}`, i + 1, "req-a");
+    }
+    const mine = state.activity.filter((item) => item.requestId === "req-a");
+    expect(mine).toHaveLength(ACTIVITY_CAP + 6);
+    expect(mine[0]?.text).toBe("tool · Write src/early.ts");
+    expect(findMatches({ ...state, find: "early.ts" })).toHaveLength(1);
   });
 });

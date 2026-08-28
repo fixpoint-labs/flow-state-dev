@@ -232,6 +232,47 @@ describe("createChildFollow", () => {
     expect(seen).toEqual(expect.arrayContaining([1, 2]));
   });
 
+  it("reload returns a finished journal again without going through onEvent", async () => {
+    const stores = createInMemoryStores();
+    let hits = 0;
+    const follow = createChildFollow({
+      stores,
+      onEvent: () => {
+        hits += 1;
+      },
+    });
+    stores.request.persistEvents("req-done-1", [
+      statusEvent("req-done-1", 1, "one"),
+      statusEvent("req-done-1", 2, "two"),
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-done-1",
+        sequence_number: 3,
+        ts: 3,
+      } as RequestStreamEvent,
+    ]);
+    await follow.drain(["req-done-1"]);
+    const before = hits;
+    const again = await follow.reload("req-done-1");
+    follow.stop();
+    expect(hits).toBe(before);
+    expect(again.map((event) => event.sequence_number)).toEqual(expect.arrayContaining([1, 2, 3]));
+  });
+
+  it("reload of an active tail is empty", async () => {
+    const stores = createInMemoryStores();
+    const follow = createChildFollow({
+      stores,
+      onEvent: () => {},
+    });
+    follow.sync(["req-live-1"]);
+    const again = await follow.reload("req-live-1");
+    follow.stop();
+    expect(again).toEqual([]);
+  });
+
   it("drain of an already-finished id is immediate and does not reprint", async () => {
     const stores = createInMemoryStores();
     let hits = 0;

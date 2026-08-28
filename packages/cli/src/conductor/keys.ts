@@ -18,6 +18,7 @@ import {
   selectedRunningRequestId,
   scrollTranscript,
   stepFind,
+  trimActivity,
   type InputMode,
   type OperatorCommand,
   type ViewState,
@@ -484,7 +485,7 @@ function selectRow(state: ViewState, index: number): ViewState {
     notice: null,
   });
   if (next.selected === state.selected) return next;
-  const jumped = { ...next, scroll: 0, planExpanded: false };
+  const jumped = trimActivity({ ...next, scroll: 0, planExpanded: false });
   if (jumped.find === null) return jumped;
   return applyFindQuery(jumped, jumped.find);
 }

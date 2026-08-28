@@ -527,7 +527,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Watching or aborting a running row does not start work or send an answer. Abort does not resume a session. Reprinting a last attempt does not continue that coding session.
 - The transcript does not print reasoning or thinking text.
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
-- `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem. Each request keeps the newest two thousand lines; older ones drop.
+- `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem. An unselected request keeps the newest two thousand lines. The selected attempt stays whole, so `/find` can still match an early tool.
 - Slash completion does not invent ids that are not on the board. It does not complete `/seed`, `/start`, or `/find`.
 - Headless verbs take the id on the argv. There is no list on that path.
 - There is no combined transcript of every running row.
