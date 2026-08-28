@@ -24,6 +24,7 @@ import {
   wrap,
 } from "./theme";
 import {
+  activityForView,
   failureReason,
   rowFailed,
   rowRunning,
@@ -31,6 +32,7 @@ import {
   selectedQuestion,
   selectedRow,
   selectedRunningRequestId,
+  visibleLive,
   type StatusRow,
   type ViewState,
 } from "./types";
@@ -287,24 +289,25 @@ function renderActivity(
   underBand = false,
 ): string {
   const following = state.scroll === 0;
+  const live = visibleLive(state);
   const heading = ` ${dim("TRANSCRIPT")}${
     following
-      ? state.live !== null
+      ? live !== null
         ? dim("  ·  live")
         : dim("  ·  follow")
       : dim(`  ·  ${state.scroll} back`)
   }`;
   const width = Math.max(16, cols - 10);
   const body: string[] = [];
-  for (const item of state.activity) {
+  for (const item of activityForView(state)) {
     const wrapped = wrapActivityLine(item.text, width);
     wrapped.forEach((line, i) => {
       const painted = paintHunkLine(line);
       body.push(i === 0 ? ` ${dim(formatClock(item.at))}  ${painted}` : `         ${painted}`);
     });
   }
-  if (following && state.live !== null) {
-    const wrapped = wrap(state.live, width);
+  if (following && live !== null) {
+    const wrapped = wrap(live, width);
     wrapped.forEach((line, i) => {
       body.push(i === 0 ? ` ${paint(GOLD, "··")}  ${paint(GOLD, line)}` : `         ${paint(GOLD, line)}`);
     });

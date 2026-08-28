@@ -230,6 +230,66 @@ describe("renderFrame", () => {
     expect(frame).toContain("wake-line-39");
   });
 
+  it("shows the selected row's tools and keeps the other child's hunks off the pane", () => {
+    const live = (issue: string, requestId: string): StatusRow => ({
+      taskId: `${issue}--implement`,
+      issue,
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: `${issue}--implement`,
+        workspacePath: "/tmp/ws",
+        branch: `conductor/${issue}--implement`,
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId,
+        updatedAt: 1,
+      },
+      questions: [],
+    });
+    const activity = [
+      { at: 1, text: "LIVE-1 · in_progress" },
+      { at: 2, text: "tool · Write src/a.ts", requestId: "req-live-1" },
+      { at: 2, text: "+ export const a = 1;", requestId: "req-live-1" },
+      { at: 3, text: "tool · Write src/b.ts", requestId: "req-live-2" },
+      { at: 3, text: "+ export const b = 2;", requestId: "req-live-2" },
+    ];
+    const childLive = {
+      "req-live-1": "status · coding A",
+      "req-live-2": "status · coding B",
+    };
+    const rows = [live("LIVE-1", "req-live-1"), live("LIVE-2", "req-live-2")];
+    const first = renderFrame(
+      { ...emptyView("epic"), rows, selected: 0, activity, childLive },
+      { cols: 80, rows: 24 },
+    );
+    expect(first).toContain("tool · Write src/a.ts");
+    expect(first).toContain("+ export const a = 1;");
+    expect(first).toContain("status · coding A");
+    expect(first).toContain("LIVE-1 · in_progress");
+    expect(first).not.toContain("src/b.ts");
+    expect(first).not.toContain("coding B");
+
+    const second = renderFrame(
+      { ...emptyView("epic"), rows, selected: 1, activity, childLive },
+      { cols: 80, rows: 24 },
+    );
+    expect(second).toContain("tool · Write src/b.ts");
+    expect(second).toContain("+ export const b = 2;");
+    expect(second).toContain("status · coding B");
+    expect(second).toContain("LIVE-1 · in_progress");
+    expect(second).not.toContain("src/a.ts");
+    expect(second).not.toContain("coding A");
+  });
+
   it("paints a Write hunk in the transcript", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",

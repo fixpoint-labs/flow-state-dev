@@ -333,9 +333,20 @@ function submitEdit(state: ViewState): KeyResult {
   return { state: cleared, effect: { type: "dispatch", command } };
 }
 
+function selectRow(state: ViewState, index: number): ViewState {
+  const next = clampSelected({
+    ...state,
+    selected: index,
+    questionIndex: 0,
+    notice: null,
+  });
+  if (next.selected === state.selected) return next;
+  return { ...next, scroll: 0 };
+}
+
 function moveRow(state: ViewState, delta: number): ViewState {
   if (state.rows.length === 0) return state;
-  return clampSelected({ ...state, selected: state.selected + delta, questionIndex: 0, notice: null });
+  return selectRow(state, state.selected + delta);
 }
 
 function moveQuestion(state: ViewState, delta: number): ViewState {
@@ -367,7 +378,7 @@ function applyClick(state: ViewState, screenRow1: number): KeyResult {
   if (state.inputMode !== "command" || state.input !== "") return { state };
   const index = screenRow1 - TABLE_DATA_ORIGIN;
   if (index < 0 || index >= state.rows.length) return { state };
-  return { state: clampSelected({ ...state, selected: index, questionIndex: 0, notice: null }) };
+  return { state: selectRow(state, index) };
 }
 
 export function rowAfterRefresh(state: ViewState, preferIssue?: string | null): ViewState {
@@ -375,5 +386,6 @@ export function rowAfterRefresh(state: ViewState, preferIssue?: string | null): 
   if (issue === null || issue === undefined) return clampSelected(state);
   const index = state.rows.findIndex((row) => row.issue === issue);
   if (index < 0) return clampSelected(state);
-  return clampSelected({ ...state, selected: index });
+  if (index === state.selected) return clampSelected(state);
+  return clampSelected({ ...state, selected: index, scroll: 0 });
 }

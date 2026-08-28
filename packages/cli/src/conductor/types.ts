@@ -67,6 +67,12 @@ export interface AnswerOutput {
 export interface ActivityItem {
   at: number;
   text: string;
+  /**
+   * Child request this line belongs to. Absent means the board or an
+   * operator action (`seed` / `wake` / `status` / `answer`) — those stay
+   * visible on every selected row.
+   */
+  requestId?: string;
 }
 
 /** The operator verbs this surface can dispatch. */
@@ -102,10 +108,16 @@ export interface ViewState {
   notice: string | null;
   activity: ActivityItem[];
   /**
-   * In-flight transcript line — a streaming message or the current
-   * transient status. `null` when nothing is mid-stream.
+   * In-flight operator line — a streaming message or transient status
+   * from `seed` / `wake` / `status` / `answer`. `null` when nothing in
+   * this process is mid-stream.
    */
   live: string | null;
+  /**
+   * In-flight line per followed child request. The renderer shows the
+   * selected row's entry, so two live children do not share a slot.
+   */
+  childLive: Record<string, string>;
   /**
    * Transcript pager offset from the latest line. `0` follows new activity
    * (Grok-style). PageUp / wheel-up increase it.
@@ -128,6 +140,7 @@ export function emptyView(epicLabel: string): ViewState {
     notice: null,
     activity: [],
     live: null,
+    childLive: {},
     scroll: 0,
     lastRefreshAt: null,
   };
@@ -189,9 +202,50 @@ export function clampSelected(state: ViewState): ViewState {
   return { ...state, selected, questionIndex };
 }
 
-export function pushActivity(state: ViewState, text: string, at: number = Date.now()): ViewState {
-  const activity = [...state.activity, { at, text }];
+export function pushActivity(
+  state: ViewState,
+  text: string,
+  at: number = Date.now(),
+  requestId?: string,
+): ViewState {
+  const item: ActivityItem =
+    requestId !== undefined ? { at, text, requestId } : { at, text };
+  const activity = [...state.activity, item];
   return { ...state, activity: activity.length > 200 ? activity.slice(-200) : activity };
+}
+
+/**
+ * The selected row's last-known request id — still set after the run
+ * settles, so the transcript can show that attempt's tools.
+ */
+export function selectedRequestId(state: ViewState): string | undefined {
+  const id = selectedRow(state)?.run?.requestId;
+  if (id === null || id === undefined || id === "") return undefined;
+  return id;
+}
+
+/**
+ * Board/operator lines plus the selected row's child stream. Another
+ * row's tools stay off this view until that row is selected.
+ */
+export function activityForView(state: ViewState): ActivityItem[] {
+  const id = selectedRequestId(state);
+  return state.activity.filter(
+    (item) => item.requestId === undefined || item.requestId === id,
+  );
+}
+
+/**
+ * Live line for the current view. A selected child that is mid-stream
+ * wins over the operator slot so a status poll does not hide the run.
+ */
+export function visibleLive(state: ViewState): string | null {
+  const id = selectedRequestId(state);
+  if (id !== undefined) {
+    const child = state.childLive[id];
+    if (child !== undefined) return child;
+  }
+  return state.live;
 }
 
 const PAGE = 8;

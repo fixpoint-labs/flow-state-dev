@@ -98,7 +98,7 @@ const wake = handler({
   execute: async (_input, ctx) => {
     const rows = ((ctx.session.state as Board).rows ?? []).map((row) => {
       if (row.status !== "pending") return row;
-      if (row.issue === "LIVE-1") {
+      if (row.issue === "LIVE-1" || row.issue === "LIVE-2") {
         return {
           ...row,
           status: "in_progress",
@@ -106,9 +106,9 @@ const wake = handler({
           run: {
             ...emptyRun(),
             outcome: "running" as const,
-            requestId: "req-live-1",
-            branch: "conductor/LIVE-1--implement",
-            workspacePath: "/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement",
+            requestId: row.issue === "LIVE-1" ? "req-live-1" : "req-live-2",
+            branch: `conductor/${row.issue}--implement`,
+            workspacePath: `/tmp/conductor-src/.fsdev/workspaces/${row.issue}--implement`,
           },
           questions: [],
         };

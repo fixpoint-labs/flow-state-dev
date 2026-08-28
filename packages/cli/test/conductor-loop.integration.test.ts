@@ -40,6 +40,12 @@ function fakeTty() {
   };
 }
 
+function lastFrame(text: string): string {
+  const marker = "\x1b[H\x1b[J";
+  const at = text.lastIndexOf(marker);
+  return at < 0 ? text : text.slice(at);
+}
+
 function waitFor(getText: () => string, needle: string, ms = 3_000): Promise<void> {
   const start = Date.now();
   return new Promise((resolve, reject) => {
@@ -307,6 +313,99 @@ describe("fsdev conductor — TUI over the same actions", () => {
     ]);
     await waitFor(() => tty.text, "tool · Bash pnpm test · failed");
     await waitFor(() => tty.text, "AssertionError: expected 1 to be 2");
+
+    tty.input.write("q");
+    await expect(running).resolves.toBe(0);
+  });
+
+  it("keeps the other running row's tools off the selected transcript", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 40,
+    });
+
+    await waitFor(() => tty.text, "LIVE-2");
+    stores.request.persistEvents("req-live-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-live-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "t1",
+          type: "tool_output",
+          status: "in_progress",
+          blockName: "Write",
+          toolCall: {
+            callId: "c1",
+            name: "Write",
+            arguments: JSON.stringify({
+              file_path: "src/a.ts",
+              contents: "export const a = 1;\n",
+            }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+    ]);
+    stores.request.persistEvents("req-live-2", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-live-2",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "t2",
+          type: "tool_output",
+          status: "in_progress",
+          blockName: "Write",
+          toolCall: {
+            callId: "c2",
+            name: "Write",
+            arguments: JSON.stringify({
+              file_path: "src/b.ts",
+              contents: "export const b = 2;\n",
+            }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+    ]);
+    await waitFor(() => lastFrame(tty.text), "tool · Write src/a.ts");
+    expect(lastFrame(tty.text)).toContain("+ export const a = 1;");
+    expect(lastFrame(tty.text)).not.toContain("src/b.ts");
+
+    tty.input.write("j");
+    await waitFor(() => lastFrame(tty.text), "tool · Write src/b.ts");
+    expect(lastFrame(tty.text)).toContain("+ export const b = 2;");
+    expect(lastFrame(tty.text)).not.toContain("src/a.ts");
 
     tty.input.write("q");
     await expect(running).resolves.toBe(0);

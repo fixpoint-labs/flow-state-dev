@@ -74,7 +74,17 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   let abortInFlight: (() => void) | undefined;
   let refreshSeq = 0;
   let refreshInFlight = false;
-  const transcript = createStreamTranscript();
+  const operatorTranscript = createStreamTranscript();
+  const childTranscripts = new Map<string, ReturnType<typeof createStreamTranscript>>();
+
+  const childTranscript = (requestId: string) => {
+    let machine = childTranscripts.get(requestId);
+    if (machine === undefined) {
+      machine = createStreamTranscript();
+      childTranscripts.set(requestId, machine);
+    }
+    return machine;
+  };
 
   const size = () => ({
     cols: output.columns ?? 80,
@@ -85,23 +95,42 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     output.write(`${HOME}${ERASE}${renderFrame(state, size())}`);
   };
 
-  const applyPatch = (event: RequestStreamEventWithId) => {
-    state = applyTranscriptPatch(state, transcript.apply(event), now());
+  const applyOperator = (event: RequestStreamEventWithId) => {
+    state = applyTranscriptPatch(state, operatorTranscript.apply(event), now());
+    paint();
+  };
+
+  const applyChild = (event: RequestStreamEventWithId) => {
+    const requestId = event.requestId;
+    if (typeof requestId !== "string" || requestId === "") {
+      applyOperator(event);
+      return;
+    }
+    state = applyTranscriptPatch(state, childTranscript(requestId).apply(event), now(), requestId);
     paint();
   };
 
   const follow = createChildFollow({
     stores: options.dispatch.stores,
-    onEvent: applyPatch,
+    onEvent: applyChild,
   });
 
   const endTurn = () => {
-    state = applyTranscriptPatch(state, transcript.flush(), now());
+    state = applyTranscriptPatch(state, operatorTranscript.flush(), now());
     paint();
   };
 
+  const flushFinishedChildren = (running: readonly string[]) => {
+    const keep = new Set(running);
+    for (const [requestId, machine] of childTranscripts) {
+      if (keep.has(requestId)) continue;
+      state = applyTranscriptPatch(state, machine.flush(), now(), requestId);
+      childTranscripts.delete(requestId);
+    }
+  };
+
   const runAction = <T>(action: "seed" | "wake" | "status" | "answer", input: unknown) => {
-    const running = startConductorAction<T>(options.dispatch, action, input, applyPatch);
+    const running = startConductorAction<T>(options.dispatch, action, input, applyOperator);
     abortInFlight = running.requestAbort;
     return running.done;
   };
@@ -112,7 +141,9 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     if (seq !== refreshSeq) return;
     if (result.error !== undefined) throw new Error(result.error);
     state = applyStatus(state, result.output ?? { rows: [] }, now(), options.focusIssue);
-    follow.sync(runningRequestIds(state.rows));
+    const running = runningRequestIds(state.rows);
+    follow.sync(running);
+    flushFinishedChildren(running);
     endTurn();
   };
 

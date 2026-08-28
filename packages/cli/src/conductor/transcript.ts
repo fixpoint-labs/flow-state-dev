@@ -12,7 +12,8 @@
  * output when it settles. `status` remains the board authority; `diffBoard`
  * turns a poll that actually moved into the same log. A running row's
  * `run.requestId` is also tailed through the request store, so a detached
- * coding run writes here as it runs.
+ * coding run writes here as it runs. Each followed request has its own
+ * machine; the renderer keeps the selected row's lines.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
@@ -25,14 +26,26 @@ export interface TranscriptPatch {
   live: string | null;
 }
 
-/** Fold a patch into the view. New history goes through `pushActivity`. */
+/**
+ * Fold a patch into the view. New history goes through `pushActivity`.
+ * Pass `requestId` for a followed child so the live slot and the lines
+ * stay with that request. Omit it for an operator action — tagging those
+ * with the parent request would hide them when a child row is selected.
+ */
 export function applyTranscriptPatch(
   state: ViewState,
   patch: TranscriptPatch,
   at: number = Date.now(),
+  requestId?: string,
 ): ViewState {
   let next = state;
-  for (const text of patch.lines) next = pushActivity(next, text, at);
+  for (const text of patch.lines) next = pushActivity(next, text, at, requestId);
+  if (requestId !== undefined) {
+    const childLive = { ...next.childLive };
+    if (patch.live === null) delete childLive[requestId];
+    else childLive[requestId] = patch.live;
+    return { ...next, childLive };
+  }
   return { ...next, live: patch.live };
 }
 

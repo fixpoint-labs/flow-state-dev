@@ -115,6 +115,21 @@ describe("applyKey", () => {
     expect(clicked.state.selected).toBe(1);
   });
 
+  it("jumps the transcript to the tail when the selected row changes", () => {
+    const state = { ...board([row("FIX-1"), row("FIX-2")]), scroll: 12 };
+    const down = applyKey(state, { type: "char", value: "j" });
+    expect(down.state.selected).toBe(1);
+    expect(down.state.scroll).toBe(0);
+
+    const already = applyKey({ ...down.state, scroll: 8 }, { type: "click", col: 8, row: 5 });
+    expect(already.state.selected).toBe(1);
+    expect(already.state.scroll).toBe(8);
+
+    const other = applyKey({ ...down.state, scroll: 8 }, { type: "click", col: 8, row: 4 });
+    expect(other.state.selected).toBe(0);
+    expect(other.state.scroll).toBe(0);
+  });
+
   it("scrolls the transcript with the wheel and PageUp, including while busy", () => {
     const state = board([row("FIX-1")]);
     const up = applyKey(state, { type: "wheel", delta: -1 });

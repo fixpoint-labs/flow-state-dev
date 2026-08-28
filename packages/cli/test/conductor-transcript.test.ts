@@ -5,7 +5,12 @@ import {
   createStreamTranscript,
   diffBoard,
 } from "../src/conductor/transcript";
-import { emptyView, type StatusRow } from "../src/conductor/types";
+import {
+  activityForView,
+  emptyView,
+  visibleLive,
+  type StatusRow,
+} from "../src/conductor/types";
 
 function added(item: Record<string, unknown>): RequestStreamEventWithId {
   return { type: "item.added", item } as RequestStreamEventWithId;
@@ -535,5 +540,102 @@ describe("applyTranscriptPatch", () => {
     }, 1);
     expect(next.activity).toEqual([{ at: 1, text: "status · claiming" }]);
     expect(next.live).toBe("status · running");
+  });
+
+  it("tags a child's lines and keeps its live slot off the operator line", () => {
+    const next = applyTranscriptPatch(
+      { ...emptyView("epic"), live: "status · reading board" },
+      { lines: ["tool · Write src/a.ts"], live: "status · coding A" },
+      1,
+      "req-live-1",
+    );
+    expect(next.activity).toEqual([
+      { at: 1, text: "tool · Write src/a.ts", requestId: "req-live-1" },
+    ]);
+    expect(next.live).toBe("status · reading board");
+    expect(next.childLive["req-live-1"]).toBe("status · coding A");
+  });
+
+  it("clears that child's live slot when the patch has none", () => {
+    const started = applyTranscriptPatch(
+      emptyView("epic"),
+      { lines: [], live: "status · coding A" },
+      1,
+      "req-live-1",
+    );
+    const done = applyTranscriptPatch(
+      started,
+      { lines: ["status · coding A"], live: null },
+      2,
+      "req-live-1",
+    );
+    expect(done.childLive["req-live-1"]).toBeUndefined();
+    expect(done.activity).toEqual([
+      { at: 2, text: "status · coding A", requestId: "req-live-1" },
+    ]);
+  });
+});
+
+describe("activityForView / visibleLive", () => {
+  const liveA: StatusRow = row("LIVE-1", "in_progress", {
+    run: {
+      attempt: 1,
+      taskId: "LIVE-1--implement",
+      workspacePath: null,
+      branch: null,
+      outcome: "running",
+      reason: null,
+      sessionId: null,
+      finalMessage: null,
+      usage: null,
+      costUsd: null,
+      childSessionId: null,
+      requestId: "req-live-1",
+      updatedAt: 1,
+    },
+  });
+  const liveB: StatusRow = {
+    ...liveA,
+    taskId: "LIVE-2--implement",
+    issue: "LIVE-2",
+    run: { ...liveA.run!, requestId: "req-live-2" },
+  };
+
+  it("keeps board lines on every row and hides the other child's tools", () => {
+    const state = {
+      ...emptyView("epic"),
+      rows: [liveA, liveB],
+      selected: 0,
+      activity: [
+        { at: 1, text: "LIVE-1 · in_progress" },
+        { at: 2, text: "tool · Write src/a.ts", requestId: "req-live-1" },
+        { at: 3, text: "tool · Write src/b.ts", requestId: "req-live-2" },
+      ],
+      childLive: {
+        "req-live-1": "status · coding A",
+        "req-live-2": "status · coding B",
+      },
+    };
+    expect(activityForView(state).map((item) => item.text)).toEqual([
+      "LIVE-1 · in_progress",
+      "tool · Write src/a.ts",
+    ]);
+    expect(visibleLive(state)).toBe("status · coding A");
+
+    const other = { ...state, selected: 1 };
+    expect(activityForView(other).map((item) => item.text)).toEqual([
+      "LIVE-1 · in_progress",
+      "tool · Write src/b.ts",
+    ]);
+    expect(visibleLive(other)).toBe("status · coding B");
+  });
+
+  it("falls back to the operator live line when the selected child is idle", () => {
+    const state = {
+      ...emptyView("epic"),
+      rows: [liveA],
+      live: "status · reading board",
+    };
+    expect(visibleLive(state)).toBe("status · reading board");
   });
 });
