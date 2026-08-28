@@ -487,6 +487,101 @@ describe("renderFrame", () => {
     expect(above).not.toContain("tool · Bash");
   });
 
+  it("lists the selected run's files on the RUN band, last touch last", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const above = beforeTranscript(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [running],
+          activity: [
+            { at: 1, text: "tool · Write src/a.ts", requestId: "req-live-1" },
+            { at: 2, text: "tool · Bash pnpm test", requestId: "req-live-1" },
+            { at: 3, text: "tool · Read package.json", requestId: "req-live-1" },
+            { at: 4, text: "tool · Write src/b.ts", requestId: "req-other" },
+            { at: 5, text: "tool · Edit src/a.ts", requestId: "req-live-1" },
+          ],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(above).toMatch(/^ RUN\s*$/m);
+    expect(above).toContain("src/a.ts");
+    expect(above).toContain("package.json");
+    expect(above.indexOf("package.json")).toBeLessThan(above.lastIndexOf("src/a.ts"));
+    expect(above).not.toContain("src/b.ts");
+    expect(above).not.toContain("pnpm test");
+  });
+
+  it("caps the RUN-band file list and does not put it on ASK", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const files = ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"].map((name, i) => ({
+      at: i,
+      text: `tool · Write src/${name}`,
+      requestId: "req-live-1",
+    }));
+    const above = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [running], activity: files }, { cols: 80, rows: 24 }),
+    );
+    expect(above).toContain("… 2 more");
+    expect(above).toContain("src/c.ts");
+    expect(above).toContain("src/e.ts");
+    expect(above).not.toContain("src/a.ts");
+    expect(above).not.toContain("src/b.ts");
+
+    const ask = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [waiting], activity: files }, { cols: 80, rows: 24 }),
+    );
+    expect(ask).toMatch(/\bASK\b/);
+    expect(ask).not.toContain("src/e.ts");
+  });
+
   it("does not pin a plan on the ASK band", () => {
     const parked: StatusRow = {
       ...waiting,

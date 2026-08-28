@@ -167,6 +167,42 @@ describe("applyKey", () => {
     expect(applyKey(idle, { type: "ctrl", value: "c" }).effect).toEqual({ type: "quit" });
   });
 
+  it("selects a row with /status <issue> and still refreshes", () => {
+    let state = board([row("FIX-1"), row("FIX-2")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "status FIX-2") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.state.selected).toBe(1);
+    expect(submitted.state.rows[submitted.state.selected]?.issue).toBe("FIX-2");
+    expect(submitted.effect).toEqual({ type: "refresh" });
+  });
+
+  it("keeps the selection on /status with no issue", () => {
+    const state = { ...board([row("FIX-1"), row("FIX-2")]), selected: 1 };
+    let typed = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "status") {
+      typed = applyKey(typed, { type: "char", value: ch }).state;
+    }
+    const submitted = applyKey(typed, { type: "enter" });
+    expect(submitted.state.selected).toBe(1);
+    expect(submitted.state.notice).toBeNull();
+    expect(submitted.effect).toEqual({ type: "refresh" });
+  });
+
+  it("says so when /status names a row that is not on the board", () => {
+    let state = board([row("FIX-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "status MISSING") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.state.selected).toBe(0);
+    expect(submitted.state.notice).toBe("no row for MISSING");
+    expect(submitted.effect).toEqual({ type: "refresh" });
+  });
+
   it("toggles the RUN-band todo list with t or Ctrl-T", () => {
     const state = board([runningRow("LIVE-1")]);
     const opened = applyKey(state, { type: "char", value: "t" });

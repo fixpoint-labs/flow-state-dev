@@ -215,6 +215,7 @@ In the TUI:
   r            refresh now (runs status)
   t            expand or collapse the todo list on a running row
   /            slash command (same verbs)
+  /status id   select that row, then refresh
   ?            this help
   q            quit
 

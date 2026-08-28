@@ -260,6 +260,35 @@ export function selectedPlan(state: ViewState): PlanItem[] {
   return state.childPlan[id] ?? [];
 }
 
+const FILE_TOOL = /^(Write|Edit|Read) (.+)$/;
+
+/** Path from a Write / Edit / Read transcript line. Bash and search stay out. */
+export function fileFromToolLine(text: string): string | undefined {
+  if (!text.startsWith("tool · ")) return undefined;
+  const rest = text.slice("tool · ".length).replace(/ · (failed|stopped)$/, "");
+  const match = FILE_TOOL.exec(rest);
+  if (match === null) return undefined;
+  const path = match[2]!.trim();
+  return path === "" ? undefined : path;
+}
+
+/**
+ * Files the selected run has written, edited, or read — unique, last
+ * touch last. Derived from that row's transcript; another row's tools
+ * stay off this list.
+ */
+export function selectedFiles(state: ViewState): string[] {
+  const files: string[] = [];
+  for (const item of activityForView(state)) {
+    const file = fileFromToolLine(item.text);
+    if (file === undefined) continue;
+    const prior = files.indexOf(file);
+    if (prior >= 0) files.splice(prior, 1);
+    files.push(file);
+  }
+  return files;
+}
+
 /** The item in progress, else the first pending, else the last completed. */
 export function currentPlanItem(plan: readonly PlanItem[]): PlanItem | undefined {
   return (

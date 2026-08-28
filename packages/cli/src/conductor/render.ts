@@ -30,6 +30,7 @@ import {
   rowRunning,
   selectedFailure,
   currentPlanItem,
+  selectedFiles,
   selectedNow,
   selectedPlan,
   selectedQuestion,
@@ -226,6 +227,7 @@ function renderRunBand(state: ViewState, cols: number): string {
   const now = selectedNow(state);
   const nowLine =
     now !== undefined && now !== "" ? ` ${paint(GOLD, truncate(now, inner))}` : "";
+  const fileLines = renderFileLines(state, inner);
   const planLines = renderPlanLines(state, inner);
   return [
     rule(cols, ACCENT),
@@ -233,9 +235,22 @@ function renderRunBand(state: ViewState, cols: number): string {
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
     ...(nowLine !== "" ? [nowLine] : []),
+    ...fileLines,
     ...planLines,
     rule(cols, ACCENT),
   ].join("\n");
+}
+
+const FILE_MAX = 3;
+
+function renderFileLines(state: ViewState, inner: number): string[] {
+  const files = selectedFiles(state);
+  if (files.length === 0) return [];
+  const shown = files.slice(-FILE_MAX);
+  const hidden = files.length - shown.length;
+  const lines = shown.map((file) => ` ${dim(truncate(file, inner))}`);
+  if (hidden > 0) lines.unshift(` ${dim(`… ${hidden} more`)}`);
+  return lines;
 }
 
 function renderPlanLines(state: ViewState, inner: number): string[] {

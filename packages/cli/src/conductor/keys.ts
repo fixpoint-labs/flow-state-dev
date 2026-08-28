@@ -332,10 +332,30 @@ function submitEdit(state: ViewState): KeyResult {
   if (command.kind === "help") return { state: { ...cleared, help: true } };
   if (command.kind === "quit") return { state: cleared, effect: { type: "quit" } };
   if (command.kind === "refresh") return { state: cleared, effect: { type: "refresh" } };
-  if (command.kind === "status") {
-    return { state: cleared, effect: { type: "refresh" } };
+  if (command.kind === "status" || command.kind === "watch") {
+    const issue = command.issue;
+    if (issue === undefined || issue === "") {
+      return { state: cleared, effect: { type: "refresh" } };
+    }
+    const index = rowIndexForIssue(state, issue);
+    if (index < 0) {
+      return {
+        state: { ...cleared, notice: `no row for ${issue}` },
+        effect: { type: "refresh" },
+      };
+    }
+    return { state: selectRow(cleared, index), effect: { type: "refresh" } };
   }
   return { state: cleared, effect: { type: "dispatch", command } };
+}
+
+function rowIndexForIssue(state: ViewState, issue: string): number {
+  const want = issue.toLowerCase();
+  return state.rows.findIndex((row) => {
+    if (row.taskId.toLowerCase() === want) return true;
+    if (row.issue !== null && row.issue.toLowerCase() === want) return true;
+    return false;
+  });
 }
 
 function selectRow(state: ViewState, index: number): ViewState {
