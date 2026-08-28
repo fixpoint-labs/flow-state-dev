@@ -12,13 +12,13 @@
  * | Case | Here | `runWithCAS` would |
  * |---|---|---|
  * | Conflict, live row at a newer version | Refresh, re-run the mutator, retry with backoff | same — the one row that transfers |
- * | Conflict, **no live row**, on a `mutate` | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state (`cas.ts:158-159`) and retries; the tombstone's version matches, so the write lands — **resurrecting a deleted resource** |
- * | A `mutate` that **begins at version `0`** | Writes at `"absent"` — no row at all. Creates the key if none exists; **terminal** {@link ResourceDeletedError} against a tombstone | n/a — the shared driver has no absent/deleted distinction to get wrong |
+ * | Conflict, **no live row**, on a `mutate` | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state, refreshed to the tombstone's **retained** version, and retries at that number — which a tombstone never satisfies, since a positive expected version requires a **live** row. Every attempt is refused, so the whole budget goes on round trips that could not land, and it raises {@link ConcurrentModificationError}: **a lost race reported where the truth is a deleted resource** |
+ * | A `mutate` that **begins at version `0`** | Writes at `"absent"` — no row at all. Creates the key if none exists; **terminal** {@link ResourceDeletedError} against a tombstone | Cannot ask for "no row at all" — its `expectedVersion` is a plain `number`, so it sends `0`, which means "no live row" and a tombstone admits. The write lands on the first attempt with no conflict to notice — **resurrecting a deleted resource** |
  * | Conflict, **create-if-absent** | **Terminal** {@link ResourceAlreadyExistsError} | Refreshes to the winner's version and retries, **overwriting the winner** |
- * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `wait()` (`cas.ts:96-104`) is an unabortable timer — **persists after cancellation** |
+ * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `cas.ts`'s `wait()` is an unabortable timer — **persists after cancellation** |
  * | Retry budget exhausted | {@link ConcurrentModificationError} | same |
- * | Mutator output equals the cached state | Suppress **only against a re-read, verified version** | Returns `committed: false` *before* `persist` (`cas.ts:143-145`, ahead of the only version check at `:147`) — **silently drops a deliberate write** |
- * | Single-field literal patch | Stays on CAS — there is no hint surface here | `state-container.ts:155-157` routes a commutative hint to `runCommutative`, which persists at `expectedVersion: "any"` (`:189-193`) — **no version check at all** |
+ * | Mutator output equals the cached state | Suppress **only against a re-read, verified version** | Returns `committed: false` *before* `persist`, ahead of its only version check — **silently drops a deliberate write** |
+ * | Single-field literal patch | Stays on CAS — there is no hint surface here | `runDurableMutation` (`state-container.ts`) routes a commutative hint to `runCommutative`, which persists **once, with no retry behind it**. Whether that one write is version-checked is the adapter's to decide: `createScopePersist` (`scope-persist.ts`) maps `expectedVersion` to `"any"` only INSIDE its four delta-verb branches, each guarded on `typeof store.<verb> === "function"`. Against an adapter advertising none, the same hint falls through to a **version-checked full-record `set` at the raw numeric version** — a single attempt that can lose the write, reported as `false` rather than retried |
  *
  * The no-op and commutative rows are the subtle ones. A no-op decided against an
  * unverified snapshot *is* a lost update: a context that reads `{mode:"old"}`,
@@ -46,12 +46,32 @@
  * row"), which a tombstone admits, because explicit recreation after a delete
  * is the point of that verb.
  *
+ * So the `expectedVersion` a write goes out at is a **four-way** decision, and
+ * intent is read before the held version:
+ *
+ * | Intent | Held version | Writes at | Because |
+ * |---|---|---|---|
+ * | `create` | any | `0` | "no live row" — a tombstone admits it, which is what recreation needs |
+ * | `replace` | any | `"any"` | a deliberate unconditional overwrite, so it cannot conflict |
+ * | `mutate` | `0` | `"absent"` | "no row at all" — a tombstone refuses it, so a delete stays deleted |
+ * | `mutate` | non-zero | that version | the ordinary read-modify-write check |
+ *
+ * The two `mutate` rows are one branch, not two verbs: the same call resolves
+ * differently depending on whether this context is holding a live version. A
+ * three-way split that sent `0` for every `mutate` is what let a write land on
+ * top of a tombstone.
+ *
  * **Do not reach for the commutative path.** `createScopeStateOps` lives in
- * `state-container.ts` and its ops are named `patchState` / `setState` /
- * `updateState` — the same names as the registry's resource ops, one module
- * away. It is the natural thing to import and the wrong one. The same goes for
- * `createScopePersist` (`scope-persist.ts:60`), which downgrades
- * `expectedVersion` to `"any"` for commutative hints.
+ * `state-container.ts`, one module away, and four of its seven ops —
+ * `patchState` / `setState` / `incState` / `pushState` — carry exactly the
+ * names the registry's resource ops carry. It is the natural thing to import
+ * and the wrong one: on a scope bag `incState` / `pushState` are the unchecked
+ * commutative path, where on a resource handle they come through this driver.
+ * The same goes for `createScopePersist` (`scope-persist.ts`), which downgrades
+ * `expectedVersion` to `"any"` for commutative hints **only when the store
+ * advertises the matching delta verb**, and otherwise sends a single
+ * version-checked full-record `set` at the held numeric version — one attempt,
+ * which can lose the write outright.
  */
 
 import type { CASOptions, JsonObject, StateContainer } from "@flow-state-dev/core/types";
@@ -329,8 +349,9 @@ export async function runResourceCAS({
       // the resource was deleted, whether or not this context ever saw it
       // live. Terminal, and specifically NOT `runWithCAS`'s
       // `result.currentState ?? container.read()`, which would re-run the
-      // mutator over a pre-delete snapshot and write it back over a tombstone
-      // whose version now matches.
+      // mutator over a pre-delete snapshot and retry it at the tombstone's
+      // retained version — a number no live-row check can admit — until the
+      // budget runs out and it reports a lost race instead of a deletion.
       throw new ResourceDeletedError(key);
     }
 

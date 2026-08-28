@@ -64,7 +64,7 @@ export const counter = handler({
 
 **Partial state schema:** The handler declares only `messageCount`. It doesn't need to know about other session state fields. This partial schema bubbles up to the flow level, where the framework merges it with any other blocks' declarations. The benefit: blocks stay portable and self-documenting. A counter block can be reused in flows that have different full schemas.
 
-**`incState` is atomic:** Unlike `patchState` (which does a read-modify-write), `incState` is a single CAS-guarded operation. Safe under concurrent requests. If two messages arrive at once, the count increments correctly. Use `incState` for counters and other commutative updates. Use `patchState` when you need to set specific values.
+**`incState` is atomic:** `incState({ messageCount: 1 })` sends the store the increment, not a computed total, so the store adds it to whatever it currently holds. If two messages arrive at once, both increments land. Use `incState` for counters and `patchState` when you already know what the field should become. For an update that reads state and computes from it, reach for `atomicState`. [State Operations](/docs/fundamentals/state-operations) walks through which call gets which protection.
 
 ---
 
