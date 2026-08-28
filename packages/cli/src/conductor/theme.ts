@@ -99,8 +99,18 @@ export function pad(text: string, width: number, align: "left" | "right" = "left
   return align === "right" ? gap + text : text + gap;
 }
 
+/**
+ * Wrap visible text in an OSC-8 hyperlink. A supporting terminal
+ * opens `url` on click. The wrapper is not part of the visible width.
+ * Non-http(s) URLs, or a URL that would break the sequence, stay plain.
+ */
+export function link(url: string, text: string): string {
+  if (!/^https?:\/\//i.test(url) || /[\x00-\x1f]/.test(url)) return text;
+  return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+}
+
 export function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
+  return text.replace(/\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "").replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 export function visibleWidth(text: string): number {

@@ -6,9 +6,11 @@ import {
   RUST,
   TEAL,
   elideEnd,
+  link,
   shorten,
   shortenToolLine,
   stripAnsi,
+  visibleWidth,
 } from "../src/conductor/theme";
 
 describe("path shortening", () => {
@@ -20,6 +22,23 @@ describe("path shortening", () => {
     expect(shortenToolLine("tool · Bash pnpm --filter @flow-state-dev/fsdev test", 28)).toBe(
       "tool · Bash pnpm --filter @…",
     );
+  });
+});
+
+describe("OSC-8 links", () => {
+  const url = "https://github.com/fixpoint-labs/flow-state-dev/pull/1496";
+
+  it("does not count the wrapper in visible width", () => {
+    const shown = "…/pull/1496";
+    const painted = link(url, shown);
+    expect(stripAnsi(painted)).toBe(shown);
+    expect(visibleWidth(painted)).toBe(shown.length);
+    expect(painted).toContain(`\x1b]8;;${url}`);
+  });
+
+  it("leaves a non-http URL plain", () => {
+    expect(link("file:///tmp/a.ts", "a.ts")).toBe("a.ts");
+    expect(link("https://ex.com/\x1b", "x")).toBe("x");
   });
 });
 
@@ -548,10 +567,11 @@ describe("renderFrame", () => {
       },
       questions: [],
     };
-    const above = beforeTranscript(
-      renderFrame({ ...emptyView("epic"), rows: [settled] }, { cols: 80, rows: 28 }),
-    );
+    const frame = renderFrame({ ...emptyView("epic"), rows: [settled] }, { cols: 80, rows: 28 });
+    const above = beforeTranscript(frame);
     expect(above).toContain("pull/1496");
+    expect(frame).toContain("\x1b]8;;https://github.com/fixpoint-labs/flow-state-dev/pull/1496");
+    expect(stripAnsi(frame)).not.toContain("\x1b]8;;");
   });
 
   it("shows session ids on a settled row", () => {

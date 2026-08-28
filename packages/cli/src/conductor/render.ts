@@ -17,6 +17,7 @@ import {
   TEAL,
   dim,
   formatClock,
+  link,
   outcomeColor,
   pad,
   paint,
@@ -47,6 +48,11 @@ import {
   type StatusRow,
   type ViewState,
 } from "./types";
+
+/** Visible URL, shortened; OSC-8 so a supporting terminal can open the full one. */
+function prText(url: string, width: number): string {
+  return link(url, shorten(url, width));
+}
 
 const RULE = "─";
 
@@ -201,7 +207,7 @@ function renderAskBand(state: ViewState, cols: number): string {
 function renderAskAttempt(state: ViewState, inner: number): string[] {
   const lines: string[] = [];
   const prUrl = selectedRow(state)?.run?.prUrl;
-  if (prUrl) lines.push(` ${dim(shorten(prUrl, inner))}`);
+  if (prUrl) lines.push(` ${dim(prText(prUrl, inner))}`);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
     lines.push(` ${dim(shortenToolLine(now, inner))}`);
@@ -247,7 +253,7 @@ function renderRunBand(state: ViewState, cols: number): string {
     hintBits.push(`$${row.run.costUsd.toFixed(3)}`);
   }
   hintBits.push(id !== undefined ? `${id}  ·  x stops` : "no request id yet");
-  if (row.run?.prUrl) body.push(shorten(row.run.prUrl, inner));
+  if (row.run?.prUrl) body.push(prText(row.run.prUrl, inner));
   const hint = hintBits.join("  ·  ");
   const now = selectedNow(state);
   const nowLine =
@@ -356,7 +362,7 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
       lines.push(` ${dim("tree")}     ${shorten(row.run.workspacePath, cols - 12)}`);
     }
     if (row.run.prUrl) {
-      lines.push(` ${dim("pr")}       ${shorten(row.run.prUrl, cols - 12)}`);
+      lines.push(` ${dim("pr")}       ${prText(row.run.prUrl, cols - 12)}`);
     }
     if (row.run.sessionId) {
       lines.push(` ${dim("session")}  ${truncate(row.run.sessionId, cols - 12)}`);
@@ -391,7 +397,7 @@ function renderSelectedSummary(state: ViewState, cols: number): string {
   if (run?.sessionId) lines.push(` ${dim("session")}  ${truncate(run.sessionId, inner)}`);
   if (run?.childSessionId) lines.push(` ${dim("child")}    ${truncate(run.childSessionId, inner)}`);
   const prUrl = run?.prUrl;
-  if (prUrl) lines.push(` ${dim("pr")}       ${shorten(prUrl, inner)}`);
+  if (prUrl) lines.push(` ${dim("pr")}       ${prText(prUrl, inner)}`);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
     lines.push(` ${dim("last")}     ${shortenToolLine(now, inner)}`);
