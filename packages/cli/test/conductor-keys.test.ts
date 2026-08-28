@@ -96,13 +96,14 @@ describe("decodeKeys", () => {
 
 describe("applyKey", () => {
   it("moves the selection with j/k and starts an answer with a", () => {
-    const state = board([row("FIX-1", 1), row("FIX-2")]);
+    const state = board([row("FIX-2"), row("FIX-3")]);
     const down = applyKey(state, { type: "char", value: "j" });
     expect(down.state.selected).toBe(1);
     const up = applyKey(down.state, { type: "char", value: "k" });
     expect(up.state.selected).toBe(0);
-    const answer = applyKey(up.state, { type: "char", value: "a" });
+    const answer = applyKey(board([row("FIX-1", 1)]), { type: "char", value: "a" });
     expect(answer.state.inputMode).toBe("answer");
+    expect(answer.state.input).toBe("a");
     expect(answer.state.answering).toBe("FIX-1/implement/1/q0");
   });
 
@@ -172,6 +173,23 @@ describe("applyKey", () => {
       type: "dispatch",
       command: { kind: "answer", question: "FIX-1/implement/1/q0", text: "yes" },
     });
+  });
+
+  it("does not steal the first letters of an answer on a waiting row", () => {
+    let state = board([row("FIX-1", 1)]);
+    for (const ch of "the real file") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    expect(state.inputMode).toBe("answer");
+    expect(state.input).toBe("the real file");
+    expect(state.planExpanded).toBe(false);
+    const sent = applyKey(state, { type: "enter" });
+    expect(sent.effect).toEqual({
+      type: "dispatch",
+      command: { kind: "answer", question: "FIX-1/implement/1/q0", text: "the real file" },
+    });
+    expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "q" }).effect).toBeUndefined();
+    expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "}" }).state.selected).toBe(0);
   });
 
   it("completes a slash verb with Tab and runs it with Enter", () => {
@@ -525,11 +543,12 @@ describe("applyKey", () => {
       command: { kind: "abort" },
     });
 
-    const idle = board([row("FIX-1", 1)]);
+    const idle = board([row("FIX-1")]);
     const idleX = applyKey(idle, { type: "char", value: "x" });
     expect(idleX.state.notice).toBe("nothing running to stop");
     expect(idleX.effect).toBeUndefined();
     expect(applyKey(idle, { type: "ctrl", value: "c" }).effect).toEqual({ type: "quit" });
+    expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "x" }).state.input).toBe("x");
   });
 
   it("selects a row with /status <issue> and still refreshes", () => {

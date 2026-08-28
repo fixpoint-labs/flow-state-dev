@@ -328,7 +328,7 @@ In the TUI:
 
   Type anything that is not a slash verb to talk to the coordinator.
   An empty board: letters talk. /quit or Ctrl-C leaves.
-  A row with an open question: a or type after selecting it. Enter sends, Esc cancels.
+  A row with an open question: type the reply. Letters are the answer, not board keys. Enter sends, Esc cancels.
   The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
   A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or w to wake.
   A running row: the RUN band holds the checkout and what the run is

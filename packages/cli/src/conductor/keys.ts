@@ -319,8 +319,22 @@ const EMPTY_BOARD_TALKS = new Set([
   "}",
 ]);
 
+/**
+ * On a waiting row, letters start the reply. `?` / `/` stay help and
+ * slash; `[` `]` `{` `}` still walk questions and attention. `n` / `N`
+ * still step an open find.
+ */
+const WAITING_ROW_BINDS = new Set(["?", "/", "[", "]", "{", "}"]);
+
 function applyIdleChar(state: ViewState, value: string, now: number): KeyResult {
   if (state.rows.length === 0 && EMPTY_BOARD_TALKS.has(value)) {
+    return idleFallback(state, value);
+  }
+  if (
+    selectedQuestion(state) !== undefined &&
+    !WAITING_ROW_BINDS.has(value) &&
+    !(state.find !== null && (value === "n" || value === "N"))
+  ) {
     return idleFallback(state, value);
   }
   switch (value) {
