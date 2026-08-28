@@ -307,9 +307,37 @@ export interface ClaudeAgentQueryOptions {
    * too — see `ClaudeCodeAgentOptions.cwd`, which is canonical for both halves.
    */
   cwd?: string;
+  /**
+   * Which filesystem settings the run loads — `user`, `project`, `local`.
+   *
+   * Omitted and the SDK loads all of them, matching the CLI. `[]` loads none.
+   * The distinction matters more than it looks: `project` is what makes the
+   * run read `CLAUDE.md` and `.claude/settings.json` from its working
+   * directory, so a directory the run did not come with can otherwise
+   * configure the agent working in it.
+   */
+  settingSources?: ClaudeAgentSettingSource[];
+  /** Environment variables for the run's own process. */
+  env?: Record<string, string | undefined>;
+  /**
+   * The SDK's sandbox settings, forwarded verbatim.
+   *
+   * Loosely typed for the same reason as `agents`: this package treats the SDK
+   * as an optional peer, and importing its types here would make a scripted
+   * fake need the real dependency.
+   */
+  sandbox?: unknown;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
 }
+
+/**
+ * A filesystem settings source the run may load from.
+ *
+ * Declared here rather than imported from the SDK so the option is usable —
+ * and typo-proof — without the optional peer installed.
+ */
+export type ClaudeAgentSettingSource = "user" | "project" | "local";
 
 /** The SDK's `canUseTool` callback shape (HITL seam target). */
 export type SdkCanUseTool = (
@@ -329,7 +357,7 @@ export type SdkToolDecision =
  * without a cast at the call site.
  */
 export type ResolveClaudeAgent = (
-  ctx: BlockContext<any>,
+  ctx: BlockContext<any, any, any, any, any, any, any, any, any>,
 ) => ResolvedClaudeAgent | Promise<ResolvedClaudeAgent>;
 
 /** An approval request handed to {@link ClaudeCodeAgentOptions.onToolApproval}. */

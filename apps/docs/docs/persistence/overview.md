@@ -67,22 +67,30 @@ On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` inst
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
+Not every scope-state write carries a version. An increment, an append, or a write to one key of a record field is handed to the store as the operation itself, and the store applies it to the value it currently holds. On the built-in stores, concurrent increments and appends both land; a custom store that doesn't implement those operations takes a version-checked whole-record write instead, and one of the two is refused. Concurrent writes to one field don't combine — the second one replaces the first, and neither call reports a conflict. [State Operations](../fundamentals/state-operations.md#cas-semantics) lists which calls go which way.
+
 ### Concurrency by store
 
-How much compare-and-swap safety each store actually gives you differs, and it is worth knowing before you pick one:
+Where the comparison happens differs by store, and it is worth knowing before you pick one. There are two arrangements. Either the store compares the version and writes as one indivisible step, or it holds a lock in memory while it reads, compares and writes. What separates them is how far the guarantee reaches.
 
-| Store | Scope state | Resource state |
-|---|---|---|
-| In-memory | Serialized per container | Real compare-and-swap (single process by definition) |
-| Filesystem | Serialized per container | Compared under a per-key lock, **per store instance** |
-| SQLite | Real compare-and-swap | Real compare-and-swap |
-| Postgres | Real compare-and-swap | Real compare-and-swap |
+| Store | Scope state | Resource state | Guarantee covers |
+|---|---|---|---|
+| In-memory | Atomic in the store | Atomic in the store | This process. There is nothing outside it to cover |
+| Filesystem | Under a per-key lock | Under a per-key lock | **One store instance** |
+| SQLite | Atomic in the store | Atomic in the store | Every writer against the database file |
+| Postgres | Atomic in the store | Atomic in the store | Every connection to the database |
 
 The filesystem row is the one to read twice. The lock lives on the store instance, in memory rather than on disk, so it covers every write that goes through that instance and nothing past it. A second store pointed at the same directory races with the first, whether the two sit in one Node process or two. Most apps build one store and hand it to `createFlowState`, so in practice the boundary falls at the process; the instance is what actually draws it. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
 
+The filesystem store also has no field-delete operation, so `deleteStateRecord` there writes the whole scope record at the version the run last read, in one attempt. Lose that race and the call returns `false` with the key still stored. Request state behaves the same way on every store, because none of them offer field delete on the request record.
+
 The resource-state column reaches your flow code, not just callers holding the store directly. A flow mutating `ctx.resources` or a collection instance writes at the version its execution context read, so a write built on a stale read is refused and re-applied against the value that won rather than overwriting it — see [the mutation model](../state/mutation-model.md) for what that looks like from inside a flow.
 
-Deleting a resource on any store leaves a small marker row behind instead of removing it. The marker keeps the version, which is what stops a worker holding a pre-delete version from matching the resource that later replaces it. Markers are kept indefinitely — nothing reclaims them today — so a workload that creates and deletes many resource keys will accumulate one row per deleted key.
+Deleting a resource on any store leaves a small marker row behind instead of removing it. The marker keeps the version, which is what stops a worker holding a pre-delete version from matching the resource that later replaces it. Nothing ages a marker out — there is no sweep, no timer, no retention window — so a workload that creates and deletes many resource keys accumulates one row per deleted key.
+
+Markers are reclaimed at exactly one moment: when a session record is **created** under a session id, the runtime clears that id's markers immediately before it writes the record. Reusing a session id therefore gives you writable resources again, rather than a session whose static resources are permanently refused. Nothing happens at delete time — while a session is merely gone, its markers are still doing their job.
+
+Two things to know about that reclamation. A reclaimed key's version restarts at `1`, so the pre-delete guarantee above does not carry across a reused id: a worker still holding a version from the old session can match a row in the new one. And the reclamation is not fenced against a second creator racing it for the same id — the loser of that race can clear a marker inside the session that won, which lets the next ordinary write bring a deleted resource back. Both need a per-session generation to close, and neither is reachable without deliberately reusing a session id.
 
 ## What gets persisted
 

@@ -117,7 +117,7 @@ request → session → user → org
 (one run)  (conversation)  (across sessions)  (shared across users)
 ```
 
-Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more — all CAS-guarded for concurrency safety. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md).
+Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more. **They do not all take the version check** — some writes are guarded by compare-and-swap and can be refused, while the commutative ones persist unconditionally, and which is which depends on the shape of the call, the adapter and the scope. Before you rely on either behaviour, read [Atomicity Guarantees](./state-and-scopes.md#atomicity-guarantees), which is where that split is stated. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md) for the routing.
 
 ### Detached work — outliving the request
 
@@ -172,7 +172,7 @@ Client                    Server                           Store
   │                         ├─ execute root block            │
   │                         │   ├─ block.run(input, ctx)     │
   │                         │   ├─ emit items/content ──────►│ (persist)
-  │                         │   └─ state ops ───────────────►│ (CAS write)
+  │                         │   └─ state ops ───────────────►│ (CAS or delta write)
   │◄── SSE stream ──────────┤                               │
   │  (items, deltas, status)│                               │
   │                         ├─ fire lifecycle hooks          │

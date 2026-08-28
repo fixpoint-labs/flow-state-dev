@@ -211,20 +211,31 @@ export class FlowStateDisposedError extends FlowError {
 }
 
 /**
- * Thrown when a resource write loses to a concurrent **delete** — the row this
- * caller held a live version for is now a tombstone.
+ * Thrown when a resource write reaches a **tombstone** — the key is deleted,
+ * whether or not this caller ever held a live version for it.
  *
  * Terminal, never retryable: the only state a retry could re-apply is the
- * caller's pre-delete snapshot, so retrying would resurrect a resource somebody
- * deliberately removed. That is why resource state does not reuse
- * `runWithCAS`, whose conflict handler falls back to the container's cached
- * state and would do exactly that once a tombstone makes the version matchable.
+ * caller's pre-delete snapshot, and neither way of sending it is a recovery. At
+ * `0` ("no live row") a tombstone admits it, and a resource somebody
+ * deliberately removed comes back. At the tombstone's retained version no
+ * live-row check admits it, so the retries burn the budget and report a lost
+ * race rather than the deletion that happened. That is why resource state does
+ * not reuse `runWithCAS`, whose conflict handler falls back to the container's
+ * cached state and produces one or the other depending on the version the
+ * caller happened to hold.
  *
- * **Raised only when a live version was actually lost.** A key that was never
- * persisted — a declared resource that exists so far only through its schema
- * default — is *absent*, not deleted, and a write that asks for no change to
- * one is a no-op. Reporting a deletion there would be this store telling a
- * caller that something happened to a row that never existed.
+ * **A caller holding no live version reaches this too.** Its write goes out at
+ * `"absent"` ("no row at all"), which a tombstone refuses — precisely so an
+ * ordinary first write of a fresh context cannot land on top of somebody's
+ * delete. Against a key that was never persisted at all, the same write finds
+ * no row to refuse it and simply creates the key.
+ *
+ * **Never raised for a no-op.** A write that asks for no change is a verified
+ * no-op whenever this context holds no version, a deleted key included:
+ * nothing is stored either way, so nothing can have been revived. Reporting a
+ * deletion to a declared resource living so far on its schema default would be
+ * this store telling a caller that something happened to a row that never
+ * existed.
  */
 export class ResourceDeletedError extends FlowError {
   readonly resourceKey: string;
@@ -291,10 +302,53 @@ export class ResourceAlreadyExistsError extends FlowError {
 }
 
 /**
- * Thrown when a CAS retry loop exhausts its budget on an external-store scope.
- * Only surfaces for read-modify-write ops (`setState`, `atomicState`,
- * multi-field `patchState`, updater-form `patchState`); commutative ops
- * and in-memory scopes never throw it.
+ * Thrown when a version-checked write loses a race — either because a CAS
+ * driver spent its whole retry budget without landing, or because a
+ * version-checked resource `delete` conflicted. The class is `retryable: true`,
+ * which on the CAS paths means a fresh attempt can win once contention
+ * subsides. What sets the `delete` apart is that it has no internal retry loop
+ * behind it at all: it passes the literal `attempts: 1` where both drivers pass
+ * `maxRetries + 1`. That is a statement about the loop, not a claim about what
+ * a caller's own retry policy can do.
+ *
+ * **Three raise sites, not one.** Both CAS drivers raise it when their retry
+ * budget exhausts — `runWithCAS` (`../stores/cas.ts`) for scope state,
+ * `runResourceCAS` (`../stores/resource-cas.ts`) for resource state — and the
+ * version-checked resource `delete` in `createExecutionContext` raises it
+ * terminally on the first conflict, with no retry loop behind it (`attempts`
+ * is 1 there). Prose that names only the scope-state driver, or only budget
+ * exhaustion, is describing one of the three. Three *paths*, four `throw`s:
+ * the `delete` path holds two, one for the conflict it exists to catch (a live
+ * row at an unexpected version, which refreshes the cached value and version
+ * from the winner's row before it throws) and one for a store adapter that has
+ * broken idempotent delete, which no retry can fix.
+ *
+ * **The ops below are examples, not a closed list.** On the scope-state
+ * driver a call reaches the retry loop when the scope has a durable `persist`
+ * and its `CASMutationHint` is non-commutative (`isCommutativeHint`,
+ * `../stores/cas.ts`) — `setState`, `atomicState`, multi-field `patchState`,
+ * updater-form `patchState` and multi-field `incState` qualify today, the last
+ * because its mutator recomputes from the current field value on every retry.
+ * An in-memory scope has no `persist`, no version, and never throws this. Note
+ * what that does *not* say: a commutative op is still version-checked when the
+ * adapter doesn't advertise the matching delta verb, because
+ * `createScopePersist` then falls back to a full `set` at the held numeric
+ * version — that refusal returns `false` instead of raising, which is a
+ * different report, not an exemption. The resource driver has no such
+ * *store-dependent* split — it does no delta-verb feature detection, so what
+ * the adapter advertises never changes its `expectedVersion`. The caller's
+ * intent decides that instead — `runResourceCAS` derives `expectedVersion` from
+ * its `intent` argument, and the split is four-way rather than three. `mutate`
+ * sends the held version, or `"absent"` ("no row at all") when it holds none;
+ * a tombstone is a row, so it refuses `"absent"` and that write ends
+ * terminally rather than landing on top of a delete. `create` sends `0`, a
+ * version check, but against "no live row" rather than the version this
+ * context holds — which a tombstone satisfies, because recreating a deleted
+ * resource is what the verb is for. And `replace`, reached by
+ * `create(key, state, { replace: true })`, sends `"any"` and so is not
+ * version-checked at all.
+ *
+ * Read the hint routing before restating any of this narrower than it is.
  */
 export class ConcurrentModificationError extends FlowError {
   readonly attempts: number;

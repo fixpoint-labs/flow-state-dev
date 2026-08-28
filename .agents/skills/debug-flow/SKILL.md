@@ -233,8 +233,61 @@ Summarize for the user:
 | **user** | Across all sessions for a user | Preferences, profile data |
 | **org** | Across sessions and users | Shared config, knowledge base |
 
-**State ops** (all atomic, CAS-guarded):
+**State ops** (not uniformly version-checked — see below):
 `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
+
+Three things to hold while debugging a state bug:
+
+- An **unchecked** write sends no version, so it cannot raise `ConcurrentModificationError`. That
+  covers `pushState`, `setStateRecord` and `deleteStateRecord`; `incState` given a single field;
+  and `patchState` given exactly one literal field. Seeing the error means a version-checked write
+  lost a race — but **three separate paths raise it and none wraps another, so settle which one you
+  are in before auditing any call**. The message discriminates them.
+  `State update failed due to concurrent modifications` is scope state on `runWithCAS`
+  (`packages/engine/src/stores/cas.ts`), written through `ctx.request` / `ctx.session` / `ctx.user`
+  / `ctx.org`. `Resource "<key>" update failed due to concurrent modifications` is resource state on
+  `runResourceCAS` (`packages/engine/src/stores/resource-cas.ts`), written through
+  `ctx.resources.<name>.patchState` / `setState` / `updateState` / `incState` / `pushState`. Those
+  two mean a retry budget ran
+  out. The third is neither driver: `Resource "<key>" was replaced by another writer (expected
+  version N, found M) — the delete was refused rather than applied to the new generation` is the
+  version-checked `delete` in `packages/engine/src/context/createExecutionContext.ts`, thrown on the
+  FIRST conflict with no retry loop behind it. It means the store still holds a live row at a
+  version this context did not expect — some other writer moved the key, delete-and-recreate being
+  the case the check exists to catch. It reaches there through
+  `ctx.resources.<collection>.delete(key)` **and** through instance-cap LRU eviction, which issues
+  the same version-conditional delete without you calling it. Audit those and whoever last wrote the
+  key; the mutation ops below are not on this path. (That same path has one more message, `Resource "<key>"
+  delete was refused with no current value ...`, which a conforming store cannot produce: read it as
+  an adapter bug, not a race.) A flow can use one surface and not the other, so auditing the wrong
+  one finds nothing and proves nothing.
+  On the **scope-state** driver, call shape is what puts you there: multi-field `patchState`,
+  multi-field `incState`, the `patchState` updater form, `setState`, `atomicState`. A missing
+  adapter verb is not a second route onto it — the unchecked dispatch is already chosen by the time
+  the verb is found missing, so the full-record `set` fallback is attempted once at the held
+  version, with no retry loop behind it. Start from the version-checked call, not from the
+  adapter's capabilities.
+  On the **resource** driver there is no such shape split: those three ops are all version-checked,
+  so the driver follows from the surface you called rather than from the call's form, and the error
+  means sustained contention on one key. Writes from a single context already serialize per key
+  through `serializeResourceWrite`, so look for a writer that queue cannot see rather than for a
+  fan-out inside your own block.
+- A **missing delta verb** shows up as a bare `false` instead. The one fallback `set` returns
+  `false` on a version mismatch and nothing is thrown, which is indistinguishable from the `false`
+  a genuine no-op returns. If a `setStateRecord` or `deleteStateRecord` quietly fails to land,
+  check whether that scope's adapter implements the verb before hunting for a race.
+- A **lost update** leaves no conflict to find, and the version-checked path is not exempt.
+  Increments and appends compose, so suspect a same-target overwrite — a literal `patchState` or a
+  `setStateRecord` on the key another writer just wrote, where the last write wins and both calls
+  still return `true`. `setState` loses updates too: on a retry it re-applies the same whole state
+  and discards the winner's change. If the write vanished rather than being overwritten, check
+  whether the record was deleted underneath it: a missing record is refused even at `"any"`.
+
+Which **scope-state** calls land on which path — by call shape, adapter and scope — is
+[Atomicity Guarantees](../../../docs/architecture/state-and-scopes.md#atomicity-guarantees). The
+**resource** driver's policy table — every case where it diverges from `runWithCAS`, and the
+failure the shared driver would have produced — lives beside the code, in the
+`packages/engine/src/stores/resource-cas.ts` module header.
 
 ### Item Types
 
@@ -260,7 +313,15 @@ Summarize for the user:
 | `timeout_error` | Yes | Operation timeout |
 | `rate_limit_error` | Yes | Upstream rate limiting |
 | `model_error` | Yes | LLM provider failure |
+| `context_length_error` | No | Prompt exceeded the model's context window; resending it fails identically |
+| `provider_unavailable_error` | Yes | Upstream provider outage (5xx, gateway failure) |
 | `tool_execution_error` | No | Tool block threw during generator loop |
+| `ambiguous_block_name` | No | Block name resolved to more than one execution target |
+| `resource_deleted` | No | A state mutation reached a **tombstoned** resource. Usually no race to find: any earlier delete leaves the tombstone, and a later context is refused whether it writes at `"absent"` (holding no version) or at a numeric one (a tombstone is never live). Terminal because no retry can revive the key — recreating it is `create()`'s job, which writes at `0`, and a tombstone admits that |
+| `resource_already_exists` | No | A create-if-absent write found a **live** row under the key. A lost race is one way there; an ordinary `create` on a key that already exists is the other, and the store cannot tell them apart. Carries the existing (winner's) state and version, so `getOrCreate` / `upsert` finish as a read rather than a second lookup |
+| `concurrent_modification` | Yes | Version-checked write lost: either CAS driver exhausted its retry budget, or a version-checked resource delete conflicted (terminal, `attempts: 1`) |
+| `output_validation_error` | No | Generator output failed its `outputSchema`; `details` carries `{ rawOutput, issues, phase }` |
+| `route_unavailable` | No | Recorded router decision can't be honored on resume — the selector re-decided, or the route left the table |
 | `execution_error` | No | Generic/unknown execution failure |
 
 ### Retry Policy

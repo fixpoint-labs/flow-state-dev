@@ -268,20 +268,68 @@ createBashTool({
   provider: { type: "vercel" },
   destination: "/workspace",     // workspace root (default: "/workspace")
   persist: true,                 // persist sandbox across sessions
-  syncMode: "diff",              // "diff" (default) or "full"
-  fileFilter: (p) => !p.includes("node_modules"),
   onBeforeCommand: (cmd) => {
     if (cmd.includes("rm -rf /")) return "echo 'Nice try.'";
   },
 });
 ```
 
+### Where the workspace lives
+
+The local provider creates a workspace directory per scope, at
+`.fsdev/workspaces/<scope>/<id>/`. `run` and `session` carry the tenant as well
+(`.fsdev/workspaces/session/<tenant>/<id>/`), because their ids reach the tool
+from the request and two tenants can name the same one. `user` and `org` don't:
+those scopes are shared across tenants by design.
+
+| `scope` | One workspace per | Reach for it when |
+| --- | --- | --- |
+| `"run"` | request | Several agents work at once and must not see each other's half-finished files. |
+| `"session"` *(default)* | session | A conversation's runs should build on each other. |
+| `"user"` | user | Work should carry across a user's sessions. |
+| `"org"` | org | Work is shared across everyone in an org. |
+
+```typescript
+createBashBlocks({ provider: { type: "local", scope: "run" } });
+```
+
+The scope you pick is also what the model is told. `bashCommand`'s description
+derives its statement of the workspace's reach from `scope`, so a run-scoped
+workspace is described as belonging to this request and not carrying over —
+otherwise an agent leaves work in the workspace expecting a later request to
+find it, and that request gets a different directory.
+
+`scope` and `cwd` are alternatives. `cwd` names one directory, so a scope beside
+it separates nothing; setting both throws at construction.
+
+The list is ordered narrowest first, and that ordering is the decision.
+Everything below `"run"` is a workspace two runs can be inside at the same
+time. That's usually what you want — runs building on each other is the point
+of a session — but it's also the only way one run sees another's partial work.
+
+`"user"` and `"org"` fall back to the session when the context carries no user
+or org identity, so anonymous callers get their own workspace rather than
+sharing one.
+
 ### Sync lifecycle
 
-1. **Hydrate** — resource collection entries are written into the sandbox filesystem
+1. **Hydrate** — each collection's entries are written into the sandbox under the collection's pattern prefix, so a collection matching `artifacts/**` appears at `<workspace>/artifacts/`
 2. **Execute** — `bash`, `readFile`, `writeFile` tools are available to the LLM
-3. **Flush** — after every `bash` and `writeFile`, changed files sync back to resources
-4. Deleted files are removed from resource collections. `readFile` does not trigger a flush.
+3. **Flush** — after every `bash` and `writeFile`, changed files sync back to their owning collection. `readFile` does not trigger a flush.
+
+A file the run deletes is removed from its collection, but only if the collection still holds what the run was given. If something else changed that file while the run held it, nothing is written or deleted and a warning names the contested path — the run's copy and the collection's copy are both left alone. The same applies to a write, and to a file another run is writing at that moment.
+
+The unit is the collection entry rather than the path, so two sessions each writing their own `artifacts/report.md` never stand off — those are two files that share a name.
+
+`writeFile` reports a refusal in its result, not only in the log:
+
+```typescript
+{ success: false, refused: '"artifacts/report.md" is being written by another run — the write was NOT applied.' }
+```
+
+The file is in the workspace either way; the workspace is the run's own. `success` reports whether it reached its collection, so a model told `false` can retry rather than move on believing the artifact was saved. `refused` is `null` whenever it landed.
+
+Files written outside every mounted collection's directory, and outside the scratch directory `./tmp/`, are dropped rather than filed somewhere arbitrary. A flush walks the mounts and the workspace root, so a stray file beside the mounts is named in a warning; one written into a subdirectory nothing is mounted at is dropped silently, because walking every directory under the root after each command is not a cost the flush takes.
 
 ### Workspace path restrictions (Local FS)
 

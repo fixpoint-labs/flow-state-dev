@@ -376,6 +376,76 @@ you would have to remember are a list nobody finishes.
 
 Prefer a key your own code assigned over one that arrived with the request.
 
+## Configuring the run
+
+Four options travel with `cwd`. All are unset by default, so a run that ignores
+them behaves exactly as it did before you knew they existed.
+
+```ts
+// One checkout per invocation, shared by both resolvers. They receive the same
+// context object, so a WeakMap keyed on it hands them the same directory and
+// releases it when the run is done.
+const checkouts = new WeakMap<object, Promise<string>>();
+const checkoutFor = (ctx: object) => {
+  const existing = checkouts.get(ctx);
+  if (existing) return existing;
+  const fresh = allocateCheckout();
+  checkouts.set(ctx, fresh);
+  return fresh;
+};
+
+claudeCodeAgent({
+  cwd: (_input, ctx) => checkoutFor(ctx),
+  settingSources: ["user"],
+  env: { ...process.env, CI: "1" },
+  sandbox: async (_input, ctx) => ({
+    enabled: true,
+    filesystem: { allowWrite: [await checkoutFor(ctx)] },
+  }),
+  uses: [myCapability],
+  onErrored: async (error, ctx) => {
+    await releaseWhateverThisRunHeld(ctx);
+  },
+});
+```
+
+**`settingSources`** picks which filesystem settings the run loads: `"user"`,
+`"project"`, `"local"`. Leave it out and it loads all three, the way the CLI
+does. This is the one to read twice. `"project"` is what makes a run read
+`CLAUDE.md` and `.claude/settings.json` **out of its working directory**. If that
+directory is one your server assembled out of resources your own users can
+write, then those files are user input, and the run reading configuration from
+them means your users configure your agent. Pass `[]` to load none, or list only
+the sources you control.
+
+**`env`** sets the run's environment variables. It replaces the process
+environment rather than adding to it, so spread `process.env` when you meant to
+add.
+
+**`sandbox`** is the Agent SDK's sandbox settings, forwarded as given. Take a
+value or write a resolver. The resolver form is the one that matters: the
+settings that confine a run name the directory it works in, and that directory
+is per run while one flow build serves many. A constant can say "sandboxed"; it
+cannot say "sandboxed to this run's workspace."
+
+`filesystem.allowWrite` adds paths to what the run may write. It does not
+replace the default set, and it is not a fence on its own — `enabled` is what
+turns sandboxing on, and `denyWrite` and the permission rules are what narrow
+it.
+
+**`uses`** installs capabilities on the agent block, the same slot every other
+block takes. A capability handed here that declares resources has them
+registered on the flow, so `ctx.resources` resolves for them at run time.
+Capabilities resolved dynamically, by a function rather than a static entry,
+contribute context and tools only — a resource has to exist before the block
+runs.
+
+**`onErrored`** runs after the block threw, with the error and the block's
+context. It does not swallow the error; the run still fails. A capability can
+contribute resources, state and tools but never lifecycle hooks, so this is the
+only way to reach one. Releasing something the run was holding is what it is
+for.
+
 ## Recording what the run did
 
 The item stream tells you what the agent said. `recordWork: true` also records
@@ -525,3 +595,54 @@ are strings, not streamed input.
 
 See also: [Tools overview](./overview.md) and [Claude Code remote
 dispatch](./claude-code-cli.md) for the fire-and-forget cloud alternative.
+## Files that outlive the run
+
+A run needs a directory to work in, and that directory is usually temporary. The files it produces usually shouldn't be.
+
+`createWorkspaceAgentCapability` fills the directory from your resource collections before the run and reconciles what changed back afterwards:
+
+```ts
+import { createWorkspaceAgentCapability } from "@flow-state-dev/claude-code/sdk";
+
+const workspace = createWorkspaceAgentCapability({
+  root: async () => mkdtemp(join("/var/agent-checkouts", "run-")),
+});
+
+generator({
+  name: "coder",
+  model: "openai/gpt-5.4-mini",
+  prompt: "Use the workspace agent to make the change.",
+  uses: [workspace],
+});
+```
+
+Each collection is mounted at its pattern prefix, so one matching `artifacts/**` shows up at `<root>/artifacts/`. `collections` and `exclude` narrow the set.
+
+### When two writers touch one file
+
+A run isn't the only thing that can change a collection. Another run, an action block, a person in the UI — any of them can edit a file while a run holds it.
+
+The reconcile checks before it writes: does the collection still hold what this run was given? If it does, the write goes through. If it doesn't, nothing is written and the path is recorded. Deletes go through the same check, so a file the run removed and somebody else edited stays put.
+
+That check catches a writer who already wrote. It can't catch one writing at the same moment, so the run also claims each path it saves, for as long as the save takes. Another run reaching a claimed path stands off instead of overwriting. Claims are per file: two runs sharing a collection while working on different files both save, and neither is refused.
+
+Three outcomes end up in the `workspace-outcomes` collection, keyed by run:
+
+- **conflict** — two writers, one file. Carries three hashes: what the run was given, what the collection holds now, and what the run left. `ours: null` means the run deleted a file somebody else had edited.
+- **contested** — another run was writing the file at the same moment, so this one stood off. No hashes, because nothing has been written to disagree about yet. The row names the path so you can stop the two runs sharing it.
+- **orphan** — a file written outside every mounted collection, so nothing owns it.
+
+A status item reports how many there were, so a run that ends with unsaved work doesn't end quietly.
+
+### Containment
+
+By default the run is confined to the workspace it was given, through two settings that answer different halves of the same question.
+
+`settingSources: []` stops the run reading its **configuration** out of the workspace. This one is easy to miss. A projected directory holds whatever your collections hold, and in a real application your users write those. A `CLAUDE.md` or a `.claude/settings.json` sitting among them is user input — and an agent reading its instructions out of user input is a different product than the one you shipped.
+
+The sandbox settings stop the run **writing** outside the workspace. A working directory is not a fence: absolute paths still resolve from inside it. The default names the root as the only writable path and refuses commands that ask to run unsandboxed.
+
+A third setting stops the run **leaving** the workspace. The SDK's worktree tools relocate a run mid-flight when the model asks for it, and a projection that filled one directory would then be reconciling a tree the run had already walked away from. Those tools are taken out of the run's reach.
+
+Set `settingSources` or `sandbox` yourself and yours wins. The disallowed tools merge instead, so adding your own doesn't quietly give the relocation ones back. `contain: false` turns all three off, which is what you want when you control everything in the workspace and nothing else.
+

@@ -158,6 +158,71 @@ The run's file tools address relative paths inside that directory, and so does
 boundary — a run can still reach an absolute path outside it, and that operation
 is recorded at the path it reached.
 
+### Controlling what a run reads and what it runs in (`/sdk`)
+
+Four more options travel alongside `cwd`:
+
+```ts
+// `checkoutForThisRun()` allocates a directory, so calling it in both resolvers
+// would hand the run one directory and name a different one in its settings,
+// with nothing throwing. Calling it once at build time is the other way to get
+// it wrong: one flow build serves many runs, and they would all share the
+// directory. So: once per invocation, keyed on the run's own context, which
+// both resolvers are handed.
+const checkouts = new WeakMap<object, Promise<string>>();
+const checkoutFor = (ctx: object) => {
+  const existing = checkouts.get(ctx);
+  if (existing) return existing;
+  const fresh = checkoutForThisRun();
+  checkouts.set(ctx, fresh);
+  return fresh;
+};
+
+claudeCodeAgent({
+  cwd: (_input, ctx) => checkoutFor(ctx),
+  // Which filesystem settings the run loads. Omitted, it loads all of them,
+  // exactly as the CLI does.
+  settingSources: ["user"],
+  // The run's environment. This REPLACES the process environment rather than
+  // adding to it — spread `process.env` when you mean to add.
+  env: { ...process.env, CI: "1" },
+  // The SDK's sandbox settings (`SandboxSettings`, an open object — the Agent
+  // SDK is an optional peer here, so its own type is not imported). A value or
+  // a resolver: the settings that confine a run name the directory it works
+  // in, and that is per run.
+  sandbox: async (_input, ctx) => ({
+    enabled: true,
+    filesystem: { allowWrite: [await checkoutFor(ctx)] },
+  }),
+  // Capabilities installed on the block, same slot any other block takes.
+  uses: [myCapability],
+  // Runs after the block threw, with the error. It does not swallow it — the
+  // run still fails — so this is where anything the run was holding gets
+  // released. A capability cannot contribute lifecycle hooks, so this option
+  // is the only way to reach one.
+  onErrored: async (error, ctx) => { await releaseWhateverThisRunHeld(ctx); },
+});
+```
+
+`settingSources` is the one worth reading twice. `"project"` is what makes a run
+read `CLAUDE.md` and `.claude/settings.json` **out of its working directory**. If
+that directory is one your server assembled — from resources your application's
+users can write — then those files are user input, and the run reading
+configuration out of them means your users configure your agent. Pass `[]` to
+load none, or list only the sources you control.
+
+**`allowWrite` is not a fence.** The SDK documents it as *additional* paths to
+allow writing, merged with the paths that `Edit(...)` permission rules already
+grant — so listing your workspace there widens what the run may write, it does
+not narrow it to that directory. What confines a run is `enabled: true` turning
+sandboxing on at all, plus `denyWrite` and the permission rules; `allowWrite` is
+how you punch your workspace through those. If you need a hard boundary, say so
+with `denyWrite` and verify it against a real run rather than assuming this
+option gives you one.
+
+Nothing here changes by default: leave an option out and the run behaves exactly
+as it does today.
+
 #### Reusing a directory across runs
 
 A throwaway directory is the easy case. If you want runs that belong together to
@@ -322,6 +387,82 @@ fails the run: what it cannot handle becomes a gap row.
 `createClaudeCodeAgentCapability({ recordWork: true })` takes the same option and
 needs it — the capability declares the collections itself, because a block in a
 capability's `tools` contributes no resource declarations to the flow.
+
+### A run whose files are resources (`/sdk`)
+
+`cwd` hands a run a directory. It doesn't put anything in it, and it doesn't
+bring anything back. `createWorkspaceAgentCapability` does both:
+
+```ts
+import { createWorkspaceAgentCapability } from "@flow-state-dev/claude-code/sdk";
+
+const workspace = createWorkspaceAgentCapability({
+  root: async () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
+});
+
+generator({
+  name: "coder",
+  model: "openai/gpt-5.4-mini",
+  prompt: "Use the workspace agent to make the change.",
+  uses: [workspace],
+});
+```
+
+Every resource collection on the block's context is mounted at its pattern
+prefix, so a collection matching `artifacts/**` appears at `<root>/artifacts/`.
+Narrow it with `collections` or `exclude` if you want fewer.
+
+After the run, what changed goes back to the collection it came from — unless
+something else changed the same file while the run held it. Then nothing is
+written and the path is recorded instead.
+
+#### Reading what could not be saved
+
+Three outcomes need a person: a **conflict** (two writers, one file), a
+**contested** path (another run was writing it at the same moment, so this one
+stood off), and an **orphan** (a file written outside every mounted
+collection). All three land in the `workspace-outcomes` collection, keyed by
+run:
+
+```ts
+const unsettled = await ctx.resources["workspace-outcomes"].list();
+```
+
+A conflict carries three hashes — what the projection last wrote, what the
+collection holds now, and what the run left — which is what lets you say who
+changed what. `ours: null` means the run deleted a file somebody else had
+edited. A contested path carries no hashes: nothing has been written yet, only
+a claim held elsewhere. Claims are per file, so two runs working on different
+files in one collection never contend.
+
+A status item says how many there were, so a run that ends with unsaved work
+doesn't end quietly.
+
+#### Containment
+
+By default the run is confined to the workspace it was given. Two settings,
+answering different halves of the same question:
+
+- `settingSources: []` — the run doesn't read its **configuration** out of the
+  workspace. A projected directory holds whatever the mounted collections hold,
+  and in a real application those are written by its users. A `CLAUDE.md` or a
+  `.claude/settings.json` sitting among them is user input, and without this the
+  run obeys it.
+- Sandbox settings — the run doesn't **write** outside the workspace. `cwd` is a
+  working directory, not a fence: absolute paths still resolve, so the boundary
+  has to be declared. The default names the root in `filesystem.allowWrite` and
+  refuses `allowUnsandboxedCommands`, which is the escape a command can
+  otherwise ask for by itself.
+- `disallowedTools` — the run doesn't **leave** the workspace. The SDK's
+  worktree tools relocate a run mid-flight when the model asks, and a
+  projection that hydrated one directory would then be reconciling a tree the
+  run had already left.
+
+Set `settingSources` or `sandbox` yourself and yours wins — containment is a
+default, not a lock. `disallowedTools` merges instead, so adding your own
+doesn't silently take the relocation ones away. `contain: false` turns all
+three off, which is what a trusted-workspace deployment wants and what nothing
+else should.
 
 ## Limitations
 

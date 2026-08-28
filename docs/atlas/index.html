@@ -2,13 +2,57 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="refresh" content="0; url=conductor.html" />
-    <link rel="canonical" href="conductor.html" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Atlas</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 3rem 1.5rem; max-width: 42rem;
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+      .lede { margin: 0 0 2rem; opacity: .75; }
+      ul { list-style: none; margin: 0; padding: 0; }
+      li + li { margin-top: 1.25rem; }
+      a { font-size: 1.05rem; font-weight: 600; }
+      p.what { margin: .2rem 0 0; opacity: .75; }
+    </style>
   </head>
   <body>
-    <!-- The redirect above carries anyone with meta-refresh enabled. This link
-         is for everyone else, and for when a second atlas makes a real index. -->
-    <p>Redirecting to <a href="conductor.html">the Conductor atlas</a>.</p>
+    <h1>Atlas</h1>
+    <p class="lede">
+      Design documents for <code>@flow-state-dev</code> that read as rendered
+      pages: one self-contained HTML file each, no build step.
+    </p>
+    <ul>
+      <li>
+        <a href="conductor.html">Conductor</a>
+        <p class="what">
+          The meta-harness — what it is, how a run works, and the threads still
+          open.
+        </p>
+      </li>
+      <li>
+        <a href="framework.html">Framework architecture</a>
+        <p class="what">
+          Every package and system, how they compose, and the open refactor
+          questions. Counts are measured as of a commit, not maintained.
+        </p>
+      </li>
+      <li>
+        <a href="workforce.html">Workforce</a>
+        <p class="what">
+          The other intended harness — Layer 2 conventions on the same
+          substrate, persistent agents. Not this cycle.
+        </p>
+      </li>
+      <li>
+        <a href="roadmap.html">Roadmap</a>
+        <p class="what">
+          The public product horizon — three jobs, the clocks, and
+          the collaboration item that is not this cycle.
+        </p>
+      </li>
+    </ul>
   </body>
 </html>

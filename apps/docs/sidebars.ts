@@ -274,6 +274,7 @@ const sidebars: SidebarsConfig = {
             "tools/mcp",
             "tools/claude-code-cli",
             "tools/claude-code-sdk",
+            "tools/workspace",
           ],
         },
         {
