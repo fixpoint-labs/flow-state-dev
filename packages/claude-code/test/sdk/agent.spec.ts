@@ -1848,4 +1848,37 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     expect(winContains("sess_normal_123")).toBe(true);
     expect(winContains("../../server-repo")).toBe(true);
   });
+
+  it("hands cwd and sandbox the same resolved input", async () => {
+    // They used to differ: `cwd` got the raw block input while `sandbox` got a
+    // freshly built `{ prompt }`. With `pickPrompt` or a padded prompt those
+    // are different strings, so a caller deriving coordinated paths from them
+    // got a sandbox confining a directory the run was never given.
+    const seen: Array<Record<string, unknown>> = [];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          yield RESULT_OK;
+        },
+      }),
+      prompt: (input: { prompt: string }) => `picked:${input.prompt}`,
+      cwd: (input) => {
+        seen.push({ ...input });
+        return "/tmp/agent-cwd";
+      },
+      sandbox: (input) => {
+        seen.push({ ...input });
+        return { enabled: true };
+      },
+    } as never);
+
+    await testBlock(block as never, { input: { prompt: "  raw  " } });
+
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toEqual(seen[1]);
+    // And the prompt they see is the one the run actually runs: picked, then
+    // trimmed, exactly as it reaches the SDK.
+    expect(seen[0]!.prompt).toBe("picked:  raw");
+  });
+
 });
