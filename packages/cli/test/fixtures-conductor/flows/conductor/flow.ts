@@ -85,7 +85,7 @@ const seed = handler({
       });
     }
     await ctx.session.patchState({ rows });
-    ctx.emit.status(`seeded ${taskId}`);
+    ctx.emit.status(`seeded ${taskId}`, { transient: false });
     return { taskId };
   },
 });
@@ -120,7 +120,13 @@ const wake = handler({
       row.questions.length > 0 ? { ...row, status: "awaiting_review", run: { ...emptyRun(), outcome: "succeeded" as const } } : row,
     );
     await ctx.session.patchState({ rows: parked });
-    ctx.emit.status(`drained ${parked.length}`);
+    ctx.emit.status("claiming pending rows");
+    ctx.emit.status("running claimed rows");
+    const asked = parked.find((row) => row.questions.length > 0);
+    if (asked !== undefined) {
+      ctx.emit.message(`parked ${asked.issue} on ${asked.questions[0]?.text ?? "a question"}`);
+    }
+    ctx.emit.status(`drained ${parked.length}`, { transient: false });
     return { drained: parked.length };
   },
 });
@@ -175,7 +181,7 @@ const answer = handler({
         drained: false,
       };
     }
-    ctx.emit.status(`answered ${input.question}`);
+    ctx.emit.status(`answered ${input.question}`, { transient: false });
     return {
       result: "answered" as const,
       reason: null,

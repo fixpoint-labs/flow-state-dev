@@ -67,6 +67,33 @@ describe("renderFrame", () => {
     expect(back).not.toContain("line-29");
     expect(back).toContain("back");
   });
+
+  it("shows the live line at the tail while following, and hides it when scrolled back", () => {
+    const follow = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [waiting],
+        live: "status · claiming ASK-1",
+        activity: [{ at: 1, text: "ASK-1 · pending" }],
+      },
+      { cols: 80, rows: 24 },
+    );
+    expect(follow).toContain("status · claiming ASK-1");
+    expect(follow).toContain("live");
+
+    const back = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [waiting],
+        live: "status · claiming ASK-1",
+        activity: Array.from({ length: 30 }, (_, i) => ({ at: i, text: `line-${i}` })),
+        scroll: 200,
+      },
+      { cols: 80, rows: 24 },
+    );
+    expect(back).not.toContain("status · claiming ASK-1");
+    expect(back).toContain("back");
+  });
 });
 
 describe("renderBoardPlain / watchExitCode", () => {

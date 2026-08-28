@@ -101,6 +101,11 @@ export interface ViewState {
   notice: string | null;
   activity: ActivityItem[];
   /**
+   * In-flight transcript line — a streaming message or the current
+   * transient status. `null` when nothing is mid-stream.
+   */
+  live: string | null;
+  /**
    * Transcript pager offset from the latest line. `0` follows new activity
    * (Grok-style). PageUp / wheel-up increase it.
    */
@@ -121,6 +126,7 @@ export function emptyView(epicLabel: string): ViewState {
     busy: false,
     notice: null,
     activity: [],
+    live: null,
     scroll: 0,
     lastRefreshAt: null,
   };

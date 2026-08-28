@@ -9,7 +9,6 @@
  */
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
-  activityFromEvent,
   answerQuestion,
   readBoard,
   seedIssue,
@@ -18,6 +17,7 @@ import {
 } from "./dispatch";
 import { HELP_TEXT } from "./parse";
 import { renderBoardPlain, watchExitCode } from "./render";
+import { createStreamTranscript } from "./transcript";
 import type { OperatorCommand, StatusRow } from "./types";
 
 export interface HeadlessOptions {
@@ -37,10 +37,19 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
   const write = (text: string) => {
     out.write(text.endsWith("\n") ? text : `${text}\n`);
   };
+  const transcript = createStreamTranscript();
+  const writeEvent = (text: string) => {
+    err.write(text.endsWith("\n") ? text : `${text}\n`);
+  };
   const onEvent = (event: RequestStreamEventWithId) => {
     if (options.json) return;
-    const line = activityFromEvent(event);
-    if (line !== undefined) err.write(`${line}\n`);
+    const patch = transcript.apply(event);
+    for (const line of patch.lines) writeEvent(line);
+  };
+  const flushTranscript = () => {
+    if (options.json) return;
+    const leftover = transcript.flush();
+    for (const line of leftover.lines) writeEvent(line);
   };
 
   try {
@@ -54,6 +63,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         return 1;
       case "status": {
         const status = await readBoard(options.dispatch, options.command.issue, onEvent);
+        flushTranscript();
         write(renderBoardPlain(status.rows, options.json));
         return watchExitCode(status.rows);
       }
@@ -64,15 +74,19 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           options.command.phase,
           onEvent,
         );
+        flushTranscript();
         if (options.json) write(JSON.stringify(seeded));
         else write(`seeded ${options.command.issue} → ${seeded.taskId}`);
         const status = await readBoard(options.dispatch, options.command.issue, onEvent);
+        flushTranscript();
         if (!options.json) write(renderBoardPlain(status.rows, false));
         return 0;
       }
       case "wake": {
         await wakeBoard(options.dispatch, onEvent);
+        flushTranscript();
         const status = await readBoard(options.dispatch, undefined, onEvent);
+        flushTranscript();
         write(options.json ? JSON.stringify(status) : renderBoardPlain(status.rows, false));
         return watchExitCode(status.rows);
       }
@@ -83,6 +97,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           options.command.text,
           onEvent,
         );
+        flushTranscript();
         if (options.json) write(JSON.stringify(answered));
         else {
           write(
@@ -94,7 +109,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         return answered.result === "declined" ? 1 : 0;
       }
       case "watch":
-        return await watchBoard(options, options.command.issue, onEvent);
+        return await watchBoard(options, options.command.issue, onEvent, flushTranscript);
       case "start": {
         // Interactive start is handled by the command (seed, then TUI).
         // Headless start seeds and watches — same two actions, printed.
@@ -104,9 +119,10 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           options.command.phase,
           onEvent,
         );
+        flushTranscript();
         if (options.json) write(JSON.stringify(seeded));
         else write(`seeded ${options.command.issue} → ${seeded.taskId}`);
-        return await watchBoard(options, options.command.issue, onEvent);
+        return await watchBoard(options, options.command.issue, onEvent, flushTranscript);
       }
     }
   } catch (error) {
@@ -119,6 +135,7 @@ async function watchBoard(
   options: HeadlessOptions,
   issue: string | undefined,
   onEvent: (event: RequestStreamEventWithId) => void,
+  flush: () => void,
 ): Promise<number> {
   const out = options.stdout ?? process.stdout;
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -127,6 +144,7 @@ async function watchBoard(
   let last = "";
   for (let i = 0; i < max; i++) {
     const status = await readBoard(options.dispatch, issue, onEvent);
+    flush();
     const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows);
     if (rendered !== last) {
       out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);

@@ -16,7 +16,6 @@ import {
   type RequestStreamEventWithId,
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { OutputItem } from "@flow-state-dev/core/items";
 import type { AnswerOutput, SeedOutput, StatusOutput } from "./types";
 
 export const CONDUCTOR_FLOW_KIND = "conductor";
@@ -195,52 +194,6 @@ export async function answerQuestion(
   if (result.error !== undefined) throw new Error(result.error);
   if (result.output === undefined) throw new Error("conductor answer returned nothing");
   return result.output;
-}
-
-/**
- * One activity line from an engine stream event — the same items `fsdev chat`
- * curates (status, error, tool call) plus resource changes, which are how a
- * detached run reports that the board or inbox moved.
- */
-export function activityFromEvent(event: RequestStreamEventWithId): string | undefined {
-  switch (event.type) {
-    case "item.done": {
-      const item = (event as { item?: OutputItem }).item;
-      if (item === undefined) return undefined;
-      if (item.type === "status" && item.message.length > 0) return `status · ${item.message}`;
-      if (item.type === "error" && item.message.length > 0) return `error · ${item.message}`;
-      if (item.type === "tool_output") {
-        return `tool · ${item.toolCall?.name ?? item.blockName}`;
-      }
-      if (item.type === "message" && item.role === "assistant") {
-        const text = messageText(item);
-        if (text.length > 0) return `message · ${text.length > 96 ? `${text.slice(0, 95)}…` : text}`;
-      }
-      return undefined;
-    }
-    case "resource.changed": {
-      const path = (event as { resourcePath?: string }).resourcePath;
-      const change = (event as { changeType?: string }).changeType;
-      if (path === undefined) return undefined;
-      return `resource · ${change ?? "changed"} ${path}`;
-    }
-    case "request.failed": {
-      const message = (event as { error?: { message?: string } }).error?.message;
-      return message !== undefined ? `request failed · ${message}` : "request failed";
-    }
-    default:
-      return undefined;
-  }
-}
-
-function messageText(item: OutputItem): string {
-  if (item.type !== "message") return "";
-  const parts = item.content ?? [];
-  let text = "";
-  for (const part of parts) {
-    if (part.type === "output_text" && typeof part.text === "string") text += part.text;
-  }
-  return text.trim();
 }
 
 /** The four actions this surface needs. Missing one is a config error, not a retry. */

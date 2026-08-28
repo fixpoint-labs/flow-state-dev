@@ -99,4 +99,33 @@ describe("fsdev conductor — TUI over the same actions", () => {
     tty.input.write("q");
     await expect(running).resolves.toBe(0);
   });
+
+  it("wakes from the board and writes the drain into the transcript", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "ASK-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+
+    await waitFor(() => tty.text, "ASK-1");
+    tty.input.write("w");
+    await waitFor(() => tty.text, "Which path?");
+    expect(tty.text).toContain("asked Which path?");
+    expect(tty.text).toMatch(/parked ASK-1|drained |claiming /);
+
+    tty.input.write("q");
+    await expect(running).resolves.toBe(0);
+  });
 });

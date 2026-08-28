@@ -7,7 +7,6 @@
  */
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
-  activityFromEvent,
   answerQuestion,
   readBoard,
   seedIssue,
@@ -16,6 +15,11 @@ import {
 } from "./dispatch";
 import { applyKey, decodeKeys, rowAfterRefresh, type Key } from "./keys";
 import { renderFrame } from "./render";
+import {
+  applyTranscriptPatch,
+  createStreamTranscript,
+  diffBoard,
+} from "./transcript";
 import {
   clampSelected,
   emptyView,
@@ -63,6 +67,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   let pending = "";
   let closed = false;
   let abortInFlight: (() => void) | undefined;
+  const transcript = createStreamTranscript();
 
   const size = () => ({
     cols: output.columns ?? 80,
@@ -73,18 +78,20 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     output.write(`${HOME}${ERASE}${renderFrame(state, size())}`);
   };
 
-  const onEvent = (event: RequestStreamEventWithId) => {
-    const line = activityFromEvent(event);
-    if (line === undefined) return;
-    state = pushActivity(state, line, now());
+  const applyPatch = (event: RequestStreamEventWithId) => {
+    state = applyTranscriptPatch(state, transcript.apply(event), now());
     paint();
   };
 
-  const refresh = async (note?: string) => {
-    const result = await readBoard(options.dispatch, undefined, onEvent);
-    state = applyStatus(state, result, now(), options.focusIssue);
-    if (note !== undefined) state = pushActivity(state, note, now());
+  const endTurn = () => {
+    state = applyTranscriptPatch(state, transcript.flush(), now());
     paint();
+  };
+
+  const refresh = async () => {
+    const result = await readBoard(options.dispatch, undefined, applyPatch);
+    state = applyStatus(state, result, now(), options.focusIssue);
+    endTurn();
   };
 
   const dispatchCommand = async (command: OperatorCommand) => {
@@ -94,17 +101,19 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       switch (command.kind) {
         case "seed":
         case "start": {
-          const seeded = await seedIssue(options.dispatch, command.issue, command.phase, onEvent);
+          const seeded = await seedIssue(options.dispatch, command.issue, command.phase, applyPatch);
+          endTurn();
           state = pushActivity(state, `seeded ${command.issue} → ${seeded.taskId}`, now());
           await refresh();
           break;
         }
         case "wake": {
-          const running = startConductorAction(options.dispatch, "wake", {}, onEvent);
+          const running = startConductorAction(options.dispatch, "wake", {}, applyPatch);
           abortInFlight = running.requestAbort;
           const result = await running.done;
           abortInFlight = undefined;
           if (result.error !== undefined) throw new Error(result.error);
+          endTurn();
           state = pushActivity(state, "wake · drain ran", now());
           await refresh();
           break;
@@ -114,8 +123,9 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
             options.dispatch,
             command.question,
             command.text,
-            onEvent,
+            applyPatch,
           );
+          endTurn();
           const label =
             answered.result === "declined"
               ? `answer declined · ${answered.reason ?? "refused"}`
@@ -128,7 +138,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
         case "watch":
         case "status":
         case "refresh":
-          await refresh("status");
+          await refresh();
           break;
         case "help":
           state = { ...state, help: true };
@@ -138,6 +148,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           break;
       }
     } catch (err) {
+      endTurn();
       const message = err instanceof Error ? err.message : String(err);
       state = { ...pushActivity(state, message, now()), notice: message };
     } finally {
@@ -157,7 +168,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   output.on("resize", onResize);
 
   try {
-    await refresh("board");
+    await refresh();
     if (options.focusIssue !== undefined) {
       state = rowAfterRefresh(state, options.focusIssue);
       paint();
@@ -198,7 +209,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           return;
         }
         if (result.effect.type === "refresh") {
-          void refresh("refresh").catch((err: unknown) => {
+          void refresh().catch((err: unknown) => {
             state = { ...state, notice: err instanceof Error ? err.message : String(err) };
             paint();
           });
@@ -247,10 +258,13 @@ export function applyStatus(
   at: number,
   preferIssue?: string,
 ): ViewState {
-  const next = clampSelected({
+  const moved = diffBoard(state.rows, output.rows);
+  let next = clampSelected({
     ...state,
     rows: output.rows,
     lastRefreshAt: at,
   });
-  return rowAfterRefresh(next, preferIssue);
+  next = rowAfterRefresh(next, preferIssue);
+  for (const line of moved) next = pushActivity(next, line, at);
+  return next;
 }

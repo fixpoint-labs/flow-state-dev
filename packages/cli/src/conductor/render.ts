@@ -187,8 +187,28 @@ function renderQuestionCard(question: StatusQuestion, selected: boolean, cols: n
 }
 
 function renderActivity(state: ViewState, cols: number, height: number): string {
-  const heading = ` ${dim("TRANSCRIPT")}${state.scroll > 0 ? dim(`  ·  ${state.scroll} back`) : dim("  ·  follow")}`;
-  const body = state.activity.map((item) => ` ${dim(formatClock(item.at))}  ${truncate(item.text, cols - 10)}`);
+  const following = state.scroll === 0;
+  const heading = ` ${dim("TRANSCRIPT")}${
+    following
+      ? state.live !== null
+        ? dim("  ·  live")
+        : dim("  ·  follow")
+      : dim(`  ·  ${state.scroll} back`)
+  }`;
+  const width = Math.max(16, cols - 10);
+  const body: string[] = [];
+  for (const item of state.activity) {
+    const wrapped = wrap(item.text, width);
+    wrapped.forEach((line, i) => {
+      body.push(i === 0 ? ` ${dim(formatClock(item.at))}  ${line}` : `         ${line}`);
+    });
+  }
+  if (following && state.live !== null) {
+    const wrapped = wrap(state.live, width);
+    wrapped.forEach((line, i) => {
+      body.push(i === 0 ? ` ${paint(GOLD, "··")}  ${paint(GOLD, line)}` : `         ${paint(GOLD, line)}`);
+    });
+  }
   const window = height - 2;
   if (window <= 0) return `${rule(cols, INK_3)}\n${heading}`;
   const maxScroll = Math.max(0, body.length - window);
@@ -196,9 +216,10 @@ function renderActivity(state: ViewState, cols: number, height: number): string 
   const start = Math.max(0, body.length - window - scroll);
   const visible = body.slice(start, start + window);
   const pad = Math.max(0, window - visible.length);
-  const filler = pad > 0 && visible.length === 0
-    ? [` ${dim("nothing yet. a wake writes here as it runs.")}`, ...Array.from({ length: pad - 1 }, () => "")]
-    : Array.from({ length: pad }, () => "");
+  const filler =
+    pad > 0 && visible.length === 0
+      ? [` ${dim("nothing yet. a wake writes here as it runs.")}`, ...Array.from({ length: pad - 1 }, () => "")]
+      : Array.from({ length: pad }, () => "");
   return [rule(cols, INK_3), heading, ...filler, ...visible].join("\n");
 }
 
