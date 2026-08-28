@@ -166,8 +166,8 @@ export function parseArgv(argv: string[]): ParseResult & { invocation?: Invocati
 export const HELP_TEXT = `fsdev conductor — drive a conductor flow from the terminal
 
 Uses the same runtime as fsdev run / fsdev chat (fsdev.config.*, stores,
-drain budget). Every verb is a flow action. The board is whatever status
-returns — that action is the authority, not this command.
+drain budget). seed, wake, status, and answer are flow actions; abort
+stops a running request. The board is whatever status returns.
 
 Interactive:
   fsdev conductor                 fullscreen board, live poll, slash commands
