@@ -70,6 +70,20 @@ export async function createBashTool(
     onAfterCommand,
   } = options;
 
+  // `scope` has no meaning here and cannot be given one. It picks a workspace
+  // per run, per session, per user or per org, and every one of those is read
+  // off a block's execution context — which this factory does not have, and
+  // does not get: it returns plain AI SDK tools, not blocks. Accepting it
+  // silently would hand back one shared directory while the configuration said
+  // several isolated ones.
+  if (provider.type === "local" && provider.scope !== undefined) {
+    throw new Error(
+      `[bash] \`scope: "${provider.scope}"\` is not available from createBashTool — the ` +
+        `identity it scopes by lives on a block's context, and these are plain tools. Pass ` +
+        `\`cwd\` to choose the workspace directory, or use createBashBlocks for a scoped one.`,
+    );
+  }
+
   // 1. Resolve or create sandbox
   const existingId = persist && bashSession ? bashSession.state.sandboxId || undefined : undefined;
   const { sandbox, sandboxId } = await resolveSandbox(provider, { destination, existingId });

@@ -277,7 +277,9 @@ createBashTool({
 ### Where the workspace lives
 
 The local provider creates a workspace directory per scope, at
-`.fsdev/workspaces/<scope>/<id>/`:
+`.fsdev/workspaces/<scope>/<org>/<user>/<id>/`. The org and user come from the
+verified principal and are always part of the path, so two tenants naming the
+same session or request never share a directory.
 
 | `scope` | One workspace per | Reach for it when |
 | --- | --- | --- |
@@ -289,6 +291,9 @@ The local provider creates a workspace directory per scope, at
 ```typescript
 createBashBlocks({ provider: { type: "local", scope: "run" } });
 ```
+
+`scope` and `cwd` are alternatives. `cwd` names one directory, so a scope beside
+it separates nothing; setting both throws at construction.
 
 The list is ordered narrowest first, and that ordering is the decision.
 Everything below `"run"` is a workspace two runs can be inside at the same
