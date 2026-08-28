@@ -9,9 +9,10 @@
  * kinds of provider exist: bind-mount providers expose the same filesystem on
  * the host, so a direct `readdir` avoids an IPC round-trip per call; the
  * others can only be seen through their adapter's exec channel. What both
- * must do identically is **fail loudly**, as a `WorkspaceWalkError`. The
- * reconcile this replaces read a failed walk as an empty one, and an empty
- * walk is a claim that the run deleted everything.
+ * must do identically is **fail loudly**. The reconcile this replaces read a
+ * failed walk as an empty one, and an empty walk is a claim that the run
+ * deleted everything. The projection is what turns a thrown listing into the
+ * `PlaceUnreadableError` its callers key on, so a plain error is enough here.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -27,20 +28,6 @@ export const KEEP_MARKER = ".keep";
 
 /** The scratch directory a run may write to without it reaching a collection. */
 export const TMP_DIR = "tmp";
-
-/**
- * The workspace could not be read.
- *
- * Distinct from every other failure a flush can hit, because it is the only
- * one a caller should swallow: nothing was decided, so nothing was lost. A
- * collection write that fails is the opposite and must reach the caller.
- */
-export class WorkspaceWalkError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options);
-    this.name = "WorkspaceWalkError";
-  }
-}
 
 /**
  * Wrap `sandbox` as a place rooted at `destination`.
@@ -138,7 +125,7 @@ async function execFind(
   const quoted = targets.map((p) => JSON.stringify(p)).join(" ");
   const result = await sandbox.executeCommand(`find ${quoted} ${predicate} 2>/dev/null`);
   if (result.exitCode !== 0) {
-    throw new WorkspaceWalkError(
+    throw new Error(
       `[bash] workspace walk failed (exit ${result.exitCode}) under ${targets.join(", ")}: ${result.stderr || "no stderr"}`,
     );
   }
@@ -182,7 +169,7 @@ async function readdirOrThrow(dir: string, recursive: boolean): Promise<Dirent[]
   try {
     return await fs.readdir(dir, { recursive, withFileTypes: true });
   } catch (err) {
-    throw new WorkspaceWalkError(`[bash] workspace walk failed under ${dir}`, { cause: err });
+    throw new Error(`[bash] workspace walk failed under ${dir}`, { cause: err });
   }
 }
 
@@ -192,6 +179,6 @@ async function readdirMount(dir: string): Promise<Dirent[]> {
     return await fs.readdir(dir, { recursive: true, withFileTypes: true });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw new WorkspaceWalkError(`[bash] workspace walk failed under ${dir}`, { cause: err });
+    throw new Error(`[bash] workspace walk failed under ${dir}`, { cause: err });
   }
 }

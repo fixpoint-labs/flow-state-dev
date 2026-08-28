@@ -11,7 +11,7 @@
  * through `createState`, and it holds a registry of live sandboxes.
  */
 import path from "node:path";
-import { createProjection } from "@flow-state-dev/workspace";
+import { createProjection, PlaceUnreadableError } from "@flow-state-dev/workspace";
 import type {
   FlushOutcome,
   Mount as ProjectionMount,
@@ -35,7 +35,7 @@ export interface BashMount {
   collection: ResourceCollectionRef<JsonObject>;
 }
 import type { JsonObject } from "@flow-state-dev/core/types";
-import { createSandboxPlace, KEEP_MARKER, TMP_DIR, WorkspaceWalkError } from "./sandbox-place";
+import { createSandboxPlace, KEEP_MARKER, TMP_DIR } from "./sandbox-place";
 import type { Sandbox } from "./types";
 
 /** Re-exported so both bash doors reach the scratch prefix through one module. */
@@ -116,6 +116,9 @@ export function createMountedProjection(
  * returned success while its files stayed only in the sandbox is a silent
  * loss. The old `createBashTool` sync path let those through; catching them
  * here alongside the walk would be a regression wearing a recovery's clothes.
+ *
+ * The projection is what tells them apart — it wraps a failed listing, and
+ * only that, as `PlaceUnreadableError`.
  */
 export async function flushWithDiagnostics(
   projection: Projection,
@@ -126,7 +129,7 @@ export async function flushWithDiagnostics(
   try {
     outcomes = (await projection.flush()).outcomes;
   } catch (err) {
-    if (!(err instanceof WorkspaceWalkError)) throw err;
+    if (!(err instanceof PlaceUnreadableError)) throw err;
     console.warn(`[bash] flush skipped — workspace walk failed: ${err.message}`);
     return;
   }
