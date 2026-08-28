@@ -310,6 +310,29 @@ describe("claudeCodeAgent", () => {
     expect(options?.sandbox).toEqual({ enabled: true });
   });
 
+  it("resolves sandbox settings per run, so they can name the run's own paths", async () => {
+    // The settings that confine a run name the directory it works in, and one
+    // flow build serves many runs. A build-time constant can say "sandboxed"
+    // but not "sandboxed to THIS workspace" — the only form that contains
+    // anything.
+    const spy = vi.fn();
+    const seen: string[] = [];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      sandbox: (input) => {
+        seen.push(input.prompt);
+        return { filesystem: { allowWrite: [`/work/${input.prompt}`] } };
+      },
+    });
+
+    await testBlock(block, { input: { prompt: "run-7" } });
+
+    expect(spy.mock.calls[0][0].options?.sandbox).toEqual({
+      filesystem: { allowWrite: ["/work/run-7"] },
+    });
+    expect(seen).toEqual(["run-7"]);
+  });
+
   it("loads no filesystem settings when handed an empty list", async () => {
     // `[]` and absent are DIFFERENT instructions: absent loads every source,
     // `[]` loads none. Passing the option through as `undefined` would collapse
