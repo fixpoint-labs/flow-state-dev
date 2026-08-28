@@ -189,13 +189,13 @@ fsdev conductor
 
 With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
 
-When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id.
+When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. When that row's `run.usage` is present, token counts show under the band as `10→4` (input→output).
 
 When the selected row has no open question and the last attempt failed, a FAIL band sits in that same slot. A last attempt failed when `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. The band shows the reason (`run.reason`, else `feedback`, else `run.finalMessage`) and that `w` retries. If the selected row also has an open question, the ASK band is what shows. Answer the question first.
 
-When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the full branch, the full checkout path, the request id, and that `x` stops.
+When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the full branch, the full checkout path, the request id, and that `x` stops. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output).
 
-If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`. On a running row the meta lists `branch` and `tree` each on their own line; the checkout path wraps. When the selected row's `run.usage` is present, the meta shows token counts as `10→4` (input→output).
+If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`.
 
 It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
 
