@@ -2,20 +2,22 @@
 sidebar_position: 5
 title: "Conductor"
 sidebar_label: "Conductor"
-description: "Drive a background task board from the terminal, with a live TUI or scripted seed/wake/status/answer/abort verbs."
+description: "Drive a background task board from the terminal: talk to the coordinator, or script seed/wake/status/answer/steer/abort."
 ---
 
 # Conductor
 
-`fsdev conductor` is an operator surface for a flow that runs work in the background and occasionally needs a person: a table of rows, each one pending, running, waiting on a question, or done. Open it as a fullscreen board that polls live, or drive it with scripted verbs from a shell or a CI job.
+`fsdev conductor` is an operator board for a flow whose `kind` is `"conductor"`: a table of rows, each one pending, running, waiting on a question, or done. Open it as a fullscreen board that polls live, or drive it with scripted verbs from a shell or a CI job.
 
-It is not a chat REPL — that's [`fsdev chat`](./interactive-chat.md). A conductor row isn't a conversation; it's a unit of work with a status. Typed input is an answer to a question the work asked, a slash command, or a stop on a running row.
+Typed input that is not a slash verb is a talk turn (`steer`). The coordinator sees the current board and may call `seed`, `wake`, or `answer`. It does not implement or edit product code. Workers do that after a row is filed or woken.
+
+It is not a chat REPL — that's [`fsdev chat`](./interactive-chat.md). A conductor row is a unit of work with a status, not a conversation. On a row with an open question, typing starts an answer to that question. Slash verbs run the named action.
 
 ## What a conductor flow looks like
 
-`fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with four actions: `seed`, `wake`, `status`, and `answer`. If none is found, the first line tells you to `cd` into the app that defines one (in this workspace: `labs/conductor`) or pass `--config` / `--flow-dir`. Import failures from other apps in the same repo are not printed first. If the flow is missing one of the four actions, it exits with a config error naming which one. Every other flow in the project is ignored.
+`fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, `answer`, and `steer`. If none is found, the first line tells you to `cd` into the app that defines one (in this workspace: `labs/conductor`) or pass `--config` / `--flow-dir`. Import failures from other apps in the same repo are not printed first. Missing one of those actions is a config error that names it. Every other flow in the project is ignored.
 
-The four actions are yours to write. The board is whatever `status` returns. Use `abort` or `stop` to stop a running request.
+Those actions are yours to write. The board is whatever `status` returns. `status` is the only board read. Use `abort` or `stop` (or `x` on the board) to stop a running request. Opening the fullscreen board needs a TTY and does not need a model.
 
 ```ts title="src/flows/reviewer/flow.ts"
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -165,6 +167,22 @@ const answer = handler({
   },
 });
 
+const steer = handler({
+  name: "reviewer-steer",
+  inputSchema: z.object({ message: z.string().min(1) }),
+  outputSchema: z.string(),
+  sessionStateSchema: boardState,
+  execute: async (_input, ctx) => {
+    const rows = ctx.session.state.rows;
+    const said =
+      rows.length === 0
+        ? "No rows yet. Seed an issue when you want work started."
+        : `Board has ${rows.length} row(s).`;
+    ctx.emit.message(said);
+    return said;
+  },
+});
+
 const reviewer = defineFlow({
   kind: "conductor",
   requireUser: true,
@@ -174,13 +192,14 @@ const reviewer = defineFlow({
     wake: { block: wake },
     status: { block: status },
     answer: { block: answer },
+    steer: { block: steer, userMessage: (input: { message: string }) => input.message },
   },
 });
 
 export default reviewer({ id: "pr-reviewer" });
 ```
 
-`seed` must return `{ taskId }`. `answer` must return the shape above: `answered` wrote the reply, `recovered` found the question already answered and started the job again, `declined` wrote nothing (`reason` says why). The CLI prints `answered`, `recovered`, or `declined · <reason>` from `result` and `reason`. It prints `drain ran` when `drained` is true. A successful `wake` prints the board. If `wake` fails, the command prints the error and exits `1`. The plain-text board prints issue, phase, status, attempts, outcome, and open questions. A failed row with no open question also prints a `! failed` line and the reason under the row. `--json` prints the full `status` payload.
+`seed` must return `{ taskId }`. `answer` must return the shape above: `answered` wrote the reply, `recovered` found the question already answered and started the job again, `declined` wrote nothing (`reason` says why). The CLI prints `answered`, `recovered`, or `declined · <reason>` from `result` and `reason`. It prints `drain ran` when `drained` is true. A successful `wake` prints the board. If `wake` fails, the command prints the error and exits `1`. `steer` takes `{ message }` and returns a string. The CLI prints that string, or `coordinator turn finished` if the action returned nothing, then the board. `--json` on `steer` prints `{ "message": "<reply>" }` and omits the board. A failed `steer` prints the error and exits `1`. The plain-text board prints issue, phase, status, attempts, outcome, and open questions. A failed row with no open question also prints a `! failed` line and the reason under the row. `--json` on `status` prints the full `status` payload.
 
 ## The board
 
@@ -249,7 +268,7 @@ If the running row has no `run.requestId` yet, the band says `no request id yet`
 It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
 
 ```
-fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch, abort).
+fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, steer, watch, abort).
 ```
 
 `fsdev conductor tui PR-482` opens the same board with that row selected, if it exists. Moving to another row (`j`/`k`, arrows, click) keeps that row selected. A live poll leaves the selection where you put it.
@@ -270,7 +289,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `h` | Expand or collapse the selected row's last Write / Edit hunk |
 | `H` | Show an older Write / Edit hunk from the same run |
 | `r` | Refresh now |
-| `/` | Type a slash command. Matching verbs, then board ids, list above the prompt |
+| `/` | Type a slash command. Matching verbs, then board ids, list above the prompt. A line that is not a slash verb is a talk turn |
 | `Tab` | Fill the selected slash verb or board id |
 | `/status [issue]` | Select that row (if it is on the board) and refresh |
 | `/find [text]` | Search the selected row's transcript |
@@ -278,13 +297,13 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `?` | Toggle help |
 | `q` | Quit |
 
-Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop`, `t list`, `/find`, and `r`; `x` or `Ctrl-C` stops that row's request. `f files` and `h hunk` appear when those lists have more than three entries. On a selected row that is not running, has no open question, and has a todo list, the footer offers `t list`. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, the board stays usable: you can change rows, expand lists, start an answer, and type. Enter queues that next action and runs it when the current one finishes. `Ctrl-C` aborts the operator action in flight. `Ctrl-C` with nothing running quits.
+On a row with no open question, typing that is not a slash verb is a talk turn (`steer`). On a row with an open question, typing starts an answer to that question — you don't have to press `a` first. Slash verbs run the named action either way. `Enter` sends the line; `Esc` cancels. A long compose line keeps the end visible. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop`, `t list`, `/find`, and `r`; `x` or `Ctrl-C` stops that row's request. `f files` and `h hunk` appear when those lists have more than three entries. On a selected row that is not running, has no open question, and has a todo list, the footer offers `t list`. `/abort` with no issue does the same. While a seed, wake, answer, steer, or status is in flight, the board stays usable: you can change rows, expand lists, start an answer, and type. Enter queues that next action and runs it when the current one finishes. `Ctrl-C` aborts the operator action in flight. `Ctrl-C` with nothing running quits.
 
-A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, start. `/sta` lists status, start. A space starts the first argument. `q` and `stop` parse as `quit` and `abort`; they are not in the verb list.
+A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, steer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, steer, start. `/sta` lists status, start. `/ste` lists steer. A space starts the first argument. `q` and `stop` parse as `quit` and `abort`; they are not in the verb list.
 
-After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids already on the board. `/status`, `/watch`, and `/abort` offer each row's issue, or that row's id when it has no issue (the same id `seed` prints). The hint is the row's status. The selected row is first, except `/abort`, which lists running rows first. Type a prefix to filter (`/status FI`); matching is case-insensitive. `/answer` lists open question ids: the selected row's questions first, then other rows. The hint is the question text, or the other row's issue (or that row's id when it has no issue). A second argument closes the list (`/status FIX-1 extra`, `/answer Q hello`). `/seed ` and `/start ` do not list board ids; they file a new issue. `/find` does not complete a query.
+After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids already on the board. `/status`, `/watch`, and `/abort` offer each row's issue, or that row's id when it has no issue (the same id `seed` prints). The hint is the row's status. The selected row is first, except `/abort`, which lists running rows first. Type a prefix to filter (`/status FI`); matching is case-insensitive. `/answer` lists open question ids: the selected row's questions first, then other rows. The hint is the question text, or the other row's issue (or that row's id when it has no issue). A second argument closes the list (`/status FIX-1 extra`, `/answer Q hello`). `/seed ` and `/start ` do not list board ids; they file a new issue. `/steer ` does not list board ids. `/find` does not complete a query.
 
-`Tab` fills the selected verb or board id. `seed`, `start`, and `answer` keep a trailing space so you can type the rest. Completing a question fills `/answer <id> `. The others fill `/name` or `/name <id>` with no trailing space. `Enter` runs when the line is complete (`/status FIX-1` jumps to that row and refreshes). It does not send `/answer` until there is a reply. `Enter` on a matching prefix that still needs an argument fills `/name ` and stays in the prompt. `Enter` on a bare `/` clears the line and does not run the first verb. While the list is open, the footer is `Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`. Help (`?`) says `Tab complete the selected slash verb or board id`.
+`Tab` fills the selected verb or board id. `seed`, `start`, `answer`, and `steer` keep a trailing space so you can type the rest. Completing a question fills `/answer <id> `. The others fill `/name` or `/name <id>` with no trailing space. `Enter` runs when the line is complete (`/status FIX-1` jumps to that row and refreshes). It does not send `/answer` until there is a reply. `Enter` on a matching prefix that still needs an argument fills `/name ` and stays in the prompt. `Enter` on a bare `/` clears the line and does not run the first verb. While the list is open, the footer is `Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`. Help (`?`) says `Tab complete the selected slash verb or board id`.
 
 `/status PR-482` selects that row, if it is on the board, and refreshes. `/status` with no issue refreshes and leaves the selection. If the issue is not on the board, the notice is `no row for <issue>` and it refreshes. Headless `status [issue]` filters the printed board; the slash command does not.
 
@@ -294,7 +313,7 @@ After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids alread
 
 The TRANSCRIPT pane follows the selected row.
 
-When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Tools that run while a sub-agent is open are indented under that `sub ·` line. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` you just ran, and the row changes `status` reports.
+When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), and coding tools named with the file or command they touched (`tool · Write src/conductor/render.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Tools that run while a sub-agent is open are indented under that `sub ·` line. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` / `steer` you just ran, and the row changes `status` reports. A talk turn shows the operator line as `you ·` and the coordinator reply as a `message ·` line, streamed on the live line while it is in flight.
 
 When the selected row has no `run.requestId`, the pane shows only those board and operator lines. Another row's coding stream is not shown until that row is selected.
 
@@ -383,6 +402,7 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 | `seed <issue> [--phase implement]` | File a row for `issue` (a no-op if that `issue`/`phase` pair already has one), then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
+| `steer <message…>` | Talk to the coordinator. An unslashed line that is not a known verb is the same command (`fsdev conductor please start FIX-99`) |
 | `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
 | `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1`. A stop on a named issue reprints that last attempt on stderr, and prints last tool, files, hunk, and current todo on stdout |
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
@@ -392,7 +412,14 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 
 On `answer`, the reply is the text you typed, including apostrophes (`don't change the path`); quote it (`answer Q1 "leave the symlink"`), and write a reply of `--json` as `answer <id> -- --json` or `/answer <id> -- --json` (`--json` on its own prints JSON).
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Under each row, plain `status` and `watch` print last-write age when the row is still running, then the pull-request URL, `@ request-id`, branch, checkout, token counts, spend, and last message when that run has them. A named issue also prints that attempt's last tool, files, last hunk, Read peek or Bash tail when those apply, and current todo — raw paths, no OSC-8. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+`steer` needs a message. `fsdev conductor steer` prints `steer needs a message` and exits `2`. An unslashed line that is not a known verb is the same command:
+
+```bash
+fsdev conductor steer "retry the failed rows"
+fsdev conductor please start FIX-99
+```
+
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `steer` prints the coordinator reply plus the plain-text board; with `--json` it prints only `{ "message": "<reply>" }`. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Under each row, plain `status` and `watch` print last-write age when the row is still running, then the pull-request URL, `@ request-id`, branch, checkout, token counts, spend, and last message when that run has them. A named issue also prints that attempt's last tool, files, last hunk, Read peek or Bash tail when those apply, and current todo — raw paths, no OSC-8. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 `fsdev conductor status PR-482` reprints that issue's last attempt on stderr. Those are the same `status · …`, `message · …`, and `tool · …` lines the TRANSCRIPT pane shows when you select that row. Then it prints the board on stdout. `fsdev conductor status` with no issue prints the board, plus stream lines from the `status` action itself if any. It does not reprint every row's last attempt.
 
@@ -416,6 +443,11 @@ PR-482          implement   awaiting_review   1       succeeded   Which branch s
 
 $ fsdev conductor answer PR-482/implement/1/q "target the release branch"
 answered · drain ran
+
+$ fsdev conductor steer "what's on the board?"
+Board has 1 row(s).
+ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
+PR-482          implement   completed         1       succeeded   ·
 
 $ fsdev conductor status PR-482 --json
 {
@@ -486,7 +518,7 @@ nothing running to stop
 
 ### Exit codes
 
-Startup failures — an unknown verb, a missing conductor flow, a flow missing one of the four actions — use the CLI's usual codes (`2` invalid args, `3` config error, `4` discovery error). Once past startup, `status`, `wake`, `watch`, `abort`, and non-interactive `start` use the codes below for the board:
+Startup failures — a missing argument, a slashed unknown name, a missing conductor flow, a flow missing one of the required actions — use the CLI's usual codes (`2` invalid args, `3` config error, `4` discovery error). An unslashed line that is not a known verb is talk, not an unknown verb. Once past startup, `status`, `wake`, `steer`, `watch`, `abort`, and non-interactive `start` use the codes below for the board:
 
 | Code | Meaning |
 |---|---|
@@ -497,7 +529,7 @@ Startup failures — an unknown verb, a missing conductor flow, a flow missing o
 
 A last attempt failed when a row's `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. An open question is code `2` and wins over a failed attempt.
 
-`seed` always exits `0`, even when the board still has pending, failed, or open-question rows. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`. `abort` with no running request id exits `1` and prints `nothing running to stop`. After a stop, or when the printed id was not running, it reprints the board and uses the codes above.
+`seed` always exits `0`, even when the board has pending, failed, or open-question rows. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`. After a `steer` that ran, the exit code is the board-outcome code above. `abort` with no running request id exits `1` and prints `nothing running to stop`. After a stop, or when the printed id was not running, it reprints the board and uses the codes above.
 
 `watch [issue]` polls `status` every couple of seconds and reprints the board whenever it changes. It stops when the code is not `3`. An open question is code `2`. A failed last attempt is code `1`.
 
@@ -529,13 +561,16 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 
 ## What it won't do
 
-- It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked, a slash command, or a stop on a running row.
+- Talking is a coordinator turn, not a coding session. The coordinator does not implement or edit product code. Workers do that after a row is filed or woken.
+- Talking needs a configured model resolver. Opening the board does not.
+- A coding worker needs whatever auth that worker uses.
+- The board is not a mega-chat. For a conversation REPL, use [`fsdev chat`](./interactive-chat.md).
 - The board table is exactly what `status` returns.
 - Watching or aborting a running row does not start work or send an answer. Abort does not resume a session. Reprinting a last attempt does not continue that coding session.
 - The transcript does not print reasoning or thinking text.
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
 - `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem. An unselected request keeps the newest two thousand lines. The selected attempt stays whole, so `/find` can still match an early tool.
-- Slash completion does not invent ids that are not on the board. It does not complete `/seed`, `/start`, or `/find`.
+- Slash completion does not invent ids that are not on the board. It does not complete `/seed`, `/start`, `/steer`, or `/find`.
 - Headless verbs take the id on the argv. There is no list on that path.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
