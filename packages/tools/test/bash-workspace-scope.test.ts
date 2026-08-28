@@ -323,3 +323,33 @@ describe("scope ids as directory names", () => {
     expect(a).not.toBe(b);
   });
 });
+
+describe("what the model is told about the workspace", () => {
+  // The description is the model's only statement of the persistence
+  // contract. Under `scope: "run"` a fixed "scoped to this session" tells it
+  // work left in the workspace will be there next request; it will not, and
+  // the next request gets a different directory.
+  const describeOf = async (scope?: "run" | "session" | "user" | "org") => {
+    vi.resetModules();
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "local", ...(scope === undefined ? {} : { scope }) },
+    });
+    return (bashCommand as unknown as { description: string }).description;
+  };
+
+  it("says a run-scoped workspace does not outlive the request", async () => {
+    const text = await describeOf("run");
+    expect(text).toContain("this request");
+    expect(text).not.toContain("scoped to this session");
+  });
+
+  it("still says session when the scope is left at its default", async () => {
+    expect(await describeOf()).toContain("scoped to this session");
+  });
+
+  it("names the sharing for the scopes that have some", async () => {
+    expect(await describeOf("user")).toContain("every session you run");
+    expect(await describeOf("org")).toContain("across your organization");
+  });
+});

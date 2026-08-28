@@ -765,11 +765,30 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   // sequencer for setup-needing providers (MOAT, Vercel, Upstash).
   // -------------------------------------------------------------------
 
+  // The reach sentence is derived, not fixed. `scope` decides who else is
+  // inside this workspace and whether it outlives the request, and a model
+  // told "scoped to this session" under `scope: "run"` will leave work in the
+  // workspace for a later request that gets a different directory. The
+  // capability's own prompt already names the scope; a block used directly
+  // would have contradicted it.
+  const workspaceReach = ((): string => {
+    switch (provider.type === "local" ? (provider.scope ?? "session") : "session") {
+      case "run":
+        return "The workspace belongs to this request alone — no other run can see it, and it does not carry over to the next request.";
+      case "user":
+        return "The workspace is a persistent filesystem shared across every session you run.";
+      case "org":
+        return "The workspace is a persistent filesystem shared across your organization.";
+      default:
+        return "The workspace is a persistent filesystem scoped to this session.";
+    }
+  })();
+
   const bashCommandDescription = [
     "Execute a bash command. Your current directory is the workspace root —",
     "use relative paths (`artifacts/foo.md`, `./tmp/scratch.txt`), not absolute",
-    "paths under any special prefix. The workspace is a persistent filesystem",
-    "scoped to this session. Files created or modified under a mounted",
+    `paths under any special prefix. ${workspaceReach}`,
+    "Files created or modified under a mounted",
     "collection's directory are automatically saved;",
     `files under ./${TMP_DIR}/ are scratch space and are never saved.`,
   ].join(" ");
