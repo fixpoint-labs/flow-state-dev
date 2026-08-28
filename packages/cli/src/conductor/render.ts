@@ -700,7 +700,7 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     : empty
       ? `${working}type to talk  ·  s seed  ·  /  ·  r  ·  ?  ·  /quit`
     : q
-      ? `${working}click/j/k  ·  a answer${filesKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+      ? `${working}type to answer  ·  click/↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
       : fail !== undefined
         ? listed
           ? `${working}click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`

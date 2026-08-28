@@ -233,9 +233,11 @@ describe("renderFrame", () => {
         ),
       ),
     ).toContain("working");
-    expect(frame).toContain("click/j/k");
+    expect(frame).toContain("type to answer");
+    expect(frame).toContain("click/↑/↓");
     expect(frame).toContain("/find");
     expect(frame).toContain("TRANSCRIPT");
+    expect(stripAnsi(frame)).not.toContain("a answer");
   });
 
   it("opens an empty board on type-to-talk, not a slash-only door", () => {
