@@ -64,6 +64,7 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     process.env.CONDUCTOR_REPO = dir;
 
     expect(() => requireSourceRepo()).toThrow(/same repository/);
+    expect(() => requireSourceRepo()).toThrow(/throwaway clone|different project/s);
   });
 
   it("refuses another WORKTREE of the dispatcher's repository", () => {
@@ -169,6 +170,15 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
   it("refuses an absent one rather than defaulting", () => {
     process.chdir(repo());
     expect(() => requireSourceRepo()).toThrow(/not set/);
+  });
+
+  it("tells the operator to point at another checkout, not this dispatcher", () => {
+    // Diagnosis alone leaves a first run stuck. Atlas §4 is the recipe;
+    // the refusal has to name the next action or the operator never gets there.
+    process.chdir(repo());
+    expect(() => requireSourceRepo()).toThrow(/another git checkout/s);
+    expect(() => requireSourceRepo()).toThrow(/throwaway clone/s);
+    expect(() => requireSourceRepo()).toThrow(/not this dispatcher/s);
   });
 
   it("reports no identity outside a repository, instead of throwing", () => {

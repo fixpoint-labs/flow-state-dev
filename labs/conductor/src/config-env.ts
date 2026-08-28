@@ -130,7 +130,8 @@ export function assertDistinctRepository(
     throw new Error(
       `[conductor] ${variable} (${repo}) is not a git repository — it does not exist, or ` +
         "it is an ordinary directory. Checkouts are cut from it with `git worktree add`, " +
-        "so this fails on every attempt and no retry can fix it.",
+        "so this fails on every attempt and no retry can fix it. Initialize a git " +
+        "repository there, or point at an existing checkout that is not this dispatcher.",
     );
   }
 
@@ -144,7 +145,8 @@ export function assertDistinctRepository(
       `[conductor] ${variable} (${repo}) is the repository this process is itself running ` +
         "from — a different path inside it, another of its worktrees, or a symlink to it " +
         "is still the same repository. The point is a run driving ANOTHER repository " +
-        "rather than editing the thing that dispatched it.",
+        "rather than editing the thing that dispatched it. Cut a throwaway clone, or " +
+        "point this variable at a different project.",
     );
   }
 }
@@ -177,7 +179,8 @@ export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
     throw new Error(
       `[conductor] ${variable} is not set. It names the repository the coding agent ` +
         "works on, and there is no safe default: falling back to this process's directory " +
-        "would point the agent at the dispatcher's own repository.",
+        "would point the agent at the dispatcher's own repository. Point it at another " +
+        "git checkout — a throwaway clone is enough — not this dispatcher.",
     );
   }
 
