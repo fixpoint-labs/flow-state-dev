@@ -1596,6 +1596,27 @@ describe("the ledger is partitioned by tenant", () => {
     expect(seen).toBe("the-validated-value");
   });
 
+  it("hands a seed brief to the prompt builder on attempt 1", async () => {
+    let seen: string | undefined;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: () => true,
+      buildPrompt: (run) => {
+        seen = run.brief;
+        return "p";
+      },
+    });
+
+    await live.call("seed", {
+      issue: ISSUE,
+      phase: PHASE,
+      brief: "Rename getSession in client.md",
+    });
+    await settle(live);
+
+    expect(seen).toBe("Rename getSession in client.md");
+  });
+
   describe("every action refuses another tenant BEFORE touching the board", () => {
     // The guarantee this file documents used to hold for exactly one of the
     // three actions. The tenant check lived only in the manager, which runs

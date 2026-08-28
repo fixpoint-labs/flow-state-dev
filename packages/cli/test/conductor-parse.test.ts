@@ -158,6 +158,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("r still refreshes");
     expect(HELP_TEXT).toContain("Letters are the answer, not board keys");
     expect(HELP_TEXT).toContain("errored or cancelled row is spent");
+    expect(HELP_TEXT).toContain("More lines are the brief attempt 1 reads");
     expect(HELP_TEXT).toContain("lines, then prior compose");
     expect(HELP_TEXT).toContain("move in the line while composing");
     expect(HELP_TEXT).toContain("new line while composing");

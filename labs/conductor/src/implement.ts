@@ -516,6 +516,9 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
         "If you cannot open one — missing auth, a permission error, gh refusing — that is a",
         "question for a person. Write it to the ask file and stop. Do not declare the work complete.",
         "",
+        ...(ctx.brief !== undefined && ctx.brief !== ""
+          ? ["The operator filed this brief with the issue:", ctx.brief, ""]
+          : []),
         // **The forced ask.** The harness offers no seam for a question, so this
         // instruction IS the seam: nothing else tells the run how to reach a
         // person, and a run that ignores it takes the ordinary no-question

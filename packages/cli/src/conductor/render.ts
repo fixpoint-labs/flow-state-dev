@@ -649,7 +649,7 @@ function renderPrompt(state: ViewState, cols: number): string {
     placeholder = dim("type the reply · Enter sends · Ctrl-J new line · Esc cancels");
   } else if (state.inputMode === "seed") {
     prefix = paint(TEAL, "❯ seed ");
-    placeholder = dim("issue id · Enter files and starts it");
+    placeholder = dim("issue id · Ctrl-J the ticket · Enter files and starts it");
   } else if (state.inputMode === "find") {
     prefix = paint(GOLD, "❯ find ");
     placeholder = dim("text in this row's transcript · Enter keeps · Esc clears");

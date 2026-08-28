@@ -211,7 +211,10 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       switch (command.kind) {
         case "seed":
         case "start": {
-          const seeded = await runAction<SeedOutput>("seed", seedInput(command.issue, command.phase));
+          const seeded = await runAction<SeedOutput>(
+            "seed",
+            seedInput(command.issue, command.phase, command.brief),
+          );
           if (seeded.error !== undefined) throw new Error(seeded.error);
           if (seeded.output === undefined) throw new Error("conductor seed returned no task id");
           endTurn();

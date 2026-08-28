@@ -123,6 +123,11 @@ export interface PhaseRunContext {
    * nothing.
    */
   feedback?: string;
+  /**
+   * Ticket text the operator filed with the seed, when they gave more
+   * than an id. Absent means the run has only the issue identifier.
+   */
+  brief?: string;
   /** The block context, so a builder can read its phase's collections. */
   ctx: BlockContext;
 }
@@ -284,6 +289,11 @@ export const conductorTaskInputSchema = z.object({
   issue: z.string(),
   /** Which phase of it. */
   phase: z.string(),
+  /**
+   * Optional ticket text the operator filed with the seed. Absent on
+   * rows seeded with only an id (BP-030).
+   */
+  brief: z.string().optional(),
 });
 
 /**
@@ -1004,6 +1014,8 @@ export function harnessManager(options: ManagerOptions) {
         .filter((row) => row.state.status === "answered" && row.state.answer !== null)
         .map((row) => ({ question: row.state.question, answer: row.state.answer! }));
 
+      const payload = taskPayload(input);
+      const brief = payload.brief?.trim();
       const run: PromptRunContext = {
         epic: boardCollectionId,
         issue: state.issue!,
@@ -1012,6 +1024,7 @@ export function harnessManager(options: ManagerOptions) {
         workspacePath: state.workspacePath!,
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
+        ...(brief !== undefined && brief !== "" ? { brief } : {}),
         ...(state.previousSessionId != null
           ? { previousSessionId: state.previousSessionId }
           : {}),

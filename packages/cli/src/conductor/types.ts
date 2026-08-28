@@ -104,12 +104,12 @@ export interface ActivityItem {
 /** The operator verbs this surface can dispatch. */
 export type OperatorCommand =
   | { kind: "status"; issue?: string }
-  | { kind: "seed"; issue: string; phase?: string }
+  | { kind: "seed"; issue: string; phase?: string; brief?: string }
   | { kind: "wake" }
   | { kind: "answer"; question: string; text: string }
   | { kind: "steer"; message: string }
   | { kind: "watch"; issue?: string }
-  | { kind: "start"; issue: string; phase?: string }
+  | { kind: "start"; issue: string; phase?: string; brief?: string }
   | { kind: "abort"; issue?: string }
   | { kind: "help" }
   | { kind: "quit" }

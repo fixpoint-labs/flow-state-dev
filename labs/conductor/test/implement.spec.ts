@@ -613,6 +613,15 @@ describe("the forced ask tells the run to keep the marker out of the commit", ()
     expect(prompt).toContain("Do not declare the work complete");
   });
 
+  it("folds an operator brief so attempt 1 already has the ticket", async () => {
+    const prompt = await implementPhase().buildPrompt({
+      ...promptRun("/w/.fsdev/ask/1.md"),
+      brief: "Rename getSession to getSessionState in apps/docs/docs/api/client.md",
+    });
+    expect(prompt).toContain("Rename getSession to getSessionState");
+    expect(prompt).toContain("The operator filed this brief");
+  });
+
   it("still spells the marker path in full", async () => {
     // The instruction not to commit it is useless if the run cannot find where
     // to write it. Asserted separately: one is the seam, the other is the

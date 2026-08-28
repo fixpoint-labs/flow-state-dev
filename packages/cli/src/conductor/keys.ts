@@ -346,7 +346,15 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
     case "}":
       return { state: moveAttention(state, 1, now) };
     case "s":
-      return { state: { ...state, inputMode: "seed", input: "", caret: 0, notice: "issue id, then Enter" } };
+      return {
+        state: {
+          ...state,
+          inputMode: "seed",
+          input: "",
+          caret: 0,
+          notice: "issue id, then Ctrl-J and the ticket",
+        },
+      };
     case "r":
       return { state, effect: { type: "refresh" } };
     case "/":
@@ -618,17 +626,22 @@ function submitEdit(state: ViewState): KeyResult {
     };
   }
   if (state.inputMode === "seed") {
-      const issue = (state.input.split("\n")[0] ?? "").trim();
-      if (issue === "") {
-        return { state: { ...state, notice: "type an issue id, or Esc to cancel" } };
-      }
+    const lines = state.input.split("\n");
+    const issue = (lines[0] ?? "").trim();
+    const brief = lines.slice(1).join("\n").trim();
+    if (issue === "") {
+      return { state: { ...state, notice: "type an issue id, or Esc to cancel" } };
+    }
     return {
       state: {
-        ...withInput(rememberDraft(state, issue), ""),
+        ...withInput(rememberDraft(state, state.input.trim()), ""),
         inputMode: "command",
         notice: null,
       },
-      effect: { type: "dispatch", command: { kind: "seed", issue } },
+      effect: {
+        type: "dispatch",
+        command: { kind: "seed", issue, ...(brief !== "" ? { brief } : {}) },
+      },
     };
   }
 

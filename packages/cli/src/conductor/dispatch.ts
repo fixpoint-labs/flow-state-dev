@@ -129,8 +129,17 @@ export function statusInput(issue?: string): { issue?: string } {
   return issue !== undefined ? { issue } : {};
 }
 
-export function seedInput(issue: string, phase?: string): { issue: string; phase: string } {
-  return { issue, phase: phase ?? "implement" };
+export function seedInput(
+  issue: string,
+  phase?: string,
+  brief?: string,
+): { issue: string; phase: string; brief?: string } {
+  const trimmed = brief?.trim();
+  return {
+    issue,
+    phase: phase ?? "implement",
+    ...(trimmed !== undefined && trimmed !== "" ? { brief: trimmed } : {}),
+  };
 }
 
 export function answerInput(question: string, answer: string): { question: string; answer: string } {
@@ -163,11 +172,12 @@ export async function seedIssue(
   issue: string,
   phase: string | undefined,
   onEvent: (event: RequestStreamEventWithId) => void,
+  brief?: string,
 ): Promise<SeedOutput> {
   const result = await runConductorAction<SeedOutput>(
     dispatch,
     "seed",
-    seedInput(issue, phase),
+    seedInput(issue, phase, brief),
     onEvent,
   );
   if (result.error !== undefined) throw new Error(result.error);

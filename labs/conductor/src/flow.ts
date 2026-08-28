@@ -719,7 +719,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
           assignee: ASSIGNEE,
           // The typed payload. NEVER `metadata`: that is model-patchable through
           // `updateTask`, and the checkout path is derived from these two fields.
-          input: { issue: input.issue, phase: input.phase },
+          input: {
+            issue: input.issue,
+            phase: input.phase,
+            ...(typeof input.brief === "string" && input.brief.trim() !== ""
+              ? { brief: input.brief.trim() }
+              : {}),
+          },
           // Without this the substrate is single-attempt and a reported failure
           // costs nothing and delivers nothing — the defect this lab exists to fix.
           maxAttempts,
