@@ -53,13 +53,13 @@ import { createSessionClient } from "@flow-state-dev/client";
 
 const sessions = createSessionClient();
 
-const list = await sessions.list();
-const detail = await sessions.get(sessionId);
+const list = await sessions.listSessions();
+const detail = await sessions.getSession(sessionId);
 const snapshot = await sessions.getSessionState(sessionId, {
   includeItems: true,
   clientData: ["session.activePlan"],
 });
-await sessions.delete(sessionId);
+await sessions.deleteSession(sessionId);
 ```
 
 ### `sessions.listWorkstreams(parentSessionId, options?)`
