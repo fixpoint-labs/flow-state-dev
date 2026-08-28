@@ -36,6 +36,18 @@ describe("hydrate lays the collection down and remembers what it laid", () => {
     });
   });
 
+  it("keys off the collection's own path, not the entry's application state", async () => {
+    // A collection an action block wrote carries no `path` in its state —
+    // that field is the projection's convention, not the framework's. Reading
+    // the key from state would lay down nothing at all.
+    const { collection, place, projection } = setup({ "spec.md": "one" });
+    collection.forgetStatePath("spec.md");
+
+    await projection.hydrate();
+
+    expect(place.snapshot()).toEqual({ "artifacts/spec.md": "one" });
+  });
+
   it("owns exactly what it laid down", async () => {
     const { projection } = setup({ "spec.md": "one" });
     await projection.hydrate();

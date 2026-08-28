@@ -97,6 +97,13 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
 
   const prefixes = mounts.map((m) => normalizePath(m.prefix));
 
+  /**
+   * A ref's full storage key (`artifacts/foo.md`) as the bare key its own
+   * collection is addressed by (`foo.md`).
+   */
+  const stripPrefix = (key: string, prefix: string): string =>
+    prefix && key.startsWith(`${prefix}/`) ? key.slice(prefix.length + 1) : key;
+
   /** The place-side path for a collection entry. */
   const placePath = (mount: Mount, key: string): string =>
     normalizePath(key === "" ? mount.prefix : `${mount.prefix}/${key}`);
@@ -111,7 +118,11 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
   async function hydrate(): Promise<void> {
     for (const mount of mounts) {
       for (const entry of await mount.collection.list()) {
-        const key = entry.state.path;
+        // The ref's own storage path, not `state.path`. State is the
+        // application's — a collection written by anything other than a
+        // projection may carry no `path` field at all, and hydrating off it
+        // would silently lay down nothing.
+        const key = stripPrefix(entry.path, normalizePath(mount.prefix));
         if (isMetadataKey(key)) continue;
         const content = await entry.readContent();
         if (content === null) continue;

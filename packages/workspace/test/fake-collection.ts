@@ -15,6 +15,14 @@ export interface FakeCollection extends ResourceCollectionRef<ProjectedEntryStat
   setExternal(key: string, content: string): void;
   /** Remove as somebody who is not the projection. */
   removeExternal(key: string): void;
+  /**
+   * Drop the `path` field from an entry's state.
+   *
+   * What a collection written by anything other than a projection looks like:
+   * `path` is application state, not the framework's key, and nothing
+   * obliges another writer to set it.
+   */
+  forgetStatePath(key: string): void;
 }
 
 const unsupported = (name: string) => () => {
@@ -33,7 +41,12 @@ export function createFakeCollection(
     ]),
   );
 
+  const prefix = pattern.replace(/\/\*+$/, "");
+
   const refFor = (key: string) => ({
+    // A real `ResourceRef.path` is the canonical storage key, prefix
+    // included — the projection strips the mount prefix back off it.
+    path: prefix ? `${prefix}/${key}` : key,
     get state() {
       return state.get(key)!;
     },
@@ -87,6 +100,12 @@ export function createFakeCollection(
     removeExternal: (key: string) => {
       content.delete(key);
       state.delete(key);
+    },
+    forgetStatePath: (key: string) => {
+      const current = state.get(key);
+      if (current === undefined) return;
+      const { path: _dropped, ...rest } = current;
+      state.set(key, rest as ProjectedEntryState);
     },
     get: unsupported("get"),
     create: unsupported("create"),
