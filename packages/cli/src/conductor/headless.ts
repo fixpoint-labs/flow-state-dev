@@ -20,7 +20,14 @@ import { HELP_TEXT } from "./parse";
 import { renderBoardPlain, watchExitCode } from "./render";
 import { createStreamTranscript } from "./transcript";
 import { createChildFollow } from "./follow";
-import { failureReason, rowFailed, runningRequestIds, type OperatorCommand, type StatusRow } from "./types";
+import {
+  failureReason,
+  rowFailed,
+  runningRequestIds,
+  settledRequestIds,
+  type OperatorCommand,
+  type StatusRow,
+} from "./types";
 
 export interface HeadlessOptions {
   dispatch: ConductorDispatch;
@@ -53,6 +60,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
     const leftover = transcript.flush();
     for (const line of leftover.lines) writeEvent(line);
   };
+  const follow = createChildFollow({ stores: options.dispatch.stores, onEvent });
 
   try {
     switch (options.command.kind) {
@@ -66,6 +74,9 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         return 1;
       case "status": {
         const status = await readBoard(options.dispatch, options.command.issue, onEvent);
+        if (options.command.issue !== undefined && !options.json) {
+          await follow.drain(settledRequestIds(status.rows));
+        }
         flushTranscript();
         write(renderBoardPlain(status.rows, options.json));
         return watchExitCode(status.rows);
@@ -129,7 +140,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         return watchExitCode(after.rows);
       }
       case "watch":
-        return await watchBoard(options, options.command.issue, onEvent, flushTranscript);
+        return await watchBoard(options, options.command.issue, onEvent, flushTranscript, follow);
       case "start": {
         // Interactive start is handled by the command (seed, then TUI).
         // Headless start seeds and watches — same two actions, printed.
@@ -142,12 +153,14 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         flushTranscript();
         if (options.json) write(JSON.stringify(seeded));
         else write(`seeded ${options.command.issue} → ${seeded.taskId}`);
-        return await watchBoard(options, options.command.issue, onEvent, flushTranscript);
+        return await watchBoard(options, options.command.issue, onEvent, flushTranscript, follow);
       }
     }
   } catch (error) {
     err.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
+  } finally {
+    follow.stop();
   }
 }
 
@@ -156,39 +169,42 @@ async function watchBoard(
   issue: string | undefined,
   onEvent: (event: RequestStreamEventWithId) => void,
   flush: () => void,
+  follow: ReturnType<typeof createChildFollow>,
 ): Promise<number> {
   const out = options.stdout ?? process.stdout;
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const pollMs = options.pollMs ?? 2_000;
   const max = options.maxPolls ?? Number.POSITIVE_INFINITY;
-  const follow = createChildFollow({ stores: options.dispatch.stores, onEvent });
   let last = "";
-  try {
-    for (let i = 0; i < max; i++) {
-      const status = await readBoard(options.dispatch, issue, onEvent);
-      follow.sync(runningRequestIds(status.rows));
-      flush();
-      const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows);
-      if (rendered !== last) {
-        out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
-        last = rendered;
-      }
-      const code = watchExitCode(status.rows);
-      if (code !== 3) {
-        if (
-          !options.json &&
-          (status.rows.some((r) => r.questions.length > 0) || status.rows.some(rowFailed))
-        ) {
-          out.write(renderBoardPlain(status.rows, false));
-        }
-        return code;
-      }
-      await sleep(pollMs);
+  for (let i = 0; i < max; i++) {
+    const status = await readBoard(options.dispatch, issue, onEvent);
+    follow.sync(runningRequestIds(status.rows));
+    flush();
+    const rendered = options.json ? JSON.stringify(status) : renderWatchLine(status.rows);
+    if (rendered !== last) {
+      out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
+      last = rendered;
     }
-    return 3;
-  } finally {
-    follow.stop();
+    const code = watchExitCode(status.rows);
+      if (code !== 3) {
+      if (!options.json) {
+        const settled = settledRequestIds(status.rows);
+        const ids =
+          issue !== undefined ? settled : settled.filter((id) => follow.followed(id));
+        await follow.drain(ids);
+        flush();
+      }
+      if (
+        !options.json &&
+        (status.rows.some((r) => r.questions.length > 0) || status.rows.some(rowFailed))
+      ) {
+        out.write(renderBoardPlain(status.rows, false));
+      }
+      return code;
+    }
+    await sleep(pollMs);
   }
+  return 3;
 }
 
 function renderWatchLine(rows: StatusRow[]): string {

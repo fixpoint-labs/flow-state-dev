@@ -123,6 +123,7 @@ const wake = handler({
             ...emptyRun(),
             outcome: "failed" as const,
             reason: "Not logged in · Please run /login",
+            requestId: "req-fail-1",
           },
           questions: [],
         };

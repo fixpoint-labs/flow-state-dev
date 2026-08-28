@@ -188,6 +188,185 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(watched.text).toContain("! failed");
   });
 
+  it("status of a named settled issue catch-up the last attempt on stderr", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    stores.request.persistEvents("req-fail-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-fail-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "s1",
+          type: "status",
+          message: "Not logged in · Please run /login",
+          transient: true,
+        },
+      } as never,
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-fail-1",
+        sequence_number: 2,
+        ts: 2,
+        item: {
+          id: "e1",
+          type: "error",
+          message: "Please run /login",
+        },
+      } as never,
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-fail-1",
+        sequence_number: 3,
+        ts: 3,
+      } as never,
+    ]);
+    const err = capture();
+    const board = capture();
+    const code = await executeConductorCommand(["status", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: board.output as unknown as NodeJS.WriteStream,
+      stderr: err.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(code).toBe(1);
+    expect(err.text).toContain("Not logged in");
+    expect(board.text).toContain("Not logged in");
+
+    const full = capture();
+    await executeConductorCommand(["status"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      stderr: full.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(full.text).not.toContain("Please run /login");
+  });
+
+  it("watch of the full board does not replay a settled journal it never tailed", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    stores.request.persistEvents("req-fail-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-fail-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "s1",
+          type: "status",
+          message: "should not reprint on a full-board watch",
+          transient: true,
+        },
+      } as never,
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-fail-1",
+        sequence_number: 2,
+        ts: 2,
+      } as never,
+    ]);
+    const err = capture();
+    const code = await executeConductorCommand(["watch"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      stderr: err.output as unknown as NodeJS.WriteStream,
+      config: false,
+      maxPolls: 2,
+      pollMs: 1,
+      sleep: async () => {},
+    });
+    expect(code).toBe(1);
+    expect(err.text).not.toContain("should not reprint on a full-board watch");
+  });
+
+  it("watch of a settled issue catch-up the last attempt on stderr", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    stores.request.persistEvents("req-fail-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-fail-1",
+        sequence_number: 1,
+        ts: 1,
+        item: {
+          id: "s1",
+          type: "status",
+          message: "agent stopped after login failed",
+          transient: true,
+        },
+      } as never,
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-fail-1",
+        sequence_number: 2,
+        ts: 2,
+      } as never,
+    ]);
+    const err = capture();
+    const watched = capture();
+    const code = await executeConductorCommand(["watch", "FAIL-1"], {
+      cwd: fixtureDir,
+      stores,
+      output: watched.output as unknown as NodeJS.WriteStream,
+      stderr: err.output as unknown as NodeJS.WriteStream,
+      config: false,
+      maxPolls: 2,
+      pollMs: 1,
+      sleep: async () => {},
+    });
+    expect(code).toBe(1);
+    expect(err.text).toContain("agent stopped after login failed");
+    expect(watched.text).toContain("Not logged in");
+  });
+
   it("watch tails a detached run's request stream on stderr", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "LIVE-1"], {

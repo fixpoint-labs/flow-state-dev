@@ -450,6 +450,22 @@ export function rowRunningRequestId(row: StatusRow): string | undefined {
   return id;
 }
 
+/**
+ * Last-attempt request ids on rows that are no longer running.
+ * `status ISSUE` and a `watch` that just exited catch-up these
+ * journals; a full-board status does not replay every history.
+ */
+export function settledRequestIds(rows: readonly StatusRow[]): string[] {
+  const ids: string[] = [];
+  for (const row of rows) {
+    const id = row.run?.requestId;
+    if (id === null || id === undefined || id === "") continue;
+    if (rowRunning(row)) continue;
+    ids.push(id);
+  }
+  return ids;
+}
+
 /** The selected row's in-flight request, when there is one. */
 export function selectedRunningRequestId(state: ViewState): string | undefined {
   const row = selectedRow(state);

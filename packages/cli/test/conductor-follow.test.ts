@@ -7,6 +7,7 @@ import {
   emptyView,
   idsToFollow,
   runningRequestIds,
+  settledRequestIds,
   type StatusRow,
 } from "../src/conductor/types";
 
@@ -204,6 +205,131 @@ describe("createChildFollow", () => {
     follow.stop();
     expect(seen).toEqual(expect.arrayContaining([1, 2]));
   });
+
+  it("drain catch-up a journal that already ended", async () => {
+    const stores = createInMemoryStores();
+    const seen: number[] = [];
+    const follow = createChildFollow({
+      stores,
+      onEvent: (event) => {
+        seen.push(event.sequence_number);
+      },
+    });
+    stores.request.persistEvents("req-done-1", [
+      statusEvent("req-done-1", 1, "one"),
+      statusEvent("req-done-1", 2, "two"),
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-done-1",
+        sequence_number: 3,
+        ts: 3,
+      } as RequestStreamEvent,
+    ]);
+    await follow.drain(["req-done-1"]);
+    follow.stop();
+    expect(seen).toEqual(expect.arrayContaining([1, 2]));
+  });
+
+  it("drain of an already-finished id is immediate and does not reprint", async () => {
+    const stores = createInMemoryStores();
+    let hits = 0;
+    const follow = createChildFollow({
+      stores,
+      onEvent: () => {
+        hits += 1;
+      },
+    });
+    stores.request.persistEvents("req-done-1", [
+      statusEvent("req-done-1", 1, "one"),
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-done-1",
+        sequence_number: 2,
+        ts: 2,
+      } as RequestStreamEvent,
+    ]);
+    await follow.drain(["req-done-1"]);
+    const before = hits;
+    await follow.drain(["req-done-1"]);
+    follow.stop();
+    expect(hits).toBe(before);
+  });
+
+  it("drain of a missing journal does not hang", async () => {
+    const stores = createInMemoryStores();
+    const follow = createChildFollow({
+      stores,
+      onEvent: () => {},
+    });
+    await Promise.race([
+      follow.drain(["req-missing"]),
+      new Promise((_resolve, reject) => {
+        setTimeout(() => reject(new Error("drain hung on a missing journal")), 200);
+      }),
+    ]);
+    follow.stop();
+  });
+
+  it("drain waits for an active tail to end", async () => {
+    const stores = createInMemoryStores();
+    const ended: string[] = [];
+    const follow = createChildFollow({
+      stores,
+      onEvent: () => {},
+      onEnd: (requestId) => {
+        ended.push(requestId);
+      },
+    });
+    follow.sync(["req-live-1"]);
+    stores.request.persistEvents("req-live-1", [statusEvent("req-live-1", 1, "one")]);
+    let done = false;
+    const draining = follow.drain(["req-live-1"]).then(() => {
+      done = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(done).toBe(false);
+    stores.request.persistEvents("req-live-1", [
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-live-1",
+        sequence_number: 2,
+        ts: 2,
+      } as RequestStreamEvent,
+    ]);
+    await draining;
+    follow.stop();
+    expect(done).toBe(true);
+    expect(ended).toEqual(["req-live-1"]);
+  });
+
+  it("followed is true only after this process started a tail", async () => {
+    const stores = createInMemoryStores();
+    const follow = createChildFollow({
+      stores,
+      onEvent: () => {},
+    });
+    expect(follow.followed("req-done-1")).toBe(false);
+    stores.request.persistEvents("req-done-1", [
+      statusEvent("req-done-1", 1, "one"),
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-done-1",
+        sequence_number: 2,
+        ts: 2,
+      } as RequestStreamEvent,
+    ]);
+    await follow.drain(["req-done-1"]);
+    expect(follow.followed("req-done-1")).toBe(true);
+    follow.stop();
+  });
 });
 
 describe("idsToFollow", () => {
@@ -247,5 +373,42 @@ describe("idsToFollow", () => {
   it("does not duplicate the selected running id", () => {
     const state = { ...emptyView("epic"), rows: [failed, running], selected: 1 };
     expect(idsToFollow(state)).toEqual(["req-live-1"]);
+  });
+});
+
+describe("settledRequestIds", () => {
+  it("returns last-attempt ids on rows that are no longer running", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: null,
+        branch: null,
+        outcome: "running",
+        reason: null,
+        sessionId: null,
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: null,
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const failed: StatusRow = {
+      ...running,
+      taskId: "FAIL-1--implement",
+      issue: "FAIL-1",
+      status: "pending",
+      run: { ...running.run!, outcome: "failed", requestId: "req-fail-1" },
+    };
+    expect(settledRequestIds([running, failed])).toEqual(["req-fail-1"]);
   });
 });

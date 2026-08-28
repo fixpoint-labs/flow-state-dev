@@ -19,6 +19,17 @@ export interface ChildFollow {
    * event closes the iterator.
    */
   sync(requestIds: readonly string[]): void;
+  /**
+   * Deliver each id's persisted journal, then resolve.
+   *
+   * An active tail waits until that journal ends. An id we have never
+   * tailed is replayed from `getEvents` and does not wait — a missing
+   * or still-open journal is not a hang. Ids already delivered are
+   * skipped so a second drain does not reprint the attempt.
+   */
+  drain(requestIds: readonly string[]): Promise<void>;
+  /** True if this process started a tail for the id (still open or already ended). */
+  followed(requestId: string): boolean;
   /** Abort every tail. */
   stop(): void;
 }
@@ -31,6 +42,34 @@ export function createChildFollow(options: {
 }): ChildFollow {
   const active = new Map<string, AbortController>();
   const finished = new Set<string>();
+  const waiters = new Map<string, Array<() => void>>();
+
+  const notifyEnd = (requestId: string): void => {
+    active.delete(requestId);
+    finished.add(requestId);
+    options.onEnd?.(requestId);
+    const pending = waiters.get(requestId);
+    if (pending === undefined) return;
+    waiters.delete(requestId);
+    for (const resolve of pending) resolve();
+  };
+
+  const waitUntilEnded = (requestId: string): Promise<void> =>
+    new Promise((resolve) => {
+      if (finished.has(requestId) && !active.has(requestId)) {
+        resolve();
+        return;
+      }
+      const list = waiters.get(requestId) ?? [];
+      list.push(resolve);
+      waiters.set(requestId, list);
+      if (finished.has(requestId) && !active.has(requestId)) {
+        const pending = waiters.get(requestId);
+        if (pending === undefined) return;
+        waiters.delete(requestId);
+        for (const next of pending) next();
+      }
+    });
 
   const start = (requestId: string): void => {
     const controller = new AbortController();
@@ -47,19 +86,41 @@ export function createChildFollow(options: {
       } catch {
         // Aborted tails and a missing journal are not operator errors.
       } finally {
-        active.delete(requestId);
-        finished.add(requestId);
-        options.onEnd?.(requestId);
+        notifyEnd(requestId);
       }
     })();
+  };
+
+  const replay = async (requestId: string): Promise<void> => {
+    const events = await options.stores.request.getEvents(requestId);
+    for (const event of events) {
+      options.onEvent(withEventId(event));
+    }
+    finished.add(requestId);
   };
 
   return {
     sync(requestIds) {
       for (const id of requestIds) {
-        if (finished.has(id) || active.has(id)) continue;
+        if (id === "" || finished.has(id) || active.has(id)) continue;
         start(id);
       }
+    },
+    async drain(requestIds) {
+      const unique = [...new Set(requestIds.filter((id) => id !== ""))];
+      await Promise.all(
+        unique.map(async (id) => {
+          if (active.has(id)) {
+            await waitUntilEnded(id);
+            return;
+          }
+          if (finished.has(id)) return;
+          await replay(id);
+        }),
+      );
+    },
+    followed(requestId) {
+      return active.has(requestId) || finished.has(requestId);
     },
     stop() {
       for (const [id, controller] of active) {

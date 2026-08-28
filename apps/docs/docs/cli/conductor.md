@@ -340,7 +340,7 @@ A sub-agent prints `sub · Sub-agent: Explore` when it opens, and `sub · Sub-ag
 
 Reasoning and thinking text are not printed.
 
-Headless `watch` writes those same lines to stderr. Tool, hunk, checklist, result, and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
+Headless `watch` writes those same lines to stderr. Each tool, hunk, checklist, result, and sub-agent line is written once. Watching a running row does not start work or send an answer.
 
 After that request ends, further board changes show as the lines `status` reports.
 
@@ -356,12 +356,12 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 
 | Verb | Does |
 |---|---|
-| `status [issue]` | Print the board, optionally filtered to one issue |
+| `status [issue]` | Print the board, optionally filtered to one issue. A named issue also reprints that row's last attempt on stderr |
 | `seed <issue> [--phase implement]` | File a row for `issue` (a no-op if that `issue`/`phase` pair already has one), then print it |
 | `wake` | Process pending rows, then print the board |
 | `answer <question-id> <reply…>` | Resolve one open question |
 | `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
-| `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
+| `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1`. A stop on a named issue reprints that last attempt on stderr |
 | `start <issue>` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe |
 | `help` | Print the built-in help text |
 
@@ -369,7 +369,15 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 
 On `answer`, the reply is the text you typed, including apostrophes (`don't change the path`); quote it (`answer Q1 "leave the symlink"`), and write a reply of `--json` as `answer <id> -- --json` or `/answer <id> -- --json` (`--json` on its own prints JSON).
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) from a verb you ran, and from a running row's request when `watch` tails it, go to stderr; `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+
+`fsdev conductor status PR-482` reprints that issue's last attempt on stderr. Those are the same `status · …`, `message · …`, and `tool · …` lines the TRANSCRIPT pane shows when you select that row. Then it prints the board on stdout. `fsdev conductor status` with no issue prints the board, plus stream lines from the `status` action itself if any. It does not reprint every row's last attempt.
+
+`fsdev conductor status PR-482 --json` prints the JSON board and omits those last-attempt lines.
+
+When `watch PR-482` stops, it prints that attempt on stderr, then the board. While the row is running, `watch` tails it.
+
+If there is nothing to print for that attempt, the board prints and the command exits.
 
 ```bash
 $ fsdev conductor seed PR-482
@@ -428,6 +436,8 @@ A failed last attempt with no open question prints under the row:
 
 ```bash
 $ fsdev conductor status PR-482
+status · claiming
+tool · Bash pnpm test
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
 PR-482          implement   pending           2       failed      ·
   ! failed
@@ -498,7 +508,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 
 - It's not a chat REPL. Nothing you type reaches the flow as a free-text message — only an answer to a question the flow itself asked, a slash command, or a stop on a running row.
 - The board table is exactly what `status` returns.
-- Watching or aborting a running row does not start work or send an answer. Abort does not resume a session.
+- Watching or aborting a running row does not start work or send an answer. Abort does not resume a session. Reprinting a last attempt does not continue that coding session.
 - The transcript does not print reasoning or thinking text.
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
 - `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem.
