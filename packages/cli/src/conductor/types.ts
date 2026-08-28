@@ -436,6 +436,38 @@ export function selectedNow(state: ViewState): string | undefined {
 }
 
 /**
+ * First lines of the selected run's last Read, when that Read is still
+ * the last tool. A later Write, Edit, or Bash drops the peek — the hunk
+ * or the command result is what the band should show then.
+ */
+export function selectedReadPeek(state: ViewState): string[] {
+  const items = activityForView(state);
+  let start = -1;
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const body = transcriptBody(items[i]!.text);
+    if (!body.startsWith("tool · ")) continue;
+    if (!body.startsWith("tool · Read ")) return [];
+    start = i;
+    break;
+  }
+  if (start < 0) return [];
+  const peek: string[] = [];
+  for (let i = start + 1; i < items.length; i += 1) {
+    const body = transcriptBody(items[i]!.text);
+    if (
+      body.startsWith("tool · ") ||
+      body.startsWith("status · ") ||
+      body.startsWith("message · ") ||
+      body.startsWith("sub · ")
+    ) {
+      break;
+    }
+    peek.push(body.replace(/^ {2}/, ""));
+  }
+  return peek;
+}
+
+/**
  * Live line for the current view. A selected child that is mid-stream
  * wins over the operator slot so a status poll does not hide the run.
  */

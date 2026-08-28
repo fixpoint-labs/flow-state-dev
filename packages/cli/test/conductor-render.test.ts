@@ -856,6 +856,61 @@ describe("renderFrame", () => {
     ).toContain("h hunk");
   });
 
+  it("shows the last Read peek on the RUN band, and drops it after a Write", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const peek = [
+      { at: 1, text: "tool · Read src/foo.ts", requestId: "req-live-1" },
+      { at: 1, text: "  export function foo() {", requestId: "req-live-1" },
+      { at: 1, text: "    return 1;", requestId: "req-live-1" },
+    ];
+    const reading = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [running], activity: peek }, { cols: 80, rows: 24 }),
+    );
+    expect(reading).toMatch(/^ RUN\s*$/m);
+    expect(reading).toContain("export function foo() {");
+    expect(reading).toContain("return 1;");
+
+    const afterWrite = beforeTranscript(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [running],
+          activity: [
+            ...peek,
+            { at: 2, text: "tool · Write src/foo.ts", requestId: "req-live-1" },
+            { at: 2, text: "+ export function foo() {", requestId: "req-live-1" },
+          ],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(afterWrite).toContain("Write src/foo.ts");
+    expect(afterWrite).not.toContain("return 1;");
+  });
+
   it("keeps files, the current todo, and the PR URL on ASK", () => {
     const parked: StatusRow = {
       ...waiting,

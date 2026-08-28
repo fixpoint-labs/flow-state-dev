@@ -44,6 +44,7 @@ import {
   selectedHunk,
   selectedNow,
   selectedPlan,
+  selectedReadPeek,
   selectedQuestion,
   selectedRow,
   selectedRequestId,
@@ -226,6 +227,7 @@ function renderAttemptStrip(state: ViewState, inner: number): string[] {
     const cwd = selectedRow(state)?.run?.workspacePath ?? null;
     lines.push(` ${dim(paintToolNow(now, inner, cwd))}`);
   }
+  lines.push(...renderReadPeek(state, inner));
   lines.push(...renderFileLines(state, inner));
   lines.push(...renderHunkLines(state, inner, { onlyCurrent: true }));
   lines.push(...renderPlanLines(state, inner, { onlyCurrent: true }));
@@ -278,6 +280,7 @@ function renderRunBand(state: ViewState, cols: number): string {
     now !== undefined && now !== ""
       ? ` ${paint(GOLD, paintToolNow(now, inner, tree ?? null))}`
       : "";
+  const peekLines = renderReadPeek(state, inner);
   const fileLines = renderFileLines(state, inner);
   const hunkLines = renderHunkLines(state, inner);
   const planLines = renderPlanLines(state, inner);
@@ -287,6 +290,7 @@ function renderRunBand(state: ViewState, cols: number): string {
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
     ...(nowLine !== "" ? [nowLine] : []),
+    ...peekLines,
     ...fileLines,
     ...hunkLines,
     ...planLines,
@@ -298,6 +302,12 @@ const FILE_MAX = 3;
 const FILE_EXPANDED_MAX = 12;
 const HUNK_BAND_MAX = 3;
 const HUNK_EXPANDED_MAX = 16;
+const READ_BAND_MAX = 3;
+
+function renderReadPeek(state: ViewState, inner: number): string[] {
+  const peek = selectedReadPeek(state).slice(0, READ_BAND_MAX);
+  return peek.map((line) => ` ${dim(shorten(line, inner))}`);
+}
 
 function renderFileLines(state: ViewState, inner: number): string[] {
   const files = selectedFiles(state);
