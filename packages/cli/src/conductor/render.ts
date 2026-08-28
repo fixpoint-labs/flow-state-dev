@@ -53,7 +53,7 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
   const header = renderHeader(state, cols);
   const table = renderTable(state, cols);
   const band = renderReservedBand(state, cols);
-  const meta = state.busy ? "" : renderMeta(state, cols);
+  const meta = state.busy || runBandOpen(state) ? "" : renderMeta(state, cols);
   const prompt = renderPrompt(state, cols);
   const footer = renderFooter(state, cols);
   const reserved =
@@ -64,7 +64,7 @@ export function renderFrame(state: ViewState, size: FrameSize): string {
     lineCount(prompt) +
     lineCount(footer);
   const leftover = Math.max(4, rows - reserved);
-  const activity = renderActivity(state, cols, leftover);
+  const activity = renderActivity(state, cols, leftover, band !== "");
 
   return fit(
     [header, table, band, meta, activity, prompt, footer].filter((s) => s !== "").join("\n"),
@@ -207,7 +207,17 @@ function renderRunBand(state: ViewState, cols: number): string {
   const body: string[] = [];
   if (branch) body.push(...wrap(branch, inner).slice(0, 2));
   if (tree) body.push(...wrap(tree, inner).slice(0, 2));
-  const hint = id !== undefined ? `${id}  ·  x stops` : "no request id yet";
+  const hintBits: string[] = [];
+  if (row.run?.usage) {
+    hintBits.push(
+      `${fmtTokens(row.run.usage.inputTokens)}→${fmtTokens(row.run.usage.outputTokens)}`,
+    );
+  }
+  if (row.run?.costUsd !== null && row.run?.costUsd !== undefined) {
+    hintBits.push(`$${row.run.costUsd.toFixed(3)}`);
+  }
+  hintBits.push(id !== undefined ? `${id}  ·  x stops` : "no request id yet");
+  const hint = hintBits.join("  ·  ");
   return [
     rule(cols, ACCENT),
     ` ${paint(ACCENT + BOLD, "RUN")}`,
@@ -270,7 +280,12 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
   return lines.join("\n");
 }
 
-function renderActivity(state: ViewState, cols: number, height: number): string {
+function renderActivity(
+  state: ViewState,
+  cols: number,
+  height: number,
+  underBand = false,
+): string {
   const following = state.scroll === 0;
   const heading = ` ${dim("TRANSCRIPT")}${
     following
@@ -294,8 +309,11 @@ function renderActivity(state: ViewState, cols: number, height: number): string 
       body.push(i === 0 ? ` ${paint(GOLD, "··")}  ${paint(GOLD, line)}` : `         ${paint(GOLD, line)}`);
     });
   }
-  const window = height - 2;
-  if (window <= 0) return `${rule(cols, INK_3)}\n${heading}`;
+  const chrome = underBand ? 1 : 2;
+  const window = height - chrome;
+  if (window <= 0) {
+    return underBand ? heading : `${rule(cols, INK_3)}\n${heading}`;
+  }
   const maxScroll = Math.max(0, body.length - window);
   const scroll = Math.min(state.scroll, maxScroll);
   const start = Math.max(0, body.length - window - scroll);
@@ -305,7 +323,8 @@ function renderActivity(state: ViewState, cols: number, height: number): string 
     pad > 0 && visible.length === 0
       ? [` ${dim("nothing yet. a wake writes here as it runs.")}`, ...Array.from({ length: pad - 1 }, () => "")]
       : Array.from({ length: pad }, () => "");
-  return [rule(cols, INK_3), heading, ...filler, ...visible].join("\n");
+  const top = underBand ? [] : [rule(cols, INK_3)];
+  return [...top, heading, ...filler, ...visible].join("\n");
 }
 
 function renderPrompt(state: ViewState, cols: number): string {
@@ -362,6 +381,14 @@ function padLine(text: string, cols: number): string {
 function lineCount(block: string): number {
   if (block === "") return 0;
   return block.split("\n").length;
+}
+
+/** RUN band is up — the checkout lives there, so meta would only steal transcript. */
+function runBandOpen(state: ViewState): boolean {
+  if (selectedQuestion(state) !== undefined) return false;
+  if (selectedFailure(state) !== undefined) return false;
+  const row = selectedRow(state);
+  return row !== undefined && rowRunning(row);
 }
 
 function wrapActivityLine(text: string, width: number): string[] {

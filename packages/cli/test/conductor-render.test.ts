@@ -142,20 +142,32 @@ describe("renderFrame", () => {
     expect(frame).toContain("wake-line-39");
   });
 
-  it("gives a live wake more transcript rows than an idle board", () => {
-    const running = { ...waiting, status: "in_progress", questions: [] };
+  it("leaves the running transcript room by not repeating the checkout under the RUN band", () => {
+    const runningRow: StatusRow = {
+      ...waiting,
+      status: "in_progress",
+      questions: [],
+      run: {
+        ...waiting.run!,
+        outcome: "running",
+        reason: null,
+        requestId: "req-live-1",
+        workspacePath: "/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement",
+        branch: "conductor/LIVE-1--implement",
+        usage: { inputTokens: 12_000, outputTokens: 400 },
+      },
+    };
     const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
-    const idle = renderFrame(
-      { ...emptyView("epic"), rows: [running], activity, busy: false },
+    const frame = renderFrame(
+      { ...emptyView("epic"), rows: [runningRow], activity },
       { cols: 80, rows: 24 },
     );
-    const working = renderFrame(
-      { ...emptyView("epic"), rows: [running], activity, busy: true, live: "status · running" },
-      { cols: 80, rows: 24 },
-    );
-    const idleHits = idle.split("wake-line-").length - 1;
-    const workingHits = working.split("wake-line-").length - 1;
-    expect(workingHits).toBeGreaterThan(idleHits);
+    const above = beforeTranscript(frame);
+    expect(above).toMatch(/^ RUN\s*$/m);
+    expect(above).toContain("12.0k→400");
+    expect(above).not.toContain("none open");
+    expect(above.match(/conductor\/LIVE-1--implement/g)?.length).toBe(1);
+    expect(frame.split("wake-line-").length - 1).toBeGreaterThan(5);
   });
 
   it("keeps a failed attempt above the transcript even when the log is long", () => {
@@ -191,7 +203,7 @@ describe("renderFrame", () => {
         reason: null,
         sessionId: "sess",
         finalMessage: null,
-        usage: null,
+        usage: { inputTokens: 12_000, outputTokens: 400 },
         costUsd: null,
         childSessionId: "child-1",
         requestId: "req-live-1",
@@ -209,8 +221,10 @@ describe("renderFrame", () => {
     expect(above).toContain("conductor/LIVE-1--implement");
     expect(above).toContain("/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement");
     expect(above).toContain("req-live-1");
+    expect(above).toContain("12.0k→400");
     expect(above).not.toMatch(/^ ASK\s*$/m);
     expect(above).not.toMatch(/^ FAIL\s*$/m);
+    expect(above.match(/conductor\/LIVE-1--implement/g)?.length).toBe(1);
     expect(stripAnsi(frame)).toContain("1 running");
     expect(stripAnsi(frame)).toContain("x stop");
     expect(frame).toContain("wake-line-39");
