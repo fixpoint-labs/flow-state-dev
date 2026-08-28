@@ -1,0 +1,2201 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Framework Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* ---------- tokens: light is the complete set ---------- */
+:root {
+  --paper:      #F3F3EF;
+  --surface:    #FCFCFA;
+  --surface-2:  #E9E9E2;
+  --ink:        #1A1D21;
+  --ink-2:      #4E555C;
+  --ink-3:      #7C848C;
+  --rule:       #D7D6CD;
+  --rule-soft:  #E4E3DA;
+  --accent:     #1D6A58;
+  --accent-2:   #14503F;
+  --accent-soft:#DDEAE4;
+  --k-handler:  #3B6BA5;
+  --k-generator:#AE7A22;
+  --k-sequencer:#2C7C69;
+  --k-router:   #A9544F;
+  --warn:       #9A6410;
+  --shadow:     0 1px 2px rgba(26,29,33,.06), 0 8px 24px -16px rgba(26,29,33,.28);
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Archivo", "IBM Plex Sans", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:      #121517;
+    --surface:    #191D20;
+    --surface-2:  #212629;
+    --ink:        #E7E9E6;
+    --ink-2:      #A6AEB2;
+    --ink-3:      #757D83;
+    --rule:       #2C3236;
+    --rule-soft:  #232829;
+    --accent:     #5FC2A6;
+    --accent-2:   #8AD6BF;
+    --accent-soft:#152E28;
+    --k-handler:  #82ACDE;
+    --k-generator:#DEAC5E;
+    --k-sequencer:#5DBBA1;
+    --k-router:   #DE8A84;
+    --warn:       #D8A44B;
+    --shadow:     0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:      #121517;
+  --surface:    #191D20;
+  --surface-2:  #212629;
+  --ink:        #E7E9E6;
+  --ink-2:      #A6AEB2;
+  --ink-3:      #757D83;
+  --rule:       #2C3236;
+  --rule-soft:  #232829;
+  --accent:     #5FC2A6;
+  --accent-2:   #8AD6BF;
+  --accent-soft:#152E28;
+  --k-handler:  #82ACDE;
+  --k-generator:#DEAC5E;
+  --k-sequencer:#5DBBA1;
+  --k-router:   #DE8A84;
+  --warn:       #D8A44B;
+  --shadow:     0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+/* ---------- shell ---------- */
+.shell { display: grid; grid-template-columns: 232px minmax(0,1fr); gap: 0; max-width: 1240px; margin: 0 auto; }
+.rail {
+  position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+  padding: 34px 20px 40px 24px; border-right: 1px solid var(--rule);
+}
+.rail-mark { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: -.01em; line-height: 1.25; margin-bottom: 4px; }
+.rail-sub { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 22px; }
+.rail nav { display: flex; flex-direction: column; gap: 1px; }
+.rail nav a { font-family: var(--mono); font-size: 11.5px; letter-spacing: .01em; color: var(--ink-2); text-decoration: none; padding: 3px 8px; border-radius: 3px; border-left: 2px solid transparent; }
+.rail nav a:hover { color: var(--ink); background: var(--surface-2); }
+.rail nav a.grp { color: var(--ink-3); text-transform: uppercase; font-size: 10px; letter-spacing: .09em; margin-top: 16px; pointer-events: none; padding-left: 0; }
+main { padding: 34px 44px 120px; min-width: 0; }
+
+/* ---------- masthead ---------- */
+.masthead { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 40px; }
+.eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(34px, 5.2vw, 54px); line-height: 1.02; letter-spacing: -.028em; margin: 0 0 16px; text-wrap: balance; }
+.standfirst { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 62ch; margin: 0 0 26px; }
+.stats { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; background: var(--surface); }
+.stat { flex: 1 1 130px; padding: 12px 16px; border-right: 1px solid var(--rule); }
+.stat:last-child { border-right: 0; }
+.stat b { display: block; font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat span { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); }
+
+/* ---------- typography ---------- */
+section { margin-bottom: 60px; scroll-margin-top: 20px; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 27px; letter-spacing: -.02em; line-height: 1.14; margin: 0 0 6px; text-wrap: balance; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 22px; }
+.sec-num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: .06em; flex: none; padding-top: 2px; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: -.012em; margin: 36px 0 10px; }
+h4 { font-family: var(--mono); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-3); margin: 26px 0 8px; }
+p { margin: 0 0 14px; max-width: 70ch; }
+.lede { color: var(--ink-2); font-size: 16.5px; max-width: 68ch; }
+ul, ol { max-width: 70ch; padding-left: 20px; margin: 0 0 14px; }
+li { margin-bottom: 5px; }
+code, .m { font-family: var(--mono); font-size: .875em; background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
+strong { font-weight: 600; }
+
+/* ---------- figures ---------- */
+figure { margin: 24px 0 28px; border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); overflow: hidden; box-shadow: var(--shadow); }
+.fig-body { padding: 22px 20px 12px; overflow-x: auto; }
+figure svg { display: block; width: 100%; max-width: 100%; height: auto; min-width: 560px; }
+figcaption { font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: var(--ink-2); padding: 11px 20px 13px; border-top: 1px solid var(--rule-soft); background: var(--surface-2); }
+figcaption b { color: var(--ink); font-weight: 600; }
+
+/* svg primitives */
+.n-box { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
+.n-box-2 { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1.2; }
+.n-grp { fill: none; stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 3; }
+.n-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.3; }
+.t { fill: var(--ink); font-family: var(--sans); font-size: 12.5px; }
+.t-b { fill: var(--ink); font-family: var(--display); font-weight: 600; font-size: 13px; }
+.t-s { fill: var(--ink-2); font-family: var(--mono); font-size: 10px; }
+.t-xs { fill: var(--ink-3); font-family: var(--mono); font-size: 9px; letter-spacing: .06em; }
+.t-lbl { fill: var(--ink-3); font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
+.t-acc { fill: var(--accent); font-family: var(--mono); font-size: 10px; }
+.ln { stroke: var(--ink-3); stroke-width: 1.2; fill: none; }
+.ln-acc { stroke: var(--accent); stroke-width: 1.5; fill: none; }
+.ln-soft { stroke: var(--rule); stroke-width: 1; fill: none; }
+.ln-x { stroke: var(--k-router); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+
+/* ---------- tables ---------- */
+.tw { overflow-x: auto; margin: 18px 0 24px; border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 520px; }
+th { text-align: left; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-3); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--rule); background: var(--surface-2); white-space: nowrap; }
+td { padding: 9px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; line-height: 1.5; }
+tbody tr:last-child td { border-bottom: 0; }
+td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
+.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; color: var(--ink-2); }
+.ctr { text-align: center; }
+
+/* ---------- chips / cards ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 20px; }
+.chip { font-family: var(--mono); font-size: 11px; padding: 3px 9px; border: 1px solid var(--rule); border-radius: 100px; background: var(--surface); color: var(--ink-2); }
+
+.dsl { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin: 20px 0 26px; }
+.dsl-grp { border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); padding: 12px 14px 14px; border-top: 3px solid var(--gc, var(--accent)); }
+.dsl-grp h5 { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin: 0 0 9px; font-weight: 500; }
+.dsl-grp ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 5px; }
+.dsl-grp li { font-family: var(--mono); font-size: 11.5px; margin: 0; color: var(--ink); }
+.dsl-grp li i { font-style: normal; color: var(--ink-3); font-size: 10.5px; display: block; font-family: var(--sans); line-height: 1.4; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(228px, 1fr)); gap: 14px; margin: 20px 0 26px; }
+.card { border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); padding: 14px 16px 16px; }
+.card h5 { font-family: var(--mono); font-size: 12px; margin: 0 0 3px; font-weight: 600; color: var(--ink); }
+.card .role { font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 8px; }
+.card p { font-size: 13px; margin: 0; color: var(--ink-2); line-height: 1.5; }
+
+/* ---------- callouts ---------- */
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; margin: 18px 0 22px; border-radius: 0 4px 4px 0; }
+.note p { margin: 0; font-size: 14px; max-width: 66ch; }
+.note .lbl { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-2); display: block; margin-bottom: 4px; }
+.tension { border: 1px solid var(--rule); border-left: 3px solid var(--warn); border-radius: 0 5px 5px 0; background: var(--surface); padding: 14px 18px 16px; margin-bottom: 14px; }
+.tension h5 { font-family: var(--display); font-size: 15px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.01em; }
+.tension p { font-size: 14px; margin: 0 0 8px; color: var(--ink-2); }
+.tension p:last-child { margin: 0; }
+.tension .ask { font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--surface-2); padding: 7px 10px; border-radius: 3px; display: block; }
+.kind-key { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 4px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.kind-key span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 24px 22px; }
+  .rail nav { flex-direction: row; flex-wrap: wrap; gap: 4px 10px; }
+  .rail nav a.grp { display: none; }
+  main { padding: 26px 22px 80px; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head><body><div class="shell">
+<aside class="rail">
+  <div class="rail-mark">Flow State Atlas</div>
+  <div class="rail-sub">@flow-state-dev · aug 2026</div>
+  <nav>
+    <a class="grp">Orientation</a>
+    <a href="#map">01 · The system map</a>
+    <a class="grp">How it fits together</a>
+    <a href="#dial">02 · What decides what runs next</a>
+    <a href="#substrate">03 · The shared substrate</a>
+    <a href="#workforce-layer">04 · Workforce: the unbuilt layer</a>
+    <a class="grp">The inventory</a>
+    <a href="#packages">05 · Package inventory</a>
+    <a href="#boundaries">06 · Locked boundaries</a>
+    <a class="grp">The primitives</a>
+    <a href="#blocks">07 · Four block kinds</a>
+    <a href="#dsl">08 · Sequencer DSL</a>
+    <a href="#flows">09 · Flows &amp; actions</a>
+    <a href="#state">10 · State &amp; scopes</a>
+    <a href="#resources">11 · Resources</a>
+    <a href="#items">12 · Items &amp; streaming</a>
+    <a href="#execution">13 · Execution &amp; errors</a>
+    <a href="#capabilities">14 · Capabilities</a>
+    <a class="grp">Composition tier</a>
+    <a href="#utility">15 · Utility blocks</a>
+    <a href="#patterns">16 · Patterns</a>
+    <a href="#orchestration">17 · Orchestration</a>
+    <a href="#skills">18 · Skills &amp; agents</a>
+    <a href="#memory">19 · Memory</a>
+    <a href="#tools">20 · Tools</a>
+    <a class="grp">Edges</a>
+    <a href="#transports">21 · Inbound transports</a>
+    <a href="#hosts">22 · Hosts &amp; stores</a>
+    <a href="#detached">23 · Detached work</a>
+    <a class="grp">Surfaces</a>
+    <a href="#consumers">24 · Client, React, CLI</a>
+    <a href="#proving">25 · Proving ground</a>
+    <a class="grp">Synthesis</a>
+    <a href="#ledger">26 · The removal ledger</a>
+    <a href="#lenses">27 · Refactor lenses</a>
+  </nav>
+</aside>
+
+<main>
+<header class="masthead">
+  <p class="eyebrow">Architecture inventory</p>
+  <h1>Everything in the framework, and how it fits</h1>
+  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 27 packages, four ways to decide what runs next, and six orthogonal systems underneath all of them. Sections 02&ndash;04 are how the pieces fit into one thing; the rest is the inventory of what each piece is.</p>
+  <div class="stats">
+    <div class="stat"><b>27</b><span>packages</span></div>
+    <div class="stat"><b>~179k</b><span>lines of src</span></div>
+    <div class="stat"><b>7,655</b><span>tests</span></div>
+    <div class="stat"><b>4</b><span>block kinds</span></div>
+    <div class="stat"><b>24</b><span>sequencer ops</span></div>
+    <div class="stat"><b>17</b><span>item types</span></div>
+    <div class="stat"><b>23</b><span>deprecations</span></div>
+  </div>
+</header>
+
+<section id="map">
+  <div class="sec-head"><span class="sec-num">01</span><h2>The system map</h2></div>
+  <p class="lede">FSD is one framework with three distinct jobs, and almost every architectural question comes down to which of the three a piece of code belongs to.</p>
+  <p><strong>Authoring</strong> is isomorphic: <code>contracts</code> and <code>core</code> give you the block primitives and the type contracts, and the composition libraries stack on top of them without ever touching a runtime. <strong>Running</strong> is server-only: <code>engine</code> owns execution, state, persistence, and the wire. <strong>Consuming</strong> is client-side: <code>client</code> speaks the wire, <code>react</code> wraps <code>client</code>, and nothing below them knows either exists.</p>
+  <p>The handoff between authoring and running is a flow definition. The handoff between running and consuming is JSON plus an SSE stream. Those two seams are the reason the boundary rules in §06 can be enforced at all.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 980 452" role="img" aria-label="Three-column map of flow-state-dev: an isomorphic authoring column (contracts, core, composition libraries) producing a flow definition, a server runtime column (engine, with inbound transports, stores, and host adapters), and a consumer column (client, react, devtool, ui, cli) reached over JSON and SSE.">
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/>
+          </marker>
+          <marker id="a1acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <text class="t-lbl" x="24" y="18">Author — isomorphic</text>
+        <text class="t-lbl" x="356" y="18">Run — server only</text>
+        <text class="t-lbl" x="688" y="18">Consume — browser / terminal</text>
+        <rect class="n-grp" x="24" y="28" width="268" height="400" rx="5"/>
+        <rect class="n-grp" x="356" y="28" width="268" height="400" rx="5"/>
+        <rect class="n-grp" x="688" y="28" width="268" height="400" rx="5"/>
+
+        <!-- column A -->
+        <rect class="n-box-2" x="36" y="44" width="244" height="40" rx="4"/>
+        <text class="t-b" x="48" y="63">contracts</text>
+        <text class="t-s" x="48" y="77">item taxonomy · leaf types · zero deps</text>
+        <path class="ln" d="M158,84 L158,98" marker-end="url(#a1)"/>
+
+        <rect class="n-acc" x="36" y="100" width="244" height="66" rx="4"/>
+        <text class="t-b" x="48" y="120">core</text>
+        <text class="t-s" x="48" y="135">handler, generator, sequencer, router</text>
+        <text class="t-s" x="48" y="150">flows, capabilities, resources</text>
+        <path class="ln" d="M158,166 L158,180" marker-end="url(#a1)"/>
+
+        <rect class="n-grp" x="36" y="182" width="244" height="172" rx="4"/>
+        <text class="t-lbl" x="48" y="198">composition libraries</text>
+        <rect class="n-box" x="48" y="206" width="108" height="38" rx="3"/><text class="t-s" x="58" y="230">orchestration</text>
+        <rect class="n-box" x="164" y="206" width="108" height="38" rx="3"/><text class="t-s" x="174" y="230">patterns</text>
+        <rect class="n-box" x="48" y="252" width="108" height="38" rx="3"/><text class="t-s" x="58" y="276">memory</text>
+        <rect class="n-box" x="164" y="252" width="108" height="38" rx="3"/><text class="t-s" x="174" y="276">tools</text>
+        <rect class="n-box" x="48" y="298" width="108" height="38" rx="3"/><text class="t-s" x="58" y="322">workforce</text>
+        <rect class="n-box" x="164" y="298" width="108" height="38" rx="3"/><text class="t-s" x="174" y="322">thought-fabric</text>
+
+        <rect class="n-box-2" x="36" y="374" width="244" height="40" rx="4"/>
+        <text class="t-b" x="48" y="392">defineFlow({ actions })</text>
+        <text class="t-s" x="48" y="406">the artifact both sides agree on</text>
+
+        <!-- A to B -->
+        <path class="ln-acc" d="M280,394 L318,394 L318,86 L366,86" marker-end="url(#a1acc)"/>
+        <text class="t-acc" x="298" y="248" transform="rotate(-90 298 248)">registerFlows</text>
+
+        <!-- column B -->
+        <rect class="n-acc" x="368" y="44" width="244" height="78" rx="4"/>
+        <text class="t-b" x="380" y="64">engine</text>
+        <text class="t-s" x="380" y="79">executeBlock, retry, rescue</text>
+        <text class="t-s" x="380" y="94">scopes, CAS, items, SSE, HTTP routes</text>
+        <text class="t-s" x="380" y="109">suspend/resume, recovery, workstreams</text>
+        <path class="ln" d="M490,122 L490,138" marker-end="url(#a1)"/>
+
+        <rect class="n-grp" x="360" y="140" width="260" height="222" rx="4"/>
+        <text class="t-lbl" x="372" y="156">pluggable edges</text>
+        <rect class="n-box" x="372" y="164" width="236" height="56" rx="3"/>
+        <text class="t-b" x="384" y="184">inbound transports</text>
+        <text class="t-s" x="384" y="200">http · mcp · webhook</text>
+        <text class="t-s" x="384" y="213">scheduled · chat-sdk</text>
+        <rect class="n-box" x="372" y="232" width="236" height="56" rx="3"/>
+        <text class="t-b" x="384" y="252">stores</text>
+        <text class="t-s" x="384" y="268">memory · filesystem · sqlite</text>
+        <text class="t-s" x="384" y="281">postgres — 11 store interfaces</text>
+        <rect class="n-box" x="372" y="300" width="236" height="50" rx="3"/>
+        <text class="t-b" x="384" y="320">host adapters</text>
+        <text class="t-s" x="384" y="336">node · next · vercel · bullmq</text>
+
+        <!-- B to C -->
+        <path class="ln-acc" d="M612,64 L650,64 L650,72 L698,72" marker-end="url(#a1acc)"/>
+        <text class="t-acc" x="622" y="52">JSON + SSE</text>
+
+        <!-- column C -->
+        <rect class="n-box-2" x="700" y="52" width="244" height="52" rx="4"/>
+        <text class="t-b" x="712" y="72">client</text>
+        <text class="t-s" x="712" y="88">actions, sessions, streams, resources</text>
+        <path class="ln" d="M822,104 L822,118" marker-end="url(#a1)"/>
+        <rect class="n-box-2" x="700" y="120" width="244" height="52" rx="4"/>
+        <text class="t-b" x="712" y="140">react</text>
+        <text class="t-s" x="712" y="156">15 hooks, renderers, voice, registry</text>
+        <path class="ln" d="M822,172 L822,192" marker-end="url(#a1)"/>
+
+        <rect class="n-grp" x="692" y="194" width="260" height="112" rx="4"/>
+        <text class="t-lbl" x="704" y="210">rendering surfaces</text>
+        <rect class="n-box" x="704" y="218" width="236" height="36" rx="3"/>
+        <text class="t-s" x="716" y="240">devtool — the inspector app</text>
+        <rect class="n-box" x="704" y="258" width="236" height="36" rx="3"/>
+        <text class="t-s" x="716" y="280">ui — generative component registry</text>
+
+        <rect class="n-box-2" x="700" y="330" width="244" height="52" rx="4"/>
+        <text class="t-b" x="712" y="350">cli — fsdev</text>
+        <text class="t-s" x="712" y="366">run, chat, dev, serve, benchmark</text>
+        <path class="ln" d="M612,336 L656,336 L656,356 L698,356" marker-end="url(#a1)"/>
+        <text class="t-xs" x="622" y="330">in-process</text>
+      </svg>
+    </div>
+    <figcaption><b>The three jobs.</b> The CLI is the one consumer that skips the wire — it drives <code>engine</code> in-process, which is why it can run a flow with no server. Everything else reaches the runtime only through HTTP and SSE.</figcaption>
+  </figure>
+
+  <h3>What the framework is trying to be</h3>
+  <p>From <code>docs/philosophy.md</code>: FSD is <strong>infrastructure, not an application</strong>. It absorbs the plumbing every AI feature rebuilds — call a model, stream the response, hold state, retry, render, resume — as composable primitives, and it deliberately refuses to absorb any one app's domain knowledge or any one vendor's specifics.</p>
+  <p>Two failure modes are ranked, and the ranking drives most of the architecture:</p>
+  <ol>
+    <li><strong>Incoherence</strong> — patterns that disagree with each other. Primary, because no single-diff review catches it.</li>
+    <li><strong>Bloat</strong> — surface that never earned its place. A close second, and the thing that <em>becomes</em> incoherence if left alone.</li>
+  </ol>
+  <div class="note">
+    <span class="lbl">Why this matters for a refactor</span>
+    <p>The philosophy already says the codebase carries known bloat and incoherence that accreted before the tenets were written down. This atlas is most useful read as a map of where that surface actually sits — §26 collects the specific tensions worth deciding on.</p>
+  </div>
+</section>
+
+<section id="dial">
+  <div class="sec-head"><span class="sec-num">02</span><h2>What decides what runs next</h2></div>
+  <p class="lede">Every workflow system answers one question: who decides what happens next, and when do they decide it? FSD refuses to pick a single answer. It ships four, on one substrate, and lets them nest inside each other.</p>
+
+  <p>This is the axis the whole framework is organized around, and it is the thing to hold in mind before reading any of the per-system sections below. A sequencer is not a lesser task board and a task board is not a worse sequencer — they sit at different points on a dial that trades <strong>predictability</strong> for <strong>adaptability</strong>, and the right answer depends on how much you know about the work before it starts.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 396" role="img" aria-label="The determinism dial: four control modes from left to right — sequencer decided by the author at build time, router decided by your code per call, task board decided by the running program during the run, and skill delegation decided by the model inside the turn — each with what it costs on resume and when to reach for it.">
+        <defs><marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
+
+        <text class="t-lbl" x="24" y="20">Shape known before the run</text>
+        <text class="t-lbl" x="928" y="20" text-anchor="end">Shape discovered during it</text>
+        <path class="ln" d="M30,32 L922,32" marker-end="url(#d1)" marker-start="url(#d1)"/>
+
+        <rect class="n-box" x="24" y="48" width="214" height="304" rx="5"/>
+        <rect x="24" y="48" width="214" height="4" fill="var(--k-sequencer)"/>
+        <text class="t-b" x="38" y="76" fill="var(--k-sequencer)">sequencer</text>
+        <text class="t-s" x="38" y="94">the pipeline you wrote</text>
+        <path class="ln-soft" d="M38,106 L224,106"/>
+        <text class="t-xs" x="38" y="124">DECIDED BY</text>
+        <text class="t-s" x="38" y="140">the author</text>
+        <text class="t-xs" x="38" y="164">DECIDED WHEN</text>
+        <text class="t-s" x="38" y="180">build time</text>
+        <text class="t-xs" x="38" y="204">SHAPE</text>
+        <text class="t-s" x="38" y="220">one fixed graph</text>
+        <text class="t-xs" x="38" y="244">ON RESUME</text>
+        <text class="t-s" x="38" y="260">same path, committed</text>
+        <text class="t-s" x="38" y="274">steps skipped</text>
+        <path class="ln-soft" d="M38,288 L224,288"/>
+        <text class="t-xs" x="38" y="306">REACH FOR IT WHEN</text>
+        <text class="t-xs" x="38" y="320">THE STEPS ARE KNOWN, THE</text>
+        <text class="t-xs" x="38" y="332">ORDER MATTERS, AND A TEST</text>
+        <text class="t-xs" x="38" y="344">SHOULD PIN IT</text>
+
+        <rect class="n-box" x="254" y="48" width="214" height="304" rx="5"/>
+        <rect x="254" y="48" width="214" height="4" fill="var(--k-router)"/>
+        <text class="t-b" x="268" y="76" fill="var(--k-router)">router</text>
+        <text class="t-s" x="268" y="94">a choice your code makes</text>
+        <path class="ln-soft" d="M268,106 L454,106"/>
+        <text class="t-xs" x="268" y="124">DECIDED BY</text>
+        <text class="t-s" x="268" y="140">your code</text>
+        <text class="t-xs" x="268" y="164">DECIDED WHEN</text>
+        <text class="t-s" x="268" y="180">per call, from input</text>
+        <text class="t-s" x="268" y="194">or state</text>
+        <text class="t-xs" x="268" y="212">SHAPE</text>
+        <text class="t-s" x="268" y="228">one of a fixed set</text>
+        <text class="t-xs" x="268" y="248">ON RESUME</text>
+        <text class="t-s" x="268" y="264">the recorded decision</text>
+        <text class="t-s" x="268" y="278">is re-validated</text>
+        <path class="ln-soft" d="M268,288 L454,288"/>
+        <text class="t-xs" x="268" y="306">REACH FOR IT WHEN</text>
+        <text class="t-xs" x="268" y="320">THE PATHS ARE BOUNDED —</text>
+        <text class="t-xs" x="268" y="332">MODE, INTENT, TENANT —</text>
+        <text class="t-xs" x="268" y="344">AND CODE CAN PICK</text>
+
+        <rect class="n-acc" x="484" y="48" width="214" height="304" rx="5"/>
+        <rect x="484" y="48" width="214" height="4" fill="var(--accent)"/>
+        <text class="t-b" x="498" y="76" fill="var(--accent)">task board</text>
+        <text class="t-s" x="498" y="94">a graph that grows as</text>
+        <text class="t-s" x="498" y="108">it drains</text>
+        <path class="ln-soft" d="M498,118 L684,118"/>
+        <text class="t-xs" x="498" y="134">DECIDED BY</text>
+        <text class="t-s" x="498" y="150">the running program</text>
+        <text class="t-xs" x="498" y="170">DECIDED WHEN</text>
+        <text class="t-s" x="498" y="186">during the run</text>
+        <text class="t-xs" x="498" y="208">SHAPE</text>
+        <text class="t-s" x="498" y="224">a dependency graph,</text>
+        <text class="t-s" x="498" y="238">extended mid-drain</text>
+        <text class="t-xs" x="498" y="256">ON RESUME</text>
+        <text class="t-s" x="498" y="272">the ledger is the truth,</text>
+        <text class="t-s" x="498" y="284">not the order</text>
+        <path class="ln-soft" d="M498,292 L684,292"/>
+        <text class="t-xs" x="498" y="306">REACH FOR IT WHEN</text>
+        <text class="t-xs" x="498" y="320">THE COUNT IS UNKNOWN, UNITS</text>
+        <text class="t-xs" x="498" y="332">DEPEND ON EACH OTHER, AND</text>
+        <text class="t-xs" x="498" y="344">CONCURRENCY MATTERS</text>
+
+        <rect class="n-box" x="714" y="48" width="214" height="304" rx="5"/>
+        <rect x="714" y="48" width="214" height="4" fill="var(--k-generator)"/>
+        <text class="t-b" x="728" y="76" fill="var(--k-generator)">skill delegation</text>
+        <text class="t-s" x="728" y="94">a plan the model writes</text>
+        <path class="ln-soft" d="M728,106 L914,106"/>
+        <text class="t-xs" x="728" y="124">DECIDED BY</text>
+        <text class="t-s" x="728" y="140">the model</text>
+        <text class="t-xs" x="728" y="164">DECIDED WHEN</text>
+        <text class="t-s" x="728" y="180">inside the turn</text>
+        <text class="t-xs" x="728" y="204">SHAPE</text>
+        <text class="t-s" x="728" y="220">whatever it plans</text>
+        <text class="t-xs" x="728" y="244">ON RESUME</text>
+        <text class="t-s" x="728" y="260">it plans again — the</text>
+        <text class="t-s" x="728" y="274">shape is not replayed</text>
+        <path class="ln-soft" d="M728,288 L914,288"/>
+        <text class="t-xs" x="728" y="306">REACH FOR IT WHEN</text>
+        <text class="t-xs" x="728" y="320">THE WORK RESISTS ADVANCE</text>
+        <text class="t-xs" x="728" y="332">CLASSIFYING, AND THE PLAYBOOK</text>
+        <text class="t-xs" x="728" y="344">SHOULD CHANGE WITHOUT A DEPLOY</text>
+
+        <text class="t-lbl" x="470" y="378" text-anchor="middle">Each one reaches a block — two directly, two through one named handle</text>
+      </svg>
+    </div>
+    <figcaption><b>The dial, not the menu.</b> Moving right buys adaptability and pays in tokens, latency, and replayability. Moving left buys a system you can test, resume, and reason about. Nothing forces a single choice for a whole application — the choice is per unit of work.</figcaption>
+  </figure>
+
+  <h3>They nest, which is the actual point</h3>
+  <p>The modes compose, but not because all four <em>are</em> blocks. Two are: a sequencer and a router each build a <code>BlockDefinition</code> directly. The other two reach one through a single named handle &mdash; <code>taskBoard()</code> returns a <code>TaskBoardHandle</code> whose <code>.drain</code> is the block, and <code>createSkillsLibrary()</code> returns a <code>DefinedCapability</code> that becomes composable once a generator installs it. Those two handles are the whole adapter surface, which is why the nesting still feels free:</p>
+  <ul>
+    <li>A <strong>sequencer step</strong> can be a task board&rsquo;s drain — <code>.step(board.drain)</code>. <code>parallelTasks</code>, <code>supervisor</code>, <code>planAndExecute</code> and <code>eventActors</code> are all exactly that.</li>
+    <li>A <strong>board worker</strong> can be a sequencer, so one node of a dynamic graph can be a fixed pipeline.</li>
+    <li>A <strong>generator</strong> holding a skill can command its own private board — the skill plans tasks, <code>runBoard</code> drains them.</li>
+    <li>A <strong>board task</strong> can spawn detached, re-entering later through that same board's runner in a child session.</li>
+  </ul>
+  <p>So the practical design move is not "which mode is this application?" but <strong>"at which point in this pipeline does the shape stop being knowable?"</strong> Everything before that point should be a sequencer. Everything after it needs a board or a skill. Most real systems put the boundary somewhere in the middle, and the framework's job is to make that seam invisible.</p>
+
+  <div class="note">
+    <span class="lbl">The cost that is easy to miss</span>
+    <p>Determinism is not only about test flakiness — it is about <strong>resume</strong>. A sequencer resumes by skipping committed steps. A router resumes by re-validating a recorded decision, and throws rather than silently branching elsewhere. A board resumes off its durable ledger. A model-written plan has no recorded shape to resume into: re-running re-plans. That is the real price of the right-hand end of the dial, and it is why the board sits between the two — it gives you a dynamic graph that is still <em>durable</em>.</p>
+  </div>
+</section>
+
+<section id="substrate">
+  <div class="sec-head"><span class="sec-num">03</span><h2>The shared substrate</h2></div>
+  <p class="lede">The four modes are interchangeable because they stand on identical ground. A board worker, a sequencer step, and a task a model just invented all receive the same <code>ctx</code> and reach the same six systems.</p>
+
+  <p>Those six systems are orthogonal because each answers a different question. That is the decomposition the framework is actually selling — most AI stacks tangle all six into one "agent" object, and then cannot vary any of them independently.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 336" role="img" aria-label="All four control modes resolve to one BlockContext, which reaches six orthogonal systems: blocks answer what runs, the control mode answers what runs next, scopes answer how long it is remembered, resources answer what is shared, items answer who sees it, and workstreams answer how long it may take.">
+        <defs><marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
+
+        <rect class="n-box" x="48" y="16" width="200" height="34" rx="4"/>
+        <rect x="48" y="16" width="4" height="34" fill="var(--k-sequencer)"/>
+        <text class="t-s" x="62" y="38">a sequencer step</text>
+        <rect class="n-box" x="264" y="16" width="200" height="34" rx="4"/>
+        <rect x="264" y="16" width="4" height="34" fill="var(--k-router)"/>
+        <text class="t-s" x="278" y="38">a router branch</text>
+        <rect class="n-box" x="480" y="16" width="200" height="34" rx="4"/>
+        <rect x="480" y="16" width="4" height="34" fill="var(--accent)"/>
+        <text class="t-s" x="494" y="38">a board worker</text>
+        <rect class="n-box" x="696" y="16" width="200" height="34" rx="4"/>
+        <rect x="696" y="16" width="4" height="34" fill="var(--k-generator)"/>
+        <text class="t-s" x="710" y="38">a model-planned task</text>
+
+        <path class="ln" d="M148,50 L148,72" marker-end="url(#d2)"/>
+        <path class="ln" d="M364,50 L364,72" marker-end="url(#d2)"/>
+        <path class="ln" d="M580,50 L580,72" marker-end="url(#d2)"/>
+        <path class="ln" d="M796,50 L796,72" marker-end="url(#d2)"/>
+
+        <rect class="n-acc" x="24" y="74" width="904" height="44" rx="4"/>
+        <text class="t-b" x="470" y="96" text-anchor="middle">one BlockContext</text>
+        <text class="t-s" x="470" y="111" text-anchor="middle">ctx.session · ctx.user · ctx.org · ctx.resources · ctx.emit · ctx.cap · ctx.requestHost</text>
+
+        <rect class="n-box" x="24" y="136" width="294" height="88" rx="4"/>
+        <text class="t-acc" x="38" y="156">what runs?</text>
+        <text class="t-b" x="38" y="178">blocks</text>
+        <text class="t-xs" x="38" y="196">HANDLER · GENERATOR · SEQUENCER · ROUTER</text>
+        <text class="t-xs" x="38" y="212">ONE run(input, ctx) — NOTHING ELSE TO LEARN</text>
+
+        <rect class="n-box" x="330" y="136" width="294" height="88" rx="4"/>
+        <text class="t-acc" x="344" y="156">what runs next?</text>
+        <text class="t-b" x="344" y="178">the control mode</text>
+        <text class="t-xs" x="344" y="196">THE DIAL IN §02 — AUTHOR, CODE, PROGRAM, MODEL</text>
+        <text class="t-xs" x="344" y="212">CHOSEN PER UNIT OF WORK, NOT PER APP</text>
+
+        <rect class="n-box" x="636" y="136" width="292" height="88" rx="4"/>
+        <text class="t-acc" x="650" y="156">how long is it remembered?</text>
+        <text class="t-b" x="650" y="178">scopes</text>
+        <text class="t-xs" x="650" y="196">REQUEST ⊂ SESSION ⊂ USER ⊂ ORG</text>
+        <text class="t-xs" x="650" y="212">CAS ON EVERY WRITE · PARTIAL SCHEMAS BUBBLE UP</text>
+
+        <rect class="n-box" x="24" y="234" width="294" height="88" rx="4"/>
+        <text class="t-acc" x="38" y="254">what is shared?</text>
+        <text class="t-b" x="38" y="276">resources</text>
+        <text class="t-xs" x="38" y="294">TYPED CONTAINERS WITH POLICY, NOT JUST STATE</text>
+        <text class="t-xs" x="38" y="310">THE TASK COLLECTION IS ONE OF THEM</text>
+
+        <rect class="n-box" x="330" y="234" width="294" height="88" rx="4"/>
+        <text class="t-acc" x="344" y="254">who sees it?</text>
+        <text class="t-b" x="344" y="276">items</text>
+        <text class="t-xs" x="344" y="294">ONE resolveItemVisibility, THREE AUDIENCES:</text>
+        <text class="t-xs" x="344" y="310">THE CLIENT · THE LLM'S HISTORY · THE TRACE</text>
+
+        <rect class="n-box" x="636" y="234" width="292" height="88" rx="4"/>
+        <text class="t-acc" x="650" y="254">how long may it take?</text>
+        <text class="t-b" x="650" y="276">workstreams</text>
+        <text class="t-xs" x="650" y="294">A CHILD SESSION THAT OUTLIVES THE REQUEST</text>
+        <text class="t-xs" x="650" y="310">DURABILITY DEPENDS ON THE TOPOLOGY</text>
+      </svg>
+    </div>
+    <figcaption><b>Six questions, six answers, no overlap.</b> <strong>Capabilities</strong> are the seventh thing — not another question, but the packaging that lets any combination of the six install as a single <code>uses</code> entry.</figcaption>
+  </figure>
+
+  <h3>Why the orthogonality earns its keep</h3>
+  <p>Because the six vary independently, you can change one without touching the rest. Make a chat pipeline concurrent by swapping a <code>forEach</code> for a board — the scopes, the resources, and the item routing are untouched. Hide a sub-agent's chatter from the user while keeping it in the parent's context — that is one <code>itemVisibility</code> field, not a rearchitecture. Move work off the request without rewriting it — <code>startDetached</code>, and the same block runs in a child session.</p>
+  <p>The two places the axes genuinely meet are worth knowing, because they are where the system gets its power:</p>
+  <ul>
+    <li><strong>Resources are how concurrent actors share.</strong> The <code>TaskCollection</code> is resource-backed, so the board's ledger is not a special store — it is the ordinary resource system under a task-shaped schema. That is why a board gets CAS, change events, client projection, and reactive blocks without asking for any of them.</li>
+    <li><strong>The board and the workstream meet at the runner.</strong> A detached dispatch carries a <code>boardId</code>, never a worker — it re-enters through the declaring board's runner, which re-reads the claimed row, re-verifies the claim, and only then routes to the assignee the durable row names. There is no path from a detached dispatch to a bare worker block, which is what makes "a task that outlives the turn" safe rather than a forgeable entry point.</li>
+  </ul>
+
+  <h3>One request, all the way down</h3>
+  <p>What the composition actually looks like when every mode is in play at once:</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 486" role="img" aria-label="A single request traced through nested control modes: an HTTP action enters a deterministic sequencer, which routes to a generator carrying a skill; the skill plans tasks onto a private board, the board drains workers concurrently, one worker spawns detached into a workstream, and the sequencer finishes with a synthesis handler. Each row is annotated with the substrate it touches.">
+        <text class="t-lbl" x="24" y="20">The call tree</text>
+        <text class="t-lbl" x="500" y="20">Mode</text>
+        <text class="t-lbl" x="620" y="20">What the substrate does at this depth</text>
+        <path class="ln-soft" d="M24,28 L928,28"/>
+        <path class="ln-soft" d="M604,36 L604,470"/>
+        <path class="ln-soft" d="M34,62 L34,82"/>
+        <path class="ln-soft" d="M58,92 L58,442"/>
+        <path class="ln-soft" d="M82,152 L82,172"/>
+        <path class="ln-soft" d="M106,182 L106,262"/>
+        <path class="ln-soft" d="M130,272 L130,352"/>
+        <path class="ln-soft" d="M154,362 L154,412"/>
+        <text class="t-s" x="24" y="56">POST /api/flows/desk/actions/ask</text>
+        <rect class="n-box-2" x="500" y="42" width="92" height="20" rx="10"/>
+        <text class="t-xs" x="546" y="56" text-anchor="middle">ENTRY</text>
+        <text class="t-xs" x="620" y="56">ActionCore RESOLVED · THE source GATE DECIDES AUTH</text>
+        <path class="ln-soft" d="M34,82 L41,82"/>
+        <text class="t-s" x="46" y="86">sequencer  handle</text>
+        <rect class="n-box-2" x="500" y="72" width="92" height="20" rx="10"/>
+        <rect x="500" y="72" width="3" height="20" fill="var(--k-sequencer)"/>
+        <text class="t-xs" x="546" y="86" text-anchor="middle">AUTHOR</text>
+        <text class="t-xs" x="620" y="86">ITS STATE SCHEMA BUBBLES UP INTO THE FLOW</text>
+        <path class="ln-soft" d="M58,112 L65,112"/>
+        <text class="t-s" x="70" y="116">handler  validate</text>
+        <text class="t-xs" x="620" y="116">ctx.session.patchState — CAS-GUARDED, NO-OP GUARDED</text>
+        <path class="ln-soft" d="M58,142 L65,142"/>
+        <text class="t-s" x="70" y="146">router  byMode</text>
+        <rect class="n-box-2" x="500" y="132" width="92" height="20" rx="10"/>
+        <rect x="500" y="132" width="3" height="20" fill="var(--k-router)"/>
+        <text class="t-xs" x="546" y="146" text-anchor="middle">CODE</text>
+        <text class="t-xs" x="620" y="146">router_decision PERSISTED — RESUME RE-VALIDATES IT</text>
+        <path class="ln-soft" d="M82,172 L89,172"/>
+        <text class="t-s" x="94" y="176">generator  analyst · uses [skills, memory]</text>
+        <text class="t-xs" x="620" y="176">CAPABILITY MERGE: RESOURCES AT BUILD, CONTEXT AT CALL</text>
+        <path class="ln-soft" d="M106,202 L113,202"/>
+        <text class="t-s" x="118" y="206">skill "research" matches</text>
+        <rect class="n-box-2" x="500" y="192" width="92" height="20" rx="10"/>
+        <rect x="500" y="192" width="3" height="20" fill="var(--k-generator)"/>
+        <text class="t-xs" x="546" y="206" text-anchor="middle">MODEL</text>
+        <text class="t-xs" x="620" y="206">SLASH → KEYWORD → CLASSIFIER · BODY JOINS THE PROMPT</text>
+        <path class="ln-soft" d="M106,232 L113,232"/>
+        <text class="t-s" x="118" y="236">addTask × 4  (assignee, deps)</text>
+        <text class="t-xs" x="620" y="236">ROWS LAND IN A RESOURCE-BACKED TaskCollection</text>
+        <path class="ln-soft" d="M106,262 L113,262"/>
+        <text class="t-s" x="118" y="266">runBoard</text>
+        <rect class="n-acc" x="500" y="252" width="92" height="20" rx="10"/>
+        <text class="t-xs" x="546" y="266" text-anchor="middle">PROGRAM</text>
+        <text class="t-xs" x="620" y="266">ONE DRAIN · DEPENDENCY-GATED · CAPPED CONCURRENCY</text>
+        <path class="ln-soft" d="M130,292 L137,292"/>
+        <text class="t-s" x="142" y="296">worker  analyst-a</text>
+        <text class="t-xs" x="620" y="296">CLAIM UNDER LEASE + CAS — NEVER TWO CLAIMS ON A ROW</text>
+        <path class="ln-soft" d="M130,322 L137,322"/>
+        <text class="t-s" x="142" y="326">worker  analyst-b</text>
+        <text class="t-xs" x="620" y="326">ITEMS STAMPED WITH THE TASK THAT PRODUCED THEM</text>
+        <path class="ln-soft" d="M130,352 L137,352"/>
+        <text class="t-s" x="142" y="356">worker  writer → startDetached</text>
+        <rect class="n-box-2" x="500" y="342" width="92" height="20" rx="10"/>
+        <rect x="500" y="342" width="3" height="20" fill="var(--warn)"/>
+        <text class="t-xs" x="546" y="356" text-anchor="middle">DETACHED</text>
+        <text class="t-xs" x="620" y="356">CHILD SESSION · RE-ENTERS VIA THE BOARD'S RUNNER</text>
+        <path class="ln-soft" d="M154,382 L161,382"/>
+        <text class="t-s" x="166" y="386">workstream — its own session cell</text>
+        <text class="t-xs" x="620" y="386">USER AND ORG STILL RESOLVE TO THE PARENT'S CELLS</text>
+        <path class="ln-soft" d="M154,412 L161,412"/>
+        <text class="t-s" x="166" y="416">sharedToWorkstream resources</text>
+        <text class="t-xs" x="620" y="416">RESOLVE AGAINST THE LINEAGE ROOT, NOT THIS SESSION</text>
+        <path class="ln-soft" d="M58,442 L65,442"/>
+        <text class="t-s" x="70" y="446">handler  synthesize</text>
+        <text class="t-xs" x="620" y="446">message ITEM → THE CLIENT AND THE NEXT TURN'S HISTORY</text>
+        <path class="ln-soft" d="M24,462 L928,462"/>
+        <text class="t-xs" x="24" y="478">FOUR MODES, ONE REQUEST, ONE ctx — AND EVERY LAYER ABOVE IS UNAWARE OF THE ONE BELOW IT</text>
+      </svg>
+    </div>
+    <figcaption><b>The seam is where the shape stops being knowable.</b> Above the generator, everything was decided when the code was written. Below it, the model decided. The framework's contribution is that the two halves are the same kind of object, share one context, and write to one durable record.</figcaption>
+  </figure>
+</section>
+
+<section id="workforce-layer">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Workforce: the layer that isn't built</h2></div>
+  <p class="lede">Workforce is meant to be the top of the stack — teams of named agents that work together, powered by every system beneath them. Today it is 397 lines that define <em>what one agent is</em>, and nothing that defines <em>how a set of them relate</em>.</p>
+
+  <h3>What exists</h3>
+  <p>The <code>Agent</code> contract itself lives in <code>core</code> (so <code>orchestration</code> can type an injected <code>materializeAgent</code> without depending on <code>workforce</code>). An agent is a name, a description, a <strong>persona</strong>, a model, a tool allow-list, capabilities, and item visibility. <code>materializeAgent</code> turns that into a generator — resolving the persona into a system prompt, pulling tools and capabilities from catalogs, and binding <code>taskTools</code> to the active drain board when the agent is being materialized as a board worker.</p>
+  <p><code>definePersona</code> is the piece worth noticing: it is sugar over <code>defineResource</code> / <code>defineResourceCollection</code> with a content template, which means <strong>an agent's identity is a resource</strong> — editable at runtime, renderable from state, and addressable by path. That is the same move skills make with Markdown, applied to who an agent is rather than what it should do.</p>
+
+  <h3>Where teams actually happen today</h3>
+  <p>Not in <code>workforce</code>. The one place a set of agents collaborates is the <strong>skills delegation surface</strong>: a skill declaring <code>agents:</code> installs a private task board, materializes each declared agent as a board worker, seats every allowed tool in the <em>same assignee namespace</em> as those agents, and hands the executive generator the eight <code>taskTools</code> plus <code>runBoard</code>. The model then plans work as tasks with an <code>assignee</code> and <code>deps</code>, and drains the whole graph in one call.</p>
+  <p>That is a real multi-agent team, and it is complete. But it is a team <em>inside one skill</em> — the roster is that skill's frontmatter, the board is that generator's own state, and none of it outlives the turn or is addressable from anywhere else.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 356" role="img" aria-label="What a team of agents needs, mapped to the layer that supplies it: seven capabilities are built — identity, tool surface, a place for work, a planning member, a shared workspace, per-member memory, and outliving the turn — while three are not: an agent carrying its own skills, an isolated context, and the team itself as a first-class object.">
+        <text class="t-lbl" x="24" y="20">What a team of agents needs</text>
+        <text class="t-lbl" x="330" y="20">The layer that supplies it</text>
+        <text class="t-lbl" x="782" y="20">Status</text>
+        <path class="ln-soft" d="M24,28 L928,28"/>
+
+        <text class="t-s" x="24" y="52">an identity per member</text>
+        <text class="t-xs" x="330" y="52">definePersona → A RESOURCE OR COLLECTION WITH A TEMPLATE</text>
+        <rect class="n-acc" x="782" y="38" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="52" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="82">a model and tool surface</text>
+        <text class="t-xs" x="330" y="82">materializeAgent → A GENERATOR, WORKER OR STANDALONE</text>
+        <rect class="n-acc" x="782" y="68" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="82" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="112">somewhere to put the work</text>
+        <text class="t-xs" x="330" y="112">THE TASK BOARD OVER A RESOURCE-BACKED COLLECTION</text>
+        <rect class="n-acc" x="782" y="98" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="112" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="142">a member that can plan</text>
+        <text class="t-xs" x="330" y="142">SKILLS DELEGATION — taskTools + runBoard</text>
+        <rect class="n-acc" x="782" y="128" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="142" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="172">a shared workspace</text>
+        <text class="t-xs" x="330" y="172">RESOURCES · COLLECTIONS · sharedToWorkstream</text>
+        <rect class="n-acc" x="782" y="158" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="172" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="202">memory per member</text>
+        <text class="t-xs" x="330" y="202">FOUR TIERS, ALREADY SUBJECT-SEPARATED</text>
+        <rect class="n-acc" x="782" y="188" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="202" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="232">a member that outlives a turn</text>
+        <text class="t-xs" x="330" y="232">WORKSTREAMS, RE-ENTERING VIA THE BOARD'S RUNNER</text>
+        <rect class="n-acc" x="782" y="218" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="232" text-anchor="middle">BUILT</text>
+
+        <path class="ln-soft" d="M24,248 L928,248"/>
+
+        <text class="t-s" x="24" y="272">a member with its own playbooks</text>
+        <text class="t-xs" x="330" y="272">Agent.usesSkills — DECLARED IN THE TYPE, WARNS, IGNORED</text>
+        <rect class="n-box" x="782" y="258" width="146" height="20" rx="10" stroke="var(--k-router)"/>
+        <text class="t-xs" x="855" y="272" text-anchor="middle" fill="var(--k-router)">RESERVED</text>
+
+        <text class="t-s" x="24" y="302">a member with its own context</text>
+        <text class="t-xs" x="330" y="302">Agent.contextMode "fork" — WARNS, COMPOSES INLINE ANYWAY</text>
+        <rect class="n-box" x="782" y="288" width="146" height="20" rx="10" stroke="var(--k-router)"/>
+        <text class="t-xs" x="855" y="302" text-anchor="middle" fill="var(--k-router)">NOT HONORED</text>
+
+        <text class="t-s" x="24" y="332">the team itself, as a thing</text>
+        <text class="t-xs" x="330" y="332">createWorkforceCapability — RETURNS A BARE NAME + A TODO</text>
+        <rect class="n-box" x="782" y="318" width="146" height="20" rx="10" stroke="var(--k-router)"/>
+        <text class="t-xs" x="855" y="332" text-anchor="middle" fill="var(--k-router)">STUB</text>
+      </svg>
+    </div>
+    <figcaption><b>Seven of ten, and the three missing are the team-level ones.</b> Two are already declared in the <code>Agent</code> type and warn at materialization, so the intent is recorded in the code — which makes them a decision that has been deferred rather than one nobody made.</figcaption>
+  </figure>
+
+  <h3>What "a team" would mean, given what already exists</h3>
+  <p>Most of the machinery is there. An agent already has an editable identity, a model, tools, capabilities, and a place to do work. What a team layer would add is <strong>relationships and a lifetime</strong>:</p>
+  <ul>
+    <li><strong>A roster that is a thing, not a map.</strong> <code>createAgentRegistry</code> is a flat name-to-agent lookup with a duplicate check. A team has structure — who may assign to whom, who reviews whom, who is the executive. Today that structure exists only implicitly, as whatever the executive generator happens to plan.</li>
+    <li><strong>A workspace scoped to the team, not to a turn.</strong> The pieces exist (<code>sharedToWorkstream</code>, resource collections, the lineage root) but nothing binds them to a roster. A standing team wants a durable board its members return to, not a board that lives inside one generator's state.</li>
+    <li><strong>Composition of the two unwired fields.</strong> <code>usesSkills</code> would let a member carry its own playbooks rather than inheriting the coordinator's; <code>contextMode: "fork"</code> would give a member its own context window instead of composing inline. Both are the difference between "a prompt with a name" and "a participant".</li>
+  </ul>
+
+  <div class="tension">
+    <h5>The decision this stack is waiting on</h5>
+    <p>Everything below workforce got built because a running system needed it. Workforce is the one layer specified top-down — the <code>Agent</code> type carries two fields nothing resolves, and its capability factory returns a name and a TODO. That is the shape tenet 3 warns about: a contract taken on before there was a caller.</p>
+    <p>The generous reading is that it is a placeholder held deliberately while the layers underneath matured — and they did mature; seven of the ten needs above are now met by systems that did not exist when <code>Agent</code> was first written.</p>
+    <span class="ask">Is a team a new primitive, or is it a composition of a roster resource + a durable board + per-member skills? If it is the second, workforce may not need to grow at all — it may need to shrink to <code>defineAgent</code> + <code>materializeAgent</code> and let the team be assembled from parts that already work.</span>
+  </div>
+</section>
+
+<section id="packages">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Package inventory</h2></div>
+  <p class="lede">Twenty-seven workspace packages in eight tiers. Line counts are all of <code>src/</code> including tests, measured on this branch — they are a rough mass indicator, not a quality signal.</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th>Package</th><th>Tier</th><th class="num">LOC</th><th class="num">Files</th><th>What it owns</th><th>Workspace deps</th></tr></thead>
+    <tbody>
+      <tr><td><code>contracts</code></td><td>Foundation</td><td class="num">2,350</td><td class="num">19</td><td>Item taxonomy, pure item helpers, leaf types, block-instance-id. Zero dependencies of any kind.</td><td>—</td></tr>
+      <tr><td><code>core</code></td><td>Foundation</td><td class="num">34,054</td><td class="num">160</td><td>The four block builders, <code>defineFlow</code>, capabilities, resources, items, prompt assembly, model resolution, 11 utility factories, the graph layer.</td><td>contracts</td></tr>
+      <tr><td><code>engine</code></td><td>Runtime</td><td class="num">42,218</td><td class="num">167</td><td>Block dispatch, retry, rescue, side chains, scopes and CAS, stores, SSE streaming, HTTP routes, transports, durability, recovery, voice pipeline.</td><td>core</td></tr>
+      <tr><td><code>orchestration</code></td><td>Composition</td><td class="num">20,347</td><td class="num">89</td><td>Task schema + state machine, <code>TaskCollection</code>, five dispatchers, the task-board primitive, goal-seek loop, flow policy, and the whole skills runtime.</td><td>core</td></tr>
+      <tr><td><code>patterns</code></td><td>Composition</td><td class="num">8,058</td><td class="num">54</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
+      <tr><td><code>memory</code></td><td>Composition</td><td class="num">7,825</td><td class="num">32</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
+      <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,170</td><td class="num">53</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core</td></tr>
+      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">397</td><td class="num">8</td><td>Named agents: registry, persona definition and resolution, materialization into a block. The team layer above it is not built &mdash; see &sect;04.</td><td>core, orchestration</td></tr>
+      <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,931</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
+      <tr><td><code>ui</code></td><td>Composition</td><td class="num">387</td><td class="num">10</td><td>Generative component registry — link-card, info-card.</td><td>contracts, core</td></tr>
+      <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
+      <tr><td><code>store-postgres</code></td><td>Persistence</td><td class="num">3,662</td><td class="num">16</td><td>PostgreSQL-backed implementation of the store registry.</td><td>core, engine</td></tr>
+      <tr><td><code>mcp</code></td><td>Transport</td><td class="num">947</td><td class="num">6</td><td>MCP server adapter — actions exposed as MCP tools over JSON-RPC.</td><td>core, engine</td></tr>
+      <tr><td><code>chat-sdk</code></td><td>Transport</td><td class="num">1,668</td><td class="num">17</td><td>Chat SDK inbound transport, principal resolution, fan-out.</td><td>core, engine</td></tr>
+      <tr><td><code>scheduled</code></td><td>Transport</td><td class="num">1,097</td><td class="num">11</td><td>Cron and dynamic schedules, idempotency cache, overlap policy.</td><td>core, engine</td></tr>
+      <tr><td><code>voice-openai</code></td><td>Transport</td><td class="num">473</td><td class="num">5</td><td>OpenAI TTS / transcription provider behind the framework's voice contract.</td><td>core</td></tr>
+      <tr><td><code>claude-code</code></td><td>Transport</td><td class="num">2,418</td><td class="num">20</td><td>Dispatches cloud coding tasks via the local <code>claude</code> CLI; ships both a CLI and an SDK capability.</td><td>core</td></tr>
+      <tr><td><code>node</code></td><td>Host</td><td class="num">731</td><td class="num">6</td><td>Long-lived Node HTTP host in one call.</td><td>engine</td></tr>
+      <tr><td><code>next</code></td><td>Host</td><td class="num">61</td><td class="num">2</td><td>Next.js catch-all route adapter. The thinnest package in the repo.</td><td>engine</td></tr>
+      <tr><td><code>vercel</code></td><td>Host</td><td class="num">739</td><td class="num">9</td><td>SSE shaping, heartbeats, runtime config for Vercel's execution model.</td><td>engine, store-postgres</td></tr>
+      <tr><td><code>bullmq</code></td><td>Host</td><td class="num">1,098</td><td class="num">11</td><td>Durable background jobs, native cron, full-flow worker dispatch. The only durable detached topology.</td><td>core, engine</td></tr>
+      <tr><td><code>client</code></td><td>Consumer</td><td class="num">3,632</td><td class="num">12</td><td>Isomorphic API client: actions, sessions, SSE stream store, resources, recovery, transcription.</td><td>contracts, core</td></tr>
+      <tr><td><code>react</code></td><td>Consumer</td><td class="num">7,160</td><td class="num">37</td><td>15 hooks, item and suspension renderers, renderer registry, voice components. No transport logic.</td><td>client, contracts, core</td></tr>
+      <tr><td><code>devtool</code></td><td>Consumer</td><td class="num">11,626</td><td class="num">87</td><td>Pre-built inspector assets served by <code>fsdev dev</code>. Built from <code>apps/devtool</code>.</td><td>client, core</td></tr>
+      <tr><td><code>cli</code></td><td>Consumer</td><td class="num">3,909</td><td class="num">27</td><td>The <code>fsdev</code> binary: run, chat, dev, serve, block, benchmark, list, add, ui.</td><td>core, engine, node, store-sqlite, testing</td></tr>
+      <tr><td><code>testing</code></td><td>Proving</td><td class="num">4,464</td><td class="num">29</td><td>Harnesses, mocks, snapshot helpers, transport conformance, eval and benchmark runners.</td><td>core, engine</td></tr>
+      <tr><td><code>integration-tests</code></td><td>Proving</td><td class="num">5,711</td><td class="num">34</td><td>27 tier-1 end-to-end flow scenarios, private to the workspace.</td><td>core, engine, testing, patterns, orchestration</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <span class="lbl">Mass distribution</span>
+    <p><code>core</code> and <code>engine</code> together are 76k lines — 43% of all source in the repo. <code>orchestration</code> at 20k is the third centre of gravity, and it holds two arguably separate things (the task substrate and the skills runtime) behind one package.</p>
+  </div>
+</section>
+
+<section id="boundaries">
+  <div class="sec-head"><span class="sec-num">06</span><h2>The locked boundaries</h2></div>
+  <p class="lede">Five dependency rules are declared canonical and unchangeable without architecture review. They are what makes the three-job split from §01 real rather than aspirational.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 300" role="img" aria-label="Dependency diagram showing contracts at the base, core above it, and engine, client, react and cli as consumers; four dashed red arrows mark the forbidden edges: engine to client, engine to react, client to engine, and react containing transport logic.">
+        <defs>
+          <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
+          <marker id="a3x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--k-router)"/></marker>
+        </defs>
+
+        <rect class="n-box-2" x="332" y="244" width="236" height="40" rx="4"/>
+        <text class="t-b" x="450" y="262" text-anchor="middle">contracts</text>
+        <text class="t-s" x="450" y="276" text-anchor="middle">zero dependencies · value-imported by both sides</text>
+
+        <rect class="n-acc" x="332" y="168" width="236" height="44" rx="4"/>
+        <text class="t-b" x="450" y="188" text-anchor="middle">core</text>
+        <text class="t-s" x="450" y="203" text-anchor="middle">isomorphic · knows no runtime</text>
+        <path class="ln" d="M450,244 L450,214" marker-end="url(#a3)"/>
+
+        <rect class="n-box" x="80" y="76" width="200" height="48" rx="4"/>
+        <text class="t-b" x="180" y="96" text-anchor="middle">engine</text>
+        <text class="t-s" x="180" y="111" text-anchor="middle">server only</text>
+        <path class="ln" d="M332,186 L282,140 L240,126" marker-end="url(#a3)"/>
+
+        <rect class="n-box" x="620" y="76" width="200" height="48" rx="4"/>
+        <text class="t-b" x="720" y="96" text-anchor="middle">client</text>
+        <text class="t-s" x="720" y="111" text-anchor="middle">any JS environment</text>
+        <path class="ln" d="M568,186 L618,140 L660,126" marker-end="url(#a3)"/>
+
+        <rect class="n-box" x="620" y="12" width="200" height="42" rx="4"/>
+        <text class="t-b" x="720" y="32" text-anchor="middle">react</text>
+        <text class="t-s" x="720" y="46" text-anchor="middle">hooks + renderers only</text>
+        <path class="ln" d="M720,76 L720,58" marker-end="url(#a3)"/>
+
+        <rect class="n-box" x="80" y="12" width="200" height="42" rx="4"/>
+        <text class="t-b" x="180" y="32" text-anchor="middle">cli</text>
+        <text class="t-s" x="180" y="46" text-anchor="middle">engine + testing, in-process</text>
+        <path class="ln" d="M180,76 L180,58" marker-end="url(#a3)"/>
+
+        <!-- forbidden -->
+        <path class="ln-x" d="M290,96 L610,96" marker-end="url(#a3x)"/>
+        <path class="ln-x" d="M610,86 L290,86" marker-end="url(#a3x)"/>
+        <text class="t-xs" x="450" y="76" text-anchor="middle" fill="var(--k-router)">FORBIDDEN — NEITHER SIDE MAY IMPORT THE OTHER</text>
+
+        <path class="ln-x" d="M300,33 L610,33" marker-end="url(#a3x)"/>
+        <text class="t-xs" x="455" y="24" text-anchor="middle" fill="var(--k-router)">CLI NEVER TOUCHES CLIENT OR REACT</text>
+      </svg>
+    </div>
+    <figcaption><b>What the rules buy.</b> Because <code>engine</code> cannot see <code>client</code>, the wire format is the only coupling between them — which is what lets four host adapters and six inbound transports plug into the same runtime without any of them knowing what renders the output.</figcaption>
+  </figure>
+
+  <ul>
+    <li><code>contracts</code> imports no workspace package and declares no dependencies. <code>core</code> re-exports every symbol from its original path, so consumers are unaffected by where a type lives.</li>
+    <li><code>engine</code> never depends on <code>react</code> or <code>client</code>.</li>
+    <li><code>client</code> never depends on <code>engine</code> or <code>react</code>.</li>
+    <li><code>react</code> has no transport logic — it wraps <code>client</code>.</li>
+    <li><code>cli</code> uses <code>engine</code> + <code>testing</code>, never <code>react</code> or <code>client</code>.</li>
+  </ul>
+  <p>Browser code value-imports the canonical helpers from <code>contracts</code> rather than hand-mirroring them; <code>core</code> stays type-only for those packages. That is the mechanism by which <code>contracts</code> earns its existence — without it, the item taxonomy would be duplicated on both sides of the wire.</p>
+</section>
+
+<section id="blocks">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Four block kinds</h2></div>
+  <p class="lede">The whole framework rests on this: every piece of logic is exactly one of four kinds, and all four share one execution contract. That uniformity is what makes composition free.</p>
+
+  <div class="kind-key">
+    <span><i class="sw" style="background:var(--k-handler)"></i>handler</span>
+    <span><i class="sw" style="background:var(--k-generator)"></i>generator</span>
+    <span><i class="sw" style="background:var(--k-sequencer)"></i>sequencer</span>
+    <span><i class="sw" style="background:var(--k-router)"></i>router</span>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 388" role="img" aria-label="Diagram of the four block kinds sharing one run signature, above an example showing a sequencer whose steps are themselves blocks, including a nested router with two branches and a generator whose tools are also blocks.">
+        <defs>
+          <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
+        </defs>
+
+        <rect class="n-acc" x="40" y="20" width="820" height="38" rx="4"/>
+        <text class="t-b" x="450" y="38" text-anchor="middle">block.run(input, ctx) → output</text>
+        <text class="t-s" x="450" y="52" text-anchor="middle">one entry point · schema validation, retry, rescue, tracing and lifecycle hooks applied by the runtime, never by the block</text>
+
+        <rect class="n-box" x="40" y="80" width="192" height="106" rx="4"/>
+        <rect x="40" y="80" width="192" height="4" fill="var(--k-handler)"/>
+        <text class="t-b" x="54" y="104" fill="var(--k-handler)">handler</text>
+        <text class="t-xs" x="54" y="118">LEAF</text>
+        <text class="t-s" x="54" y="136">input → execute → output</text>
+        <text class="t-s" x="54" y="152">validation, transforms,</text>
+        <text class="t-s" x="54" y="166">state writes, tool bodies</text>
+        <text class="t-s" x="54" y="180">never calls another block</text>
+
+        <rect class="n-box" x="248" y="80" width="192" height="106" rx="4"/>
+        <rect x="248" y="80" width="192" height="4" fill="var(--k-generator)"/>
+        <text class="t-b" x="262" y="104" fill="var(--k-generator)">generator</text>
+        <text class="t-xs" x="262" y="118">LEAF · OWNS A LOOP</text>
+        <text class="t-s" x="262" y="136">four prompt slots, then</text>
+        <text class="t-s" x="262" y="152">a bounded tool loop</text>
+        <text class="t-s" x="262" y="166">emits message, reasoning,</text>
+        <text class="t-s" x="262" y="180">tool_output automatically</text>
+
+        <rect class="n-box" x="456" y="80" width="192" height="106" rx="4"/>
+        <rect x="456" y="80" width="192" height="4" fill="var(--k-sequencer)"/>
+        <text class="t-b" x="470" y="104" fill="var(--k-sequencer)">sequencer</text>
+        <text class="t-xs" x="470" y="118">COMPOSITE</text>
+        <text class="t-s" x="470" y="136">20-method fluent DSL</text>
+        <text class="t-s" x="470" y="152">branching, loops, parallel,</text>
+        <text class="t-s" x="470" y="166">side chains, rescue</text>
+        <text class="t-s" x="470" y="180">carries its own state schema</text>
+
+        <rect class="n-box" x="664" y="80" width="192" height="106" rx="4"/>
+        <rect x="664" y="80" width="192" height="4" fill="var(--k-router)"/>
+        <text class="t-b" x="678" y="104" fill="var(--k-router)">router</text>
+        <text class="t-xs" x="678" y="118">COMPOSITE</text>
+        <text class="t-s" x="678" y="136">selects a block at runtime</text>
+        <text class="t-s" x="678" y="152">from input or state</text>
+        <text class="t-s" x="678" y="166">records router_decision</text>
+        <text class="t-s" x="678" y="180">must be pure if resumable</text>
+
+        <text class="t-lbl" x="40" y="210">Because the contract is uniform, any kind nests inside any composite</text>
+        <rect x="40" y="218" width="820" height="150" rx="5" fill="none" stroke="var(--k-sequencer)" stroke-width="1.4"/>
+        <text class="t-s" x="52" y="238" fill="var(--k-sequencer)">sequencer</text>
+
+        <rect class="n-box" x="60" y="246" width="142" height="52" rx="3"/>
+        <rect x="60" y="246" width="142" height="3" fill="var(--k-handler)"/>
+        <text class="t-s" x="70" y="268">handler</text><text class="t-xs" x="70" y="284">.step()</text>
+        <path class="ln" d="M202,272 L214,272" marker-end="url(#a4)"/>
+
+        <rect class="n-box" x="216" y="246" width="142" height="52" rx="3"/>
+        <rect x="216" y="246" width="142" height="3" fill="var(--k-generator)"/>
+        <text class="t-s" x="226" y="268">generator</text><text class="t-xs" x="226" y="284">.step()</text>
+        <path class="ln" d="M358,272 L370,272" marker-end="url(#a4)"/>
+
+        <rect class="n-box" x="372" y="246" width="142" height="52" rx="3"/>
+        <rect x="372" y="246" width="142" height="3" fill="var(--k-router)"/>
+        <text class="t-s" x="382" y="268">router</text><text class="t-xs" x="382" y="284">.branch()</text>
+        <path class="ln" d="M514,272 L526,272" marker-end="url(#a4)"/>
+
+        <rect class="n-box" x="528" y="246" width="142" height="52" rx="3"/>
+        <rect x="528" y="246" width="142" height="3" fill="var(--k-sequencer)"/>
+        <text class="t-s" x="538" y="268">sequencer</text><text class="t-xs" x="538" y="284">nested pipeline</text>
+        <path class="ln" d="M670,272 L682,272" marker-end="url(#a4)"/>
+
+        <rect class="n-box" x="684" y="246" width="142" height="52" rx="3"/>
+        <rect x="684" y="246" width="142" height="3" fill="var(--k-handler)"/>
+        <text class="t-s" x="694" y="268">handler</text><text class="t-xs" x="694" y="284">.tap()</text>
+
+        <path class="ln" d="M287,298 L287,314" marker-end="url(#a4)"/>
+        <rect class="n-box-2" x="216" y="316" width="142" height="30" rx="3"/>
+        <text class="t-xs" x="226" y="335">tools are blocks too</text>
+
+        <path class="ln" d="M420,298 L420,314" marker-end="url(#a4)"/>
+        <path class="ln" d="M466,298 L466,314" marker-end="url(#a4)"/>
+        <rect class="n-box-2" x="372" y="316" width="66" height="30" rx="3"/>
+        <text class="t-xs" x="380" y="335">route a</text>
+        <rect class="n-box-2" x="448" y="316" width="66" height="30" rx="3"/>
+        <text class="t-xs" x="456" y="335">route b</text>
+      </svg>
+    </div>
+    <figcaption><b>The uniformity claim, drawn.</b> A tool is a block. A route is a block. A step is a block. Nothing in the framework needs a second composition mechanism, because <code>run(input, ctx)</code> is the only interface anything ever needs.</figcaption>
+  </figure>
+
+  <h3>What the runtime does at the seam</h3>
+  <p>Blocks never call <code>block.config.execute</code> directly. Everything goes through <code>executeBlock</code>, and that is where the framework inserts what a block author would otherwise hand-roll:</p>
+  <div class="cards">
+    <div class="card"><h5>Validation</h5><span class="role">both directions</span><p>Input and output schemas checked at the boundary; a sequencer's declared output schema is a runtime chokepoint, not just a type.</p></div>
+    <div class="card"><h5>Retry &amp; rescue</h5><span class="role">policy, not code</span><p>Retry policies apply per block; <code>rescue</code> handlers catch by error type at the sequencer or the block level.</p></div>
+    <div class="card"><h5>Provenance</h5><span class="role">block_trace</span><p>Every block emits a lifecycle trace item carrying a <code>BlockValue</code> — <code>ref</code>, <code>inline</code>, or <code>structure</code> — so the execution tree is reconstructable without duplicating payloads.</p></div>
+    <div class="card"><h5>Declaration bubbling</h5><span class="role">upward merge</span><p>State schemas and resource declarations made on a leaf block bubble up through sequencers to the flow. A counter block declares only its counter.</p></div>
+    <div class="card"><h5>Lifecycle hooks</h5><span class="role">past tense, observational</span><p><code>onStarted</code>, <code>onCompleted</code>, <code>onErrored</code>, <code>onFinished</code>. Deliberately observational — there is no block middleware, by design.</p></div>
+    <div class="card"><h5>Connections</h5><span class="role">wiring, not adapters</span><p><code>connectInput</code> / <code>connectOutput</code> reshape a block's edges at the call site, so a block stays reusable without a wrapper.</p></div>
+  </div>
+
+  <h3>Generator anatomy</h3>
+  <p>The generator is the one leaf that owns a control loop, which makes it the most configuration-dense primitive in the framework. Four prompt slots resolve in order — <code>prompt</code>, <code>context</code>, <code>history</code>, <code>user</code> — each accepting a string, object, array, or async function. Object-form <code>context</code> aggregates by XML tag name, so a capability and the block itself can both contribute to <code>&lt;documents&gt;</code> and land in one section rather than two.</p>
+  <p>Prompts can also be authored as Markdown files: YAML frontmatter over a LiquidJS body split into <code>&lt;system&gt;</code>, <code>&lt;user&gt;</code>, and <code>&lt;context&gt;</code> sections, rendered against <code>input</code>, <code>ctx</code>, and the post-resolution <code>config</code>, with sibling <code>.md</code> files auto-registered as partials.</p>
+  <p>Loop ownership depends on the model. A step-capable model (the built-in AI SDK adapter is one) hands the multi-step loop to FSD: one provider call per step, framework tools executed by the framework — concurrently within a step, through its own executor, cache, retry, and <code>tool_output</code> path. Models without step methods keep the older SDK-driven <code>generate({ maxSteps })</code> path. That ownership is the substrate for in-loop suspension.</p>
+</section>
+
+<section id="dsl">
+  <div class="sec-head"><span class="sec-num">08</span><h2>The sequencer DSL</h2></div>
+  <p class="lede">The fluent surface comes in three parts: the twenty-two <strong>composition operations</strong> below, declared on <code>SequencerDefinition</code>; two <strong>wiring and checking</strong> methods beside them (<code>.connectInput()</code>, <code>.validate()</code>); and whatever <code>BlockDefinition</code> contributes by inheritance, since a sequencer is a block — <code>.connectOutput()</code>, <code>.mapModelOutput()</code>, <code>.asTool()</code> among them. A single total is not worth quoting: it depends on where you draw the line between declared and inherited, which is why this section stopped claiming one. Every operation produces a typed <code>BlockValue</code> on the trace, so the execution tree stays reconstructable no matter how the pipeline branches.</p>
+
+  <div class="dsl">
+    <div class="dsl-grp" style="--gc:var(--k-sequencer)">
+      <h5>Linear</h5>
+      <ul>
+        <li>step(block)<i>execute, pass output onward</i></li>
+        <li>step(connector, block)<i>reshape input first</i></li>
+        <li>stepIf(cond, block)<i>conditional step</i></li>
+        <li>map(fn)<i>transform without a block</i></li>
+      </ul>
+    </div>
+    <div class="dsl-grp" style="--gc:var(--k-router)">
+      <h5>Branch</h5>
+      <ul>
+        <li>branch(branches)<i>multi-path selection</i></li>
+        <li>stepAny(blocks)<i>sequential, first success wins</i></li>
+        <li>race(blocks)<i>concurrent, first success wins</i></li>
+      </ul>
+    </div>
+    <div class="dsl-grp" style="--gc:var(--k-handler)">
+      <h5>Parallel</h5>
+      <ul>
+        <li>parallel(steps)<i>named concurrent steps</i></li>
+        <li>stepAll(blocks)<i>run all, collect results</i></li>
+        <li>forEach(block)<i>per array element</i></li>
+      </ul>
+    </div>
+    <div class="dsl-grp" style="--gc:var(--k-generator)">
+      <h5>Loop</h5>
+      <ul>
+        <li>doUntil(cond, block)<i>loop until true</i></li>
+        <li>doWhile(cond, block)<i>loop while true</i></li>
+        <li>loopBack(stepName, opts)<i>bounded jump to a named step</i></li>
+      </ul>
+    </div>
+    <div class="dsl-grp" style="--gc:var(--accent)">
+      <h5>Background</h5>
+      <ul>
+        <li>sideChain(block)<i>queued, non-aborting</i></li>
+        <li>sideChainIf(cond, block)<i>conditional background work</i></li>
+        <li>forEachSideChain(block)<i>fire-and-forget fan-out</i></li>
+        <li>waitForSideChain(opts)<i>converge the work queue</i></li>
+      </ul>
+    </div>
+    <div class="dsl-grp" style="--gc:var(--ink-3)">
+      <h5>Effects &amp; guards</h5>
+      <ul>
+        <li>tap(block)<i>side effect, payload unchanged</i></li>
+        <li>tapIf(cond, block)<i>conditional side effect</i></li>
+        <li>exitIf(cond)<i>early exit from the chain</i></li>
+        <li>throwIf(cond, error)<i>invariant check</i></li>
+        <li>rescue(handlers)<i>recover by error type</i></li>
+        <li>waitForCondition(pred, opts)<i>event-driven wait, no polling</i></li>
+      </ul>
+    </div>
+  </div>
+
+  <p>Two properties are worth holding onto when reasoning about a redesign. First, <strong>side chains are non-aborting by default</strong> — a failure there does not stop the main chain unless <code>waitForSideChain({ failOnError: true })</code> promotes it. Second, <strong>conditional step variants are preferred over wrapper sequencers</strong> (BP-036): <code>.sideChainIf</code> / <code>.tapIf</code> / <code>.stepIf</code> with an inline connector, rather than wrapping a block in a sequencer whose only job is the condition.</p>
+  <p>Schema propagation runs both at build time (<code>.validate()</code>, with known limitations) and as a runtime chokepoint. Sequencers also carry their own <code>stateSchema</code>, but it is <strong>per-execution instance state</strong> reached through <code>ctx.self</code> — it does not merge into the flow’s session schema. Session-scoped persistence is a separate declaration (<code>sessionStateSchema</code>, contributed by capabilities and flow scope config); confusing the two gives a block the wrong lifetime.</p>
+</section>
+
+<section id="flows">
+  <div class="sec-head"><span class="sec-num">09</span><h2>Flows and actions</h2></div>
+  <p class="lede">A flow is the unit of deployment: it binds blocks to entry points, declares the state scopes they may touch, and decides what any of it is allowed to show a client.</p>
+
+  <p>The concept that unifies the entry points is <code>ActionCore</code> — the executable unit plus its execution policy, independent of how it is addressed or authorized. Two address forms build on it, and the runtime records both identically.</p>
+  <p>A third form exists and is easy to miss because it is not addressed at all. A dispatch stamped <code>source: "workstream"</code> resolves <strong>terminally</strong> to the framework-assembled <code>flow.workstream</code> core: <code>resolveActionCore</code> returns it before the <code>flow.actions[actionName]</code> lookup, so detached re-entry can never fall through to a caller-addressed action even when it carries an action name. That is a security boundary, not an optimisation — auditing action resolution against the two forms below alone misses it.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 296" role="img" aria-label="Diagram showing ActionCore at the centre, reached by two address forms: caller-addressed actions in flow.actions via HTTP and MCP, and event-addressed transport bindings carrying the core inline from webhook, chat and scheduled sources; both converge on resolveActionCore and the same execution pipeline. A third, detached form is described in the text: a workstream-sourced dispatch resolves terminally to flow.workstream and never reaches this lookup.">
+        <defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
+        <marker id="a6a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker></defs>
+
+        <text class="t-lbl" x="24" y="18">Caller-addressed</text>
+        <rect class="n-box" x="24" y="28" width="212" height="76" rx="4"/>
+        <text class="t-b" x="36" y="48">flow.actions</text>
+        <text class="t-s" x="36" y="65">named by the caller</text>
+        <text class="t-s" x="36" y="80">principal authorized per request</text>
+        <text class="t-s" x="36" y="95">exposure metadata for clients</text>
+
+        <text class="t-lbl" x="24" y="140">Event-addressed</text>
+        <rect class="n-box" x="24" y="150" width="212" height="88" rx="4"/>
+        <text class="t-b" x="36" y="170">transport bindings</text>
+        <text class="t-s" x="36" y="187">webhook · chat · scheduled</text>
+        <text class="t-s" x="36" y="202">core carried inline</text>
+        <text class="t-s" x="36" y="217">event mapping instead of a name</text>
+        <text class="t-s" x="36" y="232">never in flow.actions</text>
+
+        <path class="ln" d="M236,66 L286,66 L286,126 L322,126" marker-end="url(#a6)"/>
+        <path class="ln" d="M236,194 L286,194 L286,146 L322,146" marker-end="url(#a6)"/>
+
+        <rect class="n-acc" x="324" y="106" width="200" height="60" rx="4"/>
+        <text class="t-b" x="424" y="128" text-anchor="middle">resolveActionCore</text>
+        <text class="t-s" x="424" y="144" text-anchor="middle">+ the source gate</text>
+        <text class="t-xs" x="424" y="158" text-anchor="middle">AUTH FROM THE TRANSPORT SOURCE</text>
+
+        <rect class="n-box-2" x="324" y="188" width="200" height="56" rx="4"/>
+        <text class="t-s" x="424" y="207" text-anchor="middle">ActionCore</text>
+        <text class="t-xs" x="424" y="223" text-anchor="middle">block · inputSchema · hooks</text>
+        <text class="t-xs" x="424" y="237" text-anchor="middle">tokenBudget · durable</text>
+        <path class="ln" d="M424,188 L424,168" marker-end="url(#a6)"/>
+
+        <path class="ln-acc" d="M524,136 L570,136" marker-end="url(#a6a)"/>
+
+        <rect class="n-box" x="574" y="28" width="302" height="240" rx="4"/>
+        <text class="t-lbl" x="588" y="48">one execution pipeline, every form</text>
+        <text class="t-s" x="588" y="70">1 · resolve flow instance and action</text>
+        <text class="t-s" x="588" y="88">2 · validate input against inputSchema</text>
+        <text class="t-s" x="588" y="106">3 · resolve or create session</text>
+        <text class="t-s" x="588" y="124">4 · require user context</text>
+        <text class="t-s" x="588" y="142">5 · create request scope and state</text>
+        <text class="t-s" x="588" y="160">6 · emit user message item</text>
+        <text class="t-s" x="588" y="178">7 · fire request.onStarted</text>
+        <text class="t-s" x="588" y="196">8 · block.run(input, ctx)</text>
+        <text class="t-s" x="588" y="214">9 · fire action + request hooks</text>
+        <text class="t-s" x="588" y="232">10 · fire request.onFinished</text>
+        <text class="t-s" x="588" y="250">11 · persist state, emit terminal status</text>
+      </svg>
+    </div>
+    <figcaption><b>Why the two forms converge.</b> Generalizing <code>ActionCore</code> is what lets a webhook, a chat mention, or a cron tick be a first-class action without living in <code>flow.actions</code> — and what makes the source gate the single place auth decisions get made from a trusted value rather than caller-controllable input.</figcaption>
+  </figure>
+
+  <h3>The flow definition</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Slot</th><th>What it declares</th></tr></thead>
+    <tbody>
+      <tr><td><code>kind</code> / <code>requireUser</code></td><td>Flow type identity and whether a user principal is mandatory.</td></tr>
+      <tr><td><code>actions</code></td><td>Caller-addressed entry points. The flow's public API.</td></tr>
+      <tr><td><code>session</code> / <code>user</code> / <code>org</code></td><td>Per-scope <code>stateSchema</code> and a <code>client</code> projection block. Resources are <em>not</em> declared here — <code>session.resources</code> and friends are gone, replaced by the flat map below.</td></tr>
+      <tr><td><code>resources</code></td><td>Flat map of <code>DefinedResource</code>s; scope is intrinsic to each definition.</td></tr>
+      <tr><td><code>tools</code></td><td>Flow-level tool configuration available to generators beneath it.</td></tr>
+      <tr><td>transport blocks</td><td><code>chat</code>, <code>webhooks</code>, <code>schedules</code>, <code>voice</code>, <code>mcp</code> — each validated at registration.</td></tr>
+      <tr><td><code>request</code></td><td>Per-request policy, including the flow-wide <code>concurrency</code> default. There is no top-level <code>concurrency</code> slot — resolution is <code>action.concurrency ?? flow.request?.concurrency ?? "allow"</code>.</td></tr>
+      <tr><td>lifecycle hooks</td><td><code>onStarted</code>, <code>onCompleted</code>, <code>onErrored</code>, <code>onFinished</code>, <code>onStepErrored</code>. Past tense is canonical.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>Canonical HTTP surface</h4>
+  <div class="chips">
+    <span class="chip">GET /api/flows</span>
+    <span class="chip">GET /api/flows/capabilities</span>
+    <span class="chip">POST /:kind/actions/:action</span>
+    <span class="chip">POST /:kind/:sessionId/actions/:action</span>
+    <span class="chip">GET /:kind/requests/:requestId/stream</span>
+    <span class="chip">GET /sessions</span>
+    <span class="chip">GET /sessions/:id</span>
+    <span class="chip">GET /sessions/:id/requests</span>
+    <span class="chip">GET /sessions/:id/state</span>
+    <span class="chip">POST /:kind/sessions</span>
+    <span class="chip">DELETE /sessions/:id</span>
+  </div>
+  <p>That table is produced by the built-in HTTP transport adapter, which <code>createFlowApiRouter</code> mounts internally. Every other transport mounts alongside it rather than replacing it — the engine has route modules for abort, resume, recovery, resources, state, streams, workstreams, and debug on top of the eleven above.</p>
+</section>
+
+<section id="state">
+  <div class="sec-head"><span class="sec-num">10</span><h2>State and scopes</h2></div>
+  <p class="lede">Four nested scopes, one operation set, and a hard structural rule: raw state never reaches a client.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 322" role="img" aria-label="Nested scope diagram: org contains user contains session contains request, each offering the same CAS-guarded state operations. Blocks read and write scope state; a client projection block declaring expose and derived is the only path to the wire, and a direct path from raw state to the wire is barred.">
+        <defs><marker id="a7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
+        <marker id="a7a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker>
+        <marker id="a7x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--k-router)"/></marker></defs>
+
+        <rect class="n-box" x="24" y="40" width="396" height="262" rx="5"/>
+        <text class="t-b" x="38" y="60">org</text>
+        <text class="t-xs" x="406" y="60" text-anchor="end">SHARED ACROSS USERS</text>
+
+        <rect class="n-box-2" x="44" y="72" width="356" height="214" rx="4"/>
+        <text class="t-b" x="58" y="92">user</text>
+        <text class="t-xs" x="386" y="92" text-anchor="end">SPANS SESSIONS</text>
+
+        <rect class="n-box" x="64" y="104" width="316" height="166" rx="4"/>
+        <text class="t-b" x="78" y="124">session</text>
+        <text class="t-xs" x="366" y="124" text-anchor="end">ONE CONVERSATION · HISTORY</text>
+
+        <rect class="n-acc" x="84" y="136" width="276" height="118" rx="4"/>
+        <text class="t-b" x="98" y="156">request</text>
+        <text class="t-xs" x="346" y="156" text-anchor="end">ONE ACTION</text>
+        <text class="t-s" x="98" y="180">patchState · setState · incState</text>
+        <text class="t-s" x="98" y="198">pushState · setStateRecord</text>
+        <text class="t-s" x="98" y="216">deleteStateRecord · atomicState</text>
+        <text class="t-xs" x="98" y="238">EVERY SCOPE, THE SAME OPS · ALL CAS-GUARDED</text>
+
+        <path class="ln" d="M420,104 L486,104" marker-end="url(#a7)"/>
+        <text class="t-xs" x="486" y="96" text-anchor="end">READ / WRITE</text>
+
+        <rect class="n-box" x="490" y="62" width="180" height="90" rx="4"/>
+        <text class="t-b" x="504" y="84">blocks</text>
+        <text class="t-s" x="504" y="104">declare partial schemas</text>
+        <text class="t-s" x="504" y="120">for their own fields only</text>
+        <text class="t-s" x="504" y="136">and bubble them upward</text>
+
+        <path class="ln" d="M420,240 L486,240" marker-end="url(#a7)"/>
+        <text class="t-xs" x="486" y="232" text-anchor="end">PROJECT</text>
+
+        <rect class="n-box" x="490" y="196" width="180" height="90" rx="4"/>
+        <text class="t-b" x="504" y="218">client block</text>
+        <text class="t-s" x="504" y="238">expose — verbatim</text>
+        <text class="t-s" x="504" y="254">derived — computed</text>
+        <text class="t-xs" x="504" y="274">DECLARED PER SCOPE</text>
+
+        <path class="ln-acc" d="M670,240 L702,240" marker-end="url(#a7a)"/>
+
+        <rect class="n-box-2" x="706" y="196" width="170" height="90" rx="4"/>
+        <text class="t-b" x="720" y="218">the wire</text>
+        <text class="t-s" x="720" y="238">snapshot route</text>
+        <text class="t-xs" x="720" y="258">ONLY WHAT client DECLARES</text>
+        <text class="t-xs" x="720" y="274">INVISIBLE UNTIL LISTED</text>
+
+        <path class="ln-x" d="M420,44 L420,24 L790,24 L790,192" marker-end="url(#a7x)"/>
+        <path d="M688,16 L702,32" stroke="var(--k-router)" stroke-width="2"/>
+        <path d="M702,16 L688,32" stroke="var(--k-router)" stroke-width="2"/>
+        <text class="t-xs" x="440" y="18" fill="var(--k-router)">RAW STATE NEVER TAKES THIS PATH</text>
+      </svg>
+    </div>
+    <figcaption><b>The privacy property is structural, not conventional.</b> A new state field does not appear on the wire until someone adds it to <code>expose</code> or <code>derived</code>. There is no "forgot to redact" failure mode, because the default is nothing.</figcaption>
+  </figure>
+
+  <h3>What sits on top of the scope model</h3>
+  <div class="cards">
+    <div class="card"><h5>CAS everywhere</h5><span class="role">concurrency</span><p>Every write is compare-and-swap guarded, with a scope lock, a serialized write queue, and delta-verb routing so concurrent increments don't clobber each other.</p></div>
+    <div class="card"><h5>Session journal &amp; metadata</h5><span class="role">session scope</span><p>Items, messages, a journal, and mutable metadata (title, description, tags) — with an auto title generator utility for the common case.</p></div>
+    <div class="card"><h5>Block-level state</h5><span class="role">locality</span><p>A block declares a partial schema for just its own fields. Schemas bubble up through sequencers to the flow, so nothing needs a god-object state type.</p></div>
+    <div class="card"><h5>Tenant isolation</h5><span class="role">multi-tenant</span><p>Store-key isolation by <code>(scopeId, flowKind, ref)</code> or <code>(scopeId, ref)</code>, with a binding check for key ambiguity. Cross-flow state is shared by default, isolated on opt-in.</p></div>
+    <div class="card"><h5>Transient slots</h5><span class="role">non-persisted</span><p>State fields that live for the request and never hit the store — used for the status slot and other ephemeral signals.</p></div>
+    <div class="card"><h5>Workstream scope</h5><span class="role">detached children</span><p>A child session that outlives its request. Each scope re-resolves inside it, and resources can be shared to the lineage explicitly.</p></div>
+  </div>
+</section>
+
+<section id="resources">
+  <div class="sec-head"><span class="sec-num">11</span><h2>Resources</h2></div>
+  <p class="lede">Where state is the scope's own record, a resource is a named, typed container with a policy attached — who may read it, who may write it, whether a model may touch it, and how it reaches a client.</p>
+
+  <p>A resource carries an intrinsic <code>scope</code> (<code>session</code>, <code>user</code>, or <code>org</code>) and lives in one flat map on a flow, a block, or a capability. The accessor key is a typed read handle for <code>ctx.resources.&lt;name&gt;</code>; persistence is keyed by <code>ref</code> identity, so two blocks declaring the same <code>DefinedResource</code> under different accessor names share one storage slot.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Capability</th><th>How it works</th></tr></thead>
+    <tbody>
+      <tr><td><strong>State + content</strong></td><td>Every resource has a <code>stateSchema</code>; it may also carry a content body, a <code>contentFile</code> template, and a <code>render(content, state)</code> function. State and content are stored separately, with their own CAS path.</td></tr>
+      <tr><td><strong>Flow isolation</strong></td><td>User- and org-scoped resources default to shared across every flow touching the same principal. <code>flowIsolation: true</code> namespaces by <code>flowKind</code>. Setting it on a session resource is a build-time error.</td></tr>
+      <tr><td><strong>Model access</strong></td><td><code>llmReadable</code> / <code>llmWritable</code> gate the resource-content tools. Resource search tools and URI/path resolution ship alongside them.</td></tr>
+      <tr><td><strong>Collections</strong></td><td>For instance counts unknown ahead of time: create and destroy under a shared schema at runtime, with access keys, parameterized patterns, eviction policy, lifecycle hooks, and prefetch / lazy modes.</td></tr>
+      <tr><td><strong>Reactive blocks</strong></td><td><code>reactTo</code> wires a block to fire on a collection's mutations — resource changes emit <code>resource_change</code> SSE events through <code>onResourceChanged</code>.</td></tr>
+      <tr><td><strong>Typed edges</strong></td><td>An <code>edges</code> slot plus a graph traversal layer in <code>core/graph</code> — resources form a navigable graph, not just a keyed bag.</td></tr>
+      <tr><td><strong>Three-wave loading</strong></td><td>Declaration collection, resolution, then hydration — so a block can declare a resource without the flow author wiring it through by hand.</td></tr>
+      <tr><td><strong>Client exposure</strong></td><td>Per-resource client exposure sits alongside scope-level <code>client</code> projection; snapshot responses carry resources, with separate content fetch and mutation endpoints.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note">
+    <span class="lbl">Declaration bubbling, again</span>
+    <p>Resource declarations behave like state schemas: a leaf block declares what it needs, sequencers merge upward, and the flow collects the union automatically. Capabilities contribute into the same merge. This is the mechanism that makes <code>uses: [cap]</code> replace manual plumbing — and it is also the mechanism that makes a same-accessor / different-ref collision a build-time error rather than a runtime surprise.</p>
+  </div>
+</section>
+
+<section id="items">
+  <div class="sec-head"><span class="sec-num">12</span><h2>Items and streaming</h2></div>
+  <p class="lede">Seventeen live item types &mdash; thirteen in the <code>OutputItem</code> union plus four trace records &mdash; three visibility categories, and one resolution function that decides who sees what. (An eighteenth, <code>context</code>, survives only as a deprecated compatibility type and is out of the union; it is in the removal ledger, not the table below.) This is the subsystem most worth understanding before touching anything that renders.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 320" role="img" aria-label="Item audience routing: conversational, structural and trace item categories all pass through resolveItemVisibility, which routes conversational items to both LLM history and the client, structural items to the client only, and trace items to the devtool and durable log only.">
+        <defs><marker id="a9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
+
+        <text class="t-lbl" x="24" y="30">Three categories</text>
+        <rect class="n-box" x="24" y="44" width="200" height="64" rx="4"/>
+        <rect x="24" y="44" width="4" height="64" fill="var(--k-generator)"/>
+        <text class="t-b" x="38" y="64">conversational</text>
+        <text class="t-s" x="38" y="82">message · reasoning</text>
+        <text class="t-s" x="38" y="98">tool_output</text>
+
+        <rect class="n-box" x="24" y="132" width="200" height="76" rx="4"/>
+        <rect x="24" y="132" width="4" height="76" fill="var(--k-handler)"/>
+        <text class="t-b" x="38" y="152">structural</text>
+        <text class="t-s" x="38" y="170">component · container · source</text>
+        <text class="t-s" x="38" y="186">status · state_change · error</text>
+        <text class="t-s" x="38" y="202">resource_change · suspension …</text>
+
+        <rect class="n-box" x="24" y="224" width="200" height="64" rx="4"/>
+        <rect x="24" y="224" width="4" height="64" fill="var(--ink-3)"/>
+        <text class="t-b" x="38" y="244">trace</text>
+        <text class="t-s" x="38" y="262">block_trace · router_decision</text>
+        <text class="t-s" x="38" y="278">state_snapshot, generator_step</text>
+
+        <path class="ln" d="M224,76 L262,76" marker-end="url(#a9)"/>
+        <path class="ln" d="M224,170 L262,170" marker-end="url(#a9)"/>
+        <path class="ln" d="M224,256 L262,256" marker-end="url(#a9)"/>
+
+        <rect class="n-acc" x="264" y="44" width="116" height="244" rx="4"/>
+        <text class="t-b" x="322" y="150" text-anchor="middle">resolve</text>
+        <text class="t-b" x="322" y="166" text-anchor="middle">Item</text>
+        <text class="t-b" x="322" y="182" text-anchor="middle">Visibility</text>
+        <text class="t-xs" x="322" y="204" text-anchor="middle">ONE FUNCTION</text>
+
+        <path class="ln" d="M380,66 L598,62" marker-end="url(#a9)"/>
+        <text class="t-xs" x="418" y="56">itemVisibility.history</text>
+
+        <path class="ln" d="M380,90 L520,90 L520,150 L598,150" marker-end="url(#a9)"/>
+        <text class="t-xs" x="418" y="84">itemVisibility.client</text>
+
+        <path class="ln" d="M380,166 L598,166" marker-end="url(#a9)"/>
+        <text class="t-xs" x="418" y="160">FIXED PER-TYPE DEFAULTS</text>
+
+        <path class="ln" d="M380,256 L598,256" marker-end="url(#a9)"/>
+        <text class="t-xs" x="418" y="250">ALWAYS BOTH FALSE</text>
+
+        <rect class="n-box-2" x="600" y="36" width="276" height="56" rx="4"/>
+        <text class="t-b" x="614" y="58">LLM conversation history</text>
+        <text class="t-s" x="614" y="76">what the next generator turn sees</text>
+
+        <rect class="n-box-2" x="600" y="126" width="276" height="64" rx="4"/>
+        <text class="t-b" x="614" y="148">connected clients</text>
+        <text class="t-s" x="614" y="166">SSE now, snapshot on completion</text>
+        <text class="t-s" x="614" y="182">renderer registry decides the component</text>
+
+        <rect class="n-box-2" x="600" y="224" width="276" height="64" rx="4"/>
+        <text class="t-b" x="614" y="246">devtool + durable log</text>
+        <text class="t-s" x="614" y="264">execution tree, replay, resume</text>
+        <text class="t-s" x="614" y="280">never on the wire, never in a prompt</text>
+      </svg>
+    </div>
+    <figcaption><b>One decision point, three audiences.</b> Conversational types read <code>item.itemVisibility</code> (default <code>{ client: true, history: true }</code>); structural types have fixed per-type defaults; trace types always resolve to neither. A generator's <code>itemVisibility</code> config is what makes a sub-agent's output invisible to the user but present in the parent's context, or the reverse.</figcaption>
+  </figure>
+
+  <h3>The registry</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Type</th><th>Emitted by</th><th class="ctr">Client</th><th class="ctr">History</th><th>Persistence</th></tr></thead>
+    <tbody>
+      <tr><td><code>message</code></td><td>generator (auto), <code>emit.message()</code></td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
+      <tr><td><code>reasoning</code></td><td>generator (auto, CoT models)</td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
+      <tr><td><code>tool_output</code></td><td>generator, per invocation</td><td class="ctr">cfg</td><td class="ctr">cfg</td><td>persistent</td></tr>
+      <tr><td><code>component</code></td><td><code>emit.component()</code></td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent, keyed upsert per <code>(requestId, key)</code></td></tr>
+      <tr><td><code>container</code></td><td>sequencer / router with <code>container</code></td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent</td></tr>
+      <tr><td><code>source</code></td><td>generator, provider-native tools</td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent</td></tr>
+      <tr><td><code>status</code></td><td><code>emit.status()</code>, <code>activeStatusMessage</code></td><td class="ctr">✓</td><td class="ctr">—</td><td><strong>always transient</strong>, single request-scoped slot</td></tr>
+      <tr><td><code>state_change</code></td><td>auto on state mutation</td><td class="ctr">✓</td><td class="ctr">—</td><td>transient in prod, persistent in dev</td></tr>
+      <tr><td><code>resource_change</code></td><td>auto on resource mutation</td><td class="ctr">✓</td><td class="ctr">—</td><td>transient by default</td></tr>
+      <tr><td><code>error</code></td><td>runtime, terminal failure</td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent</td></tr>
+      <tr><td><code>suspension</code></td><td><code>ctx.suspend()</code></td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent; carries <code>allow: ResumeAction[]</code></td></tr>
+      <tr><td><code>suspension_resume</code></td><td>resume continuation</td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent, not rendered — the audit record</td></tr>
+      <tr><td><code>continuation</code></td><td>runtime, crash-recovery re-entry</td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent; marks the seam in the durable log</td></tr>
+      <tr><td><code>block_trace</code></td><td>every block, auto</td><td class="ctr">—</td><td class="ctr">—</td><td>persistent <em>unless</em> the originating block is <code>transient</code> — those stream live but are never retained, so poll-loop traces vanish on reload</td></tr>
+      <tr><td><code>router_decision</code></td><td>router, on selection</td><td class="ctr">—</td><td class="ctr">—</td><td>persistent; resume validates against it</td></tr>
+      <tr><td><code>state_snapshot</code></td><td>sequencer, at step boundaries</td><td class="ctr">—</td><td class="ctr">—</td><td>side-channelled to the checkpoint store</td></tr>
+      <tr><td><code>generator_step</code></td><td>generator loop, per step</td><td class="ctr">—</td><td class="ctr">—</td><td>persistent, replay-only</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Stream events</h3>
+  <p>Items are the record; events are the execution log. They are stored independently, and the distinction matters for resume: the item log is what you replay into a UI, the event log is what you replay from a cursor.</p>
+  <div class="chips">
+    <span class="chip">request.created</span><span class="chip">request.in_progress</span>
+    <span class="chip">item.added</span><span class="chip">item.done</span>
+    <span class="chip">content.added</span><span class="chip">content.delta</span>
+    <span class="chip">content.audio.delta</span><span class="chip">content.done</span>
+    <span class="chip">resource.changed</span><span class="chip">session.metadata.changed</span>
+    <span class="chip">request.completed</span><span class="chip">request.incomplete</span><span class="chip">request.failed</span>
+  </div>
+  <p>There are two streams and the envelope differs between them. A <strong>request</strong> event carries <code>{ stream: "request", requestId, sequence_number, ts, type }</code> and its cursor is <code>${requestId}:${sequence_number}</code>. A <strong>user</strong> event carries <code>userId</code> in place of <code>requestId</code>, and its cursor is <code>${userId}:${sequence_number}</code> — <code>createStreamEventId</code> branches on <code>event.stream</code> to pick between them. Reading <code>requestId</code> off a user-stream event finds nothing, which matters because resource and scope changes arrive there. Resume accepts both <code>Last-Event-ID</code> and a <code>starting_after</code> query param on either stream; both are locked contracts.</p>
+</section>
+
+<section id="execution">
+  <div class="sec-head"><span class="sec-num">13</span><h2>Execution and errors</h2></div>
+  <p class="lede">A request is async by design: execution runs in the background and the client watches it over SSE, then refetches the snapshot for the authoritative answer.</p>
+  <p>The POST has two shapes. Ask for the stream inline — <code>Accept: text/event-stream</code>, which is what the client's <code>sendActionStream</code> sends — and the route returns <strong>200 with the live SSE stream as the body</strong>, keeping execution and streaming on one function instance. That mode is what makes the serverless hosts work. Otherwise it returns <strong>202</strong> with a request id and the client attaches to the stream separately. Same execution either way; only the response differs.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 920 292" role="img" aria-label="Request lifecycle rail: five runtime phases — accept, execute, settle, terminal, reconcile — with what each phase sends to the client above the rail and what it writes to the stores below it.">
+        <defs><marker id="a10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
+
+        <text class="t-lbl" x="24" y="30">To the client</text>
+        <rect class="n-box" x="24" y="44" width="150" height="42" rx="4"/>
+        <text class="t-s" x="34" y="63">202 Accepted</text>
+        <text class="t-xs" x="34" y="78">REQUEST ID RETURNED</text>
+
+        <rect class="n-box" x="182" y="44" width="250" height="42" rx="4"/>
+        <text class="t-s" x="192" y="63">item.added · content.delta · status</text>
+        <text class="t-xs" x="192" y="78">LIVE, AS BLOCKS PRODUCE THEM</text>
+
+        <rect class="n-box" x="598" y="44" width="140" height="42" rx="4"/>
+        <text class="t-s" x="608" y="63">request.completed</text>
+        <text class="t-xs" x="608" y="78">/ INCOMPLETE / FAILED</text>
+
+        <rect class="n-box" x="746" y="44" width="150" height="42" rx="4"/>
+        <text class="t-s" x="756" y="63">state snapshot</text>
+        <text class="t-xs" x="756" y="78">THE CORRECTNESS PATH</text>
+
+        <path class="ln" d="M99,124 L99,90" marker-end="url(#a10)"/>
+        <path class="ln" d="M307,124 L307,90" marker-end="url(#a10)"/>
+        <path class="ln" d="M668,124 L668,90" marker-end="url(#a10)"/>
+        <path class="ln" d="M821,124 L821,90" marker-end="url(#a10)"/>
+
+        <rect class="n-acc" x="24" y="126" width="150" height="58" rx="4"/>
+        <text class="t-b" x="34" y="145">accept</text>
+        <text class="t-xs" x="34" y="160">VALIDATE INPUT</text>
+        <text class="t-xs" x="34" y="174">RESOLVE SESSION + SCOPE</text>
+
+        <rect class="n-acc" x="182" y="126" width="250" height="58" rx="4"/>
+        <text class="t-b" x="192" y="145">execute</text>
+        <text class="t-xs" x="192" y="160">executeBlock, RETRY, RESCUE, SIDE CHAINS</text>
+        <text class="t-xs" x="192" y="174">SUSPEND / RESUME ON A DURABLE ACTION</text>
+
+        <rect class="n-acc" x="440" y="126" width="150" height="58" rx="4"/>
+        <text class="t-b" x="450" y="145">settle</text>
+        <text class="t-xs" x="450" y="160">CONVERGE WORK QUEUE</text>
+        <text class="t-xs" x="450" y="174">FIRE LIFECYCLE HOOKS</text>
+
+        <rect class="n-acc" x="598" y="126" width="140" height="58" rx="4"/>
+        <text class="t-b" x="608" y="145">terminal</text>
+        <text class="t-xs" x="608" y="160">STATUS COMMITTED</text>
+        <text class="t-xs" x="608" y="174">STATUS SLOT CLEARS</text>
+
+        <rect class="n-box-2" x="746" y="126" width="150" height="58" rx="4"/>
+        <text class="t-b" x="756" y="145">reconcile</text>
+        <text class="t-xs" x="756" y="160">CLIENT REFETCHES</text>
+        <text class="t-xs" x="756" y="174">SSE IS NOT TRUTH</text>
+
+        <path class="ln" d="M174,155 L180,155" marker-end="url(#a10)"/>
+        <path class="ln" d="M432,155 L438,155" marker-end="url(#a10)"/>
+        <path class="ln" d="M590,155 L596,155" marker-end="url(#a10)"/>
+        <path class="ln" d="M738,155 L744,155" marker-end="url(#a10)"/>
+
+        <path class="ln" d="M99,184 L99,214" marker-end="url(#a10)"/>
+        <path class="ln" d="M307,184 L307,214" marker-end="url(#a10)"/>
+        <path class="ln" d="M515,184 L515,214" marker-end="url(#a10)"/>
+        <path class="ln" d="M668,184 L668,214" marker-end="url(#a10)"/>
+
+        <rect class="n-box" x="24" y="216" width="150" height="44" rx="4"/>
+        <text class="t-xs" x="34" y="235">SESSION RECORD</text>
+        <text class="t-xs" x="34" y="250">REQUEST RECORD</text>
+
+        <rect class="n-box" x="182" y="216" width="250" height="44" rx="4"/>
+        <text class="t-xs" x="192" y="235">ITEMS · EVENTS · CAS STATE WRITES</text>
+        <text class="t-xs" x="192" y="250">DURABLE CHECKPOINT FRAMES</text>
+
+        <rect class="n-box" x="440" y="216" width="150" height="44" rx="4"/>
+        <text class="t-xs" x="450" y="235">FINAL STATE PERSIST</text>
+        <text class="t-xs" x="450" y="250">RETENTION POLICY</text>
+
+        <rect class="n-box" x="598" y="216" width="140" height="44" rx="4"/>
+        <text class="t-xs" x="608" y="235">TERMINAL REQUEST</text>
+        <text class="t-xs" x="608" y="250">STATUS</text>
+
+        <text class="t-lbl" x="24" y="282">To the stores</text>
+      </svg>
+    </div>
+    <figcaption><b>SSE is liveness; the snapshot is truth.</b> The client refetches on <code>request.completed</code> rather than trusting its accumulated stream state — which is what makes disconnect, resume, and multi-tab all reduce to the same recovery path.</figcaption>
+  </figure>
+
+  <h3>Failure handling, in layers</h3>
+  <div class="cards">
+    <div class="card"><h5>Retry policy</h5><span class="role">per block</span><p>Declared, not coded. Applies at the <code>executeBlock</code> seam so every kind gets it identically.</p></div>
+    <div class="card"><h5>Rescue boundaries</h5><span class="role">by error type</span><p>Both a sequencer-level <code>.rescue(handlers)</code> and a block-level <code>block.rescue</code>. A rescue registry exposes <code>ctx.wasRescued</code> downstream.</p></div>
+    <div class="card"><h5>Generator repair</h5><span class="role">schema failures</span><p>A structured-output miss gets a repair pass before it becomes a terminal error.</p></div>
+    <div class="card"><h5>Side-chain isolation</h5><span class="role">non-aborting</span><p>Queued work runs off the main chain with its own signal lifecycle; it only becomes terminal if you ask for it.</p></div>
+    <div class="card"><h5>Suspend and resume</h5><span class="role">durable actions</span><p><code>ctx.suspend()</code> writes a <code>suspension</code> item with an <code>allow</code> list; the resume route gates inbound actions against it and 409s otherwise.</p></div>
+    <div class="card"><h5>Crash recovery</h5><span class="role">replay</span><p>Durable frames in the checkpoint store let a re-entry skip committed work; a <code>continuation</code> item marks the seam between the prior log and the live re-run.</p></div>
+    <div class="card"><h5>Error capture sink</h5><span class="role">observability</span><p>Provider errors are classified and normalized; a capture sink collects them without every call site handling them.</p></div>
+    <div class="card"><h5>Token budgets</h5><span class="role">cost</span><p><code>tokenBudget</code> on an <code>ActionCore</code>: <code>maxTotalTokens</code>, <code>warnAt</code>, <code>onExceeded</code>. Enforced by the runtime.</p></div>
+  </div>
+
+  <div class="note">
+    <span class="lbl">A deliberate absence</span>
+    <p>There is no block middleware, and <code>docs/architecture/internal-execution-seams.md</code> exists specifically to record why. Lifecycle hooks are observational and past-tense; the interception points are internal seams the framework owns, not an extension surface. Any redesign that reaches for "just add a middleware chain" is arguing with a decision that has already been made once.</p>
+  </div>
+</section>
+
+<section id="capabilities">
+  <div class="sec-head"><span class="sec-num">14</span><h2>Capabilities</h2></div>
+  <p class="lede">A capability is a portable bundle — resources, state schemas, context, tools, helper functions — installed with one <code>uses: [cap]</code> entry instead of spreading four config slots by hand. It is the framework's answer to "how do I ship a feature that isn't a block?"</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Capability resolution split into two phases: static entries resolved at build time contribute resources and state schemas, while both static and dynamic entries contribute context and tools at runtime; helper functions and the three generator singletons come from static entries only, resolving last-wins among capabilities with block-level config overriding all of them.">
+        <defs><marker id="a11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
+
+        <rect class="n-acc" x="286" y="14" width="328" height="46" rx="4"/>
+        <text class="t-b" x="450" y="36" text-anchor="middle">uses: [capA, capB, (ctx) =&gt; [capC]]</text>
+        <text class="t-xs" x="450" y="51" text-anchor="middle">STATIC ENTRIES AND DYNAMIC RESOLVERS IN ONE ARRAY</text>
+
+        <path class="ln" d="M350,60 L350,76 L224,76 L224,96" marker-end="url(#a11)"/>
+        <path class="ln" d="M550,60 L550,76 L676,76 L676,96" marker-end="url(#a11)"/>
+
+        <rect class="n-grp" x="24" y="98" width="400" height="212" rx="5"/>
+        <text class="t-lbl" x="38" y="118">Build time — static entries only</text>
+        <rect class="n-box" x="38" y="126" width="372" height="40" rx="3"/>
+        <text class="t-s" x="50" y="144">resources</text>
+        <text class="t-xs" x="50" y="158">SAME ACCESSOR + REF DEDUPES · A DIFFERENT REF ERRORS</text>
+        <rect class="n-box" x="38" y="172" width="372" height="40" rx="3"/>
+        <text class="t-s" x="50" y="190">request / session / user / org state schemas</text>
+        <text class="t-xs" x="50" y="204">z.object().extend() — LAST CONTRIBUTOR WINS ON OVERLAP</text>
+        <rect class="n-box" x="38" y="218" width="372" height="40" rx="3"/>
+        <text class="t-s" x="50" y="236">sequencerStateSchema</text>
+        <text class="t-xs" x="50" y="250">SEQUENCER ONLY — A NON-SEQUENCER CONSUMER IS A BUILD ERROR</text>
+        <rect class="n-box" x="38" y="264" width="372" height="36" rx="3"/>
+        <text class="t-s" x="50" y="282">targetStateSchemas</text>
+        <text class="t-xs" x="50" y="295">MAP MERGED WITH SAME-REF DEDUP</text>
+
+        <rect class="n-grp" x="476" y="98" width="400" height="212" rx="5"/>
+        <text class="t-lbl" x="490" y="118">Runtime — resolved per call</text>
+        <rect class="n-box" x="490" y="126" width="372" height="40" rx="3"/>
+        <text class="t-s" x="502" y="144">context</text>
+        <text class="t-xs" x="502" y="158">STATIC + DYNAMIC · APPENDED · COLLAPSED BY XML TAG</text>
+        <rect class="n-box" x="490" y="172" width="372" height="40" rx="3"/>
+        <text class="t-s" x="502" y="190">tools</text>
+        <text class="t-xs" x="502" y="204">STATIC + DYNAMIC · ARRAYS APPENDED AT RUNTIME</text>
+        <rect class="n-box" x="490" y="218" width="372" height="40" rx="3"/>
+        <text class="t-s" x="502" y="236">fns</text>
+        <text class="t-xs" x="502" y="250">STATIC ONLY · AT ctx.cap.{name}, FULLY TYPED</text>
+        <rect class="n-box-2" x="490" y="264" width="372" height="36" rx="3"/>
+        <text class="t-s" x="502" y="282">model · providerOptions · caching</text>
+        <text class="t-xs" x="502" y="295">STATIC ONLY · LAST CAP WINS · BLOCK-LEVEL BEATS ALL</text>
+
+        <text class="t-xs" x="450" y="322" text-anchor="middle" fill="var(--k-router)">A DYNAMIC ENTRY CONTRIBUTES CONTEXT AND TOOLS — NOTHING ELSE. fns, THE SINGLETONS AND RESOURCES ARE STATIC-ONLY</text>
+      </svg>
+    </div>
+    <figcaption><b>The two-phase split is the whole design.</b> Resources have to exist before the flow is built, so they can only come from static entries; context and tools are assembled per call, so a resolver can decide them from <code>ctx</code>. That constraint is what makes conditional capabilities possible without making resource wiring conditional. The asymmetry inside the runtime column is the easy thing to miss: <code>fns</code> is read off the block's statically resolved capability list when <code>ctx.cap</code> is built, and the generator singletons are settled during the build-time merge. A capability reachable only through a dynamic <code>uses</code> resolver contributes context and tools and nothing else &mdash; its <code>fns</code> never appear on <code>ctx.cap</code>, and its <code>model</code> is never installed.</figcaption>
+  </figure>
+
+  <h4>Capabilities shipped in the framework</h4>
+  <div class="chips">
+    <span class="chip">memory · 4 tier caps + 1 composed</span>
+    <span class="chip">taskBoard</span>
+    <span class="chip">taskTools · 8 tools</span>
+    <span class="chip">skills</span>
+    <span class="chip">workforce</span>
+    <span class="chip">bash</span>
+    <span class="chip">mcp</span>
+    <span class="chip">chat</span>
+    <span class="chip">toolCache</span>
+    <span class="chip">observationLedger</span>
+    <span class="chip">perspective</span>
+    <span class="chip">claudeCli</span>
+    <span class="chip">claudeCodeAgent</span>
+  </div>
+  <p>Two authoring conventions are established. Configurable capabilities export a factory — <code>createXCapability(options) → DefinedCapability</code>. Optional behaviour ships as <strong>presets</strong> the consumer toggles: <code>cap.presets({ tools: false })</code>. Both exist so that a capability stays one entry in <code>uses</code> no matter how much it carries.</p>
+</section>
+
+<section id="utility">
+  <div class="sec-head"><span class="sec-num">15</span><h2>Utility blocks</h2></div>
+  <p class="lede">Eleven factories in <code>core/utility</code>. Each returns a standard <code>BlockDefinition</code> — composable anywhere a hand-written block would go. The tier exists so a standard LLM operation isn't re-specified in every app.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Factory</th><th>Kind</th><th>Category</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>contextReducer</code></td><td>generator</td><td>Context &amp; memory</td><td>Reduce context by distill, denoise, or compress.</td></tr>
+      <tr><td><code>memoryExtractor</code></td><td>generator</td><td>Context &amp; memory</td><td>Pull durable memory candidates out of an interaction.</td></tr>
+      <tr><td><code>decomposer</code></td><td>generator</td><td>Planning</td><td>Break a broad request into executable subtasks.</td></tr>
+      <tr><td><code>summarizer</code></td><td>generator</td><td>Synthesis</td><td>Summarize at a configurable granularity.</td></tr>
+      <tr><td><code>combiner</code></td><td>handler</td><td>Synthesis</td><td>Deterministically merge artifacts — no model call.</td></tr>
+      <tr><td><code>analyzer</code></td><td>generator</td><td>Evaluation</td><td>Score an artifact against structured criteria, returning <code>Finding</code>s.</td></tr>
+      <tr><td><code>intentClassifier</code></td><td>generator</td><td>Routing</td><td>Classify input into a bounded category set.</td></tr>
+      <tr><td><code>intentRouter</code></td><td>sequencer</td><td>Routing</td><td>Classifier + router, pre-wired.</td></tr>
+      <tr><td><code>keyedRouter</code></td><td>router</td><td>Routing</td><td>Pick from a <code>Record</code> by string key — no model call.</td></tr>
+      <tr><td><code>upsertResource</code></td><td>handler</td><td>Resources</td><td>Get-or-create plus patch on a collection instance.</td></tr>
+      <tr><td><code>sessionTitleGenerator</code></td><td>sequencer</td><td>Session</td><td>Derive a session title from recent messages.</td></tr>
+    </tbody>
+  </table></div>
+  <p>The dividing line the docs draw is crisp and worth preserving in any refactor: <strong>a utility is a single block; a pattern is a multi-block sequencer composition.</strong> Three of the eleven (<code>intentRouter</code>, <code>sessionTitleGenerator</code>, and arguably <code>combiner</code>'s role) already sit near that line.</p>
+</section>
+
+<section id="patterns">
+  <div class="sec-head"><span class="sec-num">16</span><h2>Patterns</h2></div>
+  <p class="lede">Nine named multi-agent architectures. Seven of them are thin compositions over the task board; the other two are standalone shapes.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Pattern</th><th>Shape</th><th>Built on the board</th></tr></thead>
+    <tbody>
+      <tr><td><code>parallelTasks</code></td><td>Decompose once, fan out, collect. Per-subtask error strategy.</td><td class="ctr">✓</td></tr>
+      <tr><td><code>supervisor</code></td><td>Planner → workers → per-task reviewer verdict before write-back, with retries on rejection.</td><td class="ctr">✓</td></tr>
+      <tr><td><code>planAndExecute</code></td><td>Plan, execute, evaluate progress, re-plan across drains. Ships an LLM evaluator and a task evaluator.</td><td class="ctr">✓</td></tr>
+      <tr><td><code>routedSpecialists</code></td><td>A controller dispatches to specialists over a shared workspace, with a check loop.</td><td class="ctr">✓</td></tr>
+      <tr><td><code>roundRobin</code></td><td>Fixed-roster turn-taking with a referee and a synthesis step.</td><td class="ctr">✓</td></tr>
+      <tr><td><code>debate</code></td><td>Paired adversarial contributors, a transcript resource, a judge verdict, then synthesis.</td><td class="ctr">✓</td></tr>
+      <tr><td><code>eventActors</code></td><td>Topic-matched actors over an append-only workspace. Subscriptions are pattern-compiled, but the fan-out is a board: it constructs <code>taskBoard(&#123;&hellip;&#125;)</code> and ends on <code>.step(board.drain)</code>, so board changes to claim, wake, concurrency and termination reach it.</td><td class="ctr">✓</td></tr>
+      <tr><td><code>responseAuditor</code></td><td>Parallel analyzers over one response, aggregated to annotations with a display threshold.</td><td class="ctr">—</td></tr>
+      <tr><td><code>rlm</code></td><td>Recursive Language Model — the model never sees full context, it explores via <code>peek</code> / <code>grep</code> / <code>chunk</code> tools and recursive sub-queries.</td><td class="ctr">—</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>Each pattern exports its config type, its state schema, its intermediate schemas, and its internal block factories — so a consumer can take the shape or take the pieces. A benchmark adapter registry (<code>defaultBenchmarkRegistry</code>) wires six of them into <code>apps/pattern-benchmark</code> for cross-pattern comparison on a fixed task suite and model.</p>
+
+  <div class="note">
+    <span class="lbl">Worth noting for a refactor</span>
+    <p><code>rlm</code> is explicitly documented in its own header as scaffolding with no current consumers, kept deliberately for a planned demo. <code>patterns</code> also still exports a <code>legacy-plan-types</code> module and a <code>legacyWorkerAdapter</code>, and carries a comment noting that runtime plan-emit helpers were retired. That is the visible residue of the task-board migration.</p>
+  </div>
+</section>
+
+<section id="orchestration">
+  <div class="sec-head"><span class="sec-num">17</span><h2>Orchestration</h2></div>
+  <p class="lede">The largest composition package, and the one with the clearest internal layering: a task substrate at the bottom, a concurrent drain over it, and patterns and agents above.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 396" role="img" aria-label="Two-part diagram: on the left, the orchestration layer stack from task substrate up through task board, patterns and agents; on the right, the task board drain loop from seeding a collection through claim, work, and check, looping until a termination rule stops it.">
+        <defs><marker id="a14" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
+        <marker id="a14a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker></defs>
+
+        <text class="t-lbl" x="24" y="20">Enter at whatever height the problem needs</text>
+
+        <rect class="n-box" x="24" y="32" width="380" height="60" rx="4"/>
+        <text class="t-b" x="38" y="52">agents — workforce</text>
+        <text class="t-s" x="38" y="70">named participants with a persona, model, tools</text>
+        <text class="t-xs" x="38" y="84">ASSIGN BOARD TASKS BY NAME</text>
+        <path class="ln" d="M214,104 L214,92" marker-end="url(#a14)"/>
+
+        <rect class="n-box" x="24" y="106" width="380" height="60" rx="4"/>
+        <text class="t-b" x="38" y="126">patterns</text>
+        <text class="t-s" x="38" y="144">supervisor · parallelTasks · planAndExecute …</text>
+        <text class="t-xs" x="38" y="158">START HERE; DROP DOWN ONLY IF NONE FIT</text>
+        <path class="ln" d="M214,178 L214,166" marker-end="url(#a14)"/>
+
+        <rect class="n-acc" x="24" y="180" width="380" height="60" rx="4"/>
+        <text class="t-b" x="38" y="200">task board</text>
+        <text class="t-s" x="38" y="218">a concurrent drain over a collection</text>
+        <text class="t-xs" x="38" y="232">DEPENDENCY-GATED · CONCURRENCY-CAPPED</text>
+        <path class="ln" d="M214,252 L214,240" marker-end="url(#a14)"/>
+
+        <rect class="n-box" x="24" y="254" width="380" height="72" rx="4"/>
+        <text class="t-b" x="38" y="274">task substrate</text>
+        <text class="t-s" x="38" y="292">Task record + status machine · TaskCollection</text>
+        <text class="t-s" x="38" y="308">dispatchers: fifo, priority, topological, event, classifier</text>
+        <text class="t-xs" x="38" y="322">TWO BACKINGS: RESOURCE-BACKED AND SEQUENCER-BACKED</text>
+
+        <rect class="n-grp" x="24" y="340" width="380" height="44" rx="4"/>
+        <text class="t-s" x="38" y="360">skills runtime — same package</text>
+        <text class="t-xs" x="38" y="375">SKILL.MD FOLDERS MATERIALIZED INTO BOARDS + taskTools</text>
+
+        <text class="t-lbl" x="452" y="20">One drain</text>
+        <rect class="n-box-2" x="452" y="32" width="424" height="40" rx="4"/>
+        <text class="t-s" x="466" y="52">seedCollection — write initialTasks into the collection</text>
+        <text class="t-xs" x="466" y="65">THEN boardMetaActive EMITS THE MOUNT ITEM</text>
+        <path class="ln" d="M664,72 L664,88" marker-end="url(#a14)"/>
+
+        <rect class="n-grp" x="452" y="90" width="424" height="196" rx="4"/>
+        <text class="t-lbl" x="466" y="108">forEach worker · concurrency = N</text>
+
+        <rect class="n-box" x="470" y="118" width="388" height="42" rx="3"/>
+        <text class="t-s" x="482" y="136">claimTask</text>
+        <text class="t-xs" x="482" y="151">A READY TASK, OR REPORT EMPTY · LEASE + CAS, NEVER TWO CLAIMS</text>
+        <path class="ln" d="M664,160 L664,172" marker-end="url(#a14)"/>
+
+        <rect class="n-box" x="470" y="174" width="388" height="42" rx="3"/>
+        <text class="t-s" x="482" y="192">workerStep</text>
+        <text class="t-xs" x="482" y="207">RUN THE WORKER BLOCK · recordResult OR recordError</text>
+        <path class="ln" d="M664,216 L664,228" marker-end="url(#a14)"/>
+
+        <rect class="n-box" x="470" y="230" width="388" height="42" rx="3"/>
+        <text class="t-s" x="482" y="248">checkBoard</text>
+        <text class="t-xs" x="482" y="263">CONTINUE, OR EXIT WITH A terminationReason</text>
+
+        <path class="ln-acc" d="M470,251 L458,251 L458,139 L468,139" marker-end="url(#a14a)"/>
+        <text class="t-acc" x="424" y="196" transform="rotate(-90 424 196)">loopBack</text>
+
+        <path class="ln" d="M664,286 L664,300" marker-end="url(#a14)"/>
+        <rect class="n-box-2" x="452" y="302" width="424" height="42" rx="4"/>
+        <text class="t-s" x="466" y="322">boardMetaCompleted</text>
+        <text class="t-xs" x="466" y="336">COUNTS + terminationReason · CASCADE-SKIP ANY STRANDED DEPENDENTS</text>
+
+        <text class="t-xs" x="452" y="368">A DRAIN RUNS INSIDE THE REQUEST THAT MOUNTED IT — EVERY WORKER'S TASK</text>
+        <text class="t-xs" x="452" y="382">FINISHES BEFORE THAT REQUEST DOES, UNLESS IT IS EXPLICITLY DETACHED</text>
+      </svg>
+    </div>
+    <figcaption><b>The board is the only drain.</b> Seven of the nine patterns are compositions over this loop rather than independent orchestrators — which is why a change to claim semantics or termination policy propagates to all of them at once.</figcaption>
+  </figure>
+
+  <h3>The task record</h3>
+  <p>A <code>Task</code> is a goal, a status, optional deps, and typed input/output — plus the accounting the substrate needs to be safe under concurrency: <code>attempts</code>, a <code>maxAttempts</code> retry budget, a <code>retryLedger</code> recording grants and budget denials against a board-wide cap, and a separate abandonment counter for work whose worker stopped renewing its lease. The status machine is enforced on write, inside the CAS, so an illegal transition never commits.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 760 250" role="img" aria-label="Task status state machine: pending claims into in_progress or is parked as blocked; in_progress may submit to awaiting_review, re-pend on a failure while retries remain, or go terminal as completed, errored or cancelled; awaiting_review returns to pending for rework or resolves to completed, and may also settle as cancelled or errored.">
+        <defs><marker id="a15" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
+
+        <rect class="n-grp" x="546" y="24" width="152" height="200" rx="6"/>
+        <text class="t-lbl" x="622" y="240" text-anchor="middle">terminal — no exits</text>
+
+        <rect class="n-acc" x="40" y="104" width="120" height="44" rx="22"/>
+        <text class="t-b" x="100" y="131" text-anchor="middle">pending</text>
+
+        <rect class="n-box" x="250" y="20" width="120" height="40" rx="20"/>
+        <text class="t-b" x="310" y="45" text-anchor="middle">blocked</text>
+
+        <rect class="n-box" x="250" y="104" width="140" height="44" rx="22"/>
+        <text class="t-b" x="320" y="131" text-anchor="middle">in_progress</text>
+
+        <rect class="n-box" x="250" y="190" width="140" height="44" rx="22"/>
+        <text class="t-b" x="320" y="217" text-anchor="middle">awaiting_review</text>
+
+        <rect class="n-box-2" x="560" y="38" width="124" height="40" rx="20"/>
+        <text class="t-b" x="622" y="63" text-anchor="middle">completed</text>
+        <rect class="n-box-2" x="560" y="104" width="124" height="40" rx="20"/>
+        <text class="t-b" x="622" y="129" text-anchor="middle">errored</text>
+        <rect class="n-box-2" x="560" y="170" width="124" height="40" rx="20"/>
+        <text class="t-b" x="622" y="195" text-anchor="middle">cancelled</text>
+
+        <path class="ln" d="M160,120 L246,120" marker-end="url(#a15)"/>
+        <text class="t-xs" x="176" y="113">claim</text>
+
+        <path class="ln" d="M70,104 L70,34 L246,34" marker-end="url(#a15)"/>
+        <text class="t-xs" x="84" y="28">deps unmet</text>
+        <path class="ln" d="M250,52 L140,52 L140,100" marker-end="url(#a15)"/>
+        <text class="t-xs" x="152" y="66">unblock</text>
+
+        <path class="ln" d="M300,148 L300,186" marker-end="url(#a15)"/>
+        <text class="t-xs" x="306" y="172">submit</text>
+        <path class="ln" d="M250,212 L100,212 L100,152" marker-end="url(#a15)"/>
+        <text class="t-xs" x="120" y="206">rework</text>
+
+        <path class="ln" d="M270,148 L270,170 L120,170 L120,152" marker-end="url(#a15)"/>
+        <text class="t-xs" x="152" y="163">fail, retries remain</text>
+
+        <path class="ln" d="M390,116 L470,116 L470,58 L556,58" marker-end="url(#a15)"/>
+        <text class="t-xs" x="408" y="110">success</text>
+        <text class="t-xs" x="320" y="243" text-anchor="middle">awaiting_review also settles directly to cancelled or errored — four legal exits, not two</text>
+        <path class="ln" d="M390,126 L556,124" marker-end="url(#a15)"/>
+        <text class="t-xs" x="478" y="138">budget spent</text>
+        <path class="ln" d="M390,140 L442,140 L442,192 L556,192" marker-end="url(#a15)"/>
+        <text class="t-xs" x="392" y="134">cancel</text>
+
+        <path class="ln" d="M390,200 L500,200 L500,70 L556,70" marker-end="url(#a15)"/>
+        <text class="t-xs" x="398" y="194">approved</text>
+      </svg>
+    </div>
+    <figcaption><b>Where the retry budget lands.</b> <code>fail()</code> re-pends the task while <code>attempts &lt; maxAttempts</code> and the board's cumulative budget holds; when the budget is spent it goes terminal instead, and the refusal is recorded in <code>retryLedger.deniedByBudget</code> so the board's <code>terminationReason</code> never has to be inferred from arithmetic.</figcaption>
+  </figure>
+
+  <h4>Beyond the board</h4>
+  <div class="cards">
+    <div class="card"><h5>GoalSeekLoop</h5><span class="role">config-driven</span><p>Re-drains the board until a judge says done. Both <code>planAndExecute</code> and <code>parallelTasks</code> are built on it.</p></div>
+    <div class="card"><h5>Flow policy</h5><span class="role">work placement</span><p>Declares whether a worker's tasks belong inside the claiming request or in a session of their own. Validated and routed today; running out-of-request is groundwork.</p></div>
+    <div class="card"><h5>Detached runner</h5><span class="role">outliving the turn</span><p>Board work spawned as a detached child, with handoff, shared-key, nested and child-death cases all covered by integration scenarios.</p></div>
+    <div class="card"><h5>Quiescence</h5><span class="role">event-driven boards</span><p>A board can wait indefinitely for externally-arriving work rather than draining to empty.</p></div>
+    <div class="card"><h5>Item windows</h5><span class="role">attribution</span><p>Items are stamped with the task whose execution scope produced them, so <code>task.items()</code> is exact under concurrency — one shared algorithm backs both the substrate and the UI.</p></div>
+    <div class="card"><h5>Lease renewal</h5><span class="role">liveness</span><p>An <code>AsyncLocalStorage</code> scope stamps renewals; a worker that stops renewing has its task handed back out under a separate abandonment budget.</p></div>
+  </div>
+</section>
+
+<section id="skills">
+  <div class="sec-head"><span class="sec-num">18</span><h2>Skills and agents</h2></div>
+  <p class="lede">Two ways to make behaviour first-class without writing a block: a skill is Markdown anyone can edit at runtime; an agent is a named participant you can assign work to. This is the mechanism &mdash; <a href="#workforce-layer">&sect;04</a> is what it adds up to and where it stops.</p>
+
+  <h3>Skills</h3>
+  <p>A skill is a folder with a <code>SKILL.md</code> — YAML frontmatter plus a Markdown playbook, with supporting files reachable from the body via <code>${SKILL_DIR}</code>. When it activates, the body renders into the generator's system prompt. The whole runtime lives in <code>orchestration/src/skills</code>: a library, a directory reader and importer, an activation store, activators, an inline-activate path, seeding, and a worker materializer.</p>
+  <p>There are two activation paths, and the up-front one is the optional half. The primary path is a per-generator binding: <code>.with(&#123; active, allowed, activeState, dynamicActivation &#125;)</code> &mdash; skills can be statically active, and the <code>dynamicActivation</code> preset installs a model-facing <code>loadSkill</code> tool so the generator can pull one mid-turn. The optional path is <code>createSkillActivator</code>, which runs <em>before</em> the main generator and is three-tiered: a literal <code>/&lt;skill-name&gt;</code> slash match, then a local keyword scan, then a fast LLM classifier when neither decides.</p>
+  <p>The lifetime is the part worth getting right. There is no session-global active-skills bag: activation state defaults to the <strong>generator&rsquo;s own block state</strong> and is therefore request-scoped &mdash; it does not carry into the next turn. Pass <code>activeState: &#123; scope, field &#125;</code> to store it at a named <code>request</code>&#8239;/&#8239;<code>session</code>&#8239;/&#8239;<code>user</code>&#8239;/&#8239;<code>org</code> scope when it should be shared across generators or survive the turn.</p>
+  <p>The delegation path is where skills meet the board. A skill declaring <code>agents:</code> installs a private task board, the <code>taskTools</code> capability (eight tools including <code>addTask</code> and <code>completeTask</code>), and a <code>runBoard</code> tool. The generator plans work as tasks with an <code>assignee</code> and <code>deps</code>, then drains the whole graph with one call. An assignee can also name one of the generator's own tools, which runs as a direct call with no model turn.</p>
+  <div class="note">
+    <span class="lbl">Capability or skill?</span>
+    <p>The docs draw the line cleanly: a <strong>capability</strong> is code that ships with the app, always on, structural. A <strong>skill</strong> is Markdown authored by anyone, editable at runtime, active only when matched. The two compose — the skills package itself is shipped as a capability.</p>
+  </div>
+
+  <h3>Workforce</h3>
+  <p>The smallest composition package in the repo at 397 lines across 8 files. Six exports: <code>defineAgent</code>, <code>definePersona</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, <code>agentBlock</code>, <code>createWorkforceCapability</code>. The <code>Agent</code> and <code>AgentRegistry</code> contracts themselves live in <code>core</code>, so <code>orchestration</code> can type an injected <code>materializeAgent</code> without depending on this package.</p>
+  <p>What it does and does not yet do &mdash; and why the team layer currently lives inside skills rather than here &mdash; is <a href="#workforce-layer">&sect;04</a>.</p>
+
+  <h3>Thought fabric</h3>
+  <p><code>@thought-fabric/core</code> is a separate namespace for cognitive-architecture primitives built on FSD rather than part of it: <strong>attention</strong> (salience scoring, relevance filtering), <strong>identity</strong> (constitution, perspective system with its own capability), and <strong>metacognition</strong> (bias detection). Its naming convention encodes category by word order — <code>perspectiveObserve</code> is a block, <code>addPerspective</code> is a helper — so the inversion signals the kind without documentation.</p>
+</section>
+
+<section id="memory">
+  <div class="sec-head"><span class="sec-num">19</span><h2>Memory</h2></div>
+  <p class="lede">Four tiers, composed by one factory and installed with one capability. Working-only is a real configuration.</p>
+  <p>"Independent" holds for the per-tier capabilities in <code>capabilities.ts</code> — <code>workingMemoryCapability</code> and friends install alone. It does <em>not</em> hold for the composed <code>createMemoryCapability</code> surface, where the storage tiers are dependency-ordered and validated at build: working is the base, <strong>semantic requires episodic</strong>, <strong>digest requires semantic</strong>. Both violations throw. Digest-only and semantic-only are not configurations.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Tier</th><th>Scope</th><th>Holds</th><th>Mechanics</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Working</strong></td><td>session</td><td>Recent observations over the current conversation</td><td>Salience scoring with decay; add, evict, pin, unpin, refresh, advance. Always present.</td></tr>
+      <tr><td><strong>Episodic</strong></td><td>user</td><td>Past sessions as discrete, recallable episodes</td><td>Encode, recall recent, mark consolidated, TTL culling.</td></tr>
+      <tr><td><strong>Semantic</strong></td><td>user</td><td>Consolidated facts worth keeping</td><td>Add, update, reinforce, remove, query, top-N; confidence decays so stale facts rank below fresh ones.</td></tr>
+      <tr><td><strong>Digest</strong></td><td>user</td><td>Summarized rollups across many sessions</td><td>Periodic digest blocks over the lower tiers.</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>Two cross-cutting mechanisms give the system its shape. A <strong>hygiene janitor</strong> runs a periodic pass — semantic confidence decay, episodic eviction — on by default and disableable with <code>hygiene: false</code>. And every <em>durable</em> memory carries a <strong>subject</strong>: the primary user is <code>user</code>, and other people mentioned get their own subject, assigned at extraction and carried from episodic memory onward, so consolidation never merges facts across people. Working memory is the exception: <code>workingMemoryEntrySchema</code> has no <code>subject</code> field, and the capture path drops it on the <code>add()</code> before carrying it into the episodic and semantic writes — so subject-aware filtering and cross-subject dedup are not available in the working tier.</p>
+  <p>The package ships four per-tier capability factories plus one composed <code>createMemoryCapability</code>, a recall-tool surface with pluggable strategies, and a context formatter per tier. It depends only on <code>core</code>.</p>
+</section>
+
+<section id="tools">
+  <div class="sec-head"><span class="sec-num">20</span><h2>Tools</h2></div>
+  <p class="lede">Five tool families, each provider-abstracted so an app names a capability rather than a vendor. This is tenet 4 applied literally — the framework absorbs the shape of "search the web", not any one search API.</p>
+
+  <div class="cards">
+    <div class="card"><h5>search</h5><span class="role">7 providers</span><p>brave · exa · parallel · perplexity · perplexity-sonar · serper · tavily, behind one resolver and one result schema.</p></div>
+    <div class="card"><h5>fetch</h5><span class="role">3 providers</span><p>builtin · firecrawl · jina.</p></div>
+    <div class="card"><h5>crawl</h5><span class="role">2 providers</span><p>builtin · firecrawl.</p></div>
+    <div class="card"><h5>bash</h5><span class="role">5 sandbox adapters</span><p>just-bash · local-fs · moat · upstash · vercel, with workspace guards, file sync, sandbox resolution and a capability wrapper.</p></div>
+    <div class="card"><h5>mcp</h5><span class="role">client side</span><p>A connection manager, tool filtering, enrichment and context injection — FSD as an MCP <em>consumer</em>, distinct from the <code>mcp</code> package which makes FSD an MCP <em>server</em>.</p></div>
+    <div class="card"><h5>claude-code</h5><span class="role">separate package</span><p>Dispatches cloud coding tasks through the local <code>claude</code> CLI. Ships both a CLI capability and an SDK capability.</p></div>
+  </div>
+  <p>Every <em>framework</em> tool is a block, so it participates in tracing, retry, rescue, and the tool cache exactly like any other unit of work — and a generator can be a tool of another generator without a special case.</p>
+  <p>The exception is worth knowing before you rely on the guarantee. A generator's <code>providerTools</code> slot takes <code>providerTool()</code> wrappers, which are opaque handles around a raw AI SDK tool: passed straight through, executed <strong>server-side by the provider</strong>, never compiled into a block and never routed through <code>executeBlock</code>. Provider-native web search is the common case. Those calls appear in the item stream by name, but none of the block-level machinery applies to them.</p>
+</section>
+
+<section id="transports">
+  <div class="sec-head"><span class="sec-num">21</span><h2>Inbound transports</h2></div>
+  <p class="lede">One two-field contract lets a webhook, a cron tick, an MCP tool call and an HTTP POST all reach the same runtime without any of them being a special case in it.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 900 296" role="img" aria-label="Inbound transport pipeline: five adapters each expose a source string and a createBindings function; the router collects all bindings and validates route uniqueness, each adapter constructs an InboundRequestEnvelope, and every envelope enters the same runtime through the source gate.">
+        <defs><marker id="a18" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
+        <marker id="a18a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker></defs>
+
+        <text class="t-lbl" x="24" y="20">Adapters</text>
+        <rect class="n-box" x="24" y="30" width="164" height="28" rx="3"/><text class="t-s" x="34" y="49">http — the reference</text>
+        <rect class="n-box" x="24" y="64" width="164" height="28" rx="3"/><text class="t-s" x="34" y="83">mcp — actions as tools</text>
+        <rect class="n-box" x="24" y="98" width="164" height="28" rx="3"/><text class="t-s" x="34" y="117">webhook — provider events</text>
+        <rect class="n-box" x="24" y="132" width="164" height="28" rx="3"/><text class="t-s" x="34" y="151">scheduled — cron, dynamic</text>
+        <rect class="n-box" x="24" y="166" width="164" height="28" rx="3"/><text class="t-s" x="34" y="185">chat-sdk — mentions</text>
+        <rect class="n-grp" x="24" y="200" width="164" height="28" rx="3"/><text class="t-xs" x="34" y="218">YOUR OWN — PICK A source</text>
+
+        <path class="ln" d="M188,146 L228,146" marker-end="url(#a18)"/>
+
+        <rect class="n-acc" x="230" y="98" width="180" height="96" rx="4"/>
+        <text class="t-b" x="244" y="120">the contract</text>
+        <text class="t-s" x="244" y="140">source: string</text>
+        <text class="t-s" x="244" y="158">createBindings(host)</text>
+        <text class="t-xs" x="244" y="176">IMMUTABLE FACTORY OBJECT</text>
+        <text class="t-xs" x="244" y="188">NO HOST REFERENCE RETAINED</text>
+
+        <path class="ln" d="M410,146 L450,146" marker-end="url(#a18)"/>
+
+        <rect class="n-box" x="452" y="80" width="186" height="132" rx="4"/>
+        <text class="t-b" x="466" y="102">TransportBindings</text>
+        <text class="t-s" x="466" y="124">routes</text>
+        <text class="t-xs" x="466" y="138">ROUTE UNIQUENESS VALIDATED</text>
+        <text class="t-s" x="466" y="160">start()</text>
+        <text class="t-xs" x="466" y="174">SYNC FAILURE ABORTS BOOT</text>
+        <text class="t-s" x="466" y="194">stop()</text>
+        <text class="t-xs" x="466" y="208">REVERSE ORDER, BEST EFFORT</text>
+
+        <path class="ln-acc" d="M638,146 L668,146" marker-end="url(#a18a)"/>
+
+        <rect class="n-box-2" x="670" y="60" width="206" height="172" rx="4"/>
+        <text class="t-b" x="684" y="82">InboundRequestEnvelope</text>
+        <text class="t-s" x="684" y="104">source</text>
+        <text class="t-s" x="684" y="122">flowKind</text>
+        <text class="t-s" x="684" y="140">action</text>
+        <text class="t-s" x="684" y="158">input · principal · metadata</text>
+        <text class="t-xs" x="684" y="184">ONE SHAPE. THE RUNTIME BELOW</text>
+        <text class="t-xs" x="684" y="198">NEVER LEARNS WHICH ADAPTER</text>
+        <text class="t-xs" x="684" y="212">BUILT IT — EXCEPT THROUGH</text>
+        <text class="t-xs" x="684" y="226">THE source GATE</text>
+
+        <text class="t-xs" x="230" y="272">EXECUTION CONFIGURATION IS PER-HOST, WITH ONE PER-ENVELOPE EXCEPTION · ADAPTER SCOPE IS PER-REGISTRY</text>
+        <text class="t-xs" x="230" y="286">A CONFORMANCE SUITE IN @flow-state-dev/testing IS WHAT MAKES A CUSTOM ADAPTER TRUSTWORTHY</text>
+      </svg>
+    </div>
+    <figcaption><b>The source string is load-bearing, but it is not the auth gate.</b> It is the one trusted fact about where a request came from, so routing decisions derive from it rather than from anything in the body or metadata (BP-031) — <code>resolveActionCore</code> uses it to stop caller-controlled metadata from selecting an event-only handler. That is provenance routing, not authentication. Caller identity comes from <code>host.resolvePrincipal</code> (a flow&rsquo;s own <code>authentication.resolvePrincipal</code> wins over the host&rsquo;s), and management-route ownership is checked separately in <code>authorizeManagementRoute</code>. An adapter that satisfies the source gate and stops there has skipped both.<br><br>The five adapters stamp <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code> and <code>chat</code>; <code>workstream</code> is a sixth real value, set by the detached re-entry path rather than an adapter, and checked by both <code>public-reentry</code> and the concurrency arbiter. Custom transports pick their own. Worth flagging: the documented known-set in <code>core/src/types/auth.ts</code> reads <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code>, <code>notification</code> — it omits <code>chat</code> and <code>workstream</code>, and names <code>notification</code>, which appears nowhere in the code as a source value. The doc comment is drifting in both directions.</figcaption>
+  </figure>
+
+  <h4>What each adapter adds beyond the contract</h4>
+  <div class="tw"><table>
+    <thead><tr><th>Adapter</th><th>Specifics it owns</th></tr></thead>
+    <tbody>
+      <tr><td><code>mcp</code></td><td>JSON-RPC method coverage, action-to-tool conversion, per-flow opt-in, origin enforcement, its own auth path.</td></tr>
+      <tr><td><code>webhook</code></td><td>Declaration in <code>core</code> / runtime in <code>engine</code>; provider mechanics at mount vs routing on the flow; per-request registry lookup by <code>flowKind</code>-in-URL; idempotency and concurrency.</td></tr>
+      <tr><td><code>scheduled</code></td><td>A <code>schedules</code> config block, two-phase auth, an idempotency cache, overlap policy, a listing endpoint, and dynamic schedules that carry their core inline (and therefore do not recover).</td></tr>
+      <tr><td><code>chat-sdk</code></td><td>Registration-time validation, mount-time discovery, a dispatch model and fan-out semantics, principal resolution.</td></tr>
+    </tbody>
+  </table></div>
+
+  <p><strong>Voice is not one of these.</strong> It is easy to file alongside them &mdash; it is a way in, it has a flow-level <code>voice</code> config slot, and <code>voice-openai</code> sits in the package table as a transport. But it implements no <code>source</code> and no <code>createBindings</code>: <code>@flow-state-dev/voice-openai</code> exports a <code>VoiceProvider</code>, and the engine's own HTTP routes consume it for transcription and TTS. The seam is a provider slot inside the runtime, not an adapter in front of it. An extension author who follows the adapter contract to add a voice backend is at the wrong seam &mdash; and the reverse, modelling a genuine new inbound source on the voice provider, is the more expensive mistake.</p>
+</section>
+
+<section id="hosts">
+  <div class="sec-head"><span class="sec-num">22</span><h2>Hosts and stores</h2></div>
+  <p class="lede">Where the runtime lives, and where its state goes. Both are swappable at the same seam, which is why the same flow runs under <code>fsdev run</code>, a Next.js route, and a BullMQ worker unchanged.</p>
+
+  <h3>Host adapters</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Host</th><th>Model</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>node</code></td><td>Long-lived process</td><td>Serve an FSD server in one call. 731 lines.</td></tr>
+      <tr><td><code>next</code></td><td>Catch-all route</td><td>61 lines across 2 files — nearly all the work is done by <code>createFlowApiRouter</code>.</td></tr>
+      <tr><td><code>vercel</code></td><td>Serverless</td><td>SSE shaping, heartbeats, runtime config. Depends on <code>store-postgres</code>.</td></tr>
+      <tr><td><code>bullmq</code></td><td>Queue + workers</td><td>Durable background jobs, native cron, full-flow worker dispatch. Three topologies: <code>colocated</code>, <code>dispatch-only</code>, <code>worker-only</code>.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>The store registry</h3>
+  <p>Eleven store interfaces, four backings. <code>memory</code> and <code>filesystem</code> ship inside <code>engine</code>; <code>store-sqlite</code> and <code>store-postgres</code> are separate packages implementing the same contracts. A conformance suite in <code>engine/src/stores/testing</code> is what keeps them honest — request, resource, scope and trace conformance plus a state-read gate.</p>
+  <div class="chips">
+    <span class="chip">SessionStore</span><span class="chip">RequestStore</span><span class="chip">UserStore</span><span class="chip">OrgStore</span>
+    <span class="chip">ActiveRequestRegistry</span><span class="chip">ContentStore</span><span class="chip">ResourceStateStore</span>
+    <span class="chip">CheckpointStore</span><span class="chip">TraceStore</span><span class="chip">SuspensionStore</span><span class="chip">LeaseStore</span>
+  </div>
+  <p>Session, request, user and org stores extend a shared <code>DeltaStoreOps</code> — that shared base is what makes delta-verb routing (§10) uniform across every backing rather than re-implemented per adapter.</p>
+</section>
+
+<section id="detached">
+  <div class="sec-head"><span class="sec-num">23</span><h2>Detached work</h2></div>
+  <p class="lede">Work started with <code>ctx.requestHost.startDetached</code> runs in a <strong>workstream</strong> — a child session that keeps going after its originating request has returned. Where it actually runs, and whether it survives a redeploy, is entirely a function of deployment topology.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Topology</th><th>Where the child runs</th><th>Acceptance means</th><th>Survives the process?</th><th><code>dispose()</code> waits?</th></tr></thead>
+    <tbody>
+      <tr><td>no worker, no dispatcher</td><td>this process</td><td>registered here, may still be queued locally</td><td>no</td><td>yes, bounded</td></tr>
+      <tr><td>custom dispatcher with <code>dispatchLocal</code></td><td>this process</td><td>registered here</td><td>no</td><td>yes, bounded</td></tr>
+      <tr><td>custom dispatcher, external</td><td>wherever it routes</td><td>whatever that dispatcher confirms</td><td>its answer, not ours</td><td>no — never tracked</td></tr>
+      <tr><td><code>colocated</code></td><td>a worker, possibly this one</td><td>the job is on the queue</td><td><strong>yes</strong></td><td>claimed job: yes, <em>unbounded</em></td></tr>
+      <tr><td><code>dispatch-only</code></td><td>another container</td><td>the job is on the queue</td><td><strong>yes</strong></td><td>no</td></tr>
+      <tr><td><code>worker-only</code></td><td>this process</td><td>registered here</td><td><strong>no</strong> — the trap</td><td>bounded for children, unbounded for a claimed job</td></tr>
+      <tr><td>no request host</td><td>nowhere</td><td><code>NoRequestHostError</code></td><td>—</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note">
+    <span class="lbl">The one that bites</span>
+    <p><code>worker-only</code> is the natural place to start durable jobs and the one place they silently aren't durable: the mode consumes the queue and dispatches nothing, so <code>startDetached</code> runs the child in the worker process and enqueues nothing. A crash loses the run outright rather than costing a retry. The docs are explicit that running it in-process there is the honest interim answer, not a guarantee — for the queue to own the work, start it from <code>colocated</code> or <code>dispatch-only</code>.</p>
+  </div>
+
+  <p>Two different waits hide behind <code>dispose()</code>, and only one is bounded. The in-process detached-child drain races <code>detachedDrainTimeoutMs</code>; separately, <code>dispose()</code> awaits the worker handle, which for BullMQ is a non-forced <code>Worker.close()</code> that waits for whatever jobs the process has claimed, with no framework budget over it. <strong>Size the platform's kill timeout for the longest job, not for <code>detachedDrainTimeoutMs</code>.</strong></p>
+</section>
+
+<section id="consumers">
+  <div class="sec-head"><span class="sec-num">24</span><h2>Client, React, CLI, DevTool</h2></div>
+  <p class="lede">Four consumer surfaces over one wire. The layering is strict: <code>react</code> holds no transport logic, and <code>cli</code> holds no client at all.</p>
+
+  <h3>client — six sub-clients</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Sub-client</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td>action</td><td><code>executeAction</code> — POST an action, get a request id back.</td></tr>
+      <tr><td>session</td><td>List, read, create, delete sessions; read requests and state snapshots.</td></tr>
+      <tr><td>stream</td><td><code>createSSEClient</code> plus a request-stream store and a callback binder — the resume cursor lives here.</td></tr>
+      <tr><td>resource</td><td>Read resources and content; collection mutation endpoints.</td></tr>
+      <tr><td>recovery</td><td>Re-attach to an in-flight or interrupted request.</td></tr>
+      <tr><td>transcription</td><td>Post audio to the transcription endpoint.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>react — 15 hooks</h3>
+  <div class="chips">
+    <span class="chip">useFlow</span><span class="chip">useAction</span><span class="chip">useSession</span>
+    <span class="chip">useRequestStream</span><span class="chip">useClientData</span>
+    <span class="chip">useResource</span><span class="chip">useResourceContent</span><span class="chip">useResourceManifest</span>
+    <span class="chip">useResourceCollection</span><span class="chip">useResourceCollectionItem</span><span class="chip">useResourceCollectionList</span>
+    <span class="chip">useContainerItems</span>
+    <span class="chip">useSuspensions</span><span class="chip">useSuspensionForm</span><span class="chip">useApproval</span>
+  </div>
+  <p>Plus the renderer layer: <code>ItemRenderer</code> / <code>ItemsRenderer</code> dispatch by item type through a <code>RendererRegistry</code>, with built-in defaults for suspensions — an approval renderer, a free-text question, an enum selection, and a schema-driven form, chosen by <code>render.component</code> hint, then <code>reason</code>, then <code>resumeSchema</code> shape. Register your own under the <code>suspension</code> slot to replace it, or set <code>suspension: false</code> and drive the whole thing off <code>useSuspensions</code> in a modal. A separate block-renderer registry and a voice module (recorder, player, speech recognition, <code>useVoice</code>) round it out.</p>
+
+  <h3>cli — <code>fsdev</code></h3>
+  <div class="tw"><table>
+    <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>run &lt;flowKind&gt; &lt;action&gt;</code></td><td>Execute an action in-process against the real runtime. The default verification path for a flow change.</td></tr>
+      <tr><td><code>chat [flow] [action]</code></td><td>Interactive terminal chat loop with its own render, state and target resolution.</td></tr>
+      <tr><td><code>dev</code></td><td>Dev server with the pre-built DevTool mounted.</td></tr>
+      <tr><td><code>serve</code></td><td>Serve a flow registry over HTTP via the node host.</td></tr>
+      <tr><td><code>block &lt;specifier&gt;</code></td><td>Run a single block in isolation.</td></tr>
+      <tr><td><code>benchmark &lt;file&gt;</code></td><td>Run a benchmark suite.</td></tr>
+      <tr><td><code>list</code> · <code>add</code> · <code>ui</code></td><td>Discovery, scaffolding, and the UI surface.</td></tr>
+    </tbody>
+  </table></div>
+  <p>The CLI is the reason <code>engine</code> has to be usable without a server: it resolves a flow or a block from disk, builds a runtime, and runs it directly. The backing store depends on the command: <code>fsdev run</code> defaults to filesystem stores rooted at <code>.fsdev/data</code>, while <code>chat</code> and <code>dev</code> default to SQLite at <code>.fsdev/data/fsdev.db</code>. Config mode uses whatever stores the application declares. NDJSON traces and stderr logs from <code>fsdev run</code> are the primary debugging surface.</p>
+
+  <h3>devtool and ui</h3>
+  <p><code>@flow-state-dev/devtool</code> is 11.6k lines of pre-built assets served by <code>fsdev dev</code>, built from <code>apps/devtool</code> and consuming only public APIs from <code>client</code> and <code>react</code>. It renders the trace channel, the debug-vs-client state split, and resource load observation. <code>@flow-state-dev/ui</code> is much smaller — a generative component registry (link-card, info-card) for the <code>component</code> item type.</p>
+</section>
+
+<section id="proving">
+  <div class="sec-head"><span class="sec-num">25</span><h2>The proving ground</h2></div>
+  <p class="lede">The repo separates "the units still behave" from "the feature actually works", and gives each its own home. That split is a philosophy tenet made structural.</p>
+
+  <div class="cards">
+    <div class="card"><h5>testing</h5><span class="role">harness package</span><p><code>createTestContext</code>, <code>testBlock</code>, <code>testSequencer</code>, <code>testRouter</code>, <code>testFlow</code>, <code>testItems</code>, <code>runForTest</code>, replaying refs, trace snapshots, transport conformance, eval and benchmark runners.</p></div>
+    <div class="card"><h5>integration-tests</h5><span class="role">tier 1, mocked</span><p>27 end-to-end scenarios: chat tool loops, session resume, cross-process abort delivery, side-chain pool isolation, and ten distinct task-board cases.</p></div>
+    <div class="card"><h5>goals/</h5><span class="role">real path, real model</span><p>29 goal families with <code>goal.md</code> + <code>run.mts</code>, run by hand outside CI. The library exists so a goal written for one PR becomes a regression check a year later.</p></div>
+    <div class="card"><h5>apps/kitchen-sink</h5><span class="role">reference app</span><p>Next.js app hosting every subsystem — where features get tested end to end in a browser. Carries its own e2e suite and skills folder.</p></div>
+    <div class="card"><h5>apps/pattern-benchmark</h5><span class="role">cross-pattern</span><p>Runs six patterns against a fixed task suite and model through the shared benchmark registry.</p></div>
+    <div class="card"><h5>labs/</h5><span class="role">real applications</span><p><code>trading-desk</code> and <code>knowledge-hub</code> — live data, durable state, real domain requirements. The honest pressure test.</p></div>
+    <div class="card"><h5>examples/</h5><span class="role">pedagogical</span><p><code>hello-chat</code>, <code>knowledge-base</code>, and three guide apps: board-lifecycle, custom-pattern, research-team. One concept each.</p></div>
+    <div class="card"><h5>apps/docs</h5><span class="role">129 pages</span><p>Docusaurus site across 21 sections, with its own voice standard and an outsider rule — docs describe what the thing does, never how it was built.</p></div>
+  </div>
+
+  <p><strong>7,655 declared test cases</strong> across 630 files sit inside the packages — 61 of those are <code>it.each</code> blocks that expand to more at runtime, so the executed count is higher. The weight follows the mass: 1,878 in <code>core</code>, 1,803 in <code>engine</code>, 937 in <code>orchestration</code>, 459 in <code>memory</code>. The framework's own verification hierarchy is explicit in <code>AGENTS.md</code>: <code>fsdev run</code> is the default for a flow change, <code>pnpm test</code> for unit-level changes, and the kitchen sink in a browser for UI-layer changes.</p>
+</section>
+
+
+<section id="ledger">
+  <div class="sec-head"><span class="sec-num">26</span><h2>The removal ledger</h2></div>
+  <p class="lede">Two kinds of entry: surface already <strong>marked</strong> <code>@deprecated</code> in the code, and surface <strong>proposed</strong> for removal, reduction, or extraction but not yet marked. The first is a cleanup list. The second is a set of boundary decisions.</p>
+
+  <h3>Already marked — 23 deprecations across 6 packages</h3>
+  <p>Every one names its replacement, so none of these is a research task. Twenty-five of the twenty-seven packages are <code>public</code>; only <code>integration-tests</code> and <code>ui</code> are <code>private</code> today, which means everything below is currently published surface.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Package</th><th class="num">Marks</th><th>What is deprecated</th><th>Replacement</th></tr></thead>
+    <tbody>
+      <tr><td><code>patterns</code></td><td class="num">7</td><td><code>shared/legacy-plan-types.ts</code> — <code>BasePlan</code>, <code>BasePlanTask</code>, the plan/task collection aliases, <code>PlanMeta</code>, <code>PlanTaskUpdate</code></td><td><code>Task</code> / <code>TaskCollection</code> from <code>orchestration</code>; the <code>task-board-meta</code> and <code>task-change</code> component shapes</td></tr>
+      <tr><td><code>core</code></td><td class="num">6</td><td><code>clientData</code> on session/user/org config (×3), the collection-key helper, a <code>ResourceRef</code> alias, a generator tool-type alias</td><td><code>client.derived</code>; <code>resolveCollectionKey</code>; <code>ResourceRef</code>; <code>GeneratorTool</code></td></tr>
+      <tr><td><code>react</code></td><td class="num">4</td><td>The module-singleton <code>FlowContext</code> (×3, flagged unsafe) and a <code>CollectionItem</code> back-compat shape</td><td><code>&lt;FlowProvider&gt;</code> and <code>useFlowContext()</code> inside its tree</td></tr>
+      <tr><td><code>contracts</code></td><td class="num">3</td><td>The removed <code>context</code> item type (×2) and an <code>ItemVisibility</code> alias</td><td>Generator context slots; <code>ItemVisibility</code></td></tr>
+      <tr><td><code>vercel</code></td><td class="num">2</td><td>The heartbeat re-export shim and its config option</td><td>SSE heartbeat injection now lives in <code>engine</code></td></tr>
+      <tr><td><code>memory</code></td><td class="num">1</td><td>The LLM filter strategy</td><td>Superseded when the prepare gate split into per-source pools</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note">
+    <span class="lbl">The pattern in the list</span>
+    <p>Four of the six clusters are <strong>old-and-new side by side</strong> — a superseding change that landed without deleting what it replaced. That is the exact shape tenet 3 names: <em>a change that supersedes a path deletes it in the same change</em>. The <code>patterns</code> cluster is the largest and the clearest: seven aliases pointing at a substrate that has been canonical since the task-board migration.</p>
+  </div>
+
+  <h3>Proposed — the boundary moves</h3>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 424" role="img" aria-label="Disposition map for seven proposed package moves: contracts merging into core (contradicted by evidence), tools splitting into search, sandbox and MCP-client packages, patterns absorbing into orchestration, the utility catalog pruned, chat-sdk replaced by a signals package, thought-fabric extracted to its own repository, and cli renamed to fsdev.">
+        <defs>
+          <marker id="l1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker>
+          <marker id="l1x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--k-router)"/></marker>
+        </defs>
+
+        <text class="t-lbl" x="24" y="20">Today</text>
+        <text class="t-lbl" x="427" y="20" text-anchor="middle">Proposed move</text>
+        <text class="t-lbl" x="600" y="20">Target shape</text>
+        <path class="ln-soft" d="M24,28 L928,28"/>
+
+        <rect class="n-box" x="24" y="44" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="66">contracts</text>
+        <path class="ln-x" d="M258,61 L594,61" marker-end="url(#l1x)"/>
+        <text class="t-xs" x="427" y="55" text-anchor="middle" fill="var(--k-router)">MERGE — EVIDENCE SAYS NO</text>
+        <rect class="n-box" x="600" y="44" width="328" height="34" rx="4" stroke="var(--k-router)"/>
+        <text class="t-s" x="614" y="66">core</text>
+
+        <rect class="n-box" x="24" y="92" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="114">tools</text>
+        <path class="ln-acc" d="M258,109 L594,109" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="103" text-anchor="middle">SPLIT BY CONCERN</text>
+        <rect class="n-box-2" x="600" y="92" width="104" height="34" rx="4"/>
+        <text class="t-xs" x="612" y="113">web tools</text>
+        <rect class="n-box-2" x="712" y="92" width="104" height="34" rx="4"/>
+        <text class="t-xs" x="724" y="113">bash sandboxes</text>
+        <rect class="n-box-2" x="824" y="92" width="104" height="34" rx="4"/>
+        <text class="t-xs" x="836" y="113">mcp client</text>
+
+        <rect class="n-box" x="24" y="140" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="162">patterns</text>
+        <path class="ln-acc" d="M258,157 L594,157" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="151" text-anchor="middle">ABSORB THE USEFUL WRAPPERS</text>
+        <rect class="n-acc" x="600" y="140" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="162">orchestration — board wrappers land here</text>
+
+        <rect class="n-box" x="24" y="188" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="210">core/utility — 11 factories</text>
+        <path class="ln-acc" d="M258,205 L594,205" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="199" text-anchor="middle">PRUNE TO WHAT IS USED</text>
+        <rect class="n-box-2" x="600" y="188" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="210">keyedRouter + what patterns actually consume</text>
+
+        <rect class="n-box" x="24" y="236" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="258">chat-sdk</text>
+        <path class="ln-acc" d="M258,253 L594,253" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="247" text-anchor="middle">GENERALISE</text>
+        <rect class="n-box-2" x="600" y="236" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="258">signals — outside integrations, one abstraction</text>
+
+        <rect class="n-box" x="24" y="284" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="306">@thought-fabric/core</text>
+        <path class="ln-acc" d="M258,301 L594,301" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="295" text-anchor="middle">EXTRACT</text>
+        <rect class="n-grp" x="600" y="284" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="306">its own repository — a consumer, not a layer</text>
+
+        <rect class="n-box" x="24" y="332" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="354">@flow-state-dev/cli</text>
+        <path class="ln-acc" d="M258,349 L594,349" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="343" text-anchor="middle">RENAME</text>
+        <rect class="n-box-2" x="600" y="332" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="354">fsdev — the bin is already called that</text>
+
+        <path class="ln-soft" d="M24,382 L928,382"/>
+        <text class="t-xs" x="24" y="400">NET CHANGE IN PACKAGE COUNT: ABOUT MINUS ONE. THE WIN IS BOUNDARY CLARITY, NOT MASS —</text>
+        <text class="t-xs" x="24" y="414">WHICH IS THE RIGHT TRADE WHEN INCOHERENCE OUTRANKS BLOAT.</text>
+      </svg>
+    </div>
+    <figcaption><b>Six of the seven survive contact with the evidence.</b> The one that does not is the <code>contracts</code> merge — the premise behind it turns out not to hold. Details below.</figcaption>
+  </figure>
+
+  <div class="tw"><table>
+    <thead><tr><th>Move</th><th>What the code says</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>thought-fabric → its own repo</strong></td>
+        <td>Two in-repo consumers, both in <code>apps/kitchen-sink</code> (<code>cognition.ts</code>, <code>bias-check.ts</code>). No framework package imports it. It already lives under a separate npm scope.</td>
+        <td>Clean extraction. It is a consumer of FSD, not a layer of it, and the scope name already says so.</td>
+      </tr>
+      <tr>
+        <td><strong>tools → separate packages</strong></td>
+        <td><code>bash</code> is 4,454 of 7,170 lines (62%) with 5 sandbox adapters. <code>search</code>+<code>fetch</code>+<code>crawl</code> together are 1,725 across 12 providers. <code>mcp</code> is 604.</td>
+        <td>The split lines are already the directory lines. <code>bash</code> alone justifies a package; the MCP <em>client</em> and the MCP <em>server</em> package are opposite ends of one protocol and are worth naming as such.</td>
+      </tr>
+      <tr>
+        <td><strong>patterns → reduce, absorb into orchestration</strong></td>
+        <td><strong>No shipping framework package imports <code>patterns</code></strong> — its consumers are kitchen-sink, pattern-benchmark, trading-desk, and the Tier&nbsp;1 suite. <code>integration-tests</code> is the one that is not a demo: three files import public subpaths (<code>patterns/plan-and-execute</code>, <code>patterns/supervisor</code>, <code>patterns/eventActors</code>), so the Tier&nbsp;1 fixtures and the wake-storm scenario move with any pattern that moves. <code>rlm</code> has zero importers outside its own directory. <code>parallelTasks</code> is <em>not</em> dead: <code>patterns/src/benchmark/adapters.ts</code> materializes it into <code>parallelTasksBenchmarkAdapter</code>, which ships in <code>defaultBenchmarkRegistry</code> under the key <code>parallel-tasks</code>.</td>
+        <td>Strong. Seven of nine patterns are already thin compositions over the board; moving those into <code>orchestration</code> puts them next to the primitive they wrap and removes a package whose only consumers are demos. One caveat: the benchmark registry is an in-package consumer, so any pattern that moves has to take its benchmark adapter with it or the registry loses a row.</td>
+      </tr>
+      <tr>
+        <td><strong>utilities → reduce</strong></td>
+        <td>Of 11 factories: <code>contextReducer</code>, <code>memoryExtractor</code> and <code>intentRouter</code> have <strong>zero consumers anywhere</strong>. <code>keyedRouter</code> has 9 and is load-bearing — <code>core</code>'s own router and workstream core, plus the task board's runner and worker step. <code>decomposer</code> and <code>combiner</code> are consumed only by patterns. The remaining five appear once or twice, in kitchen-sink or labs.</td>
+        <td>Confirmed, with a caveat: <code>keyedRouter</code> is not a utility in the same sense as the rest — it is infrastructure the framework itself runs on, and should probably move rather than be pruned alongside them.</td>
+      </tr>
+      <tr>
+        <td><strong>chat-sdk → a signals package</strong></td>
+        <td><strong>Zero in-repo importers.</strong> The four apparent hits in <code>core</code> and <code>engine</code> are prose in comments describing the one-way dependency, not imports.</td>
+        <td>Nothing in the workspace is holding it in place, so the replacement can be designed on its merits rather than around existing callers.</td>
+      </tr>
+      <tr>
+        <td><strong>contracts → merge back into core</strong></td>
+        <td><strong>The premise does not hold.</strong> Across <code>client</code> and <code>react</code> there are 33 imports of <code>core</code> and <strong>every one is <code>import type</code> or <code>export type</code></strong> — erased at compile, no runtime edge. Their only runtime workspace imports are 3 from <code>contracts</code>.</td>
+        <td>The split is doing exactly its job. See the note below — there is still a real question here, but it is not the one the merge would answer.</td>
+      </tr>
+      <tr>
+        <td><strong>cli → fsdev</strong></td>
+        <td>The package is <code>@flow-state-dev/cli</code>; its bin is already <code>fsdev</code>, and every doc and skill refers to <code>fsdev run</code> / <code>fsdev dev</code>.</td>
+        <td>Purely a package-name change bringing the published name in line with what everything already calls it.</td>
+      </tr>
+    </tbody>
+  </table></div>
+
+  <div class="tension">
+    <h5>The contracts merge, restated as the question it actually is</h5>
+    <p><code>contracts</code> exists so browser code can value-import the item taxonomy without pulling <code>core</code> into the bundle. That boundary is intact and enforced: <code>client</code> and <code>react</code> are type-only on <code>core</code>, and merging the two would create the runtime edge the split was built to prevent.</p>
+    <p>But the split is <strong>2,350 lines across 19 files serving 3 runtime import sites</strong> — one item-store helper, one deep-equal, one items barrel. That is the live question: not "should the boundary exist" but "is the whole of <code>contracts</code> on the right side of it?" A smaller <code>contracts</code> holding only what browsers actually execute, with the rest folded back into <code>core</code> as types, would keep the property and shrink the surface.</p>
+    <span class="ask">Before merging: check what those 3 runtime imports pull transitively. If it is a small closure, the answer is a smaller <code>contracts</code>, not no <code>contracts</code>. If it is most of the package, the split is already right-sized and should be left alone.</span>
+  </div>
+
+  <h3>Making things private is the cheaper half</h3>
+  <p>Twenty-five of twenty-seven packages are published. For anything on the list above that is not ready to delete, <code>private: true</code> costs one line, stops the surface growing new external callers, and is reversible — where a deletion, once published consumers exist, is not. It is the move that buys time without the contract.</p>
+</section>
+
+<section id="lenses">
+  <div class="sec-head"><span class="sec-num">27</span><h2>Refactor lenses</h2></div>
+  <p class="lede">Nine tensions the inventory surfaces. None of these is a bug report — each is a place where the code and the stated grounding pull in slightly different directions, and where a decision would be worth more than another patch.</p>
+  <p>Two of them now have an owner's decision attached and live in <a href="#ledger">&sect;26</a> instead: the superseded paths, and the packages proposed for extraction, splitting, or merge. A tenth sits in <a href="#workforce-layer">&sect;04</a>, because it needs the stack drawn to make sense: <strong>workforce is the one layer specified top-down</strong>, and the question is whether a team is a new primitive or a composition of parts that already work.</p>
+
+  <div class="tension">
+    <h5>1 · The two mega-packages</h5>
+    <p><code>core</code> (34k lines, 160 files) and <code>engine</code> (42k, 167) are 43% of all source. <code>core/src/index.ts</code> is 443 lines of nothing but export statements across a dozen subdirectories — blocks, flow, capability, graph, items, prompt, models, helpers, adapters, schema, tools, utility, resource-template.</p>
+    <p>The precedent for splitting already exists: <code>contracts</code> was carved out of <code>core</code> and re-exported so consumers never noticed. Twelve subpath exports on <code>core</code> suggest the seams are already drawn.</p>
+    <span class="ask">Is <code>core</code> one package with twelve subpaths, or three packages? What did carving out <code>contracts</code> actually buy, and does that argument extend?</span>
+  </div>
+
+  <div class="tension">
+    <h5>2 · Orchestration is two packages sharing an entry point</h5>
+    <p>Its own <code>index.ts</code> header says "Three layers behind one entry point" and then names two — the task substrate and the skills runtime — plus a task-board subpath. The two already have different runtime constraints: <code>./tasks</code> is published browser-safe, while skills reach <code>node:fs</code>, and the lease-renewal seam is deliberately kept off the browser-safe subpath because it needs <code>node:async_hooks</code>.</p>
+    <p>That is a package boundary being enforced by comments and subpath discipline rather than by a package boundary.</p>
+    <span class="ask">Do skills and the task substrate belong together because they compose, or are they together because they arrived together?</span>
+  </div>
+
+  <div class="tension">
+    <h5>3 · Five mechanisms for "pick the next thing"</h5>
+    <p>The <code>router</code> block kind. <code>utility.keyedRouter</code> (record lookup, no model). <code>utility.intentRouter</code> (classifier + router). Task dispatchers — fifo, priority, topological, event, classifier. Skill activation's three tiers — slash match, keyword scan, LLM classifier.</p>
+    <p>Some of these are genuinely different problems (selecting a block vs selecting a task vs selecting a playbook). Others look like the same decision at different altitudes, each with its own vocabulary.</p>
+    <span class="ask">Which of the five are the same shape? Is "classifier" the same concept in a task dispatcher and in skill activation, and if so should it be one implementation?</span>
+  </div>
+
+  <div class="tension">
+    <h5>4 · The architecture overview is measurably stale</h5>
+    <p><code>docs/architecture/overview.md</code> opens its package section with "Six packages with strict dependency boundaries" and lists eight names. There are 27. Its dependency graph shows five nodes. It does not mention orchestration, patterns, memory, tools, workforce, or any host or store adapter.</p>
+    <p>Tenet 1 is explicit that a doc/code mismatch is <em>itself</em> incoherence, and that the move is to resolve it deliberately rather than rank one over the other silently. This one has a clear answer — the code is right — but it has not been made.</p>
+    <span class="ask">Is the overview meant to be a complete map or a 30-second on-ramp? If the latter, say so in it, and point at something that <em>is</em> complete.</span>
+  </div>
+
+  <div class="tension">
+    <h5>5 · Superseded paths that outlived their supersession</h5>
+    <p>23 <code>@deprecated</code> marks across 6 packages, each naming its replacement. Four of the six clusters are old-and-new landing side by side rather than the new path deleting the old one.</p>
+    <p>This one now has a decision attached — take them out, or make the package private where a deletion is not yet safe. The itemised list is <a href="#ledger">&sect;26</a>.</p>
+    <span class="ask">What remains open is the general rule, not the list: a supersession that does not delete is how the next 23 accumulate. Is that a review checklist line, or is it already BP-038 and simply not enforced?</span>
+  </div>
+
+  <div class="tension">
+    <h5>6 · Declared surface that isn't wired through yet</h5>
+    <p>Flow policy lets a board declare a worker's tasks as work belonging outside the claiming request. The docs say plainly that such a worker is "validated, routed, and then still run inline" — the declaration is groundwork. <code>rlm</code> carries a header saying it has no consumers in the repo and asking not to be deleted because a demo is a roadmap item.</p>
+    <p>Both are honest, both are documented, and both are the exact shape tenet 3 warns about — a contract you can't take back, taken on before there is a caller.</p>
+    <span class="ask">Does honest documentation of a not-yet-real capability discharge the cost of carrying it, or defer it? A date or a triggering condition would turn each of these from a standing exception into a decision.</span>
+  </div>
+
+  <div class="tension">
+    <h5>7 · Three tiers for "reusable behaviour", with a fuzzy border</h5>
+    <p>A <strong>utility</strong> is a single block. A <strong>pattern</strong> is a multi-block sequencer. A <strong>capability</strong> is a bundle installed via <code>uses</code>. The stated line between the first two is crisp — but <code>intentRouter</code> and <code>sessionTitleGenerator</code> are sequencers living in the utility tier, which is the pattern tier's definition.</p>
+    <p>Meanwhile anything that carries context or tools can be expressed as a capability instead of either, which means most reusable behaviour has two or three plausible homes.</p>
+    <span class="ask">Is the utility/pattern line about block count or about who composes it? A rule stated as "single block" that two of eleven members break is either the wrong rule or has two exceptions worth naming.</span>
+  </div>
+
+  <div class="tension">
+    <h5>8 · Persistence is an exception list on the item registry</h5>
+    <p>Of the 17 live item types: <code>status</code> is always transient; <code>state_change</code> is transient in prod and persistent in dev; <code>resource_change</code> is transient by default; <code>component</code> is a keyed upsert per <code>(requestId, key)</code>; <code>state_snapshot</code> is stripped from the request log and side-channelled to the checkpoint store; <code>generator_step</code> is persistent but replay-only and never in a <code>GET</code>.</p>
+    <p>That is six distinct persistence behaviours encoded per type, alongside a separate three-category visibility axis that <em>is</em> modelled explicitly.</p>
+    <span class="ask">Visibility got a resolution function and three named categories. Should persistence get the same treatment — a declared axis rather than a column of exceptions?</span>
+  </div>
+
+  <div class="tension">
+    <h5>9 · Three things are called a host</h5>
+    <p><code>RequestHost</code> in <code>core</code> (the detached-work seam, <code>startDetached</code>). <code>InboundTransportHost</code> in <code>engine</code> (what an adapter's <code>createBindings</code> receives). And the host-adapter packages — <code>node</code>, <code>next</code>, <code>vercel</code>, <code>bullmq</code> — which are what a deployment calls its host.</p>
+    <p>They are genuinely three different things, and the detached-work topology matrix has to talk about all three at once to explain a single behaviour, which is why that table is as hard to read as it is.</p>
+    <span class="ask">Worth checking whether the naming collision is causing the explanation cost, or merely accompanying it.</span>
+  </div>
+
+  <h3>Where the leverage probably is</h3>
+  <p>Four of the nine (1, 2, 5, 7) are the same underlying question at different scales: <strong>what is a unit of the framework, and what makes something graduate from one tier to the next?</strong> The philosophy has an answer for whether a thing should exist (tenet 3) and an answer for whether it coheres (tenet 1), but not an explicit answer for where it lives once it does exist. Packages, tiers, and subpaths are all currently doing that job, and they disagree with each other in exactly the places above.</p>
+  <p>The other five are more local: a stale doc with a known correct answer (4), documented-but-unwired surface needing a removal condition (6), an exception list that wants to become an axis (8), a naming collision worth measuring (9), and a routing vocabulary worth unifying or deliberately splitting (3).</p>
+
+  <div class="note">
+    <span class="lbl">One caution on reading this</span>
+    <p>Line counts here measure mass, not health. <code>engine</code> being the largest package is what you would expect from the package that owns execution, persistence, streaming, and transport — its size is evidence about where complexity lives, not evidence that it is misplaced. The tensions above are drawn from stated contracts disagreeing with observed code, not from size.</p>
+  </div>
+</section>
+
+</main>
+</div>
+</body></html>
