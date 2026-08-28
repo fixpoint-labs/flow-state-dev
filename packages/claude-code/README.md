@@ -418,10 +418,16 @@ answering different halves of the same question:
   has to be declared. The default names the root in `filesystem.allowWrite` and
   refuses `allowUnsandboxedCommands`, which is the escape a command can
   otherwise ask for by itself.
+- `disallowedTools` — the run doesn't **leave** the workspace. The SDK's
+  worktree tools relocate a run mid-flight when the model asks, and a
+  projection that hydrated one directory would then be reconciling a tree the
+  run had already left.
 
-Set either option yourself and yours wins — containment is a default, not a
-lock. `contain: false` turns both off, which is what a trusted-workspace
-deployment wants and what nothing else should.
+Set `settingSources` or `sandbox` yourself and yours wins — containment is a
+default, not a lock. `disallowedTools` merges instead, so adding your own
+doesn't silently take the relocation ones away. `contain: false` turns all
+three off, which is what a trusted-workspace deployment wants and what nothing
+else should.
 
 ## Limitations
 

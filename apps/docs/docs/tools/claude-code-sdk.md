@@ -569,5 +569,7 @@ By default the run is confined to the workspace it was given, through two settin
 
 The sandbox settings stop the run **writing** outside the workspace. A working directory is not a fence: absolute paths still resolve from inside it. The default names the root as the only writable path and refuses commands that ask to run unsandboxed.
 
-Set either option yourself and yours wins. `contain: false` turns both off, which is what you want when you control everything in the workspace and nothing else.
+A third setting stops the run **leaving** the workspace. The SDK's worktree tools relocate a run mid-flight when the model asks for it, and a projection that filled one directory would then be reconciling a tree the run had already walked away from. Those tools are taken out of the run's reach.
+
+Set `settingSources` or `sandbox` yourself and yours wins. The disallowed tools merge instead, so adding your own doesn't quietly give the relocation ones back. `contain: false` turns all three off, which is what you want when you control everything in the workspace and nothing else.
 

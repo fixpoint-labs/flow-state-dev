@@ -62,7 +62,7 @@ export interface WorkspaceAgentCapabilityOptions
   /**
    * Confine the run to the workspace it was given. Default `true`.
    *
-   * **This is the canonical explanation; everywhere else links here.** Two
+   * **This is the canonical explanation; everywhere else links here.** Three
    * settings, answering different halves of the same question.
    *
    * `settingSources: []` stops the run reading its CONFIGURATION out of the
@@ -77,9 +77,15 @@ export interface WorkspaceAgentCapabilityOptions
    * `allowUnsandboxedCommands: false` closes the escape a command can ask for
    * by itself.
    *
-   * Setting either option explicitly wins over the default — containment is a
-   * default, not a lock. `contain: false` turns both off, which is what a
-   * trusted-workspace deployment wants and what nothing else should.
+   * And `disallowedTools` takes away the tools that would move the run OUT of
+   * the workspace — see {@link RELOCATION_TOOLS}. A confined directory the run
+   * has already left is not a boundary.
+   *
+   * Setting `settingSources` or `sandbox` explicitly wins over the default —
+   * containment is a default, not a lock. `disallowedTools` merges instead, so
+   * a caller adding their own does not silently take the relocation ones away.
+   * `contain: false` turns all three off, which is what a trusted-workspace
+   * deployment wants and what nothing else should.
    */
   contain?: boolean;
   /** Block name. Default `"workspace-agent"`. */
@@ -170,6 +176,22 @@ function discoverMounts(
   }
   return mounts;
 }
+
+/**
+ * Tools that move a run out of the directory it was given.
+ *
+ * The SDK's worktree machinery relocates a run mid-flight, and only ever
+ * because the MODEL asked for it. A projection that hydrated one directory and
+ * flushes it afterwards would be reconciling a tree the run had already left —
+ * nothing throws, the workspace is simply the wrong one.
+ *
+ * `disallowedTools` is the right lever rather than an allowlist: the SDK
+ * documents it as removing the tools from the model's context entirely, so
+ * they cannot be used "even if they would otherwise be allowed". An allowlist
+ * would mean naming every tool a projected run may use, and silently removing
+ * whatever the list forgot.
+ */
+export const RELOCATION_TOOLS = ["EnterWorktree", "ExitWorktree"] as const;
 
 /** The sandbox settings that confine a run to `root`. See `contain`. */
 export function containmentSandbox(root: string) {
@@ -321,6 +343,12 @@ export function createWorkspaceAgentCapability(
       ? {
           // An explicit setting wins. Containment is a default, not a lock.
           settingSources: agentOptions.settingSources ?? [],
+          // Merged, not replaced: a caller disallowing tools of their own
+          // should not have to remember to re-add these, and re-adding them is
+          // what an override would silently make them responsible for.
+          disallowedTools: [
+            ...new Set([...(agentOptions.disallowedTools ?? []), ...RELOCATION_TOOLS]),
+          ],
           sandbox:
             agentOptions.sandbox ??
             ((_input: { prompt: string }, ctx: WorkspaceContext) =>

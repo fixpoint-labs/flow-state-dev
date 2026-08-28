@@ -14,6 +14,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import {
   createWorkspaceAgentCapability,
   containmentSandbox,
+  RELOCATION_TOOLS,
 } from "../../src/sdk/workspace";
 import { WORKSPACE_OUTCOMES } from "../../src/sdk/workspace-collections";
 import type {
@@ -137,6 +138,45 @@ describe("createWorkspaceAgentCapability", () => {
     });
   });
 
+  it("takes away the tools that would move the run out of its workspace", async () => {
+    // The SDK's worktree tools relocate a run mid-flight, and only because the
+    // model asked. A projection that hydrated one directory and flushes it
+    // afterwards would be reconciling a tree the run had already left.
+    const base = scratch();
+    const spy = vi.fn();
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: scriptedQuery(spy),
+      root: () => base,
+    });
+
+    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+
+    expect(spy.mock.calls[0][0].options?.disallowedTools).toEqual(
+      expect.arrayContaining([...RELOCATION_TOOLS]),
+    );
+
+    discard(base);
+  });
+
+  it("keeps a caller's own disallowed tools alongside the relocation ones", async () => {
+    // Merged, not replaced. An override here would silently make the caller
+    // responsible for re-adding a boundary they did not know they had.
+    const base = scratch();
+    const spy = vi.fn();
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: scriptedQuery(spy),
+      root: () => base,
+      disallowedTools: ["WebFetch"],
+    });
+
+    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+
+    const disallowed = spy.mock.calls[0][0].options?.disallowedTools ?? [];
+    expect(disallowed).toEqual(expect.arrayContaining(["WebFetch", ...RELOCATION_TOOLS]));
+
+    discard(base);
+  });
+
   it("lets a caller's own setting win over the containment default", async () => {
     // Containment is a default, not a lock: a deployment that trusts its
     // workspace has to be able to say so without giving up the projection.
@@ -171,6 +211,7 @@ describe("createWorkspaceAgentCapability", () => {
     const options = spy.mock.calls[0][0].options ?? {};
     expect("settingSources" in options).toBe(false);
     expect("sandbox" in options).toBe(false);
+    expect(options.disallowedTools ?? []).not.toContain(RELOCATION_TOOLS[0]);
     // The directory is still projected — containment and projection are
     // separate decisions.
     expect(options.cwd).toBe(base);
