@@ -273,11 +273,9 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
   const base = implementPhase({ prExists: () => true });
 
   // **The spy wraps whatever builder is in effect, not always the base one.**
-  // These two options arrived on separate branches and met here: as spreads,
-  // whichever came last won, so a test setting both got `onPrompt` reporting on
-  // `base.buildPrompt` while its own `buildPrompt` was silently discarded — a
-  // spy that observes something other than what runs. Composed instead, because
-  // one REPLACES the builder and the other OBSERVES it, and those compose.
+  // One option REPLACES the builder and the other OBSERVES it, so they compose;
+  // applied as competing spreads, whichever came last won and a test setting
+  // both got a spy reporting on a builder that was not the one running.
   const builder = options.buildPrompt ?? base.buildPrompt;
   const phase: PhaseSpec = {
     ...base,

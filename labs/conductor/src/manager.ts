@@ -937,10 +937,13 @@ export function harnessManager(options: ManagerOptions) {
       // THIS attempt parks — and answering it re-queues the run while this
       // attempt's real question is still open.
       //
-      // A question from an attempt that is over is moot, which is what arms 1
-      // and 3 already say; the gap is only that a crash skips them. After this
-      // there is at most ONE `open` row per issue-phase, which is what both the
-      // proceed guard and recovery's nothing-open condition already assumed.
+      // A question from an attempt that is over is moot, which is what arm 3
+      // already says; the gap is only that a crash skips it. Arm 1 is NOT a
+      // second witness to that — it parks, and parking is the one outcome that
+      // deliberately leaves the question open, because the attempt is not over.
+      // After this there is at most ONE `open` row per issue-phase, which is
+      // what both the proceed guard and recovery's nothing-open condition
+      // already assumed.
       //
       // After the fenced open, not before: a superseded attempt stops there and
       // must not reach in and withdraw its replacement's question.
