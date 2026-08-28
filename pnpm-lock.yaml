@@ -609,6 +609,9 @@ importers:
 
   labs/conductor:
     dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.3.234
+        version: 0.3.234(@anthropic-ai/sdk@0.117.1(zod@3.25.76))(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))(zod@3.25.76)
       '@flow-state-dev/claude-code':
         specifier: workspace:*
         version: link:../../packages/claude-code
