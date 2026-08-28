@@ -51,8 +51,15 @@ import type {
   Place,
   Projection,
 } from "@flow-state-dev/workspace";
-import { createSandboxPlace, KEEP_MARKER } from "./sandbox-place";
-import { warnUnsettled } from "./report";
+import { createHash } from "node:crypto";
+import { KEEP_MARKER } from "./sandbox-place";
+import {
+  TMP_DIR,
+  createBashProjection,
+  createMountedProjection,
+  flushWithDiagnostics,
+  seedWorkspaceMarkers,
+} from "./projection-setup";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { quote as shellQuote } from "shell-quote";
@@ -200,11 +207,10 @@ interface ScopeIdentity {
 }
 
 /** Reserved workspace subdirectory for agent scratch space. Never persisted. */
-const TMP_DIR = "tmp";
 
 /** Per-session host dir backing the container's `/workspace`, mirroring `local`'s layout. */
 function defaultMoatWorkspace(sessionId: string): string {
-  return path.join(process.cwd(), ".fsdev", "workspaces", "session", sessionId);
+  return path.join(process.cwd(), ".fsdev", "workspaces", "session", safeSegment(sessionId));
 }
 
 /**
@@ -232,6 +238,40 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
  * For the `local` provider, also resolves the `cwd` when not explicitly set:
  * `.fsdev/workspaces/{scope}/{scopeId}/`
  */
+/**
+ * A scope id as a directory name it is safe to join onto a root.
+ *
+ * Scope ids reach here from caller-controllable input: the action route takes
+ * `requestId` and `sessionId` straight off the request body, validating only
+ * that they are strings. `scopeId` then becomes a path segment under
+ * `.fsdev/workspaces/`, so `../../` in one puts a run's workspace outside the
+ * workspaces root entirely — and `userId`/`orgId`, which DO come from a
+ * verified principal, fall back to the session id when absent (BP-031).
+ *
+ * Ordinary ids — `req_x1y2`, `sess_abc` — are already in the safe set and pass
+ * through unchanged, so this renames no existing directory. Anything else is
+ * rewritten AND given a digest of the original, because two hostile ids that
+ * differ only in unsafe characters must not collapse onto one workspace.
+ */
+function safeSegment(id: string): string {
+  const safe = id.replace(/[^A-Za-z0-9_-]/g, "-");
+  if (safe === id && safe.length > 0) return safe;
+  const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
+  return `${safe.slice(0, 40) || "id"}-${digest}`;
+}
+
+/**
+ * The workspace directory a scope resolves to. Exported for the test that
+ * pins containment of caller-supplied ids; the resolution itself is internal.
+ */
+export function resolveWorkspaceCwdForTest(
+  scope: WorkspaceScope,
+  identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
+): string {
+  const { scopeId } = resolveScopeKey(scope, identity as ScopeIdentity);
+  return path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
+}
+
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
   switch (scope) {
     case "run": {
@@ -239,19 +279,19 @@ function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key:
       // the scope where two agents working at once cannot see each other's
       // half-finished files, and where the workspace goes away with the
       // request that made it.
-      return { key: `run:${identity.requestId}`, scopeId: identity.requestId };
+      return { key: `run:${identity.requestId}`, scopeId: safeSegment(identity.requestId) };
     }
     case "user": {
       const id = identity.userId ?? identity.sessionId;
-      return { key: `user:${id}`, scopeId: id };
+      return { key: `user:${id}`, scopeId: safeSegment(id) };
     }
     case "org": {
       const id = identity.orgId ?? identity.sessionId;
-      return { key: `org:${id}`, scopeId: id };
+      return { key: `org:${id}`, scopeId: safeSegment(id) };
     }
     case "session":
     default:
-      return { key: `session:${identity.sessionId}`, scopeId: identity.sessionId };
+      return { key: `session:${identity.sessionId}`, scopeId: safeSegment(identity.sessionId) };
   }
 }
 
@@ -380,25 +420,7 @@ async function createScopedSandbox(
   return sandbox;
 }
 
-/**
- * Strip a mount's pattern prefix from a resource ref's full storage key.
- * `ref.path` is `"artifacts/foo.md"`; stripping `"artifacts"` gives `"foo.md"`.
- */
-function stripMountPrefix(name: string, prefix: string): string {
-  if (prefix && name.startsWith(prefix + "/")) {
-    return name.slice(prefix.length + 1);
-  }
-  return name;
-}
 
-/** Match a sandbox-relative path to a mount via prefix. Mounts are pre-sorted longest-first. */
-function findMount(relativePath: string, mounts: Mount[]): Mount | undefined {
-  for (const mount of mounts) {
-    if (relativePath === mount.prefix) return mount;
-    if (relativePath.startsWith(mount.prefix + "/")) return mount;
-  }
-  return undefined;
-}
 
 function isUnderTmp(relativePath: string): boolean {
   return relativePath === TMP_DIR || relativePath.startsWith(TMP_DIR + "/");
@@ -429,41 +451,6 @@ function providerNeedsSetup(provider: SandboxProvider): boolean {
 // Hydrate / flush
 // ---------------------------------------------------------------------------
 
-/**
- * Build the projection for a set of mounts over a sandbox.
- *
- * The prefixes the projection routes by are the same ones `discoverMounts`
- * resolved, so a nested collection still wins over its parent — the ordering
- * moves into `routePath`, which sorts longest-first on its own.
- */
-function createSandboxProjection(
-  sandbox: Sandbox,
-  destination: string,
-  mounts: Mount[],
-  createState: (relativePath: string) => Partial<JsonObject>,
-): Projection {
-  return createMountedProjection(createSandboxPlace(sandbox, destination), mounts, createState);
-}
-
-/** The same projection over any place — the bind-mount path supplies its own. */
-function createMountedProjection(
-  place: Place,
-  mounts: Mount[],
-  createState: (relativePath: string) => Partial<JsonObject>,
-): Projection {
-  return createProjection({
-    place,
-    mounts: mounts.map((m) => ({
-      prefix: m.prefix,
-      collection: m.collection as unknown as ProjectionMount["collection"],
-      writable: m.writable,
-      // `createState` has always been handed the workspace-relative path, not
-      // the collection key — the bash capability's default reads a title off
-      // its basename. Rebuild it from the prefix rather than passing the key.
-      entryState: (key: string) => createState(path.posix.join(m.prefix, key)),
-    })),
-  });
-}
 
 /**
  * Hydrate: seed the scratch and mount directories, then lay every mount's
@@ -474,66 +461,15 @@ function createMountedProjection(
  * filters them back out of its listing, so they never reach a collection.
  */
 async function hydrate(entry: SandboxEntry, destination: string): Promise<void> {
-  await entry.sandbox.writeFile(path.join(destination, TMP_DIR, KEEP_MARKER), "");
-  for (const mount of entry.mounts) {
-    await entry.sandbox.writeFile(path.join(destination, mount.prefix, KEEP_MARKER), "");
-  }
+  await seedWorkspaceMarkers(entry.sandbox, destination, entry.mounts);
   await entry.projection.hydrate();
 }
 
-/**
- * Flush: reconcile the sandbox back into its collections and report what the
- * projection decided.
- *
- * The decisions themselves belong to the projection. What stays here is the
- * translation into things a developer watching the server log can act on:
- * which files went nowhere, which were contested, and the case where a walk
- * succeeded but saw nothing.
- */
+/** Flush this entry's workspace back into its collections. */
 async function flush(entry: SandboxEntry): Promise<void> {
-  let report: FlushReport;
-  try {
-    report = await entry.projection.flush();
-  } catch (err) {
-    // The walk failed. The projection refused to decide anything rather than
-    // reading an unreadable workspace as an empty one, which is the whole
-    // point of it throwing — a flush that no-ops is recoverable, one that
-    // deletes is not.
-    console.warn(`[bash] flush skipped — workspace walk failed: ${(err as Error).message}`);
-    return;
-  }
-
-  reportOutcomes(entry, report.outcomes);
+  await flushWithDiagnostics(entry.projection, entry.mounts, entry.sandbox.hostMountSource);
 }
 
-/**
- * Turn a flush report into the console diagnostics this tool has always
- * emitted, plus the one it could not: a contested path.
- */
-function reportOutcomes(entry: SandboxEntry, outcomes: readonly FlushOutcome[]): void {
-  warnUnsettled(outcomes, TMP_DIR);
-
-  // A successful flush that reached zero files under writable mounts usually
-  // means the agent's writes landed somewhere the walk never visited. Without
-  // this there is no warn and no exception — just an artifact that never
-  // appears.
-  const writable = entry.mounts.filter((m) => m.writable);
-  // `outcomes.length > 0` carries weight: `every` is vacuously true on an
-  // empty list, so without it this fires on every command in a session whose
-  // agent has not written anything yet — the scratch marker used to keep the
-  // walk non-empty, and the projection filters it out. A warning that cries
-  // on the ordinary case is a warning nobody reads on the real one.
-  if (writable.length > 0 && outcomes.length > 0 && outcomes.every((o) => o.kind === "orphan")) {
-    const source = entry.sandbox.hostMountSource
-      ? ` (host walk under ${entry.sandbox.hostMountSource})`
-      : "";
-    console.warn(
-      `[bash] flush walk found 0 files under writable mounts (${writable
-        .map((m) => m.prefix)
-        .join(", ")})${source}. If the agent just wrote a file, check that it landed under one of these prefixes.`,
-    );
-  }
-}
 
 /**
  * Commit one file the write-file tool just wrote.
@@ -615,7 +551,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           sandbox,
           hydrated: false,
           mounts,
-          projection: createSandboxProjection(sandbox, destination, mounts, createState),
+          projection: createBashProjection(sandbox, destination, mounts, createState),
         };
         registry.set(registryKey, created);
         return created;
