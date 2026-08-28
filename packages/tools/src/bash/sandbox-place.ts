@@ -79,13 +79,16 @@ function isScratch(relativePath: string): boolean {
 }
 
 /**
- * Walk the mount prefixes through the sandbox's exec channel.
+ * Walk the mount prefixes through the sandbox's exec channel, plus the files
+ * sitting directly in the workspace root.
  *
- * The prefixes and nothing else: this lists what the run OWNED. A file written
- * beside the mounts is not the projection's to reason about, and enumerating a
- * root the caller may have handed us through `cwd` after every command is not
- * a cost a flush should take. Such a file stays in the workspace and goes when
- * the workspace does.
+ * The root scan is what makes an orphan reachable. A command that writes
+ * `out.txt` beside the mounts lands outside every prefix, and a walk that
+ * only visits the prefixes never sees it — so the file is silently dropped
+ * when the sandbox is released, rather than reported. It is depth-limited on
+ * purpose: the root can be a directory the caller handed us through `cwd`,
+ * and enumerating all of it on every command is not a cost a flush should
+ * take. A stray file in an unmounted SUBdirectory is still not reported.
  *
  * Absolute paths anchored at `destination`, because the sandbox's default
  * shell cwd is not guaranteed to match the workspace root — Vercel Sandbox
@@ -98,11 +101,13 @@ async function walkViaExec(
   destination: string,
   prefixes: readonly string[],
 ): Promise<string[]> {
+  const root = await execFind(sandbox, [destination], "-maxdepth 1 -type f");
   const walkPaths = prefixes.map((p) => path.posix.join(destination, p));
-  if (walkPaths.length === 0) return [];
-  const mounted = await execFind(sandbox, walkPaths, "-type f");
+  const mounted = walkPaths.length === 0 ? [] : await execFind(sandbox, walkPaths, "-type f");
   const prefix = destination.endsWith("/") ? destination : `${destination}/`;
-  return mounted.map((p) => (p.startsWith(prefix) ? p.slice(prefix.length) : p));
+  return [...root, ...mounted].map((p) =>
+    p.startsWith(prefix) ? p.slice(prefix.length) : p,
+  );
 }
 
 /**
@@ -130,7 +135,8 @@ async function execFind(
 
 /**
  * Walk the mount prefixes directly on the host filesystem the sandbox is
- * bind-mounted from. Same files the container sees, without the IPC.
+ * bind-mounted from, plus the workspace root at depth 1. Same files the
+ * container sees, without the IPC.
  *
  * A missing prefix directory is a mount whose collection is empty — genuinely
  * nothing to sync. Every other error is a broken walk.
@@ -140,6 +146,11 @@ async function walkViaHostFs(
   prefixes: readonly string[],
 ): Promise<string[]> {
   const out: string[] = [];
+  // Not tolerated: if the root itself is gone the place is broken, and a
+  // flush must hear about it instead of concluding the run deleted everything.
+  for (const dirent of await readdirOrThrow(hostMountSource, false)) {
+    if (dirent.isFile()) out.push(dirent.name);
+  }
   for (const prefix of prefixes) {
     const root = path.join(hostMountSource, prefix);
     for (const dirent of await readdirMount(root)) {
@@ -151,6 +162,15 @@ async function walkViaHostFs(
     }
   }
   return out;
+}
+
+/** `readdir`, with any failure reported as a broken walk. */
+async function readdirOrThrow(dir: string, recursive: boolean): Promise<Dirent[]> {
+  try {
+    return await fs.readdir(dir, { recursive, withFileTypes: true });
+  } catch (err) {
+    throw new Error(`[bash] workspace walk failed under ${dir}`, { cause: err });
+  }
 }
 
 /** The same, with a missing mount directory read as an empty collection. */
