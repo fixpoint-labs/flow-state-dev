@@ -1947,7 +1947,7 @@ describe("a phase spelled differently is the same phase", () => {
   }, 20_000);
 });
 
-describe("the phase's own precondition is refused at the same door", () => {
+describe("the phase's own precondition is refused before the first claim", () => {
   it("refuses a source repo the completion probe could not read a remote from", async () => {
     // The implement phase's probe runs `git remote get-url origin` AFTER the
     // paid agent run. A repository whose GitHub remote is called `upstream` is
@@ -1968,13 +1968,12 @@ describe("the phase's own precondition is refused at the same door", () => {
       { cwd: noOrigin, stdio: "pipe" },
     );
 
-    expect(() =>
-      conductorFlow({
-        epic: "remote-epic",
-        workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
-        phase: implementPhase(),
-      }),
-    ).toThrow(/has no "origin" remote/);
+    const built = conductorFlow({
+      epic: "remote-epic",
+      workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
+      phase: implementPhase(),
+    });
+    expect(() => built.preparePhase()).toThrow(/has no "origin" remote/);
 
     // **And the guard is scoped to the probe that needs it.** A caller who
     // supplies `prExists` has replaced the thing that reads `origin`, so
@@ -1984,7 +1983,7 @@ describe("the phase's own precondition is refused at the same door", () => {
         epic: "remote-epic",
         workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
         phase: implementPhase({ prExists: () => true }),
-      }),
+      }).preparePhase(),
     ).not.toThrow();
   });
 
@@ -2007,7 +2006,7 @@ describe("the phase's own precondition is refused at the same door", () => {
         epic: "remote-epic",
         workspace: { root: "/tmp/remote-epic", sourceRepo: localRemote, baseRef: "main" },
         phase: implementPhase(),
-      }),
+      }).preparePhase(),
     ).toThrow(/does not name a host and repository/);
   });
 
@@ -2031,7 +2030,7 @@ describe("the phase's own precondition is refused at the same door", () => {
     const mutable = { root, sourceRepo: repo, baseRef: "main" };
 
     let retained: { root: string; sourceRepo: string; baseRef: string } | undefined;
-    conductorFlow({
+    const built = conductorFlow({
       epic: "snapshot-epic",
       workspace: mutable,
       phase: {
@@ -2044,6 +2043,8 @@ describe("the phase's own precondition is refused at the same door", () => {
         },
       },
     });
+    expect(retained, "validate must not run at construction").toBeUndefined();
+    built.preparePhase();
     expect(retained, "validate was never called").toBeDefined();
 
     // The host mutates its own object afterwards.
@@ -2125,7 +2126,7 @@ describe("the phase's own precondition is refused at the same door", () => {
           epic: "gh-epic",
           workspace: { root: "/tmp/gh-epic", sourceRepo: repo, baseRef: "main" },
           phase: implementPhase(),
-        }),
+        }).preparePhase(),
       ).toThrow(/`gh` CLI could not be run/);
     } finally {
       process.env["PATH"] = realPath;

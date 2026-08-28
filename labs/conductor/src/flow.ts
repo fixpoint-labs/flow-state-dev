@@ -476,9 +476,12 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // through `sameSegment` so nothing depends on this call folding anything.
   assertSafeSegment("phase", phase.phase);
 
-  // The phase's own preconditions, at the same door and for the same reason —
-  // see `PhaseSpec.validate`. Last, because a phase's requirements are stated in
-  // terms of a repository the checks above have already established is real.
+  // The phase's own preconditions run before the first *claim*, not here.
+  // `status` and a talk turn that does not start work never claim, and a
+  // missing `origin` / `gh` is only fatal for the implement probe. Refusing
+  // the whole flow at construction made those doors a dead stop. Last, because
+  // a phase's requirements are stated in terms of a repository the checks
+  // above have already established is real.
   if (tenant === "") {
     throw new Error(
       "[conductor] tenant is an empty string. Omit it for an untenanted conductor, or " +
@@ -487,45 +490,34 @@ export function conductorFlow(options: ConductorFlowOptions) {
     );
   }
 
-  // **Above `validate`, and no longer for safety.** Under the previous design
-  // this ordering was load-bearing and got it wrong: `validate` stored what it
-  // found, so a construction that then failed here left the pin behind and the
-  // corrected retry was refused as already pinned. `validate` retains nothing
-  // now, so either order is correct — which is what makes the cheap check
-  // going first a plain economy rather than a fix. The implement phase's
-  // `validate` spawns `git` and `gh`; comparing a string to `""` does not.
+  // **Lazy, and memoized on THIS conductor.** `validate` used to run here, which
+  // made `status` and talk refuse a checkout the implement probe cannot query.
+  // Seed, wake, and a draining answer call `preparePhase` before they claim, so
+  // a missing `origin` still cannot charge a retry. The value is captured the
+  // first time it succeeds; a phase that stored it on itself would hand it to
+  // the next conductor.
   //
-  // **Captured, not left in the phase.** What `validate` learns belongs to THIS
-  // conductor; a phase that stored it on itself would hand it to the next one.
-  const validated = phase.validate?.(workspace);
-
-  // The phase the manager actually runs: this conductor's `validated` bound
-  // into every run context, by a closure that belongs to this construction and
-  // nothing else. Two conductors from one `PhaseSpec` get two wrappers, so
-  // neither can reach the other's value — which is the property the phase
-  // could not give itself, since the snapshot above copies function references
-  // and not what they close over.
-  //
-  // Gated on the VALUE rather than on `validate` being defined, and the two are
-  // equivalent: binding `undefined` produces a run context whose `validated` is
-  // `undefined`, which is what an unwrapped phase already receives. A phase
-  // cannot distinguish "not bound" from "bound as undefined", so the wrapper
-  // would be a no-op — and this way a `validate` that only refuses, returning
-  // nothing, costs no allocation per run.
   // **Both hooks, because the type promises both.** `validated` lives on
   // `PhaseRunContext`, which `PromptRunContext` extends — so a phase's prompt
   // builder is told it receives the value. Binding it into `isDone` alone made
-  // the type a lie for the other half: a custom phase whose prompt depends on
-  // what `validate` found would read `undefined` and build the wrong prompt,
-  // silently, after a construction that succeeded. The manager builds the two
-  // contexts separately, so one wrapper cannot cover both.
+  // the type a lie for the other half.
+  let prepared: { value: unknown } | undefined;
+  const preparePhase = (): unknown => {
+    if (prepared === undefined) {
+      prepared = { value: phase.validate?.(workspace) };
+    }
+    return prepared.value;
+  };
+
   const runPhase: PhaseSpec =
-    validated === undefined
+    phase.validate === undefined
       ? phase
       : Object.freeze({
           ...phase,
-          isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
-          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
+          isDone: (run: PhaseRunContext) =>
+            phase.isDone({ ...run, validated: preparePhase() }),
+          buildPrompt: (run: PromptRunContext) =>
+            phase.buildPrompt({ ...run, validated: preparePhase() }),
         });
 
   // **An empty tenant is a mistake, and refusing it is not the same as
@@ -893,6 +885,27 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     },
   });
 
+  /**
+   * Run the phase's workspace checks before a claim. Memoized on this
+   * conductor. `status` and a talk turn that does not start work skip it.
+   */
+  const phaseReady = handler({
+    name: "conductor-phase-ready",
+    inputSchema: z.unknown(),
+    outputSchema: z.void(),
+    execute: () => {
+      preparePhase();
+    },
+  });
+
+  const drainWhenReady = sequencer({
+    name: "conductor-drain",
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+  })
+    .tap(phaseReady)
+    .step(board.drain);
+
   const readStatus = handler({
     name: "conductor-status",
     inputSchema: z.object({ issue: z.string().optional() }),
@@ -1078,11 +1091,12 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     outputSchema: z.object({ taskId: z.string() }),
     stateSchema: z.object({ taskId: z.string().nullable().default(null) }),
   })
+    .tap(phaseReady)
     .tap((input: { issue: string; phase?: string }) => ({
       issue: input.issue,
       phase: input.phase ?? phase.phase,
     }), seedTask)
-    .step(board.drain)
+    .step(drainWhenReady)
     .step(returnTaskId);
 
   const wakeBoardTool = sequencer({
@@ -1091,7 +1105,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
       "Claim pending or failed rows and start or retry their workers. Do not call this just to read the board.",
     inputSchema: z.object({}),
     outputSchema: z.unknown(),
-  }).step(board.drain);
+  }).step(drainWhenReady);
 
   const answerQuestionTool = sequencer({
     name: "answer_question",
@@ -1101,7 +1115,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     outputSchema: answerOutputSchema,
   })
     .step(answerQuestionStep)
-    .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain);
+    .tapIf((outcome: AnswerOutput) => outcome.drained, drainWhenReady);
 
   const coordinator = generator({
     name: "conductor-coordinator",
@@ -1146,11 +1160,12 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // that ran after it would be reporting an injection rather than
           // preventing one.
           .tap(tenantGate)
+          .tap(phaseReady)
           .tap(seedTask)
           // The drain claims the row and hands it to a workstream, then returns
           // with the row still open. The seeding request does not wait for the
           // run — which is the point.
-          .step(board.drain)
+          .step(drainWhenReady)
           // **The action answers with the task id, not the drain's output.**
           // `.tap()` discards what `seedTask` returned and the drain replaces the
           // chain value, so without this the caller got `undefined` — and a
@@ -1183,7 +1198,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           outputSchema: z.unknown(),
         })
           .tap(tenantGate)
-          .step(board.drain),
+          .step(drainWhenReady),
       },
       /** The read surface. Zero-model, server-side, board row first. */
       status: { block: readStatus },
@@ -1206,7 +1221,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // Only when the decision actually authorized it. A drain is NOT a
           // no-op — on a `pending` row it claims and dispatches — so a
           // declined answer must not run one.
-          .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain),
+          .tapIf((outcome: AnswerOutput) => outcome.drained, drainWhenReady),
       },
       /**
        * Talk to the coordinator. Slash verbs still run the work directly;
@@ -1255,6 +1270,12 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     collectionId,
     runs: runRecordCollection,
     drainBudgetMs,
+    /**
+     * Run the phase's workspace checks against the snapshotted config.
+     * `seed`, `wake`, and a draining `answer` call this before they claim.
+     * `status` and a talk turn that does not start work do not.
+     */
+    preparePhase,
   };
 }
 

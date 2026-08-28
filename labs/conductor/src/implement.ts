@@ -371,7 +371,7 @@ async function completingPrViaGh(
 /**
  * Refuse a configuration the completion probe cannot run under.
  *
- * **The probe's unstated preconditions, moved to startup.** `prExistsViaGh`
+ * **The probe's unstated preconditions, moved to the first claim.** `prExistsViaGh`
  * needs two things the rest of the conductor never touches: an `origin` remote
  * it can name a repository from, and a runnable `gh`. Neither is checked
  * anywhere else, and both fail AFTER the paid agent run — the rescue re-pends

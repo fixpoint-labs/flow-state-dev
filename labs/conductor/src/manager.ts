@@ -186,12 +186,13 @@ export interface PhaseSpec {
    * claimed. Throws to refuse; absent means the phase needs nothing.
    *
    * **A phase's own preconditions are configuration, and configuration is
-   * refused at startup.** The other guards at that door — the repository, the
-   * base ref, the numbers — protect a *task* from paying for a shell typo: the
-   * row is claimed, the attempt is charged, and the failure is permanent, so
-   * every retry spends itself on it. A precondition belonging to the phase has
-   * exactly that shape and could not use that door, because only the phase knows
-   * what it needs and only the flow holds the workspace.
+   * refused before the first claim.** The other guards at that door — the
+   * repository, the base ref, the numbers — protect a *task* from paying for a
+   * shell typo: the row is claimed, the attempt is charged, and the failure is
+   * permanent, so every retry spends itself on it. A precondition belonging to
+   * the phase has exactly that shape. It is not refused at `conductorFlow`
+   * construction: `status` and a talk turn that does not start work never
+   * claim, and they must still open.
    *
    * The implement phase's completion probe reads the source repository's
    * `origin`; a checkout whose GitHub remote is called something else fails it
