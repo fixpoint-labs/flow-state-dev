@@ -37,6 +37,7 @@ import type {
 import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { unscopedCollectionId } from "@flow-state-dev/workspace";
 import {
+  TMP_DIR,
   createBashProjection,
   flushWithDiagnostics,
   seedWorkspaceMarkers,
@@ -100,6 +101,17 @@ export async function createBashTool(
     if (!prefix) {
       console.warn(
         `[bash] collection "${name}" has pattern "${collection.pattern}", which gives no directory to mount it at — skipped.`,
+      );
+      continue;
+    }
+    if (prefix === TMP_DIR) {
+      // Not a mount that fails to sync — a mount that DELETES. `tmp/` is the
+      // run's scratch, so the place filters everything under it out of the
+      // listing; hydrate would lay the entries down and baseline them, the
+      // walk would report none of them, and the first flush would remove
+      // every one as locally deleted. `createBashBlocks` already excludes it.
+      console.warn(
+        `[bash] collection "${name}" mounts at "${TMP_DIR}/", which is the run's scratch prefix and never syncs — skipped. Give it a different pattern.`,
       );
       continue;
     }

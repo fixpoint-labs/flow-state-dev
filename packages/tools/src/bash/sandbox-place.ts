@@ -24,7 +24,7 @@ import type { Sandbox } from "./types";
  * Marker file seeded under every mount prefix so the directory exists for the
  * walk even when its collection is empty. Never a projected file.
  */
-export const KEEP_MARKER = ".keep";
+export const KEEP_MARKER = ".fsdev-keep";
 
 /** The scratch directory a run may write to without it reaching a collection. */
 export const TMP_DIR = "tmp";
@@ -75,10 +75,13 @@ export function createSandboxPlace(sandbox: Sandbox, destination: string): Place
       const paths = sandbox.hostMountSource
         ? await walkViaHostFs(sandbox.hostMountSource, prefixes)
         : await walkViaExec(sandbox, destination, prefixes);
-      // Only the markers this workspace seeded are dropped, by exact path. A
-      // basename filter would also drop a `.keep` a mounted collection
-      // legitimately holds — hydrate writes it and baselines it, so a listing
-      // that omits it reads as a deletion and the flush removes the entry.
+      // The marker is dropped from the listing, and its NAME is why that is
+      // safe to do. `.keep` is a file people put in repositories, so a
+      // collection may hold one at `<prefix>/.keep` — the exact path this
+      // seeds — and no filter can then tell the marker from the file. Whether
+      // it matched by basename or by path, hydrate had written and baselined
+      // the collection's copy, the listing omitted it, and the flush deleted
+      // the entry. `.fsdev-keep` is reserved, so the collision cannot arise.
       const seeded = new Set(
         [TMP_DIR, ...prefixes].map((p) => path.posix.join(p, KEEP_MARKER)),
       );

@@ -298,13 +298,49 @@ describe("createBashTool", () => {
       provider: { type: "custom", sandbox: customSandbox },
     });
 
-    expect(customSandbox.files.has("/workspace/files/.keep")).toBe(true);
-    expect(customSandbox.files.has("/workspace/tmp/.keep")).toBe(true);
+    expect(customSandbox.files.has("/workspace/files/.fsdev-keep")).toBe(true);
+    expect(customSandbox.files.has("/workspace/tmp/.fsdev-keep")).toBe(true);
 
     const bashTool = tools.bash as {
       execute: (a: { command: string }) => Promise<CommandResult>;
     };
     await expect(bashTool.execute({ command: "echo hi" })).resolves.toBeDefined();
+  });
+
+  it("refuses to mount a collection at the reserved scratch prefix", async () => {
+    // `tmp/` is the run's scratch: the place filters every path under it out
+    // of the listing so nothing there reaches a collection. Mounting a
+    // collection there is therefore not a working mount but a deletion —
+    // hydrate lays the entries down and baselines them, the walk reports none
+    // of them, and the first flush removes every one as locally deleted.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const collection = {
+        ...createMockCollection([
+          {
+            name: "notes.md",
+            state: { path: "notes.md", hash: "", updatedAt: "2026-01-01" },
+            content: "keep me",
+          },
+        ]),
+        pattern: "tmp/**",
+      } as ResourceCollectionRef<FileEntryState>;
+      const customSandbox = createMockSandbox();
+      const { tools } = await createBashTool({
+        collections: { scratch: collection },
+        provider: { type: "custom", sandbox: customSandbox },
+      });
+
+      const bashTool = tools.bash as {
+        execute: (a: { command: string }) => Promise<CommandResult>;
+      };
+      await bashTool.execute({ command: "echo hi" });
+
+      expect(await collection.getOptional("notes.md")).toBeDefined();
+      expect(warn.mock.calls.flat().join(" ")).toContain("scratch");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("does not fail a command when the workspace walk fails", async () => {
@@ -1029,7 +1065,7 @@ describe("createBashBlocks", () => {
     expect(sandbox.files.get("/workspace/artifacts/notes.md")).toBe("existing note");
     expect(sandbox.files.get("/workspace/skills/check-news/SKILL.md")).toBe("body");
     // Scratch directory marker is seeded.
-    expect(sandbox.files.has("/workspace/tmp/.keep")).toBe(true);
+    expect(sandbox.files.has("/workspace/tmp/.fsdev-keep")).toBe(true);
   });
 
   it("wraps bashCommand with `cd <destination> &&` so PWD is the workspace root", async () => {
@@ -1232,10 +1268,36 @@ describe("createBashBlocks", () => {
     await runForTest(bashCommand, { command: "ls" }, ctx);
     expect(sandbox.files.has("/workspace/artifacts/empty-dir/.keep")).toBe(true);
 
-    // A basename filter drops it from the listing while the baseline still
-    // owns it, and the delete pass reads that as the run having removed it.
+    // A filter matching the marker's basename drops this from the listing
+    // while the baseline still owns it, and the delete pass reads that as the
+    // run having removed it.
     await runForTest(bashCommand, { command: "ls" }, ctx);
     expect(await artifacts.getOptional("empty-dir/.keep")).toBeDefined();
+  });
+
+  it("keeps a .keep the collection holds at the root of its prefix", async () => {
+    // The harder half of the same question, and the one the nested case does
+    // not reach. `<prefix>/.keep` is BOTH the marker this workspace seeds to
+    // make an empty directory walkable and a key a collection may legitimately
+    // own — one path, two meanings — so filtering it by exact path drops the
+    // collection's file as surely as a basename filter would.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    await artifacts.getOrCreate(".keep", { path: ".keep" });
+    await (await artifacts.getOptional(".keep"))!.writeContent("");
+
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("keep-root", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    expect(await artifacts.getOptional(".keep")).toBeDefined();
   });
 
   it("propagates a collection write failure instead of reporting success", async () => {
