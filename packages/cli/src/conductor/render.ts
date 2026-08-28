@@ -150,7 +150,7 @@ function renderTable(state: ViewState, cols: number, now: number): string {
     pad(dim("OUTCOME"), outcomeW) +
     pad(dim("ASK"), askW);
   if (state.rows.length === 0) {
-    return `${head}\n${padLine(dim("  no rows. /seed <issue> files one and starts it."), cols)}`;
+    return `${head}\n${padLine(dim("  no rows. type to talk, or /seed <issue> to file one."), cols)}`;
   }
   const lines = state.rows.map((row, i) =>
     renderTableRow(row, i === state.selected, { issueW, phaseW, statusW, attemptW, outcomeW, askW, cols }, state, now),
@@ -444,7 +444,7 @@ function renderPlanLines(
 function renderMeta(state: ViewState, cols: number): string {
   const row = selectedRow(state);
   if (row === undefined) {
-    return `${rule(cols, INK_3)}\n${dim("  select a row to inspect it")}`;
+    return `${rule(cols, INK_3)}\n${dim("  type to talk to the coordinator, or s to seed an issue")}`;
   }
   if (selectedQuestion(state) !== undefined) {
     return renderRunBits(row, cols);
@@ -690,12 +690,15 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     !slashing &&
     !finding &&
     (state.inputMode === "answer" || state.inputMode === "seed" || state.input !== "");
+  const empty = state.rows.length === 0;
   const keys = composing
     ? `${working}${state.drafts.length > 0 ? "↑ prior  ·  " : ""}Ctrl-J line  ·  Enter send  ·  Esc`
     : slashing
     ? `${working}Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`
     : finding
     ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q`
+    : empty
+      ? `${working}type to talk  ·  s seed  ·  /  ·  r  ·  ?  ·  q`
     : q
       ? `${working}click/j/k  ·  a answer${filesKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
       : fail !== undefined

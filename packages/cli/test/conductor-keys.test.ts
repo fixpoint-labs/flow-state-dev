@@ -280,6 +280,18 @@ describe("applyKey", () => {
     expect(submitted.state.drafts).toEqual(["please retry the failed rows"]);
   });
 
+  it("talks from an empty board the same way it talks from a row", () => {
+    let state = emptyView("epic");
+    for (const ch of "please retry the failed rows") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.effect).toEqual({
+      type: "dispatch",
+      command: { kind: "steer", message: "please retry the failed rows" },
+    });
+  });
+
   it("walks prior compose lines with ↑/↓, and idle ↑ still moves rows", () => {
     const rows = [row("FIX-1"), row("FIX-2")];
     const idle = applyKey({ ...board(rows), selected: 1 }, { type: "up" });

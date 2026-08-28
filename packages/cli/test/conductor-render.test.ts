@@ -238,6 +238,19 @@ describe("renderFrame", () => {
     expect(frame).toContain("TRANSCRIPT");
   });
 
+  it("opens an empty board on type-to-talk, not a slash-only door", () => {
+    const frame = renderFrame(emptyView("epic"), { cols: 80, rows: 24 });
+    const text = stripAnsi(frame);
+    expect(text).toContain("no rows. type to talk, or /seed <issue> to file one.");
+    expect(text).toContain("type to talk to the coordinator, or s to seed an issue");
+    expect(text).toContain("nothing yet. type to talk.");
+    expect(text).toContain("talk to the coordinator, or /seed /wake /answer");
+    expect(text).toContain("type to talk  ·  s seed");
+    expect(text).not.toContain("select a row");
+    expect(text).not.toContain("click/j/k");
+    expect(text).not.toContain("/find");
+  });
+
   it("keeps the end of a long compose line so the cursor stays visible", () => {
     const long = `please retry the failed rows and then tell me ${"x".repeat(80)} done`;
     const frame = renderFrame(
