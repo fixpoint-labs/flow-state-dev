@@ -192,6 +192,7 @@ function isPending(value: RegistryValue): value is { pending: Promise<SandboxEnt
 /** Identity fields available on the block execution context. */
 interface ScopeIdentity {
   sessionId: string;
+  requestId: string;
   userId?: string;
   orgId?: string;
 }
@@ -231,6 +232,13 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
  */
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
   switch (scope) {
+    case "run": {
+      // The request is the run. Narrower than a session on purpose: this is
+      // the scope where two agents working at once cannot see each other's
+      // half-finished files, and where the workspace goes away with the
+      // request that made it.
+      return { key: `run:${identity.requestId}`, scopeId: identity.requestId };
+    }
     case "user": {
       const id = identity.userId ?? identity.sessionId;
       return { key: `user:${id}`, scopeId: id };
@@ -871,6 +879,7 @@ function resolveHostMountSourceForWrite(
 function getIdentity(ctx: BlockContext): ScopeIdentity {
   return {
     sessionId: ctx.session.identity.id,
+    requestId: ctx.request.identity.id,
     userId: ctx.session.identity.userId,
     orgId: ctx.session.identity.orgId,
   };

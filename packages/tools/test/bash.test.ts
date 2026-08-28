@@ -810,6 +810,13 @@ describe("createBashBlocks", () => {
       ...(scopes.org ?? {}),
     };
     return {
+      // A `request` is not optional on a block context, and every fixture here
+      // is cast `as any` — so an omission does not fail `tsc`, it fails at run
+      // time inside whichever helper reads it first. Named per call so a
+      // scope that keys on the request gets distinct keys.
+      request: {
+        identity: { id: `req-${sessionId}` },
+      },
       session: {
         identity: { id: sessionId, userId: "u1" },
       },

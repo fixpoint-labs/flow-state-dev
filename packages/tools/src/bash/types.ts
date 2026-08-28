@@ -93,7 +93,7 @@ export type ExecutionLimits = {
 };
 
 /** Workspace scope for the local provider. Determines the workspace directory. */
-export type WorkspaceScope = "session" | "user" | "org";
+export type WorkspaceScope = "session" | "user" | "org" | "run";
 
 // ---------------------------------------------------------------------------
 // Third-party SDK shapes
@@ -154,9 +154,17 @@ export type SandboxProvider =
       cwd?: string;
       /**
        * Scope for the auto-created workspace directory. Default: `"session"`.
+       * - `"run"` — one workspace per request, shared with nothing
        * - `"session"` — one workspace per session (isolated, ephemeral)
        * - `"user"` — shared across all sessions for a user
        * - `"org"` — shared across all sessions in an org
+       *
+       * The list is ordered narrowest first, and that ordering is the whole
+       * decision: everything below `"run"` is a workspace two runs can be
+       * inside at once. That is usually what you want — a session's runs
+       * building on each other is the point of a session — but it is also the
+       * only way one run sees another's half-finished work, so a workflow
+       * running several agents at once wants `"run"`.
        */
       scope?: WorkspaceScope;
       /**
