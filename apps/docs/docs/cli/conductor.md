@@ -195,7 +195,7 @@ When the selected row has no open question and the last attempt failed, a FAIL b
 
 When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the full branch, the full checkout path, the request id, and that `x` stops. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output).
 
-The band also shows what the run is doing: the in-flight status or message (`claiming`), or the last tool that row ran (`Write src/a.ts`) when neither is in flight. Another row's tool is not shown.
+The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown.
 
 When the run writes a todo list, the band shows one current item and a `done/total` count. The current item is the one in progress (`[·]`), else the first pending (`[ ]`), else the last completed (`[x]`). The full list is not on the band until you expand it.
 
@@ -317,7 +317,7 @@ Headless `watch` writes those same lines to stderr. Tool, hunk, checklist, resul
 
 After that request ends, further board changes show as the lines `status` reports.
 
-While a line is in flight, the last line updates: a status or streaming assistant text. When a new status arrives, the previous one stays as its own line. Streaming text grows on that last line and remains a single line when it finishes.
+While a line is in flight, the last line updates. A status or streaming assistant text lives there: when a new status arrives, the previous one stays as its own line. Streaming text grows on that last line and remains a single line when it finishes. An open coding tool sits on that last line (`tool · Bash pnpm test`) and stays as that one line when it finishes.
 
 `status` also writes here when a row actually moved: a new row (`PR-482 · pending`), a status change (`PR-482 · pending → in_progress`), a newly opened question (`PR-482 · asked Which branch should this target?`), a run outcome (`PR-482 · run failed · no pull request`), or a new run `finalMessage` (`PR-482 · stopped after the turn budget`). A poll that changed nothing adds no line.
 
