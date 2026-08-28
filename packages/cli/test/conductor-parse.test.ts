@@ -34,6 +34,18 @@ describe("parseCommand", () => {
     expect(parseCommand("answer Q1")).toMatchObject({ ok: false });
     expect(parseCommand("/nope")).toMatchObject({ ok: false, message: "unknown command: nope" });
   });
+
+  it("parses /find with and without a query", () => {
+    expect(parseCommand("/find")).toEqual({ ok: true, command: { kind: "find" } });
+    expect(parseCommand("/find src/foo.ts")).toEqual({
+      ok: true,
+      command: { kind: "find", query: "src/foo.ts" },
+    });
+    expect(parseCommand("find tool Write")).toEqual({
+      ok: true,
+      command: { kind: "find", query: "tool Write" },
+    });
+  });
 });
 
 describe("parseArgv", () => {
@@ -103,5 +115,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("request stream");
     expect(HELP_TEXT).toContain("fsdev conductor abort");
     expect(HELP_TEXT).toContain("x or Ctrl-C stops it");
+    expect(HELP_TEXT).toContain("/find [text]");
+    expect(HELP_TEXT).toContain("older / newer match");
   });
 });

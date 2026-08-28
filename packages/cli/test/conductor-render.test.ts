@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderBoardPlain, renderFrame, watchExitCode } from "../src/conductor/render";
 import { emptyView, selectedFailure, type StatusRow } from "../src/conductor/types";
-import { RUST, TEAL, stripAnsi } from "../src/conductor/theme";
+import { GOLD, RUST, TEAL, stripAnsi } from "../src/conductor/theme";
 
 function beforeTranscript(frame: string): string {
   const text = stripAnsi(frame);
@@ -714,6 +714,53 @@ describe("renderFrame", () => {
     expect(above).toContain("Which path?");
     expect(above).not.toMatch(/^ FAIL\s*$/m);
     expect(selectedFailure({ ...emptyView("epic"), rows: [both] })).toBeUndefined();
+  });
+
+  it("pins the current find hit and paints the match", () => {
+    const idle: StatusRow = {
+      taskId: "FIX-1--implement",
+      issue: "FIX-1",
+      phase: "implement",
+      status: "pending",
+      attempts: 0,
+      feedback: null,
+      run: null,
+      questions: [],
+    };
+    const activity = Array.from({ length: 40 }, (_, i) => ({
+      at: i + 1,
+      text: `tool · Read src/line-${String(i).padStart(2, "0")}.ts`,
+    }));
+    const base = { ...emptyView("epic"), rows: [idle], activity };
+    const tail = renderFrame(base, { cols: 80, rows: 18 });
+    expect(stripAnsi(tail)).not.toContain("src/line-00.ts");
+    expect(stripAnsi(tail)).toContain("src/line-39.ts");
+
+    const finding = { ...base, find: "line-00", findAt: 0 };
+    const frame = renderFrame(finding, { cols: 80, rows: 18 });
+    const text = stripAnsi(frame);
+    expect(text).toContain("src/line-00.ts");
+    expect(text).toMatch(/find · "line-00"  1\/1/);
+    expect(text).toContain("n older");
+    expect(text).toContain("Esc clear");
+    expect(frame).toContain(GOLD);
+  });
+
+  it("keeps the ASK band when find is on", () => {
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [waiting],
+        find: "path",
+        findAt: 0,
+        activity: [{ at: 1, text: "Which path?" }],
+      },
+      { cols: 80, rows: 24 },
+    );
+    const above = beforeTranscript(frame);
+    expect(above).toMatch(/^ ASK\s*$/m);
+    expect(above).toContain("Which path?");
+    expect(stripAnsi(frame)).toMatch(/find · "path"/);
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyKey, decodeKeys, rowAfterRefresh } from "../src/conductor/keys";
 import { applyStatus } from "../src/conductor/loop";
-import { emptyView, type StatusRow, type ViewState } from "../src/conductor/types";
+import { applyFindQuery, emptyView, findMatches, type StatusRow, type ViewState } from "../src/conductor/types";
 
 function row(issue: string, questions = 0): StatusRow {
   return {
@@ -203,6 +203,86 @@ describe("applyKey", () => {
     expect(submitted.effect).toEqual({ type: "refresh" });
   });
 
+  it("applies /find immediately and steps with n / N", () => {
+    const state = {
+      ...board([row("FIX-1")]),
+      activity: [
+        { at: 1, text: "tool · Write src/alpha.ts" },
+        { at: 2, text: "tool · Read src/beta.ts" },
+        { at: 3, text: "tool · Write src/gamma.ts" },
+      ],
+    };
+    let typed = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "find src/") {
+      typed = applyKey(typed, { type: "char", value: ch }).state;
+    }
+    const found = applyKey(typed, { type: "enter" });
+    expect(found.effect).toBeUndefined();
+    expect(found.state.inputMode).toBe("command");
+    expect(found.state.find).toBe("src/");
+    expect(findMatches(found.state)).toHaveLength(3);
+    expect(found.state.findAt).toBe(2);
+
+    const older = applyKey(found.state, { type: "char", value: "n" });
+    expect(older.state.findAt).toBe(1);
+    const olderStill = applyKey(older.state, { type: "char", value: "n" });
+    expect(olderStill.state.findAt).toBe(0);
+    const wrap = applyKey(olderStill.state, { type: "char", value: "n" });
+    expect(wrap.state.findAt).toBe(2);
+    const newer = applyKey(wrap.state, { type: "char", value: "N" });
+    expect(newer.state.findAt).toBe(0);
+  });
+
+  it("opens a live find prompt for /find with no query, and Esc clears it", () => {
+    let state = board([row("FIX-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "find") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const opened = applyKey(state, { type: "enter" });
+    expect(opened.state.inputMode).toBe("find");
+    expect(opened.effect).toBeUndefined();
+
+    const typed = applyKey(opened.state, { type: "char", value: "f" });
+    expect(typed.state.find).toBe("f");
+    const cleared = applyKey(typed.state, { type: "escape" });
+    expect(cleared.state.find).toBeNull();
+    expect(cleared.state.inputMode).toBe("command");
+  });
+
+  it("does not start an answer with n when find is on", () => {
+    const waiting = board([row("FIX-1", 1)]);
+    const finding = applyFindQuery(
+      { ...waiting, activity: [{ at: 1, text: "status · parked" }] },
+      "parked",
+    );
+    const stepped = applyKey(finding, { type: "char", value: "n" });
+    expect(stepped.state.inputMode).toBe("command");
+    expect(stepped.state.find).toBe("parked");
+
+    const answering = applyKey(waiting, { type: "char", value: "n" });
+    expect(answering.state.inputMode).toBe("answer");
+    expect(answering.state.input).toBe("n");
+  });
+
+  it("clears find with Esc from the idle board", () => {
+    const finding = { ...board([row("FIX-1")]), find: "foo", findAt: 0 };
+    const cleared = applyKey(finding, { type: "escape" });
+    expect(cleared.state.find).toBeNull();
+    expect(cleared.state.findAt).toBe(0);
+  });
+
+  it("says so when /find matches nothing", () => {
+    let state = board([row("FIX-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "find missing") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.state.find).toBe("missing");
+    expect(submitted.state.notice).toBe("no matches for missing");
+  });
+
   it("toggles the RUN-band todo list with t or Ctrl-T", () => {
     const state = board([runningRow("LIVE-1")]);
     const opened = applyKey(state, { type: "char", value: "t" });
@@ -210,6 +290,26 @@ describe("applyKey", () => {
     expect(opened.effect).toBeUndefined();
     const closed = applyKey(opened.state, { type: "ctrl", value: "t" });
     expect(closed.state.planExpanded).toBe(false);
+  });
+});
+
+describe("findMatches", () => {
+  it("is case-insensitive and stays on the selected row's transcript", () => {
+    const state = {
+      ...board([runningRow("LIVE-1"), runningRow("LIVE-2")]),
+      selected: 0,
+      activity: [
+        { at: 1, text: "tool · Write src/Alpha.ts", requestId: "req-LIVE-1" },
+        { at: 2, text: "tool · Write src/beta.ts", requestId: "req-LIVE-2" },
+      ],
+      find: "alpha",
+    };
+    const hits = findMatches(state);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.itemIndex).toBe(0);
+    expect(state.activity[0]!.text.slice(hits[0]!.start, hits[0]!.end)).toBe("Alpha");
+    expect(findMatches({ ...state, find: "beta" })).toEqual([]);
+    expect(findMatches({ ...state, selected: 1, find: "beta" })).toHaveLength(1);
   });
 });
 

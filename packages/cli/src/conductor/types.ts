@@ -92,10 +92,11 @@ export type OperatorCommand =
   | { kind: "abort"; issue?: string }
   | { kind: "help" }
   | { kind: "quit" }
-  | { kind: "refresh" };
+  | { kind: "refresh" }
+  | { kind: "find"; query?: string };
 
 /** How the prompt is interpreting keystrokes. */
-export type InputMode = "command" | "answer" | "seed";
+export type InputMode = "command" | "answer" | "seed" | "find";
 
 /** Everything the renderer and the key reducer need. */
 export interface ViewState {
@@ -139,6 +140,17 @@ export interface ViewState {
    * (Grok-style). PageUp / wheel-up increase it.
    */
   scroll: number;
+  /**
+   * Case-insensitive query over the selected row's transcript. `null`
+   * means find is off. Matches stay in context — the transcript is not
+   * filtered to hits.
+   */
+  find: string | null;
+  /**
+   * Index into `findMatches`. A new query starts on the last (newest)
+   * hit; `n` steps older, `N` newer.
+   */
+  findAt: number;
   lastRefreshAt: number | null;
 }
 
@@ -160,6 +172,8 @@ export function emptyView(epicLabel: string): ViewState {
     childPlan: {},
     planExpanded: false,
     scroll: 0,
+    find: null,
+    findAt: 0,
     lastRefreshAt: null,
   };
 }
@@ -339,6 +353,68 @@ export function scrollTranscript(state: ViewState, delta: number): ViewState {
 
 export function pageTranscript(state: ViewState, direction: -1 | 1): ViewState {
   return scrollTranscript(state, direction * PAGE);
+}
+
+/** One match of the current find query in `activityForView`. */
+export interface FindHit {
+  /** Index into `activityForView`. */
+  itemIndex: number;
+  /** Inclusive start in `item.text`. */
+  start: number;
+  /** Exclusive end in `item.text`. */
+  end: number;
+}
+
+/**
+ * Case-insensitive hits in the selected row's transcript. Empty when
+ * find is off or the query is empty. Non-overlapping, oldest first.
+ */
+export function findMatches(state: ViewState): FindHit[] {
+  const query = state.find;
+  if (query === null || query === "") return [];
+  const needle = query.toLowerCase();
+  const hits: FindHit[] = [];
+  const items = activityForView(state);
+  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+    const hay = items[itemIndex]!.text.toLowerCase();
+    let from = 0;
+    while (from <= hay.length - needle.length) {
+      const at = hay.indexOf(needle, from);
+      if (at < 0) break;
+      hits.push({ itemIndex, start: at, end: at + needle.length });
+      from = at + needle.length;
+    }
+  }
+  return hits;
+}
+
+/** Turn find on with `query`, or off when the query is empty. Starts on the newest hit. */
+export function applyFindQuery(state: ViewState, query: string): ViewState {
+  if (query === "") {
+    return { ...state, find: null, findAt: 0 };
+  }
+  const next: ViewState = { ...state, find: query };
+  const hits = findMatches(next);
+  return { ...next, findAt: hits.length === 0 ? 0 : hits.length - 1 };
+}
+
+/**
+ * Step to an older (`-1`) or newer (`1`) hit. Wraps. No-op when there
+ * are no matches.
+ */
+export function stepFind(state: ViewState, direction: -1 | 1): ViewState {
+  const hits = findMatches(state);
+  if (hits.length === 0) return state;
+  const at = ((state.findAt % hits.length) + hits.length) % hits.length;
+  return { ...state, findAt: (at + direction + hits.length) % hits.length };
+}
+
+/** The current hit, if find is on and the query matched. */
+export function currentFindHit(state: ViewState): FindHit | undefined {
+  const hits = findMatches(state);
+  if (hits.length === 0) return undefined;
+  const at = Math.min(Math.max(0, state.findAt), hits.length - 1);
+  return hits[at];
 }
 
 /**

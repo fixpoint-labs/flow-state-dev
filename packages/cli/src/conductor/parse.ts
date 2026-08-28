@@ -23,6 +23,7 @@ const VERBS = new Set([
   "quit",
   "q",
   "refresh",
+  "find",
 ]);
 
 function splitWords(line: string): string[] {
@@ -88,6 +89,10 @@ function parseWords(words: string[]): ParseResult {
       return { ok: true, command: { kind: "quit" } };
     case "refresh":
       return { ok: true, command: { kind: "refresh" } };
+    case "find": {
+      const query = words.slice(1).join(" ").trim();
+      return { ok: true, command: { kind: "find", ...(query !== "" ? { query } : {}) } };
+    }
     case "wake":
       return { ok: true, command: { kind: "wake" } };
     case "status":
@@ -216,6 +221,8 @@ In the TUI:
   t            expand or collapse the todo list on a running row
   /            slash command (same verbs)
   /status id   select that row, then refresh
+  /find [text] search the selected row's transcript
+  n / N        older / newer match
   ?            this help
   q            quit
 

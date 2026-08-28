@@ -61,6 +61,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         return 0;
       case "quit":
       case "refresh":
+      case "find":
         write("that verb is TUI-only — run `fsdev conductor` with no verb");
         return 1;
       case "status": {

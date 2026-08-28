@@ -224,6 +224,8 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
         case "help":
           state = { ...state, help: true };
           break;
+        case "find":
+          break;
         case "quit":
           closed = true;
           break;

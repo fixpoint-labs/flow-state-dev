@@ -25,7 +25,9 @@ import {
 } from "./theme";
 import {
   activityForView,
+  currentFindHit,
   failureReason,
+  findMatches,
   rowFailed,
   rowRunning,
   selectedFailure,
@@ -346,27 +348,42 @@ function renderActivity(
 ): string {
   const following = state.scroll === 0;
   const live = visibleLive(state);
+  const hits = findMatches(state);
+  const currentHit = currentFindHit(state);
+  const finding = state.find !== null && state.find !== "";
   const heading = ` ${dim("TRANSCRIPT")}${
-    following
-      ? live !== null
-        ? dim("  ·  live")
-        : dim("  ·  follow")
-      : dim(`  ·  ${state.scroll} back`)
+    finding
+      ? hits.length === 0
+        ? dim(`  ·  find · "${state.find}"  no matches`)
+        : dim(`  ·  find · "${state.find}"  ${(Math.min(Math.max(0, state.findAt), hits.length - 1) + 1)}/${hits.length}`)
+      : following
+        ? live !== null
+          ? dim("  ·  live")
+          : dim("  ·  follow")
+        : dim(`  ·  ${state.scroll} back`)
   }`;
   const width = Math.max(16, cols - 10);
-  const body: string[] = [];
-  for (const item of activityForView(state)) {
+  const body: { text: string; itemIndex: number | null }[] = [];
+  activityForView(state).forEach((item, itemIndex) => {
     const wrapped = wrapActivityLine(item.text, width);
+    const current = currentHit?.itemIndex === itemIndex;
     wrapped.forEach((line, i) => {
-      const painted = paintHunkLine(line);
-      body.push(i === 0 ? ` ${dim(formatClock(item.at))}  ${painted}` : `         ${painted}`);
+      const painted = finding ? highlightFind(line, state.find!, current) : paintHunkLine(line);
+      const clock = current && i === 0 ? paint(GOLD, formatClock(item.at)) : dim(formatClock(item.at));
+      body.push({
+        text: i === 0 ? ` ${clock}  ${painted}` : `         ${painted}`,
+        itemIndex,
+      });
     });
-  }
+  });
   const lastText = activityForView(state).at(-1)?.text;
-  if (following && live !== null && live !== lastText) {
+  if (following && !finding && live !== null && live !== lastText) {
     const wrapped = wrap(live, width);
     wrapped.forEach((line, i) => {
-      body.push(i === 0 ? ` ${paint(GOLD, "··")}  ${paint(GOLD, line)}` : `         ${paint(GOLD, line)}`);
+      body.push({
+        text: i === 0 ? ` ${paint(GOLD, "··")}  ${paint(GOLD, line)}` : `         ${paint(GOLD, line)}`,
+        itemIndex: null,
+      });
     });
   }
   const chrome = underBand ? 1 : 2;
@@ -374,10 +391,21 @@ function renderActivity(
   if (window <= 0) {
     return underBand ? heading : `${rule(cols, INK_3)}\n${heading}`;
   }
-  const maxScroll = Math.max(0, body.length - window);
-  const scroll = Math.min(state.scroll, maxScroll);
-  const start = Math.max(0, body.length - window - scroll);
-  const visible = body.slice(start, start + window);
+  const lines = body.map((row) => row.text);
+  const maxScroll = Math.max(0, lines.length - window);
+  let scroll = Math.min(state.scroll, maxScroll);
+  if (finding && currentHit !== undefined) {
+    const pin = body.findIndex((row) => row.itemIndex === currentHit.itemIndex);
+    if (pin >= 0) {
+      const start = Math.max(
+        0,
+        Math.min(pin - Math.floor((window - 1) / 2), Math.max(0, lines.length - window)),
+      );
+      scroll = Math.max(0, lines.length - window - start);
+    }
+  }
+  const start = Math.max(0, lines.length - window - scroll);
+  const visible = lines.slice(start, start + window);
   const pad = Math.max(0, window - visible.length);
   const filler =
     pad > 0 && visible.length === 0
@@ -397,6 +425,9 @@ function renderPrompt(state: ViewState, cols: number): string {
   } else if (state.inputMode === "seed") {
     prefix = paint(TEAL, "❯ seed ");
     placeholder = dim("issue id · Enter files and starts it");
+  } else if (state.inputMode === "find") {
+    prefix = paint(GOLD, "❯ find ");
+    placeholder = dim("text in this row's transcript · Enter keeps · Esc clears");
   }
   const shown = state.input === "" && state.inputMode === "command" ? placeholder : state.input + paint(ACCENT, "█");
   return `${rule(cols)}\n ${prefix}${truncate(shown, cols - 12)}${notice}`;
@@ -406,13 +437,16 @@ function renderFooter(state: ViewState, cols: number): string {
   const q = selectedQuestion(state);
   const fail = selectedFailure(state);
   const running = selectedRunningRequestId(state) !== undefined;
-  const keys = q
-    ? "click/j/k select  ·  a answer  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
-    : fail !== undefined
-      ? "click/j/k select  ·  w retry  ·  PgUp transcript  ·  s seed  ·  /  ·  ?  ·  q"
-      : running
-        ? "click/j/k select  ·  x stop  ·  t list  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
-        : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
+  const finding = state.find !== null;
+  const keys = finding
+    ? "n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q"
+    : q
+      ? "click/j/k select  ·  a answer  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
+      : fail !== undefined
+        ? "click/j/k select  ·  w retry  ·  PgUp transcript  ·  s seed  ·  /  ·  ?  ·  q"
+        : running
+          ? "click/j/k select  ·  x stop  ·  t list  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q"
+          : "click/j/k select  ·  s seed  ·  PgUp transcript  ·  w wake  ·  /  ·  ?  ·  q";
   return padLine(dim(` ${keys}`), cols);
 }
 
@@ -461,6 +495,26 @@ function wrapActivityLine(text: string, width: number): string[] {
     return [text.length <= width ? text : `${text.slice(0, Math.max(1, width - 1))}…`];
   }
   return wrap(text, width);
+}
+
+/** Paint every occurrence of `query` in `line`. The current hit is bolder. */
+function highlightFind(line: string, query: string, current: boolean): string {
+  if (query === "") return paintHunkLine(line);
+  const hay = line.toLowerCase();
+  const needle = query.toLowerCase();
+  let out = "";
+  let from = 0;
+  let at = hay.indexOf(needle, from);
+  if (at < 0) return paintHunkLine(line);
+  while (at >= 0) {
+    const before = line.slice(from, at);
+    out += before === "" ? "" : paintHunkLine(before);
+    out += paint(current ? GOLD + BOLD : GOLD, line.slice(at, at + needle.length));
+    from = at + needle.length;
+    at = hay.indexOf(needle, from);
+  }
+  const rest = line.slice(from);
+  return rest === "" ? out : out + paintHunkLine(rest);
 }
 
 function paintHunkLine(line: string): string {

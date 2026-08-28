@@ -7,13 +7,16 @@
  */
 import { parseCommand, type ParseResult } from "./parse";
 import {
+  applyFindQuery,
   clampSelected,
+  findMatches,
   pageTranscript,
   selectedQuestion,
   selectedQuestions,
   selectedRow,
   selectedRunningRequestId,
   scrollTranscript,
+  stepFind,
   type InputMode,
   type OperatorCommand,
   type ViewState,
@@ -209,6 +212,9 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
       return { state };
     }
     case "escape":
+      if (state.find !== null) {
+        return { state: { ...state, find: null, findAt: 0, notice: null, help: false } };
+      }
       return { state: { ...state, notice: null, help: false } };
     default:
       return { state };
@@ -235,6 +241,12 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
       return { state, effect: { type: "dispatch", command: { kind: "wake" } } };
     case "t":
       return { state: { ...state, planExpanded: !state.planExpanded } };
+    case "n":
+      if (state.find !== null) return { state: stepFind(state, -1) };
+      return idleFallback(state, value);
+    case "N":
+      if (state.find !== null) return { state: stepFind(state, 1) };
+      return idleFallback(state, value);
     case "x":
       if (selectedRunningRequestId(state) === undefined) {
         return { state: { ...state, notice: "nothing running to stop" } };
@@ -252,18 +264,23 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
     case "/":
       return { state: { ...state, input: "/", notice: null } };
     default:
-      if (value.trim() === "") return { state };
-      // Typing on a row that asked something starts an answer. That is the
-      // Grok-shaped door: you do not have to remember `a` or a slash verb.
-      if (selectedQuestion(state) !== undefined) {
-        const started = beginAnswer(state, selectedQuestion(state)!.question);
-        return applyEditing(started.state, { type: "char", value });
-      }
-      return { state: { ...state, input: value } };
+      return idleFallback(state, value);
   }
 }
 
+function idleFallback(state: ViewState, value: string): KeyResult {
+  if (value.trim() === "") return { state };
+  // Typing on a row that asked something starts an answer. That is the
+  // Grok-shaped door: you do not have to remember `a` or a slash verb.
+  if (selectedQuestion(state) !== undefined) {
+    const started = beginAnswer(state, selectedQuestion(state)!.question);
+    return applyEditing(started.state, { type: "char", value });
+  }
+  return { state: { ...state, input: value } };
+}
+
 function applyEditing(state: ViewState, key: Key): KeyResult {
+  if (state.inputMode === "find") return applyFindEdit(state, key);
   switch (key.type) {
     case "char":
       return { state: { ...state, input: state.input + key.value } };
@@ -282,6 +299,49 @@ function applyEditing(state: ViewState, key: Key): KeyResult {
     default:
       return { state };
   }
+}
+
+function applyFindEdit(state: ViewState, key: Key): KeyResult {
+  switch (key.type) {
+    case "char": {
+      const input = state.input + key.value;
+      return { state: applyFindQuery({ ...state, input }, input) };
+    }
+    case "backspace": {
+      if (state.input === "") return clearFind(state);
+      const input = state.input.slice(0, -1);
+      return { state: applyFindQuery({ ...state, input }, input) };
+    }
+    case "escape":
+      return clearFind(state);
+    case "enter": {
+      const hits = findMatches(state);
+      return {
+        state: {
+          ...state,
+          input: "",
+          inputMode: "command",
+          notice:
+            state.find !== null && hits.length === 0 ? `no matches for ${state.find}` : null,
+        },
+      };
+    }
+    default:
+      return { state };
+  }
+}
+
+function clearFind(state: ViewState): KeyResult {
+  return {
+    state: {
+      ...state,
+      input: "",
+      inputMode: "command",
+      find: null,
+      findAt: 0,
+      notice: null,
+    },
+  };
 }
 
 function cancelEdit(state: ViewState): KeyResult {
@@ -332,6 +392,27 @@ function submitEdit(state: ViewState): KeyResult {
   if (command.kind === "help") return { state: { ...cleared, help: true } };
   if (command.kind === "quit") return { state: cleared, effect: { type: "quit" } };
   if (command.kind === "refresh") return { state: cleared, effect: { type: "refresh" } };
+  if (command.kind === "find") {
+    const query = command.query ?? "";
+    if (query === "") {
+      return {
+        state: {
+          ...cleared,
+          inputMode: "find",
+          input: "",
+          notice: "type to search the transcript",
+        },
+      };
+    }
+    const next = applyFindQuery(cleared, query);
+    const hits = findMatches(next);
+    return {
+      state: {
+        ...next,
+        notice: hits.length === 0 ? `no matches for ${query}` : null,
+      },
+    };
+  }
   if (command.kind === "status" || command.kind === "watch") {
     const issue = command.issue;
     if (issue === undefined || issue === "") {
@@ -366,7 +447,9 @@ function selectRow(state: ViewState, index: number): ViewState {
     notice: null,
   });
   if (next.selected === state.selected) return next;
-  return { ...next, scroll: 0 };
+  const jumped = { ...next, scroll: 0 };
+  if (jumped.find === null) return jumped;
+  return applyFindQuery(jumped, jumped.find);
 }
 
 function moveRow(state: ViewState, delta: number): ViewState {
