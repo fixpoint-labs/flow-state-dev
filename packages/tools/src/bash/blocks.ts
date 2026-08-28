@@ -51,6 +51,7 @@ import type {
   Projection,
 } from "@flow-state-dev/workspace";
 import { createSandboxPlace, KEEP_MARKER } from "./sandbox-place";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { quote as shellQuote } from "shell-quote";
@@ -202,7 +203,7 @@ const TMP_DIR = "tmp";
 
 /** Per-session host dir backing the container's `/workspace`, mirroring `local`'s layout. */
 function defaultMoatWorkspace(sessionId: string): string {
-  return path.join(process.cwd(), ".fsdev", "workspaces", "session", sessionId);
+  return path.join(process.cwd(), ".fsdev", "workspaces", "session", safeSegment(sessionId));
 }
 
 /**
@@ -230,6 +231,40 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
  * For the `local` provider, also resolves the `cwd` when not explicitly set:
  * `.fsdev/workspaces/{scope}/{scopeId}/`
  */
+/**
+ * A scope id as a directory name it is safe to join onto a root.
+ *
+ * Scope ids reach here from caller-controllable input: the action route takes
+ * `requestId` and `sessionId` straight off the request body, validating only
+ * that they are strings. `scopeId` then becomes a path segment under
+ * `.fsdev/workspaces/`, so `../../` in one puts a run's workspace outside the
+ * workspaces root entirely — and `userId`/`orgId`, which DO come from a
+ * verified principal, fall back to the session id when absent (BP-031).
+ *
+ * Ordinary ids — `req_x1y2`, `sess_abc` — are already in the safe set and pass
+ * through unchanged, so this renames no existing directory. Anything else is
+ * rewritten AND given a digest of the original, because two hostile ids that
+ * differ only in unsafe characters must not collapse onto one workspace.
+ */
+function safeSegment(id: string): string {
+  const safe = id.replace(/[^A-Za-z0-9_-]/g, "-");
+  if (safe === id && safe.length > 0) return safe;
+  const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
+  return `${safe.slice(0, 40) || "id"}-${digest}`;
+}
+
+/**
+ * The workspace directory a scope resolves to. Exported for the test that
+ * pins containment of caller-supplied ids; the resolution itself is internal.
+ */
+export function resolveWorkspaceCwdForTest(
+  scope: WorkspaceScope,
+  identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
+): string {
+  const { scopeId } = resolveScopeKey(scope, identity as ScopeIdentity);
+  return path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
+}
+
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
   switch (scope) {
     case "run": {
@@ -237,19 +272,19 @@ function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key:
       // the scope where two agents working at once cannot see each other's
       // half-finished files, and where the workspace goes away with the
       // request that made it.
-      return { key: `run:${identity.requestId}`, scopeId: identity.requestId };
+      return { key: `run:${identity.requestId}`, scopeId: safeSegment(identity.requestId) };
     }
     case "user": {
       const id = identity.userId ?? identity.sessionId;
-      return { key: `user:${id}`, scopeId: id };
+      return { key: `user:${id}`, scopeId: safeSegment(id) };
     }
     case "org": {
       const id = identity.orgId ?? identity.sessionId;
-      return { key: `org:${id}`, scopeId: id };
+      return { key: `org:${id}`, scopeId: safeSegment(id) };
     }
     case "session":
     default:
-      return { key: `session:${identity.sessionId}`, scopeId: identity.sessionId };
+      return { key: `session:${identity.sessionId}`, scopeId: safeSegment(identity.sessionId) };
   }
 }
 

@@ -97,3 +97,32 @@ describe("workspace scope", () => {
     expect(cwdOfCall(0)).toBe(workspaceDir("org", "o1"));
   });
 });
+
+describe("scope ids as directory names", () => {
+  it("keeps a traversal-shaped request id inside the workspaces root", async () => {
+    // The action route takes `requestId` off the request body and validates
+    // only that it is a string. That id becomes a path segment under
+    // `.fsdev/workspaces/`, so `../../` in one would put a run's workspace
+    // wherever the caller likes (BP-031).
+    const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
+    const root = process.cwd() + "/.fsdev/workspaces";
+    for (const hostile of ["../../etc", "..", "a/../../b", "/abs/path"]) {
+      const resolved = resolveWorkspaceCwdForTest("run", { requestId: hostile, sessionId: "s" });
+      expect(resolved.startsWith(root + "/run/")).toBe(true);
+      expect(resolved).not.toContain("..");
+    }
+  });
+
+  it("leaves an ordinary id untouched, so no existing workspace is renamed", async () => {
+    const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
+    const resolved = resolveWorkspaceCwdForTest("run", { requestId: "req_x1y2", sessionId: "s" });
+    expect(resolved.endsWith("/.fsdev/workspaces/run/req_x1y2")).toBe(true);
+  });
+
+  it("does not collapse two hostile ids onto one workspace", async () => {
+    const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
+    const a = resolveWorkspaceCwdForTest("run", { requestId: "a/b", sessionId: "s" });
+    const b = resolveWorkspaceCwdForTest("run", { requestId: "a\\b", sessionId: "s" });
+    expect(a).not.toBe(b);
+  });
+});
