@@ -195,7 +195,15 @@ When the selected row has no open question and the last attempt failed, a FAIL b
 
 When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the full branch, the full checkout path, the request id, and that `x` stops. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output).
 
-When the run writes a todo list, the latest list shows on that band. Completed items show `[x]`, the current item `[·]`, the rest `[ ]`.
+The band also shows what the run is doing: the in-flight status or message (`claiming`), or the last tool that row ran (`Write src/a.ts`) when neither is in flight. Another row's tool is not shown.
+
+When the run writes a todo list, the band shows one current item and a `done/total` count. The current item is the one in progress (`[·]`), else the first pending (`[ ]`), else the last completed (`[x]`). The full list is not on the band until you expand it.
+
+```text
+ [·] Implement the fix  1/5
+```
+
+`t` or `Ctrl-T` expands the list on the band (up to 4 items, then `… N more`). Press again to collapse.
 
 ```text
  [x] Add the failing test
@@ -205,7 +213,7 @@ When the run writes a todo list, the latest list shows on that band. Completed i
  … 1 more
 ```
 
-The band shows up to 4 items. A longer list ends with `… N more`. Selecting another row shows that row's latest list, or none if that row has not written one. A later list replaces the previous one. The ASK and FAIL bands do not show the list.
+Selecting another row shows that row's current item, or none if that row has not written a list. A later list replaces the previous one. The ASK and FAIL bands do not show the list.
 
 If the running row has no `run.requestId` yet, the band says `no request id yet` and `x` prints `nothing running to stop`.
 
@@ -228,12 +236,13 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `s` | Seed a new row (prompts for an issue id) |
 | `w` | Wake. On a failed selected row with no question, the footer labels this `w retry` |
 | `x` | Stop the selected running row's request |
+| `t` or `Ctrl-T` | Expand or collapse the todo list on the RUN band |
 | `r` | Refresh now |
 | `/` | Type a slash command (any of the headless verbs) |
 | `?` | Toggle help |
 | `q` | Quit |
 
-Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop`; `x` or `Ctrl-C` stops that row's request. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
+Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop` and `t list`; `x` or `Ctrl-C` stops that row's request. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
 
 ### Transcript
 
@@ -267,7 +276,7 @@ tool · TodoWrite
   [ ] Open the pull request
 ```
 
-A checklist longer than 10 items ends with `… N more`. If that tool fails, the transcript reprints `tool · TodoWrite · failed` and does not reprint the checklist. The RUN band shows the latest list for the selected running row, up to 4 items.
+A checklist longer than 10 items ends with `… N more`. If that tool fails, the transcript reprints `tool · TodoWrite · failed` and does not reprint the checklist. The RUN band shows one current item and a `done/total` count for that row; `t` expands the list there.
 
 When a Read finishes, the first lines of the file print indented under the tool line.
 
