@@ -25,6 +25,7 @@ import {
   clampSelected,
   emptyView,
   pushActivity,
+  idsToFollow,
   runningRequestIds,
   selectedRunningRequestId,
   type AnswerOutput,
@@ -140,7 +141,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     if (closed || seq !== refreshSeq) return;
     if (result.error !== undefined) throw new Error(result.error);
     state = applyStatus(state, result.output ?? { rows: [] }, now());
-    follow.sync(runningRequestIds(state.rows));
+    follow.sync(idsToFollow(state));
     endTurn();
   };
 
@@ -250,6 +251,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     await refresh();
     if (options.focusIssue !== undefined) {
       state = rowAfterRefresh(state, options.focusIssue);
+      follow.sync(idsToFollow(state));
       paint();
     }
 
@@ -283,6 +285,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
         }
         const result = applyKey(state, key);
         state = result.state;
+        follow.sync(idsToFollow(state));
         if (result.effect === undefined) {
           paint();
           return;

@@ -3,7 +3,12 @@ import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { createChildFollow } from "../src/conductor/follow";
 import { createStreamTranscript } from "../src/conductor/transcript";
-import { runningRequestIds, type StatusRow } from "../src/conductor/types";
+import {
+  emptyView,
+  idsToFollow,
+  runningRequestIds,
+  type StatusRow,
+} from "../src/conductor/types";
 
 function statusEvent(requestId: string, sequence: number, message: string): RequestStreamEvent {
   return {
@@ -171,5 +176,76 @@ describe("createChildFollow", () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(hits).toBe(before);
     follow.stop();
+  });
+
+  it("catch-up a journal that already ended", async () => {
+    const stores = createInMemoryStores();
+    const seen: number[] = [];
+    const follow = createChildFollow({
+      stores,
+      onEvent: (event) => {
+        seen.push(event.sequence_number);
+      },
+    });
+    stores.request.persistEvents("req-done-1", [
+      statusEvent("req-done-1", 1, "one"),
+      statusEvent("req-done-1", 2, "two"),
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-done-1",
+        sequence_number: 3,
+        ts: 3,
+      } as RequestStreamEvent,
+    ]);
+    follow.sync(["req-done-1"]);
+    await waitFor(() => seen.includes(1) && seen.includes(2));
+    follow.stop();
+    expect(seen).toEqual(expect.arrayContaining([1, 2]));
+  });
+});
+
+describe("idsToFollow", () => {
+  const running: StatusRow = {
+    taskId: "LIVE-1--implement",
+    issue: "LIVE-1",
+    phase: "implement",
+    status: "in_progress",
+    attempts: 1,
+    feedback: null,
+    run: {
+      attempt: 1,
+      taskId: "LIVE-1--implement",
+      workspacePath: null,
+      branch: null,
+      outcome: "running",
+      reason: null,
+      sessionId: null,
+      finalMessage: null,
+      usage: null,
+      costUsd: null,
+      childSessionId: null,
+      requestId: "req-live-1",
+      updatedAt: 1,
+    },
+    questions: [],
+  };
+  const failed: StatusRow = {
+    ...running,
+    taskId: "FAIL-1--implement",
+    issue: "FAIL-1",
+    status: "pending",
+    run: { ...running.run!, outcome: "failed", requestId: "req-old", reason: "Not logged in" },
+  };
+
+  it("includes the selected row's last request after it settled", () => {
+    const state = { ...emptyView("epic"), rows: [failed, running], selected: 0 };
+    expect(idsToFollow(state)).toEqual(["req-live-1", "req-old"]);
+  });
+
+  it("does not duplicate the selected running id", () => {
+    const state = { ...emptyView("epic"), rows: [failed, running], selected: 1 };
+    expect(idsToFollow(state)).toEqual(["req-live-1"]);
   });
 });

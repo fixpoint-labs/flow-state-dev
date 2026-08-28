@@ -13,9 +13,10 @@ import type { RequestStreamEventWithId, StoreRegistry } from "@flow-state-dev/en
 export interface ChildFollow {
   /**
    * Start a tail for each id that is not already tailed or finished.
-   * Leaving the running set does not abort — the journal's terminal
-   * event closes the iterator, so the last hunks and the final message
-   * still arrive on a poll-based store.
+   * Settled ids are valid — subscribe-from-0 catch-up fills a finished
+   * attempt when the operator opens the board or selects that row.
+   * Leaving the running set does not abort; the journal's terminal
+   * event closes the iterator.
    */
   sync(requestIds: readonly string[]): void;
   /** Abort every tail. */

@@ -455,3 +455,15 @@ export function selectedRunningRequestId(state: ViewState): string | undefined {
   const row = selectedRow(state);
   return row === undefined ? undefined : rowRunningRequestId(row);
 }
+
+/**
+ * Journals the board should be reading. Running rows stay tailed. The
+ * selected row's last request is included even after it settles — reopening
+ * the board, or moving onto a finished row, still catch-up that attempt.
+ */
+export function idsToFollow(state: ViewState): string[] {
+  const ids = runningRequestIds(state.rows);
+  const selected = selectedRequestId(state);
+  if (selected !== undefined && !ids.includes(selected)) ids.push(selected);
+  return ids;
+}
