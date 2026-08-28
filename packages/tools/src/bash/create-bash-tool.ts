@@ -38,6 +38,7 @@ import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { createProjection } from "@flow-state-dev/workspace";
 import type { Mount } from "@flow-state-dev/workspace";
 import { createSandboxPlace } from "./sandbox-place";
+import { warnUnsettled } from "./report";
 import { resolveSandbox } from "./resolve-sandbox";
 
 // All other adapters (just-bash, Vercel, Upstash) are loaded dynamically
@@ -124,7 +125,9 @@ export async function createBashTool(
         }
 
         const result = await sandbox.executeCommand(cmd);
-        await projection.flush();
+        // The report is read, not discarded: a refused write that nothing
+        // mentions is a write the caller believes landed.
+        warnUnsettled((await projection.flush()).outcomes);
 
         if (onAfterCommand) {
           const modified = onAfterCommand(cmd, result);
@@ -156,7 +159,8 @@ export async function createBashTool(
       execute: async ({ path: filePath, content }) => {
         const fullPath = `${destination}/${filePath}`;
         await sandbox.writeFile(fullPath, content);
-        await projection.put(filePath, content);
+        const outcome = await projection.put(filePath, content);
+        if (outcome !== undefined) warnUnsettled([outcome]);
         return { success: true };
       },
     }),

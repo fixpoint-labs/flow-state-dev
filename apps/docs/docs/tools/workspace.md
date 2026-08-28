@@ -108,7 +108,9 @@ for (const c of report.contested) {
 }
 ```
 
-The claim lasts for the flush and no longer — that's the length of the race it exists to stop, two flushes interleaving at their awaits. Writes that don't overlap in time are already covered: the second one finds the collection changed and reports a conflict.
+The claim covers the whole read-compare-write, not just the write. Taking it after the collection read would leave that read unprotected: another projection can commit and release during it, and this one then writes from a snapshot that predates it.
+
+The claim lasts for the operation and no longer — that's the length of the race it exists to stop, two flushes interleaving at their awaits. A `put` and a `flush` in flight together release once the last one finishes. Writes that don't overlap in time are already covered: the second one finds the collection changed and reports a conflict.
 
 `contested` is not `conflict`, and the difference is who the other writer is. A conflict is somebody who already wrote — the evidence is sitting in the collection, and three hashes describe it. A contested path is somebody writing *now*: nothing to compare yet, just a claim held elsewhere.
 

@@ -149,19 +149,41 @@ export function createProjection({
     }
   }
 
-  async function flush(): Promise<FlushReport> {
+  /**
+   * How many of this projection's operations are writing right now.
+   *
+   * `releaseAll` drops everything one HOLDER holds, and `flush` and `put` are
+   * two operations sharing one. Releasing at the end of whichever finishes
+   * first would drop the claims the other is still relying on — a `put`
+   * returning mid-flush hands every path that flush is committing to the next
+   * run that asks. Both consumers can have the two in flight at once, so the
+   * release waits for the last one out.
+   */
+  let writing = 0;
+
+  /**
+   * Run one claiming operation, releasing this projection's claims only once
+   * no other one is still in flight.
+   */
+  async function claiming<T>(operation: () => Promise<T>): Promise<T> {
+    writing += 1;
     try {
-      return await flushOnce();
+      return await operation();
     } finally {
-      // Held for the flush and no longer. A claim outliving the flush would
-      // need a release call at the end of every run, on every path a run can
-      // end — and one missed leaves a path claimed by a projection nobody
-      // will use again, refusing every later run. The race this exists to
-      // stop is two flushes interleaving at their awaits, which is exactly
-      // this long. Writes that do NOT overlap in time are already covered:
-      // the second finds the collection changed and reports a conflict.
-      claims.releaseAll(holder);
+      writing -= 1;
+      // Held for the operation and no longer. A claim outliving it would need
+      // a release call at the end of every run, on every path a run can end —
+      // and one missed leaves a path claimed by a projection nobody will use
+      // again, refusing every later run. The race this exists to stop is two
+      // flushes interleaving at their awaits, which is exactly this long.
+      // Writes that do NOT overlap in time are already covered: the second
+      // finds the collection changed and reports a conflict.
+      if (writing === 0) claims.releaseAll(holder);
     }
+  }
+
+  async function flush(): Promise<FlushReport> {
+    return await claiming(flushOnce);
   }
 
   async function flushOnce(): Promise<FlushReport> {
@@ -272,17 +294,28 @@ export function createProjection({
   ): Promise<FlushOutcome> {
     const now = hashContent(local);
     const base = baseline.get(path);
-    const theirs = await theirContent(mount, key);
-    const theirHash = theirs === null ? undefined : hashContent(theirs);
 
     if (now === base) return { kind: "unchanged", path };
 
-    // Everything below this line writes, so the claim is taken here — AFTER
-    // the no-op branch, because claiming a path we are not about to touch
-    // would refuse a run that merely read it unchanged.
+    // The claim is taken HERE, and the ordering either side of it is the
+    // whole point.
+    //
+    // After the no-op branch, because claiming a path we are not about to
+    // touch would refuse a run that merely read it unchanged. That branch
+    // needs no collection read, so nothing is lost by deciding it first.
+    //
+    // But BEFORE the collection read, because the read is what the write
+    // trusts. Read first and another projection can commit its whole write
+    // and release inside the await; this one then resumes with a snapshot
+    // that predates it, is granted a claim proving nothing, and overwrites
+    // work it never saw — with both writers told they succeeded. The claim
+    // has to cover the read-compare-write, not just the write.
     if (claims.claim(path, holder) !== holder) {
       return { kind: "contested", path };
     }
+
+    const theirs = await theirContent(mount, key);
+    const theirHash = theirs === null ? undefined : hashContent(theirs);
 
     if (base === undefined && theirHash === undefined) {
       await commit(mount, key, local, now);
@@ -318,11 +351,7 @@ export function createProjection({
     const { mount, key } = routed;
     if (!mount.writable) return undefined;
     if (isMetadataKey(key)) return undefined;
-    try {
-      return await decide(mount, key, path, content);
-    } finally {
-      claims.releaseAll(holder);
-    }
+    return await claiming(() => decide(mount, key, path, content));
   }
 
   /** Write content back to the collection, keeping its state in step. */

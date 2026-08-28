@@ -43,14 +43,16 @@ import type {
 import { z } from "zod";
 import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
 import { resolveSandbox } from "./resolve-sandbox";
-import { createProjection } from "@flow-state-dev/workspace";
+import { createProjection, createHostPlace } from "@flow-state-dev/workspace";
 import type {
   FlushOutcome,
   FlushReport,
   Mount as ProjectionMount,
+  Place,
   Projection,
 } from "@flow-state-dev/workspace";
 import { createSandboxPlace, KEEP_MARKER } from "./sandbox-place";
+import { warnUnsettled } from "./report";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { quote as shellQuote } from "shell-quote";
@@ -440,8 +442,17 @@ function createSandboxProjection(
   mounts: Mount[],
   createState: (relativePath: string) => Partial<JsonObject>,
 ): Projection {
+  return createMountedProjection(createSandboxPlace(sandbox, destination), mounts, createState);
+}
+
+/** The same projection over any place — the bind-mount path supplies its own. */
+function createMountedProjection(
+  place: Place,
+  mounts: Mount[],
+  createState: (relativePath: string) => Partial<JsonObject>,
+): Projection {
   return createProjection({
-    place: createSandboxPlace(sandbox, destination),
+    place,
     mounts: mounts.map((m) => ({
       prefix: m.prefix,
       collection: m.collection as unknown as ProjectionMount["collection"],
@@ -500,42 +511,19 @@ async function flush(entry: SandboxEntry): Promise<void> {
  * emitted, plus the one it could not: a contested path.
  */
 function reportOutcomes(entry: SandboxEntry, outcomes: readonly FlushOutcome[]): void {
-  const orphans = outcomes.filter((o) => o.kind === "orphan").map((o) => o.path);
-  if (orphans.length > 0) {
-    console.warn(
-      `[bash] dropped ${orphans.length} orphan file(s) not under any mounted collection (or ./${TMP_DIR}/): ${orphans.join(", ")}`,
-    );
-  }
-
-  const conflicts = outcomes.filter(
-    (o): o is Extract<FlushOutcome, { kind: "conflict" }> => o.kind === "conflict",
-  );
-  if (conflicts.length > 0) {
-    console.warn(
-      `[bash] ${conflicts.length} file(s) changed in their collection while this run held them, and were NOT overwritten: ${conflicts
-        .map((c) => (c.ours === null ? `${c.path} (deleted here)` : c.path))
-        .join(", ")}`,
-    );
-  }
-
-  // Named separately from conflicts, because the fix is different. A conflict
-  // is somebody who already wrote — you reconcile it. A contested path is
-  // somebody writing right now, so the answer is usually to run the two runs
-  // against different paths, and knowing WHICH path is what makes that
-  // possible.
-  const contested = outcomes.filter((o) => o.kind === "contested").map((o) => o.path);
-  if (contested.length > 0) {
-    console.warn(
-      `[bash] ${contested.length} file(s) are being written by another run and were NOT overwritten: ${contested.join(", ")}`,
-    );
-  }
+  warnUnsettled(outcomes, TMP_DIR);
 
   // A successful flush that reached zero files under writable mounts usually
   // means the agent's writes landed somewhere the walk never visited. Without
   // this there is no warn and no exception — just an artifact that never
   // appears.
   const writable = entry.mounts.filter((m) => m.writable);
-  if (writable.length > 0 && outcomes.every((o) => o.kind === "orphan")) {
+  // `outcomes.length > 0` carries weight: `every` is vacuously true on an
+  // empty list, so without it this fires on every command in a session whose
+  // agent has not written anything yet — the scratch marker used to keep the
+  // walk non-empty, and the projection filters it out. A warning that cries
+  // on the ordinary case is a warning nobody reads on the real one.
+  if (writable.length > 0 && outcomes.length > 0 && outcomes.every((o) => o.kind === "orphan")) {
     const source = entry.sandbox.hostMountSource
       ? ` (host walk under ${entry.sandbox.hostMountSource})`
       : "";
@@ -782,12 +770,6 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       ctx,
     ) => {
       const hostMountSource = resolveHostMountSourceForWrite(provider, ctx)!;
-      const hostPath = path.join(hostMountSource, input.path);
-      await fs.mkdir(path.dirname(hostPath), { recursive: true });
-      await fs.writeFile(hostPath, input.content, "utf-8");
-      // Build a routing-only `SandboxEntry` from ctx if no live one exists.
-      // Its projection writes straight to the collections and never reaches
-      // for the place, so the `sandbox` field is never dereferenced.
       const cached = registry.get(
         resolveScopeKey("session", getIdentity(ctx)).key,
       );
@@ -798,12 +780,41 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           `[bash] bash-write-file at "${input.path}" found no mounted collections on ctx.resources — file written to host fs but NOT routed into any collection. Wire the bash capability alongside the artifact/skills capabilities on this generator.`,
         );
       }
-      const entry: SandboxEntry = liveEntry ?? {
-        sandbox: {} as Sandbox,
-        hydrated: false,
-        mounts,
-        projection: createSandboxProjection({} as Sandbox, destination, mounts, createState),
-      };
+
+      // Cold path: no sandbox has booted, so this handler is the first thing
+      // to touch the workspace. The bind mount means the host directory IS
+      // the place, so the projection gets a real one and hydrates over it —
+      // exactly what a `bashCommand` would have done first.
+      //
+      // Hydrating is not an optimisation, it is the correctness. A projection
+      // with no baseline cannot tell a file it is creating from one somebody
+      // else wrote, so every path the collection already holds comes back as
+      // a conflict and the write is refused — while the host file takes the
+      // edit anyway. The two then disagree, and the next hydrate lays the
+      // stale collection copy back over the run's work.
+      //
+      // It has to run BEFORE the host write, or it would overwrite the very
+      // file this call is here to save.
+      const entry: SandboxEntry =
+        liveEntry ??
+        (await (async () => {
+          const cold: SandboxEntry = {
+            sandbox: {} as Sandbox,
+            hydrated: true,
+            mounts,
+            projection: createMountedProjection(
+              createHostPlace(hostMountSource),
+              mounts,
+              createState,
+            ),
+          };
+          await cold.projection.hydrate();
+          return cold;
+        })());
+
+      const hostPath = path.join(hostMountSource, input.path);
+      await fs.mkdir(path.dirname(hostPath), { recursive: true });
+      await fs.writeFile(hostPath, input.content, "utf-8");
       await routeWrittenFile(entry, input.path, input.content);
       return { success: true };
     },

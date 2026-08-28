@@ -284,6 +284,45 @@ describe("createBashTool", () => {
     expect(onAfterCommand).toHaveBeenCalled();
     expect(result).toEqual(overrideResult);
   });
+
+  it("warns when a write is refused because another run holds the path", async () => {
+    // `createBashTool` is the second entry point onto the same projection.
+    // A refused write it says nothing about is a write the caller believes
+    // landed — the failure mode the whole reconcile exists to remove.
+    const { sharedClaimRegistry } = await import("@flow-state-dev/workspace");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const otherRun = Symbol("other-run");
+
+    const collection = createMockCollection([
+      {
+        name: "hello.txt",
+        state: { path: "hello.txt", hash: "abc", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+    const customSandbox = createMockSandbox();
+    const { tools } = await createBashTool({
+      collections: { files: collection },
+      provider: { type: "custom", sandbox: customSandbox },
+    });
+
+    try {
+      sharedClaimRegistry.claim("files/hello.txt", otherRun);
+      const writeFile = tools.writeFile as {
+        execute: (a: { path: string; content: string }) => Promise<unknown>;
+      };
+      await writeFile.execute({ path: "files/hello.txt", content: "ours" });
+
+      expect(await (await collection.get("hello.txt")).readContent()).toBe("original");
+      const warned = warn.mock.calls.flat().join(" ");
+      expect(warned).toContain("files/hello.txt");
+      expect(warned).toContain("another run");
+    } finally {
+      sharedClaimRegistry.releaseAll(otherRun);
+      warn.mockRestore();
+    }
+  });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -1404,5 +1443,61 @@ describe("createBashBlocks", () => {
       sharedClaimRegistry.releaseAll(otherRun);
       warn.mockRestore();
     }
+  });
+
+  it("says nothing when a flush over an empty workspace finds nothing", async () => {
+    // The "0 files under writable mounts" warning exists to catch writes that
+    // landed where the walk never looks. An empty workspace is not that: it is
+    // the ordinary state of a session whose agent has not written yet, and a
+    // warning on every command in that state is a warning nobody reads.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("empty-flush", { session: { artifacts } });
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("0 files under writable mounts");
+    warn.mockRestore();
+  });
+  it("cold write-file updates a file the collection already holds", async () => {
+    // The bind-mount fast path builds a routing-only projection when no
+    // sandbox is live. It holds no baseline, so a file the collection already
+    // has looks to it like somebody else's work — and the write is refused.
+    // The host file is updated regardless, so the two disagree, and the next
+    // hydrate lays the stale collection copy back over the run's edit.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { mkdtemp, readFile } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const nodePath = await import("node:path");
+
+    const workspace = await mkdtemp(nodePath.join(os.tmpdir(), "cold-write-"));
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "notes.md",
+        state: { path: "notes.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+
+    const { bashWriteFile } = createBashBlocks({
+      provider: { type: "moat", workspace },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("cold-write-1", { session: { artifacts } });
+
+    await runForTest(bashWriteFile, { path: "artifacts/notes.md", content: "edited" }, ctx);
+
+    // The host file took the edit either way — that is not in question.
+    expect(await readFile(nodePath.join(workspace, "artifacts/notes.md"), "utf-8")).toBe("edited");
+    // THE discriminating assertion: so did the collection. Anything else and
+    // the edit is one hydrate away from being erased.
+    expect(await (await artifacts.get("notes.md")).readContent()).toBe("edited");
   });
 });
