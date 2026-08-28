@@ -267,7 +267,7 @@ A sub-agent prints `sub · Sub-agent: Explore` when it opens, and `sub · Sub-ag
 
 Reasoning and thinking text are not printed.
 
-Headless `watch` writes those same lines to stderr. It is not a selected-row view. Tool, hunk, Bash result, and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
+Headless `watch` writes those same lines to stderr. Tool, hunk, Bash result, and sub-agent lines are written once, each on its own line, not as a live overwrite. Watching a running row does not start work or send an answer.
 
 After that request ends, further board changes show as the lines `status` reports.
 
