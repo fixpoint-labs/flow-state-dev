@@ -361,7 +361,7 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(fullErr.text).not.toContain("tool · Write src/hello.js");
   });
 
-  it("full-board status prints a running row's current action, not a settled journal", async () => {
+  it("full-board status and wake print a running row's current action, not a settled journal", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "LIVE-1"], {
       cwd: fixtureDir,
@@ -439,6 +439,17 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     });
     expect(full.text).toContain("Write src/live.ts");
     expect(full.text).not.toContain("src/hello.js");
+
+    const woken = capture();
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      output: woken.output as unknown as NodeJS.WriteStream,
+      stderr: capture().output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(woken.text).toContain("Write src/live.ts");
+    expect(woken.text).not.toContain("src/hello.js");
   });
 
   it("watch of the full board does not replay a settled journal it never tailed", async () => {

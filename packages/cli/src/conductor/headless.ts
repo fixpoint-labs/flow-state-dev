@@ -95,7 +95,10 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         else write(`seeded ${options.command.issue} → ${seeded.taskId}`);
         const status = await readBoard(options.dispatch, options.command.issue, onEvent);
         flushTranscript();
-        if (!options.json) write(renderBoardPlain(status.rows, false));
+        if (!options.json) {
+          const views = await attemptViews(options, status.rows, options.command.issue);
+          write(renderBoardPlain(status.rows, false, views));
+        }
         return 0;
       }
       case "wake": {
@@ -103,7 +106,11 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         flushTranscript();
         const status = await readBoard(options.dispatch, undefined, onEvent);
         flushTranscript();
-        write(options.json ? JSON.stringify(status) : renderBoardPlain(status.rows, false));
+        if (options.json) write(JSON.stringify(status));
+        else {
+          const views = await attemptViews(options, status.rows, undefined);
+          write(renderBoardPlain(status.rows, false, views));
+        }
         return watchExitCode(status.rows);
       }
       case "answer": {
@@ -138,7 +145,11 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         }
         const after = await readBoard(options.dispatch, options.command.issue, onEvent);
         flushTranscript();
-        write(options.json ? JSON.stringify(after) : renderBoardPlain(after.rows, false));
+        if (options.json) write(JSON.stringify(after));
+        else {
+          const views = await attemptViews(options, after.rows, options.command.issue);
+          write(renderBoardPlain(after.rows, false, views));
+        }
         return watchExitCode(after.rows);
       }
       case "watch":
