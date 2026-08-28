@@ -135,6 +135,11 @@ export const runRecordStateSchema = z.object({
    * then exhaust its turns.
    */
   prUrl: z.string().nullable().default(null),
+  /**
+   * Setup defects this attempt repaired on the worktree before the coding
+   * agent ran. Observational — nothing decides from it (BP-023).
+   */
+  healed: z.array(z.string()).nullable().default(null),
   /** When this row was last written. */
   updatedAt: z.number().nullable().default(null),
 });
@@ -211,6 +216,7 @@ const ATTEMPT_SCOPED_CLEAR = {
   reason: null,
   childSessionId: null,
   requestId: null,
+  healed: null,
 } as const;
 
 /** What {@link writeRunRow} did. */

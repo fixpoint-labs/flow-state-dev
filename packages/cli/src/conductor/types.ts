@@ -30,6 +30,8 @@ export interface StatusRun {
   requestId: string | null;
   /** The pull request that attempt produced, when status carried one. */
   prUrl?: string | null;
+  /** Setup defects this attempt repaired on the worktree before the run. */
+  healed?: string[] | null;
   updatedAt: number | null;
 }
 

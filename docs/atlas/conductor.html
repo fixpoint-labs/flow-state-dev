@@ -593,7 +593,7 @@ export CONDUCTOR_EPIC=my-board
 export CONDUCTOR_CHECKOUTS=/tmp/conductor-checkouts
 pnpm conductor start ISSUE
 pnpm conductor status ISSUE</pre>
-  <p>The operator surface is the same host as <code>fsdev run</code> / <code>fsdev chat</code>. A TTY opens the board. Piped or scripted, use the headless verbs. A live Claude child still needs Anthropic auth in the environment that hosts the run. Implement's done-condition shells out to <code>gh pr list</code>, so a completing pull request also needs GitHub auth on that host.</p>
+  <p>The operator surface is the same host as <code>fsdev run</code> / <code>fsdev chat</code>. A TTY opens the board. Piped or scripted, use the headless verbs. A live Claude child still needs Anthropic auth in the environment that hosts the run. Implement's done-condition shells out to <code>gh pr list</code>, so a completing pull request also needs GitHub auth on that host. A target repository that does not ignore <code>.fsdev/</code> is no longer a dead stop: provisioning writes <code>**/.fsdev/</code> onto that issue's work branch and the RUN band names the heal. A question file that is already tracked still refuses &mdash; an ignore rule does not un-track a file.</p>
 
   <figure>
     <div class="fig-body">

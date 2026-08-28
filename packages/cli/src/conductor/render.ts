@@ -305,6 +305,9 @@ function renderRunBand(state: ViewState, cols: number, now: number): string {
     id !== undefined ? `${id}  ·  x stops` : "no request id yet",
   ];
   if (row.run?.prUrl) body.push(prText(row.run.prUrl, inner));
+  for (const heal of row.run?.healed ?? []) {
+    body.push(paint(GOLD, `heal · ${shorten(heal, inner)}`));
+  }
   const hint = hintBits.join("  ·  ");
   const doing = selectedNow(state);
   const nowLine =

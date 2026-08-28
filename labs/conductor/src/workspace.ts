@@ -83,6 +83,12 @@ export interface Checkout {
   branch: string;
   /** True when this attempt created it, false when it inherited the last one's. */
   created: boolean;
+  /**
+   * Setup defects this call repaired on the worktree so the run could start.
+   * Empty when the tree was already safe. Never writes the source repo's
+   * `baseRef` — the fix travels on this branch.
+   */
+  healed: string[];
 }
 
 /*
@@ -541,12 +547,18 @@ async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Pro
  * global excludes, and re-implementing that resolution here is how the two
  * answers drift. `check-ignore` is git's own answer to the exact question.
  *
- * **Refused rather than fixed.** Installing the rule means writing into a
- * repository this lab does not own — a tracked `.gitignore` is the operator's
- * file, and `info/exclude` lives in the common dir every worktree of that
- * repository shares. This module's standing answer for a tree it cannot use is
- * to say so and change nothing, and the refusal lands before the agent runs,
- * which is what keeps it from being paid for once per retry.
+ * **Healed on the worktree when the only defect is a missing directory rule.**
+ * Writing `main` in a repository this lab does not own is still refused —
+ * a tracked `.gitignore` on `baseRef` is the operator's file, and
+ * `info/exclude` is shared by every worktree. The work branch is ours: the
+ * same line the refusal used to name is appended to *this* checkout's
+ * `.gitignore`, `check-ignore` is asked again, and the coding agent inherits
+ * a tree that will not commit its own questions. A marker that is already
+ * tracked cannot be healed this way (an ignore rule does not un-track a
+ * file) and is still refused before the agent runs.
+ *
+ * {@link assertAskMarkerIgnored} is the check. {@link ensureAskMarkerIgnored}
+ * is the check plus that one heal.
  */
 async function assertAskMarkerIgnored(
   checkoutPath: string,
@@ -628,6 +640,56 @@ async function assertAskMarkerIgnored(
       `unprotected. Add \`${ASK_MARKER_IGNORE_RULE}\` to that repository's .gitignore.` +
       staleBranchRemedy(preservedBranch),
   );
+}
+
+/**
+ * The one setup defect this module can repair without a person: the worktree
+ * is missing the directory ignore that keeps question markers off a commit.
+ *
+ * **The worktree, not `sourceRepo`.** A write to `baseRef` would mutate a
+ * branch this call did not create. Appending the rule here means the next
+ * attempt on *this* branch is already safe, and the coding agent's PR carries
+ * the line. A later issue cut from an unfixed `baseRef` heals the same way.
+ *
+ * Returns the human line when it wrote something that then passed the check.
+ * Returns `[]` when the tree was already safe. Throws the same refusal as
+ * {@link assertAskMarkerIgnored} when a marker is tracked or the write did
+ * not make the directory ignored.
+ */
+async function ensureAskMarkerIgnored(
+  checkoutPath: string,
+  left: () => number,
+  preservedBranch?: PreservedBranch,
+): Promise<string[]> {
+  try {
+    await assertAskMarkerIgnored(checkoutPath, left, preservedBranch);
+    return [];
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes("does not ignore the directory")) {
+      throw error;
+    }
+  }
+  if (!healAskIgnoreFile(checkoutPath)) {
+    await assertAskMarkerIgnored(checkoutPath, left, preservedBranch);
+    return [];
+  }
+  await assertAskMarkerIgnored(checkoutPath, left, preservedBranch);
+  return [`added ${ASK_MARKER_IGNORE_RULE} to .gitignore`];
+}
+
+/**
+ * Append {@link ASK_MARKER_IGNORE_RULE} to the checkout's `.gitignore`.
+ * False when the line is already there — then the missing-ignore refusal
+ * has another cause and writing again would loop.
+ */
+function healAskIgnoreFile(checkoutPath: string): boolean {
+  const gitignore = join(checkoutPath, ".gitignore");
+  const prior = existsSync(gitignore) ? readFileSync(gitignore, "utf8") : "";
+  const lines = prior.split(/\r?\n/).map((line) => line.trim());
+  if (lines.includes(ASK_MARKER_IGNORE_RULE)) return false;
+  const body = prior === "" || prior.endsWith("\n") ? prior : `${prior}\n`;
+  writeFileSync(gitignore, `${body}${ASK_MARKER_IGNORE_RULE}\n`);
+  return true;
 }
 
 /**
@@ -1024,13 +1086,13 @@ export async function provisionCheckout(
     // that provisioned legally and is no longer safe to write a question into.
     // Reuse leaves the tree standing by design, so the branch it is on is
     // still checked out and cannot be deleted until it is removed.
-    await assertAskMarkerIgnored(path, left, {
+    const healed = await ensureAskMarkerIgnored(path, left, {
       branch,
       checkoutPath: path,
       checkoutStillAttached: true,
     });
 
-    return { path, branch, created: false };
+    return { path, branch, created: false, healed };
   }
 
   // **A directory with no `.git` is a creation that never finished — remove it.**
@@ -1132,13 +1194,14 @@ export async function provisionCheckout(
     // new one from the fixed `baseRef`, so "fix the repository" is the whole
     // instruction; pre-existing, it is deliberately kept and the operator has a
     // second thing to do.
-    await assertAskMarkerIgnored(
+    const healed = await ensureAskMarkerIgnored(
       path,
       left,
       // `checkoutStillAttached: false` because the catch below removes the tree
       // before rethrowing — by the time anyone reads this, the branch is free.
       branchPreexisted ? { branch, checkoutPath: path, checkoutStillAttached: false } : undefined,
     );
+    return { path, branch, created: true, healed };
   } catch (refusal) {
     const removed = await discardFreshCheckout(config, path, branch, branchPreexisted, now);
     if (removed) throw refusal;
@@ -1153,8 +1216,6 @@ export async function provisionCheckout(
         `same way.`,
     );
   }
-
-  return { path, branch, created: true };
 }
 
 /**

@@ -63,8 +63,9 @@
  * The marker lands in the product checkout, a worktree of `sourceRepo`, which
  * this lab requires be a different repository, and a target that never adopted
  * the pattern has no such rule. So the rule is now checked where the marker
- * lands rather than assumed from where the code lives, and a repository that
- * lacks it is refused with the line to add.
+ * lands rather than assumed from where the code lives. A repository that
+ * lacks the directory rule is healed on the work branch; a marker that is
+ * already tracked is still refused.
  */
 import { readFile } from "node:fs/promises";
 import { join, sep } from "node:path";

@@ -248,11 +248,9 @@ export function seedRepo(dir: string): void {
   // Another fixture that had drifted from the thing it stands for.
   writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
   // **A stand-in source repository ignores the ask marker, because a real one
-  // has to.** The marker lands in the product checkout, so the rule that keeps
-  // it out of a commit belongs to THAT repository — and provisioning now
-  // refuses a checkout whose repository does not carry it, before the agent
-  // runs. Third fixture in this file that had drifted from the thing it stands
-  // for, and the same tell each time: the specs passed because nothing asked.
+  // should.** The marker lands in the product checkout. Provisioning heals a
+  // missing directory rule onto the worktree; fixtures that already carry it
+  // keep the common path free of that write.
   writeFileSync(join(dir, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
   git("add", "tracked.txt", ".gitignore");
   git("commit", "-m", "root");

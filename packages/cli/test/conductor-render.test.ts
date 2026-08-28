@@ -372,6 +372,7 @@ describe("renderFrame", () => {
         costUsd: null,
         childSessionId: "child-1",
         requestId: "req-live-1",
+        healed: ["added **/.fsdev/ to .gitignore"],
         updatedAt: 1,
       },
       questions: [],
@@ -383,6 +384,7 @@ describe("renderFrame", () => {
     );
     const above = beforeTranscript(frame);
     expect(above).toMatch(/^ RUN\s*$/m);
+    expect(above).toContain("heal · added **/.fsdev/ to .gitignore");
     expect(above).toContain("conductor/LIVE-1--implement");
     expect(above).toContain("/tmp/conductor-src/.fsdev/workspaces/LIVE-1--implement");
     expect(above).toContain("req-live-1");

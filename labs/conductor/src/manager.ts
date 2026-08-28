@@ -1061,12 +1061,20 @@ export function harnessManager(options: ManagerOptions) {
           (ctx as BlockContext).signal,
         ),
       );
-      await provisionCheckout(workspace, {
+      const checkout = await provisionCheckout(workspace, {
         principal: runPrincipal(ctx as BlockContext),
         epic: boardCollectionId,
         issue: state.issue!,
         phase: state.phase!,
       });
+      if (checkout.healed.length > 0) {
+        await fenced(
+          writeRunRow(ctx as BlockContext, identityFrom(ctx as BlockContext, boardCollectionId), {
+            healed: checkout.healed,
+          }),
+          "the setup heal was recorded",
+        );
+      }
       return { prompt };
     },
   });
