@@ -1123,7 +1123,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     name: "conductor-steer",
     inputSchema: steerInputSchema,
     outputSchema: z.string(),
-    stateSchema: z.object({ message: z.string() }),
+    stateSchema: z.object({ message: z.string().nullable().default(null) }),
   })
     .tap(tenantGate)
     .tap(rememberSteerMessage)

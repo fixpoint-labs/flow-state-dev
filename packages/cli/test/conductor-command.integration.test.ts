@@ -107,14 +107,17 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(seeded.text).toContain("ASK-1--review");
   });
 
-  it("refuses a verb the parser does not know", async () => {
-    await expect(
-      executeConductorCommand(["nope"], {
-        cwd: fixtureDir,
-        stores: createInMemoryStores(),
-        config: false,
-      }),
-    ).rejects.toMatchObject({ exitCode: EXIT_INVALID_ARGS });
+  it("treats an unknown headless verb as talk", async () => {
+    const talked = capture();
+    const code = await executeConductorCommand(["nope"], {
+      cwd: fixtureDir,
+      stores: createInMemoryStores(),
+      output: talked.output as unknown as NodeJS.WriteStream,
+      stderr: talked.output as unknown as NodeJS.WriteStream,
+      config: false,
+    });
+    expect(code).not.toBe(EXIT_INVALID_ARGS);
+    expect(talked.text).toMatch(/No rows yet|Board has/);
   });
 
   it("is fatal when no conductor flow is discovered", async () => {
