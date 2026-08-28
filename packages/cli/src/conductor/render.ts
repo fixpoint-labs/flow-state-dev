@@ -214,7 +214,8 @@ function renderAskAttempt(state: ViewState, inner: number): string[] {
   if (prUrl) lines.push(` ${dim(prText(prUrl, inner))}`);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
-    lines.push(` ${dim(shortenToolLine(now, inner))}`);
+    const cwd = selectedRow(state)?.run?.workspacePath ?? null;
+    lines.push(` ${dim(paintToolNow(now, inner, cwd))}`);
   }
   lines.push(...renderFileLines(state, inner));
   lines.push(...renderPlanLines(state, inner, { onlyCurrent: true }));
@@ -246,7 +247,7 @@ function renderRunBand(state: ViewState, cols: number): string {
   const id = selectedRunningRequestId(state);
   const body: string[] = [];
   if (branch) body.push(truncate(branch, inner));
-  if (tree) body.push(shorten(tree, inner));
+  if (tree) body.push(fileText(tree, inner));
   const hintBits: string[] = [];
   if (row.run?.usage) {
     hintBits.push(
@@ -261,7 +262,9 @@ function renderRunBand(state: ViewState, cols: number): string {
   const hint = hintBits.join("  ·  ");
   const now = selectedNow(state);
   const nowLine =
-    now !== undefined && now !== "" ? ` ${paint(GOLD, shortenToolLine(now, inner))}` : "";
+    now !== undefined && now !== ""
+      ? ` ${paint(GOLD, paintToolNow(now, inner, tree ?? null))}`
+      : "";
   const fileLines = renderFileLines(state, inner);
   const planLines = renderPlanLines(state, inner);
   return [
@@ -364,7 +367,7 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
       lines.push(` ${dim("branch")}   ${truncate(row.run.branch, cols - 12)}`);
     }
     if (row.run.workspacePath) {
-      lines.push(` ${dim("tree")}     ${shorten(row.run.workspacePath, cols - 12)}`);
+      lines.push(` ${dim("tree")}     ${fileText(row.run.workspacePath, cols - 12)}`);
     }
     if (row.run.prUrl) {
       lines.push(` ${dim("pr")}       ${prText(row.run.prUrl, cols - 12)}`);
@@ -405,7 +408,7 @@ function renderSelectedSummary(state: ViewState, cols: number): string {
   if (prUrl) lines.push(` ${dim("pr")}       ${prText(prUrl, inner)}`);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
-    lines.push(` ${dim("last")}     ${shortenToolLine(now, inner)}`);
+    lines.push(` ${dim("last")}     ${paintToolNow(now, inner, run?.workspacePath ?? null)}`);
   }
   lines.push(...renderFileLines(state, inner));
   lines.push(...renderPlanLines(state, inner));
@@ -592,6 +595,10 @@ function linkFileLine(original: string, painted: string, cwd?: string | null): s
   if (file === undefined) return painted;
   const href = fileHref(file, cwd);
   return href === undefined ? painted : link(href, painted);
+}
+
+function paintToolNow(now: string, inner: number, cwd?: string | null): string {
+  return linkFileLine(now, shortenToolLine(now, inner), cwd);
 }
 
 function lineCount(block: string): number {
