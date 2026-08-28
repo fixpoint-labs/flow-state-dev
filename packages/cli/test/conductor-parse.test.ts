@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { forwardConductorArgv } from "../src/commands/conductor";
-import { HELP_TEXT, parseArgv, parseCommand, slashMatches } from "../src/conductor/parse";
+import {
+  HELP_TEXT,
+  parseArgv,
+  parseCommand,
+  slashArgPrefix,
+  slashMatches,
+} from "../src/conductor/parse";
 
 describe("parseCommand", () => {
   it("parses slash and bare verbs as the same command", () => {
@@ -122,7 +128,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("x or Ctrl-C stops it");
     expect(HELP_TEXT).toContain("/find [text]");
     expect(HELP_TEXT).toContain("older / newer match");
-    expect(HELP_TEXT).toContain("complete the selected slash verb");
+    expect(HELP_TEXT).toContain("complete the selected slash verb or board id");
   });
 });
 
@@ -135,5 +141,15 @@ describe("slashMatches", () => {
     expect(slashMatches("/status")).toEqual(["status"]);
     expect(slashMatches("/status FIX-1")).toEqual([]);
     expect(slashMatches("status")).toEqual([]);
+  });
+
+  it("reads the first board-id argument after a space", () => {
+    expect(slashArgPrefix("/status")).toBeNull();
+    expect(slashArgPrefix("/status ")).toEqual({ verb: "status", prefix: "" });
+    expect(slashArgPrefix("/status FIX")).toEqual({ verb: "status", prefix: "fix" });
+    expect(slashArgPrefix("/status FIX-1 extra")).toBeNull();
+    expect(slashArgPrefix("/seed ")).toBeNull();
+    expect(slashArgPrefix("/answer Q")).toEqual({ verb: "answer", prefix: "q" });
+    expect(slashArgPrefix("/answer Q hello")).toBeNull();
   });
 });

@@ -5,13 +5,8 @@
  * is the next view, and does anything need to be dispatched. Tests drive it
  * without a terminal.
  */
-import {
-  parseCommand,
-  slashMatches,
-  slashPrefix,
-  SLASH_NEEDS_ARG,
-  type ParseResult,
-} from "./parse";
+import { parseCommand, slashPrefix, type ParseResult } from "./parse";
+import { slashMenu } from "./slash";
 import {
   applyFindQuery,
   clampSelected,
@@ -287,7 +282,7 @@ function idleFallback(state: ViewState, value: string): KeyResult {
 
 function applyEditing(state: ViewState, key: Key): KeyResult {
   if (state.inputMode === "find") return applyFindEdit(state, key);
-  const matches = slashMatches(state.input);
+  const menu = slashMenu(state);
   switch (key.type) {
     case "char":
       return { state: { ...state, input: state.input + key.value, slashAt: 0 } };
@@ -301,38 +296,36 @@ function applyEditing(state: ViewState, key: Key): KeyResult {
     case "tab":
       return completeSlash(state, false);
     case "enter":
-      if (matches.length > 0 && slashPrefix(state.input) !== "") {
+      if (menu.length > 0 && slashPrefix(state.input) !== "") {
         return completeSlash(state, true);
       }
       return submitEdit(state);
     case "up":
-      if (matches.length === 0) return { state };
+      if (menu.length === 0) return { state };
       return {
-        state: { ...state, slashAt: (state.slashAt - 1 + matches.length) % matches.length },
+        state: { ...state, slashAt: (state.slashAt - 1 + menu.length) % menu.length },
       };
     case "down":
-      if (matches.length === 0) return { state };
-      return { state: { ...state, slashAt: (state.slashAt + 1) % matches.length } };
+      if (menu.length === 0) return { state };
+      return { state: { ...state, slashAt: (state.slashAt + 1) % menu.length } };
     default:
       return { state };
   }
 }
 
 /**
- * Fill in the selected slash verb. Tab leaves the line for more typing.
- * Enter runs it when the verb needs no argument; otherwise it leaves a
- * trailing space so the issue or question id can be typed.
+ * Fill in the selected slash item. Tab leaves the line. Enter runs it
+ * when the item needs no more typing.
  */
 function completeSlash(state: ViewState, submit: boolean): KeyResult {
-  const matches = slashMatches(state.input);
-  if (matches.length === 0) {
+  const menu = slashMenu(state);
+  if (menu.length === 0) {
     return submit ? submitEdit(state) : { state };
   }
-  const at = Math.max(0, Math.min(state.slashAt, matches.length - 1));
-  const verb = matches[at]!;
-  const input = SLASH_NEEDS_ARG.has(verb) ? `/${verb} ` : `/${verb}`;
-  const next: ViewState = { ...state, input, slashAt: 0 };
-  if (submit && !SLASH_NEEDS_ARG.has(verb)) return submitEdit(next);
+  const at = Math.max(0, Math.min(state.slashAt, menu.length - 1));
+  const item = menu[at]!;
+  const next: ViewState = { ...state, input: item.fill, slashAt: 0 };
+  if (submit && !item.needsMore) return submitEdit(next);
   return { state: next };
 }
 

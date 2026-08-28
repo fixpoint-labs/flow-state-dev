@@ -730,6 +730,18 @@ describe("renderFrame", () => {
     expect(text).not.toContain("/wake");
   });
 
+  it("lists board issue ids after /status ", () => {
+    const frame = renderFrame(
+      { ...emptyView("epic"), rows: [waiting, failed], input: "/status " },
+      { cols: 80, rows: 24 },
+    );
+    const text = stripAnsi(frame);
+    expect(text).toContain("FIX-1");
+    expect(text).toContain("awaiting_review");
+    expect(text).toContain("FAIL-1");
+    expect(text).toContain("Tab complete");
+  });
+
   it("pins the current find hit and paints the match", () => {
     const idle: StatusRow = {
       taskId: "FIX-1--implement",

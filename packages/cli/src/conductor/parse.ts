@@ -47,6 +47,12 @@ export const SLASH_VERBS = [
 /** Verbs that cannot run with only a name — completion leaves a trailing space. */
 export const SLASH_NEEDS_ARG = new Set(["seed", "start", "answer"]);
 
+/**
+ * Verbs whose first argument is an id already on the board. `seed` /
+ * `start` file a new issue — they are not completed from existing rows.
+ */
+export const SLASH_TAKES_ID = new Set(["status", "watch", "abort", "stop", "answer"]);
+
 export const SLASH_HINTS: Record<(typeof SLASH_VERBS)[number], string> = {
   status: "refresh, or jump to a row",
   seed: "file and start an issue",
@@ -77,6 +83,22 @@ export function slashMatches(input: string): string[] {
   const prefix = slashPrefix(input);
   if (prefix === null) return [];
   return SLASH_VERBS.filter((verb) => verb.startsWith(prefix));
+}
+
+/**
+ * First-argument completion. `/status FIX` → `{ verb: "status", prefix: "fix" }`.
+ * `null` while the verb is still being typed, after a second argument, or
+ * for a verb that does not take a board id.
+ */
+export function slashArgPrefix(input: string): { verb: string; prefix: string } | null {
+  if (!input.startsWith("/")) return null;
+  const match = /^\/(\S+)(\s+)(.*)$/.exec(input);
+  if (match === null) return null;
+  const verb = match[1]!.toLowerCase();
+  if (!SLASH_TAKES_ID.has(verb)) return null;
+  const rest = match[3]!;
+  if (/\s/.test(rest)) return null;
+  return { verb, prefix: rest.toLowerCase() };
 }
 
 function splitWords(line: string): string[] {
@@ -273,7 +295,7 @@ In the TUI:
   r            refresh now (runs status)
   t            expand or collapse the todo list on a running row
   /            slash command (same verbs)
-  Tab          complete the selected slash verb
+  Tab          complete the selected slash verb or board id
   ↑/↓          choose a slash match while / is open
   /status id   select that row, then refresh
   /find [text] search the selected row's transcript

@@ -3,7 +3,8 @@
  * assert on it. A frame that cannot be produced from a fixture is a frame
  * nobody can pin.
  */
-import { HELP_TEXT, SLASH_HINTS, slashMatches } from "./parse";
+import { HELP_TEXT } from "./parse";
+import { slashMenu } from "./slash";
 import {
   ACCENT,
   BOLD,
@@ -421,19 +422,18 @@ const SLASH_MENU_MAX = 6;
 
 function renderSlashMenu(state: ViewState, cols: number): string {
   if (state.inputMode !== "command") return "";
-  const matches = slashMatches(state.input);
-  if (matches.length === 0) return "";
-  const at = Math.max(0, Math.min(state.slashAt, matches.length - 1));
+  const menu = slashMenu(state);
+  if (menu.length === 0) return "";
+  const at = Math.max(0, Math.min(state.slashAt, menu.length - 1));
   const start = Math.max(
     0,
-    Math.min(at - Math.floor((SLASH_MENU_MAX - 1) / 2), Math.max(0, matches.length - SLASH_MENU_MAX)),
+    Math.min(at - Math.floor((SLASH_MENU_MAX - 1) / 2), Math.max(0, menu.length - SLASH_MENU_MAX)),
   );
-  const shown = matches.slice(start, start + SLASH_MENU_MAX);
+  const shown = menu.slice(start, start + SLASH_MENU_MAX);
   const inner = Math.max(16, cols - 4);
-  const lines = shown.map((verb, i) => {
+  const lines = shown.map((item, i) => {
     const index = start + i;
-    const hint = SLASH_HINTS[verb as keyof typeof SLASH_HINTS] ?? "";
-    const body = truncate(`/${verb}  ${hint}`, inner);
+    const body = truncate(`${item.label}  ${item.hint}`, inner);
     const line = ` ${body}`;
     return index === at ? paint(SELECT_BG + BOLD + GOLD, padLine(line, cols)) : dim(padLine(line, cols));
   });
@@ -463,7 +463,7 @@ function renderFooter(state: ViewState, cols: number): string {
   const fail = selectedFailure(state);
   const running = selectedRunningRequestId(state) !== undefined;
   const finding = state.find !== null;
-  const slashing = state.inputMode === "command" && slashMatches(state.input).length > 0;
+  const slashing = state.inputMode === "command" && slashMenu(state).length > 0;
   const keys = slashing
     ? "Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc"
     : finding

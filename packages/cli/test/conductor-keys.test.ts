@@ -137,6 +137,43 @@ describe("applyKey", () => {
     expect(tabbed.state.input).toBe("/seed ");
   });
 
+  it("completes a board issue id after /status", () => {
+    let state = board([row("FIX-1"), row("FIX-2")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "status ") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    expect(state.input).toBe("/status ");
+    const down = applyKey(state, { type: "down" });
+    const tabbed = applyKey(down.state, { type: "tab" });
+    expect(tabbed.state.input).toBe("/status FIX-2");
+    const jumped = applyKey(tabbed.state, { type: "enter" });
+    expect(jumped.state.selected).toBe(1);
+    expect(jumped.effect).toEqual({ type: "refresh" });
+  });
+
+  it("offers a running issue first after /abort", () => {
+    const pending = { ...row("FIX-1"), status: "pending" };
+    let state = board([pending, runningRow("LIVE-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "abort ") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const tabbed = applyKey(state, { type: "tab" });
+    expect(tabbed.state.input).toBe("/abort LIVE-1");
+  });
+
+  it("completes an open question id after /answer and leaves a space", () => {
+    let state = board([row("FIX-1", 1)]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "answer ") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const tabbed = applyKey(state, { type: "tab" });
+    expect(tabbed.state.input).toBe("/answer FIX-1/implement/1/q0 ");
+    expect(tabbed.effect).toBeUndefined();
+  });
+
   it("clears a bare slash on Enter instead of running the first verb", () => {
     let state = board([row("FIX-1")]);
     state = applyKey(state, { type: "char", value: "/" }).state;
