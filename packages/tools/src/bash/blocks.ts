@@ -219,9 +219,20 @@ interface ScopeIdentity {
  * so a name computed one way for the sandbox and another for the purge leaves
  * the live container unprotected, eligible for oldest-first destruction while a
  * request is reconnecting to it.
+ *
+ * Built from a digest of the framed key, not from the path segments joined up.
+ * A run name is one flat string with no separator to spare, so joining
+ * components on `-` loses their boundaries: tenant `a-b` with session `c` and
+ * tenant `a` with session `b-c` both spell `fsdev-a-b-c`, and reconnecting by
+ * name alone hands the second principal the first's container. The digest is
+ * over the same framed key the registry uses, so two identities that differ at
+ * all differ here. The readable half is a convenience for whoever reads
+ * `moat ls`; the digest is what makes the name mean one workspace.
  */
 function defaultMoatRunName(identity: ScopeIdentity): string {
-  return `fsdev-${resolveScopeKey("session", identity).scopeId.split(path.sep).join("-")}`;
+  const { key } = resolveScopeKey("session", identity);
+  const digest = createHash("sha256").update(key, "utf-8").digest("hex").slice(0, 12);
+  return `fsdev-${safeSegment(identity.sessionId).slice(0, 24)}-${digest}`;
 }
 
 function defaultMoatWorkspace(identity: ScopeIdentity): string {
@@ -306,6 +317,16 @@ function safeSegment(id: string): string {
  * different principals against sharing one live sandbox; the resolution itself
  * is internal.
  */
+/**
+ * The default MOAT run name. Exported for the test that pins two identities
+ * against sharing one container; the derivation itself is internal.
+ */
+export function resolveMoatRunNameForTest(
+  identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
+): string {
+  return defaultMoatRunName(identity as ScopeIdentity);
+}
+
 export function resolveRegistryKeyForTest(
   scope: WorkspaceScope,
   identity: Pick<ScopeIdentity, "requestId" | "sessionId"> & Partial<ScopeIdentity>,
@@ -345,35 +366,67 @@ export function resolveWorkspaceCwdForTest(
  * "c", request "d")` both spell `run:a:b:c:d` — and the collision is on the
  * REGISTRY key, so the second principal is handed the first's live sandbox
  * before its own directory is ever created (BP-031).
+ *
+ * Tenant ABSENCE is framed too, rather than written as a value. A sentinel
+ * like `"-"` is a tenant id the engine accepts — `extractTenantId` rejects
+ * only the empty string and anything containing `":"` — so a request with no
+ * tenant and a request whose tenant IS `"-"` would resolve to one key and one
+ * directory. Presence is its own component in the key, and the directory uses
+ * a segment `safeSegment` can never emit.
  */
 function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
-  const tenant = identity.tenantId ?? "-";
-  const parts = ((): string[] => {
+  const tenant = identity.tenantId;
+  const tenantScoped = (id: string): (string | undefined)[] => [tenant, id];
+  const parts = ((): (string | undefined)[] => {
     switch (scope) {
       case "run":
         // The request is the run. Narrower than a session on purpose: this is
         // the scope where two agents working at once cannot see each other's
         // half-finished files, and where the workspace goes away with the
         // request that made it.
-        return [tenant, identity.requestId];
+        return tenantScoped(identity.requestId);
       case "user":
-        return identity.userId !== undefined ? [identity.userId] : [tenant, identity.sessionId];
+        return identity.userId !== undefined
+          ? [identity.userId]
+          : tenantScoped(identity.sessionId);
       case "org":
-        return identity.orgId !== undefined ? [identity.orgId] : [tenant, identity.sessionId];
+        return identity.orgId !== undefined
+          ? [identity.orgId]
+          : tenantScoped(identity.sessionId);
       case "session":
       default:
-        return [tenant, identity.sessionId];
+        return tenantScoped(identity.sessionId);
     }
   })();
   return {
     key: [scope, ...parts].map(frame).join(""),
-    scopeId: path.join(...parts.map(safeSegment)),
+    scopeId: path.join(...parts.map(segment)),
   };
 }
 
-/** One key component, length-prefixed so its content cannot forge another. */
-function frame(component: string): string {
-  return `${component.length}:${component}`;
+/**
+ * One key component, length-prefixed so its content cannot forge another.
+ *
+ * `undefined` is framed as its own shape rather than as some string, so an
+ * absent component and a component that happens to equal the absence marker
+ * stay distinct.
+ */
+function frame(component: string | undefined): string {
+  return component === undefined ? "-" : `${component.length}:${component}`;
+}
+
+/**
+ * One path segment for a component, absence included.
+ *
+ * `ABSENT_SEGMENT` is chosen so `safeSegment` cannot produce it: an id
+ * spelled `enc-none` starts with the encoded prefix, so it takes the encoded
+ * branch and comes out as `enc-enc-none-<digest>`. Nothing a caller can send
+ * lands on the marker.
+ */
+const ABSENT_SEGMENT = `${ENCODED_PREFIX}none`;
+
+function segment(component: string | undefined): string {
+  return component === undefined ? ABSENT_SEGMENT : safeSegment(component);
 }
 
 // ---------------------------------------------------------------------------
