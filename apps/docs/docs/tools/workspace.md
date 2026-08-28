@@ -17,13 +17,30 @@ The interesting part is that last step. A run can add files, change files, delet
 ## Getting started
 
 ```ts
-import { createProjection, createHostPlace } from "@flow-state-dev/workspace";
+import {
+  collectionIdFor,
+  createProjection,
+  createHostPlace,
+  principalFromContext,
+} from "@flow-state-dev/workspace";
+
+const principal = principalFromContext(ctx);
 
 const projection = createProjection({
   place: createHostPlace("/tmp/run-42"),
   mounts: [
-    { prefix: "artifacts", collection: artifacts, writable: true },
-    { prefix: "reference", collection: docs, writable: false },
+    {
+      prefix: "artifacts",
+      collection: artifacts,
+      collectionId: collectionIdFor(artifacts, principal),
+      writable: true,
+    },
+    {
+      prefix: "reference",
+      collection: docs,
+      collectionId: collectionIdFor(docs, principal),
+      writable: false,
+    },
   ],
 });
 

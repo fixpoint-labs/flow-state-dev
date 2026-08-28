@@ -88,9 +88,42 @@ export function createSandboxPlace(sandbox: Sandbox, destination: string): Place
       // Nested prefixes are supported and the walk runs per prefix, so a file
       // under `artifacts/drafts` is reached by both walks. Deciding one file
       // twice reports `written` then `unchanged` for the same path.
-      return [...new Set(paths)].filter((p) => !seeded.has(p) && !isScratch(p));
+      return [...new Set(paths)].filter(
+        (p) => !seeded.has(p) && !isScratch(p) && !isGenerated(p),
+      );
     },
   };
+}
+
+/**
+ * Directory names a flush never walks into.
+ *
+ * A run that installs dependencies or initialises a repository inside a
+ * writable mount generates thousands of files that are not its work — and
+ * `.git` holds binary objects, which a place that reads utf-8 cannot even
+ * report honestly. Persisting either fills the collection with content nobody
+ * asked for and can fail an otherwise successful command during its flush.
+ *
+ * The walk this replaced pruned both in its `find`; keeping that pruning is
+ * why it is named here rather than left to the caller.
+ */
+const NEVER_WALKED = ["node_modules", ".git"] as const;
+
+/** `find` arguments that stop it descending into any of them. */
+const PRUNE_GENERATED = NEVER_WALKED.map((dir) => `-not -path '*/${dir}/*'`).join(" ");
+
+/**
+ * Is this workspace-relative path inside one of those trees?
+ *
+ * Applied to the RESULT as well as pruned in the walk, because the two walks
+ * prune differently — one through `find`, one through `readdir` — and this is
+ * the check the flush's correctness rests on. The pruning is what keeps it
+ * from enumerating the tree in the first place.
+ */
+function isGenerated(relativePath: string): boolean {
+  return NEVER_WALKED.some(
+    (dir) => relativePath.startsWith(`${dir}/`) || relativePath.includes(`/${dir}/`),
+  );
 }
 
 /** Is this path the run's scratch space, which never reaches a collection? */
@@ -123,7 +156,10 @@ async function walkViaExec(
 ): Promise<string[]> {
   const root = await execFind(sandbox, [destination], "-maxdepth 1 -type f");
   const walkPaths = prefixes.map((p) => path.posix.join(destination, p));
-  const mounted = walkPaths.length === 0 ? [] : await execFind(sandbox, walkPaths, "-type f");
+  const mounted =
+    walkPaths.length === 0
+      ? []
+      : await execFind(sandbox, walkPaths, `-type f ${PRUNE_GENERATED}`);
   const prefix = destination.endsWith("/") ? destination : `${destination}/`;
   return [...root, ...mounted].map((p) =>
     p.startsWith(prefix) ? p.slice(prefix.length) : p,
@@ -192,6 +228,9 @@ async function walkViaHostFs(
     const root = path.join(hostMountSource, prefix);
     for (const dirent of await readdirMount(root)) {
       if (!dirent.isFile()) continue;
+      // `readdir` has no prune, so the tree is enumerated and dropped here.
+      // The listing filter would catch these anyway; skipping now avoids
+      // building paths for a dependency tree one entry at a time.
       const parent =
         (dirent as Dirent & { parentPath?: string }).parentPath ?? path.join(root, "");
       const rel = path.relative(root, path.join(parent, dirent.name));

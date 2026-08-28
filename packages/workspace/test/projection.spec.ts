@@ -834,3 +834,39 @@ describe("routing edges two reviewers found", () => {
     expect(projection.ownedPaths()).toEqual(["artifacts/notes.md"]);
   });
 });
+
+describe("a collection mounted twice", () => {
+  it("is refused, because neither route can win", async () => {
+    // The aliases produce the same claim key — that part is right — but one
+    // flush decides both under one holder, so the second alias is granted a
+    // claim the first already holds and commits over it. Nothing downstream
+    // can arbitrate two routes to one row, and nothing can say which path owns
+    // it, so the configuration is the thing that has to go.
+    const collection = createFakeCollection("artifacts/**", { "x.md": "one" });
+    expect(() =>
+      createProjection({
+        place: createMemoryPlace(),
+        mounts: [
+          { prefix: "artifacts", collectionId: "same", collection, writable: true },
+          { prefix: "drafts", collectionId: "same", collection, writable: true },
+        ],
+      }),
+    ).toThrow(/mount one collection twice/);
+  });
+
+  it("still allows two DIFFERENT collections at nested prefixes", async () => {
+    // The check is on the collection, not the prefix. Nested mounts are
+    // supported and this must not catch them.
+    const outer = createFakeCollection("artifacts/**", {});
+    const inner = createFakeCollection("artifacts/drafts/**", {});
+    expect(() =>
+      createProjection({
+        place: createMemoryPlace(),
+        mounts: [
+          { prefix: "artifacts", collectionId: "outer", collection: outer, writable: true },
+          { prefix: "artifacts/drafts", collectionId: "inner", collection: inner, writable: true },
+        ],
+      }),
+    ).not.toThrow();
+  });
+});

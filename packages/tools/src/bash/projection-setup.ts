@@ -163,12 +163,17 @@ export async function flushWithDiagnostics(
  * is how a model moves on believing an artifact was saved, and two doors
  * deciding that separately is how one of them keeps doing it.
  *
- * An orphan is NOT a refusal. Nothing held it and nothing changed underneath
- * it; it landed nowhere because it was written nowhere a collection owns,
- * which is a configuration answer rather than something to retry.
+ * An orphan counts. It landed nowhere a collection owns, so by the contract
+ * the caller now states — success means the file reached its collection — it
+ * did not succeed. The first version of this excluded it on the grounds that
+ * there is nothing to retry, which was wrong twice over: the model can retry
+ * under a mounted prefix, and "nothing to retry" is not "it worked".
  */
 export function refusalReason(outcome: FlushOutcome | undefined): string | null {
   if (outcome === undefined) return null;
+  if (outcome.kind === "orphan") {
+    return `"${outcome.path}" is not under any mounted collection or ./${TMP_DIR}/, so it was not saved.`;
+  }
   if (outcome.kind === "conflict") {
     return `"${outcome.path}" changed in its collection while this run held it — the write was NOT applied.`;
   }

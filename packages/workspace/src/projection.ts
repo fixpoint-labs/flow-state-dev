@@ -110,6 +110,25 @@ export function createProjection({
   /** path → the hash of what we last committed there. */
   const baseline = new Map<string, string>();
 
+  // Two mounts of ONE collection are two routes to the same durable rows, and
+  // nothing downstream can arbitrate between them: a claim keyed on the entry
+  // makes both aliases produce the same key, but a single flush decides both
+  // under one holder, so the second is granted a claim the first already
+  // holds and the later write silently wins. There is no correct answer to
+  // "which path owns this row" either, so the configuration is refused rather
+  // than resolved.
+  const byCollection = new Map<string, string>();
+  for (const mount of mounts) {
+    const seen = byCollection.get(mount.collectionId);
+    if (seen !== undefined) {
+      throw new Error(
+        `a projection cannot mount one collection twice — "${seen}" and "${mount.prefix}" ` +
+          `address the same durable entries, so a write under either would overwrite the other`,
+      );
+    }
+    byCollection.set(mount.collectionId, mount.prefix);
+  }
+
   const prefixes = mounts.map((m) => normalizePath(m.prefix));
 
   /**

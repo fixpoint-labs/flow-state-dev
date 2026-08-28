@@ -87,6 +87,22 @@ export async function createBashTool(
     );
   }
 
+  // Removed options are rejected, not ignored. `fileFilter` decided which
+  // files reached a collection and `syncMode` decided when; a caller still
+  // passing either is describing behaviour that no longer exists, and in
+  // `fileFilter`'s case the files it used to exclude are now persisted.
+  // Untyped callers get no compile error, so the check is at runtime (BP-030).
+  for (const [removed, replacement] of [
+    ["fileFilter", "mount only the collections whose files should persist, or write the rest under ./tmp/"],
+    ["syncMode", "the flush now runs after every command and every writeFile"],
+  ] as const) {
+    if ((options as Record<string, unknown>)[removed] !== undefined) {
+      throw new Error(
+        `[bash] \`${removed}\` was removed from createBashTool — ${replacement}.`,
+      );
+    }
+  }
+
   // 1. Resolve or create sandbox
   const existingId = persist && bashSession ? bashSession.state.sandboxId || undefined : undefined;
   const { sandbox, sandboxId } = await resolveSandbox(provider, { destination, existingId });

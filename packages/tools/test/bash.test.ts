@@ -1213,7 +1213,10 @@ describe("createBashBlocks", () => {
       // console.warn announces the drop.
       expect(warn).toHaveBeenCalled();
       const msg = warn.mock.calls.map((c) => c[0]).join(" ");
-      expect(msg).toMatch(/orphan/);
+      // The wording is the model's as well as the developer's now — the same
+      // sentence comes back in `writeFile`'s `refused` — so it says what
+      // happened rather than naming the outcome's kind.
+      expect(msg).toMatch(/not under any mounted collection/);
       expect(msg).toMatch(/random\.txt/);
     } finally {
       warn.mockRestore();
@@ -1298,6 +1301,83 @@ describe("createBashBlocks", () => {
     await runForTest(bashCommand, { command: "ls" }, ctx);
 
     expect(await artifacts.getOptional(".keep")).toBeDefined();
+  });
+
+  it("never persists a dependency tree or a repository the run created", async () => {
+    // `npm install` or `git init` inside a writable mount generates thousands
+    // of files that are not the run's work, and `.git` holds binary objects a
+    // place that reads utf-8 cannot report honestly — so a flush that walks
+    // them fills the collection with content nobody asked for, and can fail an
+    // otherwise successful command while reading them.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("generated-trees", { session: { artifacts } });
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    sandbox.files.set("/workspace/artifacts/notes.md", "the run's work");
+    sandbox.files.set("/workspace/artifacts/node_modules/left-pad/index.js", "module");
+    sandbox.files.set("/workspace/artifacts/.git/objects/ab/cdef", "\u0000binary");
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    const keys = (await artifacts.list()).map((e) => (e as { path: string }).path);
+    expect(keys).toEqual(["notes.md"]);
+  });
+
+  it("persists a nested .keep the run writes, and drops only the reserved marker", async () => {
+    // The write path drops the marker by basename. When the marker WAS
+    // `.keep`, that silently swallowed a legitimate `artifacts/empty/.keep` —
+    // written to the sandbox, reported as success, never persisted. The
+    // reserved name is what makes dropping-by-basename safe.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("nested-keep-write", { session: { artifacts } });
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    await runForTest(bashWriteFile, { path: "artifacts/empty/.keep", content: "" }, ctx);
+    await runForTest(bashWriteFile, { path: "artifacts/.fsdev-keep", content: "" }, ctx);
+
+    expect(await artifacts.getOptional("empty/.keep")).toBeDefined();
+    expect(await artifacts.getOptional(".fsdev-keep")).toBeUndefined();
+  });
+
+  it("tells the model a write landed outside every collection", async () => {
+    // `success` now means the file reached its collection. An orphan did not:
+    // it is in the workspace and nowhere durable, and the model can retry it
+    // under a mounted prefix once it is told.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { createBashBlocks } = await import("../src/bash/blocks");
+      const artifacts = createMockCollectionWithPattern("artifacts/**");
+      const sandbox = createFlushAwareSandbox("/workspace");
+      const { bashCommand, bashWriteFile } = createBashBlocks({
+        provider: { type: "custom", sandbox },
+        destination: "/workspace",
+      });
+      const ctx = buildCtx("orphan-write", { session: { artifacts } });
+
+      await runForTest(bashCommand, { command: "ls" }, ctx);
+      const result = (await runForTest(
+        bashWriteFile,
+        { path: "report.md", content: "loose" },
+        ctx,
+      )) as { success: boolean; refused: string | null };
+
+      expect(result.success).toBe(false);
+      expect(result.refused).toContain("report.md");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("propagates a collection write failure instead of reporting success", async () => {

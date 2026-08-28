@@ -627,12 +627,6 @@ async function routeWrittenFile(
 
   const outcome = await entry.projection.put(relativePath, content);
   if (outcome === undefined) return null;
-  if (outcome.kind === "orphan") {
-    console.warn(
-      `[bash] dropped orphan write at "${relativePath}" — not under any mounted collection or ./${TMP_DIR}/`,
-    );
-    return null;
-  }
   // Warned AND returned. The warning reaches a developer reading logs; the
   // return reaches the model, which is the party that just asked for the write
   // and would otherwise be told it succeeded.
