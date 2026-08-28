@@ -240,7 +240,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 
 | Key | Does |
 |---|---|
-| `j` / `k` or `↓` / `↑` | Move the selected row (click a row). While the slash list is open, `↑`/`↓` move the verb selection |
+| `j` / `k` or `↓` / `↑` | Move the selected row (click a row). While the slash list is open, `↑`/`↓` choose a verb or board id |
 | `PgUp` / `PgDn` | Scroll the transcript (mouse wheel and `Ctrl-U` / `Ctrl-D` too) |
 | `[` / `]` | Move between open questions on the selected row |
 | `a` | Answer the selected question |
@@ -249,8 +249,8 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `x` | Stop the selected running row's request |
 | `t` or `Ctrl-T` | Expand or collapse the todo list on the RUN band |
 | `r` | Refresh now |
-| `/` | Type a slash command. Matching verbs list above the prompt |
-| `Tab` | Fill the selected slash verb |
+| `/` | Type a slash command. Matching verbs, then board ids, list above the prompt |
+| `Tab` | Fill the selected slash verb or board id |
 | `/status [issue]` | Select that row (if it is on the board) and refresh |
 | `/find [text]` | Search the selected row's transcript |
 | `n` / `N` | Older / newer match while find is on |
@@ -259,9 +259,11 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 
 Typing on a row that has an open question starts an answer for you — you don't have to press `a` first. `Enter` sends it; `Esc` cancels. While find is on, `n` and `N` step matches instead of starting an answer, and `Esc` clears find. On a failed selected row with no question, the footer offers `w retry`. On a selected running row, the footer offers `x stop` and `t list`; `x` or `Ctrl-C` stops that row's request. `/abort` with no issue does the same. While a seed, wake, answer, or status is in flight, `Ctrl-C` aborts that operator action. `Ctrl-C` with nothing running quits.
 
-A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, start. `/sta` lists status, start. A space starts the arguments and the list closes (`/status FIX-1` lists nothing). `q` and `stop` parse as `quit` and `abort`; they are not in the list.
+A line that is only `/` plus a verb prefix lists matching verbs above the prompt, each with a short hint, in this order: status, seed, wake, answer, watch, start, abort, find, help, quit, refresh. `/s` lists status, seed, start. `/sta` lists status, start. A space starts the first argument. `q` and `stop` parse as `quit` and `abort`; they are not in the verb list.
 
-`Tab` fills the selected verb. `seed`, `start`, and `answer` keep a trailing space so you can type the id. The others fill `/name` with no space. `Enter` on a matching prefix runs the selected verb when it needs no argument; otherwise it fills `/name ` and stays in the prompt. `Enter` on a bare `/` clears the line and does not run the first verb. While the list is open, the footer is `Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`. Help (`?`) names Tab and ↑/↓ for slash completion.
+After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids already on the board. `/status`, `/watch`, and `/abort` offer each row's issue, or that row's id when it has no issue (the same id `seed` prints). The hint is the row's status. The selected row is first, except `/abort`, which lists running rows first. Type a prefix to filter (`/status FI`); matching is case-insensitive. `/answer` lists open question ids: the selected row's questions first, then other rows. The hint is the question text, or the other row's issue (or that row's id when it has no issue). A second argument closes the list (`/status FIX-1 extra`, `/answer Q hello`). `/seed ` and `/start ` do not list board ids; they file a new issue. `/find` does not complete a query.
+
+`Tab` fills the selected verb or board id. `seed`, `start`, and `answer` keep a trailing space so you can type the rest. Completing a question fills `/answer <id> `. The others fill `/name` or `/name <id>` with no trailing space. `Enter` runs when the line is complete (`/status FIX-1` jumps to that row and refreshes). It does not send `/answer` until there is a reply. `Enter` on a matching prefix that still needs an argument fills `/name ` and stays in the prompt. `Enter` on a bare `/` clears the line and does not run the first verb. While the list is open, the footer is `Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`. Help (`?`) says `Tab complete the selected slash verb or board id`.
 
 `/status PR-482` selects that row, if it is on the board, and refreshes. `/status` with no issue refreshes and leaves the selection. If the issue is not on the board, the notice is `no row for <issue>` and it refreshes. Headless `status [issue]` filters the printed board; the slash command does not.
 
@@ -500,8 +502,8 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - The transcript does not print reasoning or thinking text.
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
 - `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem.
-- Slash completion matches a verb prefix. It does not complete issue ids or question ids.
-- Headless verbs take a full name. There is no slash list on that path.
+- Slash completion does not invent ids that are not on the board. It does not complete `/seed`, `/start`, or `/find`.
+- Headless verbs take the id on the argv. There is no list on that path.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
 - Headless verbs (`status`, `watch`, and the rest) have no RUN band.
