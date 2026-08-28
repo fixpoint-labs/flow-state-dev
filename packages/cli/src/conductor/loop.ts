@@ -26,6 +26,7 @@ import { createChildFollow } from "./follow";
 import {
   clampSelected,
   dropRequestActivity,
+  echoTalk,
   emptyView,
   pushActivity,
   idsToFollow,
@@ -227,6 +228,8 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           break;
         }
         case "steer": {
+          state = echoTalk(state, command.message, now());
+          paint();
           const steered = await runAction<string>("steer", steerInput(command.message));
           if (steered.error !== undefined) throw new Error(steered.error);
           endTurn();

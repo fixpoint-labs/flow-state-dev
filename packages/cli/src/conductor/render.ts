@@ -698,7 +698,7 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     : finding
     ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q`
     : empty
-      ? `${working}type to talk  ·  s seed  ·  /  ·  r  ·  ?  ·  q`
+      ? `${working}type to talk  ·  s seed  ·  /  ·  r  ·  ?  ·  /quit`
     : q
       ? `${working}click/j/k  ·  a answer${filesKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
       : fail !== undefined

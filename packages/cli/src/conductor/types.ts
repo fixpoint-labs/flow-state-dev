@@ -352,6 +352,15 @@ export function pushActivity(
   return { ...state, activity: capActivity([...state.activity, item], selectedRequestId(state)) };
 }
 
+/** Operator talk, once. The stream also emits `you ·`; do not double it. */
+export function echoTalk(state: ViewState, message: string, at: number = Date.now()): ViewState {
+  const text = `you · ${message}`;
+  if (state.activity.some((item) => item.requestId === undefined && item.text === text)) {
+    return state;
+  }
+  return pushActivity(state, text, at);
+}
+
 /**
  * Re-apply the per-request cap. The selected attempt stays whole so
  * `/find` can still match an early tool.

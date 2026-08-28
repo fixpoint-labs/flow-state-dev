@@ -292,6 +292,25 @@ describe("applyKey", () => {
     });
   });
 
+  it("starts talk on an empty board when the first letter is a row key", () => {
+    const question = applyKey(emptyView("epic"), { type: "char", value: "q" });
+    expect(question.effect).toBeUndefined();
+    expect(question.state.input).toBe("q");
+
+    const what = applyKey(emptyView("epic"), { type: "char", value: "w" });
+    expect(what.effect).toBeUndefined();
+    expect(what.state.input).toBe("w");
+
+    const seed = applyKey(emptyView("epic"), { type: "char", value: "s" });
+    expect(seed.state.inputMode).toBe("seed");
+    expect(applyKey(emptyView("epic"), { type: "char", value: "r" }).effect).toEqual({
+      type: "refresh",
+    });
+    expect(applyKey(board([row("FIX-1")]), { type: "char", value: "q" }).effect).toEqual({
+      type: "quit",
+    });
+  });
+
   it("walks prior compose lines with ↑/↓, and idle ↑ still moves rows", () => {
     const rows = [row("FIX-1"), row("FIX-2")];
     const idle = applyKey({ ...board(rows), selected: 1 }, { type: "up" });

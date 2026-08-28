@@ -246,6 +246,7 @@ describe("renderFrame", () => {
     expect(text).toContain("nothing yet. type to talk.");
     expect(text).toContain("talk to the coordinator, or /seed /wake /answer");
     expect(text).toContain("type to talk  ·  s seed");
+    expect(text).toContain("/quit");
     expect(text).not.toContain("select a row");
     expect(text).not.toContain("click/j/k");
     expect(text).not.toContain("/find");

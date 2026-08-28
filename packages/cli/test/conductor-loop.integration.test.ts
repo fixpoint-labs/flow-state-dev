@@ -561,4 +561,25 @@ describe("fsdev conductor — TUI over the same actions", () => {
     tty.input.write("q");
     await expect(running).resolves.toBe(0);
   });
+
+  it("talks from an empty board even when the first letter is a row key", async () => {
+    const stores = createInMemoryStores();
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 10_000,
+    });
+
+    await waitFor(() => tty.text, "type to talk");
+    tty.input.write("what's on the board?\r");
+    await waitFor(() => tty.text, "you · what's on the board?");
+    await waitFor(() => tty.text, "No rows yet");
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
 });

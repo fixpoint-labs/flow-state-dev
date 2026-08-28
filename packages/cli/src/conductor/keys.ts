@@ -294,7 +294,35 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
   }
 }
 
+/**
+ * Idle letters that only mean something when a row exists. On an empty
+ * board they start talk — otherwise `question` quits and `what's on the
+ * board` wakes.
+ */
+const EMPTY_BOARD_TALKS = new Set([
+  "q",
+  "w",
+  "a",
+  "j",
+  "k",
+  "t",
+  "f",
+  "h",
+  "e",
+  "H",
+  "n",
+  "N",
+  "x",
+  "[",
+  "]",
+  "{",
+  "}",
+]);
+
 function applyIdleChar(state: ViewState, value: string, now: number): KeyResult {
+  if (state.rows.length === 0 && EMPTY_BOARD_TALKS.has(value)) {
+    return idleFallback(state, value);
+  }
   switch (value) {
     case "j":
       return { state: moveRow(state, 1) };

@@ -1261,6 +1261,20 @@ describe("applyTranscriptPatch", () => {
     expect(next.live).toBe("status · running");
   });
 
+  it("keeps a you · line once when the stream repeats it", () => {
+    const echoed = applyTranscriptPatch(
+      emptyView("epic"),
+      { lines: ["you · what's on the board?"], live: null },
+      1,
+    );
+    const again = applyTranscriptPatch(
+      echoed,
+      { lines: ["you · what's on the board?"], live: null },
+      2,
+    );
+    expect(again.activity).toEqual([{ at: 1, text: "you · what's on the board?" }]);
+  });
+
   it("tags a child's lines and keeps its live slot off the operator line", () => {
     const next = applyTranscriptPatch(
       { ...emptyView("epic"), live: "status · reading board" },

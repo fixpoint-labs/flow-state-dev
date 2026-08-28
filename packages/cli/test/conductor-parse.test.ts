@@ -155,6 +155,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("compact think · line");
     expect(HELP_TEXT).toContain("fsdev conductor steer");
     expect(HELP_TEXT).toContain("talk to the coordinator");
+    expect(HELP_TEXT).toContain("An empty board: letters talk");
     expect(HELP_TEXT).toContain("lines, then prior compose");
     expect(HELP_TEXT).toContain("move in the line while composing");
     expect(HELP_TEXT).toContain("new line while composing");

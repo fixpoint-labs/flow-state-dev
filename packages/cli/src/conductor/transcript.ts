@@ -26,6 +26,7 @@ import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
   emptyView,
   fileFromToolLine,
+  echoTalk,
   pushActivity,
   pushHunk,
   type PlanItem,
@@ -66,6 +67,10 @@ export function applyTranscriptPatch(
 ): ViewState {
   let next = state;
   for (const text of patch.lines) {
+    if (requestId === undefined && text.startsWith("you · ")) {
+      next = echoTalk(next, text.slice("you · ".length), at);
+      continue;
+    }
     next = pushActivity(next, text, at, requestId);
     if (requestId === undefined) continue;
     const file = fileFromToolLine(text);
