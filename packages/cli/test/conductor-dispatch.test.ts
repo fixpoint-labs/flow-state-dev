@@ -12,4 +12,15 @@ describe("activityFromEvent", () => {
       activityFromEvent({ type: "item.done", item } as RequestStreamEventWithId),
     ).toBe("status · seeded ASK-1--implement");
   });
+
+  it("surfaces a finished assistant message in the activity log", () => {
+    const item = {
+      type: "message" as const,
+      role: "assistant" as const,
+      content: [{ type: "output_text" as const, text: "opened the pull request" }],
+    };
+    expect(
+      activityFromEvent({ type: "item.done", item } as RequestStreamEventWithId),
+    ).toBe("message · opened the pull request");
+  });
 });

@@ -26,7 +26,9 @@ export type Key =
   | { type: "left" }
   | { type: "right" }
   | { type: "tab" }
-  | { type: "ctrl"; value: string };
+  | { type: "ctrl"; value: string }
+  | { type: "click"; col: number; row: number }
+  | { type: "wheel"; delta: number };
 
 export type Effect =
   | { type: "dispatch"; command: OperatorCommand }
@@ -55,6 +57,22 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
       if (input[i + 1] === "[") {
         if (i + 2 >= input.length) return { keys, rest: input.slice(i) };
         const third = input[i + 2];
+        if (third === "<") {
+          let j = i + 3;
+          while (j < input.length && input[j] !== "M" && input[j] !== "m") j += 1;
+          if (j >= input.length) return { keys, rest: input.slice(i) };
+          const [btnRaw, colRaw, rowRaw] = input.slice(i + 3, j).split(";");
+          const btn = Number(btnRaw);
+          const col = Number(colRaw);
+          const row = Number(rowRaw);
+          i = j + 1;
+          if (input[j] === "M" && Number.isFinite(btn) && Number.isFinite(col) && Number.isFinite(row)) {
+            if (btn === 64) keys.push({ type: "wheel", delta: -1 });
+            else if (btn === 65) keys.push({ type: "wheel", delta: 1 });
+            else if (btn === 0) keys.push({ type: "click", col, row });
+          }
+          continue;
+        }
         if (third === "A") {
           keys.push({ type: "up" });
           i += 3;
@@ -117,7 +135,7 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
 }
 
 export function applyKey(state: ViewState, key: Key): KeyResult {
-  if (state.help && (key.type === "escape" || key.type === "char" || key.type === "enter")) {
+  if (state.help && (key.type === "escape" || key.type === "char" || key.type === "enter" || key.type === "click")) {
     if (key.type === "char" && key.value === "?") {
       return { state: { ...state, help: false } };
     }
@@ -151,6 +169,10 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
       return { state: moveQuestion(state, 1) };
     case "char":
       return applyIdleChar(state, key.value);
+    case "wheel":
+      return { state: moveRow(state, key.delta) };
+    case "click":
+      return applyClick(state, key.row);
     case "enter": {
       const question = selectedQuestion(state);
       if (question !== undefined) {
@@ -303,6 +325,19 @@ function beginAnswer(state: ViewState, question: string): KeyResult {
       notice: `answering ${question}`,
     },
   };
+}
+
+/**
+ * 1-based screen row of the first table data row. The header is two lines
+ * (title + rule), then the column labels. A click on that band selects.
+ */
+export const TABLE_DATA_ORIGIN = 4;
+
+function applyClick(state: ViewState, screenRow1: number): KeyResult {
+  if (state.inputMode !== "command" || state.input !== "") return { state };
+  const index = screenRow1 - TABLE_DATA_ORIGIN;
+  if (index < 0 || index >= state.rows.length) return { state };
+  return { state: clampSelected({ ...state, selected: index, questionIndex: 0, notice: null }) };
 }
 
 export function rowAfterRefresh(state: ViewState, preferIssue?: string | null): ViewState {

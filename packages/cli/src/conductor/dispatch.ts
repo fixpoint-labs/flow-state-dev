@@ -212,6 +212,10 @@ export function activityFromEvent(event: RequestStreamEventWithId): string | und
       if (item.type === "tool_output") {
         return `tool · ${item.toolCall?.name ?? item.blockName}`;
       }
+      if (item.type === "message" && item.role === "assistant") {
+        const text = messageText(item);
+        if (text.length > 0) return `message · ${text.length > 96 ? `${text.slice(0, 95)}…` : text}`;
+      }
       return undefined;
     }
     case "resource.changed": {
@@ -227,6 +231,16 @@ export function activityFromEvent(event: RequestStreamEventWithId): string | und
     default:
       return undefined;
   }
+}
+
+function messageText(item: OutputItem): string {
+  if (item.type !== "message") return "";
+  const parts = item.content ?? [];
+  let text = "";
+  for (const part of parts) {
+    if (part.type === "output_text" && typeof part.text === "string") text += part.text;
+  }
+  return text.trim();
 }
 
 /** The four actions this surface needs. Missing one is a config error, not a retry. */

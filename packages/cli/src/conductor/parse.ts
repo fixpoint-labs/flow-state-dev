@@ -175,7 +175,7 @@ Headless (scripting):
   fsdev conductor help
 
 In the TUI:
-  j/k or ↑/↓   select a row
+  j/k or ↑/↓   select a row (click a row; wheel moves)
   [/]          previous/next question on the row
   a            answer the selected question
   s            seed a new issue

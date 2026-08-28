@@ -224,8 +224,8 @@ function renderPrompt(state: ViewState, cols: number): string {
 function renderFooter(state: ViewState, cols: number): string {
   const q = selectedQuestion(state);
   const keys = q
-    ? "j/k select  ·  a answer  ·  w wake  ·  / command  ·  r refresh  ·  ? help  ·  q quit"
-    : "j/k select  ·  s seed  ·  w wake  ·  / command  ·  r refresh  ·  ? help  ·  q quit";
+    ? "click/j/k select  ·  a answer  ·  w wake  ·  / command  ·  r refresh  ·  ? help  ·  q quit"
+    : "click/j/k select  ·  s seed  ·  w wake  ·  / command  ·  r refresh  ·  ? help  ·  q quit";
   return padLine(dim(` ${keys}`), cols);
 }
 

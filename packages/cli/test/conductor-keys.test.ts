@@ -34,6 +34,11 @@ describe("decodeKeys", () => {
     ]);
   });
 
+  it("decodes an SGR click and a wheel tick", () => {
+    expect(decodeKeys("\x1b[<0;12;5M").keys).toEqual([{ type: "click", col: 12, row: 5 }]);
+    expect(decodeKeys("\x1b[<65;1;1M").keys).toEqual([{ type: "wheel", delta: 1 }]);
+  });
+
   it("holds an incomplete CSI so the next chunk can finish it", () => {
     const first = decodeKeys("\x1b[");
     expect(first.keys).toEqual([]);
@@ -78,6 +83,14 @@ describe("applyKey", () => {
     }
     const submitted = applyKey(state, { type: "enter" });
     expect(submitted.effect).toEqual({ type: "dispatch", command: { kind: "wake" } });
+  });
+
+  it("selects the clicked table row", () => {
+    const state = board([row("FIX-1", 1), row("FIX-2")]);
+    const clicked = applyKey(state, { type: "click", col: 8, row: 5 });
+    expect(clicked.state.selected).toBe(1);
+    const wheeled = applyKey(clicked.state, { type: "wheel", delta: -1 });
+    expect(wheeled.state.selected).toBe(0);
   });
 
   it("does not move the board while an action is in flight", () => {

@@ -45,6 +45,7 @@ describe("renderFrame", () => {
     expect(frame).toContain("awaiting_review");
     expect(frame).toContain("Which path?");
     expect(frame).toContain("1 waiting");
+    expect(frame).toContain("click/j/k select");
   });
 });
 
