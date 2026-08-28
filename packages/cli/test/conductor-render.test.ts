@@ -314,6 +314,88 @@ describe("renderFrame", () => {
     expect(frame).not.toContain("src/other.ts");
   });
 
+  it("pins the selected run's latest checklist on the RUN band", () => {
+    const live = (issue: string, requestId: string): StatusRow => ({
+      taskId: `${issue}--implement`,
+      issue,
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: `${issue}--implement`,
+        workspacePath: "/tmp/ws",
+        branch: `conductor/${issue}--implement`,
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId,
+        updatedAt: 1,
+      },
+      questions: [],
+    });
+    const childPlan = {
+      "req-live-1": [
+        { mark: "x" as const, text: "Add the failing test" },
+        { mark: "·" as const, text: "Implement the fix" },
+        { mark: " " as const, text: "Open the pull request" },
+        { mark: " " as const, text: "Update the changelog" },
+        { mark: " " as const, text: "Notify review" },
+      ],
+      "req-live-2": [{ mark: "x" as const, text: "Other child's work" }],
+    };
+    const rows = [live("LIVE-1", "req-live-1"), live("LIVE-2", "req-live-2")];
+    const first = renderFrame(
+      { ...emptyView("epic"), rows, selected: 0, childPlan },
+      { cols: 80, rows: 24 },
+    );
+    const firstAbove = beforeTranscript(first);
+    expect(firstAbove).toMatch(/^ RUN\s*$/m);
+    expect(firstAbove).toContain("[x] Add the failing test");
+    expect(firstAbove).toContain("[·] Implement the fix");
+    expect(firstAbove).toContain("[ ] Open the pull request");
+    expect(firstAbove).toContain("[ ] Update the changelog");
+    expect(firstAbove).toContain("… 1 more");
+    expect(firstAbove).not.toContain("Notify review");
+    expect(firstAbove).not.toContain("Other child's work");
+    expect(first).not.toContain("tool · TodoWrite");
+
+    const second = renderFrame(
+      { ...emptyView("epic"), rows, selected: 1, childPlan },
+      { cols: 80, rows: 24 },
+    );
+    const secondAbove = beforeTranscript(second);
+    expect(secondAbove).toContain("[x] Other child's work");
+    expect(secondAbove).not.toContain("Implement the fix");
+  });
+
+  it("does not pin a plan on the ASK band", () => {
+    const parked: StatusRow = {
+      ...waiting,
+      run: { ...waiting.run!, requestId: "req-ask-1" },
+    };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [parked],
+        childPlan: {
+          "req-ask-1": [{ mark: "·", text: "Implement the fix" }],
+        },
+      },
+      { cols: 80, rows: 24 },
+    );
+    const above = beforeTranscript(frame);
+    expect(above).toContain("Which path?");
+    expect(above).toMatch(/\bASK\b/);
+    expect(above).not.toMatch(/^ RUN\s*$/m);
+    expect(above).not.toContain("Implement the fix");
+  });
+
   it("paints a plan checklist and a Read peek in the transcript", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",

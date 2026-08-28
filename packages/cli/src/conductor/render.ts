@@ -29,6 +29,7 @@ import {
   rowFailed,
   rowRunning,
   selectedFailure,
+  selectedPlan,
   selectedQuestion,
   selectedRow,
   selectedRunningRequestId,
@@ -220,11 +221,24 @@ function renderRunBand(state: ViewState, cols: number): string {
   }
   hintBits.push(id !== undefined ? `${id}  ·  x stops` : "no request id yet");
   const hint = hintBits.join("  ·  ");
+  const plan = selectedPlan(state);
+  const shown = plan.slice(0, 4);
+  const planLines = shown.map((item) => {
+    const mark = `[${item.mark}]`;
+    const label = truncate(item.text, inner);
+    if (item.mark === "·") return ` ${paint(GOLD, mark)} ${paint(BOLD + INK, label)}`;
+    if (item.mark === "x") return ` ${paint(TEAL, mark)} ${dim(label)}`;
+    return ` ${dim(mark)} ${dim(label)}`;
+  });
+  if (plan.length > shown.length) {
+    planLines.push(` ${dim(`… ${plan.length - shown.length} more`)}`);
+  }
   return [
     rule(cols, ACCENT),
     ` ${paint(ACCENT + BOLD, "RUN")}`,
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
+    ...planLines,
     rule(cols, ACCENT),
   ].join("\n");
 }

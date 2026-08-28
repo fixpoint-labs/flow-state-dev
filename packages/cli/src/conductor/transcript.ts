@@ -19,13 +19,18 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
-import { pushActivity, type StatusRow, type ViewState } from "./types";
+import { pushActivity, type PlanItem, type StatusRow, type ViewState } from "./types";
 
 export interface TranscriptPatch {
   /** Lines that just became history. */
   lines: string[];
   /** In-flight line. `null` means nothing is streaming. */
   live: string | null;
+  /**
+   * Checklist from a plan tool in this patch. Absent means keep the
+   * last pinned plan; present replaces it. A Read or Bash never sets this.
+   */
+  plan?: PlanItem[];
 }
 
 /**
@@ -46,10 +51,15 @@ export function applyTranscriptPatch(
     const childLive = { ...next.childLive };
     if (patch.live === null) delete childLive[requestId];
     else childLive[requestId] = patch.live;
-    return { ...next, childLive };
+    const childPlan =
+      patch.plan === undefined
+        ? next.childPlan
+        : { ...next.childPlan, [requestId]: patch.plan };
+    return { ...next, childLive, childPlan };
   }
   return { ...next, live: patch.live };
 }
+
 
 export function createStreamTranscript(): {
   apply: (event: RequestStreamEventWithId) => TranscriptPatch;
@@ -93,7 +103,8 @@ export function createStreamTranscript(): {
           }
           if (item.type === "tool_output") {
             logged.add(item.id);
-            return snapshot([...commitLive(), ...formatToolLines(item)]);
+            const formatted = formatToolLines(item);
+            return { ...snapshot([...commitLive(), ...formatted.lines]), plan: formatted.plan };
           }
           if (item.type === "container") {
             logged.add(item.id);
@@ -137,11 +148,11 @@ export function createStreamTranscript(): {
                 ...formatToolResult(item),
               ]);
             }
-            return snapshot([
-              ...commitLive(),
-              ...formatToolLines(item),
-              ...formatToolResult(item),
-            ]);
+            const formatted = formatToolLines(item);
+            return {
+              ...snapshot([...commitLive(), ...formatted.lines, ...formatToolResult(item)]),
+              plan: formatted.plan,
+            };
           }
           if (item.type === "container") {
             const failed = item.status === "failed" || item.status === "incomplete";
@@ -237,9 +248,13 @@ function formatToolLine(item: OutputItem, settled?: "failed" | "incomplete"): st
 }
 
 /** Tool name plus a compact hunk or checklist when the call already carried them. */
-function formatToolLines(item: OutputItem): string[] {
+function formatToolLines(item: OutputItem): { lines: string[]; plan?: PlanItem[] } {
   const args = item.type === "tool_output" ? parseToolArgs(item.toolCall?.arguments) : {};
-  return [formatToolLine(item), ...toolHunk(args), ...toolPlan(args)];
+  const plan = readPlan(args);
+  return {
+    lines: [formatToolLine(item), ...toolHunk(args), ...plan.lines],
+    plan: plan.items,
+  };
 }
 
 const HUNK_MAX = 10;
@@ -308,24 +323,29 @@ function toolHunk(args: Record<string, unknown>): string[] {
  * Compact checklist from a plan tool. Presenter only — it does not invent
  * a second work record. No checklist in the call, no lines.
  */
-function toolPlan(args: Record<string, unknown>): string[] {
+function readPlan(args: Record<string, unknown>): { lines: string[]; items?: PlanItem[] } {
   const todos = args.todos;
-  if (!Array.isArray(todos) || todos.length === 0) return [];
+  if (!Array.isArray(todos) || todos.length === 0) return { lines: [] };
+  const items: PlanItem[] = [];
   const lines: string[] = [];
   for (const todo of todos) {
     if (todo === null || typeof todo !== "object" || Array.isArray(todo)) continue;
     const content = (todo as { content?: unknown }).content;
     if (typeof content !== "string" || content.trim() === "") continue;
     const status = (todo as { status?: unknown }).status;
-    const mark =
+    const mark: PlanItem["mark"] =
       status === "completed" ? "x" : status === "in_progress" ? "·" : " ";
     const body = content.trim().replace(/\s+/g, " ");
     const clipped = body.length <= HUNK_LINE ? body : `${body.slice(0, HUNK_LINE - 1)}…`;
+    items.push({ mark, text: clipped });
     lines.push(`  [${mark}] ${clipped}`);
   }
-  if (lines.length === 0) return [];
-  if (lines.length <= HUNK_MAX) return lines;
-  return [...lines.slice(0, HUNK_MAX), `  … ${lines.length - HUNK_MAX} more`];
+  if (items.length === 0) return { lines: [] };
+  if (lines.length <= HUNK_MAX) return { lines, items };
+  return {
+    lines: [...lines.slice(0, HUNK_MAX), `  … ${lines.length - HUNK_MAX} more`],
+    items,
+  };
 }
 
 const COMMAND_OUT_OK = 6;

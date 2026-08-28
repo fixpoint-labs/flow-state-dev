@@ -63,6 +63,12 @@ export interface AnswerOutput {
   drained: boolean;
 }
 
+/** One row of a coding run's todo list. */
+export interface PlanItem {
+  mark: "x" | "·" | " ";
+  text: string;
+}
+
 /** A line in the activity log. Newest last; the renderer shows a tail. */
 export interface ActivityItem {
   at: number;
@@ -119,6 +125,11 @@ export interface ViewState {
    */
   childLive: Record<string, string>;
   /**
+   * Latest checklist per followed child request. Replaced when that
+   * request emits a new todo list; shown on the selected running row.
+   */
+  childPlan: Record<string, PlanItem[]>;
+  /**
    * Transcript pager offset from the latest line. `0` follows new activity
    * (Grok-style). PageUp / wheel-up increase it.
    */
@@ -141,6 +152,7 @@ export function emptyView(epicLabel: string): ViewState {
     activity: [],
     live: null,
     childLive: {},
+    childPlan: {},
     scroll: 0,
     lastRefreshAt: null,
   };
@@ -233,6 +245,13 @@ export function activityForView(state: ViewState): ActivityItem[] {
   return state.activity.filter(
     (item) => item.requestId === undefined || item.requestId === id,
   );
+}
+
+/** The selected row's latest checklist, when that request wrote one. */
+export function selectedPlan(state: ViewState): PlanItem[] {
+  const id = selectedRequestId(state);
+  if (id === undefined) return [];
+  return state.childPlan[id] ?? [];
 }
 
 /**

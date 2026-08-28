@@ -8,6 +8,7 @@ import {
 import {
   activityForView,
   emptyView,
+  selectedPlan,
   visibleLive,
   type StatusRow,
 } from "../src/conductor/types";
@@ -422,7 +423,48 @@ describe("createStreamTranscript", () => {
         "  [ ] Open the pull request",
       ],
       live: null,
+      plan: [
+        { mark: "x", text: "Add the failing test" },
+        { mark: "·", text: "Implement the fix" },
+        { mark: " ", text: "Open the pull request" },
+      ],
     });
+  });
+
+  it("does not pin a Read of checklist markdown as the run's plan", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t-read-plan",
+        type: "tool_output",
+        blockName: "Read",
+        status: "in_progress",
+        toolCall: {
+          callId: "c-read-plan",
+          name: "Read",
+          arguments: JSON.stringify({ file_path: "notes.md" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    const peek = t.apply(
+      done({
+        id: "t-read-plan",
+        type: "tool_output",
+        blockName: "Read",
+        status: "completed",
+        output: "[x] Ship the board\n[ ] Write the docs\n",
+        toolCall: {
+          callId: "c-read-plan",
+          name: "Read",
+          arguments: JSON.stringify({ file_path: "notes.md" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(peek.plan).toBeUndefined();
+    const next = applyTranscriptPatch(emptyView("epic"), peek, 1, "req-live-1");
+    expect(next.childPlan["req-live-1"]).toBeUndefined();
   });
 
   it("does not reprint the checklist when a plan tool fails", () => {
@@ -762,6 +804,74 @@ describe("applyTranscriptPatch", () => {
       { at: 2, text: "status · coding A", requestId: "req-live-1" },
     ]);
   });
+
+  it("pins a child's checklist and replaces it on the next plan, not a hunk", () => {
+    const first = applyTranscriptPatch(
+      emptyView("epic"),
+      {
+        lines: [
+          "tool · TodoWrite",
+          "  [x] Add the failing test",
+          "  [·] Implement the fix",
+          "  [ ] Open the pull request",
+        ],
+        live: null,
+        plan: [
+          { mark: "x", text: "Add the failing test" },
+          { mark: "·", text: "Implement the fix" },
+          { mark: " ", text: "Open the pull request" },
+        ],
+      },
+      1,
+      "req-live-1",
+    );
+    expect(first.childPlan["req-live-1"]).toEqual([
+      { mark: "x", text: "Add the failing test" },
+      { mark: "·", text: "Implement the fix" },
+      { mark: " ", text: "Open the pull request" },
+    ]);
+
+    const hunk = applyTranscriptPatch(
+      first,
+      { lines: ["tool · Write src/a.ts", "+ export const a = 1;"], live: null },
+      2,
+      "req-live-1",
+    );
+    expect(hunk.childPlan["req-live-1"]).toEqual(first.childPlan["req-live-1"]);
+
+    const bash = applyTranscriptPatch(
+      hunk,
+      { lines: ["  Test Files  1 passed (1)"], live: null },
+      3,
+      "req-live-1",
+    );
+    expect(bash.childPlan["req-live-1"]).toEqual(first.childPlan["req-live-1"]);
+
+    const next = applyTranscriptPatch(
+      bash,
+      {
+        lines: [
+          "tool · TodoWrite",
+          "  [x] Add the failing test",
+          "  [x] Implement the fix",
+          "  [·] Open the pull request",
+        ],
+        live: null,
+        plan: [
+          { mark: "x", text: "Add the failing test" },
+          { mark: "x", text: "Implement the fix" },
+          { mark: "·", text: "Open the pull request" },
+        ],
+      },
+      4,
+      "req-live-1",
+    );
+    expect(next.childPlan["req-live-1"]).toEqual([
+      { mark: "x", text: "Add the failing test" },
+      { mark: "x", text: "Implement the fix" },
+      { mark: "·", text: "Open the pull request" },
+    ]);
+  });
 });
 
 describe("activityForView / visibleLive", () => {
@@ -816,6 +926,22 @@ describe("activityForView / visibleLive", () => {
       "tool · Write src/b.ts",
     ]);
     expect(visibleLive(other)).toBe("status · coding B");
+  });
+
+  it("returns the selected row's pinned plan and hides the other child's", () => {
+    const state = {
+      ...emptyView("epic"),
+      rows: [liveA, liveB],
+      selected: 0,
+      childPlan: {
+        "req-live-1": [{ mark: "·" as const, text: "Implement the fix" }],
+        "req-live-2": [{ mark: "x" as const, text: "Other child's work" }],
+      },
+    };
+    expect(selectedPlan(state)).toEqual([{ mark: "·", text: "Implement the fix" }]);
+    expect(selectedPlan({ ...state, selected: 1 })).toEqual([
+      { mark: "x", text: "Other child's work" },
+    ]);
   });
 
   it("falls back to the operator live line when the selected child is idle", () => {
