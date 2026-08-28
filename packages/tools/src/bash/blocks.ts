@@ -232,7 +232,12 @@ interface ScopeIdentity {
 function defaultMoatRunName(identity: ScopeIdentity): string {
   const { key } = resolveScopeKey("session", identity);
   const digest = createHash("sha256").update(key, "utf-8").digest("hex").slice(0, 12);
-  return `fsdev-${safeSegment(identity.sessionId).slice(0, 24)}-${digest}`;
+  // Sanitized, not `safeSegment`ed. That helper ends in a digest of the
+  // session id alone, and truncating its output to fit a run name cut that
+  // digest off again — a hash computed and thrown away, and the wrong hash
+  // regardless: a container must be unique per (tenant, session), which only
+  // the digest below carries.
+  return `fsdev-${sanitize(identity.sessionId).slice(0, 20)}-${digest}`;
 }
 
 function defaultMoatWorkspace(identity: ScopeIdentity): string {
@@ -259,12 +264,6 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
   return "/workspace";
 }
 
-/**
- * Resolve the workspace scope ID and registry key from context identity.
- *
- * For the `local` provider, also resolves the `cwd` when not explicitly set:
- * `.fsdev/workspaces/{scope}/{scopeId}/`
- */
 /**
  * A scope id as a directory name it is safe to join onto a root.
  *
@@ -295,8 +294,13 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
  */
 const ENCODED_PREFIX = "enc-";
 
+/** The characters a path segment and a run name can both carry, and nothing else. */
+function sanitize(id: string): string {
+  return id.replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
 function safeSegment(id: string): string {
-  const safe = id.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 40) || "id";
+  const safe = sanitize(id).slice(0, 40) || "id";
   const digest = createHash("sha256").update(id, "utf-8").digest("hex").slice(0, 12);
   return `${ENCODED_PREFIX}${safe}-${digest}`;
 }
@@ -522,7 +526,6 @@ async function createScopedSandbox(
   // overwrite our own yaml freely.
   let frameworkManaged = false;
   if (provider.type === "moat") {
-    const sessionId = identity.sessionId;
     const overrides: Partial<typeof provider> = {};
     // Derived from the same identity as the workspace below. `resolveMoatSandbox`
     // reconnects by run name alone, so a name built from the session id while
