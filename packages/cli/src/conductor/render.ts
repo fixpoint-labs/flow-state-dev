@@ -16,6 +16,8 @@ import {
   SELECT_BG,
   TEAL,
   dim,
+  fileHref,
+  fileText,
   formatClock,
   link,
   outcomeColor,
@@ -25,6 +27,7 @@ import {
   shortenToolLine,
   statusColor,
   truncate,
+  visibleWidth,
   wrap,
 } from "./theme";
 import {
@@ -36,6 +39,7 @@ import {
   rowRunning,
   selectedFailure,
   currentPlanItem,
+  fileFromToolLine,
   selectedFiles,
   selectedNow,
   selectedPlan,
@@ -281,7 +285,8 @@ function renderFileLines(state: ViewState, inner: number): string[] {
   const cap = state.filesExpanded ? FILE_EXPANDED_MAX : FILE_MAX;
   const shown = files.slice(-cap);
   const hidden = files.length - shown.length;
-  const lines = shown.map((file) => ` ${dim(shorten(file, inner))}`);
+  const cwd = selectedRow(state)?.run?.workspacePath ?? null;
+  const lines = shown.map((file) => ` ${dim(fileText(file, inner, cwd))}`);
   if (hidden > 0) lines.unshift(` ${dim(`… ${hidden} more`)}`);
   return lines;
 }
@@ -434,12 +439,17 @@ function renderActivity(
         : dim(`  ·  ${state.scroll} back`)
   }`;
   const width = Math.max(16, cols - 10);
+  const cwd = selectedRow(state)?.run?.workspacePath ?? null;
   const body: { text: string; itemIndex: number | null }[] = [];
   activityForView(state).forEach((item, itemIndex) => {
     const wrapped = wrapActivityLine(item.text, width);
     const current = currentHit?.itemIndex === itemIndex;
     wrapped.forEach((line, i) => {
-      const painted = finding ? highlightFind(line, state.find!, current) : paintHunkLine(line);
+      const painted = linkFileLine(
+        item.text,
+        finding ? highlightFind(line, state.find!, current) : paintHunkLine(line),
+        cwd,
+      );
       const clock = current && i === 0 ? paint(GOLD, formatClock(item.at)) : dim(formatClock(item.at));
       body.push({
         text: i === 0 ? ` ${clock}  ${painted}` : `         ${painted}`,
@@ -451,8 +461,9 @@ function renderActivity(
   if (following && !finding && live !== null && live !== lastText) {
     const wrapped = wrapActivityLine(live, width);
     wrapped.forEach((line, i) => {
+      const painted = linkFileLine(live, paint(GOLD, line), cwd);
       body.push({
-        text: i === 0 ? ` ${paint(GOLD, "··")}  ${paint(GOLD, line)}` : `         ${paint(GOLD, line)}`,
+        text: i === 0 ? ` ${paint(GOLD, "··")}  ${painted}` : `         ${painted}`,
         itemIndex: null,
       });
     });
@@ -570,9 +581,17 @@ function rule(cols: number, color: string = INK_3): string {
 }
 
 function padLine(text: string, cols: number): string {
-  const stripped = text.replace(/\x1b\[[0-9;]*m/g, "");
-  if (stripped.length >= cols) return text;
-  return text + " ".repeat(cols - stripped.length);
+  const visible = visibleWidth(text);
+  if (visible >= cols) return text;
+  return text + " ".repeat(cols - visible);
+}
+
+/** OSC-8 on a Write / Edit / Read line so a supporting terminal can open the file. */
+function linkFileLine(original: string, painted: string, cwd?: string | null): string {
+  const file = fileFromToolLine(original);
+  if (file === undefined) return painted;
+  const href = fileHref(file, cwd);
+  return href === undefined ? painted : link(href, painted);
 }
 
 function lineCount(block: string): number {

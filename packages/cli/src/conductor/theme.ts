@@ -102,11 +102,33 @@ export function pad(text: string, width: number, align: "left" | "right" = "left
 /**
  * Wrap visible text in an OSC-8 hyperlink. A supporting terminal
  * opens `url` on click. The wrapper is not part of the visible width.
- * Non-http(s) URLs, or a URL that would break the sequence, stay plain.
+ * Only http(s) and file URLs; a URL that would break the sequence stays plain.
  */
 export function link(url: string, text: string): string {
-  if (!/^https?:\/\//i.test(url) || /[\x00-\x1f]/.test(url)) return text;
+  if (!/^(https?:\/\/|file:\/\/)/i.test(url) || /[\x00-\x1f]/.test(url)) return text;
   return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+}
+
+/**
+ * `file://` href for a path the run touched. An absolute path is enough.
+ * A relative path needs the run's checkout, or there is nothing to open.
+ */
+export function fileHref(path: string, cwd?: string | null): string | undefined {
+  if (path === "" || /[\x00-\x1f]/.test(path)) return undefined;
+  const abs = path.startsWith("/")
+    ? path
+    : cwd != null && cwd.startsWith("/")
+      ? `${cwd.replace(/\/$/, "")}/${path.replace(/^\.\//, "")}`
+      : undefined;
+  if (abs === undefined || !abs.startsWith("/") || /[\x00-\x1f]/.test(abs)) return undefined;
+  return `file://${encodeURI(abs)}`;
+}
+
+/** Visible path, shortened; OSC-8 so a supporting terminal can open the file. */
+export function fileText(path: string, width: number, cwd?: string | null): string {
+  const shown = shorten(path, width);
+  const href = fileHref(path, cwd);
+  return href === undefined ? shown : link(href, shown);
 }
 
 export function stripAnsi(text: string): string {

@@ -229,7 +229,7 @@ The list comes from that run's plan tools. `TodoWrite` with a `todos` array repl
 
 Selecting another row shows that row's current item, or none if that row has not written a list.
 
-When the selected row is not running and has no open question, the board shows that attempt's request id, session id, child session id, pull-request URL when `status` carried one, last tool, files written, edited, or read, and the current todo with its count. `t` expands the list. A terminal that understands OSC-8 can open that URL.
+When the selected row is not running and has no open question, the board shows that attempt's request id, session id, child session id, pull-request URL when `status` carried one, last tool, files written, edited, or read, and the current todo with its count. `t` expands the list. A terminal that understands OSC-8 can open that URL, and can open a Write / Edit / Read path the same way.
 
 ```text
  request  req-fail-1

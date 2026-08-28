@@ -6,6 +6,7 @@ import {
   RUST,
   TEAL,
   elideEnd,
+  fileHref,
   link,
   shorten,
   shortenToolLine,
@@ -36,9 +37,16 @@ describe("OSC-8 links", () => {
     expect(painted).toContain(`\x1b]8;;${url}`);
   });
 
-  it("leaves a non-http URL plain", () => {
-    expect(link("file:///tmp/a.ts", "a.ts")).toBe("a.ts");
+  it("leaves a URL that is not http(s) or file plain", () => {
+    expect(link("javascript:alert(1)", "x")).toBe("x");
     expect(link("https://ex.com/\x1b", "x")).toBe("x");
+  });
+
+  it("opens an absolute path, or a relative path against the checkout", () => {
+    expect(fileHref("/tmp/ws/src/foo.ts")).toBe("file:///tmp/ws/src/foo.ts");
+    expect(fileHref("src/foo.ts", "/tmp/ws")).toBe("file:///tmp/ws/src/foo.ts");
+    expect(fileHref("src/foo.ts")).toBeUndefined();
+    expect(link("file:///tmp/ws/src/foo.ts", "foo.ts")).toContain("\x1b]8;;file:///tmp/ws/src/foo.ts");
   });
 });
 
@@ -1037,6 +1045,8 @@ describe("renderBoardPlain / watchExitCode", () => {
     expect(above).not.toMatch(/\/tmp\/conductor-checkouts\/live-prove-30\/very\/deep\/nested\/src/);
     expect(text).toContain("render.ts");
     expect(text).not.toMatch(/tool · Write \/tmp\/conductor-checkouts\/live-prove-30\/very/);
+    expect(frame).toContain(`\x1b]8;;file://${longFile}`);
+    expect(text).not.toContain("\x1b]8;;");
   });
 
   it("uses 1 when the last attempt failed, even if the row is still pending", () => {
