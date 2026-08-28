@@ -313,7 +313,7 @@ sharing one.
 
 A file the run deletes is removed from its collection, but only if the collection still holds what the run was given. If something else changed that file while the run held it, nothing is written or deleted and a warning names the contested path — the run's copy and the collection's copy are both left alone. The same applies to a write.
 
-Files written outside every mounted collection's directory, and outside the scratch directory `./tmp/`, are dropped rather than filed somewhere arbitrary. The warning naming them comes from the file-writing tool, which knows the path it was asked for; a flush lists the mounts, so a file a shell command writes elsewhere stays in the workspace and goes when the workspace does.
+Files written outside every mounted collection's directory, and outside the scratch directory `./tmp/`, are dropped rather than filed somewhere arbitrary. A flush walks the mounts and the workspace root, so a stray file beside the mounts is named in a warning; one written into a subdirectory nothing is mounted at is dropped silently, because walking every directory under the root after each command is not a cost the flush takes.
 
 ### Workspace path restrictions (Local FS)
 
