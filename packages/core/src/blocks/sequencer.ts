@@ -664,6 +664,12 @@ export async function executeBlock(
  * Exported so the server's top-level `executeBlock` can honor `config.rescue`
  * on a bare action-root block (in-flow children are handled by the core
  * `executeBlock` seam below); `server` may depend on `core`, never the reverse.
+ *
+ * The handler runs under a fresh signal. Resource CAS refuses writes once
+ * `ctx.signal` is aborted, and a request-level abort (HTTP `/abort`,
+ * `fsdev conductor abort`) cancels the whole request — including this
+ * handler. A step-scoped timeout does not, which is why a deadline already
+ * re-pends a row and an operator abort used to leave it `in_progress`.
  */
 export async function runRescue(
   ctx: BlockContext,
@@ -679,7 +685,11 @@ export async function runRescue(
     const rescuePath = extendBlockPath(basePath, blockPathRescue(i));
     // Rescue receives the thrown error inline — no upstream item to ref.
     stashInputHint(ctx, { kind: "inline", value: undefined });
-    const value = await executeBlock(handler.block, error, ctx, rescuePath);
+    const settlement = new AbortController();
+    const settlementCtx: BlockContext = { ...ctx, signal: settlement.signal };
+    const value = await executeBlock(handler.block, error, settlementCtx, rescuePath, {
+      signalOverride: settlement.signal,
+    });
     const descriptor = refDescriptorForPath(ctx, rescuePath);
     return { value, descriptor, name: handler.block.config.name ?? "rescue" };
   }
