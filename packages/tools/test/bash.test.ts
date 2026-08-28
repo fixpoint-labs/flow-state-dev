@@ -284,6 +284,75 @@ describe("createBashTool", () => {
     expect(onAfterCommand).toHaveBeenCalled();
     expect(result).toEqual(overrideResult);
   });
+
+  it("survives a flush when a mounted collection is empty", async () => {
+    // Exec-backed sandboxes walk with `find <destination>/<prefix>`. A prefix
+    // that hydrate never created makes `find` exit non-zero — `2>/dev/null`
+    // hides the message, not the status — and the place throws rather than
+    // reporting an empty workspace. Without a marker seeded up front, the
+    // first successful command took its own flush down with it.
+    const collection = createMockCollection([]);
+    const customSandbox = createMockSandbox();
+    const { tools } = await createBashTool({
+      collections: { files: collection },
+      provider: { type: "custom", sandbox: customSandbox },
+    });
+
+    expect(customSandbox.files.has("/workspace/files/.keep")).toBe(true);
+    expect(customSandbox.files.has("/workspace/tmp/.keep")).toBe(true);
+
+    const bashTool = tools.bash as {
+      execute: (a: { command: string }) => Promise<CommandResult>;
+    };
+    await expect(bashTool.execute({ command: "echo hi" })).resolves.toBeDefined();
+  });
+
+  it("does not fail a command when the workspace walk fails", async () => {
+    // The projection throws on an unreadable place deliberately — a flush
+    // that no-ops is recoverable, one that deletes is not. That is a reason
+    // to log, not a reason to fail a command that already succeeded.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const collection = createMockCollection([]);
+    const customSandbox = createMockSandbox();
+    const { tools } = await createBashTool({
+      collections: { files: collection },
+      provider: { type: "custom", sandbox: customSandbox },
+    });
+
+    customSandbox.executeCommand = async (command: string) => {
+      if (command.includes("find ")) return { stdout: "", stderr: "boom", exitCode: 1 };
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+
+    const bashTool = tools.bash as {
+      execute: (a: { command: string }) => Promise<CommandResult>;
+    };
+    await expect(bashTool.execute({ command: "echo hi" })).resolves.toBeDefined();
+    expect(warn.mock.calls.flat().join(" ")).toContain("flush skipped");
+    warn.mockRestore();
+  });
+
+  it("advertises available files at the paths they are mounted at", async () => {
+    // A `files/*` collection mounts at `files/`, so `hello.txt` lives at
+    // `files/hello.txt`. Advertising the bare key points the model at a path
+    // that does not exist, and every read of it fails.
+    const collection = createMockCollection([
+      {
+        name: "hello.txt",
+        state: { path: "hello.txt", hash: "abc", updatedAt: "2026-01-01" },
+        content: "Hello",
+      },
+    ]);
+    const customSandbox = createMockSandbox();
+    const { tools } = await createBashTool({
+      collections: { files: collection },
+      provider: { type: "custom", sandbox: customSandbox },
+    });
+
+    const description = (tools.bash as { description: string }).description;
+    expect(description).toContain("files/hello.txt");
+    expect(description).not.toMatch(/^hello\.txt$/m);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1266,5 +1335,38 @@ describe("createBashBlocks", () => {
     expect(await (await artifacts.get("contested.md")).readContent()).toBe("their edit");
     expect(warn.mock.calls.flat().join(" ")).toContain("contested.md");
     warn.mockRestore();
+  });
+  it("cold write-file updates a file the collection already holds", async () => {
+    // The bind-mount fast path builds its projection when no sandbox is live.
+    // With no baseline it cannot tell a file it is creating from one somebody
+    // else wrote, so a path the collection already has comes back a conflict
+    // and the write is refused — while the host file takes the edit anyway.
+    // The two then disagree, and the next hydrate erases the run's work.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { mkdtemp, readFile } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const nodePath = await import("node:path");
+
+    const workspace = await mkdtemp(nodePath.join(os.tmpdir(), "cold-write-"));
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "notes.md",
+        state: { path: "notes.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+
+    const { bashWriteFile } = createBashBlocks({
+      provider: { type: "moat", workspace },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("cold-write-1", { session: { artifacts } });
+
+    await runForTest(bashWriteFile, { path: "artifacts/notes.md", content: "edited" }, ctx);
+
+    // The host file took the edit either way — that is not in question.
+    expect(await readFile(nodePath.join(workspace, "artifacts/notes.md"), "utf-8")).toBe("edited");
+    // THE discriminating assertion: so did the collection.
+    expect(await (await artifacts.get("notes.md")).readContent()).toBe("edited");
   });
 });

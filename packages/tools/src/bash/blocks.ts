@@ -43,14 +43,21 @@ import type {
 import { z } from "zod";
 import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
 import { resolveSandbox } from "./resolve-sandbox";
-import { createProjection } from "@flow-state-dev/workspace";
+import { createProjection, createHostPlace } from "@flow-state-dev/workspace";
 import type {
   FlushOutcome,
   FlushReport,
   Mount as ProjectionMount,
   Projection,
 } from "@flow-state-dev/workspace";
-import { createSandboxPlace, KEEP_MARKER } from "./sandbox-place";
+import { KEEP_MARKER } from "./sandbox-place";
+import {
+  TMP_DIR,
+  createBashProjection,
+  createMountedProjection,
+  flushWithDiagnostics,
+  seedWorkspaceMarkers,
+} from "./projection-setup";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { quote as shellQuote } from "shell-quote";
@@ -197,7 +204,6 @@ interface ScopeIdentity {
 }
 
 /** Reserved workspace subdirectory for agent scratch space. Never persisted. */
-const TMP_DIR = "tmp";
 
 /** Per-session host dir backing the container's `/workspace`, mirroring `local`'s layout. */
 function defaultMoatWorkspace(sessionId: string): string {
@@ -370,25 +376,7 @@ async function createScopedSandbox(
   return sandbox;
 }
 
-/**
- * Strip a mount's pattern prefix from a resource ref's full storage key.
- * `ref.path` is `"artifacts/foo.md"`; stripping `"artifacts"` gives `"foo.md"`.
- */
-function stripMountPrefix(name: string, prefix: string): string {
-  if (prefix && name.startsWith(prefix + "/")) {
-    return name.slice(prefix.length + 1);
-  }
-  return name;
-}
 
-/** Match a sandbox-relative path to a mount via prefix. Mounts are pre-sorted longest-first. */
-function findMount(relativePath: string, mounts: Mount[]): Mount | undefined {
-  for (const mount of mounts) {
-    if (relativePath === mount.prefix) return mount;
-    if (relativePath.startsWith(mount.prefix + "/")) return mount;
-  }
-  return undefined;
-}
 
 function isUnderTmp(relativePath: string): boolean {
   return relativePath === TMP_DIR || relativePath.startsWith(TMP_DIR + "/");
@@ -419,32 +407,6 @@ function providerNeedsSetup(provider: SandboxProvider): boolean {
 // Hydrate / flush
 // ---------------------------------------------------------------------------
 
-/**
- * Build the projection for a set of mounts over a sandbox.
- *
- * The prefixes the projection routes by are the same ones `discoverMounts`
- * resolved, so a nested collection still wins over its parent — the ordering
- * moves into `routePath`, which sorts longest-first on its own.
- */
-function createSandboxProjection(
-  sandbox: Sandbox,
-  destination: string,
-  mounts: Mount[],
-  createState: (relativePath: string) => Partial<JsonObject>,
-): Projection {
-  return createProjection({
-    place: createSandboxPlace(sandbox, destination),
-    mounts: mounts.map((m) => ({
-      prefix: m.prefix,
-      collection: m.collection as unknown as ProjectionMount["collection"],
-      writable: m.writable,
-      // `createState` has always been handed the workspace-relative path, not
-      // the collection key — the bash capability's default reads a title off
-      // its basename. Rebuild it from the prefix rather than passing the key.
-      entryState: (key: string) => createState(path.posix.join(m.prefix, key)),
-    })),
-  });
-}
 
 /**
  * Hydrate: seed the scratch and mount directories, then lay every mount's
@@ -455,77 +417,15 @@ function createSandboxProjection(
  * filters them back out of its listing, so they never reach a collection.
  */
 async function hydrate(entry: SandboxEntry, destination: string): Promise<void> {
-  await entry.sandbox.writeFile(path.join(destination, TMP_DIR, KEEP_MARKER), "");
-  for (const mount of entry.mounts) {
-    await entry.sandbox.writeFile(path.join(destination, mount.prefix, KEEP_MARKER), "");
-  }
+  await seedWorkspaceMarkers(entry.sandbox, destination, entry.mounts);
   await entry.projection.hydrate();
 }
 
-/**
- * Flush: reconcile the sandbox back into its collections and report what the
- * projection decided.
- *
- * The decisions themselves belong to the projection. What stays here is the
- * translation into things a developer watching the server log can act on:
- * which files went nowhere, which were contested, and the case where a walk
- * succeeded but saw nothing.
- */
+/** Flush this entry's workspace back into its collections. */
 async function flush(entry: SandboxEntry): Promise<void> {
-  let report: FlushReport;
-  try {
-    report = await entry.projection.flush();
-  } catch (err) {
-    // The walk failed. The projection refused to decide anything rather than
-    // reading an unreadable workspace as an empty one, which is the whole
-    // point of it throwing — a flush that no-ops is recoverable, one that
-    // deletes is not.
-    console.warn(`[bash] flush skipped — workspace walk failed: ${(err as Error).message}`);
-    return;
-  }
-
-  reportOutcomes(entry, report.outcomes);
+  await flushWithDiagnostics(entry.projection, entry.mounts, entry.sandbox.hostMountSource);
 }
 
-/**
- * Turn a flush report into the console diagnostics this tool has always
- * emitted, plus the one it could not: a contested path.
- */
-function reportOutcomes(entry: SandboxEntry, outcomes: readonly FlushOutcome[]): void {
-  const orphans = outcomes.filter((o) => o.kind === "orphan").map((o) => o.path);
-  if (orphans.length > 0) {
-    console.warn(
-      `[bash] dropped ${orphans.length} orphan file(s) not under any mounted collection (or ./${TMP_DIR}/): ${orphans.join(", ")}`,
-    );
-  }
-
-  const conflicts = outcomes.filter(
-    (o): o is Extract<FlushOutcome, { kind: "conflict" }> => o.kind === "conflict",
-  );
-  if (conflicts.length > 0) {
-    console.warn(
-      `[bash] ${conflicts.length} file(s) changed in their collection while this run held them, and were NOT overwritten: ${conflicts
-        .map((c) => (c.ours === null ? `${c.path} (deleted here)` : c.path))
-        .join(", ")}`,
-    );
-  }
-
-  // A successful flush that reached zero files under writable mounts usually
-  // means the agent's writes landed somewhere the walk never visited. Without
-  // this there is no warn and no exception — just an artifact that never
-  // appears.
-  const writable = entry.mounts.filter((m) => m.writable);
-  if (writable.length > 0 && outcomes.every((o) => o.kind === "orphan")) {
-    const source = entry.sandbox.hostMountSource
-      ? ` (host walk under ${entry.sandbox.hostMountSource})`
-      : "";
-    console.warn(
-      `[bash] flush walk found 0 files under writable mounts (${writable
-        .map((m) => m.prefix)
-        .join(", ")})${source}. If the agent just wrote a file, check that it landed under one of these prefixes.`,
-    );
-  }
-}
 
 /**
  * Commit one file the write-file tool just wrote.
@@ -602,7 +502,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           sandbox,
           hydrated: false,
           mounts,
-          projection: createSandboxProjection(sandbox, destination, mounts, createState),
+          projection: createBashProjection(sandbox, destination, mounts, createState),
         };
         registry.set(registryKey, created);
         return created;
@@ -757,12 +657,6 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
       ctx,
     ) => {
       const hostMountSource = resolveHostMountSourceForWrite(provider, ctx)!;
-      const hostPath = path.join(hostMountSource, input.path);
-      await fs.mkdir(path.dirname(hostPath), { recursive: true });
-      await fs.writeFile(hostPath, input.content, "utf-8");
-      // Build a routing-only `SandboxEntry` from ctx if no live one exists.
-      // Its projection writes straight to the collections and never reaches
-      // for the place, so the `sandbox` field is never dereferenced.
       const cached = registry.get(
         resolveScopeKey("session", getIdentity(ctx)).key,
       );
@@ -773,12 +667,41 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           `[bash] bash-write-file at "${input.path}" found no mounted collections on ctx.resources — file written to host fs but NOT routed into any collection. Wire the bash capability alongside the artifact/skills capabilities on this generator.`,
         );
       }
-      const entry: SandboxEntry = liveEntry ?? {
-        sandbox: {} as Sandbox,
-        hydrated: false,
-        mounts,
-        projection: createSandboxProjection({} as Sandbox, destination, mounts, createState),
-      };
+
+      // Cold path: no sandbox has booted, so this handler is the first thing
+      // to touch the workspace. The bind mount means the host directory IS
+      // the place, so the projection gets a real one and hydrates over it —
+      // exactly what a `bashCommand` would have done first.
+      //
+      // Hydrating is not an optimisation, it is the correctness. A projection
+      // with no baseline cannot tell a file it is creating from one somebody
+      // else wrote, so every path the collection already holds comes back as
+      // a conflict and the write is refused — while the host file takes the
+      // edit anyway. The two then disagree, and the next hydrate lays the
+      // stale collection copy back over the run's work.
+      //
+      // It has to run BEFORE the host write, or it would overwrite the very
+      // file this call is here to save.
+      const entry: SandboxEntry =
+        liveEntry ??
+        (await (async () => {
+          const cold: SandboxEntry = {
+            sandbox: {} as Sandbox,
+            hydrated: true,
+            mounts,
+            projection: createMountedProjection(
+              createHostPlace(hostMountSource),
+              mounts,
+              createState,
+            ),
+          };
+          await cold.projection.hydrate();
+          return cold;
+        })());
+
+      const hostPath = path.join(hostMountSource, input.path);
+      await fs.mkdir(path.dirname(hostPath), { recursive: true });
+      await fs.writeFile(hostPath, input.content, "utf-8");
       await routeWrittenFile(entry, input.path, input.content);
       return { success: true };
     },
