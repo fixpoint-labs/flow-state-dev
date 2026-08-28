@@ -673,22 +673,34 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         );
       }
 
+      // ONE input for every resolver on this block, and it is the resolved
+      // prompt rather than the raw one.
+      //
+      // `cwd` used to be handed the block input directly while `sandbox` was
+      // handed a fresh `{ prompt: promptText }`. Those are different strings
+      // whenever a `prompt` picker or padding is in play — `cwd` saw what the
+      // caller sent, `sandbox` saw what the run runs — so a caller deriving
+      // coordinated paths from them could confine the run to a directory it
+      // was never given. The input schema is closed to `prompt`, so this one
+      // object is the whole of what a resolver can be told.
+      const resolverInput = { prompt: promptText };
+
       // Resolved ONCE per invocation, before the query and before the recorder
       // is opened, so the directory the SDK is handed and the directory the
       // record is keyed against cannot be two different answers from one
       // resolver (§7's invariant is about them staying the same value, not
       // merely about both being threaded).
       const workingDirectory = normalizeWorkingDirectory(
-        resolveCwd === undefined ? undefined : await resolveCwd(input, ctx),
+        resolveCwd === undefined ? undefined : await resolveCwd(resolverInput, ctx),
       );
 
-      // Resolved beside the working directory and for the same reason: the
-      // paths that confine a run are the paths it works in, and a sandbox
-      // resolved at build time cannot name them.
+      // Resolved beside the working directory, from the same input, and for
+      // the same reason: the paths that confine a run are the paths it works
+      // in, and a sandbox resolved at build time cannot name them.
       const sandboxSettings =
         typeof sandbox === "function"
           ? await (sandbox as (i: { prompt: string }, c: AgentCallbackContext) => unknown)(
-              { prompt: promptText },
+              resolverInput,
               ctx,
             )
           : sandbox;
