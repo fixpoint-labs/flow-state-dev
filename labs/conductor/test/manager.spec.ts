@@ -211,13 +211,17 @@ describe("the manager — the verdict at each exit", () => {
   });
 
   it("runs the coding agent as a trusted workspace on that checkout", async () => {
-    // contain: false so Bash / git / gh can write the tree. Relocation tools
-    // stay off so the model cannot leave the checkout the operator is watching
-    // — which is the failure that looks like "bash did nothing".
+    // contain: false so Bash / git / gh can write the tree. acceptEdits plus
+    // an allow-all canUseTool so a detached worker is not waiting on HITL.
+    // Relocation tools stay off so the model cannot leave the checkout the
+    // operator is watching — which is the failure that looks like "bash did
+    // nothing".
     const seen = {
       cwds: [] as (string | undefined)[],
       sandboxes: [] as unknown[],
       disallowed: [] as (readonly string[] | undefined)[],
+      permissionMode: [] as (string | undefined)[],
+      hasCanUseTool: [] as boolean[],
     };
     live = createConductorHarness({
       resolveClaudeAgent: () => ({
@@ -225,6 +229,8 @@ describe("the manager — the verdict at each exit", () => {
           seen.cwds.push(args.options?.cwd);
           seen.sandboxes.push(args.options?.sandbox);
           seen.disallowed.push(args.options?.disallowedTools);
+          seen.permissionMode.push(args.options?.permissionMode);
+          seen.hasCanUseTool.push(typeof args.options?.canUseTool === "function");
           yield sdkResult("success");
         },
       }),
@@ -239,6 +245,8 @@ describe("the manager — the verdict at each exit", () => {
     expect(row.status).toBe("completed");
     expect(seen.cwds[0]).toBe(realpathSync(row.run!.workspacePath!));
     expect(seen.sandboxes[0]).toBeUndefined();
+    expect(seen.permissionMode[0]).toBe("acceptEdits");
+    expect(seen.hasCanUseTool[0]).toBe(true);
     expect(seen.disallowed[0]).toEqual(
       expect.arrayContaining(["EnterWorktree", "ExitWorktree"]),
     );

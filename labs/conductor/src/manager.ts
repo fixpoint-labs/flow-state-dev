@@ -1421,8 +1421,17 @@ export function harnessManager(options: ManagerOptions) {
         // the checkout's own CLAUDE.md, run git / gh, and write without a
         // sandbox. Relocation tools stay disallowed so the model cannot leave
         // the checkout the manager provisioned.
+        //
+        // The SDK default is HITL (`permissionMode: "default"` with no
+        // `canUseTool`). A detached worker has no one to answer those prompts,
+        // so every Write / Bash sits until the run dies having changed
+        // nothing. `acceptEdits` covers the file tools; the approval seam
+        // covers the rest (git, gh). A caller that already set either keeps
+        // it — tests and a later HITL host still own that door.
         contain: false,
         collections: [],
+        permissionMode: agent?.permissionMode ?? "acceptEdits",
+        onToolApproval: agent?.onToolApproval ?? (() => ({ decision: "allow" })),
         disallowedTools: [
           ...new Set([...(agent?.disallowedTools ?? []), ...RELOCATION_TOOLS]),
         ],

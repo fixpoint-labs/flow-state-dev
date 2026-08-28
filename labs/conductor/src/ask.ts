@@ -38,13 +38,12 @@
  * Two constraints meet here and this path satisfies both with no step.
  *
  * - **Writable.** Inside `cwd` is the only place it is. Measured, not assumed:
- *   under exactly the config every call site uses today — no `permissionMode`,
- *   no `onToolApproval` — an out-of-tree Write is denied with
- *   `decision_reason_type: "workingDir"`, and the SDK's `additionalDirectories`
- *   is exposed nowhere in conductor's options. Reaching it would be a framework
- *   change. **What makes that fatal rather than annoying is that the run's
- *   result subtype stays `"success"`** — a refused ask is indistinguishable
- *   from an attempt that never asked.
+ *   under the trusted-checkout config (in-tree tools are auto-approved) an
+ *   out-of-tree Write is still denied with `decision_reason_type: "workingDir"`,
+ *   and the SDK's `additionalDirectories` is exposed nowhere in conductor's
+ *   options. Reaching it would be a framework change. **What makes that fatal
+ *   rather than annoying is that the run's result subtype stays `"success"`** —
+ *   a refused ask is indistinguishable from an attempt that never asked.
  * - **Not committable.** `git add -A` does not stage a gitignored path, so the
  *   marker is safe exactly where git already ignores it — and **provisioning
  *   asks git whether it does**, in the checkout, before the agent runs
