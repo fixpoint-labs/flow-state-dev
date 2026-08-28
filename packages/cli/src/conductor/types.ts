@@ -144,6 +144,11 @@ export interface ViewState {
    */
   planExpanded: boolean;
   /**
+   * When true, the reserved band and inspect pane show more of the
+   * file list. When false, the last three paths.
+   */
+  filesExpanded: boolean;
+  /**
    * Transcript pager offset from the latest line. `0` follows new activity
    * (Grok-style). PageUp / wheel-up increase it.
    */
@@ -185,6 +190,7 @@ export function emptyView(epicLabel: string): ViewState {
     childPlan: {},
     childFiles: {},
     planExpanded: false,
+    filesExpanded: false,
     scroll: 0,
     find: null,
     findAt: 0,

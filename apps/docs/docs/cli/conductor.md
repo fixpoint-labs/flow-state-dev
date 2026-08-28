@@ -198,7 +198,7 @@ When the selected row is running and has no open question and no failed last att
 
 The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown.
 
-The band lists the files that run has written, edited, or read. Last touch is last. Up to 3 paths; more starts with `… N more`.
+The band lists the files that run has written, edited, or read. Last touch is last. Up to 3 paths; more starts with `… N more`. `f` expands the list (up to 12). Press again to collapse.
 
 ```text
  … 2 more
@@ -262,6 +262,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `w` | Wake. On a failed selected row with no question, the footer labels this `w retry` |
 | `x` | Stop the selected running row's request |
 | `t` or `Ctrl-T` | Expand or collapse the selected row's todo list |
+| `f` | Expand or collapse the selected row's file list |
 | `r` | Refresh now |
 | `/` | Type a slash command. Matching verbs, then board ids, list above the prompt |
 | `Tab` | Fill the selected slash verb or board id |

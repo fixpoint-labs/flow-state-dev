@@ -713,6 +713,19 @@ describe("renderFrame", () => {
     expect(above).toContain("src/e.ts");
     expect(above).not.toContain("src/a.ts");
     expect(above).not.toContain("src/b.ts");
+
+    const expanded = beforeTranscript(
+      renderFrame(
+        { ...emptyView("epic"), rows: [running], activity: files, filesExpanded: true },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(expanded).toContain("src/a.ts");
+    expect(expanded).toContain("src/e.ts");
+    expect(expanded).not.toContain("… 2 more");
+    expect(stripAnsi(renderFrame({ ...emptyView("epic"), rows: [running], activity: files }, { cols: 80, rows: 24 }))).toContain(
+      "f files",
+    );
   });
 
   it("keeps files, the current todo, and the PR URL on ASK", () => {

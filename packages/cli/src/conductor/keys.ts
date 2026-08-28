@@ -169,7 +169,7 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
     key.type === "left" ||
     key.type === "right" ||
     key.type === "escape" ||
-    (key.type === "char" && "jk[]t?nN".includes(key.value));
+    (key.type === "char" && "jk[]tf?nN".includes(key.value));
   if (state.busy && key.type !== "ctrl" && !scrolling && !browsing) {
     return { state };
   }
@@ -251,6 +251,8 @@ function applyIdleChar(state: ViewState, value: string): KeyResult {
       return { state, effect: { type: "dispatch", command: { kind: "wake" } } };
     case "t":
       return { state: { ...state, planExpanded: !state.planExpanded } };
+    case "f":
+      return { state: { ...state, filesExpanded: !state.filesExpanded } };
     case "n":
       if (state.find !== null) return { state: stepFind(state, -1) };
       return idleFallback(state, value);
@@ -485,7 +487,12 @@ function selectRow(state: ViewState, index: number): ViewState {
     notice: null,
   });
   if (next.selected === state.selected) return next;
-  const jumped = trimActivity({ ...next, scroll: 0, planExpanded: false });
+  const jumped = trimActivity({
+    ...next,
+    scroll: 0,
+    planExpanded: false,
+    filesExpanded: false,
+  });
   if (jumped.find === null) return jumped;
   return applyFindQuery(jumped, jumped.find);
 }

@@ -267,11 +267,13 @@ function renderRunBand(state: ViewState, cols: number): string {
 }
 
 const FILE_MAX = 3;
+const FILE_EXPANDED_MAX = 12;
 
 function renderFileLines(state: ViewState, inner: number): string[] {
   const files = selectedFiles(state);
   if (files.length === 0) return [];
-  const shown = files.slice(-FILE_MAX);
+  const cap = state.filesExpanded ? FILE_EXPANDED_MAX : FILE_MAX;
+  const shown = files.slice(-cap);
   const hidden = files.length - shown.length;
   const lines = shown.map((file) => ` ${dim(shorten(file, inner))}`);
   if (hidden > 0) lines.unshift(` ${dim(`… ${hidden} more`)}`);
@@ -525,21 +527,23 @@ function renderFooter(state: ViewState, cols: number): string {
   const finding = state.find !== null;
   const slashing = state.inputMode === "command" && slashMenu(state).length > 0;
   const listed = selectedPlan(state).length > 0;
+  const moreFiles = selectedFiles(state).length > FILE_MAX;
+  const filesKey = moreFiles ? "  ·  f files" : "";
   const keys = slashing
     ? "Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc"
     : finding
     ? "n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q"
     : q
-      ? "click/j/k  ·  a answer  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q"
+      ? `click/j/k  ·  a answer${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
       : fail !== undefined
         ? listed
-          ? "click/j/k  ·  w retry  ·  t list  ·  /find  ·  r  ·  /  ·  ?  ·  q"
-          : "click/j/k  ·  w retry  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q"
+          ? `click/j/k  ·  w retry  ·  t list${filesKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
+          : `click/j/k  ·  w retry${filesKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
         : running
-          ? "click/j/k  ·  x stop  ·  t list  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q"
+          ? `click/j/k  ·  x stop  ·  t list${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
           : listed
-            ? "click/j/k  ·  t list  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q"
-            : "click/j/k  ·  s seed  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q";
+            ? `click/j/k  ·  t list${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
+            : `click/j/k  ·  s seed${filesKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
   return padLine(dim(` ${keys}`), cols);
 }
 

@@ -294,6 +294,7 @@ In the TUI:
   w            wake
   r            refresh now (runs status)
   t            expand or collapse the todo list on a running row
+  f            expand or collapse the file list on the selected row
   /            slash command (same verbs)
   Tab          complete the selected slash verb or board id
   ↑/↓          choose a slash match while / is open

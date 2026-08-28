@@ -392,6 +392,16 @@ describe("applyKey", () => {
     expect(moved.state.planExpanded).toBe(false);
   });
 
+  it("toggles the file list with f and collapses it when the row changes", () => {
+    const state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
+    const opened = applyKey(state, { type: "char", value: "f" });
+    expect(opened.state.filesExpanded).toBe(true);
+    expect(opened.effect).toBeUndefined();
+    const moved = applyKey(opened.state, { type: "char", value: "j" });
+    expect(moved.state.selected).toBe(1);
+    expect(moved.state.filesExpanded).toBe(false);
+  });
+
   it("trims the unselected request when the row changes", () => {
     let state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
     for (let i = 0; i < ACTIVITY_CAP + 5; i += 1) {
