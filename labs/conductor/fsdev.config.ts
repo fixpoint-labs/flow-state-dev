@@ -11,9 +11,10 @@
  *   pnpm conductor status FIX-1219
  *   pnpm fsdev run conductor seed   -i '{"issue":"FIX-1219","phase":"implement"}'
  *
- * No `-s` needed. The CLI mints a fresh session per invocation, and both the
- * board row and the run record are `user`-scoped, so `status` answers with the
- * run's session, checkout, outcome and cost whichever session asks.
+ * No `-s` needed. The operator surface reuses session `conductor-operator`
+ * so the board stays one conversation; both the board row and the run record
+ * are `user`-scoped, so `status` answers with the run's session, checkout,
+ * outcome and cost whichever session asks.
  *
  * `CONDUCTOR_REPO` names the repository checkouts are cut from. **Required** —
  * absent, or resolving to the repository this dispatcher itself runs from, is

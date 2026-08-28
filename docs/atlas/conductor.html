@@ -593,7 +593,7 @@ export CONDUCTOR_EPIC=my-board
 export CONDUCTOR_CHECKOUTS=/tmp/conductor-checkouts
 pnpm conductor start ISSUE
 pnpm conductor status ISSUE</pre>
-  <p>The operator surface is the same host as <code>fsdev run</code> / <code>fsdev chat</code>. A TTY opens the board. Piped or scripted, use the headless verbs. A live Claude child still needs Anthropic auth in the environment that hosts the run.</p>
+  <p>The operator surface is the same host as <code>fsdev run</code> / <code>fsdev chat</code>. A TTY opens the board. Piped or scripted, use the headless verbs. A live Claude child still needs Anthropic auth in the environment that hosts the run. Implement's done-condition shells out to <code>gh pr list</code>, so a completing pull request also needs GitHub auth on that host.</p>
 
   <figure>
     <div class="fig-body">
@@ -1835,7 +1835,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
         <tr>
           <td><strong>The harness-manager proof</strong><br><code>LAB-140</code></td>
           <td><span class="tag t-real">objective approved</span> <span class="tag t-prose">on PR #1362</span></td>
-          <td><code>LAB-138</code> turns a task row into a watched, settled coding run and records it as <code>runs/**</code>. <code>LAB-139</code> gives that run a way to ask and be answered &#8212; the inbox collection and the <code>steer</code> action. <code>FIX-150</code> sits under the same epic</td>
+          <td><code>LAB-138</code> turns a task row into a watched, settled coding run and records it as <code>runs/**</code>. <code>LAB-139</code> gives that run a way to ask and be answered &#8212; the inbox collection and the <code>answer</code> action. <code>steer</code> is still the later design, not this lab. <code>FIX-150</code> sits under the same epic</td>
           <td>Everything above the seam &#8212; the phase machine, context assembly, filing. None of them can be built on a dispatch that returns and forgets</td>
           <td>Nothing to start, and four things to finish. <code>LAB-139</code> needs <code>LAB-138</code>. The <em>Proof</em> needs the send verb (<code>FIX-1230</code>), the park (<code>FIX-1234</code>, merged), the wake (<code>FIX-1244</code>), and the resume (<code>FIX-1246</code>) &#8212; it owns none of the four, and every issue here can finish before the Proof can run</td>
         </tr>
