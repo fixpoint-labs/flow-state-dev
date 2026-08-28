@@ -6,10 +6,10 @@
  * keeps a log instead of a single overwritten slot. `content.delta` appends
  * to the live line so a generator in this process reads as a stream. Durable
  * items (errors, tools, finished messages, resource changes) become activity
- * lines. `status` remains the board authority; `diffBoard` turns a poll that
- * actually moved into the same log. A running row's `run.requestId` is also
- * tailed through the request store, so a detached coding run writes here
- * as it runs.
+ * lines. A coding tool is named with the file or command it touched. `status`
+ * remains the board authority; `diffBoard` turns a poll that actually moved
+ * into the same log. A running row's `run.requestId` is also tailed through
+ * the request store, so a detached coding run writes here as it runs.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
@@ -39,6 +39,7 @@ export function createStreamTranscript(): {
 } {
   const itemTypes = new Map<string, string>();
   const streamed = new Set<string>();
+  const logged = new Set<string>();
   let live: string | null = null;
   let liveKind: "status" | "message" | null = null;
 
@@ -73,10 +74,12 @@ export function createStreamTranscript(): {
             return snapshot([...commitLive(), `error · ${item.message}`]);
           }
           if (item.type === "tool_output") {
-            return snapshot([
-              ...commitLive(),
-              `tool · ${item.toolCall?.name ?? item.blockName}`,
-            ]);
+            logged.add(item.id);
+            return snapshot([...commitLive(), formatToolLine(item)]);
+          }
+          if (item.type === "container") {
+            logged.add(item.id);
+            return snapshot([...commitLive(), formatContainerLine(item)]);
           }
           return snapshot([]);
         }
@@ -102,6 +105,24 @@ export function createStreamTranscript(): {
             const text = messageText(item);
             if (text.length === 0) return snapshot([]);
             return snapshot([...commitLive(), `message · ${text}`]);
+          }
+          if (item.type === "tool_output") {
+            const failed = item.status === "failed" || item.status === "incomplete";
+            if (logged.has(item.id) && !failed) return snapshot([]);
+            logged.add(item.id);
+            return snapshot([
+              ...commitLive(),
+              formatToolLine(item, failed ? item.status : undefined),
+            ]);
+          }
+          if (item.type === "container") {
+            const failed = item.status === "failed" || item.status === "incomplete";
+            if (logged.has(item.id) && !failed) return snapshot([]);
+            logged.add(item.id);
+            return snapshot([
+              ...commitLive(),
+              formatContainerLine(item, failed ? item.status : undefined),
+            ]);
           }
           return snapshot([]);
         }
@@ -137,6 +158,63 @@ function messageText(item: OutputItem): string {
     if (part.type === "output_text" && typeof part.text === "string") text += part.text;
   }
   return text.trim();
+}
+
+const TOOL_SUBJECT_KEYS = [
+  "file_path",
+  "path",
+  "command",
+  "pattern",
+  "glob",
+  "description",
+  "url",
+  "query",
+] as const;
+
+function parseToolArgs(raw: unknown): Record<string, unknown> {
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw !== "string" || raw === "") return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return {};
+  }
+  return {};
+}
+
+function toolSubject(args: Record<string, unknown>): string | undefined {
+  for (const key of TOOL_SUBJECT_KEYS) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim().replace(/\s+/g, " ").slice(0, 72);
+    }
+  }
+  return undefined;
+}
+
+function formatToolLine(item: OutputItem, settled?: "failed" | "incomplete"): string {
+  const name =
+    item.type === "tool_output" ? (item.toolCall?.name ?? item.blockName) : "tool";
+  const args = item.type === "tool_output" ? parseToolArgs(item.toolCall?.arguments) : {};
+  const subject = toolSubject(args);
+  const base = subject !== undefined ? `tool · ${name} ${subject}` : `tool · ${name}`;
+  if (settled === "failed") return `${base} · failed`;
+  if (settled === "incomplete") return `${base} · stopped`;
+  return base;
+}
+
+function formatContainerLine(item: OutputItem, settled?: "failed" | "incomplete"): string {
+  const label =
+    item.type === "container" ? (item.label ?? item.blockName) : "sub-agent";
+  const base = `sub · ${label}`;
+  if (settled === "failed") return `${base} · failed`;
+  if (settled === "incomplete") return `${base} · stopped`;
+  return base;
 }
 
 /**

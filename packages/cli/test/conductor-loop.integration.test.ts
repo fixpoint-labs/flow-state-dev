@@ -211,6 +211,59 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("names a coding tool with the file it touched", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 40,
+    });
+
+    await waitFor(() => tty.text, "LIVE-1");
+    stores.request.persistEvents("req-live-1", [
+      {
+        stream: "request",
+        type: "item.added",
+        requestId: "req-live-1",
+        sequence_number: 2,
+        ts: 2,
+        item: {
+          id: "t1",
+          type: "tool_output",
+          status: "in_progress",
+          blockName: "Write",
+          toolCall: {
+            callId: "c1",
+            name: "Write",
+            arguments: JSON.stringify({ file_path: "src/conductor/render.ts" }),
+            generatorBlock: "agent",
+          },
+        },
+      } as never,
+    ]);
+    await waitFor(() => tty.text, "tool · Write src/conductor/render.ts");
+
+    tty.input.write("q");
+    await expect(running).resolves.toBe(0);
+  });
+
   it("shows the RUN band and stops the selected request with x", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "LIVE-1"], {

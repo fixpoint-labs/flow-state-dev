@@ -116,6 +116,148 @@ describe("createStreamTranscript", () => {
     expect(second.lines).toEqual([]);
     expect(second.live).toBe("status · seeded");
   });
+
+  it("names a coding tool with the file or command, and does not reprint a successful result", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        added({
+          id: "t1",
+          type: "tool_output",
+          blockName: "Write",
+          status: "in_progress",
+          toolCall: {
+            callId: "c1",
+            name: "Write",
+            arguments: JSON.stringify({ file_path: "src/conductor/render.ts", contents: "huge" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · Write src/conductor/render.ts"],
+      live: null,
+    });
+    expect(
+      t.apply(
+        done({
+          id: "t1",
+          type: "tool_output",
+          blockName: "Write",
+          status: "completed",
+          toolCall: {
+            callId: "c1",
+            name: "Write",
+            arguments: JSON.stringify({ file_path: "src/conductor/render.ts" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({ lines: [], live: null });
+  });
+
+  it("prints a Bash command and a failed tool once it settles", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "t2",
+        type: "tool_output",
+        blockName: "Bash",
+        status: "in_progress",
+        toolCall: {
+          callId: "c2",
+          name: "Bash",
+          arguments: JSON.stringify({ command: "pnpm test" }),
+          generatorBlock: "agent",
+        },
+      }),
+    );
+    expect(
+      t.apply(
+        done({
+          id: "t2",
+          type: "tool_output",
+          blockName: "Bash",
+          status: "failed",
+          toolCall: {
+            callId: "c2",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "pnpm test" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · Bash pnpm test · failed"],
+      live: null,
+    });
+  });
+
+  it("prints an orphan tool result that never had an added event", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        done({
+          id: "t3",
+          type: "tool_output",
+          blockName: "Read",
+          status: "completed",
+          toolCall: {
+            callId: "c3",
+            name: "Read",
+            arguments: JSON.stringify({ file_path: "package.json" }),
+            generatorBlock: "agent",
+          },
+        }),
+      ),
+    ).toEqual({
+      lines: ["tool · Read package.json"],
+      live: null,
+    });
+  });
+
+  it("names a sub-agent when its container opens, and only again if it fails", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        added({
+          id: "c1",
+          type: "container",
+          blockName: "Explore",
+          label: "Sub-agent: Explore",
+          status: "in_progress",
+        }),
+      ),
+    ).toEqual({
+      lines: ["sub · Sub-agent: Explore"],
+      live: null,
+    });
+    expect(
+      t.apply(
+        done({
+          id: "c1",
+          type: "container",
+          blockName: "Explore",
+          label: "Sub-agent: Explore",
+          status: "completed",
+        }),
+      ),
+    ).toEqual({ lines: [], live: null });
+    expect(
+      t.apply(
+        done({
+          id: "c2",
+          type: "container",
+          blockName: "Explore",
+          label: "Sub-agent: Explore",
+          status: "failed",
+        }),
+      ),
+    ).toEqual({
+      lines: ["sub · Sub-agent: Explore · failed"],
+      live: null,
+    });
+  });
 });
 
 describe("diffBoard", () => {

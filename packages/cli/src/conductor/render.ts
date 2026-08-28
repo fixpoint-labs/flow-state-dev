@@ -245,6 +245,9 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
       row.run.outcome !== null ? paint(outcomeColor(row.run.outcome), row.run.outcome) : dim("no outcome yet"),
     ];
     if (row.run.reason && !opts.omitReason) bits.push(truncate(row.run.reason, Math.max(20, cols - 28)));
+    if (row.run.usage !== null) {
+      bits.push(`${fmtTokens(row.run.usage.inputTokens)}→${fmtTokens(row.run.usage.outputTokens)}`);
+    }
     if (row.run.costUsd !== null) bits.push(`$${row.run.costUsd.toFixed(3)}`);
     lines.push(` ${dim("run")}      ${bits.join(dim(" · "))}`);
     if (row.run.branch) {

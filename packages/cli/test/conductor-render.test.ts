@@ -80,6 +80,7 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).toContain("succeeded");
     expect(stripAnsi(frame)).not.toMatch(/succeed…Which/);
     expect(frame).toContain("1 waiting");
+    expect(stripAnsi(frame)).toContain("10→4");
     expect(frame).toContain("click/j/k select");
     expect(frame).toContain("TRANSCRIPT");
   });
