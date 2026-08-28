@@ -778,7 +778,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   // capability's own prompt already names the scope; a block used directly
   // would have contradicted it.
   const workspaceReach = ((): string => {
-    switch (provider.type === "local" ? (provider.scope ?? "session") : "session") {
+    switch (effectiveScope(provider)) {
       case "run":
         return "The workspace belongs to this request alone — no other run can see it, and it does not carry over to the next request.";
       case "user":
