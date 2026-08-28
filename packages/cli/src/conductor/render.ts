@@ -681,7 +681,13 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
   const nextKey = state.rows.some((row, i) => i !== state.selected && rowNeedsYou(row, state.activity, now))
     ? "  ·  } next"
     : "";
-  const keys = slashing
+  const composing =
+    !slashing &&
+    !finding &&
+    (state.inputMode === "answer" || state.inputMode === "seed" || state.input !== "");
+  const keys = composing
+    ? `${working}${state.drafts.length > 0 ? "↑ prior  ·  " : ""}Enter send  ·  Esc`
+    : slashing
     ? `${working}Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`
     : finding
     ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q`

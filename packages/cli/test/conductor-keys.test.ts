@@ -263,6 +263,84 @@ describe("applyKey", () => {
       type: "dispatch",
       command: { kind: "steer", message: "please retry the failed rows" },
     });
+    expect(submitted.state.drafts).toEqual(["please retry the failed rows"]);
+  });
+
+  it("walks prior compose lines with ↑/↓, and idle ↑ still moves rows", () => {
+    const rows = [row("FIX-1"), row("FIX-2")];
+    const idle = applyKey({ ...board(rows), selected: 1 }, { type: "up" });
+    expect(idle.state.selected).toBe(0);
+    expect(idle.state.input).toBe("");
+
+    let state: ViewState = {
+      ...board(rows),
+      drafts: ["seed LAB-1", "please retry the failed rows"],
+    };
+    for (const ch of "new draft") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    expect(state.selected).toBe(0);
+    const older = applyKey(state, { type: "up" });
+    expect(older.state.input).toBe("please retry the failed rows");
+    expect(older.state.draftHold).toBe("new draft");
+    expect(older.state.selected).toBe(0);
+    const oldest = applyKey(older.state, { type: "up" });
+    expect(oldest.state.input).toBe("seed LAB-1");
+    const stop = applyKey(oldest.state, { type: "up" });
+    expect(stop.state.input).toBe("seed LAB-1");
+    const newer = applyKey(oldest.state, { type: "down" });
+    expect(newer.state.input).toBe("please retry the failed rows");
+    const live = applyKey(newer.state, { type: "down" });
+    expect(live.state.input).toBe("new draft");
+    expect(live.state.draftAt).toBeNull();
+    expect(live.state.draftHold).toBeNull();
+  });
+
+  it("remembers answers and seed ids, skips find and empty, and Esc keeps the list", () => {
+    const waiting = board([row("FIX-1", 1)]);
+    const answering = applyKey(waiting, { type: "char", value: "a" }).state;
+    const typed = { ...answering, input: "ship the smaller cut" };
+    const sent = applyKey(typed, { type: "enter" });
+    expect(sent.state.drafts).toEqual(["ship the smaller cut"]);
+    const again = applyKey({ ...sent.state, inputMode: "answer", answering: "FIX-1/implement/1/q0", input: "ship the smaller cut" }, { type: "enter" });
+    expect(again.state.drafts).toEqual(["ship the smaller cut"]);
+
+    const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" }).state;
+    const seeded = applyKey({ ...seeding, input: "LAB-9" }, { type: "enter" });
+    expect(seeded.state.drafts).toEqual(["LAB-9"]);
+
+    let find = applyKey({ ...seeded.state, input: "" }, { type: "char", value: "/" }).state;
+    for (const ch of "find hunk") {
+      find = applyKey(find, { type: "char", value: ch }).state;
+    }
+    const found = applyKey(find, { type: "enter" });
+    expect(found.state.drafts).toEqual(["LAB-9"]);
+    expect(found.state.find).toBe("hunk");
+
+    const composing = applyKey({ ...found.state, input: "x", find: null }, { type: "up" });
+    expect(composing.state.input).toBe("LAB-9");
+    const cancelled = applyKey(composing.state, { type: "escape" });
+    expect(cancelled.state.drafts).toEqual(["LAB-9"]);
+    expect(cancelled.state.input).toBe("");
+    expect(cancelled.state.draftAt).toBeNull();
+    expect(cancelled.state.draftHold).toBeNull();
+
+    const empty = applyKey({ ...cancelled.state, input: "   " }, { type: "enter" });
+    expect(empty.state.drafts).toEqual(["LAB-9"]);
+  });
+
+  it("keeps at most fifty submitted compose lines", () => {
+    let state: ViewState = {
+      ...board([row("FIX-1")]),
+      drafts: Array.from({ length: 50 }, (_, i) => `line-${i}`),
+    };
+    for (const ch of "please retry the overflow") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const sent = applyKey(state, { type: "enter" });
+    expect(sent.state.drafts).toHaveLength(50);
+    expect(sent.state.drafts[0]).toBe("line-1");
+    expect(sent.state.drafts.at(-1)).toBe("please retry the overflow");
   });
 
   it("selects the clicked table row", () => {

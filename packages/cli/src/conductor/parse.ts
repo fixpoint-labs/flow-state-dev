@@ -316,7 +316,7 @@ In the TUI:
   e            expand or collapse the last Read peek or command tail
   /            slash command (same verbs)
   Tab          complete the selected slash verb or board id
-  ↑/↓          choose a slash match while / is open
+  ↑/↓          slash match while / is open; prior lines while composing
   /status id   select that row, then refresh
   /find [text] search the selected row's transcript
   n / N        older / newer match

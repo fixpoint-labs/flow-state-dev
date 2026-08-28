@@ -209,6 +209,12 @@ export interface ViewState {
    */
   slashAt: number;
   lastRefreshAt: number | null;
+  /** Prior submitted talk, answer, and seed lines (newest last). */
+  drafts: string[];
+  /** Index into `drafts` while walking with ↑/↓, or `null` on the live draft. */
+  draftAt: number | null;
+  /** Unsent compose text stashed when the first ↑ leaves the live draft. */
+  draftHold: string | null;
 }
 
 export function emptyView(epicLabel: string): ViewState {
@@ -239,6 +245,9 @@ export function emptyView(epicLabel: string): ViewState {
     findAt: 0,
     slashAt: 0,
     lastRefreshAt: null,
+    drafts: [],
+    draftAt: null,
+    draftHold: null,
   };
 }
 

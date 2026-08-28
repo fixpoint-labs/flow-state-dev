@@ -305,12 +305,28 @@ function applyEditing(state: ViewState, key: Key): KeyResult {
   const menu = slashMenu(state);
   switch (key.type) {
     case "char":
-      return { state: { ...state, input: state.input + key.value, slashAt: 0 } };
+      return {
+        state: {
+          ...state,
+          input: state.input + key.value,
+          slashAt: 0,
+          draftAt: null,
+          draftHold: null,
+        },
+      };
     case "backspace":
       if (state.input === "") {
         return cancelEdit(state);
       }
-      return { state: { ...state, input: state.input.slice(0, -1), slashAt: 0 } };
+      return {
+        state: {
+          ...state,
+          input: state.input.slice(0, -1),
+          slashAt: 0,
+          draftAt: null,
+          draftHold: null,
+        },
+      };
     case "escape":
       return cancelEdit(state);
     case "tab":
@@ -321,13 +337,17 @@ function applyEditing(state: ViewState, key: Key): KeyResult {
       }
       return submitEdit(state);
     case "up":
-      if (menu.length === 0) return { state };
-      return {
-        state: { ...state, slashAt: (state.slashAt - 1 + menu.length) % menu.length },
-      };
+      if (menu.length > 0) {
+        return {
+          state: { ...state, slashAt: (state.slashAt - 1 + menu.length) % menu.length },
+        };
+      }
+      return { state: walkDraft(state, -1) };
     case "down":
-      if (menu.length === 0) return { state };
-      return { state: { ...state, slashAt: (state.slashAt + 1) % menu.length } };
+      if (menu.length > 0) {
+        return { state: { ...state, slashAt: (state.slashAt + 1) % menu.length } };
+      }
+      return { state: walkDraft(state, 1) };
     default:
       return { state };
   }
@@ -401,8 +421,50 @@ function cancelEdit(state: ViewState): KeyResult {
       answering: null,
       slashAt: 0,
       notice: null,
+      draftAt: null,
+      draftHold: null,
     },
   };
+}
+
+const DRAFT_CAP = 50;
+
+/** Keep a submitted compose line. Consecutive duplicates stay one entry. */
+function rememberDraft(state: ViewState, text: string): ViewState {
+  const line = text.trim();
+  const reset: ViewState = { ...state, draftAt: null, draftHold: null };
+  if (line === "") return reset;
+  if (reset.drafts[reset.drafts.length - 1] === line) return reset;
+  const drafts = [...reset.drafts, line];
+  return {
+    ...reset,
+    drafts: drafts.length <= DRAFT_CAP ? drafts : drafts.slice(-DRAFT_CAP),
+  };
+}
+
+/** ↑ older, ↓ newer. The first ↑ stashes the unsent line; past newest restores it. */
+function walkDraft(state: ViewState, direction: -1 | 1): ViewState {
+  if (state.drafts.length === 0) return state;
+  if (state.draftAt === null) {
+    if (direction === 1) return state;
+    return {
+      ...state,
+      draftHold: state.input,
+      draftAt: state.drafts.length - 1,
+      input: state.drafts[state.drafts.length - 1]!,
+    };
+  }
+  const next = state.draftAt + direction;
+  if (next < 0) return state;
+  if (next >= state.drafts.length) {
+    return {
+      ...state,
+      input: state.draftHold ?? "",
+      draftAt: null,
+      draftHold: null,
+    };
+  }
+  return { ...state, draftAt: next, input: state.drafts[next]! };
 }
 
 function submitEdit(state: ViewState): KeyResult {
@@ -413,7 +475,13 @@ function submitEdit(state: ViewState): KeyResult {
       return { state: { ...state, notice: "type a reply, or Esc to cancel" } };
     }
     return {
-      state: { ...state, input: "", inputMode: "command", answering: null, notice: null },
+      state: {
+        ...rememberDraft(state, text),
+        input: "",
+        inputMode: "command",
+        answering: null,
+        notice: null,
+      },
       effect: { type: "dispatch", command: { kind: "answer", question, text } },
     };
   }
@@ -423,21 +491,27 @@ function submitEdit(state: ViewState): KeyResult {
       return { state: { ...state, notice: "type an issue id, or Esc to cancel" } };
     }
     return {
-      state: { ...state, input: "", inputMode: "command", notice: null },
+      state: {
+        ...rememberDraft(state, issue),
+        input: "",
+        inputMode: "command",
+        notice: null,
+      },
       effect: { type: "dispatch", command: { kind: "seed", issue } },
     };
   }
 
   const line = state.input.trim();
   if (line === "" || line === "/") {
-    return { state: { ...state, input: "" } };
+    return { state: { ...state, input: "", draftAt: null, draftHold: null } };
   }
   const parsed: ParseResult = parseCommand(line);
   if (!parsed.ok) {
-    return { state: { ...state, notice: parsed.message, input: "" } };
+    return { state: { ...state, notice: parsed.message, input: "", draftAt: null, draftHold: null } };
   }
   const command = parsed.command;
-  const cleared: ViewState = { ...state, input: "", slashAt: 0, notice: null };
+  const remembered = command.kind === "find" ? state : rememberDraft(state, line);
+  const cleared: ViewState = { ...remembered, input: "", slashAt: 0, notice: null };
   if (command.kind === "help") return { state: { ...cleared, help: true } };
   if (command.kind === "quit") return { state: cleared, effect: { type: "quit" } };
   if (command.kind === "refresh") return { state: cleared, effect: { type: "refresh" } };

@@ -247,6 +247,13 @@ describe("renderFrame", () => {
     const plain = stripAnsi(frame);
     expect(plain).toContain("done");
     expect(plain).toContain("…");
+    expect(plain).toContain("Enter send");
+    expect(plain).not.toContain("↑ prior");
+    expect(
+      stripAnsi(
+        renderFrame({ ...emptyView("epic"), input: long, drafts: ["please retry"] }, { cols: 80, rows: 24 }),
+      ),
+    ).toContain("↑ prior");
     expect(plain).not.toContain("please retry the failed rows");
   });
 
