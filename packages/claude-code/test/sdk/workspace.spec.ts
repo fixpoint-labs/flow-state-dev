@@ -263,8 +263,6 @@ describe("createWorkspaceAgentCapability", () => {
           mkdirSync(join(base, "artifacts"), { recursive: true });
           writeFileSync(join(base, "artifacts", "half-done.md"), "partial work");
           throw new Error("agent exploded");
-          // eslint-disable-next-line no-unreachable
-          yield undefined as never;
         },
       }),
       root: () => base,
