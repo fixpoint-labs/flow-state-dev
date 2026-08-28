@@ -95,11 +95,11 @@ describe("decodeKeys", () => {
 });
 
 describe("applyKey", () => {
-  it("moves the selection with j/k and starts an answer with a", () => {
+  it("moves the selection with ↑/↓ and starts an answer by typing", () => {
     const state = board([row("FIX-2"), row("FIX-3")]);
-    const down = applyKey(state, { type: "char", value: "j" });
+    const down = applyKey(state, { type: "down" });
     expect(down.state.selected).toBe(1);
-    const up = applyKey(down.state, { type: "char", value: "k" });
+    const up = applyKey(down.state, { type: "up" });
     expect(up.state.selected).toBe(0);
     const answer = applyKey(board([row("FIX-1", 1)]), { type: "char", value: "a" });
     expect(answer.state.inputMode).toBe("answer");
@@ -321,12 +321,32 @@ describe("applyKey", () => {
 
     const seed = applyKey(emptyView("epic"), { type: "char", value: "s" });
     expect(seed.state.inputMode).toBe("seed");
-    expect(applyKey(emptyView("epic"), { type: "char", value: "r" }).effect).toEqual({
-      type: "refresh",
+    expect(applyKey(emptyView("epic"), { type: "char", value: "r" }).effect).toEqual({ type: "refresh" });
+    expect(applyKey(board([row("FIX-1")]), { type: "char", value: "q" }).state.input).toBe("q");
+    expect(applyKey(board([row("FIX-1")]), { type: "char", value: "w" }).state.input).toBe("w");
+  });
+
+  it("talks from a populated idle row; s seeds, r refreshes, f expands files", () => {
+    const idle = board([row("FIX-1")]);
+    expect(applyKey(idle, { type: "char", value: "j" }).state.input).toBe("j");
+    expect(applyKey(idle, { type: "char", value: "k" }).state.input).toBe("k");
+    expect(applyKey(idle, { type: "char", value: "t" }).state.input).toBe("t");
+    expect(applyKey(idle, { type: "char", value: "a" }).state.input).toBe("a");
+    expect(applyKey(idle, { type: "char", value: "w" }).state.input).toBe("w");
+    expect(applyKey(idle, { type: "char", value: "q" }).state.input).toBe("q");
+    expect(applyKey(idle, { type: "char", value: "s" }).state.inputMode).toBe("seed");
+    expect(applyKey(idle, { type: "char", value: "r" }).effect).toEqual({ type: "refresh" });
+    expect(applyKey(idle, { type: "char", value: "f" }).state.filesExpanded).toBe(true);
+    expect(applyKey(idle, { type: "char", value: "x" }).state.input).toBe("x");
+
+    const running = board([runningRow("LIVE-1")]);
+    expect(applyKey(running, { type: "char", value: "w" }).state.input).toBe("w");
+    expect(applyKey(running, { type: "char", value: "x" }).effect).toEqual({
+      type: "dispatch",
+      command: { kind: "abort" },
     });
-    expect(applyKey(board([row("FIX-1")]), { type: "char", value: "q" }).effect).toEqual({
-      type: "quit",
-    });
+    expect(applyKey(running, { type: "char", value: "h" }).state.hunksExpanded).toBe(true);
+    expect(applyKey(running, { type: "char", value: "e" }).state.peekExpanded).toBe(true);
   });
 
   it("walks prior compose lines with ↑/↓, and idle ↑ still moves rows", () => {
@@ -484,7 +504,7 @@ describe("applyKey", () => {
 
   it("jumps the transcript to the tail when the selected row changes", () => {
     const state = { ...board([row("FIX-1"), row("FIX-2")]), scroll: 12 };
-    const down = applyKey(state, { type: "char", value: "j" });
+    const down = applyKey(state, { type: "down" });
     expect(down.state.selected).toBe(1);
     expect(down.state.scroll).toBe(0);
 
@@ -510,13 +530,17 @@ describe("applyKey", () => {
 
   it("lets you change rows while an action is in flight, and holds a new wake", () => {
     const state = { ...board([row("FIX-1"), row("FIX-2")]), busy: true };
-    const next = applyKey(state, { type: "char", value: "j" });
+    const next = applyKey(state, { type: "down" });
     expect(next.state.selected).toBe(1);
     expect(next.effect).toBeUndefined();
-    const wake = applyKey(state, { type: "char", value: "w" });
-    expect(wake.state.selected).toBe(0);
-    expect(wake.effect).toEqual({ type: "hold", command: { kind: "wake" } });
-    expect(wake.state.notice).toMatch(/queued/);
+    let wake = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "wake") {
+      wake = applyKey(wake, { type: "char", value: ch }).state;
+    }
+    const held = applyKey(wake, { type: "enter" });
+    expect(held.state.selected).toBe(0);
+    expect(held.effect).toEqual({ type: "hold", command: { kind: "wake" } });
+    expect(held.state.notice).toMatch(/queued/);
   });
 
   it("lets you start an answer while an action is in flight", () => {
@@ -545,7 +569,7 @@ describe("applyKey", () => {
 
     const idle = board([row("FIX-1")]);
     const idleX = applyKey(idle, { type: "char", value: "x" });
-    expect(idleX.state.notice).toBe("nothing running to stop");
+    expect(idleX.state.input).toBe("x");
     expect(idleX.effect).toBeUndefined();
     expect(applyKey(idle, { type: "ctrl", value: "c" }).effect).toEqual({ type: "quit" });
     expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "x" }).state.input).toBe("x");
@@ -667,9 +691,9 @@ describe("applyKey", () => {
     expect(submitted.state.notice).toBe("no matches for missing");
   });
 
-  it("toggles the RUN-band todo list with t or Ctrl-T", () => {
+  it("toggles the RUN-band todo list with Ctrl-T", () => {
     const state = board([runningRow("LIVE-1")]);
-    const opened = applyKey(state, { type: "char", value: "t" });
+    const opened = applyKey(state, { type: "ctrl", value: "t" });
     expect(opened.state.planExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
     const closed = applyKey(opened.state, { type: "ctrl", value: "t" });
@@ -678,7 +702,7 @@ describe("applyKey", () => {
 
   it("collapses the todo list when the selected row changes", () => {
     const state = { ...board([runningRow("LIVE-1"), runningRow("LIVE-2")]), planExpanded: true };
-    const moved = applyKey(state, { type: "char", value: "j" });
+    const moved = applyKey(state, { type: "down" });
     expect(moved.state.selected).toBe(1);
     expect(moved.state.planExpanded).toBe(false);
   });
@@ -688,7 +712,7 @@ describe("applyKey", () => {
     const opened = applyKey(state, { type: "char", value: "f" });
     expect(opened.state.filesExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
-    const moved = applyKey(opened.state, { type: "char", value: "j" });
+    const moved = applyKey(opened.state, { type: "down" });
     expect(moved.state.selected).toBe(1);
     expect(moved.state.filesExpanded).toBe(false);
   });
@@ -709,7 +733,7 @@ describe("applyKey", () => {
     expect(older.effect).toBeUndefined();
     const wrap = applyKey(older.state, { type: "char", value: "H" });
     expect(wrap.state.hunkAt).toBe(0);
-    const moved = applyKey(older.state, { type: "char", value: "j" });
+    const moved = applyKey(older.state, { type: "down" });
     expect(moved.state.selected).toBe(1);
     expect(moved.state.hunkAt).toBe(0);
   });
@@ -719,7 +743,7 @@ describe("applyKey", () => {
     const opened = applyKey(state, { type: "char", value: "e" });
     expect(opened.state.peekExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
-    const moved = applyKey(opened.state, { type: "char", value: "j" });
+    const moved = applyKey(opened.state, { type: "down" });
     expect(moved.state.selected).toBe(1);
     expect(moved.state.peekExpanded).toBe(false);
   });
@@ -729,7 +753,7 @@ describe("applyKey", () => {
     const opened = applyKey(state, { type: "char", value: "h" });
     expect(opened.state.hunksExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
-    const moved = applyKey(opened.state, { type: "char", value: "j" });
+    const moved = applyKey(opened.state, { type: "down" });
     expect(moved.state.selected).toBe(1);
     expect(moved.state.hunksExpanded).toBe(false);
   });
@@ -749,7 +773,7 @@ describe("applyKey", () => {
     expect(state.activity.filter((item) => item.requestId === "req-LIVE-1")).toHaveLength(
       ACTIVITY_CAP + 5,
     );
-    const moved = applyKey(state, { type: "char", value: "j" });
+    const moved = applyKey(state, { type: "down" });
     const trimmed = moved.state.activity.filter((item) => item.requestId === "req-LIVE-1");
     expect(trimmed).toHaveLength(ACTIVITY_CAP);
     expect(trimmed[0]?.text).toBe("early-5");

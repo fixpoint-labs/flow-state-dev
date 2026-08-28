@@ -143,9 +143,8 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("request stream");
     expect(HELP_TEXT).toContain("fsdev conductor abort");
     expect(HELP_TEXT).toContain("x or Ctrl-C stops it");
-    expect(HELP_TEXT).toContain("h expands the last hunk");
-    expect(HELP_TEXT).toContain("H steps to an older hunk");
-    expect(HELP_TEXT).toContain("e expands the last Read or Bash tail");
+    expect(HELP_TEXT).toContain("Ctrl-T expands the todo list");
+    expect(HELP_TEXT).toContain("Letters talk");
     expect(HELP_TEXT).toContain("Enter queues it");
     expect(HELP_TEXT).toContain("/find [text]");
     expect(HELP_TEXT).toContain("older / newer match");
@@ -155,7 +154,8 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("compact think · line");
     expect(HELP_TEXT).toContain("fsdev conductor steer");
     expect(HELP_TEXT).toContain("talk to the coordinator");
-    expect(HELP_TEXT).toContain("An empty board: letters talk");
+    expect(HELP_TEXT).toContain("Letters talk");
+    expect(HELP_TEXT).toContain("r still refreshes");
     expect(HELP_TEXT).toContain("Letters are the answer, not board keys");
     expect(HELP_TEXT).toContain("lines, then prior compose");
     expect(HELP_TEXT).toContain("move in the line while composing");

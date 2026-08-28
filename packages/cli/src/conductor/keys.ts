@@ -295,31 +295,6 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
 }
 
 /**
- * Idle letters that only mean something when a row exists. On an empty
- * board they start talk — otherwise `question` quits and `what's on the
- * board` wakes.
- */
-const EMPTY_BOARD_TALKS = new Set([
-  "q",
-  "w",
-  "a",
-  "j",
-  "k",
-  "t",
-  "f",
-  "h",
-  "e",
-  "H",
-  "n",
-  "N",
-  "x",
-  "[",
-  "]",
-  "{",
-  "}",
-]);
-
-/**
  * On a waiting row, letters start the reply. `?` / `/` stay help and
  * slash; `[` `]` `{` `}` still walk questions and attention. `n` / `N`
  * still step an open find.
@@ -327,35 +302,35 @@ const EMPTY_BOARD_TALKS = new Set([
 const WAITING_ROW_BINDS = new Set(["?", "/", "[", "]", "{", "}"]);
 
 function applyIdleChar(state: ViewState, value: string, now: number): KeyResult {
-  if (state.rows.length === 0 && EMPTY_BOARD_TALKS.has(value)) {
+  if (state.find !== null && (value === "n" || value === "N")) {
+    return { state: stepFind(state, value === "n" ? -1 : 1) };
+  }
+  if (selectedQuestion(state) !== undefined && !WAITING_ROW_BINDS.has(value)) {
     return idleFallback(state, value);
   }
+  const running = selectedRunningRequestId(state) !== undefined;
+  // Letters talk. Keep `s` as seed, `r` as refresh, `x` as abort on a
+  // running row, and f/h/e/H as view toggles. Arrows move rows; /wake
+  // /quit stay the verbs. Ctrl-T still expands the plan.
   if (
-    selectedQuestion(state) !== undefined &&
-    !WAITING_ROW_BINDS.has(value) &&
-    !(state.find !== null && (value === "n" || value === "N"))
+    /^[A-Za-z]$/.test(value) &&
+    value !== "s" &&
+    value !== "r" &&
+    value !== "f" &&
+    value !== "h" &&
+    value !== "e" &&
+    value !== "H" &&
+    !(value === "x" && running)
   ) {
     return idleFallback(state, value);
   }
   switch (value) {
-    case "j":
-      return { state: moveRow(state, 1) };
-    case "k":
-      return { state: moveRow(state, -1) };
     case "[":
       return { state: moveQuestion(state, -1) };
     case "]":
       return { state: moveQuestion(state, 1) };
-    case "q":
-      return { state, effect: { type: "quit" } };
     case "?":
       return { state: { ...state, help: true } };
-    case "r":
-      return { state, effect: { type: "refresh" } };
-    case "w":
-      return { state, effect: { type: "dispatch", command: { kind: "wake" } } };
-    case "t":
-      return { state: { ...state, planExpanded: !state.planExpanded } };
     case "f":
       return { state: { ...state, filesExpanded: !state.filesExpanded } };
     case "h":
@@ -364,30 +339,16 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
       return { state: { ...state, peekExpanded: !state.peekExpanded } };
     case "H":
       return { state: stepHunk(state, 1) };
-    case "n":
-      if (state.find !== null) return { state: stepFind(state, -1) };
-      return idleFallback(state, value);
-    case "N":
-      if (state.find !== null) return { state: stepFind(state, 1) };
-      return idleFallback(state, value);
     case "x":
-      if (selectedRunningRequestId(state) === undefined) {
-        return { state: { ...state, notice: "nothing running to stop" } };
-      }
       return { state, effect: { type: "dispatch", command: { kind: "abort" } } };
-    case "a": {
-      const question = selectedQuestion(state);
-      if (question === undefined) {
-        return { state: { ...state, notice: "nothing to answer on this row" } };
-      }
-      return beginAnswer(state, question.question);
-    }
     case "{":
       return { state: moveAttention(state, -1, now) };
     case "}":
       return { state: moveAttention(state, 1, now) };
     case "s":
       return { state: { ...state, inputMode: "seed", input: "", caret: 0, notice: "issue id, then Enter" } };
+    case "r":
+      return { state, effect: { type: "refresh" } };
     case "/":
       return { state: { ...state, input: "/", slashAt: 0, caret: 1, notice: null } };
     default:

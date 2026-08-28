@@ -410,7 +410,7 @@ describe("renderFrame", () => {
     expect(above).not.toMatch(/^ ASK\s*$/m);
     expect(above.match(/Not logged in/g)?.length).toBe(1);
     expect(stripAnsi(frame)).toContain("1 failed");
-    expect(stripAnsi(frame)).toContain("w retry");
+    expect(stripAnsi(frame)).toContain("/wake");
     expect(frame).toContain("wake-line-39");
   });
 
@@ -767,7 +767,7 @@ describe("renderFrame", () => {
     expect(firstAbove).not.toContain("Add the failing test");
     expect(firstAbove).not.toContain("Open the pull request");
     expect(firstAbove).not.toContain("Other child's work");
-    expect(stripAnsi(first)).toContain("t list");
+    expect(stripAnsi(first)).toContain("type to talk");
 
     const expanded = renderFrame(
       { ...emptyView("epic"), rows, selected: 0, childPlan, planExpanded: true },
@@ -884,7 +884,7 @@ describe("renderFrame", () => {
     expect(above).toContain("[ ] Open the pull request");
     expect(above).toContain("1/2");
     expect(above).toContain("TaskCreate Add hello.js");
-    expect(stripAnsi(frame)).toContain("t list");
+    expect(stripAnsi(frame)).toContain("type to talk");
 
     const busy = beforeTranscript(
       renderFrame(

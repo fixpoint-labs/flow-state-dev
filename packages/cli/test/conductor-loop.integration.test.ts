@@ -103,7 +103,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     tty.input.write("the real file\r");
     await waitFor(() => tty.text, "completed");
 
-    tty.input.write("q");
+    tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });
 
@@ -164,9 +164,9 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "Not logged in");
     expect(tty.text).toMatch(/\bFAIL\b/);
     expect(tty.text).toContain("1 failed");
-    expect(tty.text).toContain("w retry");
+    expect(tty.text).toContain("/wake");
 
-    tty.input.write("q");
+    tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });
 
@@ -213,7 +213,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     ]);
     await waitFor(() => tty.text, "coding the checkout");
 
-    tty.input.write("q");
+    tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });
 
@@ -314,7 +314,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "tool · Bash pnpm test · failed");
     await waitFor(() => tty.text, "AssertionError: expected 1 to be 2");
 
-    tty.input.write("q");
+    tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });
 
@@ -403,13 +403,13 @@ describe("fsdev conductor — TUI over the same actions", () => {
     expect(lastFrame(tty.text)).toContain("Write src/b.ts");
     expect(lastFrame(tty.text)).not.toContain("+ export const b");
 
-    tty.input.write("j");
+    tty.input.write("\x1b[B");
     await waitFor(() => lastFrame(tty.text), "tool · Write src/b.ts");
     expect(lastFrame(tty.text)).toContain("+ export const b = 2;");
     expect(lastFrame(tty.text)).toContain("Write src/a.ts");
     expect(lastFrame(tty.text)).not.toContain("+ export const a");
 
-    tty.input.write("q");
+    tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });
 
@@ -466,7 +466,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "stop · req-live-1");
     await expect(stores.request.isAbortRequested("req-live-1")).resolves.toBe(true);
 
-    tty.input.write("q");
+    tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });
 
@@ -505,14 +505,14 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-2/);
 
-    tty.input.write("k");
+    tty.input.write("\x1b[A");
     await waitFor(() => lastFrame(tty.text), "LIVE-1");
     await new Promise((resolve) => setTimeout(resolve, 200));
     const afterPoll = stripAnsi(lastFrame(tty.text));
     expect(afterPoll).toMatch(/▸\s+LIVE-1/);
     expect(afterPoll).not.toMatch(/▸\s+LIVE-2/);
 
-    tty.input.write("q");
+    tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });
 
@@ -536,7 +536,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     });
 
     await waitFor(() => tty.text, "HANG-1");
-    tty.input.write("w");
+    tty.input.write("/wake\r");
     await waitFor(() => tty.text, "hanging until abort");
     expect(stripAnsi(lastFrame(tty.text))).toContain("working");
 
@@ -558,7 +558,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     const statusReads = (await stores.request.list()).filter((record) => record.actionName === "status");
     expect(statusReads.some((record) => record.abortRequested === true)).toBe(false);
 
-    tty.input.write("q");
+    tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });
 

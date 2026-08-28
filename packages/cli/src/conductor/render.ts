@@ -275,7 +275,7 @@ function renderFailBand(state: ViewState, cols: number): string {
     row?.issue ?? row?.taskId ?? "row",
     id,
     ...renderUsageBits(row),
-    "w retries",
+    "/wake",
   ]
     .filter((bit) => bit !== undefined && bit !== "")
     .join("  ·  ");
@@ -667,7 +667,6 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
   const running = selectedRunningRequestId(state) !== undefined;
   const finding = state.find !== null;
   const slashing = state.inputMode === "command" && slashMenu(state).length > 0;
-  const listed = selectedPlan(state).length > 0;
   const moreFiles = selectedFiles(state).length > FILE_MAX;
   const moreHunks = selectedHunk(state).length > HUNK_BAND_MAX;
   const morePeek =
@@ -696,20 +695,16 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     : slashing
     ? `${working}Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`
     : finding
-    ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  j/k  ·  ?  ·  q`
+    ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  ↑/↓  ·  ?  ·  /quit`
     : empty
       ? `${working}type to talk  ·  s seed  ·  /  ·  r  ·  ?  ·  /quit`
     : q
       ? `${working}type to answer  ·  click/↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
       : fail !== undefined
-        ? listed
-          ? `${working}click/j/k  ·  w retry  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  /  ·  ?  ·  q`
-          : `${working}click/j/k  ·  w retry${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  s seed  ·  /  ·  ?  ·  q`
+        ? `${working}type to talk  ·  click/↑/↓  ·  /wake${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`
         : running
-          ? `${working}click/j/k  ·  x stop  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
-          : listed
-            ? `${working}click/j/k  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
-            : `${working}click/j/k  ·  s seed${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
+          ? `${working}type to talk  ·  click/↑/↓  ·  x stop${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
+          : `${working}type to talk  ·  click/↑/↓${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`;
   return padLine(dim(` ${keys}`), cols);
 }
 

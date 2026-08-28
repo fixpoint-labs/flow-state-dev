@@ -301,19 +301,16 @@ Headless (scripting):
   fsdev conductor help
 
 In the TUI:
-  j/k or ↑/↓   select a row (click a row)
+  ↑/↓          select a row (click a row)
   PgUp/PgDn    scroll the transcript (wheel and Ctrl-u/d too)
   [/]          previous/next question on the row
   { / }        previous / next waiting, failed, or stalled row
-  a            answer the selected question
   s            seed a new issue
-  w            wake
-  r            refresh now (runs status)
-  t            expand or collapse the todo list on a running row
-  f            expand or collapse the file list on the selected row
-  h            expand or collapse the last Write / Edit hunk
-  H            older Write / Edit hunk on the same run
-  e            expand or collapse the last Read peek or command tail
+  r            poll status now
+  x            stop the running request
+  f / h / e    expand files, the last hunk, or the last Read / command tail
+  H            older hunk
+  Ctrl-T       expand or collapse the todo list on a running row
   /            slash command (same verbs)
   Tab          complete the selected slash verb or board id
   ↑/↓          slash match while / is open; lines, then prior compose
@@ -321,18 +318,20 @@ In the TUI:
   Ctrl-J       new line while composing (Alt-Enter / Shift-Enter too)
   Ctrl-A / E   start / end of the current compose line
   /status id   select that row, then refresh
+  /wake        process pending rows
+  /refresh     poll status now
   /find [text] search the selected row's transcript
   n / N        older / newer match
   ?            this help
-  q            quit
+  /quit        leave the board (Ctrl-C when nothing is running)
 
   Type anything that is not a slash verb to talk to the coordinator.
-  An empty board: letters talk. /quit or Ctrl-C leaves.
+  Letters talk. r still refreshes. /quit or Ctrl-C leaves.
   A row with an open question: type the reply. Letters are the answer, not board keys. Enter sends, Esc cancels.
   The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
-  A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or w to wake.
+  A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or /wake.
   A running row: the RUN band holds the checkout and what the run is
-  doing. t expands the todo list. h expands the last hunk. H steps to an older hunk. e expands the last Read or Bash tail. x or Ctrl-C stops it.
+  doing. Ctrl-T expands the todo list. x or Ctrl-C stops it.
   While working, type an answer; Enter queues it.
   A finished row keeps that attempt's files, todo list, and request id.
   The transcript tails that run's request stream. Thinking is a compact think · line.
