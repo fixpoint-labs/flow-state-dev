@@ -100,7 +100,7 @@ A read-only mount is hydrated and then left alone. Its paths aren't written back
 
 | Export | What it is |
 | --- | --- |
-| `createProjection({ mounts, place })` | Returns `{ hydrate, flush, ownedPaths }`. |
+| `createProjection({ mounts, place })` | Returns `{ hydrate, flush, put, ownedPaths }`. |
 | `createHostPlace(root)` | A place backed by a directory. |
 | `createMemoryPlace(initial?)` | A place backed by a `Map`. |
 | `hashContent(content)` | The hex SHA-256 the projection compares with. |
@@ -109,6 +109,21 @@ A read-only mount is hydrated and then left alone. Its paths aren't written back
 | `isMetadataKey(key)` | Whether a collection key is bookkeeping rather than a projected file. |
 
 `ownedPaths()` returns the paths the projection currently holds a baseline for — what it would write to, and what it would delete.
+
+### Committing a single path
+
+If your write channel doesn't go through the place — a tool call that writes one named file and already knows which — `put(path, content)` applies the same decision to that one path and returns its outcome:
+
+```ts
+const outcome = await projection.put("artifacts/notes.md", content);
+if (outcome?.kind === "conflict") {
+  // somebody else changed it since we last committed it
+}
+```
+
+It's not a shortcut for `flush`. A full flush would walk everything to learn one thing, and a projection holding no baseline would report every pre-existing file in the place as new. `put` takes ownership of the path, so a later flush can delete it if the run removes it.
+
+It resolves `undefined` when there's nothing to decide: a read-only mount, or a collection's own metadata.
 
 ## License
 

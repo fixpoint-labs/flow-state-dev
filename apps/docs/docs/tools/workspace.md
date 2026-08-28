@@ -76,6 +76,21 @@ The flip side is that a projection which hasn't laid a path down owns nothing th
 
 Ownership lives for as long as the projection object does. `ownedPaths()` tells you what it currently holds.
 
+## Writing one file at a time
+
+Not every consumer writes through the place. A tool call that writes one named file already knows which file changed, and running a whole flush to find that out is both wasteful and wrong — wasteful because it walks everything, wrong because a projection holding no baseline would report every pre-existing file as new.
+
+`put` narrows the same decision to one path:
+
+```ts
+const outcome = await projection.put("artifacts/notes.md", content);
+if (outcome?.kind === "conflict") {
+  // somebody else changed this since we last committed it
+}
+```
+
+The path becomes the projection's from then on, so a later flush can delete it if the run removes the file. `put` resolves `undefined` when there's nothing to decide — a read-only mount, or a collection's own metadata.
+
 ## Places
 
 `createHostPlace(root)` projects into a real directory. It creates `root` if needed, refuses any path resolving outside it, and neither lists nor follows symlinks planted inside it.

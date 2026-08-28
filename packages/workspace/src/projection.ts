@@ -56,6 +56,23 @@ export interface Projection {
    */
   flush(): Promise<FlushReport>;
   /**
+   * Commit one path the caller has already written, through the same
+   * three-way check a flush applies.
+   *
+   * For a consumer whose write channel bypasses the place — a tool call that
+   * writes one named file and already knows which — a full flush is both
+   * wasteful and wrong. Wasteful because it walks everything to learn one
+   * thing; wrong because a projection holding no baseline would report every
+   * pre-existing file in the place as new. `put` narrows the decision to the
+   * one path, and advances the baseline so the next flush reads the write as
+   * ours rather than as somebody else's.
+   *
+   * Resolves `undefined` when the path is nothing for this projection to
+   * decide: a read-only mount, or a collection's own metadata. The same two
+   * cases a flush passes over without recording an outcome.
+   */
+  put(path: string, content: string): Promise<FlushOutcome | undefined>;
+  /**
    * The paths this projection currently owns. Exposed for the consumers that
    * have to answer "is another run holding this?" without reaching inside.
    */
@@ -136,43 +153,7 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
         continue;
       }
 
-      const now = hashContent(local);
-      const base = baseline.get(path);
-      const theirs = await theirContent(mount, key);
-      const theirHash = theirs === null ? undefined : hashContent(theirs);
-
-      if (now === base) {
-        outcomes.push({ kind: "unchanged", path });
-        continue;
-      }
-      if (base === undefined && theirHash === undefined) {
-        await commit(mount, key, local, now);
-        outcomes.push({ kind: "created", path });
-        baseline.set(path, now);
-        continue;
-      }
-      if (theirHash === base) {
-        await commit(mount, key, local, now);
-        outcomes.push({ kind: "written", path });
-        baseline.set(path, now);
-        continue;
-      }
-      if (now === theirHash) {
-        // The collection already holds what we would write. Writing is
-        // pointless, but ADVANCING IS NOT: leave `base` where hydrate put it
-        // and the next local edit is compared against a version the
-        // collection no longer holds, reporting a conflict that is not one.
-        outcomes.push({ kind: "converged", path });
-        baseline.set(path, now);
-        continue;
-      }
-      outcomes.push({
-        kind: "conflict",
-        path,
-        base: base ?? null,
-        theirs: theirHash ?? null,
-        ours: now,
-      });
+      outcomes.push(await decide(mount, key, path, local));
     }
 
     // The delete pass walks what we OWN, not what we hydrated. A path this
@@ -221,6 +202,63 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
     };
   }
 
+  /**
+   * The write decision for one path whose local content is already in hand.
+   *
+   * Shared by `flush` and `put` deliberately: they are two producers of the
+   * same invariant — never overwrite evidence you do not hold — and the way
+   * that invariant gets broken is one producer growing a branch the other
+   * never sees.
+   */
+  async function decide(
+    mount: Mount,
+    key: string,
+    path: string,
+    local: string,
+  ): Promise<FlushOutcome> {
+    const now = hashContent(local);
+    const base = baseline.get(path);
+    const theirs = await theirContent(mount, key);
+    const theirHash = theirs === null ? undefined : hashContent(theirs);
+
+    if (now === base) return { kind: "unchanged", path };
+    if (base === undefined && theirHash === undefined) {
+      await commit(mount, key, local, now);
+      baseline.set(path, now);
+      return { kind: "created", path };
+    }
+    if (theirHash === base) {
+      await commit(mount, key, local, now);
+      baseline.set(path, now);
+      return { kind: "written", path };
+    }
+    if (now === theirHash) {
+      // The collection already holds what we would write. Writing is
+      // pointless, but ADVANCING IS NOT: leave `base` where hydrate put it
+      // and the next local edit is compared against a version the collection
+      // no longer holds, reporting a conflict that is not one.
+      baseline.set(path, now);
+      return { kind: "converged", path };
+    }
+    return {
+      kind: "conflict",
+      path,
+      base: base ?? null,
+      theirs: theirHash ?? null,
+      ours: now,
+    };
+  }
+
+  async function put(rawPath: string, content: string): Promise<FlushOutcome | undefined> {
+    const path = normalizePath(rawPath);
+    const routed = routePath(mounts, path);
+    if (routed === undefined) return { kind: "orphan", path };
+    const { mount, key } = routed;
+    if (!mount.writable) return undefined;
+    if (isMetadataKey(key)) return undefined;
+    return await decide(mount, key, path, content);
+  }
+
   /** Write content back to the collection, keeping its state in step. */
   async function commit(
     mount: Mount,
@@ -243,6 +281,7 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
   return {
     hydrate,
     flush,
+    put,
     ownedPaths: () => [...baseline.keys()],
   };
 }

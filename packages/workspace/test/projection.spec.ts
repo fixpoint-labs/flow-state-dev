@@ -399,3 +399,87 @@ describe("the second path (BP-035) — every outcome against a changed collectio
     expect(collection.contents()["contested.md"]).toBe("not ours");
   });
 });
+
+describe("put commits one named path without walking the place", () => {
+  it("creates when neither side holds the path", async () => {
+    const { collection, projection } = setup();
+
+    const outcome = await projection.put("artifacts/new.md", "fresh");
+
+    expect(outcome).toEqual({ kind: "created", path: "artifacts/new.md" });
+    expect(collection.contents()["new.md"]).toBe("fresh");
+  });
+
+  it("writes over a path it hydrated, because the collection still holds what it left", async () => {
+    const { collection, projection } = setup({ "spec.md": "one" });
+    await projection.hydrate();
+
+    const outcome = await projection.put("artifacts/spec.md", "two");
+
+    expect(outcome).toEqual({ kind: "written", path: "artifacts/spec.md" });
+    expect(collection.contents()["spec.md"]).toBe("two");
+  });
+
+  it("refuses a path somebody else changed since we last committed it", async () => {
+    const { collection, projection } = setup({ "spec.md": "one" });
+    await projection.hydrate();
+    collection.setExternal("spec.md", "theirs");
+
+    const outcome = await projection.put("artifacts/spec.md", "ours");
+
+    expect(outcome).toMatchObject({ kind: "conflict", path: "artifacts/spec.md" });
+    // Neither writer wins by arriving second.
+    expect(collection.contents()["spec.md"]).toBe("theirs");
+  });
+
+  it("takes ownership, so a later flush can delete what it put there", async () => {
+    const { collection, place, projection } = setup();
+
+    await projection.put("artifacts/new.md", "fresh");
+    // The write went straight to the collection; mirror it into the place the
+    // way the consumer's own write channel would, then remove it.
+    await place.write("artifacts/new.md", "fresh");
+    place.remove("artifacts/new.md");
+
+    const report = await projection.flush();
+
+    expect(kinds(report)).toEqual(["deleted:artifacts/new.md"]);
+    expect(collection.contents()["new.md"]).toBeUndefined();
+  });
+
+  it("normalizes a model-supplied `./` path the same way a flush does", async () => {
+    const { collection, projection } = setup();
+
+    const outcome = await projection.put("./artifacts/new.md", "fresh");
+
+    expect(outcome).toEqual({ kind: "created", path: "artifacts/new.md" });
+    expect(collection.contents()["new.md"]).toBe("fresh");
+  });
+
+  it("reports a path under no writable mount as an orphan rather than filing it", async () => {
+    const { collection, projection } = setup();
+
+    const outcome = await projection.put("nowhere/loose.md", "content");
+
+    expect(outcome).toEqual({ kind: "orphan", path: "nowhere/loose.md" });
+    expect(collection.contents()).toEqual({});
+  });
+
+  it("has nothing to decide for a read-only mount", async () => {
+    const reference = createFakeCollection("reference/**", { "doc.md": "read me" });
+    const projection = createProjection({
+      mounts: [{ prefix: "reference", collection: reference, writable: false }],
+      place: createMemoryPlace(),
+    });
+
+    expect(await projection.put("reference/doc.md", "edited")).toBeUndefined();
+    expect(reference.contents()["doc.md"]).toBe("read me");
+  });
+
+  it("has nothing to decide for a collection's own metadata", async () => {
+    const { collection, projection } = setup();
+
+    expect(await projection.put("artifacts/_meta.json", "{}")).toBeUndefined();
+    expect(collection.contents()).toEqual({});
+  });
+});
