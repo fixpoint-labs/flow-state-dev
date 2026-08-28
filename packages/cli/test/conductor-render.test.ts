@@ -290,6 +290,30 @@ describe("renderFrame", () => {
     expect(second).not.toContain("coding A");
   });
 
+  it("keeps the implement hunk on a parked row that still has its request id", () => {
+    const parked: StatusRow = {
+      ...waiting,
+      run: { ...waiting.run!, requestId: "req-ask-1" },
+    };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [parked],
+        activity: [
+          { at: 1, text: "ASK-1 · asked Which path?" },
+          { at: 2, text: "tool · Write src/a.ts", requestId: "req-ask-1" },
+          { at: 2, text: "+ export const a = 1;", requestId: "req-ask-1" },
+          { at: 3, text: "tool · Write src/other.ts", requestId: "req-other" },
+        ],
+      },
+      { cols: 80, rows: 24 },
+    );
+    expect(beforeTranscript(frame)).toContain("Which path?");
+    expect(frame).toContain("tool · Write src/a.ts");
+    expect(frame).toContain("+ export const a = 1;");
+    expect(frame).not.toContain("src/other.ts");
+  });
+
   it("paints a Write hunk in the transcript", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",
