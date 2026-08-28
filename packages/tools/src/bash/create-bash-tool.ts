@@ -34,7 +34,14 @@ import type {
   CreateBashToolOptions,
   CreateBashToolResult,
 } from "./types";
-import { FileSync } from "./file-sync";
+import { getPatternPrefix } from "@flow-state-dev/core/types";
+import type { Mount } from "@flow-state-dev/workspace";
+import {
+  createBashProjection,
+  flushWithDiagnostics,
+  seedWorkspaceMarkers,
+  warnUnsettled,
+} from "./projection-setup";
 import { resolveSandbox } from "./resolve-sandbox";
 
 // All other adapters (just-bash, Vercel, Upstash) are loaded dynamically
@@ -59,33 +66,61 @@ export async function createBashTool(
     provider = { type: "just-bash" },
     destination = "/workspace",
     persist = false,
-    syncMode = "diff",
     onBeforeCommand,
     onAfterCommand,
-    fileFilter,
   } = options;
 
   // 1. Resolve or create sandbox
   const existingId = persist && bashSession ? bashSession.state.sandboxId || undefined : undefined;
   const { sandbox, sandboxId } = await resolveSandbox(provider, { destination, existingId });
 
-  // 2. Create sync bridge
-  const sync = new FileSync(sandbox, collections, {
-    destination,
-    syncMode,
-    fileFilter,
-  });
+  // 2. Mount every collection at its pattern prefix and project it into the
+  //    sandbox. A collection whose pattern has no prefix cannot be routed to
+  //    without guessing, so it is skipped loudly rather than made the default
+  //    owner of every loose file.
+  const mounts: Mount[] = [];
+  for (const [name, collection] of Object.entries(collections)) {
+    const prefix = getPatternPrefix(collection.pattern);
+    if (!prefix) {
+      console.warn(
+        `[bash] collection "${name}" has pattern "${collection.pattern}", which gives no directory to mount it at — skipped.`,
+      );
+      continue;
+    }
+    mounts.push({
+      prefix,
+      collection,
+      writable: true,
+    });
+  }
+  const projection = createBashProjection(sandbox, destination, mounts);
 
-  // 3. Hydrate: resources → sandbox
-  await sync.hydrate();
+  // 3. Hydrate: resources → sandbox. The markers go down FIRST, so an empty
+  // collection still has a directory for the flush walk to find — without
+  // them, `find` against a never-created prefix exits non-zero and takes an
+  // otherwise successful command down with it.
+  await seedWorkspaceMarkers(sandbox, destination, mounts);
+  await projection.hydrate();
 
-  // 4. Build file listing for LLM context
-  const allFiles = (
-    await Promise.all(Object.values(collections).map((c: ResourceCollectionRef<FileEntryState>) => c.list()))
-  )
-    .flat()
-    .map((ref) => ref.state.path);
-  const fileList = allFiles.join("\n");
+  // 4. Build file listing for LLM context.
+  //
+  // Built from the MOUNT, not from `state.path`. A collection matching
+  // `files/*` is mounted at `files/`, so its `hello.txt` lives at
+  // `files/hello.txt` — advertising the bare key would point the model at a
+  // path that does not exist. Collections skipped above are absent for the
+  // same reason: nothing was laid down for them.
+  const listed = await Promise.all(
+    mounts.map(async (mount) => {
+      const refs = await (
+        mount.collection as unknown as ResourceCollectionRef<FileEntryState>
+      ).list();
+      return refs.map((ref) => {
+        const key = ref.state.path ?? "";
+        return key.startsWith(`${mount.prefix}/`) ? key : `${mount.prefix}/${key}`;
+      });
+    }),
+  );
+  const fileList = listed.flat().join("\n");
 
   // 5. Construct AI SDK tools
   const tools = {
@@ -106,7 +141,10 @@ export async function createBashTool(
         }
 
         const result = await sandbox.executeCommand(cmd);
-        await sync.flush();
+        // Read, not discarded, and never allowed to throw: a refused write
+        // that nothing mentions is a write the caller believes landed, and a
+        // failed walk must not fail a command that succeeded.
+        await flushWithDiagnostics(projection, mounts, sandbox.hostMountSource);
 
         if (onAfterCommand) {
           const modified = onAfterCommand(cmd, result);
@@ -138,7 +176,8 @@ export async function createBashTool(
       execute: async ({ path: filePath, content }) => {
         const fullPath = `${destination}/${filePath}`;
         await sandbox.writeFile(fullPath, content);
-        await sync.flush();
+        const outcome = await projection.put(filePath, content);
+        if (outcome !== undefined) warnUnsettled([outcome]);
         return { success: true };
       },
     }),

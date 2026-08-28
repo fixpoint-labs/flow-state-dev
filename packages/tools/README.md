@@ -268,8 +268,6 @@ createBashTool({
   provider: { type: "vercel" },
   destination: "/workspace",     // workspace root (default: "/workspace")
   persist: true,                 // persist sandbox across sessions
-  syncMode: "diff",              // "diff" (default) or "full"
-  fileFilter: (p) => !p.includes("node_modules"),
   onBeforeCommand: (cmd) => {
     if (cmd.includes("rm -rf /")) return "echo 'Nice try.'";
   },
@@ -278,10 +276,13 @@ createBashTool({
 
 ### Sync lifecycle
 
-1. **Hydrate** — resource collection entries are written into the sandbox filesystem
+1. **Hydrate** — each collection's entries are written into the sandbox under the collection's pattern prefix, so a collection matching `artifacts/**` appears at `<workspace>/artifacts/`
 2. **Execute** — `bash`, `readFile`, `writeFile` tools are available to the LLM
-3. **Flush** — after every `bash` and `writeFile`, changed files sync back to resources
-4. Deleted files are removed from resource collections. `readFile` does not trigger a flush.
+3. **Flush** — after every `bash` and `writeFile`, changed files sync back to their owning collection. `readFile` does not trigger a flush.
+
+A file the run deletes is removed from its collection, but only if the collection still holds what the run was given. If something else changed that file while the run held it, nothing is written or deleted and a warning names the contested path — the run's copy and the collection's copy are both left alone. The same applies to a write.
+
+Files written outside every mounted collection's directory, and outside the scratch directory `./tmp/`, are dropped rather than filed somewhere arbitrary. A flush walks the mounts and the workspace root, so a stray file beside the mounts is named in a warning; one written into a subdirectory nothing is mounted at is dropped silently, because walking every directory under the root after each command is not a cost the flush takes.
 
 ### Workspace path restrictions (Local FS)
 

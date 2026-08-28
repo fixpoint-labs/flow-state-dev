@@ -335,17 +335,11 @@ export interface CreateBashToolOptions {
   /** Persist sandbox across sessions via the `bashSession` resource. Default: `false`. */
   persist?: boolean;
 
-  /** Sync strategy: `"full"` re-reads everything; `"diff"` uses content hashing. Default: `"diff"`. */
-  syncMode?: "full" | "diff";
-
   /** Hook called before every bash command. Return a string to rewrite the command. */
   onBeforeCommand?: (cmd: string) => string | void;
 
   /** Hook called after every bash command. Return a `CommandResult` to override the result. */
   onAfterCommand?: (cmd: string, result: CommandResult) => CommandResult | void;
-
-  /** Filter which workspace files are synced back to resources. Return `false` to skip a path. */
-  fileFilter?: (path: string) => boolean;
 }
 
 // ---------------------------------------------------------------------------

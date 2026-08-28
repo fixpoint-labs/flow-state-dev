@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { hashContent } from "../src/bash/hash";
-import { FileSync } from "../src/bash/file-sync";
+import { hashContent } from "@flow-state-dev/workspace";
 import { createBashTool } from "../src/bash/create-bash-tool";
 import type { Sandbox, CommandResult, FileEntryState } from "../src/bash/types";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
@@ -172,187 +171,6 @@ describe("hashContent", () => {
 });
 
 // ---------------------------------------------------------------------------
-// FileSync
-// ---------------------------------------------------------------------------
-
-describe("FileSync", () => {
-  describe("hydrate", () => {
-    it("writes resource entries into the sandbox", async () => {
-      const sandbox = createMockSandbox();
-      const collection = createMockCollection([
-        {
-          name: "src/index.ts",
-          state: { path: "src/index.ts", hash: "abc", updatedAt: "2026-01-01" },
-          content: "console.log('hello');",
-        },
-        {
-          name: "src/utils.ts",
-          state: { path: "src/utils.ts", hash: "def", updatedAt: "2026-01-01" },
-          content: "export const add = (a, b) => a + b;",
-        },
-      ]);
-
-      const sync = new FileSync(sandbox, { files: collection }, {
-        destination: "/workspace",
-        syncMode: "diff",
-      });
-
-      await sync.hydrate();
-
-      expect(sandbox.files.get("/workspace/src/index.ts")).toBe("console.log('hello');");
-      expect(sandbox.files.get("/workspace/src/utils.ts")).toBe("export const add = (a, b) => a + b;");
-    });
-
-    it("skips entries with null content", async () => {
-      const sandbox = createMockSandbox();
-      const collection = createMockCollection([
-        {
-          name: "empty.txt",
-          state: { path: "empty.txt", hash: "", updatedAt: "2026-01-01" },
-          content: null,
-        },
-      ]);
-
-      const sync = new FileSync(sandbox, { files: collection }, {
-        destination: "/workspace",
-        syncMode: "diff",
-      });
-
-      await sync.hydrate();
-      expect(sandbox.files.has("/workspace/empty.txt")).toBe(false);
-    });
-  });
-
-  describe("flush", () => {
-    it("creates new resource entries for files added in the sandbox", async () => {
-      const sandbox = createMockSandbox({
-        "/workspace/new-file.ts": "const x = 1;",
-      });
-      const collection = createMockCollection();
-
-      const sync = new FileSync(sandbox, { files: collection }, {
-        destination: "/workspace",
-        syncMode: "diff",
-      });
-
-      await sync.flush();
-
-      expect(collection.getOrCreate).toHaveBeenCalledWith(
-        "new-file.ts",
-        expect.objectContaining({ path: "new-file.ts" }),
-      );
-    });
-
-    it("updates resource entries when sandbox files change", async () => {
-      const originalContent = "const x = 1;";
-      const updatedContent = "const x = 2;";
-
-      const collection = createMockCollection([
-        {
-          name: "file.ts",
-          state: {
-            path: "file.ts",
-            hash: hashContent(originalContent),
-            updatedAt: "2026-01-01",
-          },
-          content: originalContent,
-        },
-      ]);
-
-      const sandbox = createMockSandbox({
-        "/workspace/file.ts": updatedContent,
-      });
-
-      const sync = new FileSync(sandbox, { files: collection }, {
-        destination: "/workspace",
-        syncMode: "diff",
-      });
-
-      await sync.flush();
-
-      // getOrCreate should be called for the changed file
-      expect(collection.getOrCreate).toHaveBeenCalledWith(
-        "file.ts",
-        expect.objectContaining({ path: "file.ts" }),
-      );
-    });
-
-    it("removes resource entries when files are deleted from the sandbox", async () => {
-      const collection = createMockCollection([
-        {
-          name: "deleted.ts",
-          state: { path: "deleted.ts", hash: "abc", updatedAt: "2026-01-01" },
-          content: "will be deleted",
-        },
-      ]);
-
-      // Sandbox has no files — deleted.ts was removed
-      const sandbox = createMockSandbox();
-
-      const sync = new FileSync(sandbox, { files: collection }, {
-        destination: "/workspace",
-        syncMode: "diff",
-      });
-
-      await sync.flush();
-
-      expect(collection.delete).toHaveBeenCalledWith("deleted.ts");
-    });
-
-    it("skips files rejected by fileFilter", async () => {
-      const sandbox = createMockSandbox({
-        "/workspace/keep.ts": "keep me",
-        "/workspace/node_modules/dep/index.js": "skip me",
-      });
-      const collection = createMockCollection();
-
-      const sync = new FileSync(sandbox, { files: collection }, {
-        destination: "/workspace",
-        syncMode: "diff",
-        fileFilter: (p) => !p.includes("node_modules"),
-      });
-
-      await sync.flush();
-
-      // getOrCreate called for keep.ts but not for node_modules path
-      const calls = (collection.getOrCreate as ReturnType<typeof vi.fn>).mock.calls;
-      const paths = calls.map((c: any[]) => c[0]);
-      expect(paths).toContain("keep.ts");
-      expect(paths).not.toContain("node_modules/dep/index.js");
-    });
-
-    it("does not touch files that match no collection in diff mode", async () => {
-      const sandbox = createMockSandbox({
-        "/workspace/file.ts": "const x = 1;",
-      });
-      const collection = createMockCollection([
-        {
-          name: "file.ts",
-          state: {
-            path: "file.ts",
-            hash: hashContent("const x = 1;"),
-            updatedAt: "2026-01-01",
-          },
-          content: "const x = 1;",
-        },
-      ]);
-
-      const sync = new FileSync(sandbox, { files: collection }, {
-        destination: "/workspace",
-        syncMode: "diff",
-      });
-
-      await sync.flush();
-
-      // File content unchanged, so getOrCreate should still be called
-      // but writeContent should see the same content (no-op from hash check)
-      const ref = await collection.getOptional("file.ts");
-      expect(ref).toBeDefined();
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
 // createBashTool
 // ---------------------------------------------------------------------------
 
@@ -428,7 +246,10 @@ describe("createBashTool", () => {
       provider: { type: "custom", sandbox: customSandbox },
     });
 
-    expect(customSandbox.files.get("/workspace/hello.txt")).toBe("Hello, world!");
+    // Mounted at the collection's pattern prefix (`files/*`), the same place
+    // `createBashBlocks` puts it. The two entry points used to disagree about
+    // the layout; the flat one was the odd one out.
+    expect(customSandbox.files.get("/workspace/files/hello.txt")).toBe("Hello, world!");
   });
 
   it("calls onBeforeCommand hook", async () => {
@@ -462,6 +283,75 @@ describe("createBashTool", () => {
 
     expect(onAfterCommand).toHaveBeenCalled();
     expect(result).toEqual(overrideResult);
+  });
+
+  it("survives a flush when a mounted collection is empty", async () => {
+    // Exec-backed sandboxes walk with `find <destination>/<prefix>`. A prefix
+    // that hydrate never created makes `find` exit non-zero — `2>/dev/null`
+    // hides the message, not the status — and the place throws rather than
+    // reporting an empty workspace. Without a marker seeded up front, the
+    // first successful command took its own flush down with it.
+    const collection = createMockCollection([]);
+    const customSandbox = createMockSandbox();
+    const { tools } = await createBashTool({
+      collections: { files: collection },
+      provider: { type: "custom", sandbox: customSandbox },
+    });
+
+    expect(customSandbox.files.has("/workspace/files/.keep")).toBe(true);
+    expect(customSandbox.files.has("/workspace/tmp/.keep")).toBe(true);
+
+    const bashTool = tools.bash as {
+      execute: (a: { command: string }) => Promise<CommandResult>;
+    };
+    await expect(bashTool.execute({ command: "echo hi" })).resolves.toBeDefined();
+  });
+
+  it("does not fail a command when the workspace walk fails", async () => {
+    // The projection throws on an unreadable place deliberately — a flush
+    // that no-ops is recoverable, one that deletes is not. That is a reason
+    // to log, not a reason to fail a command that already succeeded.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const collection = createMockCollection([]);
+    const customSandbox = createMockSandbox();
+    const { tools } = await createBashTool({
+      collections: { files: collection },
+      provider: { type: "custom", sandbox: customSandbox },
+    });
+
+    customSandbox.executeCommand = async (command: string) => {
+      if (command.includes("find ")) return { stdout: "", stderr: "boom", exitCode: 1 };
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+
+    const bashTool = tools.bash as {
+      execute: (a: { command: string }) => Promise<CommandResult>;
+    };
+    await expect(bashTool.execute({ command: "echo hi" })).resolves.toBeDefined();
+    expect(warn.mock.calls.flat().join(" ")).toContain("flush skipped");
+    warn.mockRestore();
+  });
+
+  it("advertises available files at the paths they are mounted at", async () => {
+    // A `files/*` collection mounts at `files/`, so `hello.txt` lives at
+    // `files/hello.txt`. Advertising the bare key points the model at a path
+    // that does not exist, and every read of it fails.
+    const collection = createMockCollection([
+      {
+        name: "hello.txt",
+        state: { path: "hello.txt", hash: "abc", updatedAt: "2026-01-01" },
+        content: "Hello",
+      },
+    ]);
+    const customSandbox = createMockSandbox();
+    const { tools } = await createBashTool({
+      collections: { files: collection },
+      provider: { type: "custom", sandbox: customSandbox },
+    });
+
+    const description = (tools.bash as { description: string }).description;
+    expect(description).toContain("files/hello.txt");
+    expect(description).not.toMatch(/^hello\.txt$/m);
   });
 });
 
@@ -939,18 +829,29 @@ describe("createBashBlocks", () => {
     destination: string,
   ): Sandbox & { files: Map<string, string> } {
     const files = new Map<string, string>();
-    const destPrefix = destination.endsWith("/") ? destination : destination + "/";
     return {
       files,
       async executeCommand(command: string): Promise<CommandResult> {
         if (command.startsWith("find ")) {
-          // Mirror real `find` output: when invoked with absolute path
-          // arguments, find emits absolute paths (the framework's
-          // walkMountsViaExec passes absolute paths anchored at the
-          // destination). The mock holds files keyed by absolute path.
+          // Mirror real `find` semantics, arguments included. A mock that
+          // returned every file under the destination regardless of the paths
+          // it was handed would hide exactly the bug this walk can have: a
+          // file outside every searched directory is not listed, and the
+          // flush never learns it exists.
+          const targets = [...command.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) =>
+            JSON.parse(`"${m[1]}"`),
+          );
+          const maxdepth1 = command.includes("-maxdepth 1");
           const out: string[] = [];
           for (const key of files.keys()) {
-            if (!key.startsWith(destPrefix)) continue;
+            const under = targets.find(
+              (t: string) => key === t || key.startsWith(t.endsWith("/") ? t : `${t}/`),
+            );
+            if (under === undefined) continue;
+            if (maxdepth1) {
+              const rel = key.slice(under.endsWith("/") ? under.length : under.length + 1);
+              if (rel.includes("/")) continue;
+            }
             out.push(key);
           }
           return { stdout: out.join("\n"), stderr: "", exitCode: 0 };
@@ -1196,6 +1097,85 @@ describe("createBashBlocks", () => {
     }
   });
 
+  it("reports a shell-written file outside every mount as an orphan", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("orphan-walk-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    // The write-file tool names its path, so it can refuse an orphan up front.
+    // A shell command cannot be intercepted that way — the only thing that can
+    // notice `stray.txt` is the flush walk, and a walk confined to the mount
+    // prefixes never visits it. Silently losing it on release is the bug.
+    sandbox.files.set("/workspace/stray.txt", "written by the shell");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await runForTest(bashCommand, { command: "echo hi > stray.txt" }, ctx);
+      expect(await artifacts.count()).toBe(0);
+      const msg = warn.mock.calls.map((c) => c[0]).join(" ");
+      expect(msg).toMatch(/orphan/);
+      expect(msg).toMatch(/stray\.txt/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("keeps a .keep the collection itself holds — the marker filter is by path", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    await artifacts.getOrCreate("empty-dir/.keep", { path: "empty-dir/.keep" });
+    await (await artifacts.getOptional("empty-dir/.keep"))!.writeContent("");
+
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("keep-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    expect(sandbox.files.has("/workspace/artifacts/empty-dir/.keep")).toBe(true);
+
+    // A basename filter drops it from the listing while the baseline still
+    // owns it, and the delete pass reads that as the run having removed it.
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    expect(await artifacts.getOptional("empty-dir/.keep")).toBeDefined();
+  });
+
+  it("propagates a collection write failure instead of reporting success", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("store-fail-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    sandbox.files.set("/workspace/artifacts/note.md", "the run's work");
+    // The store is down. Swallowing this alongside a failed walk would return
+    // success for a command whose file never left the sandbox.
+    artifacts.getOrCreate = async () => {
+      throw new Error("resource store unavailable");
+    };
+
+    await expect(
+      runForTest(bashCommand, { command: "echo x" }, ctx),
+    ).rejects.toThrow(/resource store unavailable/);
+  });
+
   it("does NOT drop or warn on files under ./tmp/ — scratch is silent", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 
@@ -1337,5 +1317,146 @@ describe("createBashBlocks", () => {
     // Skills collection is untouched — its delete loop runs against its own
     // list and the file we deleted wasn't one of its entries.
     expect(await skills.getOptional("stay/SKILL.md")).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------
+  // FIX-998's three measured reproductions.
+  //
+  // Each is a way the old reconcile destroyed evidence it did not hold.
+  // They live here rather than only in the projection's own suite because
+  // this is where the bug was, and a future reconcile written back into
+  // this file has to fail them.
+  // -------------------------------------------------------------------
+
+  it("delete-by-absence: a file another writer added mid-run survives the flush", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "mine.md",
+        state: { path: "mine.md", hash: "", updatedAt: "2026-01-01" },
+        content: "mine",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("fix998-delete-by-absence", { session: { artifacts } });
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    // Another run creates a file in the same collection. It never reaches
+    // this workspace, so this run's walk cannot see it.
+    const theirs = await artifacts.getOrCreate("theirs.md", {
+      path: "theirs.md",
+      hash: "",
+      updatedAt: "2026-01-02",
+    });
+    await theirs.writeContent("theirs");
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    // Absent from our workspace is not the same as deleted by us.
+    expect(await artifacts.getOptional("theirs.md")).toBeDefined();
+    expect(await artifacts.getOptional("mine.md")).toBeDefined();
+  });
+
+  it("lost update: a file changed in its collection mid-run is not overwritten", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "shared.md",
+        state: { path: "shared.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("fix998-lost-update", { session: { artifacts } });
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    // Both writers move, neither having seen the other.
+    await (await artifacts.get("shared.md")).writeContent("theirs");
+    sandbox.files.set("/workspace/artifacts/shared.md", "ours");
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    expect(await (await artifacts.get("shared.md")).readContent()).toBe("theirs");
+    expect(warn.mock.calls.flat().join(" ")).toContain("artifacts/shared.md");
+    warn.mockRestore();
+  });
+
+  it("edit-vs-delete: removing a file somebody else edited deletes nothing", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "contested.md",
+        state: { path: "contested.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("fix998-edit-vs-delete", { session: { artifacts } });
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    // We remove it; somebody else edits it. A delete is a write, and needs
+    // the same evidence — the half a first fix is recorded missing.
+    sandbox.files.delete("/workspace/artifacts/contested.md");
+    await (await artifacts.get("contested.md")).writeContent("their edit");
+
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    expect(await artifacts.getOptional("contested.md")).toBeDefined();
+    expect(await (await artifacts.get("contested.md")).readContent()).toBe("their edit");
+    expect(warn.mock.calls.flat().join(" ")).toContain("contested.md");
+    warn.mockRestore();
+  });
+  it("cold write-file updates a file the collection already holds", async () => {
+    // The bind-mount fast path builds its projection when no sandbox is live.
+    // With no baseline it cannot tell a file it is creating from one somebody
+    // else wrote, so a path the collection already has comes back a conflict
+    // and the write is refused — while the host file takes the edit anyway.
+    // The two then disagree, and the next hydrate erases the run's work.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+    const { mkdtemp, readFile } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const nodePath = await import("node:path");
+
+    const workspace = await mkdtemp(nodePath.join(os.tmpdir(), "cold-write-"));
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "notes.md",
+        state: { path: "notes.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+
+    const { bashWriteFile } = createBashBlocks({
+      provider: { type: "moat", workspace },
+      destination: "/workspace",
+    });
+    const ctx = buildCtx("cold-write-1", { session: { artifacts } });
+
+    await runForTest(bashWriteFile, { path: "artifacts/notes.md", content: "edited" }, ctx);
+
+    // The host file took the edit either way — that is not in question.
+    expect(await readFile(nodePath.join(workspace, "artifacts/notes.md"), "utf-8")).toBe("edited");
+    // THE discriminating assertion: so did the collection.
+    expect(await (await artifacts.get("notes.md")).readContent()).toBe("edited");
   });
 });
