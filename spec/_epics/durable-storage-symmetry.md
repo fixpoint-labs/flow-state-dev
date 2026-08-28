@@ -239,31 +239,27 @@ below the themes had both gone stale against the code that merged.
 
    **The predicate was the right place, and getting there required splitting intent first — which
    is what FIX-1258 did.** The constraint this document set was that `checkWriteVersion(row,
-   expectedVersion)` takes **no operation intent** (`resource-state-predicate.ts`), so by the time
-   it ran the two cases were indistinguishable: `runResourceCAS` derived `expectedVersion` as a
-   literal `0` for the `create` intent and `container.getVersion()` for `mutate`, which *is* `0` for
-   a key never read or one whose cache entry a delete evicted, so both collapsed to the same value at
-   that expression (`resource-cas.ts`; the driver's header states the general form — *"by the time a
-   value reaches the store the caller's intent is gone"*). Refusing `0` against a tombstone outright
-   would therefore also have refused **explicit recreation after a delete** — **intentional prior
-   art, tagged FIX-992**, pinned in **two** suites (*"classifies a create over another context's
-   delete as a create"*, `resource-cas-registry.test.ts`; *"…as created, not updated (FIX-992)"*,
-   `test/context/resource-registry.spec.ts`) and published as contract in
+   expectedVersion)` takes **no operation intent** (`resource-state-predicate.ts`), and the intent
+   was already gone one layer up: a mutation seeded at the absent row and an explicit `create`
+   collapsed to the same `0` where `runResourceCAS` derives the expectation (`resource-cas.ts`; the
+   driver's header states the general form — *"by the time a value reaches the store the caller's
+   intent is gone"*). Refusing `0` against a tombstone outright would therefore also have refused
+   **explicit recreation after a delete** — **intentional prior
+   art, tagged FIX-992**, pinned in two suites and published as contract in
    `docs/architecture/state-and-scopes.md` (*"`0` means no live row, so it is create-if-absent and a
    tombstone satisfies it"*). **That documentation was correct as written and is still not stale.**
    So the constraint read: `create` keeps its tombstone-accepting behaviour, a mutation that began at
    the absent-row seed is refused, and the split happens **before the shared predicate**.
 
-   **That is what shipped**, read on `origin/main`. `runResourceCAS` now derives the expectation per
-   intent — `create` → `0`, `replace` → `"any"`, `mutate` → `"absent"` when the container holds no
-   version and the held version otherwise — and `checkWriteVersion` gained the matching arm:
-   `"absent"` means *no row at all*, and a tombstone **is** a row, so it conflicts and the driver
-   turns that into a terminal `ResourceDeletedError`; `0` still means *no live row*, a tombstone
-   still satisfies it, and FIX-992 is intact. `"absent"` is a **third** expectation next to `0`, not
-   a rename of it, and `ResourceStateStore.delete` still refuses the word outright
-   (`assertDeleteExpectedVersion`) so it never acquired a second, verb-dependent meaning. What that
-   adoption did and did not do to the two vocabularies is settled below, under *Scope state already
-   carries the vocabulary the resource side lacks*.
+   **That is what shipped** — at the predicate, exactly where this theme said it belonged
+   ([#1487](https://github.com/fixpoint-labs/flow-state-dev/pull/1487) merged). What the epic needs
+   from the mechanism is one fact, because theme 2 rests on it: `runResourceCAS` derives the
+   expectation **per intent**, so on `origin/main` a `mutate` whose container holds no version writes
+   at **`"absent"`**, while `create` keeps `0` and FIX-992's recreation-after-delete is intact.
+   `"absent"` is a **third** expectation beside `0`, not a rename of it. The rest — the predicate's
+   new arm, the tests that pin it — is FIX-1258's and lives on its PR. What that adoption did and did
+   not do to the two vocabularies is settled below, under *Scope state carried the `"absent"`
+   vocabulary first*.
    Earlier evidence for the constraint is in
    [comment `5430745011`](https://github.com/fixpoint-labs/flow-state-dev/pull/1365#issuecomment-5430745011).
 
@@ -293,9 +289,9 @@ below the themes had both gone stale against the code that merged.
    other end. What must **not** travel is the semantics of resource `0`: scope's `"absent"` refuses
    an existing record, where resource `create` has to keep *accepting* a tombstone (FIX-992). So the
    two expectations sit side by side on the resource side instead of one replacing the other, and
-   the store refuses to alias them — `delete` still rejects the word outright
-   (`assertDeleteExpectedVersion`), which is what stops the sentinel acquiring a second,
-   verb-dependent meaning. **This epic still does not unify the two `ExpectedVersion`
+   the store refuses to alias them — `ResourceStateStore.delete` still rejects the word outright
+   (the `ExpectedVersion` contract, `stores/types.ts`), which is what stops the sentinel acquiring a
+   second, verb-dependent meaning. **This epic still does not unify the two `ExpectedVersion`
    vocabularies**, and that claim is narrower than it was: the *word* is shared, the *value set* is
    not, because scope has no `0`-means-create-if-absent to share. Stating an asymmetry is this
    document's job; proposing the merger is the move theme 1 exists to refuse. *(This paragraph used
@@ -386,6 +382,21 @@ below the themes had both gone stale against the code that merged.
    stays a separate op — which is how resources already model it. **Extend the seams that
    exist; do not invent a new core `MutationContract` type until a second consumer appears.**
 
+   **First touch is the open question this pairing leaves for FIX-1267, and this epic does not
+   answer it.** The two constraints above are each right and do not compose at the absent row. A
+   `mutate` whose container holds no version now derives **`"absent"`**, not `0` (theme 1, shipped),
+   so a static resource still living on its schema default is at `"absent"` on its first touch — and
+   `"absent"` is exactly what a delta verb throws on rather than conflicts on (`DeltaStoreOps`,
+   `stores/types.ts`). Routing a native `incField` / `pushToArray` there would make an ordinary first
+   write throw. **`0` is not the escape**: it admits a tombstone, which is the revival theme 1 just
+   closed. Two shapes are visible from here — **fall back to `set` for the absent case**, keeping the
+   delta verb for rows that already exist, or **extend the delta contract to accept `"absent"`**,
+   which changes `DeltaStoreOps` and so reaches the scope side too. **This document does not choose
+   between them.** FIX-1267 is deferred and unparented, and its mechanism is its spec's
+   ([`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) → *Out of scope*). What
+   is recorded here is only that the question exists, so whoever specs that tier meets it as a known
+   constraint rather than discovering it as a contradiction between two themes.
+
    **One tier shipped and one stays deferred — keeping them apart is what stops this epic
    overclaiming (D-6).**
 
@@ -434,9 +445,9 @@ below the themes had both gone stale against the code that merged.
      or whether the two types share a base or declare the verbs separately.
    - ***Tier 2 — the store interface. Still deferred (FIX-1267).*** Store-native `incField` /
      `pushToArray` on `ResourceStateStore` across every adapter plus conformance — the tier
-     carrying this theme's unproven claim, the liveness gating, and the constraint amendment
-     above. **It wins no contention either** — this document promised that it would, and the
-     retraction is below. **Deferred and explicitly not dropped** (Decision 2), returning through
+     carrying this theme's unproven claim, the liveness gating, the constraint amendment above and
+     the first-touch question above. **It wins no contention either** — this document promised that
+     it would, and the retraction is below. **Deferred and explicitly not dropped** (Decision 2), returning through
      the epic-theme rewrite next to FIX-992.
 
    **Neither tier wins contention, and the reason is this theme's own constraint.**
@@ -489,7 +500,7 @@ below the themes had both gone stale against the code that merged.
    state mutation by the contract's own words. The argument described a different verb than the
    one it excluded.
    **FIX-1267 picks the verb set on the write-amplification test; the epic holds only this
-   theme's `"any"` constraint above.**
+   theme's `"any"` constraint above, and leaves the first-touch question open beside it.**
 
 3. **`docs/architecture/state-and-scopes.md` is a shared surface, and each child names the
    paragraph it owns.** FIX-1154 rewrites what the doc says about the two primitives' mutation
@@ -979,3 +990,14 @@ retraction taught something the themes do not already say, it earns a clause.
   first where the epic described a mechanism its child then **declined**. Every earlier retraction
   got shipped code wrong; this one got *unshipped* code wrong, which no amount of reading `main`
   could have caught — the row stated a design, and only the child could falsify it.)*
+- **First touch named as FIX-1267's open question; theme 1's recast trimmed (2026-08-28)** — theme
+  1's shipped *`mutate` → `"absent"`* and theme 2's *`"absent"` throws on the delta verbs* are each
+  true and **do not compose at the absent row**: a native delta verb routed on a resource's first
+  touch would throw, so the deferred tier as described was unbuildable there. Both shapes are
+  recorded and **neither is chosen** — FIX-1267 is deferred and unparented, and its mechanism is its
+  spec's. Theme 1's account of #1487 lost the predicate's new arm, the two test names and
+  `assertDeleteExpectedVersion` — a symbol that PR **introduced**, so it goes stale with the child —
+  keeping the prediction, its confirmation, and the third-expectation fact theme 2 rests on.
+  *(Sixth two-carriers removal, and the first defect where two themes contradicted **each other**
+  rather than the code: each was verified against `main` on its own and each passed, so no
+  single-claim check could have caught it.)*
