@@ -152,7 +152,7 @@ export type SandboxProvider =
        * nothing while claiming to, and the pair is refused at construction.
        *
        * When omitted, the workspace is auto-created at
-       * `.fsdev/workspaces/{scope}/{orgId}/{userId}/{scopeId}/`.
+       * `.fsdev/workspaces/{scope}/{scopeId}/`, with a tenant segment for `run` and `session`.
        */
       cwd?: string;
       /**

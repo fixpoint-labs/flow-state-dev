@@ -43,10 +43,13 @@ function ctxFor(sessionId: string, requestId: string) {
 const cwdOfCall = (n: number): string | undefined =>
   (resolveSandbox.mock.calls[n]?.[1] as { cwd?: string } | undefined)?.cwd;
 
-// The org and user segments are always present — `-` when the principal
-// carries neither — because the tenant is part of every workspace path.
-const workspaceDir = (scope: string, id: string, org = "-", user = "-") =>
-  path.join(process.cwd(), ".fsdev", "workspaces", scope, org, user, id);
+// `run` and `session` carry the tenant (`-` when there is none) because their
+// ids come off the request body. `user` and `org` do not: those scopes are
+// shared across tenants by design, and a tenant segment would split them.
+const workspaceDir = (scope: string, id: string, tenant?: string) =>
+  tenant === undefined
+    ? path.join(process.cwd(), ".fsdev", "workspaces", scope, id)
+    : path.join(process.cwd(), ".fsdev", "workspaces", scope, tenant, id);
 
 async function runOnce(
   scope: "run" | "session" | "user" | "org" | undefined,
@@ -72,8 +75,8 @@ describe("workspace scope", () => {
 
     // Two sandboxes, because the registry key moved with the request.
     expect(resolveSandbox).toHaveBeenCalledTimes(2);
-    expect(cwdOfCall(0)).toBe(workspaceDir("run", "r1", "o1", "u1"));
-    expect(cwdOfCall(1)).toBe(workspaceDir("run", "r2", "o1", "u1"));
+    expect(cwdOfCall(0)).toBe(workspaceDir("run", "r1", "-"));
+    expect(cwdOfCall(1)).toBe(workspaceDir("run", "r2", "-"));
   });
 
   it("gives them ONE workspace when the scope is left at its default", async () => {
@@ -85,18 +88,18 @@ describe("workspace scope", () => {
 
     // One sandbox, reused: the second request found the first in the registry.
     expect(resolveSandbox).toHaveBeenCalledTimes(1);
-    expect(cwdOfCall(0)).toBe(workspaceDir("session", "s1", "o1", "u1"));
+    expect(cwdOfCall(0)).toBe(workspaceDir("session", "s1", "-"));
   });
 
   it("keys the broader scopes on their own identities, not the request", async () => {
     await runOnce("user", ctxFor("s1", "r1"));
-    expect(cwdOfCall(0)).toBe(workspaceDir("user", "u1", "o1", "u1"));
+    expect(cwdOfCall(0)).toBe(workspaceDir("user", "u1"));
 
     resolveSandbox.mockClear();
     vi.resetModules();
 
     await runOnce("org", ctxFor("s2", "r2"));
-    expect(cwdOfCall(0)).toBe(workspaceDir("org", "o1", "o1", "u1"));
+    expect(cwdOfCall(0)).toBe(workspaceDir("org", "o1"));
   });
 });
 
@@ -110,7 +113,7 @@ describe("scope ids as directory names", () => {
     const root = process.cwd() + "/.fsdev/workspaces";
     for (const hostile of ["../../etc", "..", "a/../../b", "/abs/path"]) {
       const resolved = resolveWorkspaceCwdForTest("run", { requestId: hostile, sessionId: "s" });
-      expect(resolved.startsWith(root + "/run/-/-/")).toBe(true);
+      expect(resolved.startsWith(root + "/run/-/")).toBe(true);
       expect(resolved).not.toContain("..");
     }
   });
@@ -118,7 +121,7 @@ describe("scope ids as directory names", () => {
   it("leaves an ordinary id untouched, so no existing workspace is renamed", async () => {
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
     const resolved = resolveWorkspaceCwdForTest("run", { requestId: "req_x1y2", sessionId: "s" });
-    expect(resolved.endsWith("/.fsdev/workspaces/run/-/-/req_x1y2")).toBe(true);
+    expect(resolved.endsWith("/.fsdev/workspaces/run/-/req_x1y2")).toBe(true);
   });
 
   it("keeps an encoded id out of the pass-through namespace", async () => {
@@ -148,20 +151,61 @@ describe("scope ids as directory names", () => {
   });
 
   it("separates two tenants that name the same request", async () => {
-    // `requestId` arrives on the request body. `orgId` comes from the verified
-    // principal, and is what keeps one tenant's run out of another's files.
+    // `requestId` arrives on the request body. `tenantId` is the framework's
+    // own boundary — it already namespaces session storage so two tenants
+    // sharing a session id never share data — and the workspace follows it.
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
     const a = resolveWorkspaceCwdForTest("run", {
       requestId: "req_1",
       sessionId: "s",
-      orgId: "org-a",
+      tenantId: "tenant-a",
     });
     const b = resolveWorkspaceCwdForTest("run", {
       requestId: "req_1",
       sessionId: "s",
-      orgId: "org-b",
+      tenantId: "tenant-b",
     });
     expect(a).not.toBe(b);
+  });
+
+  it("keeps an org workspace shared across the org's users and tenants", async () => {
+    // The contract `scope: "org"` sells is "shared across everyone in an org",
+    // and core is explicit that user and org scopes stay shared across tenants
+    // by design. A tenant or user segment would split exactly the sharing the
+    // scope exists to provide.
+    const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
+    const first = resolveWorkspaceCwdForTest("org", {
+      requestId: "r1",
+      sessionId: "s1",
+      userId: "u1",
+      orgId: "acme",
+      tenantId: "tenant-a",
+    });
+    const second = resolveWorkspaceCwdForTest("org", {
+      requestId: "r2",
+      sessionId: "s2",
+      userId: "u2",
+      orgId: "acme",
+      tenantId: "tenant-b",
+    });
+    expect(first).toBe(second);
+  });
+
+  it("keeps a user workspace whole across that user's org contexts", async () => {
+    const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
+    const inOrgA = resolveWorkspaceCwdForTest("user", {
+      requestId: "r1",
+      sessionId: "s1",
+      userId: "u1",
+      orgId: "org-a",
+    });
+    const inOrgB = resolveWorkspaceCwdForTest("user", {
+      requestId: "r2",
+      sessionId: "s2",
+      userId: "u1",
+      orgId: "org-b",
+    });
+    expect(inOrgA).toBe(inOrgB);
   });
 
   it("refuses a local provider that sets both cwd and scope", async () => {
@@ -182,6 +226,25 @@ describe("scope ids as directory names", () => {
     await expect(
       createBashTool({ provider: { type: "local", scope: "run" } }),
     ).rejects.toThrow(/scope.*createBashTool/s);
+  });
+
+  it("frames key components, so one id cannot spell another principal's key", async () => {
+    // Joined raw on a delimiter these are the same string. The collision is on
+    // the REGISTRY key rather than the directory — `safeSegment` keeps the
+    // paths apart — so the second principal is handed the FIRST one's live
+    // sandbox, before a directory of its own is ever created.
+    const { resolveRegistryKeyForTest } = await import("../src/bash/blocks");
+    const first = resolveRegistryKeyForTest("run", {
+      requestId: "d",
+      sessionId: "s",
+      tenantId: "a:b",
+    });
+    const second = resolveRegistryKeyForTest("run", {
+      requestId: "b:d",
+      sessionId: "s",
+      tenantId: "a",
+    });
+    expect(first).not.toBe(second);
   });
 
   it("does not collapse two hostile ids onto one workspace", async () => {

@@ -277,9 +277,10 @@ createBashTool({
 ### Where the workspace lives
 
 The local provider creates a workspace directory per scope, at
-`.fsdev/workspaces/<scope>/<org>/<user>/<id>/`. The org and user come from the
-verified principal and are always part of the path, so two tenants naming the
-same session or request never share a directory.
+`.fsdev/workspaces/<scope>/<id>/`. `run` and `session` carry the tenant as well
+(`.fsdev/workspaces/session/<tenant>/<id>/`), because their ids reach the tool
+from the request and two tenants can name the same one. `user` and `org` don't:
+those scopes are shared across tenants by design.
 
 | `scope` | One workspace per | Reach for it when |
 | --- | --- | --- |
@@ -312,7 +313,7 @@ sharing one.
 
 A file the run deletes is removed from its collection, but only if the collection still holds what the run was given. If something else changed that file while the run held it, nothing is written or deleted and a warning names the contested path — the run's copy and the collection's copy are both left alone. The same applies to a write.
 
-Files written outside every mounted collection's directory, and outside the scratch directory `./tmp/`, are dropped rather than filed somewhere arbitrary. A flush walks the mounts and the workspace root, so a stray file beside the mounts is named in a warning; one written into a subdirectory nothing is mounted at is dropped silently, because walking every directory under the root after each command is not a cost the flush takes.
+Files written outside every mounted collection's directory, and outside the scratch directory `./tmp/`, are dropped rather than filed somewhere arbitrary. The warning naming them comes from the file-writing tool, which knows the path it was asked for; a flush lists the mounts, so a file a shell command writes elsewhere stays in the workspace and goes when the workspace does.
 
 ### Workspace path restrictions (Local FS)
 
