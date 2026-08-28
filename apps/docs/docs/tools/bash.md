@@ -276,6 +276,8 @@ SHA-256 hashes detect changes. Only files whose hash differs from the stored val
 
 Files the agent creates outside every known path are not persisted. They're logged via `console.warn` at flush time so the behavior is visible during development. If the agent genuinely needs scratch space, `./tmp/` is the explicit place: writes there are silent and never saved.
 
+A flush sees the mounted directories and the workspace root, so a stray file written beside the mounts gets its warning. It does not descend into directories nothing is mounted at — the root can be a checkout you handed the tool through `cwd`, and walking all of it after every command is not a cost worth paying. A file written into an unmounted subdirectory is dropped without a warning.
+
 ## Resource definitions
 
 Collections need a state schema that includes `path`, `hash`, and `updatedAt` fields to participate in bash sync:

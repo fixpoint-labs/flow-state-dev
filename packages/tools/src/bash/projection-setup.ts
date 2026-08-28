@@ -35,11 +35,11 @@ export interface BashMount {
   collection: ResourceCollectionRef<JsonObject>;
 }
 import type { JsonObject } from "@flow-state-dev/core/types";
-import { createSandboxPlace, KEEP_MARKER } from "./sandbox-place";
+import { createSandboxPlace, KEEP_MARKER, TMP_DIR, WorkspaceWalkError } from "./sandbox-place";
 import type { Sandbox } from "./types";
 
-/** The scratch directory a run may write to without it reaching a collection. */
-export const TMP_DIR = "tmp";
+/** Re-exported so both bash doors reach the scratch prefix through one module. */
+export { TMP_DIR } from "./sandbox-place";
 
 /**
  * Lay down the directory markers a walk needs to find.
@@ -106,11 +106,16 @@ export function createMountedProjection(
 /**
  * Flush, and turn what it decided into diagnostics a developer can act on.
  *
- * Never throws. A walk that fails means the projection refused to decide
- * anything rather than reading an unreadable workspace as an empty one — which
- * is the whole point of it throwing — and a flush that no-ops is recoverable
- * where one that deletes is not. Letting that reach the caller would fail an
- * otherwise successful command.
+ * Swallows exactly one failure: the walk. A walk that fails means the
+ * projection refused to decide anything rather than reading an unreadable
+ * workspace as an empty one — which is the whole point of it throwing — and a
+ * flush that no-ops is recoverable where one that deletes is not.
+ *
+ * Everything else propagates. A collection read or write that fails is the
+ * opposite case: the run's edits did not reach the store, and a command that
+ * returned success while its files stayed only in the sandbox is a silent
+ * loss. The old `createBashTool` sync path let those through; catching them
+ * here alongside the walk would be a regression wearing a recovery's clothes.
  */
 export async function flushWithDiagnostics(
   projection: Projection,
@@ -121,7 +126,8 @@ export async function flushWithDiagnostics(
   try {
     outcomes = (await projection.flush()).outcomes;
   } catch (err) {
-    console.warn(`[bash] flush skipped — workspace walk failed: ${(err as Error).message}`);
+    if (!(err instanceof WorkspaceWalkError)) throw err;
+    console.warn(`[bash] flush skipped — workspace walk failed: ${err.message}`);
     return;
   }
   warnUnsettled(outcomes);
