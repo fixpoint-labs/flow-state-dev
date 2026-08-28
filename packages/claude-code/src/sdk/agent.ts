@@ -104,6 +104,15 @@ type AgentCallbackContext = BlockContext<
   any
 >;
 
+/**
+ * The Agent SDK's sandbox settings, as this package sees them.
+ *
+ * An open object, not the SDK's own type: the Agent SDK is an optional peer
+ * here, so its types are not imported. The settings are forwarded verbatim,
+ * and the SDK validates them.
+ */
+export type SandboxSettings = Record<string, unknown>;
+
 export interface ClaudeCodeAgentOptions {
   /** Host hook resolving the SDK `query`. Default: lazy SDK import. */
   resolveClaudeAgent?: ResolveClaudeAgent;
@@ -240,9 +249,17 @@ export interface ClaudeCodeAgentOptions {
    * form of it that contains anything. Same reason `cwd` is a resolver.
    *
    * Loosely typed for the same reason `agents` is: this package treats the
-   * Agent SDK as an optional peer, so its types are not imported here.
+   * Agent SDK as an optional peer, so its types are not imported here. An
+   * open object rather than `unknown`, because `unknown | fn` collapses to
+   * `unknown` and the resolver form — the one that matters — would then get
+   * no contextual typing and both its parameters would be implicit `any`.
    */
-  sandbox?: unknown | ((input: { prompt: string }, ctx: AgentCallbackContext) => unknown | Promise<unknown>);
+  sandbox?:
+    | SandboxSettings
+    | ((
+        input: { prompt: string },
+        ctx: AgentCallbackContext,
+      ) => SandboxSettings | Promise<SandboxSettings>);
   /**
    * Capabilities installed on the block this factory returns — the same `uses`
    * slot any other block takes, forwarded to `handler()`.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { defineFlow, generator } from "@flow-state-dev/core";
+import { defineFlow, generator, defineCapability, defineResourceCollection } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { createClaudeCodeAgentCapability } from "../../src/sdk/capability";
@@ -16,6 +16,49 @@ describe("createClaudeCodeAgentCapability", () => {
     expect(cap.name).toBe("claude-code-agent");
     expect(cap.__presetDefs.default).toContain("tools");
     expect(cap.__presetDefs.tools.tools).toHaveLength(1);
+  });
+
+  it("promotes a resource-declaring `uses` capability's resources onto itself", () => {
+    // `uses` installs the capability on the agent HANDLER, and that handler is
+    // a tool inside this capability's preset. A tool's resource declarations
+    // reach no flow, so without promotion the capability is live at runtime
+    // while `ctx.resources` resolves to nothing and the route 404s — on a build
+    // that succeeded and tests that passed.
+    const notes = defineResourceCollection({
+      name: "agent-notes",
+      pattern: "agent-notes/**",
+      scope: "session",
+      stateSchema: z.object({ path: z.string().nullable().default(null) }),
+    });
+    const withResources = defineCapability({
+      name: "note-taking",
+      resources: { "agent-notes": notes },
+    });
+
+    const cap = createClaudeCodeAgentCapability({ uses: [withResources] }) as unknown as {
+      resources?: Record<string, unknown>;
+    };
+
+    expect(Object.keys(cap.resources ?? {})).toContain("agent-notes");
+  });
+
+  it("leaves a colliding resource name to the framework's own refusal", () => {
+    const clashing = defineCapability({
+      name: "clashing",
+      resources: { "observed-file-ops": defineResourceCollection({
+        name: "not-the-recorders",
+        pattern: "not-the-recorders/**",
+        scope: "session",
+        stateSchema: z.object({ path: z.string().nullable().default(null) }),
+      }) },
+    });
+
+    // Spreading both would leave whichever merged last as the only one the
+    // flow can resolve. Nothing here needs to check that: two capabilities
+    // claiming one accessor is refused by name at construction already.
+    expect(() =>
+      createClaudeCodeAgentCapability({ recordWork: true, uses: [clashing] }),
+    ).toThrow(/Resource conflict.*observed-file-ops/);
   });
 
   it("exposes the agent handler block as its tool", () => {
