@@ -106,6 +106,13 @@ export type FlushOutcome =
   /**
    * A write landed under no writable mount. Reported rather than guessed into
    * a default collection, and never silently dropped.
+   *
+   * Comes from `put`, where the caller names a path the projection then finds
+   * no home for — which is how the tools that write one file at a time reach
+   * it. A **flush** sees this only for a path inside a mount prefix that
+   * nothing owns: it lists the place BY prefix, so a file the run dropped
+   * outside every prefix is never walked and never reported. If you need those
+   * seen, the place has to be listed wider than the mounts.
    */
   | { kind: "orphan"; path: string }
   /**

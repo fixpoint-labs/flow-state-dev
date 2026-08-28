@@ -14,8 +14,6 @@ export { createMemoryPlace } from "./memory-place";
 export type { MemoryPlace } from "./memory-place";
 export { createHostPlace } from "./host-place";
 export type { HostPlace } from "./host-place";
-export { normalizePath, routePath, isMetadataKey } from "./routing";
-export type { Routed } from "./routing";
 export type {
   FlushOutcome,
   FlushReport,

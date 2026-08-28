@@ -612,3 +612,55 @@ describe("a path that vanishes between the listing and the read", () => {
     expect(projection.ownedPaths()).toEqual(["artifacts/spec.md"]);
   });
 });
+
+describe("routing edges two reviewers found", () => {
+  it("projects a nested file whose name happens to start with an underscore", async () => {
+    // `_` marks a COLLECTION's own bookkeeping — a key whose bare name starts
+    // with it. A path component starting with `_` deeper in the tree is an
+    // ordinary file: `src/_helpers.ts`, `public/_redirects`, `app/_layout.tsx`
+    // are all real names people use. Treating those as metadata drops them
+    // from hydrate and silently refuses to persist them.
+    const collection = createFakeCollection("artifacts/**", {
+      "src/_helpers.ts": "export const help = 1;",
+      "_meta": "collection bookkeeping",
+    });
+    const place = createMemoryPlace();
+    const projection = createProjection({
+      place,
+      mounts: [{ prefix: "artifacts", collection, writable: true }],
+    });
+
+    await projection.hydrate();
+    // The nested one is a file and is laid down; the bare `_meta` is not.
+    expect(place.snapshot()).toEqual({ "artifacts/src/_helpers.ts": "export const help = 1;" });
+
+    await place.write("artifacts/src/_helpers.ts", "export const help = 2;");
+    const report = await projection.flush();
+
+    expect(report.outcomes).toContainEqual({ kind: "written", path: "artifacts/src/_helpers.ts" });
+    expect(collection.contents()["src/_helpers.ts"]).toBe("export const help = 2;");
+  });
+
+  it("hydrates a path into the mount that owns it, not the one listed last", async () => {
+    // Nested mounts. Flush routes by longest prefix, so `artifacts/drafts/x.md`
+    // belongs to the inner mount. Hydrate wrote whichever mount came last in
+    // the array, so the two disagreed and the outer collection's content could
+    // appear at a path the inner collection owns.
+    const outer = createFakeCollection("artifacts/**", { "drafts/x.md": "OUTER" });
+    const inner = createFakeCollection("artifacts/drafts/**", { "x.md": "INNER" });
+    const place = createMemoryPlace();
+    const projection = createProjection({
+      place,
+      mounts: [
+        { prefix: "artifacts/drafts", collection: inner, writable: true },
+        { prefix: "artifacts", collection: outer, writable: true },
+      ],
+    });
+
+    await projection.hydrate();
+
+    // The inner mount owns the path under longest-prefix routing, so its
+    // content is what the place holds — whichever order the mounts arrived in.
+    expect(place.snapshot()["artifacts/drafts/x.md"]).toBe("INNER");
+  });
+});
