@@ -236,6 +236,10 @@ export function seedRepo(dir: string): void {
   git("init", "--initial-branch=main", ".");
   git("config", "user.email", "conductor@example.test");
   git("config", "user.name", "Conductor Test");
+  // Fixtures do not sign. A host that requires commit signing would otherwise
+  // hang every `git commit` on its signing helper, and the suite would fail
+  // under that host rather than on the thing it is testing.
+  git("config", "commit.gpgsign", "false");
   // **A stand-in repository has tracked content, because a real one does.**
   // These fixtures committed nothing, so every worktree cut from them had zero
   // tracked files — which makes a half-populated checkout indistinguishable from
