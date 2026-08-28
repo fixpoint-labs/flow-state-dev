@@ -66,7 +66,7 @@ Comparing two values — collection against place — can't tell "I changed this
 
 ## Places
 
-`createHostPlace(root)` projects into a real directory. It creates `root` if it doesn't exist, refuses any path that would resolve outside it, and neither lists nor follows symlinks planted inside it.
+`createHostPlace(root)` projects into a real directory. It creates `root` if it doesn't exist and refuses any path that would leave it — including by symlink, which a lexical `..` check doesn't catch. A link planted anywhere in the path, at the file or at a parent directory, is refused rather than followed, and the walk never lists one.
 
 `createMemoryPlace(initial?)` keeps everything in a `Map`. Use it to test wiring without standing up a directory. It adds `snapshot()`, `remove(path)`, and `breakListing()` for asserting against.
 
