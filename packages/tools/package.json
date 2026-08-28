@@ -94,6 +94,7 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/workspace": "workspace:*",
     "@mozilla/readability": "^0.6.0",
     "ai": "^7.0.15",
     "linkedom": "^0.18.12",

@@ -34,7 +34,10 @@ import type {
   CreateBashToolOptions,
   CreateBashToolResult,
 } from "./types";
-import { FileSync } from "./file-sync";
+import { getPatternPrefix } from "@flow-state-dev/core/types";
+import { createProjection } from "@flow-state-dev/workspace";
+import type { Mount } from "@flow-state-dev/workspace";
+import { createSandboxPlace } from "./sandbox-place";
 import { resolveSandbox } from "./resolve-sandbox";
 
 // All other adapters (just-bash, Vercel, Upstash) are loaded dynamically
@@ -59,25 +62,40 @@ export async function createBashTool(
     provider = { type: "just-bash" },
     destination = "/workspace",
     persist = false,
-    syncMode = "diff",
     onBeforeCommand,
     onAfterCommand,
-    fileFilter,
   } = options;
 
   // 1. Resolve or create sandbox
   const existingId = persist && bashSession ? bashSession.state.sandboxId || undefined : undefined;
   const { sandbox, sandboxId } = await resolveSandbox(provider, { destination, existingId });
 
-  // 2. Create sync bridge
-  const sync = new FileSync(sandbox, collections, {
-    destination,
-    syncMode,
-    fileFilter,
+  // 2. Mount every collection at its pattern prefix and project it into the
+  //    sandbox. A collection whose pattern has no prefix cannot be routed to
+  //    without guessing, so it is skipped loudly rather than made the default
+  //    owner of every loose file.
+  const mounts: Mount[] = [];
+  for (const [name, collection] of Object.entries(collections)) {
+    const prefix = getPatternPrefix(collection.pattern);
+    if (!prefix) {
+      console.warn(
+        `[bash] collection "${name}" has pattern "${collection.pattern}", which gives no directory to mount it at — skipped.`,
+      );
+      continue;
+    }
+    mounts.push({
+      prefix,
+      collection: collection as unknown as Mount["collection"],
+      writable: true,
+    });
+  }
+  const projection = createProjection({
+    place: createSandboxPlace(sandbox, destination),
+    mounts,
   });
 
   // 3. Hydrate: resources → sandbox
-  await sync.hydrate();
+  await projection.hydrate();
 
   // 4. Build file listing for LLM context
   const allFiles = (
@@ -106,7 +124,7 @@ export async function createBashTool(
         }
 
         const result = await sandbox.executeCommand(cmd);
-        await sync.flush();
+        await projection.flush();
 
         if (onAfterCommand) {
           const modified = onAfterCommand(cmd, result);
@@ -138,7 +156,7 @@ export async function createBashTool(
       execute: async ({ path: filePath, content }) => {
         const fullPath = `${destination}/${filePath}`;
         await sandbox.writeFile(fullPath, content);
-        await sync.flush();
+        await projection.put(filePath, content);
         return { success: true };
       },
     }),
