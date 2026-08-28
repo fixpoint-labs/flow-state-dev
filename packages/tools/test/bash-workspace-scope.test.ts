@@ -297,21 +297,26 @@ describe("scope ids as directory names", () => {
     );
   });
 
-  it("keeps component boundaries in the MOAT run name", async () => {
-    // A run name is one flat string with no separator to spare, and MOAT
-    // reconnects by name ALONE. Joining components on `-` loses their
-    // boundaries, so these two identities would name one container and the
-    // second principal would attach to the first's.
+  it("puts the tenant in the MOAT run name, not just the session", async () => {
+    // MOAT reconnects by run name ALONE, and a container is per (tenant,
+    // session) — so two tenants naming one session must not name one
+    // container. The session id is in the name only to be readable; the
+    // digest is over the framed scope key, which is what carries the tenant.
+    //
+    // Written with the session ids EQUAL on purpose. An earlier version of
+    // this test varied them as well, which made it pass on the readable half
+    // alone — it held even with the tenant dropped from the name entirely,
+    // which is the one thing it exists to catch.
     const { resolveMoatRunNameForTest } = await import("../src/bash/blocks");
     const first = resolveMoatRunNameForTest({
       requestId: "r",
-      sessionId: "c",
-      tenantId: "a-b",
+      sessionId: "s",
+      tenantId: "a",
     });
     const second = resolveMoatRunNameForTest({
       requestId: "r",
-      sessionId: "b-c",
-      tenantId: "a",
+      sessionId: "s",
+      tenantId: "b",
     });
     expect(first).not.toBe(second);
   });
