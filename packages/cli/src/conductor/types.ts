@@ -564,6 +564,7 @@ function lastToolFollowLines(
       body.startsWith("tool · ") ||
       body.startsWith("status · ") ||
       body.startsWith("message · ") ||
+      body.startsWith("think · ") ||
       body.startsWith("sub · ")
     ) {
       break;

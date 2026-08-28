@@ -757,6 +757,7 @@ function paintHunkLine(line: string): string {
   if (line.startsWith("+ ")) return paint(TEAL, line);
   if (line.startsWith("- ")) return paint(RUST, line);
   if (line.startsWith("… ") || line.startsWith("  ")) return dim(line);
+  if (line.replace(/^ +/, "").startsWith("think · ")) return dim(line);
   return line;
 }
 

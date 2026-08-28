@@ -112,6 +112,14 @@ function isInteractive(options: ConductorCommandInternalOptions): boolean {
   return Boolean(input.isTTY && output.isTTY);
 }
 
+/** Where to stand when this cwd has no `kind: "conductor"` flow. */
+function missingConductorFlowHint(): string {
+  return (
+    `This command drives a kind: "conductor" flow. cd into the app that defines one ` +
+    `(in this workspace: labs/conductor), or pass --config / --flow-dir pointing at that app.`
+  );
+}
+
 /**
  * Rebuild the verb argv after Commander has taken its own flags.
  * `--phase` and `--json` are registered on the command so they survive
@@ -188,7 +196,7 @@ export async function executeConductorCommand(
     if (resolved.flows.length === 0) {
       const searched = resolved.searchedDirs.join(", ");
       throw new CliError(
-        `No flows found. Searched: ${searched}\nPlace a conductor flow in src/flows/ or flows/, or use --flow-dir / --config.`,
+        `No flows found. Searched: ${searched}\n${missingConductorFlowHint()}`,
         EXIT_DISCOVERY_ERROR,
       );
     }
@@ -209,7 +217,7 @@ export async function executeConductorCommand(
     if (flow === undefined) {
       const kinds = [...new Set(registry.list().map((f) => f.kind))].join(", ") || "(none)";
       throw new CliError(
-        `Flow "${CONDUCTOR_FLOW_KIND}" not found. Available flows: ${kinds}`,
+        `Flow "${CONDUCTOR_FLOW_KIND}" not found. Available flows: ${kinds}\n${missingConductorFlowHint()}`,
         EXIT_DISCOVERY_ERROR,
       );
     }

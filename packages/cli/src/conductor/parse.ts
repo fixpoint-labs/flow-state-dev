@@ -314,7 +314,7 @@ In the TUI:
   doing. t expands the todo list. h expands the last hunk. H steps to an older hunk. x or Ctrl-C stops it.
   While working, type an answer; Enter queues it.
   A finished row keeps that attempt's files, todo list, and request id.
-  The transcript tails that run's request stream.
+  The transcript tails that run's request stream. Thinking is a compact think · line.
 
 Flags: --json  --phase <name>  --user <id>  --session <id>  --config <path>
        --flow-dir  --dotenv  --quiet  --log-level`;

@@ -5,8 +5,9 @@
  * is happening now. A new status commits the previous one, so a long drain
  * keeps a log instead of a single overwritten slot. `content.delta` appends
  * to the live line so a generator in this process reads as a stream. Durable
- * items (errors, tools, finished messages, resource changes) become activity
- * lines. A coding tool is named with the file or command it touched. While
+ * items (errors, tools, finished messages, reasoning, resource changes) become
+ * activity lines. A reasoning block is one compact `think ·` line. A coding
+ * tool is named with the file or command it touched. While
  * that call is still open, it stays on the live line so the board reads as
  * working. A Write or Edit that carries the new text also prints a compact
  * hunk — the changed span, not the whole file. A plan tool prints the
@@ -139,7 +140,8 @@ export function createStreamTranscript(): {
   const planEntries: Array<{ key: string; mark: PlanItem["mark"]; text: string }> = [];
   const openContainers: string[] = [];
   let live: string | null = null;
-  let liveKind: "status" | "message" | "tool" | null = null;
+  let liveKind: "status" | "message" | "tool" | "think" | null = null;
+  let thinkText = "";
 
   const nestAt = (text: string, depth: number): string =>
     depth <= 0 ? text : `${"  ".repeat(depth)}${text}`;
@@ -150,6 +152,14 @@ export function createStreamTranscript(): {
 
   const commitLive = (): string[] => {
     if (live === null) return [];
+    if (liveKind === "think") {
+      const body = thinkLineBody(live);
+      thinkText = "";
+      const line = live;
+      live = null;
+      liveKind = null;
+      return body === "" ? [] : [line];
+    }
     if (liveKind === "tool") {
       live = null;
       liveKind = null;
@@ -159,6 +169,12 @@ export function createStreamTranscript(): {
     live = null;
     liveKind = null;
     return lines;
+  };
+
+  const holdThinkLive = (text: string): void => {
+    thinkText = text;
+    live = nest(formatThinkLine(thinkText));
+    liveKind = "think";
   };
 
   const holdToolLive = (item: OutputItem): void => {
@@ -231,6 +247,12 @@ export function createStreamTranscript(): {
             const next = snapshot([...prior, ...nestLines(formatted.lines)]);
             return withExtras(next, plan, formatted.hunk, formatted.hunkFile);
           }
+          if (item.type === "reasoning") {
+            streamed.delete(item.id);
+            const prior = commitLive();
+            holdThinkLive(reasoningText(item));
+            return snapshot(prior);
+          }
           if (item.type === "container") {
             logged.add(item.id);
             const depth = openContainers.length;
@@ -240,9 +262,15 @@ export function createStreamTranscript(): {
           return snapshot([]);
         }
         case "content.delta": {
-          if (itemTypes.get(event.itemId) !== "message") return snapshot([]);
+          const kind = itemTypes.get(event.itemId);
+          if (kind !== "message" && kind !== "reasoning") return snapshot([]);
           if (event.delta.length === 0) return snapshot([]);
           streamed.add(event.itemId);
+          if (kind === "reasoning") {
+            const prior = liveKind === "think" ? [] : commitLive();
+            holdThinkLive(thinkText + event.delta);
+            return snapshot(prior);
+          }
           if (liveKind !== "message") {
             const prior = commitLive();
             live = nest(`message · ${event.delta}`);
@@ -266,6 +294,23 @@ export function createStreamTranscript(): {
         }
         case "item.done": {
           const item = event.item;
+          if (item.type === "reasoning") {
+            if (streamed.has(item.id)) {
+              return snapshot(commitLive());
+            }
+            const text = reasoningText(item);
+            if (text.length === 0) {
+              thinkText = "";
+              if (liveKind === "think") {
+                live = null;
+                liveKind = null;
+              }
+              return snapshot([]);
+            }
+            const prior = liveKind === "think" ? [] : commitLive();
+            holdThinkLive(text);
+            return snapshot([...prior, ...commitLive()]);
+          }
           if (item.type === "message" && item.role === "assistant") {
             if (streamed.has(item.id)) {
               return snapshot(commitLive());
@@ -344,6 +389,33 @@ function messageText(item: OutputItem): string {
     if (part.type === "output_text" && typeof part.text === "string") text += part.text;
   }
   return text.trim();
+}
+
+/** One compact think line — enough to scan, not the whole essay. */
+const THINK_MAX = 160;
+
+function compactThink(text: string): string {
+  const body = text.replace(/\s+/g, " ").trim();
+  if (body.length <= THINK_MAX) return body;
+  return `${body.slice(0, THINK_MAX - 1)}…`;
+}
+
+function formatThinkLine(text: string): string {
+  const body = compactThink(text);
+  return body === "" ? "think ·" : `think · ${body}`;
+}
+
+function thinkLineBody(line: string): string {
+  return line.replace(/^ +/, "").replace(/^think ·\s*/, "");
+}
+
+function reasoningText(item: OutputItem): string {
+  if (item.type !== "reasoning") return "";
+  let text = "";
+  for (const part of item.summary ?? []) {
+    if (part.type === "reasoning_text" && typeof part.text === "string") text += part.text;
+  }
+  return text;
 }
 
 const TOOL_SUBJECT_KEYS = [

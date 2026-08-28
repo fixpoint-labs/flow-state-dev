@@ -111,6 +111,9 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CliError);
     expect((err as CliError).exitCode).toBe(EXIT_DISCOVERY_ERROR);
+    expect((err as CliError).message).toMatch(/kind: "conductor"/);
+    expect((err as CliError).message).toMatch(/labs\/conductor/);
+    expect((err as CliError).message).toMatch(/--config/);
   });
 
   it("start without a TTY seeds and watches through the same actions", async () => {

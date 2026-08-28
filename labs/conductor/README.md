@@ -4,7 +4,8 @@ A row on a board becomes a supervised coding run.
 
 The map is [`docs/atlas/conductor.html`](../../docs/atlas/conductor.html) — what exists,
 what is still dashed, and the env a first run needs (`CONDUCTOR_REPO` is a different
-checkout, not this dispatcher).
+checkout, not this dispatcher). Run `pnpm conductor` from this directory. From the
+repo root, `fsdev conductor` will not find this flow.
 
 Something claims the row, gives the run its own checkout of the repository, stays with it until it
 stops, reads what came back, and then closes the row or lets it run again.
@@ -123,7 +124,8 @@ rows' statuses. Answering a question the job is not actually waiting on does not
 headless for a script. There is no way to redirect a run mid-flight or send it on a side
 errand. You can stop a live run (`abort` / `x` in the board), and you can answer
 what it asked. A full-board `status` prints each running row's current action
-(the same ASK column the TUI uses). A named `status ISSUE` or `watch ISSUE`
+(the same ASK column the TUI uses) — a tool, or `think ·` while the child is
+reasoning. A named `status ISSUE` or `watch ISSUE`
 prints that attempt's last tool, files, hunk, and current todo on stdout. A
 running row also prints how long since it last wrote (`8s`, `3m`).
 

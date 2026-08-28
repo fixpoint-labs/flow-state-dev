@@ -74,6 +74,9 @@ describe("formatAge / lastActivityAt", () => {
     expect(rowNow({ ...state, childLive: { "req-live-1": "tool · Bash pnpm test" } }, row)).toBe(
       "Bash pnpm test",
     );
+    expect(rowNow({ ...state, childLive: { "req-live-1": "think · look at the tests" } }, row)).toBe(
+      "think · look at the tests",
+    );
   });
 });
 
@@ -1659,6 +1662,15 @@ describe("renderBoardPlain / watchExitCode", () => {
     const table = renderBoardPlain([running], false, { "req-live-1": view }, now).split("\n")[1]!;
     expect(table).toContain("Write src/a.ts");
     expect(renderBoardPlain([running], false, undefined, now).split("\n")[1]).toMatch(/·\s*$/);
+
+    const thinking = {
+      ...emptyView(""),
+      rows: [running],
+      childLive: { "req-live-1": "think · look at the tests" },
+    };
+    expect(renderBoardPlain([running], false, { "req-live-1": thinking }, now).split("\n")[1]).toContain(
+      "think · look at",
+    );
 
     const asked: StatusRow = {
       ...running,

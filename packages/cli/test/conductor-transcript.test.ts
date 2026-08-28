@@ -112,6 +112,104 @@ describe("createStreamTranscript", () => {
     });
   });
 
+  it("streams reasoning from content.delta and does not reprint it on item.done", () => {
+    const t = createStreamTranscript();
+    expect(t.apply(added({ id: "r1", type: "reasoning", summary: [] }))).toEqual({
+      lines: [],
+      live: "think ·",
+    });
+    expect(t.apply(delta("r1", "I should look at "))).toEqual({
+      lines: [],
+      live: "think · I should look at",
+    });
+    expect(t.apply(delta("r1", "the tests first"))).toEqual({
+      lines: [],
+      live: "think · I should look at the tests first",
+    });
+    expect(
+      t.apply(
+        done({
+          id: "r1",
+          type: "reasoning",
+          summary: [{ type: "reasoning_text", text: "I should look at the tests first" }],
+        }),
+      ),
+    ).toEqual({
+      lines: ["think · I should look at the tests first"],
+      live: null,
+    });
+  });
+
+  it("prints a finished reasoning item once when the provider sent no deltas", () => {
+    const t = createStreamTranscript();
+    t.apply(added({ id: "r1", type: "reasoning", summary: [] }));
+    expect(
+      t.apply(
+        done({
+          id: "r1",
+          type: "reasoning",
+          summary: [{ type: "reasoning_text", text: "I should look at the tests first" }],
+        }),
+      ),
+    ).toEqual({
+      lines: ["think · I should look at the tests first"],
+      live: null,
+    });
+  });
+
+  it("keeps a think line compact so an essay does not fill the transcript", () => {
+    const t = createStreamTranscript();
+    const essay = `${"word ".repeat(80)}end`;
+    t.apply(added({ id: "r1", type: "reasoning", summary: [] }));
+    const live = t.apply(delta("r1", essay)).live;
+    expect(live?.startsWith("think · word ")).toBe(true);
+    expect(live!.length).toBeLessThanOrEqual("think · ".length + 160);
+    expect(live?.endsWith("…")).toBe(true);
+    const doneLine = t.apply(
+      done({
+        id: "r1",
+        type: "reasoning",
+        summary: [{ type: "reasoning_text", text: essay }],
+      }),
+    );
+    expect(doneLine.lines).toEqual([live]);
+    expect(doneLine.live).toBeNull();
+  });
+
+  it("drops an empty reasoning item so a think · with no text is not a beat", () => {
+    const t = createStreamTranscript();
+    t.apply(added({ id: "r1", type: "reasoning", summary: [] }));
+    expect(t.apply(done({ id: "r1", type: "reasoning", summary: [] }))).toEqual({
+      lines: [],
+      live: null,
+    });
+  });
+
+  it("nests a think line under an open sub-agent", () => {
+    const t = createStreamTranscript();
+    t.apply(
+      added({
+        id: "c1",
+        type: "container",
+        blockName: "Explore",
+        label: "Sub-agent: Explore",
+        status: "in_progress",
+      }),
+    );
+    expect(
+      t.apply(
+        done({
+          id: "r1",
+          type: "reasoning",
+          summary: [{ type: "reasoning_text", text: "look at the tests" }],
+        }),
+      ),
+    ).toEqual({
+      lines: ["  think · look at the tests"],
+      live: null,
+    });
+  });
+
   it("prints a finished assistant message once when the provider sent no deltas", () => {
     const t = createStreamTranscript();
     t.apply(added({ id: "m1", type: "message", role: "assistant", content: [] }));
