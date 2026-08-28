@@ -380,6 +380,11 @@ describe("the manager — what carries across an attempt", () => {
     expect(afterThrow.run?.finalMessage).toBeNull();
     expect(afterThrow.run?.usage).toBeNull();
     expect(afterThrow.run?.costUsd).toBeNull();
+    // The runtime ids are this attempt's, restamped at open — not attempt 1's,
+    // and not cleared. A failed row still names the request that ran it.
+    expect(afterThrow.run?.requestId).toEqual(expect.any(String));
+    expect(afterThrow.run?.requestId).not.toBe(afterFirst.run?.requestId);
+    expect(afterThrow.run?.childSessionId).toEqual(expect.any(String));
   });
 });
 
@@ -436,6 +441,41 @@ describe("the manager — the deadline", () => {
     expect(row.run?.sessionId).toBeNull();
     expect(row.run?.usage).toBeNull();
     expect(row.run?.costUsd).toBeNull();
+    // The runtime ids were known at open and survive the abort write.
+    expect(row.run?.requestId).toEqual(expect.any(String));
+    expect(row.run?.childSessionId).toEqual(expect.any(String));
+  });
+});
+
+describe("the manager — a live row is followable", () => {
+  it("puts the workstream request id on the row before the agent returns", async () => {
+    // `status` is the only board read. Writing `requestId` only when the agent
+    // returns leaves every in-flight row with `requestId: null`, so a follower
+    // that keys off the board cannot attach. Read during `query`, before the
+    // handle exists — that is the live row, not the verdict.
+    let midRun: StatusRow | undefined;
+    live = createConductorHarness({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          midRun = await readStatus(live!);
+          yield sdkResult("success");
+        },
+      }),
+      isDone: () => true,
+      maxAttempts: 3,
+    });
+
+    const row = await seedAndDrain(live);
+
+    expect(midRun, "the agent never ran").toBeDefined();
+    expect(midRun?.status).toBe("in_progress");
+    expect(midRun?.run?.outcome).toBe("running");
+    expect(midRun?.run?.requestId).toEqual(expect.any(String));
+    expect(midRun?.run?.childSessionId).toEqual(expect.any(String));
+    // The verdict rewrite keeps the same ids — a follower that attached mid-run
+    // is still looking at the request that finished.
+    expect(row.run?.requestId).toBe(midRun?.run?.requestId);
+    expect(row.run?.childSessionId).toBe(midRun?.run?.childSessionId);
   });
 });
 

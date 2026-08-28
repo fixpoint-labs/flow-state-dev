@@ -119,9 +119,15 @@ export const runRecordStateSchema = z.object({
   costUsd: z.number().nullable().default(null),
 
   // ── Denormalized: read from here for convenience, owned elsewhere ──────────
-  /** The child session the run executed in (the runtime's). */
+  /**
+   * The child session the run executed in (the runtime's). Stamped when the
+   * attempt opens — the same id `status` already returns after a verdict.
+   */
   childSessionId: z.string().nullable().default(null),
-  /** The request that ran it (the runtime's). */
+  /**
+   * The request that ran it (the runtime's). Stamped when the attempt opens
+   * so a live row is followable; a later verdict rewrites the same id.
+   */
   requestId: z.string().nullable().default(null),
   /** When this row was last written. */
   updatedAt: z.number().nullable().default(null),
@@ -184,12 +190,12 @@ export function runTopicPrefix(epic: string, issue: string): string {
  * thrown attempt lands in the PREVIOUS attempt's session, with nothing on the
  * row saying so.
  *
- * **The list is derived from what the verdict can carry, not maintained beside
- * it.** Everything the run reports when it gets far enough — session id,
- * terminal text, usage, cost — belongs here, plus the two runtime ids and the
- * reason. A field that is attempt-scoped and missing from this object is a row
- * that lies about that field alone, silently, and only on the attempts that
- * could not report it. Add to the verdict, add here.
+ * **Verdict fields stay verdict-only.** Session id, terminal text, usage, cost
+ * and reason are null until the run reports them. The two runtime ids are
+ * known at open and are restamped there after this clear — they belong here so
+ * a retry cannot inherit the previous attempt's follow target. A field that is
+ * attempt-scoped and missing from this object is a row that lies about that
+ * field alone, silently, and only on the attempts that could not report it.
  */
 const ATTEMPT_SCOPED_CLEAR = {
   sessionId: null,
@@ -353,8 +359,9 @@ export async function writeRunRow(
 }
 
 /**
- * Open the row for a new attempt: record what this attempt already knows, and
- * clear everything it cannot yet report.
+ * Open the row for a new attempt: record what this attempt already knows
+ * (checkout, branch, and the two runtime ids a follower needs), and clear
+ * everything it cannot yet report.
  *
  * **Called before the attempt waits for anything.** Two defects live in the
  * gap between a claim and this write, and both close by moving it first:
@@ -379,12 +386,21 @@ export async function writeRunRow(
 export async function openRunRow(
   ctx: BlockContext,
   identity: AttemptIdentity,
-  opened: { workspacePath: string; branch: string },
+  opened: {
+    workspacePath: string;
+    branch: string;
+    /** This attempt's workstream request — followable the moment the row opens. */
+    requestId: string;
+    /** This attempt's child session. */
+    childSessionId: string;
+  },
 ): Promise<RunRowWrite> {
   return writeRunRow(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
     workspacePath: opened.workspacePath,
     branch: opened.branch,
+    requestId: opened.requestId,
+    childSessionId: opened.childSessionId,
     outcome: "running",
   });
 }

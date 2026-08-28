@@ -925,7 +925,14 @@ export function harnessManager(options: ManagerOptions) {
             topic,
             boardCollectionId,
           },
-          { workspacePath, branch },
+          {
+            workspacePath,
+            branch,
+            // Known now, not at the verdict. `status` is the only board read,
+            // and a live row with no request id cannot be followed.
+            requestId: ctx.request.identity.id,
+            childSessionId: ctx.session.identity.id,
+          },
         ),
         "the run row was opened",
       );
@@ -1315,7 +1322,12 @@ export function harnessManager(options: ManagerOptions) {
             topic: state.topic,
             boardCollectionId,
           },
-          { outcome: "failed", reason },
+          {
+            outcome: "failed",
+            reason,
+            requestId: ctx.request.identity.id,
+            childSessionId: ctx.session.identity.id,
+          },
         );
       }
       throw error;
