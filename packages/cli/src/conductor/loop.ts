@@ -114,20 +114,18 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   const follow = createChildFollow({
     stores: options.dispatch.stores,
     onEvent: applyChild,
+    onEnd: (requestId) => {
+      const machine = childTranscripts.get(requestId);
+      if (machine === undefined) return;
+      state = applyTranscriptPatch(state, machine.flush(), now(), requestId);
+      childTranscripts.delete(requestId);
+      paint();
+    },
   });
 
   const endTurn = () => {
     state = applyTranscriptPatch(state, operatorTranscript.flush(), now());
     paint();
-  };
-
-  const flushFinishedChildren = (running: readonly string[]) => {
-    const keep = new Set(running);
-    for (const [requestId, machine] of childTranscripts) {
-      if (keep.has(requestId)) continue;
-      state = applyTranscriptPatch(state, machine.flush(), now(), requestId);
-      childTranscripts.delete(requestId);
-    }
   };
 
   const runAction = <T>(action: "seed" | "wake" | "status" | "answer", input: unknown) => {
@@ -142,9 +140,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     if (closed || seq !== refreshSeq) return;
     if (result.error !== undefined) throw new Error(result.error);
     state = applyStatus(state, result.output ?? { rows: [] }, now());
-    const running = runningRequestIds(state.rows);
-    follow.sync(running);
-    flushFinishedChildren(running);
+    follow.sync(runningRequestIds(state.rows));
     endTurn();
   };
 

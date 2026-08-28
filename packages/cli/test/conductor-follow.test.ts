@@ -96,7 +96,53 @@ describe("createChildFollow", () => {
     expect(lines.join("\n")).toContain("coding the checkout");
   });
 
-  it("does not replay a request it already finished", async () => {
+  it("keeps the tail after the row leaves the running set", async () => {
+    const stores = createInMemoryStores();
+    const seen: number[] = [];
+    const follow = createChildFollow({
+      stores,
+      onEvent: (event) => {
+        seen.push(event.sequence_number);
+      },
+    });
+    follow.sync(["req-live-1"]);
+    stores.request.persistEvents("req-live-1", [statusEvent("req-live-1", 1, "one")]);
+    await waitFor(() => seen.includes(1));
+    follow.sync([]);
+    stores.request.persistEvents("req-live-1", [statusEvent("req-live-1", 2, "two")]);
+    await waitFor(() => seen.includes(2));
+    follow.stop();
+    expect(seen).toEqual([1, 2]);
+  });
+
+  it("calls onEnd once the journal closes", async () => {
+    const stores = createInMemoryStores();
+    const ended: string[] = [];
+    const follow = createChildFollow({
+      stores,
+      onEvent: () => {},
+      onEnd: (requestId) => {
+        ended.push(requestId);
+      },
+    });
+    follow.sync(["req-live-1"]);
+    stores.request.persistEvents("req-live-1", [
+      statusEvent("req-live-1", 1, "one"),
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-live-1",
+        sequence_number: 2,
+        ts: 2,
+      } as RequestStreamEvent,
+    ]);
+    await waitFor(() => ended.includes("req-live-1"));
+    follow.stop();
+    expect(ended).toEqual(["req-live-1"]);
+  });
+
+  it("does not start a second tail after the journal ends", async () => {
     const stores = createInMemoryStores();
     let hits = 0;
     const follow = createChildFollow({
@@ -106,13 +152,22 @@ describe("createChildFollow", () => {
       },
     });
     follow.sync(["req-live-1"]);
-    stores.request.persistEvents("req-live-1", [statusEvent("req-live-1", 1, "one")]);
-    await waitFor(() => hits > 0);
-    follow.sync([]);
+    stores.request.persistEvents("req-live-1", [
+      statusEvent("req-live-1", 1, "one"),
+      {
+        stream: "request",
+        type: "request.completed",
+        status: "completed",
+        requestId: "req-live-1",
+        sequence_number: 2,
+        ts: 2,
+      } as RequestStreamEvent,
+    ]);
+    await waitFor(() => hits >= 2);
     await new Promise((resolve) => setTimeout(resolve, 30));
     const before = hits;
     follow.sync(["req-live-1"]);
-    stores.request.persistEvents("req-live-1", [statusEvent("req-live-1", 2, "two")]);
+    stores.request.persistEvents("req-live-1", [statusEvent("req-live-1", 3, "three")]);
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(hits).toBe(before);
     follow.stop();

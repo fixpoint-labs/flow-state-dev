@@ -11,7 +11,12 @@ import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { RequestStreamEventWithId, StoreRegistry } from "@flow-state-dev/engine";
 
 export interface ChildFollow {
-  /** Start or keep a tail for each id; drop any that left the running set. */
+  /**
+   * Start a tail for each id that is not already tailed or finished.
+   * Leaving the running set does not abort — the journal's terminal
+   * event closes the iterator, so the last hunks and the final message
+   * still arrive on a poll-based store.
+   */
   sync(requestIds: readonly string[]): void;
   /** Abort every tail. */
   stop(): void;
@@ -20,6 +25,8 @@ export interface ChildFollow {
 export function createChildFollow(options: {
   stores: StoreRegistry;
   onEvent: (event: RequestStreamEventWithId) => void;
+  /** Fires once the journal ends or the tail is aborted. */
+  onEnd?: (requestId: string) => void;
 }): ChildFollow {
   const active = new Map<string, AbortController>();
   const finished = new Set<string>();
@@ -41,22 +48,16 @@ export function createChildFollow(options: {
       } finally {
         active.delete(requestId);
         finished.add(requestId);
+        options.onEnd?.(requestId);
       }
     })();
   };
 
   return {
     sync(requestIds) {
-      const wanted = new Set(requestIds);
-      for (const id of wanted) {
+      for (const id of requestIds) {
         if (finished.has(id) || active.has(id)) continue;
         start(id);
-      }
-      for (const [id, controller] of active) {
-        if (wanted.has(id)) continue;
-        controller.abort();
-        active.delete(id);
-        finished.add(id);
       }
     },
     stop() {
