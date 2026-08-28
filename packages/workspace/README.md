@@ -89,8 +89,11 @@ interface Mount {
   prefix: string;      // where the collection appears in the place
   collection: ResourceCollectionRef<ProjectedEntryState>;
   writable: boolean;   // may a flush write back?
+  entryState?: (key: string) => Record<string, unknown>;
 }
 ```
+
+The projection sets `path`, `hash`, and `updatedAt` on every entry it commits, because it needs them. Anything else your collection carries — a title, an author, a timestamp in the shape your UI expects — comes from `entryState`, which is applied last, so a mount can override what the projection chose.
 
 Nested prefixes work. A collection at `artifacts/drafts` inside one at `artifacts` gets the drafts; the longest matching prefix wins.
 

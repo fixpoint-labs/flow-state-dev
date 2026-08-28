@@ -267,13 +267,14 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
     hash: string,
   ): Promise<void> {
     const updatedAt = new Date().toISOString();
-    const ref = await mount.collection.getOrCreate(key, {
-      path: key,
-      hash,
-      updatedAt,
-    } as Partial<ProjectedEntryState>);
+    const extra = mount.entryState?.(key) ?? {};
+    const state = { path: key, hash, updatedAt, ...extra } as Partial<ProjectedEntryState>;
+    const ref = await mount.collection.getOrCreate(key, state);
+    // `getOrCreate` applies its initial state only when it creates, so an
+    // entry that already existed reaches its new hash — and the mount's own
+    // fields — through the patch instead.
     if (ref.state.hash !== hash) {
-      await ref.patchState({ hash, updatedAt } as Partial<ProjectedEntryState>);
+      await ref.patchState(state);
     }
     await ref.writeContent(content);
   }
