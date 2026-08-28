@@ -457,16 +457,12 @@ export function currentPlanItem(plan: readonly PlanItem[]): PlanItem | undefined
   );
 }
 
-/**
- * What the selected run is doing right now. The live line wins; otherwise
- * the last tool name from that request's transcript.
- */
-export function selectedNow(state: ViewState): string | undefined {
-  const live = visibleLive(state);
-  if (live !== null && live !== "") {
-    return transcriptBody(live).replace(/^(status|message|tool) · /, "");
-  }
-  const id = selectedRequestId(state);
+function stripLivePrefix(text: string): string {
+  return transcriptBody(text).replace(/^(status|message|tool) · /, "");
+}
+
+/** Last `tool ·` line for this request, or for board-only lines when `id` is absent. */
+function lastToolForRequest(state: ViewState, id: string | undefined): string | undefined {
   for (let i = state.activity.length - 1; i >= 0; i -= 1) {
     const item = state.activity[i]!;
     if (id !== undefined && item.requestId !== id) continue;
@@ -475,6 +471,28 @@ export function selectedNow(state: ViewState): string | undefined {
     if (body.startsWith("tool · ")) return body.slice("tool · ".length);
   }
   return undefined;
+}
+
+/**
+ * What that row is doing right now. That request's live line wins;
+ * otherwise its last tool. Another row's stream stays off this.
+ */
+export function rowNow(state: ViewState, row: StatusRow): string | undefined {
+  const id = row.run?.requestId;
+  if (id === null || id === undefined || id === "") return undefined;
+  const live = state.childLive[id];
+  if (live !== undefined && live !== "") return stripLivePrefix(live);
+  return lastToolForRequest(state, id);
+}
+
+/**
+ * What the selected run is doing right now. The live line wins; otherwise
+ * the last tool name from that request's transcript.
+ */
+export function selectedNow(state: ViewState): string | undefined {
+  const live = visibleLive(state);
+  if (live !== null && live !== "") return stripLivePrefix(live);
+  return lastToolForRequest(state, selectedRequestId(state));
 }
 
 /**

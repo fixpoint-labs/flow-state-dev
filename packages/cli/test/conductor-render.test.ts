@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { renderBoardPlain, renderFrame, renderWatchLine, watchExitCode } from "../src/conductor/render";
-import { emptyView, lastActivityAt, selectedFailure, type StatusRow } from "../src/conductor/types";
+import {
+  emptyView,
+  lastActivityAt,
+  rowNow,
+  selectedFailure,
+  type StatusRow,
+} from "../src/conductor/types";
 import {
   GOLD,
   RUST,
@@ -46,6 +52,28 @@ describe("formatAge / lastActivityAt", () => {
     expect(
       lastActivityAt(row, [{ at: now - 90_000, text: "tool · Read src/a.ts", requestId: "req-live-1" }]),
     ).toBe(now - 60_000);
+  });
+
+  it("reads that row's live line or last tool, not another request's", () => {
+    const row: StatusRow = {
+      ...waiting,
+      status: "in_progress",
+      questions: [],
+      run: { ...waiting.run!, outcome: "running", requestId: "req-live-1" },
+    };
+    const state = {
+      ...emptyView("epic"),
+      rows: [row],
+      activity: [
+        { at: 1, text: "tool · Write src/a.ts", requestId: "req-live-1" },
+        { at: 2, text: "tool · Write src/b.ts", requestId: "req-other" },
+      ],
+      childLive: { "req-other": "status · coding B" },
+    };
+    expect(rowNow(state, row)).toBe("Write src/a.ts");
+    expect(rowNow({ ...state, childLive: { "req-live-1": "tool · Bash pnpm test" } }, row)).toBe(
+      "Bash pnpm test",
+    );
   });
 });
 
@@ -452,7 +480,8 @@ describe("renderFrame", () => {
     expect(first).toContain("status · coding A");
     expect(first).toContain("LIVE-1 · in_progress");
     expect(first).not.toContain("src/b.ts");
-    expect(first).not.toContain("coding B");
+    expect(first).not.toContain("+ export const b");
+    expect(stripAnsi(beforeTranscript(first))).toContain("coding B");
 
     const second = renderFrame(
       { ...emptyView("epic"), rows, selected: 1, activity, childLive },
@@ -463,7 +492,56 @@ describe("renderFrame", () => {
     expect(second).toContain("status · coding B");
     expect(second).toContain("LIVE-1 · in_progress");
     expect(second).not.toContain("src/a.ts");
-    expect(second).not.toContain("coding A");
+    expect(second).not.toContain("+ export const a");
+    expect(stripAnsi(beforeTranscript(second))).toContain("coding A");
+  });
+
+  it("shows each running row's current tool on the board; a question still wins", () => {
+    const live = (issue: string, requestId: string): StatusRow => ({
+      taskId: `${issue}--implement`,
+      issue,
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: `${issue}--implement`,
+        workspacePath: "/tmp/ws",
+        branch: `conductor/${issue}--implement`,
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId,
+        updatedAt: 1_700_000_000_000,
+      },
+      questions: [],
+    });
+    const table = stripAnsi(
+      beforeTranscript(
+        renderFrame(
+          {
+            ...emptyView("epic"),
+            rows: [live("LIVE-1", "req-1"), live("LIVE-2", "req-2"), waiting],
+            selected: 0,
+            activity: [
+              { at: 1, text: "tool · Write src/a.ts", requestId: "req-1" },
+              { at: 2, text: "tool · Bash pnpm test", requestId: "req-2" },
+            ],
+          },
+          { cols: 100, rows: 24 },
+          1_700_000_008_000,
+        ),
+      ),
+    );
+    expect(table).toContain("Write src/a.ts");
+    expect(table).toContain("Bash pnpm test");
+    expect(table).toContain("Which path?");
+    expect(table).toMatch(/\bASK\b/);
   });
 
   it("keeps the implement hunk on a parked row that still has its request id", () => {

@@ -188,7 +188,7 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When a running row has no question, that column shows what it is doing now — the live line, or the last tool — so you can scan the board without selecting each row. The header includes `N running` when any row is in progress, and `N failed` when any row's last attempt failed.
 
 When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. Under the question it keeps a compact strip of that attempt: the pull-request URL when `status` carried one, the last tool, the files that run wrote, edited, or read, the last hunk, and the current todo. When that row's `run.usage` is present, token counts show on the band as `10→4` (input→output). The counts stay on the band while a wake or seed is in flight.
 
@@ -196,7 +196,7 @@ When the selected row has no open question and the last attempt failed, a FAIL b
 
 When the selected row is running and has no open question and no failed last attempt, a RUN band sits in that same slot. The label is the word `RUN` on its own line. It shows the branch, the checkout path, the request id, the pull-request URL when `status` carried one, and that `x` stops. A path that will not fit keeps the filename. When that row's `run.usage` is present, the band shows token counts as `12.0k→400` (input→output). How long since that run last wrote shows as `8s` or `3m` — on the band and next to `in_progress` on the table — so a silent child is visible. After 30 seconds the age turns rust. The clock is last write (the journal, or `run.updatedAt` when the journal is empty), not elapsed since start. You can still move to another row, start an answer, and type while a wake or seed is in flight. Enter queues that next action.
 
-The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown.
+The band shows what the run is doing: a status or message (`claiming`), or a tool (`Bash pnpm test`). If neither is on screen, it shows the last tool that row ran (`Write src/a.ts`). Another row's tool is not shown on the band. The table ASK column still shows each running row's current action.
 
 The band lists the files that run has written, edited, or read. Last touch is last. Up to 3 paths; more starts with `… N more`. `f` expands the list (up to 12). Press again to collapse.
 

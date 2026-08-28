@@ -39,6 +39,7 @@ import {
   findMatches,
   lastActivityAt,
   rowFailed,
+  rowNow,
   rowRunning,
   selectedFailure,
   currentPlanItem,
@@ -183,8 +184,13 @@ function renderTableRow(
   const attempt = pad(String(row.attempts), w.attemptW);
   const outcome = pad(paint(outcomeColor(row.run?.outcome ?? null), row.run?.outcome ?? "—"), w.outcomeW);
   const asked = row.questions[0]?.text;
+  const doing = asked === undefined && rowRunning(row) ? rowNow(state, row) : undefined;
   const ask = pad(
-    asked !== undefined ? paint(MAUVE, truncate(asked, w.askW)) : dim("·"),
+    asked !== undefined
+      ? paint(MAUVE, truncate(asked, w.askW))
+      : doing !== undefined && doing !== ""
+        ? paint(GOLD, shortenToolLine(doing, w.askW))
+        : dim("·"),
     w.askW,
   );
   const line = mark + issue + phase + status + attempt + outcome + ask;
