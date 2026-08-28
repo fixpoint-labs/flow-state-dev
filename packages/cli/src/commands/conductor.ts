@@ -25,6 +25,7 @@ import {
   resolveLogLevel,
 } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
+import { formatFailedImportSection } from "../resolve-flow";
 import { CliError } from "../resolve-block";
 import {
   EXIT_INVALID_ARGS,
@@ -160,6 +161,9 @@ export async function executeConductorCommand(
     config: options.config,
     flowDir: options.flowDir,
     dotenv: options.dotenv,
+    // Unrelated apps in this repo fail to import from the root. The miss
+    // message should be the hint, not those stack traces.
+    warnImportFailures: false,
   });
 
   let registry: FlowRegistry;
@@ -196,7 +200,7 @@ export async function executeConductorCommand(
     if (resolved.flows.length === 0) {
       const searched = resolved.searchedDirs.join(", ");
       throw new CliError(
-        `No flows found. Searched: ${searched}\n${missingConductorFlowHint()}`,
+        `${missingConductorFlowHint()}\nNo flows found. Searched: ${searched}`,
         EXIT_DISCOVERY_ERROR,
       );
     }
@@ -216,8 +220,15 @@ export async function executeConductorCommand(
     const flow = registry.get(CONDUCTOR_FLOW_KIND);
     if (flow === undefined) {
       const kinds = [...new Set(registry.list().map((f) => f.kind))].join(", ") || "(none)";
+      const conductorFailures =
+        resolved.source === "discovery"
+          ? resolved.importFailures.filter((failure) =>
+              /(?:^|\/)conductor(?:\/|$)/i.test(failure.filePath),
+            )
+          : [];
       throw new CliError(
-        `Flow "${CONDUCTOR_FLOW_KIND}" not found. Available flows: ${kinds}\n${missingConductorFlowHint()}`,
+        `${missingConductorFlowHint()}\nFlow "${CONDUCTOR_FLOW_KIND}" not found. Available flows: ${kinds}` +
+          formatFailedImportSection(conductorFailures),
         EXIT_DISCOVERY_ERROR,
       );
     }

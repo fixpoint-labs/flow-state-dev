@@ -111,9 +111,34 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CliError);
     expect((err as CliError).exitCode).toBe(EXIT_DISCOVERY_ERROR);
-    expect((err as CliError).message).toMatch(/kind: "conductor"/);
+    expect((err as CliError).message).toMatch(/^This command drives a kind: "conductor" flow/);
     expect((err as CliError).message).toMatch(/labs\/conductor/);
     expect((err as CliError).message).toMatch(/--config/);
+  });
+
+  it("leads with the conductor hint, not unrelated import warnings", async () => {
+    const importFailDir = resolve(import.meta.dirname, "fixtures-import-failure");
+    const stderr: string[] = [];
+    const originalWrite = process.stderr.write;
+    process.stderr.write = ((chunk: unknown) => {
+      stderr.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      const err = await executeConductorCommand(["status"], {
+        cwd: importFailDir,
+        stores: createInMemoryStores(),
+        config: false,
+      }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(CliError);
+      expect((err as CliError).exitCode).toBe(EXIT_DISCOVERY_ERROR);
+      expect((err as CliError).message).toMatch(/^This command drives a kind: "conductor" flow/);
+      expect((err as CliError).message).toMatch(/labs\/conductor/);
+      expect((err as CliError).message).not.toContain("broken-flow");
+      expect(stderr.join("")).not.toContain("Warning: failed to import");
+    } finally {
+      process.stderr.write = originalWrite;
+    }
   });
 
   it("start without a TTY seeds and watches through the same actions", async () => {

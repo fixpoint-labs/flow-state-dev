@@ -587,7 +587,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   <p class="lede">The lab that ships is one flow, four actions, one sequencer, one board per epic, one harness manager behind implement. Solid borders exist today. Dashed borders are the later five-action design &#8212; <code>startEpic</code>, <code>approve</code>, <code>steer</code> &#8212; plus spec and review phases.</p>
 
   <h3>Run the lab</h3>
-  <p><code>CONDUCTOR_REPO</code> must name a checkout that is <em>not</em> this dispatcher. Absent, or pointed at this repo, the lab refuses to start &#8212; otherwise the coding agent edits the conductor. Isolate a board with <code>CONDUCTOR_EPIC</code> and a checkout root with <code>CONDUCTOR_CHECKOUTS</code>. Run it from <code>labs/conductor</code> &#8212; from the repo root <code>fsdev conductor</code> will not find this flow:</p>
+  <p><code>CONDUCTOR_REPO</code> must name a checkout that is <em>not</em> this dispatcher. Absent, or pointed at this repo, the lab refuses to start &#8212; otherwise the coding agent edits the conductor. Isolate a board with <code>CONDUCTOR_EPIC</code> and a checkout root with <code>CONDUCTOR_CHECKOUTS</code>. Run it from <code>labs/conductor</code> &#8212; from the repo root <code>fsdev conductor</code> will not find this flow. The first line is that hint; kitchen-sink and trading-desk import failures are not printed first:</p>
   <pre class="code">export CONDUCTOR_REPO=/path/to/the/target/repo
 export CONDUCTOR_EPIC=my-board
 export CONDUCTOR_CHECKOUTS=/tmp/conductor-checkouts

@@ -13,7 +13,7 @@ It is not a chat REPL — that's [`fsdev chat`](./interactive-chat.md). A conduc
 
 ## What a conductor flow looks like
 
-`fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with four actions: `seed`, `wake`, `status`, and `answer`. If none is found, it exits with a discovery error; if the flow is missing one of the four actions, it exits with a config error naming which one. Every other flow in the project is ignored.
+`fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with four actions: `seed`, `wake`, `status`, and `answer`. If none is found, the first line tells you to `cd` into the app that defines one (in this workspace: `labs/conductor`) or pass `--config` / `--flow-dir`. Import failures from other apps in the same repo are not printed first. If the flow is missing one of the four actions, it exits with a config error naming which one. Every other flow in the project is ignored.
 
 The four actions are yours to write. The board is whatever `status` returns. Use `abort` or `stop` to stop a running request.
 

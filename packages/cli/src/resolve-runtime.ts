@@ -60,6 +60,13 @@ export interface ResolveRuntimeParams {
    * always `source: "config"`.
    */
   requireConfig?: boolean;
+  /**
+   * Write each discovery import failure to stderr. Default true — the same
+   * as `run` / `dev` / `chat`. `fsdev conductor` sets this false so a
+   * repo-root miss can lead with the "cd labs/conductor" hint instead of
+   * kitchen-sink / trading-desk import noise.
+   */
+  warnImportFailures?: boolean;
 }
 
 /** Config path: an `fsdev.config.*` was found and loaded. */
@@ -133,9 +140,10 @@ export async function resolveRuntimeSource(
     );
   }
 
-  // Discovery path: scan conventional directories. Import failures are warned to
-  // stderr unconditionally — diagnostics about broken modules, the same category
-  // as CliError output, and stderr keeps stdout pure.
+  // Discovery path: scan conventional directories. Import failures are collected
+  // always; stderr warnings are the default so `run` / `dev` / `chat` still
+  // surface broken modules. A caller that owns the miss message
+  // (`warnImportFailures: false`) keeps those lines off stderr.
   const importFailures: FlowImportFailure[] = [];
   const discoverOptions: DiscoverFlowsOptions = {
     cwd: params.cwd,
@@ -143,8 +151,10 @@ export async function resolveRuntimeSource(
     onImportFailed: (failure) => importFailures.push(failure),
   };
   const flows = await discoverFlows(discoverOptions);
-  for (const failure of importFailures) {
-    process.stderr.write(formatImportFailureWarning(failure));
+  if (params.warnImportFailures !== false) {
+    for (const failure of importFailures) {
+      process.stderr.write(formatImportFailureWarning(failure));
+    }
   }
 
   return {
