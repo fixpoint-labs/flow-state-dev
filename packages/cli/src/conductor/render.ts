@@ -16,6 +16,7 @@ import {
   SELECT_BG,
   TEAL,
   dim,
+  elideEnd,
   fileHref,
   fileText,
   formatAge,
@@ -605,7 +606,7 @@ function renderActivity(
   const pad = Math.max(0, window - visible.length);
   const filler =
     pad > 0 && visible.length === 0
-      ? [` ${dim("nothing yet. a wake writes here as it runs.")}`, ...Array.from({ length: pad - 1 }, () => "")]
+      ? [` ${dim("nothing yet. type to talk.")}`, ...Array.from({ length: pad - 1 }, () => "")]
       : Array.from({ length: pad }, () => "");
   const top = underBand ? [] : [rule(cols, INK_3)];
   return [...top, heading, ...filler, ...visible].join("\n");
@@ -647,8 +648,12 @@ function renderPrompt(state: ViewState, cols: number): string {
     prefix = paint(GOLD, "❯ find ");
     placeholder = dim("text in this row's transcript · Enter keeps · Esc clears");
   }
-  const shown = state.input === "" && state.inputMode === "command" ? placeholder : state.input + paint(ACCENT, "█");
-  return `${rule(cols)}\n ${prefix}${truncate(shown, cols - 12)}${notice}`;
+  const inner = Math.max(8, cols - 12);
+  const shown =
+    state.input === "" && state.inputMode === "command"
+      ? placeholder
+      : composeTail(state.input, inner);
+  return `${rule(cols)}\n ${prefix}${shown}${notice}`;
 }
 
 function renderFooter(state: ViewState, cols: number, now: number): string {
@@ -692,6 +697,13 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
             ? `${working}click/j/k  ·  t list${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`
             : `${working}click/j/k  ·  s seed${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  r  ·  w  ·  /  ·  ?  ·  q`;
   return padLine(dim(` ${keys}`), cols);
+}
+
+/** Keep the cursor and the end of a long compose line visible. */
+function composeTail(input: string, width: number): string {
+  const room = Math.max(1, width - 1);
+  const text = input.length <= room ? input : elideEnd(input, room);
+  return text + paint(ACCENT, "█");
 }
 
 function renderHelp(cols: number): string {

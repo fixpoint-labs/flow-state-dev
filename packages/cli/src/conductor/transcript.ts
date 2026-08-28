@@ -6,7 +6,9 @@
  * keeps a log instead of a single overwritten slot. `content.delta` appends
  * to the live line so a generator in this process reads as a stream. Durable
  * items (errors, tools, finished messages, reasoning, resource changes) become
- * activity lines. A reasoning block is one compact `think ·` line. A coding
+ * activity lines. A user message from `action.userMessage` is `you ·` so
+ * talk has both sides. An assistant message stays `message ·`. A reasoning
+ * block is one compact `think ·` line. A coding
  * tool is named with the file or command it touched. While
  * that call is still open, it stays on the live line so the board reads as
  * working. A Write or Edit that carries the new text also prints a compact
@@ -259,6 +261,12 @@ export function createStreamTranscript(): {
             openContainers.push(item.id);
             return snapshot([...commitLive(), nestAt(formatContainerLine(item), depth)]);
           }
+          if (item.type === "message" && item.role === "user") {
+            const text = messageText(item);
+            if (text.length === 0) return snapshot([]);
+            logged.add(item.id);
+            return snapshot([...commitLive(), nest(`you · ${text}`)]);
+          }
           return snapshot([]);
         }
         case "content.delta": {
@@ -310,6 +318,13 @@ export function createStreamTranscript(): {
             const prior = liveKind === "think" ? [] : commitLive();
             holdThinkLive(text);
             return snapshot([...prior, ...commitLive()]);
+          }
+          if (item.type === "message" && item.role === "user") {
+            if (logged.has(item.id)) return snapshot([]);
+            const text = messageText(item);
+            if (text.length === 0) return snapshot([]);
+            logged.add(item.id);
+            return snapshot([...commitLive(), nest(`you · ${text}`)]);
           }
           if (item.type === "message" && item.role === "assistant") {
             if (streamed.has(item.id)) {

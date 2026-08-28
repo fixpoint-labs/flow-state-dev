@@ -238,6 +238,29 @@ describe("renderFrame", () => {
     expect(frame).toContain("TRANSCRIPT");
   });
 
+  it("keeps the end of a long compose line so the cursor stays visible", () => {
+    const long = `please retry the failed rows and then tell me ${"x".repeat(80)} done`;
+    const frame = renderFrame(
+      { ...emptyView("epic"), input: long },
+      { cols: 80, rows: 24 },
+    );
+    const plain = stripAnsi(frame);
+    expect(plain).toContain("done");
+    expect(plain).toContain("…");
+    expect(plain).not.toContain("please retry the failed rows");
+  });
+
+  it("shows a you · talk line in the transcript", () => {
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        activity: [{ at: 1, text: "you · what's on the board?" }],
+      },
+      { cols: 80, rows: 24 },
+    );
+    expect(stripAnsi(frame)).toContain("you · what's on the board?");
+  });
+
   it("fills leftover rows with the transcript and PageUp looks further back", () => {
     const activity = Array.from({ length: 30 }, (_, i) => ({ at: i, text: `line-${i}` }));
     const follow = renderFrame(

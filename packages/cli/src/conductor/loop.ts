@@ -67,7 +67,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
 
   if (!isTTY) {
     output.write(
-      "fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch, abort).\n",
+      "fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, steer, watch, abort).\n",
     );
     return 1;
   }
@@ -134,7 +134,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     paint();
   };
 
-  const runAction = <T>(action: "seed" | "wake" | "status" | "answer", input: unknown) => {
+  const runAction = <T>(action: "seed" | "wake" | "status" | "answer" | "steer", input: unknown) => {
     const running = startConductorAction<T>(options.dispatch, action, input, applyOperator);
     abortInFlight = running.requestAbort;
     return running.done;
@@ -196,9 +196,18 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           endTurn();
           const said =
             typeof steered.output === "string" && steered.output.trim() !== ""
-              ? steered.output.trim().replace(/\s+/g, " ")
-              : "coordinator turn finished";
-          state = pushActivity(state, `coord · ${said}`, now());
+              ? steered.output.trim()
+              : "";
+          const already = state.activity.some(
+            (item) => item.text.startsWith("message · ") || item.text.startsWith("coord · "),
+          );
+          if (!already) {
+            state = pushActivity(
+              state,
+              said !== "" ? `coord · ${said.split("\n")[0]!.trim()}` : "coordinator turn finished",
+              now(),
+            );
+          }
           await refresh();
           break;
         }

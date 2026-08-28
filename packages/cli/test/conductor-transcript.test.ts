@@ -83,6 +83,57 @@ describe("createStreamTranscript", () => {
     });
   });
 
+  it("echoes a user message as you · and does not reprint it on item.done", () => {
+    const t = createStreamTranscript();
+    expect(
+      t.apply(
+        added({
+          id: "u1",
+          type: "message",
+          role: "user",
+          content: [{ type: "output_text", text: "what's on the board?" }],
+        }),
+      ),
+    ).toEqual({
+      lines: ["you · what's on the board?"],
+      live: null,
+    });
+    expect(
+      t.apply(
+        done({
+          id: "u1",
+          type: "message",
+          role: "user",
+          content: [{ type: "output_text", text: "what's on the board?" }],
+        }),
+      ),
+    ).toEqual({
+      lines: [],
+      live: null,
+    });
+  });
+
+  it("echoes a user message that only arrives on item.done", () => {
+    const t = createStreamTranscript();
+    expect(t.apply(added({ id: "u2", type: "message", role: "user", content: [] }))).toEqual({
+      lines: [],
+      live: null,
+    });
+    expect(
+      t.apply(
+        done({
+          id: "u2",
+          type: "message",
+          role: "user",
+          content: [{ type: "output_text", text: "retry the failed rows" }],
+        }),
+      ),
+    ).toEqual({
+      lines: ["you · retry the failed rows"],
+      live: null,
+    });
+  });
+
   it("streams assistant text from content.delta and does not reprint it on item.done", () => {
     const t = createStreamTranscript();
     expect(t.apply(added({ id: "m1", type: "message", role: "assistant", content: [] }))).toEqual({

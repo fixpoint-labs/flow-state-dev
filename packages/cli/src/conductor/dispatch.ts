@@ -217,7 +217,7 @@ export async function abortConductorRequest(
   return "not-running";
 }
 
-/** The four actions this surface needs. Missing one is a config error, not a retry. */
+/** The five actions this surface needs. Missing one is a config error, not a retry. */
 export function assertConductorActions(flow: FlowInstance): void {
   const missing = CONDUCTOR_ACTIONS.filter((name) => flow.actions[name] === undefined);
   if (missing.length > 0) {
