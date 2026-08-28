@@ -143,6 +143,12 @@ export function createProjection({
         const content = await entry.readContent();
         if (content === null) continue;
         const path = placePath(mount, key);
+        // Hydrate has to agree with flush about who owns a path. Flush routes
+        // by longest prefix, so with nested mounts (`artifacts` and
+        // `artifacts/drafts`) a bare write here would let whichever mount came
+        // last in the array put its content at a path the other one owns — and
+        // the next flush would attribute it to the owner.
+        if (routePath(mounts, path)?.mount !== mount) continue;
         await place.write(path, content);
         baseline.set(path, hashContent(content));
       }

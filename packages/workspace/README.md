@@ -132,9 +132,6 @@ A read-only mount is hydrated and then left alone. Its paths aren't written back
 | `createHostPlace(root)` | A place backed by a directory. |
 | `createMemoryPlace(initial?)` | A place backed by a `Map`. |
 | `hashContent(content)` | The hex SHA-256 the projection compares with. |
-| `normalizePath(path)` | A path in the form the projection compares in. |
-| `routePath(mounts, path)` | Which mount owns a path, and its key inside that mount. |
-| `isMetadataKey(key)` | Whether a collection key is bookkeeping rather than a projected file. |
 | `createClaimRegistry()` | A registry scoping write arbitration to the projections you give it. |
 | `sharedClaimRegistry` | The process-wide registry projections use by default. |
 
