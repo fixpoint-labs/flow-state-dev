@@ -586,6 +586,15 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   <div class="sec-head"><span class="sec-num">04</span><h2>The conductor flow</h2></div>
   <p class="lede">The lab that ships is one flow, four actions, one sequencer, one board per epic, one harness manager behind implement. Solid borders exist today. Dashed borders are the later five-action design &#8212; <code>startEpic</code>, <code>approve</code>, <code>steer</code> &#8212; plus spec and review phases.</p>
 
+  <h3>Run the lab</h3>
+  <p><code>CONDUCTOR_REPO</code> must name a checkout that is <em>not</em> this dispatcher. Absent, or pointed at this repo, the lab refuses to start &#8212; otherwise the coding agent edits the conductor. Isolate a board with <code>CONDUCTOR_EPIC</code> and a checkout root with <code>CONDUCTOR_CHECKOUTS</code>. From <code>labs/conductor</code>:</p>
+  <pre class="code">export CONDUCTOR_REPO=/path/to/the/target/repo
+export CONDUCTOR_EPIC=my-board
+export CONDUCTOR_CHECKOUTS=/tmp/conductor-checkouts
+pnpm conductor start ISSUE
+pnpm conductor status ISSUE</pre>
+  <p>The operator surface is the same host as <code>fsdev run</code> / <code>fsdev chat</code>. A TTY opens the board. Piped or scripted, use the headless verbs. A live Claude child still needs Anthropic auth in the environment that hosts the run.</p>
+
   <figure>
     <div class="fig-body">
       <svg viewBox="0 0 940 738" role="img" aria-label="The conductor flow the lab ships, drawn against the later five-action spine. The lab declares four actions: seed which files an issue-phase row, wake which runs one drain step, status which only reads rows, and answer which writes a reply and starts a new request. The diagram still shows the later names startEpic, approve, and steer as dashed. Wake and status are solid. Four of the later actions feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The board claims the next ready task, dispatches it with the topological dispatcher, and routes it by assignee. Implement logic and the harness manager are solid; spec and review stay dashed. The manager provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state.">
