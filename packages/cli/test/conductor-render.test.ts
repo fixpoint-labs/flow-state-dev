@@ -521,6 +521,38 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).toContain("t list");
   });
 
+  it("shows the pull request URL on a settled row", () => {
+    const settled: StatusRow = {
+      taskId: "FAIL-1--implement",
+      issue: "FAIL-1",
+      phase: "implement",
+      status: "pending",
+      attempts: 1,
+      feedback: "error_max_turns",
+      run: {
+        attempt: 1,
+        taskId: "FAIL-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/FAIL-1--implement",
+        outcome: "failed",
+        reason: "error_max_turns",
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-fail-1",
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/1496",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const above = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [settled] }, { cols: 80, rows: 28 }),
+    );
+    expect(above).toContain("pull/1496");
+  });
+
   it("shows the open tool on the RUN band without the transcript prefix", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",

@@ -56,6 +56,7 @@ type StatusRow = {
     costUsd: number | null;
     childSessionId: string | null;
     requestId: string | null;
+    prUrl: string | null;
     updatedAt: number | null;
   } | null;
   /** The open questions this issue-phase is waiting on (LAB-139). */
@@ -184,13 +185,17 @@ describe("the manager — the verdict at each exit", () => {
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     live = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
-      isDone: () => true,
+      isDone: () => ({
+        done: true,
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/12",
+      }),
     });
 
     const row = await seedAndDrain(live);
 
     expect(row.status).toBe("completed");
     expect(row.run?.outcome).toBe("succeeded");
+    expect(row.run?.prUrl).toBe("https://github.com/fixpoint-labs/flow-state-dev/pull/12");
     expect(row.run?.sessionId).toBe("sess_stub");
     expect(row.run?.costUsd).toBe(0.02);
     // The run was given a checkout that is not the server's directory, and the
@@ -228,13 +233,17 @@ describe("the manager — the verdict at each exit", () => {
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     live = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("error_max_budget_usd")], seen),
-      isDone: () => true,
+      isDone: () => ({
+        done: true,
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/12",
+      }),
     });
 
     const row = await seedAndDrain(live);
 
     expect(row.status).not.toBe("completed");
     expect(row.run?.outcome).toBe("failed");
+    expect(row.run?.prUrl).toBe("https://github.com/fixpoint-labs/flow-state-dev/pull/12");
   });
 
   it("does NOT complete a run that finished cleanly and did not do the job", async () => {

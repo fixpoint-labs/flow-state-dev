@@ -224,11 +224,14 @@ describe("applyKey", () => {
     expect(busy.state.scroll).toBe(0);
   });
 
-  it("does not move the board while an action is in flight", () => {
+  it("lets you change rows while an action is in flight, and does not dispatch", () => {
     const state = { ...board([row("FIX-1"), row("FIX-2")]), busy: true };
     const next = applyKey(state, { type: "char", value: "j" });
-    expect(next.state.selected).toBe(0);
+    expect(next.state.selected).toBe(1);
     expect(next.effect).toBeUndefined();
+    const wake = applyKey(state, { type: "char", value: "w" });
+    expect(wake.state.selected).toBe(0);
+    expect(wake.effect).toBeUndefined();
   });
 
   it("stops the selected running row with x or Ctrl-C, and quits when nothing is running", () => {

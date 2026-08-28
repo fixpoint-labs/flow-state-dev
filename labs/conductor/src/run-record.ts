@@ -129,6 +129,12 @@ export const runRecordStateSchema = z.object({
    * so a live row is followable; a later verdict rewrites the same id.
    */
   requestId: z.string().nullable().default(null),
+  /**
+   * The pull request that attempt produced, when the completion check
+   * found one. Kept on a failed attempt too — a run can open the PR and
+   * then exhaust its turns.
+   */
+  prUrl: z.string().nullable().default(null),
   /** When this row was last written. */
   updatedAt: z.number().nullable().default(null),
 });

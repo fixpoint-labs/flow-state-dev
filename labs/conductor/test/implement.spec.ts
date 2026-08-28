@@ -9,6 +9,7 @@ import { delimiter, join } from "node:path";
 import { seedRepo } from "./harness";
 import {
   COMPLETING_QUERY_STATES,
+  completingPrUrl,
   hasCompletingPr,
   implementPhase,
   prListArgs,
@@ -88,6 +89,22 @@ describe("the done-condition — which pull requests count", () => {
     // only for open ones would have missed.
     expect(hasCompletingPr(JSON.stringify([{ number: 1, state: "OPEN" }]))).toBe(true);
     expect(hasCompletingPr(JSON.stringify([{ number: 2, state: "MERGED" }]))).toBe(true);
+  });
+
+  it("keeps the completing pull request's URL when the listing named one", () => {
+    const listed = JSON.stringify([
+      {
+        number: 1496,
+        state: "OPEN",
+        url: "https://github.com/fixpoint-labs/flow-state-dev/pull/1496",
+        headRepository: { name: "flow-state-dev" },
+        headRepositoryOwner: { login: "fixpoint-labs" },
+      },
+    ]);
+    expect(completingPrUrl(listed, "fixpoint-labs/flow-state-dev")).toBe(
+      "https://github.com/fixpoint-labs/flow-state-dev/pull/1496",
+    );
+    expect(completingPrUrl(JSON.stringify([{ number: 1, state: "OPEN" }]))).toBeUndefined();
   });
 
   it("refuses a completing PR whose head is in another repository", () => {

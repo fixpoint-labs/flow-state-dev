@@ -161,7 +161,15 @@ export function applyKey(state: ViewState, key: Key): KeyResult {
     key.type === "pageup" ||
     key.type === "pagedown" ||
     (key.type === "ctrl" && (key.value === "u" || key.value === "d"));
-  if (state.busy && key.type !== "ctrl" && !scrolling) {
+  const browsing =
+    key.type === "click" ||
+    key.type === "up" ||
+    key.type === "down" ||
+    key.type === "left" ||
+    key.type === "right" ||
+    key.type === "escape" ||
+    (key.type === "char" && "jk[]t?nN".includes(key.value));
+  if (state.busy && key.type !== "ctrl" && !scrolling && !browsing) {
     return { state };
   }
 

@@ -160,8 +160,10 @@ export interface PhaseSpec {
   /** Rebuilt on every wake from current state, never computed when the row was filed. */
   buildPrompt(run: PromptRunContext): string | Promise<string>;
   /**
-   * Has the job actually been done? Re-evaluated now, and consulted ONLY after
-   * a successful verdict — never as an alternative route to completion.
+   * Has the job actually been done? Re-evaluated now. The boolean is
+   * consulted only after a successful verdict — never as an alternative
+   * route to completion. `{ prUrl }` is recorded after any verdict: a
+   * run can open the pull request and then exhaust its turns.
    *
    * **The two carry-forward fields are prompt-time only: `feedback` and
    * `previousSessionId` are absent here, deliberately and always.** They
@@ -173,7 +175,7 @@ export interface PhaseSpec {
    * either wants them put on the manager's state first; do that when such a
    * phase exists rather than plumbing a field nothing reads.
    */
-  isDone(run: PhaseRunContext): boolean | Promise<boolean>;
+  isDone(run: PhaseRunContext): DoneAnswer | Promise<DoneAnswer>;
   /**
    * Collections this phase's prompt builder may read, keyed by the accessor it
    * reads them under. The manager declares them so `ctx.resources` resolves.
@@ -206,6 +208,14 @@ export interface PhaseSpec {
    * that then failed, and a comparison written to paper over both.
    */
   validate?(workspace: WorkspaceConfig): unknown;
+}
+
+/** The job is done, and optionally the pull request that proves it. */
+export type DoneAnswer = boolean | { done: boolean; prUrl?: string | null };
+
+function interpretDone(value: DoneAnswer): { done: boolean; prUrl?: string | null } {
+  if (typeof value === "boolean") return { done: value };
+  return { done: value.done, prUrl: value.prUrl };
 }
 
 /** How the manager is wired to its board and its host. */
@@ -1227,21 +1237,29 @@ export function harnessManager(options: ManagerOptions) {
         // from, leaving the row `in_progress` with nothing to settle it. The
         // bound is the constant the budget already spends, so it makes the
         // advertised number true rather than adding one.
-        const done = await withDeadline(
-          async () =>
-            phase.isDone({
-              epic: boardCollectionId,
-              issue: state.issue!,
-              phase: state.phase!,
-              attempt: identity.attempt,
-              workspacePath: state.workspacePath!,
-              branch: state.branch!,
-              ctx: ctx as BlockContext,
-            }),
-          NETWORK_CALL_TIMEOUT_MS,
-          `the ${state.phase} phase's completion check`,
+        const answer = interpretDone(
+          await withDeadline(
+            async () =>
+              phase.isDone({
+                epic: boardCollectionId,
+                issue: state.issue!,
+                phase: state.phase!,
+                attempt: identity.attempt,
+                workspacePath: state.workspacePath!,
+                branch: state.branch!,
+                ctx: ctx as BlockContext,
+              }),
+            NETWORK_CALL_TIMEOUT_MS,
+            `the ${state.phase} phase's completion check`,
+          ),
         );
-        if (done) {
+        if (answer.prUrl) {
+          await fenced(
+            writeRunRow(ctx as BlockContext, identity, { prUrl: answer.prUrl }),
+            "the pull request was recorded",
+          );
+        }
+        if (answer.done) {
           // No question to withdraw: arm 1 returned on every attempt that asked
           // one, so reaching here with a succeeded verdict means the marker was
           // empty.
@@ -1254,6 +1272,33 @@ export function harnessManager(options: ManagerOptions) {
             phase: state.phase!,
             sessionId: handle.sessionId,
           };
+        }
+      } else {
+        try {
+          const answer = interpretDone(
+            await withDeadline(
+              async () =>
+                phase.isDone({
+                  epic: boardCollectionId,
+                  issue: state.issue!,
+                  phase: state.phase!,
+                  attempt: identity.attempt,
+                  workspacePath: state.workspacePath!,
+                  branch: state.branch!,
+                  ctx: ctx as BlockContext,
+                }),
+              NETWORK_CALL_TIMEOUT_MS,
+              `the ${state.phase} phase's pull-request check`,
+            ),
+          );
+          if (answer.prUrl) {
+            await fenced(
+              writeRunRow(ctx as BlockContext, identity, { prUrl: answer.prUrl }),
+              "the pull request was recorded",
+            );
+          }
+        } catch {
+          // A failed listing must not replace the run's own failure reason.
         }
       }
 

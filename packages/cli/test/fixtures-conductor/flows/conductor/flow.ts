@@ -33,6 +33,7 @@ const rowSchema = z.object({
       costUsd: z.number().nullable(),
       childSessionId: z.string().nullable(),
       requestId: z.string().nullable(),
+      prUrl: z.string().nullable().optional(),
       updatedAt: z.number().nullable(),
     })
     .nullable(),

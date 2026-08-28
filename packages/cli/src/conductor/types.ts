@@ -28,6 +28,8 @@ export interface StatusRun {
   costUsd: number | null;
   childSessionId: string | null;
   requestId: string | null;
+  /** The pull request that attempt produced, when status carried one. */
+  prUrl?: string | null;
   updatedAt: number | null;
 }
 

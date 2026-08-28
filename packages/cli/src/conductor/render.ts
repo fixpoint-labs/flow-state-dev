@@ -231,6 +231,7 @@ function renderRunBand(state: ViewState, cols: number): string {
     hintBits.push(`$${row.run.costUsd.toFixed(3)}`);
   }
   hintBits.push(id !== undefined ? `${id}  ·  x stops` : "no request id yet");
+  if (row.run?.prUrl) body.push(shorten(row.run.prUrl, inner));
   const hint = hintBits.join("  ·  ");
   const now = selectedNow(state);
   const nowLine =
@@ -332,6 +333,9 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
     if (row.run.workspacePath) {
       lines.push(` ${dim("tree")}     ${shorten(row.run.workspacePath, cols - 12)}`);
     }
+    if (row.run.prUrl) {
+      lines.push(` ${dim("pr")}       ${shorten(row.run.prUrl, cols - 12)}`);
+    }
     if (row.run.finalMessage && !opts.omitReason) {
       for (const wrapped of wrap(row.run.finalMessage, cols - 4).slice(0, 2)) {
         lines.push(` ${dim("·")} ${wrapped}`);
@@ -355,6 +359,8 @@ function renderSelectedSummary(state: ViewState, cols: number): string {
   const lines: string[] = [];
   const id = selectedRequestId(state);
   if (id !== undefined) lines.push(` ${dim("request")}  ${id}`);
+  const prUrl = selectedRow(state)?.run?.prUrl;
+  if (prUrl) lines.push(` ${dim("pr")}       ${shorten(prUrl, inner)}`);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
     lines.push(` ${dim("last")}     ${shortenToolLine(now, inner)}`);
