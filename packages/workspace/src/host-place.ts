@@ -138,8 +138,18 @@ export function createHostPlace(root: string): HostPlace {
       // A prefix with no directory yet is a mount that hydrated nothing.
       // Every other failure is the place being unreadable, which must not be
       // reported as emptiness.
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-      throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      // ENOENT says this prefix is missing, not why. The root was probed
+      // before the walks began, and nothing in this function awaits, so no
+      // other task in THIS process can have removed it since. Another process
+      // can: cleanup, an operator, a second server. Then every prefix reports
+      // ENOENT and the flush reads a vanished workspace as a run that deleted
+      // everything, so the root is asked again rather than assumed.
+      //
+      // Deliberately untested: the window is cross-process, and a test that
+      // deletes the root up front is caught by the probe above instead.
+      readdirSync(absoluteRoot);
+      return;
     }
     for (const entry of entries) {
       const full = join(dir, entry.name);
