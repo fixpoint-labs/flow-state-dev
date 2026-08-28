@@ -1143,6 +1143,37 @@ describe("createBashBlocks", () => {
     }
   });
 
+  it("reports a shell-written file outside every mount as an orphan", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("orphan-walk-1", { session: { artifacts } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+
+    // The write-file tool names its path, so it can refuse an orphan up front.
+    // A shell command cannot be intercepted that way — the only thing that can
+    // notice `stray.txt` is the flush walk, and a walk confined to the mount
+    // prefixes never visits it. Silently losing it on release is the bug.
+    sandbox.files.set("/workspace/stray.txt", "written by the shell");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await runForTest(bashCommand, { command: "echo hi > stray.txt" }, ctx);
+      expect(await artifacts.count()).toBe(0);
+      const msg = warn.mock.calls.map((c) => c[0]).join(" ");
+      expect(msg).toMatch(/orphan/);
+      expect(msg).toMatch(/stray\.txt/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("keeps a .keep the collection itself holds — the marker filter is by path", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 
