@@ -187,7 +187,7 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, a detail pane for the selected row, and a TRANSCRIPT pane under that. It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. The ASK column is the question text, truncated. When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane, shows the question text and the question id. It needs a TTY. Piped in or run from a script, it prints a message and exits `1` instead:
 
 ```
 fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, watch).
@@ -246,7 +246,7 @@ PR-482          implement   pending           0       —           ·
 
 $ fsdev conductor wake
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
-PR-482          implement   awaiting_review   1       succeeded   1
+PR-482          implement   awaiting_review   1       succeeded   Which branch sh…
   ? PR-482/implement/1/q
     Which branch should this target?
 

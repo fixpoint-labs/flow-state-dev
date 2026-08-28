@@ -203,7 +203,7 @@ Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/ses
 
 ### `fsdev conductor` — Drive a conductor flow
 
-An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. The fullscreen board has a TRANSCRIPT pane under the selected row: the action this process is running, and board movement that `status` reports. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
+An operator surface for a flow shaped like a task board: a table of rows, each one pending, running, or waiting on a person to answer something. Run it with no verb for a fullscreen, live-polling view, or use headless verbs to script it. When the selected row has an open question, an ASK band (question text and id) sits between the table and the TRANSCRIPT pane. The TRANSCRIPT pane is the action this process is running, plus board movement that `status` reports. Runtime resolution matches `fsdev run` and `fsdev chat` (config wins over discovery).
 
 ```bash
 # Fullscreen board, live poll, slash commands
