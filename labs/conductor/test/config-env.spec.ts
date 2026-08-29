@@ -190,7 +190,7 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     const product = repo();
     process.chdir(product);
     process.env.CONDUCTOR_REPO = ".";
-    expect(requireSourceRepo()).toBe(".");
+    expect(requireSourceRepo()).toBe(product);
 
     process.env.CONDUCTOR_REPO = product;
     expect(requireSourceRepo()).toBe(product);
@@ -199,6 +199,14 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
   it("still refuses this dispatcher when you are standing in a different repository", () => {
     process.chdir(repo());
     process.env.CONDUCTOR_REPO = dispatcherToplevel();
+    expect(() => requireSourceRepo()).toThrow(/same repository/);
+  });
+
+  it("still refuses '.' when you are standing in this dispatcher", () => {
+    // Absent refuses; this is the other half of "no safe default". Standing
+    // in the lab and writing CONDUCTOR_REPO=. is eating the dispatcher.
+    process.chdir(dispatcherToplevel());
+    process.env.CONDUCTOR_REPO = ".";
     expect(() => requireSourceRepo()).toThrow(/same repository/);
   });
 

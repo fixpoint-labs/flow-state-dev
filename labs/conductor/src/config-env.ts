@@ -160,6 +160,8 @@ export function assertDistinctRepository(variable: string, repo: string): void {
  * repository is the same one. The rule is *the same repository as this
  * source tree*, and only git can answer that. Standing in a different
  * repository and pointing at that repository is the daily-drive, not a match.
+ * A relative value is resolved to an absolute path before it is returned, so
+ * `CONDUCTOR_REPO=.` survives the programmatic door that refuses relatives.
  */
 export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
   // The variable NAME is a parameter so the whole rule travels, not two thirds
@@ -177,7 +179,12 @@ export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
   }
 
   assertDistinctRepository(variable, repo);
-  return repo;
+  // Pin the spelling the rest of construction sees. A relative value (`'.'`,
+  // the daily-drive) is the directory the operator is standing in *now*;
+  // `conductorFlow` refuses a relative `sourceRepo` because a later chdir
+  // would retarget it. Resolving here is that pin, not a default — absent
+  // still refuses above.
+  return path.resolve(repo);
 }
 
 /**
