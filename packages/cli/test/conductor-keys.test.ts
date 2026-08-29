@@ -92,6 +92,18 @@ describe("decodeKeys", () => {
     expect(first.keys).toEqual([]);
     expect(decodeKeys("A", first.rest).keys).toEqual([{ type: "up" }]);
   });
+
+  it("does not swallow /quit after an incomplete mouse sequence", () => {
+    const first = decodeKeys("\x1b[<");
+    expect(first.keys).toEqual([]);
+    const second = decodeKeys("/quit\r", first.rest);
+    expect(second.keys).toContainEqual({ type: "char", value: "/" });
+    expect(second.keys).toContainEqual({ type: "char", value: "q" });
+    expect(second.keys).toContainEqual({ type: "enter" });
+    const oneChunk = decodeKeys("\x1b[</quit\r");
+    expect(oneChunk.keys).toContainEqual({ type: "char", value: "/" });
+    expect(oneChunk.keys).toContainEqual({ type: "enter" });
+  });
 });
 
 describe("applyKey", () => {

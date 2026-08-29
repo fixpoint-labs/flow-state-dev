@@ -96,18 +96,29 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
         const third = input[i + 2];
         if (third === "<") {
           let j = i + 3;
-          while (j < input.length && input[j] !== "M" && input[j] !== "m") j += 1;
-          if (j >= input.length) return { keys, rest: input.slice(i) };
-          const [btnRaw, colRaw, rowRaw] = input.slice(i + 3, j).split(";");
-          const btn = Number(btnRaw);
-          const col = Number(colRaw);
-          const row = Number(rowRaw);
-          i = j + 1;
-          if (input[j] === "M" && Number.isFinite(btn) && Number.isFinite(col) && Number.isFinite(row)) {
-            if (btn === 64) keys.push({ type: "wheel", delta: -1 });
-            else if (btn === 65) keys.push({ type: "wheel", delta: 1 });
-            else if (btn === 0) keys.push({ type: "click", col, row });
+          while (j < input.length && input[j] !== "M" && input[j] !== "m") {
+            const c = input[j]!;
+            if (c !== ";" && (c < "0" || c > "9")) {
+              // Not a mouse payload. Drop the CSI so /quit and talk still work.
+              i = j;
+              break;
+            }
+            j += 1;
           }
+          if (j < input.length && (input[j] === "M" || input[j] === "m")) {
+            const [btnRaw, colRaw, rowRaw] = input.slice(i + 3, j).split(";");
+            const btn = Number(btnRaw);
+            const col = Number(colRaw);
+            const row = Number(rowRaw);
+            i = j + 1;
+            if (input[j] === "M" && Number.isFinite(btn) && Number.isFinite(col) && Number.isFinite(row)) {
+              if (btn === 64) keys.push({ type: "wheel", delta: -1 });
+              else if (btn === 65) keys.push({ type: "wheel", delta: 1 });
+              else if (btn === 0) keys.push({ type: "click", col, row });
+            }
+            continue;
+          }
+          if (j >= input.length) return { keys, rest: input.slice(i) };
           continue;
         }
         if (input.startsWith("\x1b[200~", i)) {
