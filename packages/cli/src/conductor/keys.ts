@@ -394,8 +394,10 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
 
   switch (key.type) {
     case "up":
+      if (state.inspect) return { state: scrollTranscript(state, 1) };
       return { state: moveRow(state, -1) };
     case "down":
+      if (state.inspect) return { state: scrollTranscript(state, -1) };
       return { state: moveRow(state, 1) };
     case "left":
       return { state: moveQuestion(state, -1) };

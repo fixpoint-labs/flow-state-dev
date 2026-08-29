@@ -1054,7 +1054,7 @@ function composeTail(input: string, width: number, caret: number): string {
  */
 const TUI_HELP_LINES = [
   "  Enter / Esc   inspect the selected row · back to the board",
-  "  ↑/↓          row · while composing: lines, then prior sends",
+  "  ↑/↓          board: row · inspect: transcript · compose: lines",
   "  Ctrl-R       prior send, including on an empty prompt",
   "  Alt/Ctrl-←/→ word · Ctrl-W delete the previous word",
   "  PgUp/PgDn    transcript · Home/End oldest / follow (inspect)",

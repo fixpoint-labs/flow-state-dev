@@ -327,9 +327,9 @@ Headless (scripting):
 
 In the TUI:
   Two screens: the board (what rows are doing, type to talk) and inspect (one row's question, transcript, files). Enter or click a row inspects it. Esc returns to the board.
-  ↑/↓          select a row
+  ↑/↓          select a row on the board; scroll the transcript while inspecting
   A long board shows eight rows around the selection so the prompt stays on screen.
-  PgUp/PgDn    scroll the transcript while inspecting (Ctrl-u/d too)
+  PgUp/PgDn    page the transcript while inspecting (Ctrl-u/d too)
   Home/End     oldest / follow while inspecting and the prompt is empty; compose line while typing
   [/]          previous/next question on the row
   { / }        previous / next waiting, failed, or stalled row

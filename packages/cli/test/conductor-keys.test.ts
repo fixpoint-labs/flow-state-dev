@@ -838,6 +838,20 @@ describe("applyKey", () => {
     expect(busy.state.scroll).toBe(0);
   });
 
+  it("scrolls the inspect transcript with ↑/↓ instead of changing rows", () => {
+    const state = inspecting([row("FIX-1"), row("FIX-2")]);
+    const older = applyKey(state, { type: "up" });
+    expect(older.state.scroll).toBe(1);
+    expect(older.state.selected).toBe(0);
+    expect(older.state.inspect).toBe(true);
+    const newer = applyKey(older.state, { type: "down" });
+    expect(newer.state.scroll).toBe(0);
+    expect(newer.state.selected).toBe(0);
+    const boardDown = applyKey(board([row("FIX-1"), row("FIX-2")]), { type: "down" });
+    expect(boardDown.state.selected).toBe(1);
+    expect(boardDown.state.scroll).toBe(0);
+  });
+
   it("jumps the transcript to the oldest line and back to the tail when the prompt is empty", () => {
     const state = { ...inspecting([row("FIX-1")]), scroll: 4 };
     const oldest = applyKey(state, { type: "home" });
@@ -1125,7 +1139,9 @@ describe("applyKey", () => {
     const opened = applyKey(state, { type: "char", value: "f" });
     expect(opened.state.filesExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
-    const moved = applyKey(opened.state, { type: "down" });
+    const back = applyKey(opened.state, { type: "escape" });
+    const moved = applyKey(back.state, { type: "down" });
+    expect(moved.state.inspect).toBe(false);
     expect(moved.state.selected).toBe(1);
     expect(moved.state.filesExpanded).toBe(false);
   });
@@ -1146,7 +1162,9 @@ describe("applyKey", () => {
     expect(older.effect).toBeUndefined();
     const wrap = applyKey(older.state, { type: "char", value: "H" });
     expect(wrap.state.hunkAt).toBe(0);
-    const moved = applyKey(older.state, { type: "down" });
+    const back = applyKey(older.state, { type: "escape" });
+    const moved = applyKey(back.state, { type: "down" });
+    expect(moved.state.inspect).toBe(false);
     expect(moved.state.selected).toBe(1);
     expect(moved.state.hunkAt).toBe(0);
   });
@@ -1156,7 +1174,9 @@ describe("applyKey", () => {
     const opened = applyKey(state, { type: "char", value: "e" });
     expect(opened.state.peekExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
-    const moved = applyKey(opened.state, { type: "down" });
+    const back = applyKey(opened.state, { type: "escape" });
+    const moved = applyKey(back.state, { type: "down" });
+    expect(moved.state.inspect).toBe(false);
     expect(moved.state.selected).toBe(1);
     expect(moved.state.peekExpanded).toBe(false);
   });
@@ -1166,7 +1186,9 @@ describe("applyKey", () => {
     const opened = applyKey(state, { type: "char", value: "h" });
     expect(opened.state.hunksExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
-    const moved = applyKey(opened.state, { type: "down" });
+    const back = applyKey(opened.state, { type: "escape" });
+    const moved = applyKey(back.state, { type: "down" });
+    expect(moved.state.inspect).toBe(false);
     expect(moved.state.selected).toBe(1);
     expect(moved.state.hunksExpanded).toBe(false);
   });

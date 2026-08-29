@@ -305,7 +305,7 @@ After `/quit`, open the board with `fsdev conductor` and no verb, or `tui`. The 
 
 | Key | Does |
 |---|---|
-| `↓` / `↑` | Move the selected row when the prompt is empty. On a long board, the table shows eight rows around the selection. While the slash list is open, choose a verb or board id. While composing, move between lines, then prior sends |
+| `↓` / `↑` | On the board, move the selected row when the prompt is empty. On a long board, the table shows eight rows around the selection. While inspecting, scroll the transcript (same direction as the wheel). While the slash list is open, choose a verb or board id. While composing, move between lines, then prior sends |
 | `Enter` | On an idle empty prompt, open inspect for the selected row. While composing, send. On inspect with a waiting row and an idle prompt, start the reply. |
 | `Esc` | On inspect with an idle prompt, return to the board. While composing, cancel. Same as `Ctrl-C` for compose. |
 | `Ctrl-R` | Load a prior send, newest first, including on an empty prompt. A second press walks to an older send. Does not change the selected row. With no prior sends, does nothing. While composing, walks prior sends from any line. On the seed prompt, only seed sends. In find, does not change the query |
