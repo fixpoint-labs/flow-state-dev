@@ -758,6 +758,44 @@ describe("applyKey", () => {
     expect(held.state.notice).toMatch(/still going/);
   });
 
+  it("cancels compose with Ctrl-C instead of leaving, so a draft is not an accidental quit", () => {
+    let talk = board([row("FIX-1")]);
+    for (const ch of "please retry") {
+      talk = applyKey(talk, { type: "char", value: ch }).state;
+    }
+    const cancelledTalk = applyKey(talk, { type: "ctrl", value: "c" });
+    expect(cancelledTalk.effect).toBeUndefined();
+    expect(cancelledTalk.state.input).toBe("");
+    expect(cancelledTalk.state.inputMode).toBe("command");
+
+    const seed = applyKey(board([]), { type: "char", value: "s" }).state;
+    const typedSeed = applyKey(seed, { type: "char", value: "F" }).state;
+    const cancelledSeed = applyKey(typedSeed, { type: "ctrl", value: "c" });
+    expect(cancelledSeed.effect).toBeUndefined();
+    expect(cancelledSeed.state.inputMode).toBe("command");
+    expect(cancelledSeed.state.input).toBe("");
+
+    const answering = applyKey(board([row("FIX-1", 1)]), { type: "char", value: "y" }).state;
+    expect(answering.inputMode).toBe("answer");
+    const cancelledAnswer = applyKey(answering, { type: "ctrl", value: "c" });
+    expect(cancelledAnswer.effect).toBeUndefined();
+    expect(cancelledAnswer.state.inputMode).toBe("command");
+    expect(cancelledAnswer.state.answering).toBeNull();
+
+    const live = applyKey(board([runningRow("LIVE-1")]), { type: "char", value: "p" }).state;
+    const clearedLive = applyKey(live, { type: "ctrl", value: "c" });
+    expect(clearedLive.effect).toBeUndefined();
+    expect(clearedLive.state.input).toBe("");
+    expect(applyKey(clearedLive.state, { type: "ctrl", value: "c" }).effect).toEqual({
+      type: "dispatch",
+      command: { kind: "abort" },
+    });
+
+    expect(applyKey(board([row("FIX-1")]), { type: "ctrl", value: "c" }).effect).toEqual({
+      type: "quit",
+    });
+  });
+
   it("lets /quit leave even while a run is going — the loop stops that run", () => {
     let state = board([runningRow("LIVE-1")]);
     state = applyKey(state, { type: "char", value: "/" }).state;

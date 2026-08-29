@@ -342,6 +342,12 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
     return { state: { ...state, planExpanded: !state.planExpanded } };
   }
   if (key.type === "ctrl" && key.value === "c") {
+    // Compose is not idle. Esc already cancels; Ctrl-C doing the same
+    // keeps a draft from being an accidental leave. A second press on
+    // the empty line is the idle abort / leave.
+    if (state.inputMode !== "command" || state.input !== "") {
+      return applyEditing(state, { type: "escape" });
+    }
     if (selectedRunningRequestId(state) !== undefined) {
       return { state, effect: { type: "dispatch", command: { kind: "abort" } } };
     }
