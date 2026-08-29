@@ -1136,22 +1136,27 @@ describe("renderFrame", () => {
       },
       questions: [],
     };
-    const frame = renderFrame(
-      {
-        ...emptyView("epic"),
-        rows: [running],
-        childLive: { "req-live-1": "message · use `proveFn` or **keep** it" },
-      },
-      { cols: 80, rows: 24 },
-    );
-    const table = stripAnsi(frame)
+    const view = {
+      ...emptyView("epic"),
+      rows: [running],
+      childLive: { "req-live-1": "message · use `proveFn` or **keep** it" },
+    };
+    const wide = renderFrame(view, { cols: 120, rows: 24 });
+    const wideRow = stripAnsi(wide)
       .split("\n")
       .find((line) => line.includes("LIVE-1"));
-    expect(table).toContain("proveFn");
-    expect(table).not.toContain("`proveFn`");
-    expect(table).not.toContain("**keep**");
-    expect(frame).toContain(TEAL);
-    expect(frame).not.toContain("TRANSCRIPT");
+    expect(wideRow).toContain("proveFn");
+    expect(wideRow).not.toContain("`proveFn`");
+    expect(wideRow).not.toContain("**");
+    expect(wide).toContain(TEAL);
+    expect(wide).not.toContain("TRANSCRIPT");
+
+    const narrow = stripAnsi(renderFrame(view, { cols: 80, rows: 24 }))
+      .split("\n")
+      .find((line) => line.includes("LIVE-1"));
+    expect(narrow).toContain("proveFn");
+    expect(narrow).not.toContain("**");
+    expect(narrow).not.toContain("`proveFn`");
   });
 
   it("shows each running row's token counts on the board, not another row's", () => {

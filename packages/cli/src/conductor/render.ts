@@ -28,6 +28,7 @@ import {
   shorten,
   shortenToolLine,
   statusColor,
+  stripAnsi,
   truncate,
   visibleWidth,
   wrap,
@@ -1121,7 +1122,8 @@ function isProseLive(text: string | undefined): boolean {
 /** ASK scan: a streaming message keeps markdown paint; a tool stays gold. */
 function paintAskDoing(state: ViewState, row: StatusRow, doing: string, width: number): string {
   if (isProseLive(rowChildLive(state, row))) {
-    return paintInline(truncate(doing, width));
+    const painted = paintInline(doing);
+    return visibleWidth(painted) <= width ? painted : truncate(stripAnsi(painted), width);
   }
   return paint(GOLD, shortenToolLine(doing, width));
 }
