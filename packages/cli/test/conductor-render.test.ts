@@ -299,16 +299,16 @@ describe("renderFrame", () => {
     }));
     const top = renderFrame({ ...emptyView("epic"), rows, selected: 0 }, { cols: 80, rows: 24 });
     const topText = stripAnsi(top);
-    expect(topText).toContain("FIX-1");
-    expect(topText).not.toContain("FIX-20");
+    expect(topText).toMatch(/\bFIX-1\s+implement\b/);
+    expect(topText).not.toMatch(/\bFIX-20\s+implement\b/);
     expect(topText).toContain("1–8");
     expect(topText).toContain("/quit");
     expect(top.split("\n")).toHaveLength(24);
 
     const bottom = renderFrame({ ...emptyView("epic"), rows, selected: 19 }, { cols: 80, rows: 24 });
     const bottomText = stripAnsi(bottom);
-    expect(bottomText).toContain("FIX-20");
-    expect(bottomText).not.toContain("FIX-1");
+    expect(bottomText).toMatch(/\bFIX-20\s+implement\b/);
+    expect(bottomText).not.toMatch(/\bFIX-1\s+implement\b/);
     expect(bottomText).toContain("13–20");
     expect(bottomText).toContain("/quit");
   });
