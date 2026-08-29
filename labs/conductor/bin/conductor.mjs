@@ -22,6 +22,12 @@ if (!process.env.CONDUCTOR_CONFIG?.trim()) {
   process.env.CONDUCTOR_CONFIG = config;
 }
 
+// `.` is the directory you are standing in. The lab still refuses if that
+// directory is this dispatcher; absent at the config door is still an error.
+if (!process.env.CONDUCTOR_REPO?.trim()) {
+  process.env.CONDUCTOR_REPO = ".";
+}
+
 if (!existsSync(tsx)) {
   process.stderr.write(
     `conductor: tsx not found at ${tsx}. Run pnpm install from the repo root.\n`,
