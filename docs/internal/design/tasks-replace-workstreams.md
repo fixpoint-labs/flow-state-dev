@@ -43,7 +43,10 @@ verb." In the whole repo there is **one caller**
 (`packages/orchestration/src/task-board/blocks/spawn-detached.ts`) and **one
 producer of bindings** (`packages/orchestration/src/task-board/index.ts:1202`). A
 flow with no task board that calls `startDetached` is refused
-`no-workstream-core`. The seam is general; the only door through it is board-shaped.
+`no-workstream-core`. The seam is general; the only door through it is
+board-shaped — which is the tell that **two capabilities were fused into one
+verb.** Spawning a session and filing a task are different things, and
+`startDetached` is both, which is why it can be neither cleanly.
 
 And because the seam cannot know whether its caller is a board, it *guesses*:
 `create-request-host.ts:198` parses the caller's opaque `input` against the board
@@ -59,104 +62,179 @@ when the caller says what it wants.
 
 ## The shape
 
-### 1. `flow.tasks` — a private sibling of `flow.actions`
+Two capabilities, deliberately **not** one verb. Conflating them is what made the
+first draft argue with itself about whether a task board should be mandatory.
+
+| | Spawn a session | File a task |
+|---|---|---|
+| Reaches | `flow.actions` — public, already exists | `flow.tasks` — private |
+| Needs a board? | **No** | **Yes** |
+| Claim gate | n/a — nothing is claimed | Mandatory, by construction |
+| Who calls it | any block | a board drain |
+
+A *task* is a board concept — a durable row, an assignee, a claim, a lease. Using
+the word for anything a block can start would make `tasks` a misnomer on the flow
+config. So board-less background work goes through the surface that already
+exists.
+
+### 1. Spawning a session needs no board
+
+A block spawns (or reuses) a child session and runs an ordinary **action** on it:
 
 ```ts
-defineFlow({
+// Inside any block. No board, no task row, no new private surface.
+const child = await ctx.sessions.spawn({
+  flow: "research",           // omit → this flow
+  action: "investigate",      // an entry in that flow's `actions`
+  input: { question },
+});
+
+child.sessionId;   // dsx_… — a handle, usable again later
+child.requestId;
+```
+
+The action is one an HTTP caller could already invoke on that session, so this
+adds **no reachable surface**. That is the point: spawning is a session-lifecycle
+verb, not a routing one, and it needs no private map to be safe.
+
+### 2. `flow.tasks` requires a task board
+
+```ts
+const flow = defineFlow({
   kind: "issue-work",
-  actions: { start, status },       // caller-addressed, public
-  tasks:   { spec, implement, review },  // task-addressed, private
-})
+  actions: { start, status },              // public
+  tasks: { summarize, implement, review }, // private; assignee → block
+  // defineFlow throws if `tasks` is declared and no board is reachable.
+});
 ```
 
-Every entry takes the **same fixed task input schema**. That uniformity is what
-makes the map dispatchable from strings alone after a restart, and what lets a
-board route to an entry by name:
+**`tasks` is not a new map — it is the board's `workers` map, hand-declared.**
+Today `taskBoard({ workers: { implement: { worker, dispatch: { mode: "detached" } } } })`
+already holds assignee → block. The whole bindings apparatus exists only to *lift*
+that map to flow level so a restart can re-resolve it from strings. Declaring it
+on the flow in the first place deletes the lift.
+
+Dispatch still enters the **board's runner**, never a task entry directly:
+
+```
+detached dispatch  →  board runner  →  flow.tasks[row.assignee]
+                      ├─ re-read the claimed row
+                      ├─ verify attempt / createdAt / incarnationId / lease
+                      ├─ mark the task scope
+                      └─ re-mint the claim ticket
+```
+
+So the four pre-worker guarantees stay exactly where they are, and `flow.tasks`
+replaces only the routing table the runner consults. `resolveActionCore` keeps one
+terminal branch:
 
 ```ts
-type TaskInput = {
-  /** The durable row this run is for. */
-  taskId: string;
-  /** Claim identity — verified against the row, never trusted (see below). */
-  attempt: number;
-  createdAt: number;
-  incarnationId?: string;   // absent on a row predating the nonce (BP-030)
-  /** The materialized worker input, packed at claim time. */
-  payload: unknown;
-};
+if (source === TASK_SOURCE) return flow.taskRunner;   // the board's runner
 ```
 
-Everything but `payload` is the claim envelope, and it is here rather than inside
-`payload` because the framework has to read it without knowing what any
-particular task's work looks like. It is what the claim gate compares against the
-row it re-reads — see *What gets more complicated* #1, which is where this schema
-earns its shape.
-
-`resolveActionCore` keeps one terminal branch, on a renamed source:
-
-```ts
-if (source === TASK_SOURCE) return flow.tasks?.[actionName];
-```
-
-Terminal for the same reason it is terminal today: a task name may collide with a
+Terminal for the reason it is terminal today: a task name may collide with a
 public action name, and falling through would hand a framework-stamped dispatch a
 caller-addressed handler.
 
-`flow.tasks` is **not** reachable from HTTP or MCP. It is a separate map, so
-nothing in it widens the public surface — which is the property `flow.workstream`
-exists to hold, kept without the assembly.
-
-### 2. Detach names a flow and a task
+Every entry takes the same fixed input, so the runner can hand off without knowing
+what a given task's work looks like:
 
 ```ts
-ctx.requestHost.startTask({ flow: "issue-work", task: "implement", input })
-// or, continuing an existing spawn:
-ctx.requestHost.startTask({ session: "dsx_…", task: "review", input })
+type TaskInput<TPayload = unknown> = {
+  taskId: string;
+  attempt: number;
+  createdAt: number;
+  incarnationId?: string;   // absent on a row predating the nonce (BP-030)
+  payload: TPayload;        // materialized worker input, packed at claim time
+};
 ```
 
-`flow` and `session` are **exclusive**. A session record already carries its
-`flowKind`, so a handle implies its flow; accepting both invites them to disagree.
+Everything but `payload` is the claim envelope — what the runner compares against
+the row it re-reads. It is verified, never trusted.
 
-- `{ flow }` → new spawn. Child session id is still *derived*
-  (`deriveChildSessionId`), never caller-supplied. Adoption on an existing derived
-  key works exactly as today.
-- `{ session }` → continue in a session this lineage already spawned.
+### 3. Session reuse: filing a follow-up into the session you are in
 
-Cross-flow spawn is now legal, where today the child always inherits its parent's
-`flowKind`. **This costs nothing by default:** `effectiveStorageTuple`
-(`defineFlow.ts:700`) defaults `flowIsolation` to `false`, `isolateUserState` and
-`isolateOrgState` default to `false`, and BP-027 tells authors not to isolate
-reflexively. User- and org-scoped resources are already cross-flow shared. Only a
-deliberate `isolateUserState: true` splits, and that author already asked for
-per-flow state.
+The handle is a field on the **task row**. A worker that wants its follow-up to
+land in the same spawned session names its own session when filing:
 
-**Cross-flow spawn should be phase 2, and this is a changed recommendation.**
-It went in as a v1 peer of the routing fix. Review then surfaced two things that
-were checked and hold, and both are cross-flow's alone:
+```ts
+// Inside the `implement` task worker, after opening a PR.
+await ctx.tasks.file({
+  assignee: "review",
+  input: { pr: pr.url },
+  session: ctx.sessionId,      // ← continue in THIS spawned session
+});
+```
 
-- The lineage-bucket collision **cannot** be refused where this doc first said it
-  could, and closing it needs a mechanism that does not exist (#2 below).
-- The child listing's `flowKind` clause is an **authentication** boundary, so
-  cross-flow children need per-child authorization or they leak (#3 below).
+Omit `session` and the follow-up gets a fresh child derived the usual way. Pass
+it and the next drain routes that row back into the session that filed it —
+same checkout, same conversation, same resources.
 
-Neither touches same-flow work. Meanwhile the conductor limits this proposal
-fixes are solved by `tasks` being a *map* — spec / implement / review as three
-entries on one flow — so cross-flow is not load-bearing for them either.
+The board resolves it at spawn:
 
-A same-flow v1 still deletes the binding machinery, kills the shape-sniff, and
-carries the session-handle resume. Cross-flow keeps the idea that makes flows the
-unit of composition, and it should land once it can pay for the two guards above.
-Phasing is the author's call; the recommendation is now to split.
+```ts
+// task-board spawn, simplified
+const target = row.session
+  ? { session: row.session }                        // reuse
+  : { flow: ctx.flowKind, seed: { topic, key } };   // derive, as today
+await requestHost.startTask({ ...target, taskId: row.id, /* claim envelope */ });
+```
 
-### 3. Session handles live on the task row
+Two rules the reuse path owes, both from review:
 
-A completed task can file a follow-up that runs in the **same spawned session**.
-The board stores the handle on the row; the next spawn passes `{ session }`.
+- **Same lineage.** `lineageId` is stamped at creation and never rewritten, so a
+  handle from another lineage would write this run's `sharedToLineage` resources
+  into someone else's bucket. Refuse a handle whose lineage differs from the
+  caller's. This is not free: `defineTaskCollection` accepts `user`/`org` scope,
+  where "the ledger already spans every session the principal touches" — so two
+  sessions can drain one board and a row's handle can name a sibling's child.
+- **Parentage is immutable.** `GET /sessions/:id/children` keys on
+  `parentSessionId`. Set it at creation and leave it; a mutable parentage makes
+  the listing stop being historical.
 
-This is the resume mechanism conductor is currently missing. Its README names the
-gap directly — *"No resume. Conductor starts runs; it does not continue one across
-a wait… the association a resume reads from is a typed field on the task"* — and
-this is that field, generalized instead of bolted onto one lab's task type.
+**This is the resume conductor is missing.** Its README: *"No resume. Conductor
+starts runs; it does not continue one across a wait… the association a resume
+reads from is a typed field on the task."* This is that field, in the substrate
+instead of bolted onto one lab's task type.
+
+### Worked example: conductor's three phases
+
+What the whole thing looks like assembled — the case that motivated the change.
+
+```ts
+// One flow. Three task entries. One board. One host.
+const conductor = defineFlow({
+  kind: "conductor",
+  actions: { seed, wake, status, answer },
+  tasks: { spec: specWorker, implement: implementWorker, review: reviewWorker },
+});
+
+const board = taskBoard({
+  boardId: "conductor",
+  collection: workBoardCollection,
+  workers: {
+    spec:      { dispatch: { mode: "detached" } },
+    implement: { dispatch: { mode: "detached" } },
+    review:    { dispatch: { mode: "detached" } },
+  },
+});
+```
+
+Today this needs three `epic` values and three hosts, because one flow has one
+workstream core and two conductor instances share a board. Here the phases are
+three rows with three assignees, and `implement` handing off to `review` in the
+same checkout is `session: ctx.sessionId` on the file.
+
+**The board's `workers` keys and the flow's `tasks` keys must agree**, with
+nothing linking them at compile time — the sync burden. A shared const closes it:
+
+```ts
+const PHASES = { spec: "spec", implement: "implement", review: "review" } as const;
+```
+
+Whether the board should instead *reference* flow task names (making `workers`
+a list of names plus dispatch config, with the blocks living only on the flow) is
+open decision 3 — it removes the burden entirely at the cost of a board API change.
 
 ---
 
@@ -168,9 +246,14 @@ idea: *a background run*. After this there is one — a **task**, which the
 orchestration package already had.
 
 **One registry instead of two.** `flow.actions` and `flow.tasks` are both
-hand-authored maps of name → `ActionCore`, resolved by the same function, differing
-only in whether a caller may address them. Today the second one is a router
-assembled from a graph walk.
+hand-authored maps of name → block, differing only in whether a caller may
+address them and whether a claim gate stands in front. Today the second one is a
+router assembled from a graph walk over every action root.
+
+**Two capabilities stop being one overloaded verb.** Spawning a session and
+filing a task were fused in `startDetached`, which is why the seam had to sniff
+its caller's payload to guess which one was happening. Separated, each has an
+obvious home: sessions on the action surface, tasks on the board.
 
 **Whole mechanisms delete, not shrink:**
 
@@ -189,14 +272,19 @@ throw, the length-framed key that stops `("a", "b:c")` and `("a:b", "c")`
 colliding — all of it exists to keep a derived composite key unambiguous. A
 hand-authored map has no composite key.
 
-**Detached work stops requiring a task board.** Any flow can declare `tasks` and
-any block can start one. Today that is refused.
+**Background work stops requiring a task board — without `tasks` pretending to be
+board-less.** Today `startDetached` refuses `no-workstream-core` unless a board
+contributed bindings, so a flow with no board cannot run anything in the
+background at all. Now it can: spawn a session and call an action (§1). A *task*
+still means what it has always meant — a claimed row on a board — and `tasks` on
+the flow config stays honest about that.
 
-**Conductor's documented limits go away.** Its README lists three, all downstream
-of one-workstream-core-per-flow: one phase per conductor, a second phase needs its
-own `epic` value (and shares a board with the first if it doesn't), one conductor
-per host. Under `flow.tasks`, spec / implement / review are three entries on one
-flow — or three flows — and neither collides.
+**Conductor's *workstream-core* limits go away.** Its README lists three. Two are
+downstream of one-workstream-core-per-flow and go: one phase per conductor, and a
+second phase needing its own `epic` value (sharing a board with the first if it
+doesn't). Under `flow.tasks` those are three entries on one flow. The third —
+"one conductor per host" — is the engine resolving a flow by kind alone; this
+sidesteps it (three entries need one instance) rather than fixing it.
 
 **The UI stops needing a second kind of thing.** A spawned session is a session.
 The devtool already switches into one with a breadcrumb; what it loses is a tab
@@ -208,52 +296,36 @@ that exists to say "these ones are special."
 
 Being honest about the cost, because two of these are real.
 
-### 1. The claim gate loses its structural guarantee — the significant one
+### 1. The claim gate — the fork this doc opened, now closed
 
-Today `buildWorkstreamCore` routes every detached dispatch to a **board runner**,
-never to a worker. `detached-runner.ts` documents the four things that runner does
-on one durable read before any worker executes:
+Earlier drafts framed a three-way choice: a registered verifier, a route-through
+wrapper, or a mandatory runner brand at `defineFlow`. All three were answers to
+"what stops a detached dispatch reaching a bare worker once bindings are gone?"
+
+**Requiring a board dissolves the question.** Dispatch still resolves the board's
+runner, exactly as it does today, and the runner still owns the whole pre-worker
+sequence on one durable read (`detached-runner.ts`):
 
 1. **Start gate** — re-read the row; abort unless `attempts`, `createdAt` and
    `incarnationId` match, status is still `in_progress`, and the lease is live.
-2. **Worker selection** — from the row's own `assignee`, never the envelope.
+2. **Worker selection** — from the row's own `assignee`. Never the envelope.
 3. **Task-scope mark** — without it every item the worker emits is unattributed.
 4. **Claim-ticket re-mint** — without it every `completeTask` / `failTask` /
    `updateTask` the worker's model calls runs *unfenced, silently*, because "no
    ticket presented" and "not a claimed worker" are the same condition to the guard.
 
-The current design makes that unbypassable by construction: there is no path from
-a detached dispatch to a bare worker block, and adding a worker to a board that
-already has a runner is covered without anyone remembering to wrap it.
+What changes is only step 2's lookup table: `flow.tasks[assignee]` instead of a
+binding resolved from the bubbled map. There is still no path from a detached
+dispatch to a bare block, and it is still by construction rather than by
+registration — a task entry is reachable only *through* the runner that verified
+the claim.
 
-A hand-authored `flow.tasks` entry is just a block. Nothing forces any of the
-four. This is a safety property, not board internals — the fence is what stops two
-live attempts double-settling a row, and #4 fails *silently*, which is the worst
-shape a regression can have.
-
-**Proposed mitigation.** Put the claim envelope (`taskId`, `attempt`, `createdAt`,
-`incarnationId`) in the fixed task input schema, and let a board register **one
-verifier per board** on the flow. The framework runs the verifier before invoking
-the named task entry. That is one registration per board instead of one binding
-per worker, and it keeps a single enforcement point.
-
-**A third option, and it is a genuine peer.** `defineFlow` could *reject* any
-`tasks` entry that is not a board runner — a brand the board factory stamps on
-the runner block, checked at flow-definition time. `core` cannot name a board,
-but it can require a symbol, so this is a brand check rather than a registry. It
-preserves today's construction-time guarantee exactly, with no verifier and no
-bindings.
-
-Its cost is not small and it is not the one raised in review: **it makes a task
-board mandatory again.** A flow with no board could not declare `tasks` at all,
-which deletes one of the wins claimed above — that detached work stops requiring
-a board. So the fork is really *how much does board-less detached work matter*,
-and that question deserves to be answered before the gate is.
-
-**This is the part of the proposal that is not obviously simpler.** Options A and
-B trade a construction-time guarantee for a dispatch-time one; option C keeps the
-guarantee and gives back generality. Weigh it deliberately; do not wave it
-through.
+**So the residual cost here is smaller than the earlier drafts claimed, and it is
+a different cost.** Not "the guarantee weakens" but "the map and the board must
+agree": `flow.tasks` keys and the board's `workers` keys are two declarations of
+one fact, unlinked at compile time, failing at dispatch as a task that resolves
+nothing. Open decision 3 is whether to close that by having the board reference
+flow task names rather than carry blocks of its own.
 
 ### 2. Two flows can now share one lineage bucket
 
@@ -317,26 +389,39 @@ Two options, pick one:
 Also: `parentSessionId` is what the child listing keys on. Keep it immutable at
 creation. A mutable parentage makes the listing stop being historical.
 
-### 5. `startTask` is a wider verb than `startDetached`
+### 5. Cross-flow spawn is phase 2 — a changed recommendation
 
-`startDetached` takes a seed and an opaque payload. `startTask` takes a flow or a
-session handle plus a task name — more surface, and two of those are strings a
-block author chooses. The seam still supplies all *authority* (principal, tenant,
-org, derived session id); what widens is the *target*.
+Cross-flow now belongs to the **spawn** verb (§1), not to tasks: spawning into
+another flow's *action* needs no `tasks` entry at all. That makes it cleanly
+separable, and two findings say it should be separated.
+
+Both were checked and both hold, and both are cross-flow's alone: the lineage
+collision cannot be refused where this doc first claimed (#2), and the child
+listing's `flowKind` clause is an authentication boundary (#3). Neither touches
+same-flow work.
+
+Meanwhile nothing in v1 needs cross-flow. The conductor case — the change's
+motivating example — is three task entries on one flow. A same-flow v1 still
+deletes the binding machinery, kills the shape-sniff, and carries session reuse.
+
+*Recommendation: split. What would change my mind: a near-term need that
+same-flow entries cannot serve.*
+
+### 6. The spawn verb is wider than `startDetached`
+
+`startDetached` takes a seed and an opaque payload. `ctx.sessions.spawn` takes a
+flow and an action — more surface, and both are strings a block author chooses.
+The seam still supplies all *authority* (principal, tenant, org, derived session
+id); what widens is the *target*.
 
 **"The seam supplies authority" is not a spawn rule, and the proposal owes one.**
-Which flows and which tasks may a given block spawn into? Three candidate
-answers, none yet chosen: an allowlist declared on the spawning flow; a
-parent-flow constraint (same flow only, which is what deferring cross-flow buys
-for free); or board ownership, where a board may only spawn tasks it declares.
-Same-flow-only makes the question disappear; cross-flow makes it mandatory.
+Which flows may a given block spawn into? An allowlist on the spawning flow, or a
+parent-flow constraint (same flow only). Same-flow-only makes the question
+disappear, which is one more argument for deferring cross-flow.
 
-**Multi-board naming is the other thing the address drop costs.** Today the
-address is `(boardId, coordinateKey)`; `(flow, task)` drops `boardId`. Two boards
-on one flow that both detach an `implement` worker need distinct task names —
-which `flow.tasks` gives by construction, since it is a map — but nothing then
-links a board's coordinate to the task name it should spawn into. That is the
-same sync burden as open decision 3, and the same shared-const answer closes it.
+Note the *action* half needs no new rule: a spawned action is one an HTTP caller
+could already invoke on that session, so naming it grants nothing new. Only the
+*flow* half widens anything.
 
 ---
 
@@ -363,12 +448,12 @@ would be the single most damaging line in this change.
 
 | Today | After | Note |
 |---|---|---|
-| `flow.workstream` | `flow.tasks` | map, not an assembled router |
+| `flow.workstream` | `flow.taskRunner` + `flow.tasks` | the board's runner, plus a hand-declared assignee map — not an assembled router |
 | `flow.workstreamBindings` | — | deleted; nothing bubbles |
 | `core/types/workstream.ts` | — | deleted |
 | `core/flow/workstream-core.ts` | — | deleted |
 | `workstreamBindingKey` | — | deleted; no composite key |
-| `declareWorkstreamBindings` | replaced by the claim gate chosen in open decision 1 | §"more complicated" #1 |
+| `declareWorkstreamBindings` | hand-declared `flow.tasks`; runner keeps the gate | §"more complicated" #1 |
 | `WORKSTREAM_SOURCE` (`"workstream"`) | `TASK_SOURCE` (`"task"`) | still terminal, still off the re-entry allow-list |
 | `no-workstream-core`, `board-not-routable` | — | inference failures; no longer reachable |
 | `GET /sessions/:id/workstreams` | `GET /sessions/:id/children` | honest name; same handler **only for same-flow children** — see §"more complicated" #3 |
@@ -393,7 +478,8 @@ already in the codebase. Every other rename here is cosmetic and can wait.
   replacement module of equivalent size. Pass: neither file exists and no new file
   reconstructs a binding registry.
 - **The four runner guarantees still hold.** Port `detached-runner`'s existing
-  suite (`test/task-board/detached-*.test.ts`) onto the verifier path unchanged.
+  suite (`test/task-board/detached-*.test.ts`) unchanged — the runner keeps its
+  role, so these should need no edit beyond the lookup table it consults.
   Pass: same tests green without weakening an assertion — particularly the
   unfenced-settlement case, which fails silently if #4 regresses.
 - **`task` is not publicly re-enterable.** A test asserting `retry` / `continue` /
@@ -427,39 +513,31 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 
 ## Open decisions
 
-1. **The claim gate — a three-way fork, and the decision the proposal turns on.**
-   **(A) Registered verifier** — one per board, framework-run before the task
-   entry; trades the construction-time guarantee for a dispatch-time one.
-   **(B) Route-through wrapper** — the flow routes into a board-supplied wrapper;
-   preserves the guarantee, costs some of the simplification.
-   **(C) Mandatory runner brand at `defineFlow`** — rejects any `tasks` entry that
-   is not a board runner; preserves the guarantee outright, but makes a board
-   mandatory and so gives up board-less detached work.
-   *Recommendation: A, on the judgment that board-less detached work is worth
-   more than a construction-time check the verifier reproduces at dispatch. If
-   board-less tasks turn out not to matter, C is strictly better than A and this
-   flips.*
+1. **~~The claim gate.~~ Closed by the author: `tasks` requires a task board.**
+   Splitting board-less spawning onto the action surface removes the trade the
+   earlier three-way fork was trying to price. Dispatch still enters the board's
+   runner, so the four pre-worker guarantees stay construction-time, and
+   `flow.tasks` replaces only the runner's lookup table. Recorded here because
+   two review rounds argued it; it is no longer open.
 2. **Handle-reuse scope.** Lineage check, or session-scoped boards only?
    *Recommendation: lineage check; it is one comparison and it does not restrict a
    board shape people already use.*
-3. **Do `tasks` live on the flow, or does a board contribute them?** Hand-authored
-   is the simplification; board-contributed keeps declaration next to the worker.
-   *Recommendation: hand-authored — contribution is what produced the bubbling.*
-   The cost to name if it wins: a **sync burden**. The board's assignee/coordinate
-   and the `flow.tasks` key have to agree, with nothing linking them at compile
-   time — the failure is a dispatch that resolves nothing, at runtime. A shared
-   const between the two declarations closes it without reintroducing a graph
-   walk; a naming convention does not.
-4. **Phase cross-flow spawn out of v1?** Raised independently by two reviewers,
-   and the two findings above are the evidence. Same-flow v1 gets the whole
-   routing simplification and owes neither guard.
-   *Recommendation: yes, split — changed from the original v1-together position
-   on the strength of the auth-boundary finding. What would change my mind: a
-   near-term need for cross-flow that same-flow N-entries cannot serve.*
-5. **The spawn rule.** Which flows and tasks may a block spawn into — allowlist,
-   parent-flow constraint, or board ownership? Same-flow-only makes the question
-   disappear, which is one more argument for the split.
-   *Recommendation: defer with cross-flow; do not invent a rule v1 cannot test.*
+3. **Does the board carry blocks, or reference flow task names?** With `tasks` on
+   the flow, `taskBoard({ workers })` holds the same assignee keys twice — once
+   with blocks, once with dispatch config — and nothing links them at compile
+   time. Either keep both and close the gap with a shared const, or change
+   `workers` to name flow task entries (`workers: { implement: { dispatch } }`)
+   so the block lives in exactly one place.
+   *Recommendation: reference the names. It removes the sync burden outright
+   rather than documenting it, and the board API change is small and local. What
+   would change my mind: a board that legitimately routes a worker no flow
+   declares — none exists today.*
+4. **Phase cross-flow spawn out of v1?** Two findings say yes and both are
+   cross-flow's alone (§"more complicated" #2 and #3). Nothing in v1 needs it.
+   *Recommendation: split.*
+5. **The spawn rule.** Which flows may a block spawn into — allowlist or
+   parent-flow constraint? The action half needs no rule; only the flow half
+   widens anything. *Recommendation: defer with cross-flow.*
 6. **Migration.** Nothing is published, so there is no deployed store holding
    workstream addresses (per `state-and-scopes.md`). This can be a clean break
    rather than a dual-read. *Confirm before relying on it.*
