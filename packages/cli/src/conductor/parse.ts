@@ -349,7 +349,7 @@ In the TUI:
   n / N        older / newer match
   ?            this help
   /quit        leave the board (stops a run that is still going; the shell comes back without waiting for it to finish)
-  Reopening the board selects the row you left.
+  Reopening the board selects the row you left, per session and epic.
   The terminal tab shows running, waiting, and failed counts.
 
   Type anything that is not a slash verb to talk to the coordinator.

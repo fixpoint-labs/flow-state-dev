@@ -211,7 +211,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("start / end of the current compose line");
     expect(HELP_TEXT).toContain("leave the board (stops a run that is still going");
     expect(HELP_TEXT).toContain("the shell comes back without waiting for it to finish");
-    expect(HELP_TEXT).toContain("Reopening the board selects the row you left.");
+    expect(HELP_TEXT).toContain("Reopening the board selects the row you left, per session and epic.");
     expect(HELP_TEXT).toContain("The terminal tab shows running, waiting, and failed counts.");
     expect(HELP_TEXT).toContain("eight rows around the selection so the prompt stays on screen");
     expect(HELP_TEXT).toContain("Ctrl-C leaves when nothing is running");

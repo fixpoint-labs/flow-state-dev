@@ -335,7 +335,9 @@ export async function executeConductorCommand(
     const json = invocation.mode === "headless" ? invocation.json : options.json === true;
     const focusFile =
       options.lastFocusPath ??
-      (resolved.source === "config" ? lastFocusPath(resolved.configPath, dispatch.sessionId) : undefined);
+      (resolved.source === "config"
+        ? lastFocusPath(resolved.configPath, dispatch.sessionId, epicLabel)
+        : undefined);
 
     if (invocation.mode === "tui") {
       return await runConductorTui({
