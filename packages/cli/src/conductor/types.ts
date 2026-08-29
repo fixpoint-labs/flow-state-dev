@@ -766,9 +766,15 @@ export function runningRequestIds(rows: readonly StatusRow[]): string[] {
   return ids;
 }
 
-/** A row whose coding run is still in flight. */
+/**
+ * A row whose coding run is still in flight.
+ *
+ * The board row is the authority. The run record stays `running` across a
+ * park on purpose — that is bookkeeping, not a live child. `/quit` and
+ * idle Ctrl-C must not abort a parked question.
+ */
 export function rowRunning(row: StatusRow): boolean {
-  return row.run?.outcome === "running" || row.status === "in_progress";
+  return row.status === "in_progress";
 }
 
 /**

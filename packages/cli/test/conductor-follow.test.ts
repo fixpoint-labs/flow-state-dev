@@ -78,6 +78,42 @@ describe("runningRequestIds", () => {
     };
     expect(runningRequestIds([running, failed])).toEqual(["req-live-1"]);
   });
+
+  it("does not treat a parked question as in-flight when the run record still says running", () => {
+    const parked: StatusRow = {
+      taskId: "ASK-1--implement",
+      issue: "ASK-1",
+      phase: "implement",
+      status: "awaiting_review",
+      attempts: 2,
+      feedback: null,
+      run: {
+        attempt: 2,
+        taskId: "ASK-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/ASK-1--implement",
+        outcome: "running",
+        reason: "asked",
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: null,
+        requestId: "req-ask-1",
+        updatedAt: 1,
+      },
+      questions: [
+        {
+          question: "ASK-1/implement/2/q",
+          text: "Cannot create a pull request",
+          attempt: 2,
+          askedAt: 1,
+        },
+      ],
+    };
+    expect(runningRequestIds([parked])).toEqual([]);
+    expect(settledRequestIds([parked])).toEqual(["req-ask-1"]);
+  });
 });
 
 describe("createChildFollow", () => {

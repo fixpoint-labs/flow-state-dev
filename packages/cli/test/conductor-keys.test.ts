@@ -628,6 +628,22 @@ describe("applyKey", () => {
     expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "x" }).state.input).toBe("x");
   });
 
+  it("leaves on Ctrl-C when the only row is a parked question whose run record still says running", () => {
+    const parked: StatusRow = {
+      ...runningRow("ASK-1"),
+      status: "awaiting_review",
+      questions: [
+        {
+          question: "ASK-1/implement/1/q",
+          text: "Which path?",
+          attempt: 1,
+          askedAt: 1,
+        },
+      ],
+    };
+    expect(applyKey(board([parked]), { type: "ctrl", value: "c" }).effect).toEqual({ type: "quit" });
+  });
+
   it("does not leave on Ctrl-C when another row is still running", () => {
     const state = { ...board([row("FIX-1"), runningRow("LIVE-1")]), selected: 0 };
     const held = applyKey(state, { type: "ctrl", value: "c" });
