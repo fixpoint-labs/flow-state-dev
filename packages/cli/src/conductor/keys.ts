@@ -50,7 +50,10 @@ export type Key =
   | { type: "home" }
   | { type: "end" }
   | { type: "newline" }
-  | { type: "paste"; value: string };
+  | { type: "paste"; value: string }
+  | { type: "wordleft" }
+  | { type: "wordright" }
+  | { type: "killword" };
 
 export type Effect =
   | { type: "dispatch"; command: OperatorCommand }
@@ -185,8 +188,16 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
             continue;
           }
         }
-        // Unknown CSI — drop the ESC and keep going.
-        i += 1;
+        const csi = readCsi(input, i);
+        if (csi === undefined) return { keys, rest: input.slice(i) };
+        const mapped = mapCsi(csi.seq);
+        if (mapped !== undefined) keys.push(mapped);
+        i = csi.next;
+        continue;
+      }
+      if (next === "\x7f" || next === "\b") {
+        keys.push({ type: "killword" });
+        i += 2;
         continue;
       }
       keys.push({ type: "escape" });
@@ -228,6 +239,70 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
 
 function normalizePaste(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+/**
+ * One complete CSI, or `undefined` when the final byte has not arrived.
+ * Parameter bytes stay in `rest` so a split Ctrl-Left cannot type `[1;`.
+ */
+function readCsi(input: string, at: number): { seq: string; next: number } | undefined {
+  let j = at + 2;
+  while (j < input.length) {
+    const code = input.charCodeAt(j);
+    if (code >= 0x30 && code <= 0x3f) {
+      j += 1;
+      continue;
+    }
+    break;
+  }
+  while (j < input.length) {
+    const code = input.charCodeAt(j);
+    if (code >= 0x20 && code <= 0x2f) {
+      j += 1;
+      continue;
+    }
+    break;
+  }
+  if (j >= input.length) return undefined;
+  const final = input.charCodeAt(j);
+  if (final < 0x40 || final > 0x7e) return { seq: input.slice(at, j), next: j };
+  return { seq: input.slice(at, j + 1), next: j + 1 };
+}
+
+/**
+ * Modified arrows (`CSI 1;5D`) are word motion. An unrecognized CSI is
+ * dropped — never turned back into characters.
+ */
+function mapCsi(seq: string): Key | undefined {
+  const body = seq.startsWith("\x1b[") ? seq.slice(2) : seq;
+  const match = /^(?:1;)?(\d+)([A-HF~])$/.exec(body);
+  if (match === null) {
+    const simple = /^([A-HF])$/.exec(body);
+    if (simple === null) return undefined;
+    return arrowKey(simple[1]!, 1);
+  }
+  const modifier = Number(match[1]);
+  return arrowKey(match[2]!, Number.isFinite(modifier) ? modifier : 1);
+}
+
+function arrowKey(final: string, modifier: number): Key | undefined {
+  const word = modifier === 3 || modifier === 5 || modifier === 7;
+  switch (final) {
+    case "A":
+      return { type: "up" };
+    case "B":
+      return { type: "down" };
+    case "C":
+      return word ? { type: "wordright" } : { type: "right" };
+    case "D":
+      return word ? { type: "wordleft" } : { type: "left" };
+    case "H":
+      return { type: "home" };
+    case "F":
+      return { type: "end" };
+    default:
+      return undefined;
+  }
 }
 
 export function applyKey(state: ViewState, key: Key, now: number = Date.now()): KeyResult {
@@ -421,7 +496,14 @@ function applyEditing(state: ViewState, key: Key): KeyResult {
         return { state: { ...state, caret: lineBounds(state.input, state.caret).end } };
       }
       if (key.value === "j") return { state: insertText(state, "\n") };
+      if (key.value === "w") return { state: killWordBack(state) };
       return { state };
+    case "wordleft":
+      return { state: { ...state, caret: wordLeft(state.input, state.caret) } };
+    case "wordright":
+      return { state: { ...state, caret: wordRight(state.input, state.caret) } };
+    case "killword":
+      return { state: killWordBack(state) };
     case "backspace":
       if (state.input === "") {
         return cancelEdit(state);
@@ -553,6 +635,34 @@ function insertText(state: ViewState, text: string): ViewState {
   const input = state.input.slice(0, state.caret) + text + state.input.slice(state.caret);
   return {
     ...withInput(state, input, state.caret + text.length),
+    slashAt: 0,
+    draftAt: null,
+    draftHold: null,
+  };
+}
+
+function wordLeft(input: string, caret: number): number {
+  let i = Math.max(0, Math.min(caret, input.length));
+  while (i > 0 && /\s/.test(input[i - 1]!)) i -= 1;
+  while (i > 0 && !/\s/.test(input[i - 1]!)) i -= 1;
+  return i;
+}
+
+function wordRight(input: string, caret: number): number {
+  let i = Math.max(0, Math.min(caret, input.length));
+  while (i < input.length && !/\s/.test(input[i]!)) i += 1;
+  while (i < input.length && /\s/.test(input[i]!)) i += 1;
+  return i;
+}
+
+function killWordBack(state: ViewState): ViewState {
+  const from = wordLeft(state.input, state.caret);
+  return {
+    ...withInput(
+      state,
+      state.input.slice(0, from) + state.input.slice(state.caret),
+      from,
+    ),
     slashAt: 0,
     draftAt: null,
     draftHold: null,

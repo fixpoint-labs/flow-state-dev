@@ -340,6 +340,8 @@ In the TUI:
   Tab          complete the selected slash verb or board id
   ↑/↓          slash match while / is open; lines, then prior compose
   ←/→          move in the line while composing
+  Alt/Ctrl-←/→ jump a word while composing
+  Ctrl-W       delete the previous word while composing
   Ctrl-J       new line while composing (Alt-Enter / Shift-Enter too)
   Ctrl-A / E   start / end of the current compose line
   /status id   select that row, then refresh

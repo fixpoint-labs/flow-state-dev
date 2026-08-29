@@ -104,6 +104,19 @@ describe("decodeKeys", () => {
     expect(oneChunk.keys).toContainEqual({ type: "char", value: "/" });
     expect(oneChunk.keys).toContainEqual({ type: "enter" });
   });
+
+  it("does not type a modified arrow CSI into compose", () => {
+    const ctrlLeft = decodeKeys("\x1b[1;5D");
+    expect(ctrlLeft.keys).toEqual([{ type: "wordleft" }]);
+    expect(ctrlLeft.keys.some((key) => key.type === "char")).toBe(false);
+    const altRight = decodeKeys("\x1b[1;3C");
+    expect(altRight.keys).toEqual([{ type: "wordright" }]);
+    const held = decodeKeys("\x1b[1;");
+    expect(held.keys).toEqual([]);
+    expect(decodeKeys("5D", held.rest).keys).toEqual([{ type: "wordleft" }]);
+    expect(decodeKeys("\x1b[1;5A").keys.some((key) => key.type === "char")).toBe(false);
+    expect(decodeKeys("\x1b\x7f").keys).toEqual([{ type: "killword" }]);
+  });
 });
 
 describe("applyKey", () => {
@@ -534,6 +547,28 @@ describe("applyKey", () => {
     expect(start.state.caret).toBe("please\n".length);
     const end = applyKey(start.state, { type: "ctrl", value: "e" });
     expect(end.state.caret).toBe("please\nretry".length);
+  });
+
+  it("jumps and kills words while composing, and a Ctrl-Left CSI does not insert text", () => {
+    const state = {
+      ...board([row("FIX-1")]),
+      input: "please retry the failed rows",
+      caret: "please retry the failed rows".length,
+    };
+    const back = applyKey(state, { type: "wordleft" });
+    expect(back.state.input).toBe("please retry the failed rows");
+    expect(back.state.caret).toBe("please retry the failed ".length);
+    const killed = applyKey(back.state, { type: "killword" });
+    expect(killed.state.input).toBe("please retry the rows");
+    expect(killed.state.caret).toBe("please retry the ".length);
+    const ctrlW = applyKey(killed.state, { type: "ctrl", value: "w" });
+    expect(ctrlW.state.input).toBe("please retry rows");
+    const typed = applyKey(
+      { ...board([row("FIX-1")]), input: "hi", caret: 2 },
+      decodeKeys("\x1b[1;5D").keys[0]!,
+    );
+    expect(typed.state.input).toBe("hi");
+    expect(typed.state.caret).toBe(0);
   });
 
   it("keeps at most fifty submitted compose lines", () => {
