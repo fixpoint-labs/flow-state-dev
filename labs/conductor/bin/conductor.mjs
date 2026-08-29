@@ -2,31 +2,24 @@
 /**
  * Open the conductor board from any directory.
  *
- * Sets `CONDUCTOR_CONFIG` to this lab when the env is unset, then execs
- * `fsdev conductor` without changing cwd. Sit in the product checkout and
- * run this file (or `pnpm conductor` from this package — that script calls
- * this file). `pnpm --dir labs/conductor` still changes cwd; invoke this
- * bin by path when you need to stay in the product.
+ * Sets `CONDUCTOR_CONFIG` to this lab and `CONDUCTOR_REPO=.` when those
+ * are unset, then execs `fsdev conductor` without changing cwd. Sit in
+ * the product checkout and run this file (or `pnpm conductor` from this
+ * package — that script calls this file). `pnpm --dir labs/conductor`
+ * still changes cwd; invoke this bin by path when you need to stay in
+ * the product.
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyConductorBinDefaults } from "./env.mjs";
 
 const labRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const config = path.join(labRoot, "fsdev.config.ts");
 const fsdev = path.resolve(labRoot, "../../packages/cli/bin/fsdev.ts");
 const tsx = path.resolve(labRoot, "../../node_modules/.bin/tsx");
 
-if (!process.env.CONDUCTOR_CONFIG?.trim()) {
-  process.env.CONDUCTOR_CONFIG = config;
-}
-
-// `.` is the directory you are standing in. The lab still refuses if that
-// directory is this dispatcher; absent at the config door is still an error.
-if (!process.env.CONDUCTOR_REPO?.trim()) {
-  process.env.CONDUCTOR_REPO = ".";
-}
+applyConductorBinDefaults(process.env, labRoot);
 
 if (!existsSync(tsx)) {
   process.stderr.write(
