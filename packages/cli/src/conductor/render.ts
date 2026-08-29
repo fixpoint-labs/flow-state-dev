@@ -935,7 +935,7 @@ const TUI_HELP_LINES = [
   "  /find [text] search this row's transcript",
   "  n / N        older / newer match",
   "  /quit        stop running work and leave",
-  "  A waiting row: type the answer. Letters are the answer.",
+  "  A waiting row: type the answer. /steer talks.",
   "  A new question or a finish rings and selects that row.",
   "  Reopen lands on the row you left, per session and epic.",
 ];

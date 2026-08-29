@@ -217,6 +217,20 @@ describe("applyKey", () => {
     expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "}" }).state.selected).toBe(0);
   });
 
+  it("talks with /steer on a waiting row instead of answering", () => {
+    let state = board([row("FIX-1", 1)]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "steer please retry the failed rows") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    expect(state.inputMode).toBe("command");
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.effect).toEqual({
+      type: "dispatch",
+      command: { kind: "steer", message: "please retry the failed rows" },
+    });
+  });
+
   it("completes a slash verb with Tab and runs it with Enter", () => {
     let state = board([row("FIX-1")]);
     state = applyKey(state, { type: "char", value: "/" }).state;
