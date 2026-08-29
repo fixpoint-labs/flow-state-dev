@@ -203,7 +203,7 @@ const reviewer = defineFlow({
 export default reviewer({ id: "pr-reviewer" });
 ```
 
-`seed` takes `{ issue, phase, brief? }` and must return `{ taskId }`. Extra words after the issue id are `brief`. `--` starts a literal brief. In the TUI, the first seed line is the issue id and the lines after it are `brief`. The brief is filed with the row so attempt 1 already has the ticket. `answer` must return the shape above: `answered` wrote the reply, `recovered` found the question already answered and started the job again, `declined` wrote nothing (`reason` says why). The CLI prints `answered`, `recovered`, or `declined · <reason>` from `result` and `reason`. It prints `drain ran` when `drained` is true. A successful `wake` prints the board. If `wake` fails, the command prints the error and exits `1`. `steer` takes `{ message }` and returns a string. The CLI prints that string, or `coordinator turn finished` if the action returned nothing, then the board. `--json` on `steer` prints `{ "message": "<reply>" }` and omits the board. A failed `steer` prints the error and exits `1`. The plain-text board prints issue, phase, status, attempts, outcome, and open questions. A failed row with no open question also prints a `! failed` line and the reason under the row. `--json` on `status` prints the full `status` payload.
+`seed` takes `{ issue, phase, brief? }` and must return `{ taskId }`. Extra words after the issue id are `brief`. `--` starts a literal brief. In the TUI, the first seed line is the issue id and the lines after it are `brief`. The brief is filed with the row so attempt 1 already has the ticket. `answer` must return the shape above: `answered` wrote the reply, `recovered` found the question already answered and started the job again, `declined` wrote nothing (`reason` says why). The CLI prints `answered`, `recovered`, or `declined · <reason>` from `result` and `reason`. It prints `drain ran` when `drained` is true. A successful `wake` prints the board. If `wake` fails, the command prints the error and exits `1`. `steer` takes `{ message }` and returns a string. The CLI prints that string, or `coordinator turn finished` if the action returned nothing, then the board. `--json` on `steer` prints `{ "message": "<reply>" }` and omits the board. A failed `steer` prints the error and exits `1`. The plain-text board prints issue, phase, status, attempts, outcome, and open questions. A failed row with no open question also prints a `! failed` line and the reason under the row. `--json` on `status` prints the board as `{ "epic": "<flow.id>", "rows": [...] }`, plus `"repo"` when `CONDUCTOR_REPO` is set. `rows` is what the `status` action returned.
 
 ## The board
 
@@ -211,7 +211,7 @@ export default reviewer({ id: "pr-reviewer" });
 fsdev conductor
 ```
 
-With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. When there are more than eight rows, the table shows eight around the selection so the compose prompt and `/quit` stay on screen, including when the ASK, FAIL, or RUN band is expanded. The ASK column is the question text, truncated. When a running row has no question, that column shows the live line, or the last tool, so you can scan the board without selecting each row. When `status` has token counts on that row, the OUTCOME column shows them (`12.0k→400`). A running row shows `running` when `status` has no token counts. `}` / `{` jump to the next or previous row that is waiting on you, whose last attempt failed, or that is running and has been silent for 30 seconds. They do not steal a typed answer. The header includes `N rows`, the visible range (`1–8`) when more than eight rows are on the board, `N running` when any row is in progress, `N waiting` when any row has an open question, `N failed` when any row's last attempt failed, and `working` when a seed, wake, answer, or steer is in flight. When `CONDUCTOR_REPO` is set, including `.`, the header and the terminal tab title include the basename of that checkout (`fsd-product` for `/tmp/fsd-product`, or for `CONDUCTOR_REPO=.` while standing in that directory). When it is unset or blank, the header and title do not add a checkout name. While the board is open, the terminal tab title is `conductor ·` plus the flow's `id` (`conductor · pr-reviewer` for the example above), then that checkout name when `CONDUCTOR_REPO` is set (`conductor · pr-reviewer · fsd-product`), then `N running`, `N waiting`, and `N failed` when those are non-zero, and `working` when a seed, wake, answer, or steer is in flight. `/quit` or leaving the board leaves the tab title empty. Headless verbs do not set a tab title.
+With no verb, or `tui [issue]`, `fsdev conductor` opens a fullscreen board: a row per task, live-polled, and a TRANSCRIPT pane. When there are more than eight rows, the table shows eight around the selection so the compose prompt and `/quit` stay on screen, including when the ASK, FAIL, or RUN band is expanded. The ASK column is the question text, truncated. When a running row has no question, that column shows the live line, or the last tool, so you can scan the board without selecting each row. When `status` has token counts on that row, the OUTCOME column shows them (`12.0k→400`). A running row shows `running` when `status` has no token counts. `}` / `{` jump to the next or previous row that is waiting on you, whose last attempt failed, or that is running and has been silent for 30 seconds. They do not steal a typed answer. The header includes the flow's `id` (`pr-reviewer` for the example above), `N rows`, the visible range (`1–8`) when more than eight rows are on the board, `N running` when any row is in progress, `N waiting` when any row has an open question, `N failed` when any row's last attempt failed, and `working` when a seed, wake, answer, or steer is in flight. When `CONDUCTOR_REPO` is set, including `.`, the header and the terminal tab title include the basename of that checkout (`fsd-product` for `/tmp/fsd-product`, or for `CONDUCTOR_REPO=.` while standing in that directory). When it is unset or blank, the header and title do not add a checkout name. While the board is open, the terminal tab title is `conductor ·` plus the flow's `id` (`conductor · pr-reviewer` for the example above), then that checkout name when `CONDUCTOR_REPO` is set (`conductor · pr-reviewer · fsd-product`), then `N running`, `N waiting`, and `N failed` when those are non-zero, and `working` when a seed, wake, answer, or steer is in flight. `/quit` or leaving the board leaves the tab title empty. Headless verbs do not set a tab title.
 
 When the selected row has an open question, an ASK band sits between the table and the TRANSCRIPT pane. It shows the question text and the question id. The question wraps. The band shows at most eight wrapped lines, fewer on a 24-line terminal. TRANSCRIPT stays under the band. When the question does not fit, the title shows `… N more`. The TRANSCRIPT pane shows the full question as an `asked` line (`PR-482 · asked Which branch should this target?`). The hint says `type to answer`. Under the question it keeps a compact strip of that attempt: the branch when `status` carried one (`run.branch`), the pull-request URL when `status` carried one (`run.prUrl`), the last tool, the files that run wrote, edited, or read, the last hunk, and the current todo. When that row's `run.usage` is present, token counts show on the band as `10→4` (input→output). The counts stay on the band while a wake or seed is in flight. A new question rings the terminal bell, including when you open a waiting board, and selects that row when the prompt is empty and you are not answering, seeding, or finding. A row that finishes rings the terminal bell. When the prompt is empty and you are not answering, seeding, or finding, the board selects that row so its attempt is on screen. If a question and a finish happen together, the bell rings once. When the prompt is empty and you are not answering, seeding, or finding, the waiting row is selected. Opening a board whose rows are already finished does not ring and does not move the selection for those finishes. Typing, answering, seeding, or finding leaves the selection where it is. The bell rings whether that row is selected or not. The same open question does not ring again, and headless `status` / `watch` do not ring or select a row.
 
@@ -415,6 +415,17 @@ At the tail the heading says `follow` (or `live` while a line is in flight) and 
 
 `--json` switches the board and action results to JSON.
 
+A plain-text board dump starts with the flow's `id` (`pr-reviewer` for the example above). When `CONDUCTOR_REPO` is set, that first line is `id ·` the checkout basename (`pr-reviewer · fsd-product`). Those are the same two strings the fullscreen header shows. An empty board prints that line, then `no rows`:
+
+```text
+pr-reviewer
+no rows
+```
+
+`--json` board output is `{ "epic": "<flow.id>", "rows": [...] }`. `repo` is the checkout basename when `CONDUCTOR_REPO` is set, and omitted when it is unset. Empty JSON is `{ "epic": "pr-reviewer", "rows": [] }`, plus `repo` when set.
+
+`status`, `wake`, `abort` (when it prints a board), a successful `seed` / `steer` without `--json`, and `watch --json` dump the board this way. Watch's compact poll line (issue + status) does not include the flow `id` or `repo`. When watch stops on a question or a failed attempt and prints the full board, that dump includes the flow `id` line.
+
 | Verb | Does |
 |---|---|
 | `status [issue]` | Print the board, optionally filtered to one issue. A named issue also reprints that row's last attempt on stderr, and prints last tool, files, hunk, and current todo on stdout. A running row also prints last-write age (`8s`, `3m`) |
@@ -439,7 +450,7 @@ fsdev conductor please start FIX-99
 fsdev conductor steer "start PR-482: Rename getSession in the docs"
 ```
 
-Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `steer` prints the coordinator reply plus the plain-text board; with `--json` it prints only `{ "message": "<reply>" }`. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Under each row, plain `status` and `watch` print last-write age when the row is still running, then the pull-request URL, `@ request-id`, branch, checkout, token counts, spend, and last message when that run has them. A named issue also prints that attempt's last tool, files, last hunk, Read peek or Bash tail when those apply, and current todo — raw paths, no OSC-8. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
+Without `--json`, `seed` prints the taskId it created plus the plain-text board; with `--json` it prints only the `seed` action's own `{ taskId }` result, not the board. `steer` prints the coordinator reply plus the plain-text board; with `--json` it prints only `{ "message": "<reply>" }`. Those action-result objects do not include `epic` or `repo`. `abort` prints a stop line, then the board; `--json` prints the stop line as text and the board as JSON. When no running row has a request id, `abort` prints `nothing running to stop` and exits `1`, with no board. Every other verb prints the board (plain text or JSON) either way. Under each row, plain `status` and `watch` print last-write age when the row is still running, then the pull-request URL, `@ request-id`, branch, checkout, token counts, spend, and last message when that run has them. A named issue also prints that attempt's last tool, files, last hunk, Read peek or Bash tail when those apply, and current todo — raw paths, no OSC-8. Stream lines (`status · …`, `message · …`, `tool · …`, `+` / `-` hunks, checklist lines, result lines, `sub · …`) go to stderr. They come from a verb you ran, and from a running row's request when `watch` tails it. `--json` omits them. `--quiet` suppresses `[flow-state]` runtime logs, not those stream lines.
 
 `fsdev conductor status PR-482` reprints that issue's last attempt on stderr. Those are the same `status · …`, `message · …`, and `tool · …` lines the TRANSCRIPT pane shows when you select that row. Then it prints the board on stdout. `fsdev conductor status` with no issue prints the board, plus stream lines from the `status` action itself if any. It does not reprint every row's last attempt.
 
@@ -452,6 +463,7 @@ If there is nothing to print for that attempt, the board prints and the command 
 ```bash
 $ fsdev conductor seed PR-482 Rename getSession in the docs
 seeded PR-482 → PR-482--implement
+pr-reviewer
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
 PR-482          implement   pending           0       —           ·
 
@@ -459,6 +471,7 @@ $ fsdev conductor seed PR-482 -- --phase is the ticket
 seeded PR-482 → PR-482--implement
 
 $ fsdev conductor wake
+pr-reviewer
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
 PR-482          implement   awaiting_review   1       succeeded   Which branch sh…
   ? PR-482/implement/1/q
@@ -469,11 +482,13 @@ answered · drain ran
 
 $ fsdev conductor steer "what's on the board?"
 Board has 1 row(s).
+pr-reviewer
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
 PR-482          implement   completed         1       succeeded   ·
 
 $ fsdev conductor status PR-482 --json
 {
+  "epic": "pr-reviewer",
   "rows": [
     {
       "taskId": "PR-482--implement",
@@ -516,6 +531,7 @@ A failed last attempt with no open question prints under the row:
 $ fsdev conductor status PR-482
 status · claiming
 tool · Bash pnpm test
+pr-reviewer
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
 PR-482          implement   pending           2       failed      ·
   ! failed
@@ -527,11 +543,13 @@ PR-482          implement   pending           2       failed      ·
 ```bash
 $ fsdev conductor abort PR-482
 stop · req-pr-482
+pr-reviewer
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
 PR-482          implement   in_progress       1       running     ·
 
 $ fsdev conductor stop PR-482
 stop · req-pr-482 was not running
+pr-reviewer
 ISSUE           PHASE       STATUS            ATTEMPT OUTCOME     ASK
 PR-482          implement   in_progress       1       running     ·
 
@@ -554,7 +572,7 @@ A last attempt failed when a row's `status` is `errored` or `cancelled`, or when
 
 `seed` always exits `0`, even when the board has pending, failed, or open-question rows. `steer` exits `0` when the talk succeeds, even when the board then has a pending, running, failed, or open-question row. When the action returns an error, `steer` prints it and exits `1`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`. `abort` with no running request id exits `1` and prints `nothing running to stop`. After a stop, or when the printed id was not running, it reprints the board and uses the codes above.
 
-`watch [issue]` polls `status` every couple of seconds and reprints the board whenever it changes. It stops when the code is not `3`. An open question is code `2`. A failed last attempt is code `1`.
+`watch [issue]` polls `status` every couple of seconds and reprints a compact line (issue + status) whenever that line changes. That poll line does not include the flow `id` or `repo`. It stops when the code is not `3`. An open question is code `2`. A failed last attempt is code `1`. `watch --json` reprints the JSON board (with `epic`, and `repo` when set) whenever it changes. When watch stops on a question or a failed attempt, the full plain-text dump includes the flow `id` line.
 
 ### `start`
 
@@ -579,7 +597,7 @@ fsdev conductor start PR-482 Rename getSession in the docs
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd. Used even when `CONDUCTOR_CONFIG` is set. |
 | `--no-config` | Ignore config files and `CONDUCTOR_CONFIG`, and discover from the cwd |
 | `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. A missing path errors with `Config file not found: …`. |
-| `CONDUCTOR_REPO` | When set, the fullscreen header and tab title include the basename of that checkout. A blank value is treated as unset. |
+| `CONDUCTOR_REPO` | When set, the fullscreen header, tab title, and headless board dumps include the basename of that checkout. A blank value is treated as unset. |
 | `--quiet` | Suppress runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (board default: silent; headless default: `warn`) |
 
@@ -630,7 +648,9 @@ The lab config refuses when that directory is the repository that contains `labs
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 - `CONDUCTOR_CONFIG` is read only by `fsdev conductor`. `fsdev run`, `fsdev chat`, and the other commands do not use it.
 - `install` is a lab-bin command. It is not an `fsdev conductor` verb.
-- `CONDUCTOR_REPO` names the checkout in the fullscreen header and tab title. It does not pick the flow or the config.
+- There is no verb that switches flow ids. Run a second `fsdev conductor` for the other flow.
+- Your `status` action returns `rows`. The printed JSON board also has `epic`, and `repo` when `CONDUCTOR_REPO` is set.
+- `CONDUCTOR_REPO` names the checkout in the fullscreen header, the tab title, and headless board dumps. It does not pick the flow or the config.
 - The lab config refuses when `CONDUCTOR_REPO` names the repository that contains `labs/conductor`.
 
 ## Related pages
