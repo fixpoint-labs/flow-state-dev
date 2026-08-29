@@ -72,7 +72,15 @@ const { flow, drainBudgetMs } = conductorFlow({
 export default createFlowState({
   flows: { [CONDUCTOR_FLOW_KIND]: flow },
   modelResolver: createModelResolver(),
-  stores: { dev: { primary: filesystemStores({ rootDir: path.join(root, "data") }) } },
+  stores: {
+    dev: {
+      primary: filesystemStores({
+        rootDir: path.join(root, "data"),
+        // Local lab board. Same acknowledgement `fsdev run` already makes.
+        developmentOnly: true,
+      }),
+    },
+  },
   defaultProfile: "dev",
   detachedDrainTimeoutMs: drainBudgetMs,
 });
