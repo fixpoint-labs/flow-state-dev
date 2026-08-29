@@ -207,7 +207,7 @@ fsdev conductor abort PR-482
 | `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
 | `--quiet` | Suppress runtime logs on stderr |
-| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `warn`) |
+| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (board default: silent; headless default: `warn`) |
 
 **Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `watch`, `abort`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call failed, `2` at least one open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always returns `0`. `steer` returns `0` when the talk succeeds, even when the board then has a pending, running, failed, or open-question row; when the action returns an error it prints the error and returns `1`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`). `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and returns that board code. With no running request id it prints `nothing running to stop` and returns `1`.
 

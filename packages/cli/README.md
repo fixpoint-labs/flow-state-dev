@@ -248,7 +248,7 @@ Options:
 | `--dotenv <path>` | Load a specific `.env` file (repeatable, resolved from cwd) |
 | `--config <path>` / `--no-config` | Load an explicit config (used even when `CONDUCTOR_CONFIG` is set), or ignore config files and `CONDUCTOR_CONFIG` and discover from the cwd |
 | `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. |
-| `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
+| `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (board default: silent; headless default: `warn`) |
 
 `status`, `wake`, `watch`, `abort`, and non-interactive `start` exit with a board-outcome code, distinct from the CLI's usual startup exit codes: `0` every named row is completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call itself failed, `2` at least one row has an open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always exits `0`. `steer` exits `0` when the talk succeeds, even when the board then has a pending, running, failed, or open-question row; when the action returns an error it prints the error and exits `1`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"` and prints `declined · <reason>`. `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and uses that board code. With no running request id it prints `nothing running to stop` and exits `1`. The interactive board (no verb, or `tui`) needs a TTY; without one it prints a message and exits `1`.
 

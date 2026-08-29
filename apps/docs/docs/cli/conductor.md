@@ -574,7 +574,7 @@ fsdev conductor start PR-482 Rename getSession in the docs
 | `--no-config` | Ignore config files and `CONDUCTOR_CONFIG`, and discover from the cwd |
 | `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. A missing path errors with `Config file not found: …`. |
 | `--quiet` | Suppress runtime logs on stderr |
-| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `warn`) |
+| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (board default: silent; headless default: `warn`) |
 
 Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md): an `fsdev.config.ts` in the cwd wins over directory discovery, and `--session` names the session every `wake` runs under, not a per-row session.
 
