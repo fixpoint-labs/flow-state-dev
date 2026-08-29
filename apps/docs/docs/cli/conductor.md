@@ -285,8 +285,8 @@ After `/quit`, reopening the board recalls prior compose lines for that `--sessi
 
 | Key | Does |
 |---|---|
-| `↓` / `↑` | Move the selected row when the prompt is empty (click a visible row). On a long board, the table shows eight rows around the selection. While the slash list is open, choose a verb or board id. While composing, move between lines, then prior sends |
-| `PgUp` / `PgDn` | Scroll the transcript (mouse wheel and `Ctrl-U` / `Ctrl-D` too) |
+| `↓` / `↑` | Move the selected row when the prompt is empty. On a long board, the table shows eight rows around the selection. While the slash list is open, choose a verb or board id. While composing, move between lines, then prior sends |
+| `PgUp` / `PgDn` | Scroll the transcript (`Ctrl-U` / `Ctrl-D` too) |
 | `[` / `]` | Move between open questions on the selected row |
 | `←` / `→` | Move the caret while you are typing, answering, or seeding. When the prompt is empty and you are not answering or seeding, move between open questions on the selected row |
 | `Home` / `End` or `Ctrl-A` / `Ctrl-E` | Start or end of the current compose line |
@@ -306,9 +306,11 @@ After `/quit`, reopening the board recalls prior compose lines for that `--sessi
 | `/status [issue]` | Select that row (if it is on the board) and refresh |
 | `/find [text]` | Search the selected row's transcript |
 | `n` / `N` | Older / newer match while find is on |
-| `?` | Toggle board-key help. The overlay lists the board keys. Any key or a click returns to the board. `fsdev conductor --help` and `fsdev conductor help` print the long CLI form (headless verbs, flags). |
+| `?` | Toggle board-key help. The overlay lists the board keys. Any key returns to the board. `fsdev conductor --help` and `fsdev conductor help` print the long CLI form (headless verbs, flags). |
 | `/quit` | Leave the board. Stops every running row. A row waiting on a question stays. The shell prompt returns without waiting for a stopped run to finish. Remembers the selected row. Reopening recalls compose lines for that `--session` and epic. |
 | `Ctrl-C` | On a selected running row, stop that run and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. Leave when no row is running, even if a row is waiting on a question. Aborts a seed, wake, answer, or steer in flight |
+
+You can drag-select text on the board and copy it with the terminal's usual copy command. Clicking a row does not change the selection. The mouse wheel does not scroll the transcript.
 
 On a row with no open question, typing that is not a slash verb is a talk turn (`steer`). Letters talk. `j`, `k`, `a`, `w`, `q`, and `t` are letters. On a row with an open question, typing starts an answer. Letters are the answer, not board keys, including `f`, `h`, `e`, and `H`. `?` opens help. `/` starts a slash command. `Ctrl-T` expands the todo list. The footer says `type to answer`. `Enter` sends. `Esc` cancels. Slash verbs run the named action either way.
 
@@ -336,7 +338,7 @@ When the selected row has no `run.requestId`, the pane shows only those board an
 
 `/find` searches those lines case-insensitively. The pane is not filtered to hits; matches are highlighted in place and the current hit is pinned in the window. The heading reads `find · "src/foo.ts"  2/5` or `find · "src/foo.ts"  no matches`. Find does not hide the ASK, FAIL, or RUN band.
 
-Changing the selected row (arrows, click) jumps the transcript back to the tail.
+Changing the selected row jumps the transcript to the tail.
 
 When a Write or Edit includes the new file text, a hunk prints under the tool line. A Write prints each new line as `+ <line>`. An Edit prints only the changed span: `-` lines, then `+` lines.
 
@@ -623,6 +625,8 @@ The lab config refuses when that directory is the repository that contains `labs
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
 - Headless `status` and `watch` have no RUN band. They print last-write age on a running row, plus checkout, token counts, spend, and last message when the row has them. A named issue also prints last tool, files, last hunk, and current todo on stdout. A full-board print does not reprint last tool, files, hunk, or todo on a settled row.
+- Clicking a row does not change the selection.
+- The mouse wheel does not scroll the TRANSCRIPT pane.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 - `CONDUCTOR_CONFIG` is read only by `fsdev conductor`. `fsdev run`, `fsdev chat`, and the other commands do not use it.
 - `install` is a lab-bin command. It is not an `fsdev conductor` verb.
