@@ -1674,6 +1674,62 @@ describe("renderFrame", () => {
     expect(frame).toContain("TRANSCRIPT");
   });
 
+  it("keeps TRANSCRIPT on a 24-line ASK that matches a parked implement", () => {
+    const words = Array.from({ length: 10 }, (_, i) => `AskLine${i + 1}${"x".repeat(64)}`);
+    const question = words.join(" ");
+    const branch =
+      "conductor/t0/h16ed7875924f09c235bd7ada69126a8c2fdb8adcd20e3b79e41eff5c60875ae8/conductor-tasks--t0--atlas-prove-ask-1/ask-1--implement";
+    const parked: StatusRow = {
+      ...waiting,
+      taskId: "ASK-1--implement",
+      issue: "ASK-1",
+      attempts: 2,
+      run: {
+        ...waiting.run!,
+        attempt: 2,
+        taskId: "ASK-1--implement",
+        branch,
+        outcome: "running",
+        requestId: "req-ask-1",
+      },
+      questions: [
+        {
+          question: "ASK-1/implement/2/q",
+          text: question,
+          attempt: 2,
+          askedAt: 1,
+        },
+      ],
+    };
+    const frame = stripAnsi(
+      renderFrame(
+        {
+          ...emptyView("conductor--t0--atlas-prove-ask-1"),
+          repoLabel: "fsd-product",
+          lastRefreshAt: Date.parse("2026-08-29T04:37:00Z"),
+          rows: [parked],
+          activity: [
+            { at: 1, text: `ASK-1 · asked ${question}`, requestId: "req-ask-1" },
+            { at: 2, text: "tool · Write src/ask-prove.ts", requestId: "req-ask-1" },
+            { at: 2, text: "+ export function proveFn() { return 1; }", requestId: "req-ask-1" },
+            { at: 3, text: "tool · Write src/b.ts", requestId: "req-ask-1" },
+            { at: 3, text: "+ export const b = 2;", requestId: "req-ask-1" },
+            { at: 4, text: "tool · Write src/c.ts", requestId: "req-ask-1" },
+          ],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(frame).toContain("TRANSCRIPT");
+    expect(frame).toContain("ask-1--implement");
+    expect(frame).toContain("AskLine1");
+    expect(frame).toMatch(/^ ASK\s+·\s+… \d+ more\s*$/m);
+    expect(frame).toContain("/quit");
+    const askBand = frame.slice(frame.search(/^ ASK\s/m), frame.indexOf("TRANSCRIPT"));
+    expect(askBand).toContain("ask-1--implement");
+    expect(Number((askBand.match(/^ ASK\s+·\s+… (\d+) more/m) ?? [])[1])).toBeGreaterThan(2);
+  });
+
   it("shows eight wrapped lines of a long failure, then how many more", () => {
     const words = Array.from({ length: 10 }, (_, i) => `Fail${String(i + 1).padStart(2, "0")}${"x".repeat(64)}`);
     const parked: StatusRow = {

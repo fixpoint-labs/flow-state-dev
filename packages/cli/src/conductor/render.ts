@@ -74,9 +74,19 @@ export const TABLE_BODY_MAX = 8;
 
 /**
  * Wrapped question lines on the ASK band. More than this still shows
- * `… N more`; the full text is on the transcript.
+ * `… N more`; the full text is on the transcript. A 24-line board
+ * shrinks toward `ASK_BODY_MIN` so leftover room still fits TRANSCRIPT.
  */
 export const ASK_BODY_MAX = 8;
+
+/** Fewest wrapped ASK / FAIL body lines the reserved band will keep. */
+export const ASK_BODY_MIN = 2;
+
+/**
+ * Leftover rows the transcript needs when ASK or FAIL is up. Below
+ * this, `renderActivity` cannot paint the TRANSCRIPT heading.
+ */
+export const ACTIVITY_MIN = 4;
 
 /**
  * Slice of `rows` that the table paints. `end` is exclusive.
@@ -139,20 +149,25 @@ export function renderFrame(state: ViewState, size: FrameSize, now: number = Dat
 
   const header = renderHeader(state, cols);
   const table = renderTable(state, cols, now);
-  const band = renderReservedBand(state, cols, now);
   const meta = state.busy || reservedBandOpen(state) ? "" : renderMeta(state, cols);
   const menu = renderSlashMenu(state, cols);
   const prompt = renderPrompt(state, cols);
   const footer = renderFooter(state, cols, now);
-  const reserved =
+  const chrome =
     lineCount(header) +
     lineCount(table) +
-    lineCount(band) +
     lineCount(meta) +
     lineCount(menu) +
     lineCount(prompt) +
     lineCount(footer);
-  const leftover = Math.max(0, rows - reserved);
+  let bodyMax = ASK_BODY_MAX;
+  let band = renderReservedBand(state, cols, now, bodyMax);
+  let leftover = Math.max(0, rows - chrome - lineCount(band));
+  while (leftover < ACTIVITY_MIN && bodyMax > ASK_BODY_MIN) {
+    bodyMax -= 1;
+    band = renderReservedBand(state, cols, now, bodyMax);
+    leftover = Math.max(0, rows - chrome - lineCount(band));
+  }
   const activity = renderActivity(state, cols, leftover, band !== "");
   const pinBottom = lineCount(menu) + lineCount(prompt) + lineCount(footer);
 
@@ -278,21 +293,26 @@ function renderTableRow(
  * so a long transcript cannot cap it away. An open question wins; a failed
  * attempt is next.
  */
-function renderReservedBand(state: ViewState, cols: number, now: number): string {
-  const ask = renderAskBand(state, cols);
+function renderReservedBand(
+  state: ViewState,
+  cols: number,
+  now: number,
+  bodyMax = ASK_BODY_MAX,
+): string {
+  const ask = renderAskBand(state, cols, bodyMax);
   if (ask !== "") return ask;
-  const fail = renderFailBand(state, cols);
+  const fail = renderFailBand(state, cols, bodyMax);
   if (fail !== "") return fail;
   return renderRunBand(state, cols, now);
 }
 
-function renderAskBand(state: ViewState, cols: number): string {
+function renderAskBand(state: ViewState, cols: number, bodyMax = ASK_BODY_MAX): string {
   const question = selectedQuestion(state);
   if (question === undefined) return "";
   const more = selectedRow(state)?.questions.length ?? 0;
   const inner = Math.max(20, cols - 8);
   const wrapped = wrap(question.text, inner);
-  const body = wrapped.slice(0, ASK_BODY_MAX);
+  const body = wrapped.slice(0, bodyMax);
   const hidden = wrapped.length - body.length;
   const hint = [
     question.question,
@@ -361,13 +381,13 @@ function renderAttemptStrip(state: ViewState, inner: number): string[] {
   return lines;
 }
 
-function renderFailBand(state: ViewState, cols: number): string {
+function renderFailBand(state: ViewState, cols: number, bodyMax = ASK_BODY_MAX): string {
   const failure = selectedFailure(state);
   if (failure === undefined) return "";
   const row = selectedRow(state);
   const inner = Math.max(20, cols - 8);
   const wrapped = wrap(failure.reason, inner);
-  const body = wrapped.slice(0, ASK_BODY_MAX);
+  const body = wrapped.slice(0, bodyMax);
   const hidden = wrapped.length - body.length;
   const id = selectedRequestId(state);
   const hint = [
