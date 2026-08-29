@@ -621,9 +621,20 @@ conductor: add $HOME/.local/bin to PATH
 
 If `$HOME/.local/bin/conductor` exists and is not a symlink, install prints `conductor: $HOME/.local/bin/conductor exists and is not a symlink` and exits `1`. If `HOME` is unset, it prints `conductor: HOME is unset; cannot install to ~/.local/bin` and exits `1`.
 
-Once the symlink is on `PATH`, `conductor install` is the same command. Stand in the app directory you want the board to operate on and run `conductor`. When `CONDUCTOR_CONFIG` is unset or blank, the bin sets it to the lab's `fsdev.config.ts`. When `CONDUCTOR_REPO` is unset or blank, the bin sets it to `.` (the directory you are standing in). An explicit value for either is left as you set it.
+Once the symlink is on `PATH`, `conductor install` is the same command. Stand in the app directory you want the board to operate on and run `conductor`. When `CONDUCTOR_CONFIG` is unset or blank, the bin sets it to the lab's `fsdev.config.ts`. When `CONDUCTOR_REPO` is unset or blank, the bin sets it to `.` (the directory you are standing in). An explicit `CONDUCTOR_CONFIG` is left as you set it.
 
-The lab config refuses when that directory is the repository that contains `labs/conductor`. From this repo root, `pnpm conductor` with `CONDUCTOR_REPO` unset fills `.`, which is that repository. Set `CONDUCTOR_REPO` to another checkout, or stand in that checkout and run `conductor`.
+When `CONDUCTOR_REPO` names a git checkout and you are standing in a different git checkout, the bin prints both paths and exits `1`. It does not open the board.
+
+```
+conductor: CONDUCTOR_REPO is /tmp/other-checkout but you are standing in /tmp/fsd-product.
+Unset CONDUCTOR_REPO to use this checkout, or cd there.
+```
+
+Unset `CONDUCTOR_REPO` to use the directory you are standing in. The bin proceeds when you are not standing in a git checkout, or when `CONDUCTOR_REPO` is this same checkout, including `.`. When those paths match, the board uses `CONDUCTOR_REPO` as you set it.
+
+Running `fsdev conductor` directly does not apply this check.
+
+The lab config refuses when `CONDUCTOR_REPO` names the repository that contains `labs/conductor`. From this repo root, `pnpm conductor` with `CONDUCTOR_REPO` unset fills `.`, which is that repository. Stand in the product checkout and run `conductor`.
 
 ## What it won't do
 
@@ -651,6 +662,7 @@ The lab config refuses when that directory is the repository that contains `labs
 - There is no verb that switches flow ids. Run a second `fsdev conductor` for the other flow.
 - Your `status` action returns `rows`. The printed JSON board also has `epic`, and `repo` when `CONDUCTOR_REPO` is set.
 - `CONDUCTOR_REPO` names the checkout in the fullscreen header, the tab title, the leftover line after `/quit`, and headless board dumps. It does not pick the flow or the config.
+- The PATH `conductor` bin does not open the board when `CONDUCTOR_REPO` names a different git checkout than the one you are standing in. It does not rewrite `CONDUCTOR_REPO` to match the directory you are standing in. Running `fsdev conductor` directly does not apply that check.
 - The lab config refuses when `CONDUCTOR_REPO` names the repository that contains `labs/conductor`.
 
 ## Related pages
