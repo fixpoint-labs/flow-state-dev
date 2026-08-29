@@ -707,7 +707,10 @@ describe("fsdev conductor — TUI over the same actions", () => {
     expect(lastFrame(tty.text)).not.toContain("+ export const b");
     expect(lastFrame(tty.text)).not.toContain("src/b.ts");
 
+    tty.input.write("\x1b");
+    await waitFor(() => lastFrame(tty.text), "enter inspect");
     tty.input.write("\x1b[B");
+    tty.input.write("\r");
     await waitFor(() => lastFrame(tty.text), "tool · Write src/b.ts");
     expect(lastFrame(tty.text)).toContain("+ export const b = 2;");
     expect(lastFrame(tty.text)).not.toContain("+ export const a");
