@@ -218,7 +218,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("the shell comes back without waiting for it to finish");
     expect(HELP_TEXT).toContain("Reopening the board selects the row you left, per session and epic.");
     expect(HELP_TEXT).toContain(
-      "Reopening also recalls prior compose lines, and the talk on the transcript, for that session and epic.",
+      "Reopening also recalls prior compose lines, and the talk on the board strip, for that session and epic.",
     );
     expect(HELP_TEXT).toContain("The terminal tab shows running, waiting, and failed counts.");
     expect(HELP_TEXT).toContain("The header names the epic and, when CONDUCTOR_REPO is set, the product checkout.");

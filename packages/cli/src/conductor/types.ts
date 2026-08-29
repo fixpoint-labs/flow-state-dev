@@ -553,14 +553,14 @@ export function selectedRequestId(state: ViewState): string | undefined {
 }
 
 /**
- * Board/operator lines plus the selected row's child stream. Another
+ * The selected row's child stream. Talk, seed, and wake stay on the
+ * board strip — inspect is that attempt, not the host log. Another
  * row's tools stay off this view until that row is selected.
  */
 export function activityForView(state: ViewState): ActivityItem[] {
   const id = selectedRequestId(state);
-  return state.activity.filter(
-    (item) => item.requestId === undefined || item.requestId === id,
-  );
+  if (id === undefined) return [];
+  return state.activity.filter((item) => item.requestId === id);
 }
 
 /** The selected row's latest checklist, when that request wrote one. */
@@ -741,16 +741,14 @@ function lastToolFollowLines(
 }
 
 /**
- * Live line for the current view. A selected child that is mid-stream
- * wins over the operator slot so a status poll does not hide the run.
+ * Live line for the selected child's stream. The operator slot (`live`)
+ * is the board strip — a status poll does not appear on inspect.
  */
 export function visibleLive(state: ViewState): string | null {
   const id = selectedRequestId(state);
-  if (id !== undefined) {
-    const child = state.childLive[id];
-    if (child !== undefined) return child;
-  }
-  return state.live;
+  if (id === undefined) return null;
+  const child = state.childLive[id];
+  return child === undefined ? null : child;
 }
 
 const PAGE = 8;

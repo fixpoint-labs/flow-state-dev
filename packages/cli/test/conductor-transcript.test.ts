@@ -1672,7 +1672,7 @@ describe("activityForView / visibleLive", () => {
     run: { ...liveA.run!, requestId: "req-live-2" },
   };
 
-  it("keeps board lines on every row and hides the other child's tools", () => {
+  it("keeps the selected child's tools and drops board lines and the other child", () => {
     const state = {
       ...emptyView("epic"),
       rows: [liveA, liveB],
@@ -1688,14 +1688,12 @@ describe("activityForView / visibleLive", () => {
       },
     };
     expect(activityForView(state).map((item) => item.text)).toEqual([
-      "LIVE-1 · in_progress",
       "tool · Write src/a.ts",
     ]);
     expect(visibleLive(state)).toBe("status · coding A");
 
     const other = { ...state, selected: 1 };
     expect(activityForView(other).map((item) => item.text)).toEqual([
-      "LIVE-1 · in_progress",
       "tool · Write src/b.ts",
     ]);
     expect(visibleLive(other)).toBe("status · coding B");
@@ -1717,13 +1715,13 @@ describe("activityForView / visibleLive", () => {
     ]);
   });
 
-  it("falls back to the operator live line when the selected child is idle", () => {
+  it("does not put the operator live line on the selected child's view", () => {
     const state = {
       ...emptyView("epic"),
       rows: [liveA],
       live: "status · reading board",
     };
-    expect(visibleLive(state)).toBe("status · reading board");
+    expect(visibleLive(state)).toBeNull();
   });
 });
 

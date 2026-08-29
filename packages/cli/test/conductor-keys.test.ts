@@ -1040,11 +1040,11 @@ describe("applyKey", () => {
 
   it("applies /find immediately and steps with n / N", () => {
     const state = {
-      ...board([row("FIX-1")]),
+      ...board([runningRow("FIX-1")]),
       activity: [
-        { at: 1, text: "tool · Write src/alpha.ts" },
-        { at: 2, text: "tool · Read src/beta.ts" },
-        { at: 3, text: "tool · Write src/gamma.ts" },
+        { at: 1, text: "tool · Write src/alpha.ts", requestId: "req-FIX-1" },
+        { at: 2, text: "tool · Read src/beta.ts", requestId: "req-FIX-1" },
+        { at: 3, text: "tool · Write src/gamma.ts", requestId: "req-FIX-1" },
       ],
     };
     let typed = applyKey(state, { type: "char", value: "/" }).state;

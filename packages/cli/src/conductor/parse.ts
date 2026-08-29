@@ -356,7 +356,7 @@ In the TUI:
   ?            board keys (any key returns; this text is the CLI form)
   /quit        leave the board (stops a run that is still going; a parked question is not one; the shell comes back without waiting for it to finish)
   Reopening the board selects the row you left, per session and epic.
-  Reopening also recalls prior compose lines, and the talk on the transcript, for that session and epic.
+  Reopening also recalls prior compose lines, and the talk on the board strip, for that session and epic.
   The terminal tab shows running, waiting, and failed counts.
   The header names the epic and, when CONDUCTOR_REPO is set, the product checkout. Headless dumps and the line left after /quit print the same two strings. --json adds epic and repo next to rows.
 

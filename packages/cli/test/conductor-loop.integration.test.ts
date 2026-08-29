@@ -404,7 +404,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     expect(tty.text).toContain("\x1b[?1006l");
   });
 
-  it("wakes from the board and writes the drain into the transcript", async () => {
+  it("wakes from the board, inspects the question, and keeps the drain on the strip", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "ASK-1"], {
       cwd: fixtureDir,
@@ -427,8 +427,13 @@ describe("fsdev conductor — TUI over the same actions", () => {
     tty.input.write("/wake\r");
     await waitFor(() => tty.text, "Which path?");
     expect(tty.text).toContain("\x07");
-    expect(tty.text).toContain("asked Which path?");
-    expect(tty.text).toMatch(/parked ASK-1|drained |claiming /);
+    expect(stripAnsi(lastFrame(tty.text))).toContain("inspect");
+    expect(stripAnsi(lastFrame(tty.text))).toContain("Which path?");
+    expect(stripAnsi(lastFrame(tty.text))).not.toContain("asked Which path?");
+
+    tty.input.write("\x1b");
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "enter inspect");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/asked Which path\?|parked ASK-1|drained |claiming /);
 
     tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
@@ -460,9 +465,9 @@ describe("fsdev conductor — TUI over the same actions", () => {
     });
 
     await waitFor(() => tty.text, "Not logged in");
-    expect(tty.text).toMatch(/\bFAIL\b/);
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/^ FAIL\s*$/m);
     expect(lastFrame(tty.text)).toContain("inspect");
-    expect(lastFrame(tty.text)).not.toContain("1 failed");
+    expect(stripAnsi(lastFrame(tty.text))).not.toContain("1 failed");
     expect(tty.text).toContain("/wake");
 
     tty.input.write("/quit\r");

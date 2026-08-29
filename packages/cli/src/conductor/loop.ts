@@ -417,6 +417,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
               state,
               result === "signaled" ? `stop · ${id}` : `stop · ${id} was not running`,
               now(),
+              id,
             );
           }
           await refresh();

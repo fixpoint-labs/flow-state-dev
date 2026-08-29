@@ -10,6 +10,7 @@ import {
 } from "../src/conductor/render";
 import {
   emptyView,
+  findMatches,
   lastActivityAt,
   rowNow,
   selectedFailure,
@@ -199,6 +200,10 @@ function looking<T extends { inspect?: boolean }>(state: T): T & { inspect: true
   return { ...state, inspect: true };
 }
 
+function withRequest(row: StatusRow, requestId: string): StatusRow {
+  return { ...row, run: { ...(row.run ?? waiting.run!), requestId } };
+}
+
 const waiting: StatusRow = {
   taskId: "FIX-1--implement",
   issue: "FIX-1",
@@ -333,7 +338,7 @@ describe("renderFrame", () => {
       ...waiting,
       status: "pending",
       questions: [],
-      run: null,
+      run: { ...waiting.run!, requestId: "req-md" },
     };
     const frame = stripAnsi(
       renderFrame(
@@ -343,6 +348,7 @@ describe("renderFrame", () => {
           activity: [
             {
               at: 1,
+              requestId: "req-md",
               text: "message · ## Which export?\n\nUse `proveFn`.\n\n- keep the name\n- rename it",
             },
           ],
@@ -806,21 +812,60 @@ describe("renderFrame", () => {
     expect(stacked).toContain("retry the failed rows");
   });
 
-  it("shows a you · talk line in the transcript", () => {
-    const frame = renderFrame(looking(
-      {
-        ...emptyView("epic"),
-        activity: [{ at: 1, text: "you · what's on the board?" }],
-      }),
-      { cols: 80, rows: 24 },
+  it("keeps you · talk on the board strip, not inspect TRANSCRIPT", () => {
+    const activity = [
+      { at: 1, text: "you · what's on the board?" },
+      { at: 2, text: "coord · nothing filed yet" },
+    ];
+    const inspect = stripAnsi(
+      renderFrame(
+        looking({ ...emptyView("epic"), rows: [waiting], activity }),
+        { cols: 80, rows: 24 },
+      ),
     );
-    expect(stripAnsi(frame)).toContain("you · what's on the board?");
+    expect(inspect).toContain("nothing yet. type to answer.");
+    expect(inspect).not.toContain("you · what's on the board?");
+    expect(inspect).not.toContain("coord · nothing filed yet");
+    const board = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [waiting], activity }, { cols: 80, rows: 24 }),
+    );
+    expect(board).toContain("you · what's on the board?");
+    expect(board).toContain("coord · nothing filed yet");
+    expect(board).not.toContain("TRANSCRIPT");
+  });
+
+  it("keeps seed and wake off inspect TRANSCRIPT", () => {
+    const parked = withRequest(waiting, "req-1");
+    const activity = [
+      { at: 1, text: "status · seeded" },
+      { at: 2, text: "wake · drain ran" },
+      { at: 3, text: "ASK-1 · pending → awaiting_review" },
+      { at: 4, text: "tool · Write src/ask-prove.ts", requestId: "req-1" },
+    ];
+    const inspect = stripAnsi(
+      renderFrame(looking({ ...emptyView("epic"), rows: [parked], activity }), { cols: 80, rows: 24 }),
+    );
+    expect(inspect).toContain("tool · Write src/ask-prove.ts");
+    expect(inspect).not.toContain("status · seeded");
+    expect(inspect).not.toContain("wake · drain ran");
+    expect(inspect).not.toContain("pending → awaiting_review");
+    const board = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [parked], activity }, { cols: 80, rows: 24 }),
+    );
+    expect(board).toContain("status · seeded");
+    expect(board).toContain("wake · drain ran");
+    expect(board).not.toContain("TRANSCRIPT");
   });
 
   it("fills leftover rows with the transcript and PageUp looks further back", () => {
-    const activity = Array.from({ length: 30 }, (_, i) => ({ at: i, text: `line-${i}` }));
+    const parked = withRequest(waiting, "req-scroll");
+    const activity = Array.from({ length: 30 }, (_, i) => ({
+      at: i,
+      text: `line-${i}`,
+      requestId: "req-scroll",
+    }));
     const follow = renderFrame(looking(
-      { ...emptyView("epic"), rows: [waiting], activity, scroll: 0 }),
+      { ...emptyView("epic"), rows: [parked], activity, scroll: 0 }),
       { cols: 80, rows: 24 },
     );
     expect(follow).toContain("line-29");
@@ -829,7 +874,7 @@ describe("renderFrame", () => {
 
     const mid = stripAnsi(
       renderFrame(looking(
-        { ...emptyView("epic"), rows: [waiting], activity, scroll: 3 }),
+        { ...emptyView("epic"), rows: [parked], activity, scroll: 3 }),
         { cols: 80, rows: 24 },
       ),
     );
@@ -837,7 +882,7 @@ describe("renderFrame", () => {
     expect(mid).not.toContain("oldest");
 
     const back = renderFrame(looking(
-      { ...emptyView("epic"), rows: [waiting], activity, scroll: 200 }),
+      { ...emptyView("epic"), rows: [parked], activity, scroll: 200 }),
       { cols: 80, rows: 24 },
     );
     expect(back).toContain("line-0");
@@ -847,10 +892,15 @@ describe("renderFrame", () => {
   });
 
   it("does not print an unclamped Home jump in the transcript heading", () => {
-    const activity = Array.from({ length: 30 }, (_, i) => ({ at: i, text: `line-${i}` }));
+    const parked = withRequest(waiting, "req-scroll");
+    const activity = Array.from({ length: 30 }, (_, i) => ({
+      at: i,
+      text: `line-${i}`,
+      requestId: "req-scroll",
+    }));
     const frame = stripAnsi(
       renderFrame(looking(
-        { ...emptyView("epic"), rows: [waiting], activity, scroll: Number.MAX_SAFE_INTEGER }),
+        { ...emptyView("epic"), rows: [parked], activity, scroll: Number.MAX_SAFE_INTEGER }),
         { cols: 80, rows: 24 },
       ),
     );
@@ -861,12 +911,13 @@ describe("renderFrame", () => {
   });
 
   it("shows the live line at the tail while following, and hides it when scrolled back", () => {
+    const parked = withRequest(waiting, "req-live");
     const follow = renderFrame(looking(
       {
         ...emptyView("epic"),
-        rows: [waiting],
-        live: "status · claiming ASK-1",
-        activity: [{ at: 1, text: "ASK-1 · pending" }],
+        rows: [parked],
+        childLive: { "req-live": "status · claiming ASK-1" },
+        activity: [{ at: 1, text: "tool · Read src/a.ts", requestId: "req-live" }],
       }),
       { cols: 80, rows: 24 },
     );
@@ -877,8 +928,8 @@ describe("renderFrame", () => {
     const streaming = renderFrame(
       looking({
         ...emptyView("epic"),
-        rows: [{ ...waiting, questions: [], status: "pending", run: null }],
-        live: "message · use `proveFn` or **keep** it",
+        rows: [withRequest({ ...waiting, questions: [], status: "pending" }, "req-md")],
+        childLive: { "req-md": "message · use `proveFn` or **keep** it" },
       }),
       { cols: 80, rows: 24 },
     );
@@ -904,21 +955,38 @@ describe("renderFrame", () => {
     const held = renderFrame(looking(
       {
         ...emptyView("epic"),
-        rows: [waiting],
-        live: "tool · Bash pnpm test",
-        activity: [{ at: 1, text: "tool · Bash pnpm test" }],
+        rows: [parked],
+        childLive: { "req-live": "tool · Bash pnpm test" },
+        activity: [{ at: 1, text: "tool · Bash pnpm test", requestId: "req-live" }],
       }),
       { cols: 80, rows: 24 },
     );
     expect(stripAnsi(held).match(/tool · Bash pnpm test/g)?.length).toBe(1);
     expect(held).toContain("live");
 
-    const back = renderFrame(looking(
+    const hostLive = renderFrame(looking(
       {
         ...emptyView("epic"),
         rows: [waiting],
         live: "status · claiming ASK-1",
-        activity: Array.from({ length: 30 }, (_, i) => ({ at: i, text: `line-${i}` })),
+        activity: [{ at: 1, text: "ASK-1 · pending" }],
+      }),
+      { cols: 80, rows: 24 },
+    );
+    expect(stripAnsi(hostLive)).toContain("nothing yet. type to answer.");
+    expect(hostLive).not.toContain("status · claiming ASK-1");
+    expect(hostLive).not.toContain("ASK-1 · pending");
+
+    const back = renderFrame(looking(
+      {
+        ...emptyView("epic"),
+        rows: [parked],
+        childLive: { "req-live": "status · claiming ASK-1" },
+        activity: Array.from({ length: 30 }, (_, i) => ({
+          at: i,
+          text: `line-${i}`,
+          requestId: "req-live",
+        })),
         scroll: 200,
       }),
       { cols: 80, rows: 24 },
@@ -928,14 +996,19 @@ describe("renderFrame", () => {
   });
 
   it("keeps the question above the transcript even when the log is long", () => {
-    const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
+    const parked = withRequest(waiting, "req-long");
+    const activity = Array.from({ length: 40 }, (_, i) => ({
+      at: i,
+      text: `stream-line-${i}`,
+      requestId: "req-long",
+    }));
     const frame = renderFrame(looking(
-      { ...emptyView("epic"), rows: [waiting], activity }),
+      { ...emptyView("epic"), rows: [parked], activity }),
       { cols: 80, rows: 24 },
     );
     expect(beforeTranscript(frame)).toContain("Which path?");
     expect(beforeTranscript(frame)).toMatch(/\bASK\b/);
-    expect(frame).toContain("wake-line-39");
+    expect(frame).toContain("stream-line-39");
   });
 
   it("leaves the running transcript room by not repeating the checkout under the RUN band", () => {
@@ -953,7 +1026,11 @@ describe("renderFrame", () => {
         usage: { inputTokens: 12_000, outputTokens: 400 },
       },
     };
-    const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
+    const activity = Array.from({ length: 40 }, (_, i) => ({
+      at: i,
+      text: `stream-line-${i}`,
+      requestId: "req-live-1",
+    }));
     const frame = renderFrame(looking(
       { ...emptyView("epic"), rows: [runningRow], activity }),
       { cols: 80, rows: 24 },
@@ -963,13 +1040,18 @@ describe("renderFrame", () => {
     expect(above).toContain("12.0k→400");
     expect(above).not.toContain("none open");
     expect(above.match(/conductor\/LIVE-1--implement/g)?.length).toBe(1);
-    expect(frame.split("wake-line-").length - 1).toBeGreaterThan(5);
+    expect(frame.split("stream-line-").length - 1).toBeGreaterThan(5);
   });
 
   it("keeps a failed attempt above the transcript even when the log is long", () => {
-    const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
+    const parked = withRequest(failed, "req-fail");
+    const activity = Array.from({ length: 40 }, (_, i) => ({
+      at: i,
+      text: `stream-line-${i}`,
+      requestId: "req-fail",
+    }));
     const frame = renderFrame(looking(
-      { ...emptyView("epic"), rows: [failed], activity }),
+      { ...emptyView("epic"), rows: [parked], activity }),
       { cols: 80, rows: 24 },
     );
     const above = beforeTranscript(frame);
@@ -980,7 +1062,7 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).toContain("inspect");
     expect(stripAnsi(frame)).not.toContain("1 failed");
     expect(stripAnsi(frame)).toContain("/wake");
-    expect(frame).toContain("wake-line-39");
+    expect(frame).toContain("stream-line-39");
   });
 
   it("does not advertise /wake on a spent row — the board will not take it", () => {
@@ -1021,7 +1103,11 @@ describe("renderFrame", () => {
       },
       questions: [],
     };
-    const activity = Array.from({ length: 40 }, (_, i) => ({ at: i, text: `wake-line-${i}` }));
+    const activity = Array.from({ length: 40 }, (_, i) => ({
+      at: i,
+      text: `stream-line-${i}`,
+      requestId: "req-live-1",
+    }));
     const frame = renderFrame(looking(
       { ...emptyView("epic"), rows: [running], activity }),
       { cols: 80, rows: 24 },
@@ -1039,7 +1125,7 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).toContain("inspect");
     expect(stripAnsi(frame)).not.toContain("1 running");
     expect(stripAnsi(frame)).toContain("x stop");
-    expect(frame).toContain("wake-line-39");
+    expect(frame).toContain("stream-line-39");
   });
 
   it("shows last-write age on a running row, rust after 30s, and prefers the journal", () => {
@@ -1149,12 +1235,13 @@ describe("renderFrame", () => {
     expect(first).toContain("tool · Write src/a.ts");
     expect(first).toContain("+ export const a = 1;");
     expect(first).toContain("status · coding A");
-    expect(first).toContain("LIVE-1 · in_progress");
+    expect(first).not.toContain("LIVE-1 · in_progress");
     expect(first).not.toContain("src/b.ts");
     expect(first).not.toContain("+ export const b");
     const firstBoard = stripAnsi(
       renderFrame({ ...emptyView("epic"), rows, selected: 0, activity, childLive }, { cols: 80, rows: 24 }),
     );
+    expect(firstBoard).toContain("LIVE-1 · in_progress");
     expect(firstBoard).toContain("coding B");
 
     const second = renderFrame(looking(
@@ -1164,7 +1251,7 @@ describe("renderFrame", () => {
     expect(second).toContain("tool · Write src/b.ts");
     expect(second).toContain("+ export const b = 2;");
     expect(second).toContain("status · coding B");
-    expect(second).toContain("LIVE-1 · in_progress");
+    expect(second).not.toContain("LIVE-1 · in_progress");
     expect(second).not.toContain("src/a.ts");
     expect(second).not.toContain("+ export const a");
     const secondBoard = stripAnsi(
@@ -2434,11 +2521,11 @@ describe("renderFrame", () => {
         ...emptyView("epic"),
         rows: [running],
         activity: [
-          { at: 1, text: "tool · TodoWrite" },
-          { at: 1, text: "  [x] Add the failing test" },
-          { at: 1, text: "  [·] Implement the fix" },
-          { at: 2, text: "tool · Read src/foo.ts" },
-          { at: 2, text: "  export function foo() {" },
+          { at: 1, text: "tool · TodoWrite", requestId: "req-live-1" },
+          { at: 1, text: "  [x] Add the failing test", requestId: "req-live-1" },
+          { at: 1, text: "  [·] Implement the fix", requestId: "req-live-1" },
+          { at: 2, text: "tool · Read src/foo.ts", requestId: "req-live-1" },
+          { at: 2, text: "  export function foo() {", requestId: "req-live-1" },
         ],
       }),
       { cols: 80, rows: 24 },
@@ -2481,9 +2568,9 @@ describe("renderFrame", () => {
         ...emptyView("epic"),
         rows: [running],
         activity: [
-          { at: 1, text: "tool · Write src/foo.ts" },
-          { at: 1, text: "- const n = 1;" },
-          { at: 1, text: "+ const n = 2;" },
+          { at: 1, text: "tool · Write src/foo.ts", requestId: "req-live-1" },
+          { at: 1, text: "- const n = 1;", requestId: "req-live-1" },
+          { at: 1, text: "+ const n = 2;", requestId: "req-live-1" },
         ],
       }),
       { cols: 80, rows: 24 },
@@ -2550,20 +2637,23 @@ describe("renderFrame", () => {
       status: "pending",
       attempts: 0,
       feedback: null,
-      run: null,
+      run: { ...waiting.run!, requestId: "req-find" },
       questions: [],
     };
     const activity = Array.from({ length: 40 }, (_, i) => ({
       at: i + 1,
       text: `tool · Read src/line-${String(i).padStart(2, "0")}.ts`,
+      requestId: "req-find",
     }));
     const base = { ...emptyView("epic"), rows: [idle], activity };
-    const tail = renderFrame(looking(base), { cols: 80, rows: 18 });
+    const tail = renderFrame(looking(base), { cols: 80, rows: 24 });
+    expect(tail).toContain("TRANSCRIPT");
     expect(stripAnsi(tail)).not.toContain("src/line-00.ts");
     expect(stripAnsi(tail)).toContain("src/line-39.ts");
 
     const finding = { ...base, find: "line-00", findAt: 0 };
-    const frame = renderFrame(looking(finding), { cols: 80, rows: 18 });
+    expect(findMatches(looking(finding))).toHaveLength(1);
+    const frame = renderFrame(looking(finding), { cols: 80, rows: 24 });
     const text = stripAnsi(frame);
     expect(text).toContain("src/line-00.ts");
     expect(text).toMatch(/find · "line-00"  1\/1/);
@@ -2577,7 +2667,7 @@ describe("renderFrame", () => {
       ...waiting,
       status: "pending",
       questions: [],
-      run: null,
+      run: { ...waiting.run!, requestId: "req-find" },
     };
     const frame = renderFrame(
       looking({
@@ -2585,7 +2675,7 @@ describe("renderFrame", () => {
         rows: [idle],
         find: "path",
         findAt: 0,
-        activity: [{ at: 1, text: "message · see `proveFn` in the path" }],
+        activity: [{ at: 1, text: "message · see `proveFn` in the path", requestId: "req-find" }],
       }),
       { cols: 80, rows: 24 },
     );
@@ -2597,13 +2687,14 @@ describe("renderFrame", () => {
   });
 
   it("keeps the ASK band when find is on", () => {
+    const parked = withRequest(waiting, "req-find");
     const frame = renderFrame(looking(
       {
         ...emptyView("epic"),
-        rows: [waiting],
+        rows: [parked],
         find: "path",
         findAt: 0,
-        activity: [{ at: 1, text: "Which path?" }],
+        activity: [{ at: 1, text: "Which path?", requestId: "req-find" }],
       }),
       { cols: 80, rows: 24 },
     );
