@@ -1633,6 +1633,32 @@ describe("renderFrame", () => {
     expect(above).toMatch(/… \d+ more/);
   });
 
+  it("keeps the branch on a 24-line ASK when the question wraps", () => {
+    const words = Array.from({ length: 10 }, (_, i) => `AskLine${i + 1}${"x".repeat(64)}`);
+    const parked: StatusRow = {
+      ...waiting,
+      questions: [{ ...waiting.questions[0]!, text: words.join(" ") }],
+    };
+    const frame = stripAnsi(
+      renderFrame(
+        {
+          ...emptyView("conductor--t0--atlas-prove-ask-1"),
+          repoLabel: "fsd-product",
+          rows: [parked],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(frame).toContain("conductor/FIX-1--implement");
+    expect(frame).toContain("/quit");
+    expect(frame).toMatch(/^ ASK\s*$/m);
+    const askBand = frame.slice(frame.search(/^ ASK\s*$/m));
+    const branchAt = askBand.indexOf("conductor/FIX-1--implement");
+    const bodyAt = askBand.indexOf("AskLine1");
+    expect(branchAt).toBeGreaterThan(-1);
+    expect(bodyAt).toBeGreaterThan(branchAt);
+  });
+
   it("shows eight wrapped lines of a long failure, then how many more", () => {
     const words = Array.from({ length: 10 }, (_, i) => `Fail${String(i + 1).padStart(2, "0")}${"x".repeat(64)}`);
     const parked: StatusRow = {
@@ -1649,6 +1675,32 @@ describe("renderFrame", () => {
     expect(above).toContain("Fail08");
     expect(above).not.toContain("Fail09");
     expect(above).toMatch(/… \d+ more/);
+  });
+
+  it("keeps the branch on a 24-line FAIL when the reason wraps", () => {
+    const words = Array.from({ length: 10 }, (_, i) => `Fail${String(i + 1).padStart(2, "0")}${"x".repeat(64)}`);
+    const parked: StatusRow = {
+      ...failed,
+      run: { ...failed.run!, reason: words.join(" ") },
+    };
+    const frame = stripAnsi(
+      renderFrame(
+        {
+          ...emptyView("conductor--t0--atlas-prove-fail-1"),
+          repoLabel: "fsd-product",
+          rows: [parked],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(frame).toContain("conductor/FAIL-1--implement");
+    expect(frame).toContain("/quit");
+    expect(frame).toMatch(/^ FAIL\s*$/m);
+    const failBand = frame.slice(frame.search(/^ FAIL\s*$/m));
+    const branchAt = failBand.indexOf("conductor/FAIL-1--implement");
+    const bodyAt = failBand.indexOf("Fail01");
+    expect(branchAt).toBeGreaterThan(-1);
+    expect(bodyAt).toBeGreaterThan(branchAt);
   });
 
   it("paints a plan checklist and a Read peek in the transcript", () => {

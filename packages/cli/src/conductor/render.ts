@@ -305,6 +305,7 @@ function renderAskBand(state: ViewState, cols: number): string {
   return [
     rule(cols, MAUVE),
     ` ${paint(MAUVE + BOLD, "ASK")}`,
+    ...renderAttemptIdentity(state, inner),
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ...(hidden > 0 ? [` ${dim(`… ${hidden} more`)}`] : []),
     ` ${dim(hint)}`,
@@ -314,19 +315,29 @@ function renderAskBand(state: ViewState, cols: number): string {
 }
 
 /**
- * Compact "what that attempt was doing" — branch, PR, last tool, files,
- * last hunk, current todo. ASK and FAIL keep this on the reserved band
- * so it still shows when inspect is hidden (busy, or a tall transcript).
- * The branch stays when there is no pull request yet — that is the
- * artifact the operator needs after a push that could not open one.
+ * Branch, then PR URL. These sit above the ASK / FAIL body so a long
+ * question cannot pin them off a 24-line board. The branch is the
+ * handle after a push that could not open a pull request.
  */
-function renderAttemptStrip(state: ViewState, inner: number): string[] {
+function renderAttemptIdentity(state: ViewState, inner: number): string[] {
   const lines: string[] = [];
   const row = selectedRow(state);
   const branch = row?.run?.branch;
   if (branch) lines.push(` ${dim(truncate(branch, inner))}`);
   const prUrl = row?.run?.prUrl;
   if (prUrl) lines.push(` ${dim(prText(prUrl, inner))}`);
+  return lines;
+}
+
+/**
+ * Compact "what that attempt was doing" — last tool, files, last hunk,
+ * current todo. ASK and FAIL keep this on the reserved band so it still
+ * shows when inspect is hidden (busy, or a tall transcript). Identity
+ * (branch, PR) is rendered above the body, not here.
+ */
+function renderAttemptStrip(state: ViewState, inner: number): string[] {
+  const lines: string[] = [];
+  const row = selectedRow(state);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
     const cwd = row?.run?.workspacePath ?? null;
@@ -360,6 +371,7 @@ function renderFailBand(state: ViewState, cols: number): string {
   return [
     rule(cols, RUST),
     ` ${paint(RUST + BOLD, "FAIL")}`,
+    ...renderAttemptIdentity(state, inner),
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ...(hidden > 0 ? [` ${dim(`… ${hidden} more`)}`] : []),
     ` ${dim(hint)}`,
