@@ -352,6 +352,7 @@ In the TUI:
   Reopening the board selects the row you left, per session and epic.
   Reopening also recalls prior compose lines for that session and epic.
   The terminal tab shows running, waiting, and failed counts.
+  The header names the epic and, when CONDUCTOR_REPO is set, the product checkout.
 
   Type anything that is not a slash verb to talk to the coordinator.
   Letters talk. r still refreshes. /quit leaves. Ctrl-C leaves when nothing is running.

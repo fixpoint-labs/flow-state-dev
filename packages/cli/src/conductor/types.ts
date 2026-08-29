@@ -123,6 +123,8 @@ export type InputMode = "command" | "answer" | "seed" | "find";
 export interface ViewState {
   /** Shown in the header. The board is one epic. */
   epicLabel: string;
+  /** Product checkout basename, when `CONDUCTOR_REPO` is set. */
+  repoLabel: string | null;
   rows: StatusRow[];
   selected: number;
   /** Which open question on the selected row the answer prompt targets. */
@@ -209,7 +211,6 @@ export interface ViewState {
    */
   slashAt: number;
   lastRefreshAt: number | null;
-  /** Prior submitted talk, answer, and seed lines (newest last). */
   /** Submitted compose lines, newest last. Survives `/quit` when a sidecar is set. */
   drafts: string[];
   /** Index into `drafts` while walking with ↑/↓, or `null` on the live draft. */
@@ -223,6 +224,7 @@ export interface ViewState {
 export function emptyView(epicLabel: string): ViewState {
   return {
     epicLabel,
+    repoLabel: null,
     rows: [],
     selected: 0,
     questionIndex: 0,

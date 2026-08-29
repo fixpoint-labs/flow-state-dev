@@ -66,11 +66,16 @@ function waitFor(getText: () => string, needle: string, ms = 3_000): Promise<voi
   });
 }
 
+const priorRepo = process.env.CONDUCTOR_REPO;
+
 beforeEach(() => {
   process.exitCode = undefined;
+  delete process.env.CONDUCTOR_REPO;
 });
 afterEach(() => {
   process.exitCode = undefined;
+  if (priorRepo === undefined) delete process.env.CONDUCTOR_REPO;
+  else process.env.CONDUCTOR_REPO = priorRepo;
 });
 
 describe("fsdev conductor — TUI over the same actions", () => {
@@ -103,10 +108,29 @@ describe("fsdev conductor — TUI over the same actions", () => {
     expect(tty.text).toContain("FSDEV CONDUCTOR");
     expect(tty.text).toContain("ASK-1");
     expect(tty.text).toContain("\x1b]0;conductor · fixture-epic · 1 waiting\x1b\\");
+    expect(tty.text).not.toContain("conductor-atlas-prove-public");
 
     tty.input.write("the real file\r");
     await waitFor(() => tty.text, "completed");
 
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
+  it("names the product checkout in the tab title when CONDUCTOR_REPO is set", async () => {
+    process.env.CONDUCTOR_REPO = "/tmp/fsd-product";
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores: createInMemoryStores(),
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => tty.text, "FSDEV CONDUCTOR");
+    expect(tty.text).toContain("\x1b]0;conductor · fixture-epic · fsd-product\x1b\\");
+    expect(stripAnsi(lastFrame(tty.text))).toContain("fsd-product");
     tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
   });

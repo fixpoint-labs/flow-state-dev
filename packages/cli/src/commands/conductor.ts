@@ -47,6 +47,7 @@ import { runConductorHeadless } from "../conductor/headless";
 import { runConductorTui } from "../conductor/loop";
 import { lastDraftsPath } from "../conductor/compose-history";
 import { lastFocusPath } from "../conductor/last-focus";
+import { conductorRepoLabel } from "../conductor/repo-label";
 import { boundedDispose, TUI_LEAVE_DRAIN_MS } from "../conductor/leave";
 
 /** Registers `fsdev conductor [verb…]` on the given commander program. */
@@ -336,6 +337,7 @@ export async function executeConductorCommand(
     };
 
     const json = invocation.mode === "headless" ? invocation.json : options.json === true;
+    const repoLabel = conductorRepoLabel(process.env.CONDUCTOR_REPO);
     const focusFile =
       options.lastFocusPath ??
       (resolved.source === "config"
@@ -356,6 +358,7 @@ export async function executeConductorCommand(
         ...(invocation.issue !== undefined ? { focusIssue: invocation.issue } : {}),
         ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
         ...(draftsFile !== undefined ? { lastDraftsPath: draftsFile } : {}),
+        ...(repoLabel !== undefined ? { repoLabel } : {}),
         ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
       });
     }
@@ -384,6 +387,7 @@ export async function executeConductorCommand(
         focusIssue: invocation.command.issue,
         ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
         ...(draftsFile !== undefined ? { lastDraftsPath: draftsFile } : {}),
+        ...(repoLabel !== undefined ? { repoLabel } : {}),
         ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
       });
     }

@@ -79,6 +79,8 @@ export function canStartBoardRefresh(busy: boolean, refreshInFlight: boolean): b
 export interface LoopOptions {
   dispatch: ConductorDispatch;
   epicLabel: string;
+  /** Product checkout basename for the header, when known. */
+  repoLabel?: string;
   input?: NodeJS.ReadStream;
   output?: NodeJS.WriteStream;
   pollMs?: number;
@@ -105,6 +107,9 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   }
 
   let state = emptyView(options.epicLabel);
+  if (options.repoLabel !== undefined && options.repoLabel !== "") {
+    state = { ...state, repoLabel: options.repoLabel };
+  }
   if (options.lastDraftsPath !== undefined) {
     const drafts = readDrafts(options.lastDraftsPath);
     if (drafts.length > 0) state = { ...state, drafts };

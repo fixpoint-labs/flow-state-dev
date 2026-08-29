@@ -45,6 +45,12 @@ describe("conductorWindowTitle", () => {
         busy: true,
       }),
     ).toBe("conductor · epic · 1 running · working");
+    expect(
+      conductorWindowTitle({
+        ...emptyView("epic"),
+        repoLabel: "fsd-product",
+      }),
+    ).toBe("conductor · epic · fsd-product");
   });
 
   it("sets the tab with ST, not a bell", () => {
@@ -284,6 +290,17 @@ describe("renderFrame", () => {
     expect(frame).toContain("/find");
     expect(frame).toContain("TRANSCRIPT");
     expect(stripAnsi(frame)).not.toContain("a answer");
+  });
+
+  it("names the product checkout in the header when it is set", () => {
+    const frame = stripAnsi(
+      renderFrame(
+        { ...emptyView("harness-manager"), repoLabel: "fsd-product" },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(frame).toContain("harness-manager");
+    expect(frame).toContain("fsd-product");
   });
 
   it("keeps the prompt when the board has more rows than the table window", () => {
@@ -1602,6 +1619,24 @@ describe("renderFrame", () => {
     expect(above).toContain("AskLine1");
     expect(above).toContain("AskLine8");
     expect(above).not.toContain("AskLine9");
+    expect(above).toMatch(/… \d+ more/);
+  });
+
+  it("shows eight wrapped lines of a long failure, then how many more", () => {
+    const words = Array.from({ length: 10 }, (_, i) => `Fail${String(i + 1).padStart(2, "0")}${"x".repeat(64)}`);
+    const parked: StatusRow = {
+      ...failed,
+      run: { ...failed.run!, reason: words.join(" ") },
+    };
+    const above = stripAnsi(
+      beforeTranscript(
+        renderFrame({ ...emptyView("epic"), rows: [parked] }, { cols: 80, rows: 40 }),
+      ),
+    );
+    expect(above).toMatch(/^ FAIL\s*$/m);
+    expect(above).toContain("Fail01");
+    expect(above).toContain("Fail08");
+    expect(above).not.toContain("Fail09");
     expect(above).toMatch(/… \d+ more/);
   });
 

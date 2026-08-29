@@ -117,7 +117,9 @@ export function conductorWindowTitle(state: ViewState): string {
   const live = state.rows.filter((r) => r.status === "in_progress").length;
   const failed = state.rows.filter(rowFailed).length;
   const epic = state.epicLabel.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 80);
+  const repo = state.repoLabel?.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 80);
   const parts = [`conductor · ${epic}`];
+  if (repo) parts.push(repo);
   if (live > 0) parts.push(`${live} running`);
   if (waiting > 0) parts.push(`${waiting} waiting`);
   if (failed > 0) parts.push(`${failed} failed`);
@@ -170,6 +172,9 @@ function renderHeader(state: ViewState, cols: number): string {
     paint(BOLD + ACCENT, " FSDEV CONDUCTOR "),
     dim("·"),
     ` ${state.epicLabel} `,
+    ...(state.repoLabel
+      ? [dim("·"), ` ${state.repoLabel} `]
+      : []),
     dim("·"),
     ` ${state.rows.length} row${state.rows.length === 1 ? "" : "s"} `,
   ];
@@ -335,7 +340,9 @@ function renderFailBand(state: ViewState, cols: number): string {
   if (failure === undefined) return "";
   const row = selectedRow(state);
   const inner = Math.max(20, cols - 8);
-  const body = wrap(failure.reason, inner).slice(0, 4);
+  const wrapped = wrap(failure.reason, inner);
+  const body = wrapped.slice(0, ASK_BODY_MAX);
+  const hidden = wrapped.length - body.length;
   const id = selectedRequestId(state);
   const hint = [
     row?.issue ?? row?.taskId ?? "row",
@@ -349,6 +356,7 @@ function renderFailBand(state: ViewState, cols: number): string {
     rule(cols, RUST),
     ` ${paint(RUST + BOLD, "FAIL")}`,
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
+    ...(hidden > 0 ? [` ${dim(`… ${hidden} more`)}`] : []),
     ` ${dim(hint)}`,
     ...renderAttemptStrip(state, inner),
     rule(cols, RUST),
