@@ -210,6 +210,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("move in the line while composing");
     expect(HELP_TEXT).toContain("new line while composing");
     expect(HELP_TEXT).toContain("start / end of the current compose line");
+    expect(HELP_TEXT).toContain("oldest / follow when the prompt is empty");
     expect(HELP_TEXT).toContain("leave the board (stops a run that is still going");
     expect(HELP_TEXT).toContain("a parked question is not one");
     expect(HELP_TEXT).toContain("the shell comes back without waiting for it to finish");

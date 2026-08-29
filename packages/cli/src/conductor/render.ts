@@ -942,7 +942,7 @@ function composeTail(input: string, width: number, caret: number): string {
 const TUI_HELP_LINES = [
   "  ↑/↓          row · while composing: lines, then prior sends",
   "  Alt/Ctrl-←/→ word · Ctrl-W delete the previous word",
-  "  PgUp/PgDn    transcript (Ctrl-u/d too)",
+  "  PgUp/PgDn    transcript · Home/End oldest / follow",
   "  { / }        previous / next waiting, failed, or stalled row",
   "  s            seed (first line issue, more lines brief)",
   "  r            refresh",

@@ -16,6 +16,7 @@ import {
   clampSelected,
   composeDrafts,
   findMatches,
+  jumpTranscript,
   pageTranscript,
   selectedQuestion,
   selectedQuestions,
@@ -361,6 +362,12 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
   }
   if (key.type === "pagedown" || (key.type === "ctrl" && key.value === "d")) {
     return { state: pageTranscript(state, -1) };
+  }
+  if (key.type === "home" || key.type === "end") {
+    if (state.inputMode !== "command" || state.input !== "") {
+      return applyEditing(state, key);
+    }
+    return { state: jumpTranscript(state, key.type === "home" ? "oldest" : "follow") };
   }
   if (key.type === "wheel") {
     return { state: scrollTranscript(state, key.delta < 0 ? 1 : -1) };

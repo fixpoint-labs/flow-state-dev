@@ -722,6 +722,27 @@ describe("applyKey", () => {
     expect(busy.state.scroll).toBe(0);
   });
 
+  it("jumps the transcript to the oldest line and back to the tail when the prompt is empty", () => {
+    const state = { ...board([row("FIX-1")]), scroll: 4 };
+    const oldest = applyKey(state, { type: "home" });
+    expect(oldest.state.scroll).toBe(Number.MAX_SAFE_INTEGER);
+    expect(oldest.state.selected).toBe(0);
+    const follow = applyKey(oldest.state, { type: "end" });
+    expect(follow.state.scroll).toBe(0);
+    const busy = applyKey({ ...state, busy: true }, { type: "home" });
+    expect(busy.state.scroll).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it("keeps Home and End on the current compose line while typing", () => {
+    const composing = { ...board([row("FIX-1")]), input: "please\nretry", caret: 8, scroll: 4 };
+    const home = applyKey(composing, { type: "home" });
+    expect(home.state.caret).toBe(7);
+    expect(home.state.scroll).toBe(4);
+    const end = applyKey(home.state, { type: "end" });
+    expect(end.state.caret).toBe("please\nretry".length);
+    expect(end.state.scroll).toBe(4);
+  });
+
   it("lets you change rows while an action is in flight, and holds a new wake", () => {
     const state = { ...board([row("FIX-1"), row("FIX-2")]), busy: true };
     const next = applyKey(state, { type: "down" });

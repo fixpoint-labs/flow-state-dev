@@ -329,6 +329,7 @@ In the TUI:
   ↑/↓          select a row
   A long board shows eight rows around the selection so the prompt stays on screen.
   PgUp/PgDn    scroll the transcript (Ctrl-u/d too)
+  Home/End     oldest / follow when the prompt is empty; compose line while typing
   [/]          previous/next question on the row
   { / }        previous / next waiting, failed, or stalled row
   s            seed a new issue

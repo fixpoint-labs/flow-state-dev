@@ -756,6 +756,14 @@ export function pageTranscript(state: ViewState, direction: -1 | 1): ViewState {
   return scrollTranscript(state, direction * PAGE);
 }
 
+/**
+ * Idle Home / End. Oldest is a large offset; render clamps to the
+ * window. Follow is the live tail (`scroll === 0`).
+ */
+export function jumpTranscript(state: ViewState, to: "oldest" | "follow"): ViewState {
+  return { ...state, scroll: to === "follow" ? 0 : Number.MAX_SAFE_INTEGER };
+}
+
 /** One match of the current find query in `activityForView`. */
 export interface FindHit {
   /** Index into `activityForView`. */
