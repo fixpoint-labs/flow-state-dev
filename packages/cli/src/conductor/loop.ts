@@ -190,6 +190,28 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     paint();
   };
 
+  /** Select a row and tail it — same first-paint rule as `tui <issue>` / `start`. */
+  const lookAtIssue = (issue: string) => {
+    if (closed || issue === "") return;
+    state = rowAfterRefresh(state, issue);
+    follow.sync(idsToFollow(state));
+    void loadSelectedJournal();
+    paint();
+  };
+
+  /**
+   * A talk turn that filed work selects that row. A new question on any
+   * row still wins — answer it before watching the new row.
+   */
+  const lookAtFiledRows = (before: ViewState["rows"]) => {
+    if (closed || newlyAsked(before, state.rows)) return;
+    if (state.inputMode !== "command" || state.input !== "") return;
+    const known = new Set(before.map((row) => row.taskId));
+    const filed = [...state.rows].reverse().find((row) => !known.has(row.taskId));
+    const issue = filed?.issue ?? filed?.taskId;
+    if (issue !== undefined && issue !== "") lookAtIssue(issue);
+  };
+
   const rememberedFocus =
     options.focusIssue === undefined && options.lastFocusPath !== undefined
       ? readLastFocus(options.lastFocusPath)
@@ -285,6 +307,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           endTurn();
           state = pushActivity(state, `seeded ${command.issue} → ${seeded.output.taskId}`, now());
           await refresh();
+          lookAtIssue(command.issue);
           break;
         }
         case "wake": {
@@ -306,7 +329,9 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
               ? steered.output.trim()
               : "";
           state = noteSteerReply(state, said, now());
+          const beforeSteer = state.rows;
           await refresh();
+          lookAtFiledRows(beforeSteer);
           break;
         }
         case "answer": {
