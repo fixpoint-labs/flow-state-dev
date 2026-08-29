@@ -140,7 +140,7 @@ export function renderFrame(state: ViewState, size: FrameSize, now: number = Dat
   const header = renderHeader(state, cols);
   const table = renderTable(state, cols, now);
   const band = renderReservedBand(state, cols, now);
-  const meta = state.busy || runBandOpen(state) ? "" : renderMeta(state, cols);
+  const meta = state.busy || reservedBandOpen(state) ? "" : renderMeta(state, cols);
   const menu = renderSlashMenu(state, cols);
   const prompt = renderPrompt(state, cols);
   const footer = renderFooter(state, cols, now);
@@ -152,7 +152,7 @@ export function renderFrame(state: ViewState, size: FrameSize, now: number = Dat
     lineCount(menu) +
     lineCount(prompt) +
     lineCount(footer);
-  const leftover = Math.max(4, rows - reserved);
+  const leftover = Math.max(0, rows - reserved);
   const activity = renderActivity(state, cols, leftover, band !== "");
   const pinBottom = lineCount(menu) + lineCount(prompt) + lineCount(footer);
 
@@ -637,6 +637,7 @@ function renderActivity(
   height: number,
   underBand = false,
 ): string {
+  if (height <= 0) return "";
   const following = state.scroll === 0;
   const live = visibleLive(state);
   const hits = findMatches(state);
@@ -928,10 +929,13 @@ function lineCount(block: string): number {
   return block.split("\n").length;
 }
 
-/** RUN band is up — the checkout lives there, so meta would only steal transcript. */
-function runBandOpen(state: ViewState): boolean {
-  if (selectedQuestion(state) !== undefined) return false;
-  if (selectedFailure(state) !== undefined) return false;
+/**
+ * ASK, FAIL, or RUN is up. Meta repeats that attempt and would only
+ * steal the transcript — including the rest of a long question.
+ */
+function reservedBandOpen(state: ViewState): boolean {
+  if (selectedQuestion(state) !== undefined) return true;
+  if (selectedFailure(state) !== undefined) return true;
   const row = selectedRow(state);
   return row !== undefined && rowRunning(row);
 }

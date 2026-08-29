@@ -1102,7 +1102,7 @@ describe("renderFrame", () => {
     expect(stripAnsi(frame)).not.toContain("\x1b]8;;");
   });
 
-  it("shows session ids on a settled row", () => {
+  it("shows the request id on a settled FAIL", () => {
     const settled: StatusRow = {
       taskId: "FAIL-1--implement",
       issue: "FAIL-1",
@@ -1130,8 +1130,8 @@ describe("renderFrame", () => {
     const above = beforeTranscript(
       renderFrame({ ...emptyView("epic"), rows: [settled] }, { cols: 80, rows: 28 }),
     );
-    expect(above).toContain("sess-operator");
-    expect(above).toContain("child-claude-1");
+    expect(above).toMatch(/^ FAIL\s*$/m);
+    expect(above).toContain("req-fail-1");
   });
 
   it("shows the open tool on the RUN band without the transcript prefix", () => {
@@ -1671,6 +1671,7 @@ describe("renderFrame", () => {
     const bodyAt = askBand.indexOf("AskLine1");
     expect(branchAt).toBeGreaterThan(-1);
     expect(bodyAt).toBeGreaterThan(branchAt);
+    expect(frame).toContain("TRANSCRIPT");
   });
 
   it("shows eight wrapped lines of a long failure, then how many more", () => {
