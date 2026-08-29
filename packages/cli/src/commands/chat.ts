@@ -144,8 +144,11 @@ export async function executeChatCommand(
   // discovery-path SQLite store we opened. Injected stores stay caller-owned.
   let dispose: (() => Promise<void>) | undefined;
 
+  const logger = createCliLogger(resolveLogLevel(options, "warn"));
+
   if (resolved.source === "config") {
     assertNoFlowDirWithConfig(options.flowDir);
+    resolved.flowState.setLogger(logger);
     let runtime;
     try {
       runtime = await resolved.flowState.getRuntime();
@@ -209,8 +212,6 @@ export async function executeChatCommand(
     } else if (options.model !== undefined) {
       modelResolver = forceModelResolver(createModelResolver(), options.model);
     }
-
-    const logger = createCliLogger(resolveLogLevel(options, "warn"));
 
     // Also on the app's own config, for the same reason `run` does it: the
     // FlowState logs outside any request while `dispose()` drains detached work,

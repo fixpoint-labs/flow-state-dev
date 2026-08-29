@@ -273,3 +273,20 @@ export function resolveLogLevel(
   }
   return defaultLevel;
 }
+
+/**
+ * Install the CLI stderr logger on a config `FlowState` before `getRuntime()`.
+ *
+ * Init narration (the active-profile line) runs during that call. Installing
+ * afterwards is too late for `--quiet` and for a warn-level TUI. Returns the
+ * same logger so the command can also stamp it on the resolved `runtimeConfig`.
+ */
+export function installCliLogger(
+  flowState: FlowState,
+  options: { quiet?: boolean; logLevel?: RuntimeLoggerLevel },
+  defaultLevel: RuntimeLoggerLevel,
+): RuntimeLogger {
+  const logger = createCliLogger(resolveLogLevel(options, defaultLevel));
+  flowState.setLogger(logger);
+  return logger;
+}

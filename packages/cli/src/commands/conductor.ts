@@ -22,6 +22,7 @@ import {
   resolveRuntimeSource,
   assertNoFlowDirWithConfig,
   createCliLogger,
+  installCliLogger,
   resolveLogLevel,
 } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
@@ -188,6 +189,11 @@ export async function executeConductorCommand(
   let dispose: (() => Promise<void>) | undefined;
   let epicLabel = CONDUCTOR_FLOW_KIND;
 
+  const logger =
+    resolved.source === "config"
+      ? installCliLogger(resolved.flowState, options, "warn")
+      : createCliLogger(resolveLogLevel(options, "warn"));
+
   if (resolved.source === "config") {
     assertNoFlowDirWithConfig(options.flowDir);
     let runtime;
@@ -265,7 +271,6 @@ export async function executeConductorCommand(
       modelResolver = forceModelResolver(createModelResolver(), options.model);
     }
 
-    const logger = createCliLogger(resolveLogLevel(options, "warn"));
     if (baseRuntimeConfig !== undefined) {
       baseRuntimeConfig.logger = logger;
     }

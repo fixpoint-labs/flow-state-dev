@@ -404,6 +404,26 @@ describe("stderr runtime logger", () => {
     expect(stderrLines.filter((l) => l.startsWith("[flow-state]"))).toEqual([]);
   });
 
+  it("--quiet suppresses the active-profile line from a config FlowState", async () => {
+    const errors: string[] = [];
+    const restore = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+    try {
+      await executeRunCommand("echo", "respond", {
+        input: '{"message": "quiet-profile"}',
+        cwd: resolve(import.meta.dirname, "fixtures-config/valid"),
+        quiet: true,
+      });
+    } finally {
+      console.error = restore;
+    }
+
+    expect(stderrLines.filter((l) => l.includes("active profile"))).toEqual([]);
+    expect(errors.filter((l) => l.includes("active profile"))).toEqual([]);
+  });
+
   it("--log-level warn drops info-level lifecycle events", async () => {
     await executeRunCommand("echo", "respond", {
       input: '{"message": "warn-only"}',

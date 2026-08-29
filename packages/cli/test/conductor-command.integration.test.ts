@@ -820,3 +820,59 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect(empty.text).toContain("nothing running to stop");
   });
 });
+
+describe("fsdev conductor — config-path init narration", () => {
+  const configDir = resolve(import.meta.dirname, "fixtures-conductor-config");
+
+  it("does not print the active-profile line at the default warn level", async () => {
+    const errors: string[] = [];
+    const restoreError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+    const stderr: string[] = [];
+    const originalWrite = process.stderr.write;
+    process.stderr.write = ((chunk: unknown) => {
+      stderr.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      const out = capture();
+      const code = await executeConductorCommand(["status"], {
+        cwd: configDir,
+        stores: createInMemoryStores(),
+        output: out.output as unknown as NodeJS.WriteStream,
+        stderr: out.output as unknown as NodeJS.WriteStream,
+      });
+      // Empty board is a status outcome (1), not a failed init.
+      expect(code).toBe(1);
+      expect(errors.join("")).not.toMatch(/active profile/);
+      expect(stderr.join("")).not.toMatch(/active profile/);
+    } finally {
+      console.error = restoreError;
+      process.stderr.write = originalWrite;
+    }
+  });
+
+  it("--log-level info still prints the active-profile line on stderr", async () => {
+    const stderr: string[] = [];
+    const originalWrite = process.stderr.write;
+    process.stderr.write = ((chunk: unknown) => {
+      stderr.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      const out = capture();
+      const code = await executeConductorCommand(["status"], {
+        cwd: configDir,
+        stores: createInMemoryStores(),
+        output: out.output as unknown as NodeJS.WriteStream,
+        logLevel: "info",
+      });
+      expect(code).toBe(1);
+      expect(stderr.join("")).toMatch(/\[flowstate\] active profile/);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+  });
+});
