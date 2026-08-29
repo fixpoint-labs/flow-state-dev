@@ -7,7 +7,9 @@
  *
  * After the fill, a leftover `CONDUCTOR_REPO` that names a different git
  * checkout than cwd is refused. The board would otherwise operate on that
- * other tree while you are standing in this one.
+ * other tree while you are standing in this one. Unsetting only
+ * `CONDUCTOR_REPO` still leaves `CONDUCTOR_EPIC` and `CONDUCTOR_CHECKOUTS`
+ * pointed at that other board, so the refuse names all three.
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -73,6 +75,6 @@ export function conductorRepoMismatch(env, cwd, labRoot) {
 export function formatRepoMismatch(mismatch) {
   return (
     `conductor: CONDUCTOR_REPO is ${mismatch.repoRoot} but you are standing in ${mismatch.cwdRoot}.\n` +
-    `Unset CONDUCTOR_REPO to use this checkout, or cd there.\n`
+    `cd there, or unset CONDUCTOR_REPO, CONDUCTOR_EPIC, and CONDUCTOR_CHECKOUTS together to use this checkout.\n`
   );
 }

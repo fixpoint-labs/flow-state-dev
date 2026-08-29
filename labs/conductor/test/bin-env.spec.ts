@@ -85,7 +85,10 @@ describe("conductorRepoMismatch", () => {
       });
       expect(formatRepoMismatch(mismatch!)).toContain(leftover);
       expect(formatRepoMismatch(mismatch!)).toContain(here);
-      expect(formatRepoMismatch(mismatch!)).toContain("Unset CONDUCTOR_REPO");
+      expect(formatRepoMismatch(mismatch!)).toContain("CONDUCTOR_REPO");
+      expect(formatRepoMismatch(mismatch!)).toContain("CONDUCTOR_EPIC");
+      expect(formatRepoMismatch(mismatch!)).toContain("CONDUCTOR_CHECKOUTS");
+      expect(formatRepoMismatch(mismatch!)).toMatch(/together/);
     } finally {
       rmSync(here, { recursive: true, force: true });
       rmSync(leftover, { recursive: true, force: true });
