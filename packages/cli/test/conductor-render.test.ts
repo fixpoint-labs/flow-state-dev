@@ -435,6 +435,8 @@ describe("renderFrame", () => {
     const table = frame.split("\n").find((line) => line.includes("FIX-1"));
     expect(table).toContain("Which export?");
     expect(table).not.toContain("##");
+    expect(table).toMatch(/succeeded\s+Which export/);
+    expect(table).not.toContain("succeededWhich");
     expect(frame).not.toContain("TRANSCRIPT");
     expect(frame).not.toContain("• keep the name");
   });

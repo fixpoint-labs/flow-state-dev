@@ -300,7 +300,7 @@ function tableLayout(cols: number): {
   const attemptW = 3;
   const chrome = 10;
   const rest = Math.max(22, cols - issueW - phaseW - statusW - attemptW - chrome);
-  const outcomeW = Math.max(9, Math.min(12, Math.floor(rest * 0.3)));
+  const outcomeW = Math.max(10, Math.min(12, Math.floor(rest * 0.3)));
   const askW = Math.max(14, rest - outcomeW);
   const head =
     "  " +
