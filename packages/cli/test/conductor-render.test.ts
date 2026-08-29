@@ -4,6 +4,7 @@ import {
   renderBoardPlain,
   renderFrame,
   renderWatchLine,
+  visibleTableWindow,
   watchExitCode,
   windowTitleSequence,
 } from "../src/conductor/render";
@@ -51,6 +52,18 @@ describe("conductorWindowTitle", () => {
       "\x1b]0;conductor · epic · 1 waiting\x1b\\",
     );
     expect(windowTitleSequence("conductor · epic")).not.toContain("\x07");
+  });
+});
+
+describe("visibleTableWindow", () => {
+  it("is the whole board when it fits", () => {
+    expect(visibleTableWindow(3, 1)).toEqual({ start: 0, end: 3 });
+  });
+
+  it("keeps the selected row inside an eight-row window", () => {
+    expect(visibleTableWindow(20, 0)).toEqual({ start: 0, end: 8 });
+    expect(visibleTableWindow(20, 19)).toEqual({ start: 12, end: 20 });
+    expect(visibleTableWindow(12, 10)).toEqual({ start: 4, end: 12 });
   });
 });
 
@@ -271,6 +284,33 @@ describe("renderFrame", () => {
     expect(frame).toContain("/find");
     expect(frame).toContain("TRANSCRIPT");
     expect(stripAnsi(frame)).not.toContain("a answer");
+  });
+
+  it("keeps the prompt when the board has more rows than the table window", () => {
+    const rows: StatusRow[] = Array.from({ length: 20 }, (_, i) => ({
+      taskId: `FIX-${i + 1}--implement`,
+      issue: `FIX-${i + 1}`,
+      phase: "implement",
+      status: "pending",
+      attempts: 1,
+      feedback: null,
+      run: null,
+      questions: [],
+    }));
+    const top = renderFrame({ ...emptyView("epic"), rows, selected: 0 }, { cols: 80, rows: 24 });
+    const topText = stripAnsi(top);
+    expect(topText).toContain("FIX-1");
+    expect(topText).not.toContain("FIX-20");
+    expect(topText).toContain("1–8");
+    expect(topText).toContain("/quit");
+    expect(top.split("\n")).toHaveLength(24);
+
+    const bottom = renderFrame({ ...emptyView("epic"), rows, selected: 19 }, { cols: 80, rows: 24 });
+    const bottomText = stripAnsi(bottom);
+    expect(bottomText).toContain("FIX-20");
+    expect(bottomText).not.toContain("FIX-1");
+    expect(bottomText).toContain("13–20");
+    expect(bottomText).toContain("/quit");
   });
 
   it("opens an empty board on type-to-talk, not a slash-only door", () => {

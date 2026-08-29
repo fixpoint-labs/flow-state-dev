@@ -519,6 +519,17 @@ describe("applyKey", () => {
     expect(clicked.state.selected).toBe(1);
   });
 
+  it("maps a click through the visible table window", () => {
+    const state = {
+      ...board(Array.from({ length: 12 }, (_, i) => row(`FIX-${i + 1}`))),
+      selected: 10,
+    };
+    const firstVisible = applyKey(state, { type: "click", col: 8, row: 4 });
+    expect(firstVisible.state.selected).toBe(4);
+    const secondVisible = applyKey(state, { type: "click", col: 8, row: 5 });
+    expect(secondVisible.state.selected).toBe(5);
+  });
+
   it("jumps the transcript to the tail when the selected row changes", () => {
     const state = { ...board([row("FIX-1"), row("FIX-2")]), scroll: 12 };
     const down = applyKey(state, { type: "down" });

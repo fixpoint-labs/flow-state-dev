@@ -66,6 +66,28 @@ import {
   type ViewState,
 } from "./types";
 
+/**
+ * How many table body rows stay on screen. More than this buries the prompt
+ * on a normal 24-line terminal. ↑/↓ moves the window; the selected row stays
+ * inside it.
+ */
+export const TABLE_BODY_MAX = 8;
+
+/**
+ * Slice of `rows` that the table paints. `end` is exclusive.
+ * When everything fits, the window is the whole board.
+ */
+export function visibleTableWindow(
+  count: number,
+  selected: number,
+  maxBody: number = TABLE_BODY_MAX,
+): { start: number; end: number } {
+  if (count <= maxBody) return { start: 0, end: count };
+  const body = Math.max(1, maxBody);
+  const start = Math.max(0, Math.min(Math.max(0, selected) - Math.floor((body - 1) / 2), count - body));
+  return { start, end: start + body };
+}
+
 /** Visible URL, shortened; OSC-8 so a supporting terminal can open the full one. */
 function prText(url: string, width: number): string {
   return link(url, shorten(url, width));
@@ -144,6 +166,10 @@ function renderHeader(state: ViewState, cols: number): string {
     dim("·"),
     ` ${state.rows.length} row${state.rows.length === 1 ? "" : "s"} `,
   ];
+  if (state.rows.length > TABLE_BODY_MAX) {
+    const { start, end } = visibleTableWindow(state.rows.length, state.selected);
+    parts.push(dim("·"), dim(` ${start + 1}–${end} `));
+  }
   if (live > 0) parts.push(dim("·"), paint(ACCENT, ` ${live} running `));
   if (waiting > 0) parts.push(dim("·"), paint(MAUVE, ` ${waiting} waiting `));
   if (failed > 0) parts.push(dim("·"), paint(RUST, ` ${failed} failed `));
@@ -175,8 +201,15 @@ function renderTable(state: ViewState, cols: number, now: number): string {
   if (state.rows.length === 0) {
     return `${head}\n${padLine(dim("  no rows. type to talk, or /seed <issue> to file one."), cols)}`;
   }
-  const lines = state.rows.map((row, i) =>
-    renderTableRow(row, i === state.selected, { issueW, phaseW, statusW, attemptW, outcomeW, askW, cols }, state, now),
+  const { start, end } = visibleTableWindow(state.rows.length, state.selected);
+  const lines = state.rows.slice(start, end).map((row, i) =>
+    renderTableRow(
+      row,
+      start + i === state.selected,
+      { issueW, phaseW, statusW, attemptW, outcomeW, askW, cols },
+      state,
+      now,
+    ),
   );
   return [head, ...lines].join("\n");
 }

@@ -8,6 +8,7 @@
  * drive it without a terminal.
  */
 import { parseCommand, slashPrefix, type ParseResult } from "./parse";
+import { visibleTableWindow } from "./render";
 import { slashMenu } from "./slash";
 import {
   applyFindQuery,
@@ -780,8 +781,9 @@ export const TABLE_DATA_ORIGIN = 4;
 
 function applyClick(state: ViewState, screenRow1: number): KeyResult {
   if (state.inputMode !== "command" || state.input !== "") return { state };
-  const index = screenRow1 - TABLE_DATA_ORIGIN;
-  if (index < 0 || index >= state.rows.length) return { state };
+  const { start, end } = visibleTableWindow(state.rows.length, state.selected);
+  const index = screenRow1 - TABLE_DATA_ORIGIN + start;
+  if (index < start || index >= end) return { state };
   return { state: selectRow(state, index) };
 }
 

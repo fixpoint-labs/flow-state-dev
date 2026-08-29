@@ -326,6 +326,7 @@ Headless (scripting):
 
 In the TUI:
   ↑/↓          select a row (click a row)
+  A long board shows eight rows around the selection so the prompt stays on screen.
   PgUp/PgDn    scroll the transcript (wheel and Ctrl-u/d too)
   [/]          previous/next question on the row
   { / }        previous / next waiting, failed, or stalled row
