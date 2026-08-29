@@ -625,16 +625,22 @@ If `$HOME/.local/bin/conductor` exists and is not a symlink, install prints `con
 
 Once the symlink is on `PATH`, `conductor install` is the same command. Stand in the app directory you want the board to operate on and run `conductor`. When `CONDUCTOR_CONFIG` is unset or blank, the bin sets it to the lab's `fsdev.config.ts`. When `CONDUCTOR_REPO` is unset or blank, the bin sets it to `.` (the directory you are standing in). An explicit `CONDUCTOR_CONFIG` is left as you set it.
 
-When `CONDUCTOR_REPO` names a git checkout and you are standing in a different git checkout, the bin prints both paths on stderr and exits `1`. It does not open the board.
+When `CONDUCTOR_REPO` names a git checkout and you are standing in a different git checkout, the bin prints this on stderr and exits `1`. It does not open the board.
 
 ```
 conductor: CONDUCTOR_REPO is /tmp/other-checkout but you are standing in /tmp/fsd-product.
 cd there, or unset CONDUCTOR_REPO, CONDUCTOR_EPIC, and CONDUCTOR_CHECKOUTS together to use this checkout.
 ```
 
-Unset `CONDUCTOR_REPO`, `CONDUCTOR_EPIC`, and `CONDUCTOR_CHECKOUTS` together to use the directory you are standing in. `cd` to the named `CONDUCTOR_REPO` to use that checkout. The refuse does not print when you are not standing in a git checkout, or when `CONDUCTOR_REPO` is this same checkout, including `.`.
+`CONDUCTOR_EPIC` and `CONDUCTOR_CHECKOUTS` are the other names that keep the bin on the checkout `CONDUCTOR_REPO` names. Unset those two with `CONDUCTOR_REPO` to use the directory you are standing in. `cd` to the named `CONDUCTOR_REPO` to use that checkout.
 
-From this repo (the one that contains `labs/conductor`), `CONDUCTOR_REPO` may name a different checkout. The refuse does not print. Set `CONDUCTOR_REPO` to that checkout, or stand in it and run `conductor`.
+A third line appears only when other non-blank `CONDUCTOR_*` values remain. It names them and says they will still apply. `CONDUCTOR_CONFIG` is omitted, even when it is set. The three names from the second line are not repeated. Blank or whitespace-only values are omitted. When other `CONDUCTOR_*` values are set, that line looks like this:
+
+```
+CONDUCTOR_AGENT_MODEL, CONDUCTOR_BASE_REF, CONDUCTOR_MAX_ATTEMPTS, CONDUCTOR_RUN_TIMEOUT_MS are still set and will apply after that.
+```
+
+The refuse does not print when you are not standing in a git checkout, or when `CONDUCTOR_REPO` is this same checkout, including `.`. Standing in the repository that contains `labs/conductor` does not print this message, even when `CONDUCTOR_REPO` names another checkout.
 
 Running `fsdev conductor` directly does not apply this check.
 
@@ -667,7 +673,7 @@ The lab config refuses when `CONDUCTOR_REPO` names the repository that contains 
 - There is no verb that switches flow ids. Run a second `fsdev conductor` for the other flow.
 - Your `status` action returns `rows`. The printed JSON board also has `epic`, and `repo` when `CONDUCTOR_REPO` is set.
 - `CONDUCTOR_REPO` names the checkout in the fullscreen header, the tab title, the leftover line after `/quit`, and headless board dumps. It does not pick the flow or the config.
-- The PATH `conductor` bin prints two lines on stderr and exits `1` when you stand in one git checkout and `CONDUCTOR_REPO` names another, except from the repository that contains `labs/conductor`. Unset `CONDUCTOR_REPO`, `CONDUCTOR_EPIC`, and `CONDUCTOR_CHECKOUTS` together to use the directory you are standing in, or `cd` to the named `CONDUCTOR_REPO`. Running `fsdev conductor` directly does not print that refuse.
+- The PATH `conductor` bin prints on stderr and exits `1` when you stand in one git checkout and `CONDUCTOR_REPO` names another. Standing in the repository that contains `labs/conductor` does not print this message, even when `CONDUCTOR_REPO` names another checkout. Unset `CONDUCTOR_REPO` with `CONDUCTOR_EPIC` and `CONDUCTOR_CHECKOUTS` to use the directory you are standing in, or `cd` to the named `CONDUCTOR_REPO`. A third line appears only when other non-blank `CONDUCTOR_*` values remain; it names them and says they will still apply. `CONDUCTOR_CONFIG` is omitted, and the three names from the second line are not repeated. Running `fsdev conductor` directly does not print that refuse.
 - The lab config refuses when `CONDUCTOR_REPO` names the repository that contains `labs/conductor`.
 
 ## Related pages
