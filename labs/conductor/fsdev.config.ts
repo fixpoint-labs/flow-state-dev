@@ -35,12 +35,16 @@
  * timeout is the real ceiling — see the README.
  */
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createFlowState, createModelResolver, filesystemStores } from "@flow-state-dev/engine";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
 import { assertBaseRefExists, positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
 const RUN_TIMEOUT_MS = positiveIntFromEnv("CONDUCTOR_RUN_TIMEOUT_MS", 1_800_000);
-const root = path.join(process.cwd(), ".fsdev");
+// This file's directory, not cwd. Sitting in the product and passing --config
+// must see the same board as `pnpm conductor` from this lab. A cwd-relative
+// `.fsdev` opened an empty store beside the product instead.
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), ".fsdev");
 
 const sourceRepo = requireSourceRepo();
 const baseRef = process.env.CONDUCTOR_BASE_REF ?? "main";
