@@ -9,7 +9,9 @@
  * checkout than cwd is refused. The board would otherwise operate on that
  * other tree while you are standing in this one. Unsetting only
  * `CONDUCTOR_REPO` still leaves `CONDUCTOR_EPIC` and `CONDUCTOR_CHECKOUTS`
- * pointed at that other board, so the refuse names all three.
+ * pointed at that other board, so the refuse names all three. Other
+ * `CONDUCTOR_*` knobs stay set after that trio is unset, so the refuse
+ * names those too when they are present.
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -69,12 +71,35 @@ export function conductorRepoMismatch(env, cwd, labRoot) {
   return { cwdRoot, repoRoot };
 }
 
+const RECOVERY_TRIO = new Set(["CONDUCTOR_REPO", "CONDUCTOR_EPIC", "CONDUCTOR_CHECKOUTS"]);
+const BIN_FILLED = new Set(["CONDUCTOR_CONFIG"]);
+
+/**
+ * `CONDUCTOR_*` that are not the recovery trio and not the bin-filled config.
+ * Those stay set after the trio is unset and still apply to the next run.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string[]}
+ */
+export function leftoverConductorKnobs(env) {
+  return Object.keys(env)
+    .filter((key) => key.startsWith("CONDUCTOR_") && !RECOVERY_TRIO.has(key) && !BIN_FILLED.has(key))
+    .filter((key) => Boolean(env[key]?.trim()))
+    .sort();
+}
+
 /**
  * @param {{ cwdRoot: string, repoRoot: string }} mismatch
+ * @param {NodeJS.ProcessEnv} [env]
  */
-export function formatRepoMismatch(mismatch) {
-  return (
+export function formatRepoMismatch(mismatch, env) {
+  let msg =
     `conductor: CONDUCTOR_REPO is ${mismatch.repoRoot} but you are standing in ${mismatch.cwdRoot}.\n` +
-    `cd there, or unset CONDUCTOR_REPO, CONDUCTOR_EPIC, and CONDUCTOR_CHECKOUTS together to use this checkout.\n`
-  );
+    `cd there, or unset CONDUCTOR_REPO, CONDUCTOR_EPIC, and CONDUCTOR_CHECKOUTS together to use this checkout.\n`;
+  const knobs = leftoverConductorKnobs(env ?? {});
+  if (knobs.length > 0) {
+    const verb = knobs.length === 1 ? "is" : "are";
+    msg += `${knobs.join(", ")} ${verb} still set and will apply after that.\n`;
+  }
+  return msg;
 }
