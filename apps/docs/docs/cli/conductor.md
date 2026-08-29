@@ -580,6 +580,27 @@ fsdev conductor start PR-482 Rename getSession in the docs
 
 Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md): an `fsdev.config.ts` in the cwd wins over directory discovery, and `--session` names the session every `wake` runs under, not a per-row session.
 
+## The lab bin
+
+The conductor lab ships `labs/conductor/bin/conductor.mjs`. From the repo root, `pnpm conductor` runs that file and does not change the working directory.
+
+```bash
+node labs/conductor/bin/conductor.mjs install
+conductor install
+```
+
+Bare `install` writes a symlink at `$HOME/.local/bin/conductor` pointing at the bin, then prints `installed $HOME/.local/bin/conductor`. Running it again replaces an existing symlink. Extra arguments after `install` are not that verb; they go to `fsdev conductor`.
+
+If `$HOME/.local/bin` is not on `PATH`, stderr also prints:
+
+```
+conductor: add $HOME/.local/bin to PATH
+```
+
+If `$HOME/.local/bin/conductor` exists and is not a symlink, install prints `conductor: $HOME/.local/bin/conductor exists and is not a symlink` and exits `1`. If `HOME` is unset, it prints `conductor: HOME is unset; cannot install to ~/.local/bin` and exits `1`.
+
+After the symlink is on `PATH`, sit in a product checkout and run `conductor`. When `CONDUCTOR_CONFIG` is unset or blank, the bin sets it to the lab's `fsdev.config.ts`. When `CONDUCTOR_REPO` is unset or blank, the bin sets it to `.` (the directory you are standing in). An explicit value for either is left as you set it. The lab config refuses a `CONDUCTOR_REPO` that names the repository containing `labs/conductor`: another path inside that repository, a worktree of it, or a symlink to it.
+
 ## What it won't do
 
 - Talking is a coordinator turn, not a coding session. The coordinator does not implement or edit product code. Workers do that after a row is filed or woken.
@@ -599,6 +620,9 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - Headless `status` and `watch` have no RUN band. They print last-write age on a running row, plus checkout, token counts, spend, and last message when the row has them. A named issue also prints last tool, files, last hunk, and current todo on stdout. A full-board print does not reprint last tool, files, hunk, or todo on a settled row.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
 - `CONDUCTOR_CONFIG` is read only by `fsdev conductor`. `fsdev run`, `fsdev chat`, and the other commands do not use it.
+- `install` is a lab-bin command. It is not an `fsdev conductor` verb.
+- `CONDUCTOR_REPO` is a lab setting. `fsdev conductor` does not read it. The lab bin sets it to `.` when it is unset.
+- The lab config refuses a `CONDUCTOR_REPO` that names the repository containing `labs/conductor`.
 
 ## Related pages
 
