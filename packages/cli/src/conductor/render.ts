@@ -1189,22 +1189,22 @@ function wrapActivityLine(text: string, width: number): string[] {
 
 /** Paint every occurrence of `query` in `line`. The current hit is bolder. */
 function highlightFind(line: string, query: string, current: boolean): string {
-  if (query === "") return paintHunkLine(line);
+  if (query === "") return paintActivityLine(line);
   const hay = line.toLowerCase();
   const needle = query.toLowerCase();
   let out = "";
   let from = 0;
   let at = hay.indexOf(needle, from);
-  if (at < 0) return paintHunkLine(line);
+  if (at < 0) return paintActivityLine(line);
   while (at >= 0) {
     const before = line.slice(from, at);
-    out += before === "" ? "" : paintHunkLine(before);
+    out += before === "" ? "" : paintActivityLine(before);
     out += paint(current ? GOLD + BOLD : GOLD, line.slice(at, at + needle.length));
     from = at + needle.length;
     at = hay.indexOf(needle, from);
   }
   const rest = line.slice(from);
-  return rest === "" ? out : out + paintHunkLine(rest);
+  return rest === "" ? out : out + paintActivityLine(rest);
 }
 
 function paintActivityLine(line: string): string {

@@ -2458,6 +2458,30 @@ describe("renderFrame", () => {
     expect(frame).toContain(GOLD);
   });
 
+  it("keeps markdown paint on a find hit's message line", () => {
+    const idle: StatusRow = {
+      ...waiting,
+      status: "pending",
+      questions: [],
+      run: null,
+    };
+    const frame = renderFrame(
+      looking({
+        ...emptyView("epic"),
+        rows: [idle],
+        find: "path",
+        findAt: 0,
+        activity: [{ at: 1, text: "message · see `proveFn` in the path" }],
+      }),
+      { cols: 80, rows: 24 },
+    );
+    expect(stripAnsi(frame)).toContain("proveFn");
+    expect(stripAnsi(frame)).toContain("path");
+    expect(frame).toContain(TEAL);
+    expect(frame).toContain(GOLD);
+    expect(stripAnsi(frame)).toMatch(/find · "path"/);
+  });
+
   it("keeps the ASK band when find is on", () => {
     const frame = renderFrame(looking(
       {
