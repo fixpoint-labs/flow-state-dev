@@ -760,6 +760,34 @@ describe("renderFrame", () => {
     );
     expect(follow).toContain("status · claiming ASK-1");
     expect(follow).toContain("live");
+    expect(follow).toContain(GOLD);
+
+    const streaming = renderFrame(
+      looking({
+        ...emptyView("epic"),
+        rows: [{ ...waiting, questions: [], status: "pending", run: null }],
+        live: "message · use `proveFn` or **keep** it",
+      }),
+      { cols: 80, rows: 24 },
+    );
+    expect(stripAnsi(streaming)).toContain("proveFn");
+    expect(streaming).toContain(TEAL);
+    expect(streaming).toContain(GOLD);
+    expect(stripAnsi(streaming)).toContain("··");
+
+    const boardLive = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [{ ...waiting, questions: [], status: "pending", run: null }],
+        live: "message · use `proveFn` or **keep** it",
+      },
+      { cols: 80, rows: 24 },
+    );
+    expect(stripAnsi(boardLive)).toContain("proveFn");
+    expect(boardLive).toContain(TEAL);
+    expect(boardLive).toContain(GOLD);
+    expect(stripAnsi(boardLive)).toContain("··");
+    expect(boardLive).not.toContain("TRANSCRIPT");
 
     const held = renderFrame(looking(
       {

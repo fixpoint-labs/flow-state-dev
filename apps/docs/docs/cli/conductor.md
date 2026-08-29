@@ -436,7 +436,7 @@ Headless `watch` writes those same lines to stderr. Each tool, hunk, checklist, 
 
 After that request ends, further board changes show as the lines `status` reports.
 
-While a line is in flight, the last line updates. A status or streaming assistant text lives there: when a new status arrives, the previous one stays as its own line. Streaming text grows on that last line and remains a single line when it finishes. An open coding tool sits on that last line (`tool · Bash pnpm test`) and stays as that one line when it finishes.
+While a line is in flight, the last line updates. A status or streaming assistant text lives there: when a new status arrives, the previous one stays as its own line. Streaming text grows on that last line and remains a single line when it finishes. A live `message ·` line uses the same markdown paint as a settled one; the `··` mark is what shows it is still in flight. An open coding tool sits on that last line (`tool · Bash pnpm test`) and stays as that one line when it finishes.
 
 `status` also writes here when a row actually moved: a new row (`PR-482 · pending`), a status change (`PR-482 · pending → in_progress`), a newly opened question (`PR-482 · asked Which branch should this target?`), a run outcome (`PR-482 · run failed · no pull request`), or a new run `finalMessage` (`PR-482 · stopped after the turn budget`). A poll that changed nothing adds no line.
 

@@ -197,7 +197,7 @@ function renderTalkStrip(state: ViewState, cols: number): string {
   const live = state.live;
   if (live !== null && live !== board.at(-1)?.text) {
     wrapActivityLine(live, width).forEach((line, i) => {
-      const painted = paint(GOLD, paintActivityLine(line));
+      const painted = paintActivityLine(line);
       const mark = i === 0 ? paint(GOLD, "··") : "  ";
       lines.push(` ${mark}  ${painted}`);
     });
@@ -810,7 +810,7 @@ function renderActivity(
   if (following && !finding && live !== null && live !== lastText) {
     const wrapped = wrapActivityLine(live, width);
     wrapped.forEach((line, i) => {
-      const painted = linkFileLine(live, paint(GOLD, line), cwd);
+      const painted = linkFileLine(live, paintActivityLine(line), cwd);
       body.push({
         text: i === 0 ? ` ${paint(GOLD, "··")}  ${painted}` : `         ${painted}`,
         itemIndex: null,
