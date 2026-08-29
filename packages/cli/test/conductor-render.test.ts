@@ -417,6 +417,28 @@ describe("renderFrame", () => {
     expect(frame).toContain("• rename it");
   });
 
+  it("shows a markdown question on the board ASK column without heading marks", () => {
+    const asked: StatusRow = {
+      ...waiting,
+      questions: [
+        {
+          question: "FIX-1/implement/1/q0",
+          text: "## Which export?\n\nUse `proveFn`.\n\n- keep the name",
+          attempt: 1,
+          askedAt: 1,
+        },
+      ],
+    };
+    const frame = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [asked] }, { cols: 80, rows: 24 }),
+    );
+    const table = frame.split("\n").find((line) => line.includes("FIX-1"));
+    expect(table).toContain("Which export?");
+    expect(table).not.toContain("##");
+    expect(frame).not.toContain("TRANSCRIPT");
+    expect(frame).not.toContain("• keep the name");
+  });
+
   it("names the product checkout in the header when it is set", () => {
     const frame = stripAnsi(
       renderFrame(looking(

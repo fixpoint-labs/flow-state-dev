@@ -377,7 +377,7 @@ function renderTableRow(
       : null;
   const ask = pad(
     asked !== undefined
-      ? paint(MAUVE, truncate(asked, w.askW))
+      ? paint(MAUVE, askQuestionHint(asked, w.askW))
       : failed !== undefined
         ? paint(RUST, truncate(failed, w.askW))
         : doing !== undefined && doing !== ""
@@ -1119,6 +1119,14 @@ function isProseLive(text: string | undefined): boolean {
   return /^(message|coord|you) · /.test(transcriptBody(text));
 }
 
+/** One-line ASK hint for a question. Headings drop; the words stay. */
+function askQuestionHint(asked: string, width: number): string {
+  const first =
+    asked.replace(/\r\n/g, "\n").split("\n").find((line) => line.trim() !== "") ?? "";
+  const stripped = first.replace(/^#{1,6}\s+/, "").replace(/^\s*[-*]\s+/, "");
+  return truncate(stripAnsi(paintInline(stripped)), width);
+}
+
 /** ASK scan: a streaming message keeps markdown paint; a tool stays gold. */
 function paintAskDoing(state: ViewState, row: StatusRow, doing: string, width: number): string {
   if (isProseLive(rowChildLive(state, row))) {
@@ -1382,7 +1390,7 @@ function headlessAsk(
   views?: Readonly<Record<string, ViewState>>,
 ): string {
   const asked = row.questions[0]?.text;
-  if (asked !== undefined) return truncate(asked, 16);
+  if (asked !== undefined) return askQuestionHint(asked, 16);
   if (rowRunning(row)) {
     const view = viewForRow(row, views);
     if (view !== undefined) {
