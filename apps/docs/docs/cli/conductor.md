@@ -582,14 +582,13 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 
 ## The lab bin
 
-The conductor lab ships `labs/conductor/bin/conductor.mjs`. From the repo root, `pnpm conductor` runs that file and does not change the working directory.
+The conductor lab ships `labs/conductor/bin/conductor.mjs`.
 
 ```bash
 node labs/conductor/bin/conductor.mjs install
-conductor install
 ```
 
-Bare `install` writes a symlink at `$HOME/.local/bin/conductor` pointing at the bin, then prints `installed $HOME/.local/bin/conductor`. Running it again replaces an existing symlink. Extra arguments after `install` are not that verb; they go to `fsdev conductor`.
+From this repo root, `pnpm conductor install` runs that same file. `install` writes a symlink at `$HOME/.local/bin/conductor` pointing at the bin, then prints `installed $HOME/.local/bin/conductor`. Running it again replaces an existing symlink.
 
 If `$HOME/.local/bin` is not on `PATH`, stderr also prints:
 
@@ -599,7 +598,9 @@ conductor: add $HOME/.local/bin to PATH
 
 If `$HOME/.local/bin/conductor` exists and is not a symlink, install prints `conductor: $HOME/.local/bin/conductor exists and is not a symlink` and exits `1`. If `HOME` is unset, it prints `conductor: HOME is unset; cannot install to ~/.local/bin` and exits `1`.
 
-After the symlink is on `PATH`, sit in a product checkout and run `conductor`. When `CONDUCTOR_CONFIG` is unset or blank, the bin sets it to the lab's `fsdev.config.ts`. When `CONDUCTOR_REPO` is unset or blank, the bin sets it to `.` (the directory you are standing in). An explicit value for either is left as you set it. The lab config refuses a `CONDUCTOR_REPO` that names the repository containing `labs/conductor`: another path inside that repository, a worktree of it, or a symlink to it.
+Once the symlink is on `PATH`, `conductor install` is the same command. Stand in the app directory you want the board to operate on and run `conductor`. When `CONDUCTOR_CONFIG` is unset or blank, the bin sets it to the lab's `fsdev.config.ts`. When `CONDUCTOR_REPO` is unset or blank, the bin sets it to `.` (the directory you are standing in). An explicit value for either is left as you set it.
+
+The lab config refuses when that directory is the repository that contains `labs/conductor`. From this repo root, `pnpm conductor` with `CONDUCTOR_REPO` unset fills `.`, which is that repository. Set `CONDUCTOR_REPO` to another checkout, or stand in that checkout and run `conductor`.
 
 ## What it won't do
 
@@ -622,7 +623,7 @@ After the symlink is on `PATH`, sit in a product checkout and run `conductor`. W
 - `CONDUCTOR_CONFIG` is read only by `fsdev conductor`. `fsdev run`, `fsdev chat`, and the other commands do not use it.
 - `install` is a lab-bin command. It is not an `fsdev conductor` verb.
 - `CONDUCTOR_REPO` is a lab setting. `fsdev conductor` does not read it. The lab bin sets it to `.` when it is unset.
-- The lab config refuses a `CONDUCTOR_REPO` that names the repository containing `labs/conductor`.
+- The lab config refuses when `CONDUCTOR_REPO` names the repository that contains `labs/conductor`.
 
 ## Related pages
 
