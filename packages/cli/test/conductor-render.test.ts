@@ -403,6 +403,8 @@ describe("renderFrame", () => {
     expect(inspect).toMatch(/▸\s+FIX-1\s+·\s+implement\s+·\s+awaiting_review/);
     expect(inspect).not.toMatch(/ISSUE\s+PHASE\s+STATUS/);
     expect(inspect).toContain("inspect");
+    expect(inspect).toContain("nothing yet. type to answer.");
+    expect(inspect).not.toContain("nothing yet. type to talk.");
     expect(inspect).not.toContain("1 row");
     expect(inspect).not.toContain("1 waiting");
     const board = stripAnsi(
@@ -411,6 +413,15 @@ describe("renderFrame", () => {
     expect(board).toMatch(/ISSUE\s+PHASE\s+STATUS/);
     expect(board).toContain("1 row");
     expect(board).toContain("1 waiting");
+  });
+
+  it("keeps type to talk on an inspect transcript that is not waiting", () => {
+    const idle: StatusRow = { ...waiting, questions: [], status: "pending", run: null };
+    const frame = stripAnsi(
+      renderFrame(looking({ ...emptyView("epic"), rows: [idle] }), { cols: 80, rows: 24 }),
+    );
+    expect(frame).toContain("nothing yet. type to talk.");
+    expect(frame).not.toContain("nothing yet. type to answer.");
   });
 
   it("renders a markdown question as headings and lists, not one wrap", () => {

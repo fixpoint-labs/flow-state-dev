@@ -862,9 +862,13 @@ function renderActivity(
   const start = Math.max(0, lines.length - window - scroll);
   const visible = lines.slice(start, start + window);
   const pad = Math.max(0, window - visible.length);
+  const emptyHint =
+    selectedQuestion(state) !== undefined
+      ? "nothing yet. type to answer."
+      : "nothing yet. type to talk.";
   const filler =
     pad > 0 && visible.length === 0
-      ? [` ${dim("nothing yet. type to talk.")}`, ...Array.from({ length: pad - 1 }, () => "")]
+      ? [` ${dim(emptyHint)}`, ...Array.from({ length: pad - 1 }, () => "")]
       : Array.from({ length: pad }, () => "");
   const top = underBand ? [] : [rule(cols, INK_3)];
   return [...top, heading, ...filler, ...visible].join("\n");

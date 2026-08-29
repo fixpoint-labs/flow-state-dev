@@ -361,7 +361,7 @@ After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids alread
 
 ### Transcript
 
-TRANSCRIPT lives on inspect. The pane follows the selected row.
+TRANSCRIPT lives on inspect. The pane follows the selected row. An empty pane says `nothing yet. type to answer.` when that row is waiting, and `nothing yet. type to talk.` otherwise.
 
 When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), thinking as a compact `think ·` line, and coding tools named with the file or command they touched (`tool · Write src/review.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Tools that run while a sub-agent is open are indented under that `sub ·` line. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` / `steer` you just ran, and the row changes `status` reports. A talk turn shows the operator line as `you ·` and the coordinator reply as a `message ·` or `coord ·` line. `message ·` streams on the live line while it is in flight. Opening the board after `/quit` puts those talk lines on the board strip and on TRANSCRIPT when you inspect.
 
