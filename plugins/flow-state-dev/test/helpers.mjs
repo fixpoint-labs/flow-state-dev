@@ -32,6 +32,8 @@ export function initGit(root, { commit = ["."] } = {}) {
   run(["config", "user.email", "fixture@example.invalid"]);
   run(["config", "user.name", "Fixture"]);
   run(["config", "commit.gpgsign", "false"]);
+  run(["config", "gc.auto", "0"]);
+  run(["config", "maintenance.auto", "false"]);
   if (commit.length > 0) {
     run(["add", "--", ...commit]);
     run(["commit", "-q", "-m", "fixture", "--allow-empty"]);
@@ -53,8 +55,12 @@ export function snapshotTree(root) {
         walk(path);
         continue;
       }
+      const rel = relative(root, path);
+      // Git may create and drop maintenance.lock after commit. That is
+      // not a write by the detector.
+      if (rel.startsWith(".git/") && entry.name.endsWith(".lock")) continue;
       const stats = statSync(path);
-      seen[relative(root, path)] = `${stats.size}:${stats.mtimeMs}`;
+      seen[rel] = `${stats.size}:${stats.mtimeMs}`;
     }
   };
   walk(root);
