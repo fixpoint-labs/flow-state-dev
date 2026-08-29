@@ -223,6 +223,12 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("Ctrl-C cancels compose. On an empty line it leaves when nothing is running");
     expect(HELP_TEXT).toContain("CONDUCTOR_CONFIG");
     expect(HELP_TEXT).toContain("board keys (any key returns");
+    const interactive = HELP_TEXT.slice(0, HELP_TEXT.indexOf("Headless (scripting):"));
+    const headless = HELP_TEXT.slice(HELP_TEXT.indexOf("Headless (scripting):"));
+    expect(interactive).toContain("fsdev conductor start <issue>");
+    expect(interactive).toContain("open the board and file the row");
+    expect(headless).toContain("start <issue>");
+    expect(headless).toContain("seed-and-watch");
   });
 });
 

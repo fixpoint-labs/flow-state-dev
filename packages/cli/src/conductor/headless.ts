@@ -198,7 +198,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
       case "watch":
         return await watchBoard(options, options.command.issue, onEvent, flushTranscript, follow);
       case "start": {
-        // Interactive start is handled by the command (seed, then TUI).
+        // Interactive start opens the board and seeds inside it.
         // Headless start seeds and watches — same two actions, printed.
         const seeded = await seedIssue(
           options.dispatch,
