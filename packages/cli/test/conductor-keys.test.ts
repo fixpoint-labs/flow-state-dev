@@ -266,6 +266,26 @@ describe("applyKey", () => {
     expect(tabbed.effect).toBeUndefined();
   });
 
+  it("any key or click leaves help without moving the board", () => {
+    const open = { ...board([row("FIX-1"), row("FIX-2")]), help: true, selected: 1, scroll: 3 };
+    const keys: Parameters<typeof applyKey>[1][] = [
+      { type: "pageup" },
+      { type: "up" },
+      { type: "ctrl", value: "c" },
+      { type: "ctrl", value: "u" },
+      { type: "wheel", delta: -1 },
+      { type: "char", value: "x" },
+      { type: "click", col: 0, row: 0 },
+    ];
+    for (const key of keys) {
+      const next = applyKey(open, key);
+      expect(next.state.help, JSON.stringify(key)).toBe(false);
+      expect(next.state.selected, JSON.stringify(key)).toBe(1);
+      expect(next.state.scroll, JSON.stringify(key)).toBe(3);
+      expect(next.effect, JSON.stringify(key)).toBeUndefined();
+    }
+  });
+
   it("clears a bare slash on Enter instead of running the first verb", () => {
     let state = board([row("FIX-1")]);
     state = applyKey(state, { type: "char", value: "/" }).state;

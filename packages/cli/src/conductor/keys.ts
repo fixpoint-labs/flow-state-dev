@@ -231,10 +231,7 @@ export function applyKey(state: ViewState, key: Key, now: number = Date.now()): 
 }
 
 function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
-  if (state.help && (key.type === "escape" || key.type === "char" || key.type === "enter" || key.type === "click")) {
-    if (key.type === "char" && key.value === "?") {
-      return { state: { ...state, help: false } };
-    }
+  if (state.help) {
     return { state: { ...state, help: false } };
   }
 
