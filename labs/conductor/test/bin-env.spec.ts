@@ -14,6 +14,7 @@ import {
   conductorRepoMismatch,
   formatRepoMismatch,
   leftoverConductorKnobs,
+  leftoverConductorEnv,
   gitToplevel,
 } from "../bin/env.mjs";
 import { seedRepo } from "./harness";
@@ -71,6 +72,15 @@ describe("conductorRepoMismatch", () => {
       expect(conductorRepoMismatch(env, here, labRoot)).toBeUndefined();
       env.CONDUCTOR_REPO = here;
       expect(conductorRepoMismatch(env, here, labRoot)).toBeUndefined();
+      // An explicit same-dir path is not leftover. leftover EPIC /
+      // CHECKOUTS then apply to this checkout, not another tree.
+      env.CONDUCTOR_EPIC = "atlas-prove-add-bye";
+      env.CONDUCTOR_CHECKOUTS = "/tmp/other-checkouts";
+      expect(conductorRepoMismatch(env, here, labRoot)).toBeUndefined();
+      expect(leftoverConductorKnobs(env)).not.toContain("CONDUCTOR_REPO");
+      expect(leftoverConductorEnv(env, here, labRoot)).not.toContain("CONDUCTOR_REPO");
+      expect(leftoverConductorEnv(env, here, labRoot)).not.toContain("CONDUCTOR_EPIC");
+      expect(leftoverConductorEnv(env, here, labRoot)).not.toContain("CONDUCTOR_CHECKOUTS");
     } finally {
       rmSync(here, { recursive: true, force: true });
     }
@@ -92,6 +102,13 @@ describe("conductorRepoMismatch", () => {
       expect(formatRepoMismatch(mismatch!)).toContain("CONDUCTOR_CHECKOUTS");
       expect(formatRepoMismatch(mismatch!)).toMatch(/together/);
       expect(formatRepoMismatch(mismatch!)).not.toContain("CONDUCTOR_MAX_ATTEMPTS");
+      expect(
+        leftoverConductorEnv(
+          { CONDUCTOR_REPO: leftover, CONDUCTOR_EPIC: "atlas-prove-add-bye" },
+          here,
+          labRoot,
+        ),
+      ).toEqual(["CONDUCTOR_REPO", "CONDUCTOR_EPIC"]);
     } finally {
       rmSync(here, { recursive: true, force: true });
       rmSync(leftover, { recursive: true, force: true });

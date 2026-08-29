@@ -90,6 +90,29 @@ export function leftoverConductorKnobs(env) {
 }
 
 /**
+ * Leftover `CONDUCTOR_*` to name on a refuse. `CONDUCTOR_REPO` is leftover
+ * only when it resolves to a different checkout than cwd — the same
+ * comparison as `conductorRepoMismatch`. leftover `CONDUCTOR_EPIC` and
+ * `CONDUCTOR_CHECKOUTS` are named when that repo is leftover, not when
+ * `CONDUCTOR_REPO` is an explicit path of this checkout.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} cwd
+ * @param {string} [labRoot]
+ * @returns {string[]}
+ */
+export function leftoverConductorEnv(env, cwd, labRoot) {
+  const knobs = leftoverConductorKnobs(env);
+  if (conductorRepoMismatch(env, cwd, labRoot) === undefined) return knobs;
+  return [
+    ...["CONDUCTOR_REPO", "CONDUCTOR_EPIC", "CONDUCTOR_CHECKOUTS"].filter((key) =>
+      Boolean(env[key]?.trim()),
+    ),
+    ...knobs,
+  ];
+}
+
+/**
  * @param {{ cwdRoot: string, repoRoot: string }} mismatch
  * @param {NodeJS.ProcessEnv} [env]
  */
