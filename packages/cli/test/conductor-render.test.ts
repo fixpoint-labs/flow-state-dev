@@ -1111,6 +1111,49 @@ describe("renderFrame", () => {
     expect(live2).not.toMatch(/\d+(?:\.\d+k)?→\d/);
   });
 
+  it("paints a live message on the board ASK column instead of a gold wash", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/ws",
+        branch: "conductor/LIVE-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: null,
+        costUsd: null,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [running],
+        childLive: { "req-live-1": "message · use `proveFn` or **keep** it" },
+      },
+      { cols: 80, rows: 24 },
+    );
+    const table = stripAnsi(frame)
+      .split("\n")
+      .find((line) => line.includes("LIVE-1"));
+    expect(table).toContain("proveFn");
+    expect(table).not.toContain("`proveFn`");
+    expect(table).not.toContain("**keep**");
+    expect(frame).toContain(TEAL);
+    expect(frame).not.toContain("TRANSCRIPT");
+  });
+
   it("shows each running row's token counts on the board, not another row's", () => {
     const live = (issue: string, requestId: string, input: number, output: number): StatusRow => ({
       taskId: `${issue}--implement`,

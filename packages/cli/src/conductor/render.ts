@@ -380,7 +380,7 @@ function renderTableRow(
       : failed !== undefined
         ? paint(RUST, truncate(failed, w.askW))
         : doing !== undefined && doing !== ""
-          ? paint(GOLD, shortenToolLine(doing, w.askW))
+          ? paintAskDoing(state, row, doing, w.askW)
           : brief !== null
             ? dim(truncate(brief, w.askW))
             : dim("·"),
@@ -1106,6 +1106,26 @@ function paintToolNow(now: string, inner: number, cwd?: string | null): string {
   return linkFileLine(now, shortenToolLine(now, inner), cwd);
 }
 
+function rowChildLive(state: ViewState, row: StatusRow): string | undefined {
+  const id = row.run?.requestId;
+  if (id === null || id === undefined || id === "") return undefined;
+  const live = state.childLive[id];
+  return live !== undefined && live !== "" ? live : undefined;
+}
+
+function isProseLive(text: string | undefined): boolean {
+  if (text === undefined || text === "") return false;
+  return /^(message|coord|you) · /.test(transcriptBody(text));
+}
+
+/** ASK scan: a streaming message keeps markdown paint; a tool stays gold. */
+function paintAskDoing(state: ViewState, row: StatusRow, doing: string, width: number): string {
+  if (isProseLive(rowChildLive(state, row))) {
+    return paintInline(truncate(doing, width));
+  }
+  return paint(GOLD, shortenToolLine(doing, width));
+}
+
 /** Current action on the RUN band. A streaming message keeps markdown paint. */
 function paintRunNowLine(
   state: ViewState,
@@ -1114,8 +1134,8 @@ function paintRunNowLine(
   cwd?: string | null,
 ): string {
   const live = visibleLive(state);
-  const body = live !== null ? transcriptBody(live) : doing;
-  if (/^(message|coord|you) · /.test(body)) {
+  if (live !== null && isProseLive(live)) {
+    const body = transcriptBody(live);
     const shown = body.length <= inner ? body : `${body.slice(0, Math.max(1, inner - 1))}…`;
     return ` ${paint(GOLD, "··")}  ${paintActivityLine(shown)}`;
   }
