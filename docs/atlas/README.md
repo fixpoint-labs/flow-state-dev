@@ -19,7 +19,8 @@ issue identifiers; anything under `apps/docs/` is published and may not.
 - `conductor.html` — the Conductor meta-harness: what it is, how a run works,
   and the threads still open. Open this before working on the lab or
   `fsdev conductor`. The operator door is LAB-151; a first run needs
-  `CONDUCTOR_REPO` pointed at another checkout.
+  `CONDUCTOR_REPO` pointed at another checkout (or `.` while standing in that
+  checkout, with `--config` aimed at the lab).
 - `framework.html` — the framework architecture atlas: every package and
   system in `@flow-state-dev`, how they compose, and the open refactor
   questions. Its counts are measured against a commit rather than maintained,

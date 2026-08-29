@@ -7,8 +7,10 @@ what is still dashed, and the env a first run needs (`CONDUCTOR_REPO` is a diffe
 checkout, not this dispatcher). Opening the board and talking do not need an
 `origin` remote or `gh`. Starting a coding run does — `seed`, `wake`, and a talk
 turn that files or retries refuse before they claim if the completion check
-cannot name a repository. Run `pnpm conductor` from this directory. From the
-repo root, `fsdev conductor` will not find this flow.
+cannot name a repository. Sit in the product checkout and pass `--config` pointing
+here (`CONDUCTOR_REPO=.` names that product). Or run `pnpm conductor` from this
+directory with `CONDUCTOR_REPO` pointed at the product. From the repo root,
+`fsdev conductor` will not find this flow unless you pass `--config`.
 
 A live Claude child authenticates through the Agent SDK. If `ANTHROPIC_API_KEY` is set
 and invalid, it wins over `CLAUDE_CODE_OAUTH_TOKEN` and every implement 401s — unset the

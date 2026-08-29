@@ -16,10 +16,11 @@
  * outcome and cost whichever session asks.
  *
  * `CONDUCTOR_REPO` names the repository checkouts are cut from. **Required** —
- * absent, or resolving to the repository this dispatcher itself runs from, is
- * refused at startup, because either one silently aims the coding agent at the
- * dispatcher's own code. Numeric settings are validated there too; see
- * `positiveIntFromEnv` for why an unchecked one is charged to a task.
+ * absent, or resolving to the repository this dispatcher's own source lives
+ * in, is refused at startup, because either one silently aims the coding
+ * agent at the dispatcher's own code. Standing in the product and pointing
+ * at that product is not that case. Numeric settings are validated there
+ * too; see `positiveIntFromEnv` for why an unchecked one is charged to a task.
  *
  * **`detachedDrainTimeoutMs` is derived, not chosen.** Its default is tuned to a
  * serverless SIGTERM grace period, far shorter than a coding run, so an

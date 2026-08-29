@@ -30,19 +30,37 @@ import {
 import { seedRepo } from "./harness";
 
 const dirs: string[] = [];
+const worktrees: string[] = [];
 const cwd = process.cwd();
+
+/** The repository this suite's own source lives in — the real dispatcher. */
+function dispatcherRepo(): string {
+  return dirname(fileURLToPath(import.meta.url));
+}
+
+function dispatcherToplevel(): string {
+  return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: dispatcherRepo(),
+    encoding: "utf8",
+  }).trim();
+}
+
 afterEach(() => {
+  for (const tree of worktrees.splice(0)) {
+    try {
+      execFileSync("git", ["worktree", "remove", "--force", tree], {
+        cwd: dispatcherRepo(),
+        stdio: "pipe",
+      });
+    } catch {
+      rmSync(tree, { recursive: true, force: true });
+    }
+  }
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   process.chdir(cwd);
   delete process.env.CONDUCTOR_REPO;
   delete process.env.CONDUCTOR_TEST_MS;
 });
-
-function nested(dir: string): string {
-  const inner = join(dir, "packages", "thing");
-  execFileSync("mkdir", ["-p", inner]);
-  return inner;
-}
 
 function repo(): string {
   const dir = mkdtempSync(join(tmpdir(), "conductor-cfg-"));
@@ -54,14 +72,11 @@ function repo(): string {
 describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
   it("refuses a different path inside the dispatcher's own repository", () => {
     // The case path equality missed, and the realistic one: the operator points
-    // it at the repository root while running the dispatcher from a package
-    // inside it. Two different strings, one repository — and the coding agent
-    // gets a worktree of the code that dispatched it.
-    const dir = repo();
-    const nested = join(dir, "packages", "thing");
-    execFileSync("mkdir", ["-p", nested]);
-    process.chdir(nested);
-    process.env.CONDUCTOR_REPO = dir;
+    // it at the repository root while this file lives under a package inside
+    // it. Two different strings, one repository — and the coding agent gets a
+    // worktree of the code that dispatched it.
+    process.chdir(dispatcherRepo());
+    process.env.CONDUCTOR_REPO = dispatcherToplevel();
 
     expect(() => requireSourceRepo()).toThrow(/same repository/);
     expect(() => requireSourceRepo()).toThrow(/throwaway clone|different project/s);
@@ -69,12 +84,15 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
 
   it("refuses another WORKTREE of the dispatcher's repository", () => {
     // Different toplevel, same repository — which is why the comparison is on
-    // the common dir. This is the shape the lab's own agents run in.
-    const dir = repo();
-    const tree = join(dir, "..", `wt-${Date.now()}`);
-    execFileSync("git", ["worktree", "add", "-b", "side", tree], { cwd: dir, stdio: "pipe" });
-    dirs.push(tree);
-    process.chdir(dir);
+    // the common dir. Standing in a product checkout and pointing at a
+    // worktree of THIS source tree is still eating the dispatcher.
+    const tree = join(tmpdir(), `conductor-wt-${Date.now()}`);
+    execFileSync("git", ["worktree", "add", "--detach", tree], {
+      cwd: dispatcherRepo(),
+      stdio: "pipe",
+    });
+    worktrees.push(tree);
+    process.chdir(repo());
     process.env.CONDUCTOR_REPO = tree;
 
     expect(() => requireSourceRepo()).toThrow(/same repository/);
@@ -85,11 +103,10 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     // answers `.git` for both spellings, and resolving that LEXICALLY
     // canonicalises the string rather than the location — so two different
     // paths came back for one directory and the symlink walked past the guard.
-    const dir = repo();
-    const link = join(dirname(dir), `link-${Date.now()}`);
-    symlinkSync(dir, link);
+    const link = join(tmpdir(), `conductor-link-${Date.now()}`);
+    symlinkSync(dispatcherToplevel(), link);
     dirs.push(link);
-    process.chdir(dir);
+    process.chdir(repo());
     process.env.CONDUCTOR_REPO = link;
 
     expect(() => requireSourceRepo()).toThrow(/same repository/);
@@ -147,9 +164,8 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     // `assertDistinctRepository` and kept its own copy of the absent-check.
     // Parameterising the NAME is what lets it reuse both — which is the fix for
     // the class, not for the two rules that were missed.
-    const dir = repo();
-    process.chdir(nested(dir));
-    process.env.GOAL_CONDUCTOR_REPO = dir;
+    process.chdir(repo());
+    process.env.GOAL_CONDUCTOR_REPO = dispatcherToplevel();
 
     // Same repository, reached through the other variable: still refused, and
     // the message names the variable the operator actually set.
@@ -163,8 +179,27 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     );
 
     // And the default is unchanged, so the dispatcher's call site still works.
-    process.env.CONDUCTOR_REPO = dir;
+    process.env.CONDUCTOR_REPO = dispatcherToplevel();
     expect(() => requireSourceRepo()).toThrow(/CONDUCTOR_REPO.*same repository/s);
+  });
+
+  it("accepts the directory you are standing in when it is not this dispatcher", () => {
+    // Daily-drive: sit in the product checkout, set CONDUCTOR_REPO=. (or that
+    // path), and load this lab with --config. cwd matching the target is the
+    // intended shape, not a collision with the dispatcher.
+    const product = repo();
+    process.chdir(product);
+    process.env.CONDUCTOR_REPO = ".";
+    expect(requireSourceRepo()).toBe(".");
+
+    process.env.CONDUCTOR_REPO = product;
+    expect(requireSourceRepo()).toBe(product);
+  });
+
+  it("still refuses this dispatcher when you are standing in a different repository", () => {
+    process.chdir(repo());
+    process.env.CONDUCTOR_REPO = dispatcherToplevel();
+    expect(() => requireSourceRepo()).toThrow(/same repository/);
   });
 
   it("refuses an absent one rather than defaulting", () => {
