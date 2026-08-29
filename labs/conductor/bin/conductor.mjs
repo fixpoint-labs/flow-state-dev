@@ -16,7 +16,11 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { attachConductorChild } from "./child.mjs";
-import { applyConductorBinDefaults } from "./env.mjs";
+import {
+  applyConductorBinDefaults,
+  conductorRepoMismatch,
+  formatRepoMismatch,
+} from "./env.mjs";
 import { installConductorOnPath, isConductorBinInstall, pathHasDir } from "./install.mjs";
 
 const self = fileURLToPath(import.meta.url);
@@ -39,6 +43,11 @@ const fsdev = path.resolve(labRoot, "../../packages/cli/bin/fsdev.ts");
 const tsx = path.resolve(labRoot, "../../node_modules/.bin/tsx");
 
 applyConductorBinDefaults(process.env, labRoot);
+const mismatch = conductorRepoMismatch(process.env, process.cwd());
+if (mismatch !== undefined) {
+  process.stderr.write(formatRepoMismatch(mismatch));
+  process.exit(1);
+}
 
 if (!existsSync(tsx)) {
   process.stderr.write(

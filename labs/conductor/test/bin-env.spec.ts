@@ -4,10 +4,17 @@
  * that an explicit value wins.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyConductorBinDefaults } from "../bin/env.mjs";
+import {
+  applyConductorBinDefaults,
+  conductorRepoMismatch,
+  formatRepoMismatch,
+  gitToplevel,
+} from "../bin/env.mjs";
+import { seedRepo } from "./harness";
 
 const labRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -44,5 +51,55 @@ describe("root pnpm conductor", () => {
     ) as { scripts?: Record<string, string> };
     expect(rootPkg.scripts?.conductor).toBe("node labs/conductor/bin/conductor.mjs");
     expect(rootPkg.scripts?.conductor).not.toMatch(/--dir/);
+  });
+});
+
+describe("conductorRepoMismatch", () => {
+  function scratch(): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "conductor-bin-repo-"));
+    seedRepo(dir);
+    return dir;
+  }
+
+  it("is undefined when CONDUCTOR_REPO is this checkout", () => {
+    const here = scratch();
+    try {
+      const env: NodeJS.ProcessEnv = {};
+      applyConductorBinDefaults(env, labRoot);
+      expect(conductorRepoMismatch(env, here)).toBeUndefined();
+      env.CONDUCTOR_REPO = here;
+      expect(conductorRepoMismatch(env, here)).toBeUndefined();
+    } finally {
+      rmSync(here, { recursive: true, force: true });
+    }
+  });
+
+  it("names both trees when leftover CONDUCTOR_REPO is a different checkout", () => {
+    const here = scratch();
+    const leftover = scratch();
+    try {
+      const mismatch = conductorRepoMismatch({ CONDUCTOR_REPO: leftover }, here);
+      expect(mismatch).toEqual({
+        cwdRoot: gitToplevel(here),
+        repoRoot: gitToplevel(leftover),
+      });
+      expect(formatRepoMismatch(mismatch!)).toContain(leftover);
+      expect(formatRepoMismatch(mismatch!)).toContain(here);
+      expect(formatRepoMismatch(mismatch!)).toContain("Unset CONDUCTOR_REPO");
+    } finally {
+      rmSync(here, { recursive: true, force: true });
+      rmSync(leftover, { recursive: true, force: true });
+    }
+  });
+
+  it("is undefined when cwd is not a git checkout", () => {
+    const leftover = scratch();
+    const plain = mkdtempSync(path.join(tmpdir(), "conductor-bin-plain-"));
+    try {
+      expect(conductorRepoMismatch({ CONDUCTOR_REPO: leftover }, plain)).toBeUndefined();
+    } finally {
+      rmSync(leftover, { recursive: true, force: true });
+      rmSync(plain, { recursive: true, force: true });
+    }
   });
 });

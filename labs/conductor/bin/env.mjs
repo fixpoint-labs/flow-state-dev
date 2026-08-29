@@ -4,7 +4,12 @@
  * The config door still refuses an unset `CONDUCTOR_REPO`. This fills `.`
  * (the process cwd) and this lab's `fsdev.config.ts` only when those are
  * blank. A match with the dispatcher is still refused after the config loads.
+ *
+ * After the fill, a leftover `CONDUCTOR_REPO` that names a different git
+ * checkout than cwd is refused. The board would otherwise operate on that
+ * other tree while you are standing in this one.
  */
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 
 /**
@@ -18,4 +23,47 @@ export function applyConductorBinDefaults(env, labRoot) {
   if (!env.CONDUCTOR_REPO?.trim()) {
     env.CONDUCTOR_REPO = ".";
   }
+}
+
+/**
+ * Git toplevel for `dir`, or `undefined` when it is not a work tree.
+ *
+ * @param {string} dir
+ * @returns {string | undefined}
+ */
+export function gitToplevel(dir) {
+  try {
+    return execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * When both cwd and `CONDUCTOR_REPO` are git checkouts and they differ.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} cwd
+ * @returns {{ cwdRoot: string, repoRoot: string } | undefined}
+ */
+export function conductorRepoMismatch(env, cwd) {
+  const raw = env.CONDUCTOR_REPO?.trim();
+  if (!raw) return undefined;
+  const cwdRoot = gitToplevel(cwd);
+  const repoRoot = gitToplevel(path.resolve(cwd, raw));
+  if (!cwdRoot || !repoRoot || cwdRoot === repoRoot) return undefined;
+  return { cwdRoot, repoRoot };
+}
+
+/**
+ * @param {{ cwdRoot: string, repoRoot: string }} mismatch
+ */
+export function formatRepoMismatch(mismatch) {
+  return (
+    `conductor: CONDUCTOR_REPO is ${mismatch.repoRoot} but you are standing in ${mismatch.cwdRoot}.\n` +
+    `Unset CONDUCTOR_REPO to use this checkout, or cd there.\n`
+  );
 }
