@@ -623,16 +623,16 @@ If `$HOME/.local/bin/conductor` exists and is not a symlink, install prints `con
 
 Once the symlink is on `PATH`, `conductor install` is the same command. Stand in the app directory you want the board to operate on and run `conductor`. When `CONDUCTOR_CONFIG` is unset or blank, the bin sets it to the lab's `fsdev.config.ts`. When `CONDUCTOR_REPO` is unset or blank, the bin sets it to `.` (the directory you are standing in). An explicit `CONDUCTOR_CONFIG` is left as you set it.
 
-When `CONDUCTOR_REPO` names a git checkout and you are standing in a different git checkout, the bin prints both paths and exits `1`. It does not open the board.
+When `CONDUCTOR_REPO` names a git checkout and you are standing in a different git checkout, the bin prints both paths on stderr and exits `1`. It does not open the board.
 
 ```
 conductor: CONDUCTOR_REPO is /tmp/other-checkout but you are standing in /tmp/fsd-product.
-Unset CONDUCTOR_REPO to use this checkout, or cd there.
+cd there, or unset CONDUCTOR_REPO, CONDUCTOR_EPIC, and CONDUCTOR_CHECKOUTS together to use this checkout.
 ```
 
-Unset `CONDUCTOR_REPO` to use the directory you are standing in. The bin proceeds when you are not standing in a git checkout, or when `CONDUCTOR_REPO` is this same checkout, including `.`.
+Unset `CONDUCTOR_REPO`, `CONDUCTOR_EPIC`, and `CONDUCTOR_CHECKOUTS` together to use the directory you are standing in. `cd` to the named `CONDUCTOR_REPO` to use that checkout. The refuse does not print when you are not standing in a git checkout, or when `CONDUCTOR_REPO` is this same checkout, including `.`.
 
-From this repo (the one that contains `labs/conductor`), `CONDUCTOR_REPO` may name a different checkout. The bin proceeds. Set `CONDUCTOR_REPO` to that checkout, or stand in it and run `conductor`.
+From this repo (the one that contains `labs/conductor`), `CONDUCTOR_REPO` may name a different checkout. The refuse does not print. Set `CONDUCTOR_REPO` to that checkout, or stand in it and run `conductor`.
 
 Running `fsdev conductor` directly does not apply this check.
 
@@ -664,7 +664,7 @@ The lab config refuses when `CONDUCTOR_REPO` names the repository that contains 
 - There is no verb that switches flow ids. Run a second `fsdev conductor` for the other flow.
 - Your `status` action returns `rows`. The printed JSON board also has `epic`, and `repo` when `CONDUCTOR_REPO` is set.
 - `CONDUCTOR_REPO` names the checkout in the fullscreen header, the tab title, the leftover line after `/quit`, and headless board dumps. It does not pick the flow or the config.
-- The PATH `conductor` bin does not open the board when you stand in one git checkout and `CONDUCTOR_REPO` names another, except from the repository that contains `labs/conductor`. It does not rewrite `CONDUCTOR_REPO` to match the directory you are standing in. Running `fsdev conductor` directly does not apply that check.
+- The PATH `conductor` bin prints two lines on stderr and exits `1` when you stand in one git checkout and `CONDUCTOR_REPO` names another, except from the repository that contains `labs/conductor`. Unset `CONDUCTOR_REPO`, `CONDUCTOR_EPIC`, and `CONDUCTOR_CHECKOUTS` together to use the directory you are standing in, or `cd` to the named `CONDUCTOR_REPO`. Running `fsdev conductor` directly does not print that refuse.
 - The lab config refuses when `CONDUCTOR_REPO` names the repository that contains `labs/conductor`.
 
 ## Related pages
