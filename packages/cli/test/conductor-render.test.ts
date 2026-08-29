@@ -301,6 +301,33 @@ describe("renderFrame", () => {
     expect(frame).not.toContain("src/secret.ts");
   });
 
+  it("lays out markdown talk on the board strip, still without TRANSCRIPT", () => {
+    const frame = stripAnsi(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [{ ...waiting, questions: [], status: "pending" }],
+          activity: [
+            {
+              at: 2,
+              text: "coord · ## Next\n\nUse `start TALK-2`.\n\n- file it\n- then inspect",
+            },
+            { at: 3, text: "tool · Write src/secret.ts", requestId: "req-1" },
+          ],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(frame).toContain("Next");
+    expect(frame).not.toContain("## Next");
+    expect(frame).toContain("start TALK-2");
+    expect(frame).toContain("• file it");
+    expect(frame).toContain("• then inspect");
+    expect(frame).not.toContain("TRANSCRIPT");
+    expect(frame).not.toContain("src/secret.ts");
+    expect(frame.split("\n")).toHaveLength(24);
+  });
+
   it("lays out a markdown transcript message instead of one wrapped blob", () => {
     const idle: StatusRow = {
       ...waiting,

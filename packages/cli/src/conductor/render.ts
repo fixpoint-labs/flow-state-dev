@@ -178,23 +178,33 @@ function renderOverview(state: ViewState, cols: number, rows: number, now: numbe
   );
 }
 
+/** Display lines the board strip keeps. Same cap as the old 8 items. */
+const TALK_STRIP_MAX = 8;
+
 /** Last board-only lines (talk, seed, wake). A child transcript is inspect. */
 function renderTalkStrip(state: ViewState, cols: number): string {
   const board = state.activity.filter((item) => item.requestId === undefined);
-  const shown = board.slice(-8);
   const width = Math.max(16, cols - 12);
-  const lines = shown.map((item) => {
-    const clipped = truncate(item.text, width);
-    const body = transcriptBody(item.text);
-    const painted = /^(message|coord|you) · /.test(body) ? paintInline(clipped) : clipped;
-    return ` ${dim(formatClock(item.at))}  ${painted}`;
-  });
-  const live = state.live;
-  if (live !== null && live !== shown.at(-1)?.text) {
-    lines.push(` ${paint(GOLD, "··")}  ${truncate(live, width)}`);
+  const lines: string[] = [];
+  for (const item of board) {
+    const wrapped = wrapActivityLine(item.text, width);
+    wrapped.forEach((line, i) => {
+      const painted = paintActivityLine(line);
+      const clock = i === 0 ? dim(formatClock(item.at)) : "        ";
+      lines.push(` ${clock}  ${painted}`);
+    });
   }
-  if (lines.length === 0) return "";
-  return [rule(cols, INK_3), ...lines].join("\n");
+  const live = state.live;
+  if (live !== null && live !== board.at(-1)?.text) {
+    wrapActivityLine(live, width).forEach((line, i) => {
+      const painted = paint(GOLD, paintActivityLine(line));
+      const mark = i === 0 ? paint(GOLD, "··") : "  ";
+      lines.push(` ${mark}  ${painted}`);
+    });
+  }
+  const shown = lines.slice(-TALK_STRIP_MAX);
+  if (shown.length === 0) return "";
+  return [rule(cols, INK_3), ...shown].join("\n");
 }
 
 /** One row's question, attempt, and transcript. Esc returns to the board. */
