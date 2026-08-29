@@ -69,9 +69,28 @@ defineFlow({
 })
 ```
 
-Every entry takes the **same fixed task input schema** (see §3). That uniformity
-is what makes the map dispatchable from strings alone after a restart, and what
-lets a board route to an entry by name.
+Every entry takes the **same fixed task input schema**. That uniformity is what
+makes the map dispatchable from strings alone after a restart, and what lets a
+board route to an entry by name:
+
+```ts
+type TaskInput = {
+  /** The durable row this run is for. */
+  taskId: string;
+  /** Claim identity — verified against the row, never trusted (see below). */
+  attempt: number;
+  createdAt: number;
+  incarnationId?: string;   // absent on a row predating the nonce (BP-030)
+  /** The materialized worker input, packed at claim time. */
+  payload: unknown;
+};
+```
+
+Everything but `payload` is the claim envelope, and it is here rather than inside
+`payload` because the framework has to read it without knowing what any
+particular task's work looks like. It is what the claim gate compares against the
+row it re-reads — see *What gets more complicated* #1, which is where this schema
+earns its shape.
 
 `resolveActionCore` keeps one terminal branch, on a renamed source:
 
@@ -110,6 +129,16 @@ Cross-flow spawn is now legal, where today the child always inherits its parent'
 reflexively. User- and org-scoped resources are already cross-flow shared. Only a
 deliberate `isolateUserState: true` splits, and that author already asked for
 per-flow state.
+
+**Cross-flow spawn is separable from the routing fix, and phasing it is worth
+considering.** The conductor limits this proposal fixes are solved by `tasks`
+being a *map* — spec / implement / review as three entries on one flow — so
+cross-flow is not load-bearing for them. Deferring it to a phase 2 would still
+delete the binding machinery and the shape-sniff, and would leave out the two
+guards it drags in (the lineage-bucket refusal below, and the widened
+`startTask` authority). Kept in v1 here because it is the half of the original
+idea that makes flows the unit of composition; splitting it is the user's call,
+not a correction.
 
 ### 3. Session handles live on the task row
 
@@ -200,9 +229,23 @@ verifier per board** on the flow. The framework runs the verifier before invokin
 the named task entry. That is one registration per board instead of one binding
 per worker, and it keeps a single enforcement point.
 
-**This is the part of the proposal that is not obviously simpler.** It replaces a
-construction-time guarantee with a registration the framework enforces at
-dispatch. Weigh it deliberately; do not wave it through.
+**A third option, and it is a genuine peer.** `defineFlow` could *reject* any
+`tasks` entry that is not a board runner — a brand the board factory stamps on
+the runner block, checked at flow-definition time. `core` cannot name a board,
+but it can require a symbol, so this is a brand check rather than a registry. It
+preserves today's construction-time guarantee exactly, with no verifier and no
+bindings.
+
+Its cost is not small and it is not the one raised in review: **it makes a task
+board mandatory again.** A flow with no board could not declare `tasks` at all,
+which deletes one of the wins claimed above — that detached work stops requiring
+a board. So the fork is really *how much does board-less detached work matter*,
+and that question deserves to be answered before the gate is.
+
+**This is the part of the proposal that is not obviously simpler.** Options A and
+B trade a construction-time guarantee for a dispatch-time one; option C keeps the
+guarantee and gives back generality. Weigh it deliberately; do not wave it
+through.
 
 ### 2. Two flows can now share one lineage bucket
 
@@ -270,7 +313,7 @@ would be the single most damaging line in this change.
 | `core/types/workstream.ts` | — | deleted |
 | `core/flow/workstream-core.ts` | — | deleted |
 | `workstreamBindingKey` | — | deleted; no composite key |
-| `declareWorkstreamBindings` | board registers one verifier | §"more complicated" #1 |
+| `declareWorkstreamBindings` | replaced by the claim gate chosen in open decision 1 | §"more complicated" #1 |
 | `WORKSTREAM_SOURCE` (`"workstream"`) | `TASK_SOURCE` (`"task"`) | still terminal, still off the re-entry allow-list |
 | `no-workstream-core`, `board-not-routable` | — | inference failures; no longer reachable |
 | `GET /sessions/:id/workstreams` | `GET /sessions/:id/children` | same handler, honest name |
@@ -306,7 +349,7 @@ already in the codebase. Every other rename here is cosmetic and can wait.
   storage key with different schemas. Pass: refused at context construction.
 - **Handle-reuse boundary.** A user-scoped board drained from two sessions; a
   handle from session A reused from session B. Pass: refused (or unreachable,
-  depending on which option §3 takes).
+  depending on which option open decision 2 takes).
 - **Conductor's limits are gone.** Two phases on one flow, one host, one board, no
   `epic` split. Pass: `fsdev run` drives both phases; neither claims the other's
   rows.
@@ -315,16 +358,29 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 
 ## Open decisions
 
-1. **The claim gate.** Registered verifier (proposed), or keep a board-supplied
-   wrapper the flow routes through? The second preserves today's construction-time
-   guarantee and costs some of the simplification. *Recommendation: verifier —
-   but this is the decision the proposal turns on.*
+1. **The claim gate — a three-way fork, and the decision the proposal turns on.**
+   **(A) Registered verifier** — one per board, framework-run before the task
+   entry; trades the construction-time guarantee for a dispatch-time one.
+   **(B) Route-through wrapper** — the flow routes into a board-supplied wrapper;
+   preserves the guarantee, costs some of the simplification.
+   **(C) Mandatory runner brand at `defineFlow`** — rejects any `tasks` entry that
+   is not a board runner; preserves the guarantee outright, but makes a board
+   mandatory and so gives up board-less detached work.
+   *Recommendation: A, on the judgment that board-less detached work is worth
+   more than a construction-time check the verifier reproduces at dispatch. If
+   board-less tasks turn out not to matter, C is strictly better than A and this
+   flips.*
 2. **Handle-reuse scope.** Lineage check, or session-scoped boards only?
    *Recommendation: lineage check; it is one comparison and it does not restrict a
    board shape people already use.*
 3. **Do `tasks` live on the flow, or does a board contribute them?** Hand-authored
    is the simplification; board-contributed keeps declaration next to the worker.
    *Recommendation: hand-authored — contribution is what produced the bubbling.*
+   The cost to name if it wins: a **sync burden**. The board's assignee/coordinate
+   and the `flow.tasks` key have to agree, with nothing linking them at compile
+   time — the failure is a dispatch that resolves nothing, at runtime. A shared
+   const between the two declarations closes it without reintroducing a graph
+   walk; a naming convention does not.
 4. **Migration.** Nothing is published, so there is no deployed store holding
    workstream addresses (per `state-and-scopes.md`). This can be a clean break
    rather than a dual-read. *Confirm before relying on it.*
