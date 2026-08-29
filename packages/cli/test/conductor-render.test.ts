@@ -576,13 +576,37 @@ describe("renderFrame", () => {
     expect(follow).not.toContain("line-0");
     expect(follow).toContain("follow");
 
+    const mid = stripAnsi(
+      renderFrame(
+        { ...emptyView("epic"), rows: [waiting], activity, scroll: 3 },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(mid).toContain("3 back");
+    expect(mid).not.toContain("oldest");
+
     const back = renderFrame(
       { ...emptyView("epic"), rows: [waiting], activity, scroll: 200 },
       { cols: 80, rows: 24 },
     );
     expect(back).toContain("line-0");
     expect(back).not.toContain("line-29");
-    expect(back).toContain("back");
+    expect(stripAnsi(back)).toContain("oldest");
+    expect(stripAnsi(back)).not.toContain("200 back");
+  });
+
+  it("does not print an unclamped Home jump in the transcript heading", () => {
+    const activity = Array.from({ length: 30 }, (_, i) => ({ at: i, text: `line-${i}` }));
+    const frame = stripAnsi(
+      renderFrame(
+        { ...emptyView("epic"), rows: [waiting], activity, scroll: Number.MAX_SAFE_INTEGER },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(frame).toContain("line-0");
+    expect(frame).toContain("oldest");
+    expect(frame).not.toContain(String(Number.MAX_SAFE_INTEGER));
+    expect(frame).not.toMatch(/\d{6,} back/);
   });
 
   it("shows the live line at the tail while following, and hides it when scrolled back", () => {
@@ -621,7 +645,7 @@ describe("renderFrame", () => {
       { cols: 80, rows: 24 },
     );
     expect(back).not.toContain("status · claiming ASK-1");
-    expect(back).toContain("back");
+    expect(stripAnsi(back)).toContain("oldest");
   });
 
   it("keeps the question above the transcript even when the log is long", () => {

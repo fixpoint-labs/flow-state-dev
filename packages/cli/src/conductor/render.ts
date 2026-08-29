@@ -710,17 +710,6 @@ function renderActivity(
   const hits = findMatches(state);
   const currentHit = currentFindHit(state);
   const finding = state.find !== null && state.find !== "";
-  const heading = ` ${dim("TRANSCRIPT")}${
-    finding
-      ? hits.length === 0
-        ? dim(`  ·  find · "${state.find}"  no matches`)
-        : dim(`  ·  find · "${state.find}"  ${(Math.min(Math.max(0, state.findAt), hits.length - 1) + 1)}/${hits.length}`)
-      : following
-        ? live !== null
-          ? dim("  ·  live")
-          : dim("  ·  follow")
-        : dim(`  ·  ${state.scroll} back`)
-  }`;
   const width = Math.max(16, cols - 10);
   const cwd = selectedRow(state)?.run?.workspacePath ?? null;
   const body: { text: string; itemIndex: number | null }[] = [];
@@ -754,6 +743,7 @@ function renderActivity(
   const chrome = underBand ? 1 : 2;
   const window = height - chrome;
   if (window <= 0) {
+    const heading = transcriptHeading(state, live, following, state.scroll > 0);
     return underBand ? heading : `${rule(cols, INK_3)}\n${heading}`;
   }
   const lines = body.map((row) => row.text);
@@ -769,6 +759,13 @@ function renderActivity(
       scroll = Math.max(0, lines.length - window - start);
     }
   }
+  const heading = transcriptHeading(
+    state,
+    live,
+    following,
+    scroll === maxScroll && maxScroll > 0,
+    scroll,
+  );
   const start = Math.max(0, lines.length - window - scroll);
   const visible = lines.slice(start, start + window);
   const pad = Math.max(0, window - visible.length);
@@ -778,6 +775,30 @@ function renderActivity(
       : Array.from({ length: pad }, () => "");
   const top = underBand ? [] : [rule(cols, INK_3)];
   return [...top, heading, ...filler, ...visible].join("\n");
+}
+
+function transcriptHeading(
+  state: ViewState,
+  live: string | null,
+  following: boolean,
+  atOldest: boolean,
+  back = 0,
+): string {
+  const hits = findMatches(state);
+  const finding = state.find !== null && state.find !== "";
+  return ` ${dim("TRANSCRIPT")}${
+    finding
+      ? hits.length === 0
+        ? dim(`  ·  find · "${state.find}"  no matches`)
+        : dim(
+            `  ·  find · "${state.find}"  ${Math.min(Math.max(0, state.findAt), hits.length - 1) + 1}/${hits.length}`,
+          )
+      : following
+        ? live !== null
+          ? dim("  ·  live")
+          : dim("  ·  follow")
+        : dim(atOldest ? "  ·  oldest" : `  ·  ${back} back`)
+  }`;
 }
 
 const SLASH_MENU_MAX = 6;
