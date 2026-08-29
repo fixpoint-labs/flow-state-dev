@@ -448,6 +448,52 @@ describe("renderFrame", () => {
     expect(renderBoardPlain([waiting], false)).not.toMatch(/\bbrief\b/);
   });
 
+  it("puts the seed brief on ASK so an unselected row still scans", () => {
+    // ASK is the scan column: question, else the live tool, else the
+    // brief. Idle-row detail only paints the selection, so a second
+    // pending row would hide what was filed unless ASK carries it.
+    const filed: StatusRow = {
+      ...failed,
+      issue: "FIX-1049",
+      taskId: "FIX-1049--implement",
+      status: "pending",
+      feedback: null,
+      brief: "Rename getSession in client.md",
+      run: { ...failed.run!, outcome: null, reason: null },
+      questions: [],
+    };
+    const other: StatusRow = {
+      ...filed,
+      issue: "FIX-1050",
+      taskId: "FIX-1050--implement",
+      brief: null,
+    };
+    const frame = stripAnsi(
+      renderFrame(
+        { ...emptyView("epic"), rows: [filed, other], selected: 1 },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    const table = frame.slice(0, frame.indexOf("TRANSCRIPT"));
+    expect(table).toContain("Rename getSession");
+    expect(table).toMatch(/FIX-1049[\s\S]*Rename getSession/);
+
+    const headlessLine = renderBoardPlain([filed], false).split("\n")[1]!;
+    expect(headlessLine).toContain("Rename get");
+    expect(headlessLine).not.toMatch(/·\s*$/);
+
+    const parked: StatusRow = { ...waiting, brief: "Rename getSession in client.md" };
+    const waitingTable = stripAnsi(
+      renderFrame(
+        { ...emptyView("epic"), rows: [parked, other], selected: 1 },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    const waitingAsk = waitingTable.slice(0, waitingTable.indexOf("TRANSCRIPT"));
+    expect(waitingAsk).toContain("Which path?");
+    expect(waitingAsk).not.toContain("Rename getSession");
+  });
+
   it("tells an empty seed prompt that words after the issue id are the brief", () => {
     const frame = stripAnsi(
       renderFrame({ ...emptyView("epic"), inputMode: "seed" }, { cols: 80, rows: 24 }),
@@ -2357,8 +2403,8 @@ describe("renderBoardPlain / watchExitCode", () => {
 
   it("puts a running row's current action on ASK when a view is passed", () => {
     // Same rule as the TUI table: a question wins; otherwise the live
-    // child's last tool. Without a journal the column stays `·` — that
-    // is a full-board print of a settled history, not a missing verb.
+    // child's last tool; otherwise the seed brief. Without a journal
+    // or a brief the column stays `·`.
     const now = 1_700_000_000_000;
     const running: StatusRow = {
       taskId: "LIVE-1--implement",

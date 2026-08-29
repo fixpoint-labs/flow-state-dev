@@ -298,12 +298,15 @@ function renderTableRow(
   );
   const asked = row.questions[0]?.text;
   const doing = asked === undefined && rowRunning(row) ? rowNow(state, row) : undefined;
+  const brief = asked === undefined && (doing === undefined || doing === "") ? rowBrief(row) : null;
   const ask = pad(
     asked !== undefined
       ? paint(MAUVE, truncate(asked, w.askW))
       : doing !== undefined && doing !== ""
         ? paint(GOLD, shortenToolLine(doing, w.askW))
-        : dim("·"),
+        : brief !== null
+          ? dim(truncate(brief, w.askW))
+          : dim("·"),
     w.askW,
   );
   const line = mark + issue + phase + status + attempt + outcome + ask;
@@ -1193,7 +1196,8 @@ export function formatBoardIdentity(identity?: BoardIdentity): string {
 
 /**
  * Same rule as the TUI ASK column: the question wins; a running row
- * shows its current action when we have that attempt's journal.
+ * shows its current action when we have that attempt's journal; else
+ * the seed brief so a pending row still scans.
  */
 function headlessAsk(
   row: StatusRow,
@@ -1201,12 +1205,16 @@ function headlessAsk(
 ): string {
   const asked = row.questions[0]?.text;
   if (asked !== undefined) return truncate(asked, 16);
-  if (!rowRunning(row)) return "·";
-  const view = viewForRow(row, views);
-  if (view === undefined) return "·";
-  const doing = rowNow(view, row);
-  if (doing === undefined || doing === "") return "·";
-  return shortenToolLine(doing, 16);
+  if (rowRunning(row)) {
+    const view = viewForRow(row, views);
+    if (view !== undefined) {
+      const doing = rowNow(view, row);
+      if (doing !== undefined && doing !== "") return shortenToolLine(doing, 16);
+    }
+  }
+  const brief = rowBrief(row);
+  if (brief !== null) return truncate(brief, 16);
+  return "·";
 }
 
 function viewForRow(
