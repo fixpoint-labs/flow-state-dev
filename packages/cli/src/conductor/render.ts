@@ -3,6 +3,7 @@
  * assert on it. A frame that cannot be produced from a fixture is a frame
  * nobody can pin.
  */
+import { renderMarkdown } from "./markdown";
 import { slashMenu } from "./slash";
 import {
   ACCENT,
@@ -156,9 +157,45 @@ export function renderFrame(state: ViewState, size: FrameSize, now: number = Dat
   const cols = Math.max(size.cols, MIN_COLS);
   const rows = Math.max(size.rows, MIN_ROWS);
   if (state.help) return fit(renderHelp(cols), cols, rows, 1);
+  if (!state.inspect) return renderOverview(state, cols, rows, now);
+  return renderInspect(state, cols, rows, now);
+}
 
+/** Rows and the prompt. The question body and transcript live on inspect. */
+function renderOverview(state: ViewState, cols: number, rows: number, now: number): string {
   const header = renderHeader(state, cols);
   const table = renderTable(state, cols, now);
+  const talk = renderTalkStrip(state, cols);
+  const menu = renderSlashMenu(state, cols);
+  const prompt = renderPrompt(state, cols);
+  const footer = renderFooter(state, cols, now);
+  const pinBottom = lineCount(menu) + lineCount(prompt) + lineCount(footer);
+  return fit(
+    [header, table, talk, menu, prompt, footer].filter((s) => s !== "").join("\n"),
+    cols,
+    rows,
+    pinBottom,
+  );
+}
+
+/** Last board-only lines (talk, seed, wake). A child transcript is inspect. */
+function renderTalkStrip(state: ViewState, cols: number): string {
+  const board = state.activity.filter((item) => item.requestId === undefined);
+  const shown = board.slice(-8);
+  const width = Math.max(16, cols - 12);
+  const lines = shown.map((item) => ` ${dim(formatClock(item.at))}  ${truncate(item.text, width)}`);
+  const live = state.live;
+  if (live !== null && live !== shown.at(-1)?.text) {
+    lines.push(` ${paint(GOLD, "··")}  ${truncate(live, width)}`);
+  }
+  if (lines.length === 0) return "";
+  return [rule(cols, INK_3), ...lines].join("\n");
+}
+
+/** One row's question, attempt, and transcript. Esc returns to the board. */
+function renderInspect(state: ViewState, cols: number, rows: number, now: number): string {
+  const header = renderHeader(state, cols);
+  const table = renderInspectTable(state, cols, now);
   const meta = state.busy || reservedBandOpen(state) ? "" : renderMeta(state, cols);
   const menu = renderSlashMenu(state, cols);
   const prompt = renderPrompt(state, cols);
@@ -222,6 +259,7 @@ function renderHeader(state: ViewState, cols: number): string {
   if (live > 0) parts.push(dim("·"), paint(ACCENT, ` ${live} running `));
   if (waiting > 0) parts.push(dim("·"), paint(MAUVE, ` ${waiting} waiting `));
   if (failed > 0) parts.push(dim("·"), paint(RUST, ` ${failed} failed `));
+  if (state.inspect) parts.push(dim("·"), paint(GOLD, " inspect "));
   if (state.busy) parts.push(dim("·"), paint(GOLD, " working "));
   if (state.lastRefreshAt !== null) {
     parts.push(dim("·"), dim(` ${formatClock(state.lastRefreshAt)} `));
@@ -230,7 +268,16 @@ function renderHeader(state: ViewState, cols: number): string {
   return `${padLine(left, cols)}\n${rule(cols)}`;
 }
 
-function renderTable(state: ViewState, cols: number, now: number): string {
+function tableLayout(cols: number): {
+  issueW: number;
+  phaseW: number;
+  statusW: number;
+  attemptW: number;
+  outcomeW: number;
+  askW: number;
+  cols: number;
+  head: string;
+} {
   const issueW = Math.max(10, Math.min(16, Math.floor(cols * 0.16)));
   const phaseW = 10;
   const statusW = 16;
@@ -247,20 +294,29 @@ function renderTable(state: ViewState, cols: number, now: number): string {
     pad(dim("N"), attemptW) +
     pad(dim("OUTCOME"), outcomeW) +
     pad(dim("ASK"), askW);
+  return { issueW, phaseW, statusW, attemptW, outcomeW, askW, cols, head };
+}
+
+function renderTable(state: ViewState, cols: number, now: number): string {
+  const layout = tableLayout(cols);
   if (state.rows.length === 0) {
-    return `${head}\n${padLine(dim("  no rows. type to talk, or /seed <issue> to file one."), cols)}`;
+    return `${layout.head}\n${padLine(dim("  no rows. type to talk, or /seed <issue> to file one."), cols)}`;
   }
   const { start, end } = visibleTableWindow(state.rows.length, state.selected);
   const lines = state.rows.slice(start, end).map((row, i) =>
-    renderTableRow(
-      row,
-      start + i === state.selected,
-      { issueW, phaseW, statusW, attemptW, outcomeW, askW, cols },
-      state,
-      now,
-    ),
+    renderTableRow(row, start + i === state.selected, layout, state, now),
   );
-  return [head, ...lines].join("\n");
+  return [layout.head, ...lines].join("\n");
+}
+
+/** The selected row only — inspect is one task, not the full list. */
+function renderInspectTable(state: ViewState, cols: number, now: number): string {
+  const layout = tableLayout(cols);
+  const row = selectedRow(state);
+  if (row === undefined) {
+    return `${layout.head}\n${padLine(dim("  no row."), cols)}`;
+  }
+  return [layout.head, renderTableRow(row, true, layout, state, now)].join("\n");
 }
 
 function renderTableRow(
@@ -297,16 +353,22 @@ function renderTableRow(
     w.outcomeW,
   );
   const asked = row.questions[0]?.text;
-  const doing = asked === undefined && rowRunning(row) ? rowNow(state, row) : undefined;
-  const brief = asked === undefined && (doing === undefined || doing === "") ? rowBrief(row) : null;
+  const failed = asked === undefined && rowFailed(row) ? failureReason(row) : undefined;
+  const doing = asked === undefined && failed === undefined && rowRunning(row) ? rowNow(state, row) : undefined;
+  const brief =
+    asked === undefined && failed === undefined && (doing === undefined || doing === "")
+      ? rowBrief(row)
+      : null;
   const ask = pad(
     asked !== undefined
       ? paint(MAUVE, truncate(asked, w.askW))
-      : doing !== undefined && doing !== ""
-        ? paint(GOLD, shortenToolLine(doing, w.askW))
-        : brief !== null
-          ? dim(truncate(brief, w.askW))
-          : dim("·"),
+      : failed !== undefined
+        ? paint(RUST, truncate(failed, w.askW))
+        : doing !== undefined && doing !== ""
+          ? paint(GOLD, shortenToolLine(doing, w.askW))
+          : brief !== null
+            ? dim(truncate(brief, w.askW))
+            : dim("·"),
     w.askW,
   );
   const line = mark + issue + phase + status + attempt + outcome + ask;
@@ -342,7 +404,7 @@ function renderAskBand(
   if (question === undefined) return "";
   const more = selectedRow(state)?.questions.length ?? 0;
   const inner = Math.max(20, cols - 8);
-  const wrapped = wrap(question.text, inner);
+  const wrapped = renderMarkdown(question.text, inner);
   const body = wrapped.slice(0, bodyMax);
   const hidden = wrapped.length - body.length;
   const hint = [
@@ -357,7 +419,7 @@ function renderAskBand(
     rule(cols, MAUVE),
     bandHeading("ASK", MAUVE, hidden),
     ...renderAttemptIdentity(state, inner),
-    ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
+    ...body.map((line) => ` ${line}`),
     ` ${dim(hint)}`,
     ...renderAttemptStrip(state, inner).slice(0, stripMax),
     rule(cols, MAUVE),
@@ -830,11 +892,15 @@ function renderPrompt(state: ViewState, cols: number): string {
   let placeholder = dim(
     selected !== undefined && rowSpent(selected)
       ? "talk to the coordinator — this row is spent"
-      : selectedQuestion(state) !== undefined
+      : state.inspect && selectedQuestion(state) !== undefined
         ? "type to answer"
-        : selected === undefined
-          ? "talk to the coordinator, or /seed <issue>"
-          : "talk to the coordinator, or /seed /wake /answer",
+        : selectedQuestion(state) !== undefined
+          ? "talk · enter inspects the question · /answer"
+          : selected === undefined
+            ? "talk to the coordinator, or /seed <issue>"
+            : state.inspect
+              ? "talk to the coordinator, or /seed /wake /answer"
+              : "talk · enter inspects a row · /seed /wake /answer",
   );
   if (state.inputMode === "answer") {
     prefix = paint(MAUVE, "❯ answer ");
@@ -896,13 +962,21 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  ↑/↓  ·  ?  ·  /quit`
     : empty
       ? `${working}type to talk  ·  /seed  ·  /  ·  ?  ·  /quit`
+    : !state.inspect
+      ? q
+        ? `${working}type to talk  ·  enter inspect  ·  /answer  ·  ↑/↓${nextKey}  ·  /  ·  ?  ·  /quit`
+        : fail !== undefined
+          ? `${working}type to talk  ·  enter inspect  ·  ↑/↓  ·  ${spent ? "spent" : "/wake"}  ·  s seed  ·  /  ·  ?  ·  /quit`
+          : running
+            ? `${working}type to talk  ·  enter inspect  ·  ↑/↓  ·  x stop  ·  /  ·  ?  ·  /quit`
+            : `${working}type to talk  ·  enter inspect  ·  ↑/↓  ·  s seed  ·  /  ·  ?  ·  /quit`
     : q
-      ? `${working}type to answer  ·  ↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
+      ? `${working}Esc board  ·  type to answer  ·  ↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
       : fail !== undefined
-        ? `${working}type to talk  ·  ↑/↓  ·  ${spent ? "spent" : "/wake"}${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`
+        ? `${working}Esc board  ·  type to talk  ·  ↑/↓  ·  ${spent ? "spent" : "/wake"}${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`
         : running
-          ? `${working}type to talk  ·  ↑/↓  ·  x stop${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
-          : `${working}type to talk  ·  ↑/↓${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`;
+          ? `${working}Esc board  ·  type to talk  ·  ↑/↓  ·  x stop${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
+          : `${working}Esc board  ·  type to talk  ·  ↑/↓${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`;
   return padLine(dim(` ${keys}`), cols);
 }
 
@@ -963,10 +1037,11 @@ function composeTail(input: string, width: number, caret: number): string {
  * shorter (`fit` pins it).
  */
 const TUI_HELP_LINES = [
+  "  Enter / Esc   inspect the selected row · back to the board",
   "  ↑/↓          row · while composing: lines, then prior sends",
   "  Ctrl-R       prior send, including on an empty prompt",
   "  Alt/Ctrl-←/→ word · Ctrl-W delete the previous word",
-  "  PgUp/PgDn    transcript · Home/End oldest / follow",
+  "  PgUp/PgDn    transcript · Home/End oldest / follow (inspect)",
   "  { / }        previous / next waiting, failed, or stalled row",
   "  s            seed (first line issue, more lines brief)",
   "  r            refresh",
@@ -977,8 +1052,8 @@ const TUI_HELP_LINES = [
   "  /find [text] search this row's transcript",
   "  n / N        older / newer match",
   "  /quit        stop running work and leave",
-  "  A waiting row: type the answer. /steer talks.",
-  "  A new question or a finish rings and selects that row.",
+  "  On the board, type to talk. Inspect a waiting row, then type the answer. /steer talks.",
+  "  A new question or a finish opens inspect on that row.",
   "  Reopen lands on the row you left, and keeps the talk.",
 ];
 

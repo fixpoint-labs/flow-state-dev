@@ -55,6 +55,10 @@ function board(rows: StatusRow[]): ViewState {
   return { ...emptyView("epic"), rows };
 }
 
+function inspecting(rows: StatusRow[]): ViewState {
+  return { ...emptyView("epic"), rows, inspect: true };
+}
+
 describe("decodeKeys", () => {
   it("decodes arrows, enter, and a paste of printable chars", () => {
     expect(decodeKeys("\x1b[A").keys).toEqual([{ type: "up" }]);
@@ -140,7 +144,7 @@ describe("applyKey", () => {
     expect(down.state.selected).toBe(1);
     const up = applyKey(down.state, { type: "up" });
     expect(up.state.selected).toBe(0);
-    const answer = applyKey(board([row("FIX-1", 1)]), { type: "char", value: "a" });
+    const answer = applyKey(inspecting([row("FIX-1", 1)]), { type: "char", value: "a" });
     expect(answer.state.inputMode).toBe("answer");
     expect(answer.state.input).toBe("a");
     expect(answer.state.answering).toBe("FIX-1/implement/1/q0");
@@ -198,8 +202,8 @@ describe("applyKey", () => {
     expect(still.state.notice).toBe("nothing waiting, failed, or stalled");
   });
 
-  it("treats typing on a waiting row as composing the answer, and Enter dispatches it", () => {
-    const state = board([row("FIX-1", 1)]);
+  it("treats typing on an inspected waiting row as composing the answer, and Enter dispatches it", () => {
+    const state = inspecting([row("FIX-1", 1)]);
     const typed = applyKey(state, { type: "char", value: "y" });
     expect(typed.state.inputMode).toBe("answer");
     expect(typed.state.input).toBe("y");
@@ -214,8 +218,8 @@ describe("applyKey", () => {
     });
   });
 
-  it("does not steal the first letters of an answer on a waiting row", () => {
-    let state = board([row("FIX-1", 1)]);
+  it("does not steal the first letters of an answer on an inspected waiting row", () => {
+    let state = inspecting([row("FIX-1", 1)]);
     for (const ch of "the real file") {
       state = applyKey(state, { type: "char", value: ch }).state;
     }
@@ -227,8 +231,8 @@ describe("applyKey", () => {
       type: "dispatch",
       command: { kind: "answer", question: "FIX-1/implement/1/q0", text: "the real file" },
     });
-    expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "q" }).effect).toBeUndefined();
-    expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "}" }).state.selected).toBe(0);
+    expect(applyKey(inspecting([row("FIX-1", 1)]), { type: "char", value: "q" }).effect).toBeUndefined();
+    expect(applyKey(inspecting([row("FIX-1", 1)]), { type: "char", value: "}" }).state.selected).toBe(0);
   });
 
   it("talks with /steer on a waiting row instead of answering", () => {
@@ -413,7 +417,7 @@ describe("applyKey", () => {
     });
   });
 
-  it("talks from a populated idle row; s seeds, r refreshes, f expands files", () => {
+  it("talks from a populated idle row; s seeds, r refreshes; f expands only in inspect", () => {
     const idle = board([row("FIX-1")]);
     expect(applyKey(idle, { type: "char", value: "j" }).state.input).toBe("j");
     expect(applyKey(idle, { type: "char", value: "k" }).state.input).toBe("k");
@@ -423,8 +427,11 @@ describe("applyKey", () => {
     expect(applyKey(idle, { type: "char", value: "q" }).state.input).toBe("q");
     expect(applyKey(idle, { type: "char", value: "s" }).state.inputMode).toBe("seed");
     expect(applyKey(idle, { type: "char", value: "r" }).effect).toEqual({ type: "refresh" });
-    expect(applyKey(idle, { type: "char", value: "f" }).state.filesExpanded).toBe(true);
+    expect(applyKey(idle, { type: "char", value: "f" }).state.input).toBe("f");
     expect(applyKey(idle, { type: "char", value: "x" }).state.input).toBe("x");
+    expect(applyKey(inspecting([row("FIX-1")]), { type: "char", value: "f" }).state.filesExpanded).toBe(
+      true,
+    );
 
     const running = board([runningRow("LIVE-1")]);
     expect(applyKey(running, { type: "char", value: "w" }).state.input).toBe("w");
@@ -432,8 +439,11 @@ describe("applyKey", () => {
       type: "dispatch",
       command: { kind: "abort" },
     });
-    expect(applyKey(running, { type: "char", value: "h" }).state.hunksExpanded).toBe(true);
-    expect(applyKey(running, { type: "char", value: "e" }).state.peekExpanded).toBe(true);
+    expect(applyKey(running, { type: "char", value: "h" }).state.input).toBe("h");
+    expect(applyKey(inspecting([runningRow("LIVE-1")]), { type: "char", value: "h" }).state
+      .hunksExpanded).toBe(true);
+    expect(applyKey(inspecting([runningRow("LIVE-1")]), { type: "char", value: "e" }).state
+      .peekExpanded).toBe(true);
   });
 
   it("walks prior compose lines with ↑/↓, and idle ↑ still moves rows", () => {
@@ -687,7 +697,7 @@ describe("applyKey", () => {
     const idle = applyKey(board([row("FIX-1")]), { type: "paste", value: "please\nretry" });
     expect(idle.state.input).toBe("please\nretry");
     expect(idle.effect).toBeUndefined();
-    const waiting = applyKey(board([row("FIX-1", 1)]), { type: "paste", value: "ship\nit" });
+    const waiting = applyKey(inspecting([row("FIX-1", 1)]), { type: "paste", value: "ship\nit" });
     expect(waiting.state.inputMode).toBe("answer");
     expect(waiting.state.input).toBe("ship\nit");
     expect(waiting.effect).toBeUndefined();
@@ -741,10 +751,28 @@ describe("applyKey", () => {
     expect(sent.state.drafts.at(-1)).toBe("please retry the overflow");
   });
 
-  it("selects the clicked table row", () => {
+  it("selects the clicked table row and inspects it", () => {
     const state = board([row("FIX-1", 1), row("FIX-2")]);
     const clicked = applyKey(state, { type: "click", col: 8, row: 5 });
     expect(clicked.state.selected).toBe(1);
+    expect(clicked.state.inspect).toBe(true);
+  });
+
+  it("opens inspect on Enter and returns to the board on Esc", () => {
+    const opened = applyKey(board([row("FIX-1", 1)]), { type: "enter" });
+    expect(opened.state.inspect).toBe(true);
+    expect(opened.state.inputMode).toBe("command");
+    const back = applyKey(opened.state, { type: "escape" });
+    expect(back.state.inspect).toBe(false);
+  });
+
+  it("talks from the board on a waiting row; typing answers only after inspect", () => {
+    const talked = applyKey(board([row("FIX-1", 1)]), { type: "char", value: "y" });
+    expect(talked.state.inputMode).toBe("command");
+    expect(talked.state.input).toBe("y");
+    const answering = applyKey(inspecting([row("FIX-1", 1)]), { type: "char", value: "y" });
+    expect(answering.state.inputMode).toBe("answer");
+    expect(answering.state.input).toBe("y");
   });
 
   it("maps a click through the visible table window", () => {
@@ -767,6 +795,7 @@ describe("applyKey", () => {
     const already = applyKey({ ...down.state, scroll: 8 }, { type: "click", col: 8, row: 5 });
     expect(already.state.selected).toBe(1);
     expect(already.state.scroll).toBe(8);
+    expect(already.state.inspect).toBe(true);
 
     const other = applyKey({ ...down.state, scroll: 8 }, { type: "click", col: 8, row: 4 });
     expect(other.state.selected).toBe(0);
@@ -774,7 +803,8 @@ describe("applyKey", () => {
   });
 
   it("scrolls the transcript with the wheel and PageUp, including while busy", () => {
-    const state = board([row("FIX-1")]);
+    const state = inspecting([row("FIX-1")]);
+    expect(applyKey(board([row("FIX-1")]), { type: "wheel", delta: -1 }).state.scroll).toBe(0);
     const up = applyKey(state, { type: "wheel", delta: -1 });
     expect(up.state.scroll).toBe(1);
     expect(up.state.selected).toBe(0);
@@ -785,7 +815,7 @@ describe("applyKey", () => {
   });
 
   it("jumps the transcript to the oldest line and back to the tail when the prompt is empty", () => {
-    const state = { ...board([row("FIX-1")]), scroll: 4 };
+    const state = { ...inspecting([row("FIX-1")]), scroll: 4 };
     const oldest = applyKey(state, { type: "home" });
     expect(oldest.state.scroll).toBe(Number.MAX_SAFE_INTEGER);
     expect(oldest.state.selected).toBe(0);
@@ -821,7 +851,7 @@ describe("applyKey", () => {
   });
 
   it("lets you start an answer while an action is in flight", () => {
-    const state = { ...board([row("FIX-1", 1)]), busy: true };
+    const state = { ...inspecting([row("FIX-1", 1)]), busy: true };
     const typed = applyKey(state, { type: "char", value: "l" });
     expect(typed.state.inputMode).toBe("answer");
     expect(typed.state.input).toBe("l");
@@ -892,7 +922,7 @@ describe("applyKey", () => {
     expect(cancelledSeed.state.inputMode).toBe("command");
     expect(cancelledSeed.state.input).toBe("");
 
-    const answering = applyKey(board([row("FIX-1", 1)]), { type: "char", value: "y" }).state;
+    const answering = applyKey(inspecting([row("FIX-1", 1)]), { type: "char", value: "y" }).state;
     expect(answering.inputMode).toBe("answer");
     const cancelledAnswer = applyKey(answering, { type: "ctrl", value: "c" });
     expect(cancelledAnswer.effect).toBeUndefined();
@@ -1018,7 +1048,7 @@ describe("applyKey", () => {
   });
 
   it("does not start an answer with n when find is on", () => {
-    const waiting = board([row("FIX-1", 1)]);
+    const waiting = inspecting([row("FIX-1", 1)]);
     const finding = applyFindQuery(
       { ...waiting, activity: [{ at: 1, text: "status · parked" }] },
       "parked",
@@ -1067,7 +1097,7 @@ describe("applyKey", () => {
   });
 
   it("toggles the file list with f and collapses it when the row changes", () => {
-    const state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
+    const state = inspecting([runningRow("LIVE-1"), runningRow("LIVE-2")]);
     const opened = applyKey(state, { type: "char", value: "f" });
     expect(opened.state.filesExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
@@ -1084,7 +1114,7 @@ describe("applyKey", () => {
       { file: "src/b.ts", lines: ["+ b"] },
     ];
     const state = {
-      ...board([live1, live2]),
+      ...inspecting([live1, live2]),
       childHunks: { "req-LIVE-1": stack, "req-LIVE-2": stack },
     };
     const older = applyKey(state, { type: "char", value: "H" });
@@ -1098,7 +1128,7 @@ describe("applyKey", () => {
   });
 
   it("toggles the last Read peek with e and collapses it when the row changes", () => {
-    const state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
+    const state = inspecting([runningRow("LIVE-1"), runningRow("LIVE-2")]);
     const opened = applyKey(state, { type: "char", value: "e" });
     expect(opened.state.peekExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
@@ -1108,7 +1138,7 @@ describe("applyKey", () => {
   });
 
   it("toggles the last hunk with h and collapses it when the row changes", () => {
-    const state = board([runningRow("LIVE-1"), runningRow("LIVE-2")]);
+    const state = inspecting([runningRow("LIVE-1"), runningRow("LIVE-2")]);
     const opened = applyKey(state, { type: "char", value: "h" });
     expect(opened.state.hunksExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();
@@ -1118,7 +1148,7 @@ describe("applyKey", () => {
   });
 
   it("expands the hunk while an action is in flight, and does not dispatch", () => {
-    const state = { ...board([runningRow("LIVE-1")]), busy: true };
+    const state = { ...inspecting([runningRow("LIVE-1")]), busy: true };
     const opened = applyKey(state, { type: "char", value: "h" });
     expect(opened.state.hunksExpanded).toBe(true);
     expect(opened.effect).toBeUndefined();

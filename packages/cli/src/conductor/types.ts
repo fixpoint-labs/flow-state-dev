@@ -224,6 +224,11 @@ export interface ViewState {
   draftHold: string | null;
   /** Index into `input` while composing (`0` is before the first character). */
   caret: number;
+  /**
+   * Inspect one row (question, transcript, files). The board is the
+   * other screen — rows and the prompt, not the question body.
+   */
+  inspect: boolean;
 }
 
 export function emptyView(epicLabel: string): ViewState {
@@ -259,6 +264,7 @@ export function emptyView(epicLabel: string): ViewState {
     draftAt: null,
     draftHold: null,
     caret: 0,
+    inspect: false,
   };
 }
 
@@ -370,7 +376,7 @@ export function clampSelected(state: ViewState): ViewState {
 
 /**
  * When a poll surfaces a new question and the operator is not composing,
- * select that row so the ASK band is the thing on screen.
+ * inspect that row so the question is readable.
  */
 export function focusNewlyAsked(prev: StatusRow[], state: ViewState): ViewState {
   if (state.inputMode !== "command" || state.input !== "") return state;
@@ -390,12 +396,13 @@ export function focusNewlyAsked(prev: StatusRow[], state: ViewState): ViewState 
     selected: index,
     questionIndex: questionIndex < 0 ? 0 : questionIndex,
     scroll: 0,
+    inspect: true,
   });
 }
 
 /**
  * When a poll shows a row that just stopped running and the operator is
- * not composing, select that row so the finished attempt is on screen.
+ * not composing, inspect that row so the finished attempt is on screen.
  * A new question wins — answer it first.
  */
 export function focusNewlySettled(prev: StatusRow[], state: ViewState): ViewState {
@@ -411,6 +418,7 @@ export function focusNewlySettled(prev: StatusRow[], state: ViewState): ViewStat
     selected: index,
     questionIndex: 0,
     scroll: 0,
+    inspect: true,
   });
 }
 

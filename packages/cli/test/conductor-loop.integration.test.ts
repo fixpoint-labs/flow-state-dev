@@ -378,7 +378,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
 
     tty.input.write("/wake\r");
-    await waitFor(() => stripAnsi(lastFrame(tty.text)), "wake · drain ran");
+    await waitFor(() => tty.text, "wake · drain ran");
     expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
 
     tty.input.write("/quit\r");
@@ -494,6 +494,8 @@ describe("fsdev conductor — TUI over the same actions", () => {
     });
 
     await waitFor(() => tty.text, "LIVE-1");
+    tty.input.write("\r");
+    await waitFor(() => lastFrame(tty.text), "inspect");
     stores.request.persistEvents("req-live-1", [
       {
         stream: "request",
@@ -541,6 +543,8 @@ describe("fsdev conductor — TUI over the same actions", () => {
     });
 
     await waitFor(() => tty.text, "LIVE-1");
+    tty.input.write("\r");
+    await waitFor(() => lastFrame(tty.text), "inspect");
     stores.request.persistEvents("req-live-1", [
       {
         stream: "request",
@@ -648,6 +652,8 @@ describe("fsdev conductor — TUI over the same actions", () => {
     });
 
     await waitFor(() => tty.text, "LIVE-2");
+    tty.input.write("\r");
+    await waitFor(() => lastFrame(tty.text), "inspect");
     stores.request.persistEvents("req-live-1", [
       {
         stream: "request",
@@ -698,14 +704,14 @@ describe("fsdev conductor — TUI over the same actions", () => {
     ]);
     await waitFor(() => lastFrame(tty.text), "tool · Write src/a.ts");
     expect(lastFrame(tty.text)).toContain("+ export const a = 1;");
-    expect(lastFrame(tty.text)).toContain("Write src/b.ts");
     expect(lastFrame(tty.text)).not.toContain("+ export const b");
+    expect(lastFrame(tty.text)).not.toContain("src/b.ts");
 
     tty.input.write("\x1b[B");
     await waitFor(() => lastFrame(tty.text), "tool · Write src/b.ts");
     expect(lastFrame(tty.text)).toContain("+ export const b = 2;");
-    expect(lastFrame(tty.text)).toContain("Write src/a.ts");
     expect(lastFrame(tty.text)).not.toContain("+ export const a");
+    expect(lastFrame(tty.text)).not.toContain("src/a.ts");
 
     tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
@@ -754,6 +760,9 @@ describe("fsdev conductor — TUI over the same actions", () => {
       pollMs: 40,
     });
 
+    await waitFor(() => tty.text, "LIVE-1");
+    tty.input.write("\r");
+    await waitFor(() => lastFrame(tty.text), "inspect");
     await waitFor(() => tty.text, "conductor/LIVE-1--implement");
     const above = stripAnsi(tty.text);
     expect(above).toMatch(/^ RUN\s*$/m);
@@ -1076,7 +1085,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     });
     await waitFor(() => lastFrame(first.text), "FSDEV CONDUCTOR");
     first.input.write("please retry the failed rows\r");
-    await waitFor(() => lastFrame(first.text), "you ·");
+    await waitFor(() => first.text, "you ·");
     first.input.write("/quit\r");
     await expect(firstRun).resolves.toBe(0);
     expect(readDrafts(lastDrafts)).toEqual(["please retry the failed rows"]);

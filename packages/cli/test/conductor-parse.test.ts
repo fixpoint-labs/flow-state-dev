@@ -201,9 +201,9 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("Letters talk");
     expect(HELP_TEXT).toContain("On an empty board that includes s and r");
     expect(HELP_TEXT).toContain("Once a row exists, s seeds and r refreshes");
-    expect(HELP_TEXT).toContain("Letters are the answer, not board keys");
-    expect(HELP_TEXT).toContain("A new question rings the terminal bell and selects that row when you are not typing");
-    expect(HELP_TEXT).toContain("A row that finishes rings the terminal bell and selects that row when you are not typing");
+    expect(HELP_TEXT).toContain("Letters on inspect are the answer, not board keys");
+    expect(HELP_TEXT).toContain("A new question rings the terminal bell and inspects that row when you are not typing");
+    expect(HELP_TEXT).toContain("A row that finishes rings the terminal bell and inspects that row when you are not typing");
     expect(HELP_TEXT).toContain("errored or cancelled row is spent");
     expect(HELP_TEXT).toContain("More lines — or words after the id — are the brief attempt 1 reads");
     expect(HELP_TEXT).toContain("seed <issue> [--phase implement] [brief…]");
@@ -211,7 +211,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("move in the line while composing");
     expect(HELP_TEXT).toContain("new line while composing");
     expect(HELP_TEXT).toContain("start / end of the current compose line");
-    expect(HELP_TEXT).toContain("oldest / follow when the prompt is empty");
+    expect(HELP_TEXT).toContain("oldest / follow while inspecting and the prompt is empty");
     expect(HELP_TEXT).toContain("prior send, including on an empty prompt");
     expect(HELP_TEXT).toContain("leave the board (stops a run that is still going");
     expect(HELP_TEXT).toContain("a parked question is not one");

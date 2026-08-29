@@ -38,8 +38,10 @@ import {
   noteSteerReply,
   pushActivity,
   idsToFollow,
+  rowNeedsYou,
   rowRunning,
   runningRequestIds,
+  selectedRow,
   selectedRequestId,
   selectedRunningRequestId,
   type AnswerOutput,
@@ -616,6 +618,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
 
 export function applyStatus(state: ViewState, output: StatusOutput, at: number): ViewState {
   const previousTaskId = state.rows[state.selected]?.taskId;
+  const wasEmpty = state.rows.length === 0;
   const moved = diffBoard(state.rows, output.rows);
   let next = clampSelected({
     ...state,
@@ -624,5 +627,16 @@ export function applyStatus(state: ViewState, output: StatusOutput, at: number):
   });
   next = rowAfterRefresh(next, undefined, previousTaskId);
   for (const line of moved) next = pushActivity(next, line, at);
+  if (
+    wasEmpty &&
+    !next.inspect &&
+    next.inputMode === "command" &&
+    next.input === ""
+  ) {
+    const row = selectedRow(next);
+    if (row !== undefined && rowNeedsYou(row, next.activity)) {
+      next = { ...next, inspect: true };
+    }
+  }
   return next;
 }

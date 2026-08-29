@@ -1317,7 +1317,9 @@ describe("focusNewlySettled", () => {
     const prev = [row("LIVE-1", "in_progress"), row("DONE-1", "in_progress")];
     const next = [row("LIVE-1", "in_progress"), row("DONE-1", "completed")];
     const state = { ...emptyView("epic"), rows: next, selected: 0 };
-    expect(focusNewlySettled(prev, state).selected).toBe(1);
+    const focused = focusNewlySettled(prev, state);
+    expect(focused.selected).toBe(1);
+    expect(focused.inspect).toBe(true);
   });
 
   it("does not steal the selection while the operator is typing", () => {
@@ -1360,6 +1362,7 @@ describe("focusNewlyAsked", () => {
     const focused = focusNewlyAsked(prev, state);
     expect(focused.selected).toBe(1);
     expect(focused.questionIndex).toBe(0);
+    expect(focused.inspect).toBe(true);
   });
 
   it("does not steal the selection while the operator is typing", () => {

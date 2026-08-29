@@ -310,7 +310,7 @@ drain budget). seed, wake, status, answer, and steer are flow actions; abort
 stops a running request. The board is whatever status returns.
 
 Interactive:
-  fsdev conductor                 fullscreen board; type to talk, or /seed /wake
+  fsdev conductor                 board + talk; Enter inspects a row
   fsdev conductor tui [issue]     same, optionally focused on one issue
   fsdev conductor start <issue> [brief…]  open the board and file the row
 
@@ -326,10 +326,11 @@ Headless (scripting):
   fsdev conductor help
 
 In the TUI:
+  Two screens: the board (what rows are doing, type to talk) and inspect (one row's question, transcript, files). Enter or click a row inspects it. Esc returns to the board.
   ↑/↓          select a row
   A long board shows eight rows around the selection so the prompt stays on screen.
-  PgUp/PgDn    scroll the transcript (Ctrl-u/d too)
-  Home/End     oldest / follow when the prompt is empty; compose line while typing
+  PgUp/PgDn    scroll the transcript while inspecting (Ctrl-u/d too)
+  Home/End     oldest / follow while inspecting and the prompt is empty; compose line while typing
   [/]          previous/next question on the row
   { / }        previous / next waiting, failed, or stalled row
   s            seed a new issue (once the board has a row)
@@ -361,13 +362,13 @@ In the TUI:
 
   Type anything that is not a slash verb to talk to the coordinator.
   Letters talk. On an empty board that includes s and r — /seed files the first row. Once a row exists, s seeds and r refreshes. /quit leaves. Ctrl-C cancels compose. On an empty line it leaves when nothing is running.
-  A row with an open question: type the reply. Letters are the answer, not board keys. Enter sends, Esc cancels.
-  A new question rings the terminal bell and selects that row when you are not typing.
-  A row that finishes rings the terminal bell and selects that row when you are not typing. A new question wins.
+  A row with an open question: Enter inspects it so the question is readable (markdown). Type the reply there. On the board, letters still talk. /answer also replies. Letters on inspect are the answer, not board keys. Enter sends, Esc cancels compose.
+  A new question rings the terminal bell and inspects that row when you are not typing.
+  A row that finishes rings the terminal bell and inspects that row when you are not typing. A new question wins.
   The ASK band keeps that attempt's branch, files, current todo, PR URL, and token counts.
   A row that failed: the FAIL band holds the reason, that attempt's branch, and files. Talk, or /wake if it is still pending. An errored or cancelled row is spent — /wake will not take it.
   s / seed: first line is the issue id. More lines — or words after the id — are the brief attempt 1 reads, so the run does not have to ask what the ticket is.
-  A running row: the RUN band holds the checkout and what the run is
+  A running row: inspect holds the checkout and what the run is
   doing. Ctrl-T expands the todo list. x or Ctrl-C stops it.
   While working, type an answer; Enter queues it.
   A finished row keeps that attempt's files, todo list, and request id.

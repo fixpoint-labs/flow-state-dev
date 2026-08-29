@@ -365,18 +365,22 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
     return { state: walkDraft(state, -1) };
   }
   if (key.type === "pageup" || (key.type === "ctrl" && key.value === "u")) {
+    if (!state.inspect) return { state };
     return { state: pageTranscript(state, 1) };
   }
   if (key.type === "pagedown" || (key.type === "ctrl" && key.value === "d")) {
+    if (!state.inspect) return { state };
     return { state: pageTranscript(state, -1) };
   }
   if (key.type === "home" || key.type === "end") {
     if (state.inputMode !== "command" || state.input !== "") {
       return applyEditing(state, key);
     }
+    if (!state.inspect) return { state };
     return { state: jumpTranscript(state, key.type === "home" ? "oldest" : "follow") };
   }
   if (key.type === "wheel") {
+    if (!state.inspect) return { state };
     return { state: scrollTranscript(state, key.delta < 0 ? 1 : -1) };
   }
 
@@ -405,6 +409,10 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
       return applyClick(state, key.row);
     case "newline":
     case "enter": {
+      if (!state.inspect) {
+        if (state.rows.length === 0) return { state };
+        return { state: { ...state, inspect: true, scroll: 0 } };
+      }
       const question = selectedQuestion(state);
       if (question !== undefined) {
         return beginAnswer(state, question.question);
@@ -415,6 +423,9 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
       if (state.find !== null) {
         return { state: { ...state, find: null, findAt: 0, notice: null, help: false } };
       }
+      if (state.inspect) {
+        return { state: { ...state, inspect: false, notice: null, help: false } };
+      }
       return { state: { ...state, notice: null, help: false } };
     default:
       return { state };
@@ -422,9 +433,9 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
 }
 
 /**
- * On a waiting row, letters start the reply. `?` / `/` stay help and
- * slash; `[` `]` `{` `}` still walk questions and attention. `n` / `N`
- * still step an open find.
+ * On an inspected waiting row, letters start the reply. `?` / `/` stay
+ * help and slash; `[` `]` `{` `}` still walk questions and attention.
+ * `n` / `N` still step an open find. On the board, letters talk.
  */
 const WAITING_ROW_BINDS = new Set(["?", "/", "[", "]", "{", "}"]);
 
@@ -432,27 +443,23 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
   if (state.find !== null && (value === "n" || value === "N")) {
     return { state: stepFind(state, value === "n" ? -1 : 1) };
   }
-  if (selectedQuestion(state) !== undefined && !WAITING_ROW_BINDS.has(value)) {
+  if (state.inspect && selectedQuestion(state) !== undefined && !WAITING_ROW_BINDS.has(value)) {
     return idleFallback(state, value);
   }
   const running = selectedRunningRequestId(state) !== undefined;
+  const empty = state.rows.length === 0;
+  const inspectToggle =
+    state.inspect && (value === "f" || value === "h" || value === "e" || value === "H");
   // Empty board: every letter talks, including s. /seed files the
-  // first row. Once a row exists, s seeds and r refreshes.
-  if (state.rows.length === 0 && /^[A-Za-z]$/.test(value)) {
-    return idleFallback(state, value);
-  }
-  // Letters talk. Keep `s` as seed, `r` as refresh, `x` as abort on a
-  // running row, and f/h/e/H as view toggles. Arrows move rows; /wake
-  // /quit stay the verbs. Ctrl-T still expands the plan.
+  // first row. Once a row exists, s seeds and r refreshes. f/h/e/H
+  // expand only while inspecting.
   if (
     /^[A-Za-z]$/.test(value) &&
-    value !== "s" &&
-    value !== "r" &&
-    value !== "f" &&
-    value !== "h" &&
-    value !== "e" &&
-    value !== "H" &&
-    !(value === "x" && running)
+    (empty ||
+      (value !== "s" &&
+        value !== "r" &&
+        !inspectToggle &&
+        !(value === "x" && running)))
   ) {
     return idleFallback(state, value);
   }
@@ -498,9 +505,8 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
 
 function idleFallback(state: ViewState, value: string): KeyResult {
   if (value.trim() === "") return { state };
-  // Typing on a row that asked something starts an answer. That is the
-  // Grok-shaped door: you do not have to remember `a` or a slash verb.
-  if (selectedQuestion(state) !== undefined) {
+  // Typing on an inspected row that asked something starts an answer.
+  if (state.inspect && selectedQuestion(state) !== undefined) {
     const started = beginAnswer(state, selectedQuestion(state)!.question);
     return applyEditing(started.state, { type: "char", value });
   }
@@ -509,7 +515,7 @@ function idleFallback(state: ViewState, value: string): KeyResult {
 
 function applyIdlePaste(state: ViewState, value: string): KeyResult {
   if (value === "") return { state };
-  if (selectedQuestion(state) !== undefined) {
+  if (state.inspect && selectedQuestion(state) !== undefined) {
     const started = beginAnswer(state, selectedQuestion(state)!.question);
     return applyEditing(started.state, { type: "paste", value });
   }
@@ -860,13 +866,14 @@ function submitEdit(state: ViewState): KeyResult {
       return {
         state: {
           ...cleared,
+          inspect: true,
           inputMode: "find",
           input: "",
           notice: "type to search the transcript",
         },
       };
     }
-    const next = applyFindQuery(cleared, query);
+    const next = applyFindQuery({ ...cleared, inspect: true }, query);
     const hits = findMatches(next);
     return {
       state: {
@@ -953,6 +960,7 @@ function beginAnswer(state: ViewState, question: string): KeyResult {
   return {
     state: {
       ...state,
+      inspect: true,
       inputMode: "answer" satisfies InputMode,
       answering: question,
       input: "",
@@ -970,10 +978,11 @@ export const TABLE_DATA_ORIGIN = 4;
 
 function applyClick(state: ViewState, screenRow1: number): KeyResult {
   if (state.inputMode !== "command" || state.input !== "") return { state };
+  if (state.inspect) return { state };
   const { start, end } = visibleTableWindow(state.rows.length, state.selected);
   const index = screenRow1 - TABLE_DATA_ORIGIN + start;
   if (index < start || index >= end) return { state };
-  return { state: selectRow(state, index) };
+  return { state: { ...selectRow(state, index), inspect: true } };
 }
 
 /**
