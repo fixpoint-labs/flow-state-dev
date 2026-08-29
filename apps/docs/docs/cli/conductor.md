@@ -227,7 +227,7 @@ Last-write age shows as `8s` or `3m` next to `in_progress` on the table. After 3
 
 Enter on an idle empty prompt, or a click on a table row, opens inspect for the selected task. The header says `inspect`. The table on this screen is that one row. Esc on an idle prompt returns to the board.
 
-Inspect is where you read the question, the transcript, files, hunks, and todos. A question renders as markdown: headings, lists, fenced code, inline code, bold, italic, and links. Type the reply here. Letters on inspect are the answer, not board keys. `?` and `/` stay help and slash. `[` / `]` and `{` / `}` walk questions and attention. When the row is not waiting, `f`, `h`, `e`, and `H` expand files, the last hunk, a Read peek or command tail, or an older hunk.
+Inspect is where you read the question, the transcript, files, hunks, and todos. A question renders as markdown: headings, lists, fenced code, inline code, bold, italic, and links. `message ·`, `coord ·`, and `you ·` transcript lines use the same layout. Type the reply here. Letters on inspect are the answer, not board keys. `?` and `/` stay help and slash. `[` / `]` and `{` / `}` walk questions and attention. When the row is not waiting, `f`, `h`, `e`, and `H` expand files, the last hunk, a Read peek or command tail, or an older hunk.
 
 When the row is waiting, the empty compose line (`❯`) says `type to answer`. The footer is `Esc board · type to answer`. Enter sends. Esc cancels compose; Esc on an idle prompt returns to the board.
 

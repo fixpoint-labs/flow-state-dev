@@ -3,7 +3,7 @@
  * assert on it. A frame that cannot be produced from a fixture is a frame
  * nobody can pin.
  */
-import { renderMarkdown } from "./markdown";
+import { layoutMarkdown, paintInline, renderMarkdown } from "./markdown";
 import { slashMenu } from "./slash";
 import {
   ACCENT,
@@ -183,7 +183,12 @@ function renderTalkStrip(state: ViewState, cols: number): string {
   const board = state.activity.filter((item) => item.requestId === undefined);
   const shown = board.slice(-8);
   const width = Math.max(16, cols - 12);
-  const lines = shown.map((item) => ` ${dim(formatClock(item.at))}  ${truncate(item.text, width)}`);
+  const lines = shown.map((item) => {
+    const clipped = truncate(item.text, width);
+    const body = transcriptBody(item.text);
+    const painted = /^(message|coord|you) · /.test(body) ? paintInline(clipped) : clipped;
+    return ` ${dim(formatClock(item.at))}  ${painted}`;
+  });
   const live = state.live;
   if (live !== null && live !== shown.at(-1)?.text) {
     lines.push(` ${paint(GOLD, "··")}  ${truncate(live, width)}`);
@@ -781,7 +786,7 @@ function renderActivity(
     wrapped.forEach((line, i) => {
       const painted = linkFileLine(
         item.text,
-        finding ? highlightFind(line, state.find!, current) : paintHunkLine(line),
+        finding ? highlightFind(line, state.find!, current) : paintActivityLine(line),
         cwd,
       );
       const clock = current && i === 0 ? paint(GOLD, formatClock(item.at)) : dim(formatClock(item.at));
@@ -1121,6 +1126,16 @@ function wrapActivityLine(text: string, width: number): string[] {
   if (body.startsWith("tool · ") || /^[A-Z][A-Za-z]+ \S/.test(body)) {
     return [`${pad}${shortenToolLine(body, Math.max(8, width - pad.length))}`];
   }
+  const prose = /^(message|coord|you) · /.exec(body);
+  if (prose) {
+    const label = prose[0];
+    const rest = body.slice(label.length);
+    const inner = Math.max(8, width - pad.length - label.length);
+    return layoutMarkdown(rest, inner).map((line, i) => {
+      const prefix = i === 0 ? `${pad}${label}` : `${pad}${" ".repeat(label.length)}`;
+      return `${prefix}${line}`;
+    });
+  }
   return wrap(text, width);
 }
 
@@ -1142,6 +1157,22 @@ function highlightFind(line: string, query: string, current: boolean): string {
   }
   const rest = line.slice(from);
   return rest === "" ? out : out + paintHunkLine(rest);
+}
+
+function paintActivityLine(line: string): string {
+  const body = transcriptBody(line);
+  if (
+    body.startsWith("+ ") ||
+    body.startsWith("- ") ||
+    body.startsWith("… ") ||
+    body.startsWith("tool · ") ||
+    body.startsWith("status · ") ||
+    body.startsWith("think · ") ||
+    body.startsWith("sub · ")
+  ) {
+    return paintHunkLine(line);
+  }
+  return paintInline(line);
 }
 
 function paintHunkLine(line: string): string {

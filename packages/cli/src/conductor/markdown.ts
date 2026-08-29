@@ -1,6 +1,6 @@
 /**
- * Markdown → wrapped ANSI lines for inspect. Questions arrive as
- * markdown; the board used to wrap them as one blob, which made a
+ * Markdown → wrapped lines for inspect. Questions and transcript
+ * messages arrive as markdown; wrapping them as one blob made a
  * heading, a list, and a code span read as the same paragraph.
  */
 import { ACCENT, BOLD, DIM, INK, TEAL, UNDERLINE, link, paint, wrap } from "./theme";
@@ -11,13 +11,21 @@ import { ACCENT, BOLD, DIM, INK, TEAL, UNDERLINE, link, paint, wrap } from "./th
  * stays visible as typed.
  */
 export function renderMarkdown(text: string, width: number): string[] {
+  return layoutMarkdown(text, width, true);
+}
+
+/**
+ * Same blocks as `renderMarkdown`, without ANSI. Transcript find
+ * highlights these lines; the ASK band uses the painted form.
+ */
+export function layoutMarkdown(text: string, width: number, painted = false): string[] {
   if (width <= 0) return [];
   const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   if (src.trim() === "") return [""];
   const lines: string[] = [];
   for (const block of splitBlocks(src)) {
     if (lines.length > 0) lines.push("");
-    lines.push(...renderBlock(block, width));
+    lines.push(...(painted ? renderBlock(block, width) : layoutBlock(block, width)));
   }
   return lines.length === 0 ? [""] : lines;
 }
@@ -98,6 +106,28 @@ function splitBlocks(src: string): Block[] {
     if (para.length > 0) blocks.push({ kind: "paragraph", text: para.join(" ") });
   }
   return blocks;
+}
+
+function layoutBlock(block: Block, width: number): string[] {
+  switch (block.kind) {
+    case "heading":
+    case "paragraph":
+      return wrap(block.text, width);
+    case "quote":
+      return wrap(block.text, Math.max(1, width - 2)).map((line) => `│ ${line}`);
+    case "rule":
+      return ["─".repeat(Math.max(1, width))];
+    case "list":
+      return block.items.flatMap((item) => {
+        const mark = `• `;
+        const rest = wrap(item, Math.max(1, width - mark.length));
+        return rest.map((line, j) => (j === 0 ? `${mark}${line}` : `  ${line}`));
+      });
+    case "fence":
+      return block.lines.map((line) =>
+        line.length <= width ? line : `${line.slice(0, Math.max(1, width - 1))}…`,
+      );
+  }
 }
 
 function renderBlock(block: Block, width: number): string[] {

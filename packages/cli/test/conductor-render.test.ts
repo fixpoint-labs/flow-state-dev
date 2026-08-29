@@ -301,6 +301,37 @@ describe("renderFrame", () => {
     expect(frame).not.toContain("src/secret.ts");
   });
 
+  it("lays out a markdown transcript message instead of one wrapped blob", () => {
+    const idle: StatusRow = {
+      ...waiting,
+      status: "pending",
+      questions: [],
+      run: null,
+    };
+    const frame = stripAnsi(
+      renderFrame(
+        looking({
+          ...emptyView("epic"),
+          rows: [idle],
+          activity: [
+            {
+              at: 1,
+              text: "message · ## Which export?\n\nUse `proveFn`.\n\n- keep the name\n- rename it",
+            },
+          ],
+        }),
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(frame).toContain("TRANSCRIPT");
+    expect(frame).toContain("Which export?");
+    expect(frame).not.toContain("## Which export?");
+    expect(frame).toContain("proveFn");
+    expect(frame).toContain("• keep the name");
+    expect(frame).toContain("• rename it");
+    expect(frame).not.toMatch(/Which export\?Use/);
+  });
+
   it("inspects one row's question, markdown, and transcript", () => {
     const frame = renderFrame(
       looking({
