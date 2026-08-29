@@ -19,7 +19,6 @@ import {
   pageTranscript,
   selectedQuestion,
   selectedQuestions,
-  selectedRow,
   selectedRunningRequestId,
   boardHasRunning,
   STAY_WHILE_RUNNING,
