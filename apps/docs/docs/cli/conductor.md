@@ -225,7 +225,7 @@ Last-write age shows as `8s` or `3m` next to `in_progress` on the table. After 3
 
 ## Inspect
 
-Enter on an idle empty prompt, or a click on a table row, opens inspect for the selected task. The header says `inspect` and drops the board's row counts (`N rows`, `N waiting`). The terminal tab still shows those counts. This screen names the row on one line (issue, phase, status). The column table stays on the board. Esc on an idle prompt returns to the board.
+Enter on an idle empty prompt, or a click on a table row, opens inspect for the selected task. The header says `inspect` and drops the board's row counts (`N rows`, `N waiting`) when the selected row is the reason for those counts. If another row is waiting, running, or failed, that pulse stays on the header so a background change is visible without leaving inspect. The terminal tab always shows the counts. This screen names the row on one line (issue, phase, status). The column table stays on the board. Esc on an idle prompt returns to the board.
 
 Inspect is where you read the question, the transcript, files, hunks, and todos. A question renders as markdown: headings, numbered lists that keep their numbers, bullet lists, markdown tables as columns, fenced code, inline code, bold, italic, and links. `message ·`, `coord ·`, and `you ·` transcript lines use the same layout. Type the reply here. Letters on inspect are the answer, not board keys. `?` and `/` stay help and slash. `[` / `]` and `{` / `}` walk questions and attention. When the row is not waiting, `f`, `h`, `e`, and `H` expand files, the last hunk, a Read peek or command tail, or an older hunk.
 

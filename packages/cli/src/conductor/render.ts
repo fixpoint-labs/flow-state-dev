@@ -130,14 +130,21 @@ export interface FrameSize {
 const MIN_COLS = 72;
 const MIN_ROWS = 18;
 
+function boardPulse(state: ViewState): { waiting: number; live: number; failed: number } {
+  return {
+    waiting: state.rows.filter((r) => r.questions.length > 0).length,
+    live: state.rows.filter((r) => r.status === "in_progress").length,
+    failed: state.rows.filter(rowFailed).length,
+  };
+}
+
 /**
  * Tab title so a background board is still readable. Counts match the
- * header: running, waiting, failed, working.
+ * board header: running, waiting, failed, working. Inspect may hide a
+ * count when the selected row is the reason; the tab still shows it.
  */
 export function conductorWindowTitle(state: ViewState): string {
-  const waiting = state.rows.filter((r) => r.questions.length > 0).length;
-  const live = state.rows.filter((r) => r.status === "in_progress").length;
-  const failed = state.rows.filter(rowFailed).length;
+  const { waiting, live, failed } = boardPulse(state);
   const epic = state.epicLabel.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 80);
   const repo = state.repoLabel?.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 80);
   const parts = [`conductor · ${epic}`];
@@ -254,6 +261,36 @@ function renderInspect(state: ViewState, cols: number, rows: number, now: number
   );
 }
 
+function appendBoardPulse(
+  parts: string[],
+  pulse: { waiting: number; live: number; failed: number },
+): void {
+  if (pulse.live > 0) parts.push(dim("·"), paint(ACCENT, ` ${pulse.live} running `));
+  if (pulse.waiting > 0) parts.push(dim("·"), paint(MAUVE, ` ${pulse.waiting} waiting `));
+  if (pulse.failed > 0) parts.push(dim("·"), paint(RUST, ` ${pulse.failed} failed `));
+}
+
+/**
+ * Inspect stays quiet when the selected row is the reason for a
+ * count. A background change (another row waiting, running, or
+ * failed) still paints that pulse so the header does not lie.
+ */
+function inspectPulse(state: ViewState): { waiting: number; live: number; failed: number } {
+  const pulse = boardPulse(state);
+  const selected = selectedRow(state);
+  return {
+    waiting:
+      pulse.waiting > 0 && (selected === undefined || selected.questions.length === 0)
+        ? pulse.waiting
+        : 0,
+    live:
+      pulse.live > 0 && (selected === undefined || selected.status !== "in_progress")
+        ? pulse.live
+        : 0,
+    failed: pulse.failed > 0 && (selected === undefined || !rowFailed(selected)) ? pulse.failed : 0,
+  };
+}
+
 function renderHeader(state: ViewState, cols: number): string {
   const parts = [
     paint(BOLD + ACCENT, " FSDEV CONDUCTOR "),
@@ -264,19 +301,16 @@ function renderHeader(state: ViewState, cols: number): string {
       : []),
   ];
   if (!state.inspect) {
-    const waiting = state.rows.filter((r) => r.questions.length > 0).length;
-    const live = state.rows.filter((r) => r.status === "in_progress").length;
-    const failed = state.rows.filter(rowFailed).length;
+    const pulse = boardPulse(state);
     parts.push(dim("·"), ` ${state.rows.length} row${state.rows.length === 1 ? "" : "s"} `);
     if (state.rows.length > TABLE_BODY_MAX) {
       const { start, end } = visibleTableWindow(state.rows.length, state.selected);
       parts.push(dim("·"), dim(` ${start + 1}–${end} `));
     }
-    if (live > 0) parts.push(dim("·"), paint(ACCENT, ` ${live} running `));
-    if (waiting > 0) parts.push(dim("·"), paint(MAUVE, ` ${waiting} waiting `));
-    if (failed > 0) parts.push(dim("·"), paint(RUST, ` ${failed} failed `));
+    appendBoardPulse(parts, pulse);
   } else {
     parts.push(dim("·"), paint(GOLD, " inspect "));
+    appendBoardPulse(parts, inspectPulse(state));
   }
   if (state.busy) parts.push(dim("·"), paint(GOLD, " working "));
   if (state.lastRefreshAt !== null) {
@@ -800,7 +834,6 @@ function renderActivity(
   if (height <= 0) return "";
   const following = state.scroll === 0;
   const live = visibleLive(state);
-  const hits = findMatches(state);
   const currentHit = currentFindHit(state);
   const finding = state.find !== null && state.find !== "";
   const width = Math.max(16, cols - 10);

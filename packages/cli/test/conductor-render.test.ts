@@ -421,6 +421,56 @@ describe("renderFrame", () => {
     expect(board).toContain("1 waiting");
   });
 
+  it("shows inspect pulse when the selected row is not the reason for the count", () => {
+    const running: StatusRow = {
+      ...waiting,
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      status: "in_progress",
+      questions: [],
+    };
+    const failed: StatusRow = {
+      ...waiting,
+      taskId: "FAIL-1--implement",
+      issue: "FAIL-1",
+      status: "pending",
+      questions: [],
+      run: { ...waiting.run!, outcome: "failed", reason: "tests failed" },
+    };
+    const watchingAsk = stripAnsi(
+      renderFrame(
+        looking({ ...emptyView("epic"), rows: [waiting, running], selected: 0 }),
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(watchingAsk).toContain("inspect");
+    expect(watchingAsk).toContain("1 running");
+    expect(watchingAsk).not.toContain("1 waiting");
+    expect(watchingAsk).not.toContain("2 rows");
+
+    const watchingRun = stripAnsi(
+      renderFrame(
+        looking({ ...emptyView("epic"), rows: [waiting, running], selected: 1 }),
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(watchingRun).toContain("1 waiting");
+    expect(watchingRun).not.toContain("1 running");
+
+    const watchingIdle = stripAnsi(
+      renderFrame(
+        looking({
+          ...emptyView("epic"),
+          rows: [{ ...waiting, questions: [], status: "pending" }, waiting, failed],
+          selected: 0,
+        }),
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(watchingIdle).toContain("1 waiting");
+    expect(watchingIdle).toContain("1 failed");
+  });
+
   it("keeps type to talk on an inspect transcript that is not waiting", () => {
     const idle: StatusRow = { ...waiting, questions: [], status: "pending", run: null };
     const frame = stripAnsi(
