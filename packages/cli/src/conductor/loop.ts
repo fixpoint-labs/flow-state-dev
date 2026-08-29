@@ -477,6 +477,8 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     }
     if (result.effect.type === "quit") {
       closed = true;
+      state = applyTranscriptPatch(state, operatorTranscript.flush(), now());
+      rememberTalk();
       void stopRunning(state).then(finish, finish);
       return;
     }
@@ -601,6 +603,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   } finally {
     rememberFocus();
     rememberDrafts();
+    state = applyTranscriptPatch(state, operatorTranscript.flush(), now());
     rememberTalk();
     follow.stop();
     output.off("resize", onResize);

@@ -1142,6 +1142,42 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(secondRun).resolves.toBe(0);
   });
 
+  it("reopening keeps a streamed talk reply that was still live when you left", async () => {
+    const stores = createInMemoryStores();
+    const lastTalk = join(mkdtempSync(join(tmpdir(), "conductor-talk-")), "tui-talk");
+
+    const first = fakeTty();
+    const firstRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastTalkPath: lastTalk,
+      input: first.input as unknown as NodeJS.ReadStream,
+      output: first.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(first.text), "FSDEV CONDUCTOR");
+    first.input.write("what's on the board?\r");
+    await waitFor(() => lastFrame(first.text), "message ·");
+    first.input.write("/quit\r");
+    await expect(firstRun).resolves.toBe(0);
+
+    const second = fakeTty();
+    const secondRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastTalkPath: lastTalk,
+      input: second.input as unknown as NodeJS.ReadStream,
+      output: second.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(second.text), "you · what's on the board?");
+    await waitFor(() => lastFrame(second.text), "message · No rows yet");
+    second.input.write("/quit\r");
+    await expect(secondRun).resolves.toBe(0);
+  });
+
   it("Ctrl-C during a drain aborts the wake even if the operator hits r first", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "HANG-1"], {
