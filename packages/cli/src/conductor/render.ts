@@ -862,7 +862,7 @@ function renderHelp(cols: number): string {
     rule(cols),
     ...TUI_HELP_LINES.map((line) => dim(line)),
     "",
-    dim(" Esc or ? returns"),
+    dim(" any key returns"),
   ];
   return lines.join("\n");
 }

@@ -347,7 +347,7 @@ In the TUI:
   /refresh     poll status now
   /find [text] search the selected row's transcript
   n / N        older / newer match
-  ?            board keys (Esc or ? returns; this text is the CLI form)
+  ?            board keys (any key returns; this text is the CLI form)
   /quit        leave the board (stops a run that is still going; the shell comes back without waiting for it to finish)
   Reopening the board selects the row you left, per session and epic.
   Reopening also recalls prior compose lines for that session and epic.

@@ -2086,18 +2086,17 @@ describe("renderFrame help", () => {
     expect(text).toContain("type to talk");
     expect(text).toContain("/quit");
     expect(text).toContain("/find");
-    expect(text).toContain("Esc or ? returns");
+    expect(text).toContain("any key returns");
     expect(text).not.toContain("Headless (scripting)");
-    expect(text).not.toContain("any key returns");
     const lines = text.split("\n");
     expect(lines).toHaveLength(24);
-    expect(lines.filter((line) => line.trim() !== "").at(-1)).toMatch(/Esc or \? returns/);
+    expect(lines.filter((line) => line.trim() !== "").at(-1)).toMatch(/any key returns/);
   });
 
   it("keeps Esc when the terminal is shorter than the help list", () => {
     const frame = renderFrame({ ...emptyView("harness-manager"), help: true }, { cols: 72, rows: 18 });
     const lines = stripAnsi(frame).split("\n");
     expect(lines).toHaveLength(18);
-    expect(lines.at(-1)).toMatch(/Esc or \? returns/);
+    expect(lines.at(-1)).toMatch(/any key returns/);
   });
 });

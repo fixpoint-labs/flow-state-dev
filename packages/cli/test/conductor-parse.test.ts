@@ -217,7 +217,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("eight rows around the selection so the prompt stays on screen");
     expect(HELP_TEXT).toContain("Ctrl-C leaves when nothing is running");
     expect(HELP_TEXT).toContain("CONDUCTOR_CONFIG");
-    expect(HELP_TEXT).toContain("board keys (Esc or ? returns");
+    expect(HELP_TEXT).toContain("board keys (any key returns");
   });
 });
 
