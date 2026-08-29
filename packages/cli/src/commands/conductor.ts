@@ -200,7 +200,6 @@ export async function executeConductorCommand(
   let stores: StoreRegistry;
   let baseRuntimeConfig: RuntimeConfig | undefined;
   let dispose: (() => Promise<void>) | undefined;
-  let epicLabel = CONDUCTOR_FLOW_KIND;
 
   const defaultLevel = conductorDefaultLogLevel(invocation, options);
   const logger =
@@ -273,7 +272,7 @@ export async function executeConductorCommand(
     } catch (err) {
       throw new CliError(err instanceof Error ? err.message : String(err), EXIT_CONFIG_ERROR);
     }
-    epicLabel = flow.id ?? CONDUCTOR_FLOW_KIND;
+    const epicLabel = flow.id ?? CONDUCTOR_FLOW_KIND;
 
     let modelResolver: ModelResolver | undefined;
     if (options.modelResolver !== undefined) {
