@@ -562,6 +562,55 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("leaves the board by stopping a run that is still going", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    const ts = Date.now();
+    await stores.request.set(
+      "req-live-1",
+      {
+        id: "req-live-1",
+        flowKind: "conductor",
+        actionName: "wake",
+        userId: "cli-user",
+        source: "http",
+        status: "in_progress",
+        startedAtMs: ts,
+        state: {},
+        version: 0,
+        createdAt: ts,
+        updatedAt: ts,
+      },
+      "any",
+    );
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 40,
+    });
+
+    await waitFor(() => tty.text, "LIVE-1");
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+    await expect(stores.request.isAbortRequested("req-live-1")).resolves.toBe(true);
+  });
+
   it("talks from an empty board even when the first letter is a row key", async () => {
     const stores = createInMemoryStores();
     const tty = fakeTty();

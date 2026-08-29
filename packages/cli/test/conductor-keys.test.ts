@@ -592,6 +592,23 @@ describe("applyKey", () => {
     expect(applyKey(board([row("FIX-1", 1)]), { type: "char", value: "x" }).state.input).toBe("x");
   });
 
+  it("does not leave on Ctrl-C when another row is still running", () => {
+    const state = { ...board([row("FIX-1"), runningRow("LIVE-1")]), selected: 0 };
+    const held = applyKey(state, { type: "ctrl", value: "c" });
+    expect(held.effect).toBeUndefined();
+    expect(held.state.notice).toMatch(/still going/);
+  });
+
+  it("lets /quit leave even while a run is going — the loop stops that run", () => {
+    let state = board([runningRow("LIVE-1")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "quit") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.effect).toEqual({ type: "quit" });
+  });
+
   it("selects a row with /status <issue> and still refreshes", () => {
     let state = board([row("FIX-1"), row("FIX-2")]);
     state = applyKey(state, { type: "char", value: "/" }).state;

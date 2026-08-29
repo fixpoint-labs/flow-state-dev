@@ -18,6 +18,8 @@ import {
   selectedQuestions,
   selectedRow,
   selectedRunningRequestId,
+  boardHasRunning,
+  STAY_WHILE_RUNNING,
   scrollTranscript,
   stepFind,
   stepHunk,
@@ -240,6 +242,9 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
   if (key.type === "ctrl" && key.value === "c") {
     if (selectedRunningRequestId(state) !== undefined) {
       return { state, effect: { type: "dispatch", command: { kind: "abort" } } };
+    }
+    if (boardHasRunning(state.rows)) {
+      return { state: { ...state, notice: STAY_WHILE_RUNNING } };
     }
     return { state, effect: { type: "quit" } };
   }

@@ -151,6 +151,12 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     },
   });
 
+  const stopRunning = async (view: ViewState) => {
+    for (const id of runningRequestIds(view.rows)) {
+      await abortConductorRequest(options.dispatch.stores, id);
+    }
+  };
+
   const endTurn = () => {
     state = applyTranscriptPatch(state, operatorTranscript.flush(), now());
     paint();
@@ -310,6 +316,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           break;
         case "quit":
           closed = true;
+          await stopRunning(state);
           break;
       }
     } catch (err) {
@@ -376,7 +383,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
         }
         if (result.effect.type === "quit") {
           closed = true;
-          finish();
+          void stopRunning(state).then(finish, finish);
           return;
         }
         if (result.effect.type === "refresh") {
@@ -409,8 +416,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           abortInFlight?.();
           return;
         }
-        closed = true;
-        finish();
+        handleKey({ type: "ctrl", value: "c" });
       };
 
       input.on("data", onData);

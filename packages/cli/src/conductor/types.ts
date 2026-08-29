@@ -782,6 +782,14 @@ export function selectedRunningRequestId(state: ViewState): string | undefined {
   return row === undefined ? undefined : rowRunningRequestId(row);
 }
 
+/** True when any board row still has a coding run in flight. */
+export function boardHasRunning(rows: readonly StatusRow[]): boolean {
+  return runningRequestIds(rows).length > 0;
+}
+
+/** Why `/quit` and idle Ctrl-C stay when a child is still running. */
+export const STAY_WHILE_RUNNING = "a run is still going — stay, or select it and press x";
+
 /**
  * Journals the board should be reading. Running rows stay tailed. The
  * selected row's last request is included even after it settles — reopening

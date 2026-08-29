@@ -347,10 +347,10 @@ In the TUI:
   /find [text] search the selected row's transcript
   n / N        older / newer match
   ?            this help
-  /quit        leave the board (Ctrl-C when nothing is running)
+  /quit        leave the board (stops a run that is still going)
 
   Type anything that is not a slash verb to talk to the coordinator.
-  Letters talk. r still refreshes. /quit or Ctrl-C leaves.
+  Letters talk. r still refreshes. /quit leaves. Ctrl-C leaves when nothing is running.
   A row with an open question: type the reply. Letters are the answer, not board keys. Enter sends, Esc cancels.
   The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
   A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or /wake if it is still pending. An errored or cancelled row is spent — /wake will not take it.
