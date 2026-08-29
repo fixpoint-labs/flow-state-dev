@@ -465,7 +465,7 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
           inputMode: "seed",
           input: "",
           caret: 0,
-          notice: "issue id, then Ctrl-J and the ticket",
+          notice: "issue id, then the brief on the same line or Ctrl-J",
         },
       };
     case "r":

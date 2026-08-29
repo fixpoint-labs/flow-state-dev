@@ -470,6 +470,12 @@ describe("applyKey", () => {
     expect(applyKey(mixed.state, { type: "up" }).state.input).toBe("LAB-9");
   });
 
+  it("tells seed compose that words after the issue id are the brief", () => {
+    const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" });
+    expect(seeding.state.notice).toMatch(/same line|words after/i);
+    expect(seeding.state.notice).not.toMatch(/then Ctrl-J and the ticket/);
+  });
+
   it("files a seed brief from lines after the issue id", () => {
     const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" }).state;
     const sent = applyKey(

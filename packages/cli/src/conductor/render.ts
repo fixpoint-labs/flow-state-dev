@@ -815,16 +815,14 @@ function renderPrompt(state: ViewState, cols: number): string {
     placeholder = dim("type the reply · Enter sends · Ctrl-J new line · Esc cancels");
   } else if (state.inputMode === "seed") {
     prefix = paint(TEAL, "❯ seed ");
-    placeholder = dim("issue id · Ctrl-J the ticket · Enter files and starts it");
+    placeholder = dim("issue id · words after it are the brief · Enter files");
   } else if (state.inputMode === "find") {
     prefix = paint(GOLD, "❯ find ");
     placeholder = dim("text in this row's transcript · Enter keeps · Esc clears");
   }
   const inner = Math.max(8, cols - 12);
   const shown =
-    state.input === "" && state.inputMode === "command"
-      ? placeholder
-      : composeView(state.input, inner, state.caret);
+    state.input === "" ? placeholder : composeView(state.input, inner, state.caret);
   const pad = " ".repeat(visibleWidth(prefix));
   const aligned = shown
     .split("\n")

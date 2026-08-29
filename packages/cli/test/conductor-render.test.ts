@@ -448,6 +448,15 @@ describe("renderFrame", () => {
     expect(renderBoardPlain([waiting], false)).not.toMatch(/\bbrief\b/);
   });
 
+  it("tells an empty seed prompt that words after the issue id are the brief", () => {
+    const frame = stripAnsi(
+      renderFrame({ ...emptyView("epic"), inputMode: "seed" }, { cols: 80, rows: 24 }),
+    );
+    expect(frame).toContain("❯ seed");
+    expect(frame).toMatch(/words after|same line/i);
+    expect(frame).not.toContain("Ctrl-J the ticket");
+  });
+
   it("does not offer ↑ prior on seed compose when the only drafts are talk", () => {
     const seeding = {
       ...emptyView("epic"),
