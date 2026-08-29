@@ -277,7 +277,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 
 `fsdev conductor tui PR-482` opens the same board with that row selected, if it exists, even if another row is waiting.
 
-On an open board, filing a row with `s`, `/seed`, or `/start` selects that issue. The table caret (`▸`) is on it. TRANSCRIPT follows it. A talk turn (`/steer …` or unslashed talk) that starts an issue selects that issue unless a row newly has an open question in that same refresh. That waiting row is selected. Answer it first. A talk turn that only reads the board leaves the selected row.
+On an open board, filing a row with `s`, `/seed`, or `/start` selects that issue. The table caret (`▸`) is on it. TRANSCRIPT follows it. `/wake` that starts an existing row (`status` becomes `in_progress`) selects that issue. A talk turn (`/steer …` or unslashed talk) that files a row, or that retries or wakes a row and starts it, selects that issue. Talk or `/wake` does not jump to a row that was already running. If `/wake` or talk starts more than one pending row, the caret stays on the row you already had selected when that row is one of the ones that started. If a row newly has an open question after that action, that row is selected instead. Answer it first. Typing does not change the selected row. A talk turn that only reads the board does not change the selected row.
 
 `/quit` remembers the selected row's issue, or that row's task id when it has no issue. Opening the board without `tui <issue>` selects that row when it is on the board, unless a row is waiting on a question. A waiting row wins. The remembered row is per `--session` and per epic (the flow's `id`). Opening an epic that has not remembered a row yet uses the last row this `--session` remembered. Headless verbs do not restore or change it. Without a loaded config, the board does not remember a row.
 
@@ -678,7 +678,7 @@ The lab config refuses when `CONDUCTOR_REPO` names the repository that contains 
 - A flow whose `status` rows omit `brief` will not show one.
 - Headless verbs take the id on the argv. There is no list on that path. They do not restore or change the selected row.
 - A talk turn that only reads the board does not change the selected row.
-- Headless `seed` and `steer` do not open the board.
+- Headless `seed`, `wake`, and `steer` do not open the board.
 - Without a loaded config, the board does not remember the selected row or compose lines after `/quit`.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
