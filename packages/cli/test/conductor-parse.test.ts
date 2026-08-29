@@ -210,6 +210,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("new line while composing");
     expect(HELP_TEXT).toContain("start / end of the current compose line");
     expect(HELP_TEXT).toContain("leave the board (stops a run that is still going)");
+    expect(HELP_TEXT).toContain("Reopening the board selects the row you left.");
     expect(HELP_TEXT).toContain("Ctrl-C leaves when nothing is running");
     expect(HELP_TEXT).toContain("CONDUCTOR_CONFIG");
   });

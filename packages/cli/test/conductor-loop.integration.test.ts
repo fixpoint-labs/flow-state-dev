@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolve } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { PassThrough } from "node:stream";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { executeConductorCommand } from "../src/commands/conductor";
@@ -595,6 +597,112 @@ describe("fsdev conductor — TUI over the same actions", () => {
 
     tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
+  });
+
+  it("reopening the board selects the row you left", async () => {
+    const stores = createInMemoryStores();
+    const lastFocus = join(mkdtempSync(join(tmpdir(), "conductor-focus-")), "tui-focus");
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const first = fakeTty();
+    const firstRun = executeConductorCommand(["tui", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastFocusPath: lastFocus,
+      input: first.input as unknown as NodeJS.ReadStream,
+      output: first.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(first.text), "LIVE-2");
+    expect(stripAnsi(lastFrame(first.text))).toMatch(/▸\s+LIVE-2/);
+    first.input.write("/quit\r");
+    await expect(firstRun).resolves.toBe(0);
+
+    const second = fakeTty();
+    const secondRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastFocusPath: lastFocus,
+      input: second.input as unknown as NodeJS.ReadStream,
+      output: second.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(second.text), "LIVE-2");
+    expect(stripAnsi(lastFrame(second.text))).toMatch(/▸\s+LIVE-2/);
+    second.input.write("/quit\r");
+    await expect(secondRun).resolves.toBe(0);
+  });
+
+  it("an explicit tui issue wins over the remembered row", async () => {
+    const stores = createInMemoryStores();
+    const lastFocus = join(mkdtempSync(join(tmpdir(), "conductor-focus-")), "tui-focus");
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const remembered = fakeTty();
+    const rememberedRun = executeConductorCommand(["tui", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastFocusPath: lastFocus,
+      input: remembered.input as unknown as NodeJS.ReadStream,
+      output: remembered.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(remembered.text), "LIVE-2");
+    remembered.input.write("/quit\r");
+    await expect(rememberedRun).resolves.toBe(0);
+
+    const explicit = fakeTty();
+    const explicitRun = executeConductorCommand(["tui", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastFocusPath: lastFocus,
+      input: explicit.input as unknown as NodeJS.ReadStream,
+      output: explicit.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(explicit.text), "LIVE-1");
+    expect(stripAnsi(lastFrame(explicit.text))).toMatch(/▸\s+LIVE-1/);
+    expect(stripAnsi(lastFrame(explicit.text))).not.toMatch(/▸\s+LIVE-2/);
+    explicit.input.write("/quit\r");
+    await expect(explicitRun).resolves.toBe(0);
   });
 
   it("Ctrl-C during a drain aborts the wake even if the operator hits r first", async () => {

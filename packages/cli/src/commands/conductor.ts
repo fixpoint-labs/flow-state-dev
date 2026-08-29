@@ -7,6 +7,7 @@
  * It does not host a second conductor.
  */
 import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { Command } from "commander";
 import {
   createFlowRegistry,
@@ -45,6 +46,7 @@ import {
 } from "../conductor/dispatch";
 import { runConductorHeadless } from "../conductor/headless";
 import { runConductorTui } from "../conductor/loop";
+import { lastFocusPath } from "../conductor/last-focus";
 
 /** Registers `fsdev conductor [verb…]` on the given commander program. */
 export function registerConductorCommand(program: Command): void {
@@ -105,6 +107,8 @@ export interface ConductorCommandInternalOptions extends ConductorCommandOptions
   sleep?: (ms: number) => Promise<void>;
   /** Override TTY detection. Tests set this so `start` does not open the TUI. */
   tty?: boolean;
+  /** Sidecar that remembers the selected issue across `/quit`. Tests inject a temp path. */
+  lastFocusPath?: string;
 }
 
 function isInteractive(options: ConductorCommandInternalOptions): boolean {
@@ -301,6 +305,9 @@ export async function executeConductorCommand(
     };
 
     const json = invocation.mode === "headless" ? invocation.json : options.json === true;
+    const focusFile =
+      options.lastFocusPath ??
+      (resolved.source === "config" ? lastFocusPath(resolved.configPath, dispatch.sessionId) : undefined);
 
     if (invocation.mode === "tui") {
       return await runConductorTui({
@@ -309,6 +316,7 @@ export async function executeConductorCommand(
         input: options.input,
         output: options.output,
         ...(invocation.issue !== undefined ? { focusIssue: invocation.issue } : {}),
+        ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
         ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
       });
     }
@@ -335,6 +343,7 @@ export async function executeConductorCommand(
         input: options.input,
         output: options.output,
         focusIssue: invocation.command.issue,
+        ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
         ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
       });
     }

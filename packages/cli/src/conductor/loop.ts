@@ -25,6 +25,7 @@ import {
   newlySettled,
 } from "./transcript";
 import { createChildFollow } from "./follow";
+import { readLastFocus, writeLastFocus } from "./last-focus";
 import {
   clampSelected,
   dropRequestActivity,
@@ -81,6 +82,8 @@ export interface LoopOptions {
   output?: NodeJS.WriteStream;
   pollMs?: number;
   focusIssue?: string;
+  /** Sidecar that remembers the selected issue across `/quit`. */
+  lastFocusPath?: string;
   now?: () => number;
 }
 
@@ -166,6 +169,17 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     paint();
   };
 
+  const initialFocus =
+    options.focusIssue ??
+    (options.lastFocusPath !== undefined ? readLastFocus(options.lastFocusPath) : undefined);
+  let readyToRemember = false;
+  const rememberFocus = () => {
+    if (!readyToRemember || options.lastFocusPath === undefined) return;
+    const row = state.rows[state.selected];
+    const id = row?.issue ?? row?.taskId;
+    if (id !== undefined && id !== "") writeLastFocus(options.lastFocusPath, id);
+  };
+
   const runAction = <T>(action: ConductorAction, input: unknown) => {
     const running = startConductorAction<T>(options.dispatch, action, input, applyOperator);
     if (bindsOperatorAbort(action)) {
@@ -194,6 +208,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     }
     follow.sync(idsToFollow(state));
     void loadSelectedJournal();
+    rememberFocus();
     endTurn();
   };
 
@@ -367,6 +382,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     state = result.state;
     follow.sync(idsToFollow(state));
     void loadSelectedJournal();
+    rememberFocus();
     if (result.effect === undefined) {
       paint();
       return;
@@ -437,18 +453,21 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       await session;
       return 0;
     }
-    if (options.focusIssue !== undefined) {
-      state = rowAfterRefresh(state, options.focusIssue);
+    if (initialFocus !== undefined) {
+      state = rowAfterRefresh(state, initialFocus);
       follow.sync(idsToFollow(state));
       void loadSelectedJournal();
-      paint();
     }
+    readyToRemember = true;
+    rememberFocus();
+    if (initialFocus !== undefined) paint();
 
     poll = setInterval(() => {
       beginRefresh();
     }, pollMs);
     await session;
   } finally {
+    rememberFocus();
     follow.stop();
     output.off("resize", onResize);
     input.setRawMode?.(wasRaw ?? false);

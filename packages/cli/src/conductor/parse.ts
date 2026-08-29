@@ -348,6 +348,7 @@ In the TUI:
   n / N        older / newer match
   ?            this help
   /quit        leave the board (stops a run that is still going)
+  Reopening the board selects the row you left.
 
   Type anything that is not a slash verb to talk to the coordinator.
   Letters talk. r still refreshes. /quit leaves. Ctrl-C leaves when nothing is running.
