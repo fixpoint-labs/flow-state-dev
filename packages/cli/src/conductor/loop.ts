@@ -21,6 +21,7 @@ import {
   applyTranscriptPatch,
   createStreamTranscript,
   diffBoard,
+  newlyAsked,
 } from "./transcript";
 import { createChildFollow } from "./follow";
 import {
@@ -175,7 +176,10 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     const result = await runAction<StatusOutput>("status", {});
     if (closed || seq !== refreshSeq) return;
     if (result.error !== undefined) throw new Error(result.error);
+    const nextRows = result.output?.rows ?? [];
+    const asked = newlyAsked(state.rows, nextRows);
     state = applyStatus(state, result.output ?? { rows: [] }, now());
+    if (asked) output.write("\x07");
     follow.sync(idsToFollow(state));
     void loadSelectedJournal();
     endTurn();

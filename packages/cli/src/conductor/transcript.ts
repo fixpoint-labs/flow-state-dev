@@ -832,6 +832,25 @@ function formatContainerLine(item: OutputItem, settled?: "failed" | "incomplete"
  * new run outcome is not — those are the only facts a detached run can
  * report through `status`.
  */
+/**
+ * True when `next` has an open question `prev` did not. The board rings
+ * the terminal bell for that, once per new question set.
+ */
+export function newlyAsked(prev: StatusRow[], next: StatusRow[]): boolean {
+  const prevByKey = new Map(prev.map((row) => [rowKey(row), row]));
+  for (const row of next) {
+    const before = prevByKey.get(rowKey(row));
+    if (before === undefined) {
+      if (row.questions.length > 0) return true;
+      continue;
+    }
+    for (const question of row.questions) {
+      if (!before.questions.some((q) => q.question === question.question)) return true;
+    }
+  }
+  return false;
+}
+
 export function diffBoard(prev: StatusRow[], next: StatusRow[]): string[] {
   const prevByKey = new Map(prev.map((row) => [rowKey(row), row]));
   const lines: string[] = [];

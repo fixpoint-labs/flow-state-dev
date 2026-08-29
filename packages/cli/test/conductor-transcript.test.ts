@@ -4,6 +4,7 @@ import {
   applyTranscriptPatch,
   createStreamTranscript,
   diffBoard,
+  newlyAsked,
   redactSecrets,
   viewFromEvents,
 } from "../src/conductor/transcript";
@@ -1245,6 +1246,36 @@ describe("createStreamTranscript", () => {
       live: null,
     });
     expect(fileFromToolLine("  tool · Write src/nested.ts")).toBe("src/nested.ts");
+  });
+});
+
+describe("newlyAsked", () => {
+  it("is false when a poll moved nothing", () => {
+    const rows = [row("FIX-1", "in_progress")];
+    expect(newlyAsked(rows, rows)).toBe(false);
+  });
+
+  it("is true when a row that was silent now has a question", () => {
+    const before = [row("FIX-1", "in_progress")];
+    const after = [
+      row("FIX-1", "awaiting_review", {
+        questions: [
+          { question: "FIX-1/implement/1/q", text: "Which path?", attempt: 1, askedAt: 1 },
+        ],
+      }),
+    ];
+    expect(newlyAsked(before, after)).toBe(true);
+  });
+
+  it("is false when the same question is still open", () => {
+    const rows = [
+      row("FIX-1", "awaiting_review", {
+        questions: [
+          { question: "FIX-1/implement/1/q", text: "Which path?", attempt: 1, askedAt: 1 },
+        ],
+      }),
+    ];
+    expect(newlyAsked(rows, rows)).toBe(false);
   });
 });
 

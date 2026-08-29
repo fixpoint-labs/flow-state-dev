@@ -129,6 +129,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "ASK-1");
     tty.input.write("/wake\r");
     await waitFor(() => tty.text, "Which path?");
+    expect(tty.text).toContain("\x07");
     expect(tty.text).toContain("asked Which path?");
     expect(tty.text).toMatch(/parked ASK-1|drained |claiming /);
 
