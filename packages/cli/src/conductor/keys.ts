@@ -447,20 +447,12 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
     return idleFallback(state, value);
   }
   const running = selectedRunningRequestId(state) !== undefined;
-  const empty = state.rows.length === 0;
   const inspectToggle =
     state.inspect && (value === "f" || value === "h" || value === "e" || value === "H");
-  // Empty board: every letter talks, including s. /seed files the
-  // first row. Once a row exists, s seeds and r refreshes. f/h/e/H
-  // expand only while inspecting.
-  if (
-    /^[A-Za-z]$/.test(value) &&
-    (empty ||
-      (value !== "s" &&
-        value !== "r" &&
-        !inspectToggle &&
-        !(value === "x" && running)))
-  ) {
+  // Letters talk on empty and populated boards, including s and r.
+  // /seed opens seed compose. /refresh polls. f/h/e/H expand only
+  // while inspecting. x still stops a selected running row.
+  if (/^[A-Za-z]$/.test(value) && !inspectToggle && !(value === "x" && running)) {
     return idleFallback(state, value);
   }
   switch (value) {
@@ -484,18 +476,6 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
       return { state: moveAttention(state, -1, now) };
     case "}":
       return { state: moveAttention(state, 1, now) };
-    case "s":
-      return {
-        state: {
-          ...state,
-          inputMode: "seed",
-          input: "",
-          caret: 0,
-          notice: "issue id, then the brief on the same line or Ctrl-J",
-        },
-      };
-    case "r":
-      return { state, effect: { type: "refresh" } };
     case "/":
       return { state: { ...state, input: "/", slashAt: 0, caret: 1, notice: null } };
     default:
@@ -615,7 +595,8 @@ function applyEditing(state: ViewState, key: Key): KeyResult {
 
 /**
  * Fill in the selected slash item. Tab leaves the line. Enter runs it
- * when the item needs no more typing.
+ * when the item needs no more typing. Enter on `/seed` opens seed
+ * compose so `s` can stay a talk letter.
  */
 function completeSlash(state: ViewState, submit: boolean): KeyResult {
   const menu = slashMenu(state);
@@ -624,6 +605,7 @@ function completeSlash(state: ViewState, submit: boolean): KeyResult {
   }
   const at = Math.max(0, Math.min(state.slashAt, menu.length - 1));
   const item = menu[at]!;
+  if (submit && item.label === "/seed") return beginSeed(state);
   const next: ViewState = withInput({ ...state, slashAt: 0 }, item.fill);
   if (submit && !item.needsMore) return submitEdit(next);
   return { state: next };
@@ -687,6 +669,20 @@ function splitSeedCompose(input: string): { issue: string; brief: string } {
   const later = lines.slice(1).join("\n").trim();
   const brief = [sameLine, later].filter((part) => part !== "").join("\n");
   return { issue, brief };
+}
+
+/** Dedicated seed prompt. `/seed` with no issue, or a bare `seed`. */
+function beginSeed(state: ViewState): KeyResult {
+  return {
+    state: {
+      ...withInput(state, ""),
+      inputMode: "seed",
+      slashAt: 0,
+      notice: "issue id, then the brief on the same line or Ctrl-J",
+      draftAt: null,
+      draftHold: null,
+    },
+  };
 }
 
 function cancelEdit(state: ViewState): KeyResult {
@@ -850,6 +846,7 @@ function submitEdit(state: ViewState): KeyResult {
   if (line === "" || line === "/") {
     return { state: { ...withInput(state, ""), draftAt: null, draftHold: null } };
   }
+  if (line === "seed" || line === "/seed") return beginSeed(state);
   const parsed: ParseResult = parseCommand(line);
   if (!parsed.ok) {
     return { state: { ...withInput(state, ""), notice: parsed.message, draftAt: null, draftHold: null } };

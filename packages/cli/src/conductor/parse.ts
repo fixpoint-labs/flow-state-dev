@@ -333,8 +333,8 @@ In the TUI:
   Home/End     oldest / follow while inspecting and the prompt is empty; compose line while typing
   [/]          previous/next question on the row
   { / }        previous / next waiting, failed, or stalled row
-  s            seed a new issue (once the board has a row)
-  r            poll status now (once the board has a row)
+  /seed        file an issue (first line id, more lines brief)
+  /refresh     poll status now
   x            stop the running request
   f / h / e    expand files, the last hunk, or the last Read / command tail
   H            older hunk
@@ -361,13 +361,13 @@ In the TUI:
   The header names the epic and, when CONDUCTOR_REPO is set, the product checkout. Headless dumps and the line left after /quit print the same two strings. --json adds epic and repo next to rows.
 
   Type anything that is not a slash verb to talk to the coordinator.
-  Letters talk. On an empty board that includes s and r — /seed files the first row. Once a row exists, s seeds and r refreshes. /quit leaves. Ctrl-C cancels compose. On an empty line it leaves when nothing is running.
+  Letters talk, including s and r, on an empty board and after a row exists. /seed opens seed compose. start <issue> files a row. /refresh polls. /quit leaves. Ctrl-C cancels compose. On an empty line it leaves when nothing is running.
   A row with an open question: Enter inspects it so the question is readable (markdown). Type the reply there. On the board, letters still talk. /answer also replies. Letters on inspect are the answer, not board keys. Enter sends, Esc cancels compose.
   A new question rings the terminal bell and inspects that row when you are not typing.
   A row that finishes rings the terminal bell and inspects that row when you are not typing. A new question wins.
   The ASK band keeps that attempt's branch, files, current todo, PR URL, and token counts.
   A row that failed: the FAIL band holds the reason, that attempt's branch, and files. Talk, or /wake if it is still pending. An errored or cancelled row is spent — /wake will not take it.
-  s / seed: first line is the issue id. More lines — or words after the id — are the brief attempt 1 reads, so the run does not have to ask what the ticket is.
+  /seed: first line is the issue id. More lines — or words after the id — are the brief attempt 1 reads, so the run does not have to ask what the ticket is.
   A running row: inspect holds the checkout and what the run is
   doing. Ctrl-T expands the todo list. x or Ctrl-C stops it.
   While working, type an answer; Enter queues it.

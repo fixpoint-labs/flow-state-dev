@@ -464,7 +464,7 @@ describe("renderFrame", () => {
     expect(text).not.toContain("/find");
   });
 
-  it("keeps s as seed once a row exists", () => {
+  it("offers /seed once a row exists, not a letter shortcut", () => {
     const pending: StatusRow = {
       ...waiting,
       status: "pending",
@@ -475,7 +475,8 @@ describe("renderFrame", () => {
       renderFrame({ ...emptyView("epic"), rows: [pending] }, { cols: 80, rows: 24 }),
     );
     expect(text).toContain("enter inspect");
-    expect(text).toContain("s seed");
+    expect(text).toContain("/seed");
+    expect(text).not.toContain("s seed");
     expect(text).toContain("↑/↓");
   });
 

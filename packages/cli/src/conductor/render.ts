@@ -966,17 +966,17 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
       ? q
         ? `${working}type to talk  ·  enter inspect  ·  /answer  ·  ↑/↓${nextKey}  ·  /  ·  ?  ·  /quit`
         : fail !== undefined
-          ? `${working}type to talk  ·  enter inspect  ·  ↑/↓  ·  ${spent ? "spent" : "/wake"}  ·  s seed  ·  /  ·  ?  ·  /quit`
+          ? `${working}type to talk  ·  enter inspect  ·  ↑/↓  ·  ${spent ? "spent" : "/wake"}  ·  /seed  ·  /  ·  ?  ·  /quit`
           : running
             ? `${working}type to talk  ·  enter inspect  ·  ↑/↓  ·  x stop  ·  /  ·  ?  ·  /quit`
-            : `${working}type to talk  ·  enter inspect  ·  ↑/↓  ·  s seed  ·  /  ·  ?  ·  /quit`
+            : `${working}type to talk  ·  enter inspect  ·  ↑/↓  ·  /seed  ·  /  ·  ?  ·  /quit`
     : q
       ? `${working}Esc board  ·  type to answer  ·  ↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
       : fail !== undefined
-        ? `${working}Esc board  ·  type to talk  ·  ↑/↓  ·  ${spent ? "spent" : "/wake"}${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`
+        ? `${working}Esc board  ·  type to talk  ·  ↑/↓  ·  ${spent ? "spent" : "/wake"}${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /seed  ·  /  ·  ?  ·  /quit`
         : running
           ? `${working}Esc board  ·  type to talk  ·  ↑/↓  ·  x stop${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
-          : `${working}Esc board  ·  type to talk  ·  ↑/↓${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`;
+          : `${working}Esc board  ·  type to talk  ·  ↑/↓${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /seed  ·  /  ·  ?  ·  /quit`;
   return padLine(dim(` ${keys}`), cols);
 }
 
@@ -1043,8 +1043,8 @@ const TUI_HELP_LINES = [
   "  Alt/Ctrl-←/→ word · Ctrl-W delete the previous word",
   "  PgUp/PgDn    transcript · Home/End oldest / follow (inspect)",
   "  { / }        previous / next waiting, failed, or stalled row",
-  "  s            seed (first line issue, more lines brief)",
-  "  r            refresh",
+  "  /seed        file an issue (first line id, more lines brief)",
+  "  /refresh     poll status now",
   "  x            stop the selected running request",
   "  f / h / e    files, last hunk, last Read or command tail",
   "  H            older hunk",

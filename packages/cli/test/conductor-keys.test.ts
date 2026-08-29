@@ -59,6 +59,15 @@ function inspecting(rows: StatusRow[]): ViewState {
   return { ...emptyView("epic"), rows, inspect: true };
 }
 
+/** `/seed` + Enter — the door that used to be a lone `s`. */
+function seedCompose(state: ViewState): ViewState {
+  let next = state;
+  for (const value of "/seed") {
+    next = applyKey(next, { type: "char", value }).state;
+  }
+  return applyKey(next, { type: "enter" }).state;
+}
+
 describe("decodeKeys", () => {
   it("decodes arrows, enter, and a paste of printable chars", () => {
     expect(decodeKeys("\x1b[A").keys).toEqual([{ type: "up" }]);
@@ -271,7 +280,8 @@ describe("applyKey", () => {
     expect(tabbed.state.input).toBe("/seed ");
     expect(tabbed.effect).toBeUndefined();
     const entered = applyKey({ ...state, input: "/see", slashAt: 0 }, { type: "enter" });
-    expect(entered.state.input).toBe("/seed ");
+    expect(entered.state.inputMode).toBe("seed");
+    expect(entered.state.input).toBe("");
     expect(entered.effect).toBeUndefined();
   });
 
@@ -417,7 +427,7 @@ describe("applyKey", () => {
     });
   });
 
-  it("talks from a populated idle row; s seeds, r refreshes; f expands only in inspect", () => {
+  it("talks from a populated idle row; s and r talk; f expands only in inspect", () => {
     const idle = board([row("FIX-1")]);
     expect(applyKey(idle, { type: "char", value: "j" }).state.input).toBe("j");
     expect(applyKey(idle, { type: "char", value: "k" }).state.input).toBe("k");
@@ -425,10 +435,24 @@ describe("applyKey", () => {
     expect(applyKey(idle, { type: "char", value: "a" }).state.input).toBe("a");
     expect(applyKey(idle, { type: "char", value: "w" }).state.input).toBe("w");
     expect(applyKey(idle, { type: "char", value: "q" }).state.input).toBe("q");
-    expect(applyKey(idle, { type: "char", value: "s" }).state.inputMode).toBe("seed");
-    expect(applyKey(idle, { type: "char", value: "r" }).effect).toEqual({ type: "refresh" });
+    expect(applyKey(idle, { type: "char", value: "s" }).state.inputMode).toBe("command");
+    expect(applyKey(idle, { type: "char", value: "s" }).state.input).toBe("s");
+    expect(applyKey(idle, { type: "char", value: "r" }).effect).toBeUndefined();
+    expect(applyKey(idle, { type: "char", value: "r" }).state.input).toBe("r");
     expect(applyKey(idle, { type: "char", value: "f" }).state.input).toBe("f");
     expect(applyKey(idle, { type: "char", value: "x" }).state.input).toBe("x");
+    expect(seedCompose(idle).inputMode).toBe("seed");
+
+    let startSecond = idle;
+    for (const value of "start FIX-2 now") {
+      startSecond = applyKey(startSecond, { type: "char", value }).state;
+    }
+    expect(startSecond.inputMode).toBe("command");
+    expect(startSecond.input).toBe("start FIX-2 now");
+    expect(applyKey(startSecond, { type: "enter" }).effect).toEqual({
+      type: "dispatch",
+      command: { kind: "start", issue: "FIX-2", brief: "now" },
+    });
     expect(applyKey(inspecting([row("FIX-1")]), { type: "char", value: "f" }).state.filesExpanded).toBe(
       true,
     );
@@ -522,10 +546,10 @@ describe("applyKey", () => {
   });
 
   it("does not recall a talk line as a seed issue id", () => {
-    const talkOnly = applyKey(
-      { ...board([row("FIX-1")]), drafts: ["what's on the board?", "please retry the failed rows"] },
-      { type: "char", value: "s" },
-    ).state;
+    const talkOnly = seedCompose({
+      ...board([row("FIX-1")]),
+      drafts: ["what's on the board?", "please retry the failed rows"],
+    });
     expect(talkOnly.inputMode).toBe("seed");
     const skipped = applyKey(talkOnly, { type: "up" });
     expect(skipped.state.input).toBe("");
@@ -543,13 +567,13 @@ describe("applyKey", () => {
   });
 
   it("tells seed compose that words after the issue id are the brief", () => {
-    const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" });
-    expect(seeding.state.notice).toMatch(/same line|words after/i);
-    expect(seeding.state.notice).not.toMatch(/then Ctrl-J and the ticket/);
+    const seeding = seedCompose(board([row("FIX-1")]));
+    expect(seeding.notice).toMatch(/same line|words after/i);
+    expect(seeding.notice).not.toMatch(/then Ctrl-J and the ticket/);
   });
 
   it("files a seed brief from lines after the issue id", () => {
-    const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" }).state;
+    const seeding = seedCompose(board([row("FIX-1")]));
     const sent = applyKey(
       { ...seeding, input: "FIX-1049\nRename getSession in client.md" },
       { type: "enter" },
@@ -566,7 +590,7 @@ describe("applyKey", () => {
   });
 
   it("files a seed brief from words after the issue id on the first line, same as /seed", () => {
-    const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" }).state;
+    const seeding = seedCompose(board([row("FIX-1")]));
     const sent = applyKey(
       { ...seeding, input: "FIX-1049 Rename getSession in client.md" },
       { type: "enter" },
@@ -602,7 +626,7 @@ describe("applyKey", () => {
     const again = applyKey({ ...sent.state, inputMode: "answer", answering: "FIX-1/implement/1/q0", input: "ship the smaller cut" }, { type: "enter" });
     expect(again.state.drafts).toEqual(["ship the smaller cut"]);
 
-    const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" }).state;
+    const seeding = seedCompose(board([row("FIX-1")]));
     const seeded = applyKey({ ...seeding, input: "LAB-9" }, { type: "enter" });
     expect(seeded.state.drafts).toEqual(["LAB-9"]);
 
@@ -915,7 +939,7 @@ describe("applyKey", () => {
     expect(cancelledTalk.state.input).toBe("");
     expect(cancelledTalk.state.inputMode).toBe("command");
 
-    const seed = applyKey(board([]), { type: "char", value: "s" }).state;
+    const seed = seedCompose(board([]));
     const typedSeed = applyKey(seed, { type: "char", value: "F" }).state;
     const cancelledSeed = applyKey(typedSeed, { type: "ctrl", value: "c" });
     expect(cancelledSeed.effect).toBeUndefined();

@@ -230,7 +230,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => stripAnsi(lastFrame(tty.text)), "▸");
     expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
 
-    tty.input.write("sLIVE-2\r");
+    tty.input.write("/seed LIVE-2\r");
     await waitFor(() => stripAnsi(lastFrame(tty.text)), "LIVE-2");
     expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-2/);
     expect(stripAnsi(lastFrame(tty.text))).toContain("seeded LIVE-2");
@@ -1206,7 +1206,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(secondRun).resolves.toBe(0);
   });
 
-  it("Ctrl-C during a drain aborts the wake even if the operator hits r first", async () => {
+  it("Ctrl-C during a drain aborts the wake even if the operator hits /refresh first", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "HANG-1"], {
       cwd: fixtureDir,
@@ -1230,7 +1230,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "hanging until abort");
     expect(stripAnsi(lastFrame(tty.text))).toContain("working");
 
-    tty.input.write("r");
+    tty.input.write("/refresh\r");
     tty.input.write("\x03");
     await waitFor(() => tty.text, "abort requested");
 
@@ -1405,8 +1405,8 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "type to talk");
     tty.input.write("/seed ESC-1 cancel compose\r");
     await waitFor(() => tty.text, "seeded ESC-1");
-    await waitFor(() => stripAnsi(lastFrame(tty.text)), "s seed");
-    tty.input.write("s");
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "/seed");
+    tty.input.write("/seed\r");
     await waitFor(() => stripAnsi(lastFrame(tty.text)), "❯ seed");
     expect(stripAnsi(lastFrame(tty.text))).toContain("issue id");
 
@@ -1417,7 +1417,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     }, "idle");
     const frame = stripAnsi(lastFrame(tty.text));
     expect(frame).not.toContain("❯ seed");
-    expect(frame).toContain("s seed");
+    expect(frame).toContain("/seed");
     expect(frame).not.toContain("seeded ESC-2");
 
     tty.input.write("/quit\r");
@@ -1439,6 +1439,8 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "type to talk");
     tty.input.write("start FIX-1 now\r");
     await waitFor(() => tty.text, "seeded FIX-1");
+    tty.input.write("start FIX-2 now\r");
+    await waitFor(() => tty.text, "seeded FIX-2");
 
     tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
