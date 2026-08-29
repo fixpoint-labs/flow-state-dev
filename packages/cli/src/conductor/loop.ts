@@ -37,6 +37,7 @@ import {
   noteSteerReply,
   pushActivity,
   idsToFollow,
+  rowRunning,
   runningRequestIds,
   selectedRequestId,
   selectedRunningRequestId,
@@ -200,16 +201,38 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   };
 
   /**
-   * A talk turn that filed work selects that row. A new question on any
-   * row still wins — answer it before watching the new row.
+   * A talk turn that filed work selects that row. A wake or talk-to-retry
+   * that started an existing row does the same, unless the selected row
+   * is itself the one that just started — then stay. A new question on
+   * any row still wins — answer it before watching the new row.
    */
   const lookAtFiledRows = (before: ViewState["rows"]) => {
     if (closed || newlyAsked(before, state.rows)) return;
     if (state.inputMode !== "command" || state.input !== "") return;
     const known = new Set(before.map((row) => row.taskId));
     const filed = [...state.rows].reverse().find((row) => !known.has(row.taskId));
-    const issue = filed?.issue ?? filed?.taskId;
-    if (issue !== undefined && issue !== "") lookAtIssue(issue);
+    if (filed !== undefined) {
+      const issue = filed.issue ?? filed.taskId;
+      if (issue !== "") lookAtIssue(issue);
+      return;
+    }
+    const selected = state.rows[state.selected];
+    const selectedWas =
+      selected === undefined ? undefined : before.find((prior) => prior.taskId === selected.taskId);
+    if (
+      selected !== undefined &&
+      rowRunning(selected) &&
+      (selectedWas === undefined || !rowRunning(selectedWas))
+    ) {
+      return;
+    }
+    const woke = [...state.rows].reverse().find((row) => {
+      const prev = before.find((prior) => prior.taskId === row.taskId);
+      return rowRunning(row) && (prev === undefined || !rowRunning(prev));
+    });
+    if (woke === undefined || woke.taskId === selected?.taskId) return;
+    const issue = woke.issue ?? woke.taskId;
+    if (issue !== "") lookAtIssue(issue);
   };
 
   const rememberedFocus =
@@ -315,7 +338,9 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
           if (result.error !== undefined) throw new Error(result.error);
           endTurn();
           state = pushActivity(state, "wake · drain ran", now());
+          const beforeWake = state.rows;
           await refresh();
+          lookAtFiledRows(beforeWake);
           break;
         }
         case "steer": {

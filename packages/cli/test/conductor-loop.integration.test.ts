@@ -268,6 +268,123 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("wake selects the row that just started when you were watching another", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "▸");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
+
+    tty.input.write("/wake\r");
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "wake · drain ran");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-2/);
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
+  it("a talk turn that retries a row selects the row that started", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "▸");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
+
+    tty.input.write("/steer please retry the failed rows\r");
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "woke the board");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-2/);
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
+  it("wake leaves you on the selected row when that row is the one that started", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "▸");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
+
+    tty.input.write("/wake\r");
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "wake · drain ran");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
   it("does not enable mouse tracking so the terminal can select text", async () => {
     const tty = fakeTty();
     const running = executeConductorCommand(["tui"], {
