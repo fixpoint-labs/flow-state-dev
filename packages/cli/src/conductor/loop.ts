@@ -25,6 +25,7 @@ import {
   newlySettled,
 } from "./transcript";
 import { createChildFollow } from "./follow";
+import { readDrafts, writeDrafts } from "./compose-history";
 import { readLastFocus, writeLastFocus } from "./last-focus";
 import {
   clampSelected,
@@ -84,6 +85,8 @@ export interface LoopOptions {
   focusIssue?: string;
   /** Sidecar that remembers the selected issue across `/quit`. */
   lastFocusPath?: string;
+  /** Sidecar that remembers submitted compose lines across `/quit`. */
+  lastDraftsPath?: string;
   now?: () => number;
 }
 
@@ -102,6 +105,10 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   }
 
   let state = emptyView(options.epicLabel);
+  if (options.lastDraftsPath !== undefined) {
+    const drafts = readDrafts(options.lastDraftsPath);
+    if (drafts.length > 0) state = { ...state, drafts };
+  }
   let pending = "";
   let closed = false;
   let abortInFlight: (() => void) | undefined;
@@ -181,6 +188,10 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     const row = state.rows[state.selected];
     const id = row?.issue ?? row?.taskId;
     if (id !== undefined && id !== "") writeLastFocus(options.lastFocusPath, id);
+  };
+  const rememberDrafts = () => {
+    if (options.lastDraftsPath === undefined) return;
+    writeDrafts(options.lastDraftsPath, state.drafts);
   };
 
   const runAction = <T>(action: ConductorAction, input: unknown) => {
@@ -388,6 +399,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     follow.sync(idsToFollow(state));
     void loadSelectedJournal();
     rememberFocus();
+    rememberDrafts();
     if (result.effect === undefined) {
       paint();
       return;
@@ -473,6 +485,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     await session;
   } finally {
     rememberFocus();
+    rememberDrafts();
     follow.stop();
     output.off("resize", onResize);
     input.setRawMode?.(wasRaw ?? false);

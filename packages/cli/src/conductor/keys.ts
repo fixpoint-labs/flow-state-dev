@@ -7,6 +7,7 @@
  * `hold` so the loop can run it when the current one finishes. Tests
  * drive it without a terminal.
  */
+import { COMPOSE_HISTORY_CAP } from "./compose-history";
 import { parseCommand, slashPrefix, type ParseResult } from "./parse";
 import { visibleTableWindow } from "./render";
 import { slashMenu } from "./slash";
@@ -574,7 +575,7 @@ function moveComposeLine(state: ViewState, direction: -1 | 1): ViewState | null 
   return { ...state, caret: nextStart + Math.min(col, nextEnd - nextStart) };
 }
 
-const DRAFT_CAP = 50;
+const DRAFT_CAP = COMPOSE_HISTORY_CAP;
 
 /** Keep a submitted compose line. Consecutive duplicates stay one entry. */
 function rememberDraft(state: ViewState, text: string): ViewState {

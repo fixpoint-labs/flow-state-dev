@@ -45,6 +45,7 @@ import {
 } from "../conductor/dispatch";
 import { runConductorHeadless } from "../conductor/headless";
 import { runConductorTui } from "../conductor/loop";
+import { lastDraftsPath } from "../conductor/compose-history";
 import { lastFocusPath } from "../conductor/last-focus";
 import { boundedDispose, TUI_LEAVE_DRAIN_MS } from "../conductor/leave";
 
@@ -116,6 +117,8 @@ export interface ConductorCommandInternalOptions extends ConductorCommandOptions
   tty?: boolean;
   /** Sidecar that remembers the selected issue across `/quit`. Tests inject a temp path. */
   lastFocusPath?: string;
+  /** Sidecar that remembers submitted compose lines across `/quit`. Tests inject a temp path. */
+  lastDraftsPath?: string;
   /**
    * How long a TUI leave waits for host dispose. Default matches the engine's
    * abort-unwind reserve. Tests shorten this so a hang cannot stall the suite.
@@ -338,6 +341,11 @@ export async function executeConductorCommand(
       (resolved.source === "config"
         ? lastFocusPath(resolved.configPath, dispatch.sessionId, epicLabel)
         : undefined);
+    const draftsFile =
+      options.lastDraftsPath ??
+      (resolved.source === "config"
+        ? lastDraftsPath(resolved.configPath, dispatch.sessionId, epicLabel)
+        : undefined);
 
     if (invocation.mode === "tui") {
       return await runConductorTui({
@@ -347,6 +355,7 @@ export async function executeConductorCommand(
         output: options.output,
         ...(invocation.issue !== undefined ? { focusIssue: invocation.issue } : {}),
         ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
+        ...(draftsFile !== undefined ? { lastDraftsPath: draftsFile } : {}),
         ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
       });
     }
@@ -374,6 +383,7 @@ export async function executeConductorCommand(
         output: options.output,
         focusIssue: invocation.command.issue,
         ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
+        ...(draftsFile !== undefined ? { lastDraftsPath: draftsFile } : {}),
         ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
       });
     }

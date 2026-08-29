@@ -1588,6 +1588,23 @@ describe("renderFrame", () => {
     expect(above).not.toContain("Open a pull request");
   });
 
+  it("shows eight wrapped lines of a long question, then how many more", () => {
+    const words = Array.from({ length: 10 }, (_, i) => `AskLine${i + 1}${"x".repeat(64)}`);
+    const parked: StatusRow = {
+      ...waiting,
+      questions: [{ ...waiting.questions[0]!, text: words.join(" ") }],
+    };
+    const above = stripAnsi(
+      beforeTranscript(
+        renderFrame({ ...emptyView("epic"), rows: [parked] }, { cols: 80, rows: 40 }),
+      ),
+    );
+    expect(above).toContain("AskLine1");
+    expect(above).toContain("AskLine8");
+    expect(above).not.toContain("AskLine9");
+    expect(above).toContain("… 2 more");
+  });
+
   it("paints a plan checklist and a Read peek in the transcript", () => {
     const running: StatusRow = {
       taskId: "LIVE-1--implement",
@@ -2059,5 +2076,28 @@ describe("renderBoardPlain / watchExitCode", () => {
       rows: Array<{ now?: string }>;
     };
     expect(bare.rows[0]?.now).toBeUndefined();
+  });
+});
+
+describe("renderFrame help", () => {
+  it("fits the board keys on a 24-line terminal and keeps Esc", () => {
+    const frame = renderFrame({ ...emptyView("harness-manager"), help: true }, { cols: 80, rows: 24 });
+    const text = stripAnsi(frame);
+    expect(text).toContain("type to talk");
+    expect(text).toContain("/quit");
+    expect(text).toContain("/find");
+    expect(text).toContain("Esc or ? returns");
+    expect(text).not.toContain("Headless (scripting)");
+    expect(text).not.toContain("any key returns");
+    const lines = text.split("\n");
+    expect(lines).toHaveLength(24);
+    expect(lines.at(-1)).toMatch(/Esc or \? returns/);
+  });
+
+  it("keeps Esc when the terminal is shorter than the help list", () => {
+    const frame = renderFrame({ ...emptyView("harness-manager"), help: true }, { cols: 72, rows: 18 });
+    const lines = stripAnsi(frame).split("\n");
+    expect(lines).toHaveLength(18);
+    expect(lines.at(-1)).toMatch(/Esc or \? returns/);
   });
 });

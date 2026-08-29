@@ -210,6 +210,7 @@ export interface ViewState {
   slashAt: number;
   lastRefreshAt: number | null;
   /** Prior submitted talk, answer, and seed lines (newest last). */
+  /** Submitted compose lines, newest last. Survives `/quit` when a sidecar is set. */
   drafts: string[];
   /** Index into `drafts` while walking with ↑/↓, or `null` on the live draft. */
   draftAt: number | null;

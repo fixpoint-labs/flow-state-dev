@@ -3,7 +3,6 @@
  * assert on it. A frame that cannot be produced from a fixture is a frame
  * nobody can pin.
  */
-import { HELP_TEXT } from "./parse";
 import { slashMenu } from "./slash";
 import {
   ACCENT,
@@ -74,6 +73,12 @@ import {
 export const TABLE_BODY_MAX = 8;
 
 /**
+ * Wrapped question lines on the ASK band. More than this still shows
+ * `… N more`; the full text is on the transcript.
+ */
+export const ASK_BODY_MAX = 8;
+
+/**
  * Slice of `rows` that the table paints. `end` is exclusive.
  * When everything fits, the window is the whole board.
  */
@@ -128,7 +133,7 @@ export function windowTitleSequence(title: string): string {
 export function renderFrame(state: ViewState, size: FrameSize, now: number = Date.now()): string {
   const cols = Math.max(size.cols, MIN_COLS);
   const rows = Math.max(size.rows, MIN_ROWS);
-  if (state.help) return fit(renderHelp(cols), cols, rows);
+  if (state.help) return fit(renderHelp(cols), cols, rows, 1);
 
   const header = renderHeader(state, cols);
   const table = renderTable(state, cols, now);
@@ -281,7 +286,9 @@ function renderAskBand(state: ViewState, cols: number): string {
   if (question === undefined) return "";
   const more = selectedRow(state)?.questions.length ?? 0;
   const inner = Math.max(20, cols - 8);
-  const body = wrap(question.text, inner).slice(0, 3);
+  const wrapped = wrap(question.text, inner);
+  const body = wrapped.slice(0, ASK_BODY_MAX);
+  const hidden = wrapped.length - body.length;
   const hint = [
     question.question,
     more > 1 ? `${state.questionIndex + 1}/${more}` : undefined,
@@ -294,6 +301,7 @@ function renderAskBand(state: ViewState, cols: number): string {
     rule(cols, MAUVE),
     ` ${paint(MAUVE + BOLD, "ASK")}`,
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
+    ...(hidden > 0 ? [` ${dim(`… ${hidden} more`)}`] : []),
     ` ${dim(hint)}`,
     ...renderAttemptStrip(state, inner),
     rule(cols, MAUVE),
@@ -824,14 +832,37 @@ function composeTail(input: string, width: number, caret: number): string {
   return text.slice(0, local) + paint(ACCENT, "█") + text.slice(local);
 }
 
+/**
+ * Board keys for `?`. The CLI `--help` text does not fit a 24-line
+ * terminal; this list does, and the last line stays when the frame is
+ * shorter (`fit` pins it).
+ */
+const TUI_HELP_LINES = [
+  "  ↑/↓          row · while composing: lines, then prior sends",
+  "  PgUp/PgDn    transcript (wheel and Ctrl-u/d too)",
+  "  { / }        previous / next waiting, failed, or stalled row",
+  "  s            seed (first line issue, more lines brief)",
+  "  r            refresh",
+  "  x            stop the selected running request",
+  "  f / h / e    files, last hunk, last Read or command tail",
+  "  H            older hunk",
+  "  Ctrl-T       todo list",
+  "  /find [text] search this row's transcript",
+  "  n / N        older / newer match",
+  "  /quit        stop running work and leave",
+  "  A waiting row: type the answer. Letters are the answer.",
+  "  A new question or a finish rings and selects that row.",
+  "  Reopen lands on the row you left, per session and epic.",
+];
+
 function renderHelp(cols: number): string {
   const lines = [
     paint(BOLD + ACCENT, " CONDUCTOR "),
-    dim("the operator surface · same verbs as the flow"),
+    dim("type to talk · letters talk · /quit leaves"),
     rule(cols),
-    ...HELP_TEXT.split("\n").map((line) => (line.startsWith("  ") ? dim(line) : line)),
+    ...TUI_HELP_LINES.map((line) => dim(line)),
     "",
-    dim(" any key returns to the board"),
+    dim(" Esc or ? returns"),
   ];
   return lines.join("\n");
 }

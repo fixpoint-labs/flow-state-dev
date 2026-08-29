@@ -766,6 +766,46 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(explicitRun).resolves.toBe(0);
   });
 
+  it("reopening the board recalls a prior talk line", async () => {
+    const stores = createInMemoryStores();
+    const lastDrafts = join(mkdtempSync(join(tmpdir(), "conductor-drafts-")), "tui-drafts");
+
+    const first = fakeTty();
+    const firstRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastDraftsPath: lastDrafts,
+      input: first.input as unknown as NodeJS.ReadStream,
+      output: first.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(first.text), "FSDEV CONDUCTOR");
+    first.input.write("please retry the failed rows\r");
+    await waitFor(() => lastFrame(first.text), "you ·");
+    first.input.write("/quit\r");
+    await expect(firstRun).resolves.toBe(0);
+
+    const second = fakeTty();
+    const secondRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastDraftsPath: lastDrafts,
+      input: second.input as unknown as NodeJS.ReadStream,
+      output: second.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(second.text), "FSDEV CONDUCTOR");
+    second.input.write("x");
+    await waitFor(() => lastFrame(second.text), "↑ prior");
+    second.input.write("\x1b[A");
+    await waitFor(() => lastFrame(second.text), "please retry the failed rows");
+    second.input.write("\x1b");
+    second.input.write("/quit\r");
+    await expect(secondRun).resolves.toBe(0);
+  });
+
   it("Ctrl-C during a drain aborts the wake even if the operator hits r first", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "HANG-1"], {
