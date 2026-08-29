@@ -8,7 +8,8 @@ checkout, not this dispatcher). Opening the board and talking do not need an
 `origin` remote or `gh`. Starting a coding run does — `seed`, `wake`, and a talk
 turn that files or retries refuse before they claim if the completion check
 cannot name a repository. Sit in the product checkout and run `pnpm conductor` (repo-root script) or
-this lab's `bin/conductor`.
+this lab's `bin/conductor`. `bin/conductor install` puts `conductor` on PATH
+under `~/.local/bin`.
 The bin sets `CONDUCTOR_CONFIG` to this lab and `CONDUCTOR_REPO=.` when those
 are unset, and it does not change cwd. `--config` still wins when you pass it.
 Pointing the bin at this dispatcher is still refused.
