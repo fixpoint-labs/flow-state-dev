@@ -310,7 +310,7 @@ After `/quit`, reopening the board recalls prior compose lines for that `--sessi
 | `n` / `N` | Older / newer match while find is on |
 | `?` | Toggle board-key help. The overlay lists the board keys. Any key returns to the board. `fsdev conductor --help` and `fsdev conductor help` print the long CLI form (headless verbs, flags). |
 | `/quit` | Leave the board. Stops every running row. A row waiting on a question stays. The shell prompt returns without waiting for a stopped run to finish. The leftover line (flow `id`, then checkout basename when `CONDUCTOR_REPO` is set) is on the screen you return to. Remembers the selected row. Reopening recalls compose lines for that `--session` and epic. |
-| `Ctrl-C` | On a selected running row, stop that run and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. Leave when no row is running, even if a row is waiting on a question. Aborts a seed, wake, answer, or steer in flight |
+| `Ctrl-C` | Cancel compose (talk text, a slash line, seed, answer, or find) and stay, including an empty seed, answer, or find prompt. Seed, answer, and find return to the talk prompt. Same as `Esc`. When the prompt is empty and you are not answering, seeding, or finding, stop the selected running row and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. When no row is running, leave, even if a row is waiting on a question. While a seed, wake, answer, or steer is in flight, cancel it and stay. |
 
 You can drag-select text on the board and copy it with the terminal's usual copy command. Clicking a row does not change the selection. The mouse wheel does not scroll the transcript.
 
