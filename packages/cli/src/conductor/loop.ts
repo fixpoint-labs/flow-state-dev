@@ -27,6 +27,7 @@ import { createChildFollow } from "./follow";
 import {
   clampSelected,
   dropRequestActivity,
+  focusNewlyAsked,
   echoTalk,
   emptyView,
   pushActivity,
@@ -177,9 +178,13 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     if (closed || seq !== refreshSeq) return;
     if (result.error !== undefined) throw new Error(result.error);
     const nextRows = result.output?.rows ?? [];
-    const asked = newlyAsked(state.rows, nextRows);
+    const prevRows = state.rows;
+    const asked = newlyAsked(prevRows, nextRows);
     state = applyStatus(state, result.output ?? { rows: [] }, now());
-    if (asked) output.write("\x07");
+    if (asked) {
+      output.write("\x07");
+      state = focusNewlyAsked(prevRows, state);
+    }
     follow.sync(idsToFollow(state));
     void loadSelectedJournal();
     endTurn();

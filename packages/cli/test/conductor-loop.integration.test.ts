@@ -471,6 +471,43 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("a new question selects that row when compose is idle", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "ASK-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+
+    await waitFor(() => lastFrame(tty.text), "LIVE-1");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
+
+    tty.input.write("/wake\r");
+    await waitFor(() => tty.text, "Which path?");
+    expect(tty.text).toContain("\x07");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+ASK-1/);
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
   it("opening on an issue selects it once; later polls keep the row the operator moved to", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "LIVE-1"], {

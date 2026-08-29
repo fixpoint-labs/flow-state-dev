@@ -345,6 +345,31 @@ export function clampSelected(state: ViewState): ViewState {
   return { ...state, selected, questionIndex };
 }
 
+/**
+ * When a poll surfaces a new question and the operator is not composing,
+ * select that row so the ASK band is the thing on screen.
+ */
+export function focusNewlyAsked(prev: StatusRow[], state: ViewState): ViewState {
+  if (state.inputMode !== "command" || state.input !== "") return state;
+  const index = state.rows.findIndex((row) => {
+    const before = prev.find((r) => r.taskId === row.taskId);
+    if (before === undefined) return row.questions.length > 0;
+    return row.questions.some((q) => !before.questions.some((p) => p.question === q.question));
+  });
+  if (index < 0) return state;
+  const row = state.rows[index]!;
+  const before = prev.find((r) => r.taskId === row.taskId);
+  const questionIndex = row.questions.findIndex(
+    (q) => before === undefined || !before.questions.some((p) => p.question === q.question),
+  );
+  return clampSelected({
+    ...state,
+    selected: index,
+    questionIndex: questionIndex < 0 ? 0 : questionIndex,
+    scroll: 0,
+  });
+}
+
 /** Newest this many lines are kept per unselected request, and for board-only lines. */
 export const ACTIVITY_CAP = 2000;
 

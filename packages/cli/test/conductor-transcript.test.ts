@@ -12,6 +12,7 @@ import {
   ACTIVITY_CAP,
   activityForView,
   emptyView,
+  focusNewlyAsked,
   fileFromToolLine,
   findMatches,
   pushActivity,
@@ -1276,6 +1277,51 @@ describe("newlyAsked", () => {
       }),
     ];
     expect(newlyAsked(rows, rows)).toBe(false);
+  });
+});
+
+describe("focusNewlyAsked", () => {
+  const question = {
+    question: "ASK-1/implement/1/q",
+    text: "Which path?",
+    attempt: 1,
+    askedAt: 1,
+  };
+
+  it("selects the row that just asked when compose is idle", () => {
+    const prev = [row("LIVE-1", "in_progress"), row("ASK-1", "in_progress")];
+    const next = [
+      row("LIVE-1", "in_progress"),
+      row("ASK-1", "awaiting_review", { questions: [question] }),
+    ];
+    const state = { ...emptyView("epic"), rows: next, selected: 0 };
+    const focused = focusNewlyAsked(prev, state);
+    expect(focused.selected).toBe(1);
+    expect(focused.questionIndex).toBe(0);
+  });
+
+  it("does not steal the selection while the operator is typing", () => {
+    const prev = [row("LIVE-1", "in_progress"), row("ASK-1", "in_progress")];
+    const next = [
+      row("LIVE-1", "in_progress"),
+      row("ASK-1", "awaiting_review", { questions: [question] }),
+    ];
+    const state = { ...emptyView("epic"), rows: next, selected: 0, input: "halfway" };
+    expect(focusNewlyAsked(prev, state).selected).toBe(0);
+  });
+
+  it("does not steal while answering or seeding", () => {
+    const prev = [row("ASK-1", "in_progress")];
+    const next = [row("ASK-1", "awaiting_review", { questions: [question] })];
+    const answering = {
+      ...emptyView("epic"),
+      rows: next,
+      inputMode: "answer" as const,
+      answering: "other/q",
+    };
+    expect(focusNewlyAsked(prev, answering).selected).toBe(0);
+    const seeding = { ...emptyView("epic"), rows: next, inputMode: "seed" as const };
+    expect(focusNewlyAsked(prev, seeding).selected).toBe(0);
   });
 });
 

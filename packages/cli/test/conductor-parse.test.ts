@@ -200,7 +200,7 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("Letters talk");
     expect(HELP_TEXT).toContain("r still refreshes");
     expect(HELP_TEXT).toContain("Letters are the answer, not board keys");
-    expect(HELP_TEXT).toContain("A new question rings the terminal bell");
+    expect(HELP_TEXT).toContain("A new question rings the terminal bell and selects that row when you are not typing");
     expect(HELP_TEXT).toContain("errored or cancelled row is spent");
     expect(HELP_TEXT).toContain("More lines — or words after the id — are the brief attempt 1 reads");
     expect(HELP_TEXT).toContain("seed <issue> [--phase implement] [brief…]");
