@@ -189,7 +189,7 @@ fsdev conductor abort PR-482
 | `steer <message…>` | Talk to the coordinator. An unslashed line that is not a known verb is the same command. Talking can start work. The coordinator may file a row. `--json` prints `{ "message": "<reply>" }` and omits the board |
 | `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
 | `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
-| `start <issue> [brief…]` | Seed, then TUI on a TTY, or seed-and-watch on a pipe. Extra words after the issue id are the brief |
+| `start <issue> [brief…]` | On a TTY, open the board, then file the row focused on that issue. On a pipe, seed then watch. Extra words after the issue id are the brief |
 | `help` / `-h` | Print the help text |
 
 **Options:**
@@ -207,7 +207,7 @@ fsdev conductor abort PR-482
 | `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
 | `--quiet` | Suppress runtime logs on stderr |
-| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (board default: silent; headless default: `warn`) |
+| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (board and interactive `start`: silent; other headless: `warn`) |
 
 **Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `watch`, `abort`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call failed, `2` at least one open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always returns `0`. `steer` returns `0` when the talk succeeds, even when the board then has a pending, running, failed, or open-question row; when the action returns an error it prints the error and returns `1`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`). `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and returns that board code. With no running request id it prints `nothing running to stop` and returns `1`.
 

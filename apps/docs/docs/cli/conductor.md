@@ -437,7 +437,7 @@ no rows
 | `steer <message…>` | Talk to the coordinator. An unslashed line that is not a known verb is the same command (`fsdev conductor please start FIX-99`) |
 | `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
 | `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1`. A stop on a named issue reprints that last attempt on stderr, and prints last tool, files, hunk, and current todo on stdout |
-| `start <issue> [brief…]` | Seed, then open the TUI on a TTY, or seed-and-watch on a pipe. Extra words after the issue id are the brief |
+| `start <issue> [brief…]` | On a TTY, open the board, then file the row focused on that issue. On a pipe, seed then watch that issue. Extra words after the issue id are the brief |
 | `help` | Print the long CLI help (headless verbs, flags). On the board, `?` lists the board keys. |
 
 `find` is TUI-only. `fsdev conductor find` prints `that verb is TUI-only — run \`fsdev conductor\` with no verb` and exits `1`. It does not print a hit list.
@@ -583,9 +583,18 @@ A last attempt failed when a row's `status` is `errored` or `cancelled`, or when
 ```bash
 fsdev conductor start PR-482
 fsdev conductor start PR-482 Rename getSession in the docs
+conductor start PR-482
 ```
 
-`start` seeds the row, then hands off: on a TTY it opens the board focused on that row; on a pipe it seeds and then behaves like `watch <issue>`, same polling and exit codes.
+`start` files a row through `seed`. `--phase` applies. Extra words after the issue id are `brief`. Without an issue id, the command prints `start needs an issue id` and exits `2`.
+
+On a TTY it opens the fullscreen board, then files the row. The line left on the main screen before the board is the flow `id`, then ` · ` and the checkout basename when `CONDUCTOR_REPO` is set. There is no ISSUE/PHASE table on that screen. After the board is open, the seeded issue is the selected row. When seed succeeds, activity includes `seeded PR-482 → PR-482--implement`. Interactive `start` uses the same silent log default as `tui`. If that issue/phase pair already has a row, seed writes no new row and the board opens focused on that row.
+
+On a pipe it seeds, then watches that issue the same way `watch <issue>` does. It prints the seed line and the watch dump (issue id, pending, and the rest of that print) and uses the watch exit codes.
+
+On an open board, `/start <issue>` files a row the same way `/seed <issue>` does.
+
+Filing a row does not implement or edit product code. Workers do that after the row is filed. On a TTY, `start` does not exit when a coding run finishes.
 
 ## Flags
 
@@ -603,7 +612,7 @@ fsdev conductor start PR-482 Rename getSession in the docs
 | `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. A missing path errors with `Config file not found: …`. |
 | `CONDUCTOR_REPO` | When set, the fullscreen header, tab title, leftover line after `/quit`, and headless board dumps include the basename of that checkout. A blank value is treated as unset. |
 | `--quiet` | Suppress runtime logs on stderr |
-| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (board default: silent; headless default: `warn`) |
+| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (board and interactive `start`: silent; other headless: `warn`) |
 
 Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md): an `fsdev.config.ts` in the cwd wins over directory discovery, and `--session` names the session every `wake` runs under, not a per-row session.
 
@@ -651,6 +660,7 @@ The lab config refuses when `CONDUCTOR_REPO` names the repository that contains 
 ## What it won't do
 
 - Talking is a coordinator turn, not a coding session. The coordinator does not implement or edit product code. Workers do that after a row is filed or woken.
+- `start` files a row. It does not implement or edit product code. On a TTY it does not exit when a coding run finishes.
 - Talking needs a configured model resolver. Opening the board does not.
 - A coding worker needs whatever auth that worker uses.
 - For a conversation REPL, use [`fsdev chat`](./interactive-chat.md).
