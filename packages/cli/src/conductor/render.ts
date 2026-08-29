@@ -475,6 +475,7 @@ function renderRunBand(
     doing !== undefined && doing !== ""
       ? ` ${paint(GOLD, paintToolNow(doing, inner, tree ?? null))}`
       : "";
+  const brief = rowBrief(row);
   const extras = [
     ...(nowLine !== "" ? [nowLine] : []),
     ...renderReadPeek(state, inner),
@@ -482,6 +483,7 @@ function renderRunBand(
     ...renderFileLines(state, inner),
     ...renderHunkLines(state, inner),
     ...renderPlanLines(state, inner),
+    ...(brief !== null ? [` ${dim("brief")}  ${truncate(brief, inner)}`] : []),
   ].slice(0, stripMax);
   return [
     rule(cols, ACCENT),

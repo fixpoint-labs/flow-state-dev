@@ -399,7 +399,7 @@ describe("renderFrame", () => {
     expect(text).not.toContain("/find");
   });
 
-  it("shows the seed brief on a pending row, a parked ASK, and headless status", () => {
+  it("shows the seed brief on a pending row, a parked ASK, a RUN band, and headless status", () => {
     const pending: StatusRow = {
       ...failed,
       issue: "FIX-1049",
@@ -431,6 +431,17 @@ describe("renderFrame", () => {
     );
     expect(beforeTranscript(ask)).toContain("Rename getSession in client.md");
     expect(ask).toContain("TRANSCRIPT");
+
+    const running: StatusRow = {
+      ...pending,
+      status: "in_progress",
+      run: { ...pending.run!, outcome: "running", requestId: "req-live-1" },
+    };
+    const run = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [running] }, { cols: 80, rows: 24 }),
+    );
+    expect(beforeTranscript(run)).toContain("Rename getSession in client.md");
+    expect(run).toContain("TRANSCRIPT");
 
     const text = renderBoardPlain([parked], false);
     expect(text).toContain("Rename getSession in client.md");
