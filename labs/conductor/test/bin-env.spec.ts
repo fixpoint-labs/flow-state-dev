@@ -4,10 +4,11 @@
  * that an explicit value wins.
  */
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   applyConductorBinDefaults,
   conductorRepoMismatch,
@@ -146,6 +147,44 @@ describe("conductorRepoMismatch", () => {
         CONDUCTOR_RUN_TIMEOUT_MS: "600000",
       }),
     ).toEqual(["CONDUCTOR_RUN_TIMEOUT_MS"]);
+  });
+
+  it("is the refuse the lab config door uses", () => {
+    const config = readFileSync(path.join(labRoot, "fsdev.config.ts"), "utf8");
+    expect(config).toContain("conductorRepoMismatch");
+    expect(config).toContain("formatRepoMismatch");
+  });
+
+  it("throws from the lab config when leftover CONDUCTOR_REPO is another checkout", () => {
+    const here = scratch();
+    const leftover = scratch();
+    const tsx = path.resolve(labRoot, "../../node_modules/.bin/tsx");
+    const config = path.join(labRoot, "fsdev.config.ts");
+    try {
+      let stderr = "";
+      try {
+        const loader = path.join(here, "load-lab-config.mts");
+        writeFileSync(
+          loader,
+          `import ${JSON.stringify(pathToFileURL(config).href)};\n`,
+        );
+        execFileSync(tsx, [loader], {
+          cwd: here,
+          env: { ...process.env, CONDUCTOR_REPO: leftover },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (err) {
+        const failed = err as { stderr?: string; stdout?: string; message?: string };
+        stderr = `${failed.stderr ?? ""}\n${failed.stdout ?? ""}\n${failed.message ?? ""}`;
+      }
+      expect(stderr).toMatch(/CONDUCTOR_REPO is /);
+      expect(stderr).toMatch(/standing in/);
+      expect(stderr).toContain(leftover);
+    } finally {
+      rmSync(here, { recursive: true, force: true });
+      rmSync(leftover, { recursive: true, force: true });
+    }
   });
 
   it("is undefined when cwd is not a git checkout", () => {

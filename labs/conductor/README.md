@@ -17,7 +17,8 @@ The board lives next to this config, not next to cwd, so the same epic is
 the same board from either directory. `pnpm --dir labs/conductor` changes cwd
 to the lab — use `pnpm conductor` from the product root, or invoke the bin by
 path. From the repo root, `fsdev conductor` will not find this flow unless
-`CONDUCTOR_CONFIG` or `--config` names it.
+`CONDUCTOR_CONFIG` or `--config` names it. That door applies the same leftover
+`CONDUCTOR_REPO` refuse as the PATH bin.
 
 A live Claude child authenticates through the Agent SDK. If `ANTHROPIC_API_KEY` is set
 and invalid, it wins over `CLAUDE_CODE_OAUTH_TOKEN` and every implement 401s — unset the

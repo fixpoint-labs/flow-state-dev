@@ -682,7 +682,7 @@ CONDUCTOR_AGENT_MODEL, CONDUCTOR_BASE_REF, CONDUCTOR_MAX_ATTEMPTS, CONDUCTOR_RUN
 
 The refuse does not print when you are not standing in a git checkout, or when `CONDUCTOR_REPO` is this same checkout, including `.`. Standing in the repository that contains `labs/conductor` does not print this message, even when `CONDUCTOR_REPO` names another checkout.
 
-Running `fsdev conductor` directly does not apply this check.
+Loading this lab's config applies the same check — `fsdev conductor --config labs/conductor`, or `CONDUCTOR_CONFIG` pointed at it. A kitchen-sink or fixture `fsdev conductor` does not.
 
 The lab config refuses when `CONDUCTOR_REPO` names the repository that contains `labs/conductor`. From this repo root, `pnpm conductor` with `CONDUCTOR_REPO` unset fills `.`, which is that repository.
 
@@ -707,7 +707,7 @@ The lab config refuses when `CONDUCTOR_REPO` names the repository that contains 
 - A talk turn that only reads the board does not change the selected row.
 - Headless `seed`, `wake`, and `steer` do not open the board.
 - Without a loaded config, the board does not remember the selected row, compose lines, or talk after `/quit`.
-- After `/quit`, only talk lines are recalled on the board strip and on TRANSCRIPT. Status-poll lines and that row's coding tools are not.
+- After `/quit`, only talk lines are recalled on the board strip. Status-poll lines and that row's coding tools are not. They do not appear on TRANSCRIPT.
 - Talk recall keeps the newest 50 talk lines.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
@@ -722,7 +722,7 @@ The lab config refuses when `CONDUCTOR_REPO` names the repository that contains 
 - There is no verb that switches flow ids. Run a second `fsdev conductor` for the other flow.
 - Your `status` action returns `rows`. The printed JSON board also has `epic`, and `repo` when `CONDUCTOR_REPO` is set.
 - `CONDUCTOR_REPO` names the checkout in the fullscreen header, the tab title, the leftover line after `/quit`, and headless board dumps. It does not pick the flow or the config.
-- The PATH `conductor` bin prints on stderr and exits `1` when you stand in one git checkout and `CONDUCTOR_REPO` names another. Standing in the repository that contains `labs/conductor` does not print this message, even when `CONDUCTOR_REPO` names another checkout. Unset `CONDUCTOR_REPO` with `CONDUCTOR_EPIC` and `CONDUCTOR_CHECKOUTS` to use the directory you are standing in, or `cd` to the named `CONDUCTOR_REPO`. A third line appears only when other non-blank `CONDUCTOR_*` values remain; it names them and says they will still apply. `CONDUCTOR_CONFIG` is omitted, and the three names from the second line are not repeated. Running `fsdev conductor` directly does not print that refuse.
+- The PATH `conductor` bin prints on stderr and exits `1` when you stand in one git checkout and `CONDUCTOR_REPO` names another. Loading this lab's config (`fsdev conductor --config` / `CONDUCTOR_CONFIG`) refuses the same leftover. Standing in the repository that contains `labs/conductor` does not print this message, even when `CONDUCTOR_REPO` names another checkout. Unset `CONDUCTOR_REPO` with `CONDUCTOR_EPIC` and `CONDUCTOR_CHECKOUTS` to use the directory you are standing in, or `cd` to the named `CONDUCTOR_REPO`. A third line appears only when other non-blank `CONDUCTOR_*` values remain; it names them and says they will still apply. `CONDUCTOR_CONFIG` is omitted, and the three names from the second line are not repeated. A kitchen-sink or fixture `fsdev conductor` does not print that refuse.
 - The lab config refuses when `CONDUCTOR_REPO` names the repository that contains `labs/conductor`.
 
 ## Related pages

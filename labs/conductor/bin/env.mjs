@@ -6,12 +6,13 @@
  * blank. A match with the dispatcher is still refused after the config loads.
  *
  * After the fill, a leftover `CONDUCTOR_REPO` that names a different git
- * checkout than cwd is refused. The board would otherwise operate on that
- * other tree while you are standing in this one. Unsetting only
- * `CONDUCTOR_REPO` still leaves `CONDUCTOR_EPIC` and `CONDUCTOR_CHECKOUTS`
- * pointed at that other board, so the refuse names all three. Other
- * `CONDUCTOR_*` knobs stay set after that trio is unset, so the refuse
- * names those too when they are present.
+ * checkout than cwd is refused — from this bin, and from the lab config
+ * door (`fsdev conductor --config` / `CONDUCTOR_CONFIG`). The board would
+ * otherwise operate on that other tree while you are standing in this one.
+ * Unsetting only `CONDUCTOR_REPO` still leaves `CONDUCTOR_EPIC` and
+ * `CONDUCTOR_CHECKOUTS` pointed at that other board, so the refuse names
+ * all three. Other `CONDUCTOR_*` knobs stay set after that trio is unset,
+ * so the refuse names those too when they are present.
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";

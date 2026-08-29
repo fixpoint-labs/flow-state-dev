@@ -38,13 +38,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFlowState, createModelResolver, filesystemStores } from "@flow-state-dev/engine";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
+import { conductorRepoMismatch, formatRepoMismatch } from "./bin/env.mjs";
 import { assertBaseRefExists, positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
 const RUN_TIMEOUT_MS = positiveIntFromEnv("CONDUCTOR_RUN_TIMEOUT_MS", 1_800_000);
 // This file's directory, not cwd. Sitting in the product and passing --config
 // must see the same board as `pnpm conductor` from this lab. A cwd-relative
 // `.fsdev` opened an empty store beside the product instead.
-const root = path.join(path.dirname(fileURLToPath(import.meta.url)), ".fsdev");
+const labRoot = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(labRoot, ".fsdev");
+
+// Same leftover refuse as the PATH bin. `fsdev conductor --config` this
+// lab used to skip it, so a leftover CONDUCTOR_REPO silently aimed the
+// board at another checkout. Standing in the dispatcher is still allowed.
+const leftoverRepo = conductorRepoMismatch(process.env, process.cwd(), labRoot);
+if (leftoverRepo !== undefined) {
+  throw new Error(formatRepoMismatch(leftoverRepo, process.env).trimEnd());
+}
 
 const sourceRepo = requireSourceRepo();
 const baseRef = process.env.CONDUCTOR_BASE_REF ?? "main";
