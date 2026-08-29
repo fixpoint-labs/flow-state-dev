@@ -15,7 +15,7 @@ import {
   type ConductorAction,
   type ConductorDispatch,
 } from "./dispatch";
-import { applyKey, decodeKeys, rowAfterRefresh, type Key } from "./keys";
+import { applyKey, decodeKeys, ESC_FLUSH_MS, flushHeldKeys, rowAfterRefresh, type Key } from "./keys";
 import { conductorWindowTitle, formatBoardIdentity, renderFrame, windowTitleSequence } from "./render";
 import {
   applyTranscriptPatch,
@@ -116,6 +116,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     if (drafts.length > 0) state = { ...state, drafts };
   }
   let pending = "";
+  let escFlush: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
   let abortInFlight: (() => void) | undefined;
   let refreshSeq = 0;
@@ -420,8 +421,30 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     });
   };
 
+  const armEscFlush = () => {
+    if (escFlush !== undefined) {
+      clearTimeout(escFlush);
+      escFlush = undefined;
+    }
+    if (pending !== "\x1b") return;
+    escFlush = setTimeout(() => {
+      escFlush = undefined;
+      if (closed || pending !== "\x1b") return;
+      const flushed = flushHeldKeys(pending);
+      pending = flushed.rest;
+      for (const key of flushed.keys) {
+        handleKey(key);
+        if (closed) break;
+      }
+    }, ESC_FLUSH_MS);
+  };
+
   const onData = (buf: Buffer | string) => {
     if (closed) return;
+    if (escFlush !== undefined) {
+      clearTimeout(escFlush);
+      escFlush = undefined;
+    }
     const chunk = typeof buf === "string" ? buf : buf.toString("utf8");
     const decoded = decodeKeys(chunk, pending);
     pending = decoded.rest;
@@ -429,6 +452,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       handleKey(key);
       if (closed) break;
     }
+    armEscFlush();
   };
 
   const onSigint = () => {
@@ -442,6 +466,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   const session = new Promise<void>((resolve) => {
     finish = () => {
       if (poll !== undefined) clearInterval(poll);
+      if (escFlush !== undefined) clearTimeout(escFlush);
       input.off("data", onData);
       process.off("SIGINT", onSigint);
       resolve();

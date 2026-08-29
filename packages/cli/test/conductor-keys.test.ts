@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyKey, decodeKeys, rowAfterRefresh } from "../src/conductor/keys";
+import { applyKey, decodeKeys, flushHeldKeys, rowAfterRefresh } from "../src/conductor/keys";
 import { applyStatus, bindsOperatorAbort, canStartBoardRefresh } from "../src/conductor/loop";
 import {
   ACTIVITY_CAP,
@@ -85,6 +85,19 @@ describe("decodeKeys", () => {
     const first = decodeKeys("\x1b[200~hel");
     expect(first.keys).toEqual([]);
     expect(decodeKeys("lo\x1b[201~", first.rest).keys).toEqual([{ type: "paste", value: "hello" }]);
+  });
+
+  it("holds a lone Esc so a split CSI can still complete", () => {
+    const held = decodeKeys("\x1b");
+    expect(held.keys).toEqual([]);
+    expect(held.rest).toBe("\x1b");
+    expect(decodeKeys("[A", held.rest).keys).toEqual([{ type: "up" }]);
+  });
+
+  it("flushes a lone Esc as cancel and leaves incomplete CSI held", () => {
+    expect(flushHeldKeys("\x1b")).toEqual({ keys: [{ type: "escape" }], rest: "" });
+    expect(flushHeldKeys("\x1b[")).toEqual({ keys: [], rest: "\x1b[" });
+    expect(flushHeldKeys("")).toEqual({ keys: [], rest: "" });
   });
 
   it("holds an incomplete CSI so the next chunk can finish it", () => {

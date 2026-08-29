@@ -67,6 +67,22 @@ export interface KeyResult {
 }
 
 /**
+/**
+ * How long a trailing Esc is held so a split CSI can still complete.
+ * After this, a lone Esc is cancel — the key grok uses to leave compose.
+ */
+export const ESC_FLUSH_MS = 50;
+
+/**
+ * A trailing Esc that never grew into CSI is cancel. Incomplete CSI stays
+ * in `rest` so a split arrow is not dropped by the same timer.
+ */
+export function flushHeldKeys(rest: string): { keys: Key[]; rest: string } {
+  if (rest === "\x1b") return { keys: [{ type: "escape" }], rest: "" };
+  return { keys: [], rest };
+}
+
+/**
  * Decode a raw-mode stdin chunk into keys. A paste arrives as many printable
  * chars unless the terminal wrapped it in bracketed-paste CSI; an arrow is
  * one CSI sequence. Incomplete CSI at the end of a chunk is returned as

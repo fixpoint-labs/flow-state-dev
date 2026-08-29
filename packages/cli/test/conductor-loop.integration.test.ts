@@ -1059,6 +1059,37 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("cancels seed compose on Esc without another key", async () => {
+    const stores = createInMemoryStores();
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 10_000,
+    });
+
+    await waitFor(() => tty.text, "type to talk");
+    tty.input.write("s");
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "❯ seed");
+    expect(stripAnsi(lastFrame(tty.text))).toContain("issue id");
+
+    tty.input.write("\x1b");
+    await waitFor(() => {
+      const frame = stripAnsi(lastFrame(tty.text));
+      return frame.includes("❯ seed") ? "" : "idle";
+    }, "idle");
+    const frame = stripAnsi(lastFrame(tty.text));
+    expect(frame).not.toContain("❯ seed");
+    expect(frame).toContain("type to talk  ·  s seed");
+    expect(frame).not.toContain("seeded");
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
   it("talks from an empty board even when the first letter is a row key", async () => {
     const stores = createInMemoryStores();
     const tty = fakeTty();
