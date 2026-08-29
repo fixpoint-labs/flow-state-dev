@@ -130,15 +130,23 @@ reflexively. User- and org-scoped resources are already cross-flow shared. Only 
 deliberate `isolateUserState: true` splits, and that author already asked for
 per-flow state.
 
-**Cross-flow spawn is separable from the routing fix, and phasing it is worth
-considering.** The conductor limits this proposal fixes are solved by `tasks`
-being a *map* — spec / implement / review as three entries on one flow — so
-cross-flow is not load-bearing for them. Deferring it to a phase 2 would still
-delete the binding machinery and the shape-sniff, and would leave out the two
-guards it drags in (the lineage-bucket refusal below, and the widened
-`startTask` authority). Kept in v1 here because it is the half of the original
-idea that makes flows the unit of composition; splitting it is the user's call,
-not a correction.
+**Cross-flow spawn should be phase 2, and this is a changed recommendation.**
+It went in as a v1 peer of the routing fix. Review then surfaced two things that
+were checked and hold, and both are cross-flow's alone:
+
+- The lineage-bucket collision **cannot** be refused where this doc first said it
+  could, and closing it needs a mechanism that does not exist (#2 below).
+- The child listing's `flowKind` clause is an **authentication** boundary, so
+  cross-flow children need per-child authorization or they leak (#3 below).
+
+Neither touches same-flow work. Meanwhile the conductor limits this proposal
+fixes are solved by `tasks` being a *map* — spec / implement / review as three
+entries on one flow — so cross-flow is not load-bearing for them either.
+
+A same-flow v1 still deletes the binding machinery, kills the shape-sniff, and
+carries the session-handle resume. Cross-flow keeps the idea that makes flows the
+unit of composition, and it should land once it can pay for the two guards above.
+Phasing is the author's call; the recommendation is now to split.
 
 ### 3. Session handles live on the task row
 
@@ -253,11 +261,45 @@ through.
 lineage is single-flow, so two declarations of the same storage key with different
 schemas cannot meet. Cross-flow spawn makes that reachable.
 
-Small and closable: refuse at context construction, exactly as the existing
-`flowIsolation` prefix-disagreement check already does
-(`createExecutionContext.ts`, the `sharedToWorkstream` bucket map).
+**I proposed refusing this at context construction, and that does not work.**
+Checked against the code after review raised it: `buildScopeBuckets`
+(`createExecutionContext.ts:946`) builds its bucket map from
+`sessionResourceConfigs` — *the currently executing flow's* resources — and the
+throw it raises fires on two collections **within one flow** sharing a prefix
+with conflicting flags. It has no cross-flow visibility, and persisted
+resource-state rows carry values and versions but no schema identity, so flow B
+has nothing to compare flow A's declaration against.
 
-### 3. Session-handle reuse needs a check that is not free
+Closing it properly needs something that does not exist today: a lineage-level
+declaration registry, or a stable schema fingerprint stored beside the rows.
+That is real work, and it is work cross-flow spawn creates. It moves this from
+"small and closable" to a genuine cost of legalizing cross-flow.
+
+### 3. Cross-flow children collide with the child listing's auth boundary
+
+The deletions table below calls the parent-to-child listing "same handler,
+honest name." For same-flow children that holds. For cross-flow children it does
+not, and the reason is stronger than a filter needing a tweak.
+
+`parentIdentity` (`workstream-routes.ts:218`) conjoins `flowKind: parent.flowKind`
+into `SessionStore.list`, and its own contract says why: *"the flow-kind one is
+an **authentication** boundary: a public parent authorizes anonymously, so a
+child stamped with a protected flow's kind would be handed to a caller hop 2
+refuses."*
+
+So cross-flow spawn forces a choice, and both arms cost something:
+
+- **Keep the filter** → cross-flow children vanish from the listing, and the
+  session tree the proposal promises is incomplete.
+- **Drop the filter** → a public flow spawning into a protected one discloses
+  that child to an anonymous caller. That is the disclosure the clause exists to
+  prevent.
+
+Neither is acceptable as-is, so cross-flow needs **per-child authorization** on
+this route — resolve each child's own flow and authorize it, rather than
+authorizing the parent once. That is a new mechanism, not a rename.
+
+### 4. Session-handle reuse needs a check that is not free
 
 I assumed the board's rows all hang off one parent session and checked — they do
 not. `defineTaskCollection` accepts `scope: "session" | "user" | "org"`, and at
@@ -275,13 +317,26 @@ Two options, pick one:
 Also: `parentSessionId` is what the child listing keys on. Keep it immutable at
 creation. A mutable parentage makes the listing stop being historical.
 
-### 4. `startTask` is a wider verb than `startDetached`
+### 5. `startTask` is a wider verb than `startDetached`
 
 `startDetached` takes a seed and an opaque payload. `startTask` takes a flow or a
 session handle plus a task name — more surface, and two of those are strings a
 block author chooses. The seam still supplies all *authority* (principal, tenant,
-org, derived session id); what widens is the *target*. That is the trade the whole
-proposal rests on, and it is the right one — but it is a widening, not a narrowing.
+org, derived session id); what widens is the *target*.
+
+**"The seam supplies authority" is not a spawn rule, and the proposal owes one.**
+Which flows and which tasks may a given block spawn into? Three candidate
+answers, none yet chosen: an allowlist declared on the spawning flow; a
+parent-flow constraint (same flow only, which is what deferring cross-flow buys
+for free); or board ownership, where a board may only spawn tasks it declares.
+Same-flow-only makes the question disappear; cross-flow makes it mandatory.
+
+**Multi-board naming is the other thing the address drop costs.** Today the
+address is `(boardId, coordinateKey)`; `(flow, task)` drops `boardId`. Two boards
+on one flow that both detach an `implement` worker need distinct task names —
+which `flow.tasks` gives by construction, since it is a map — but nothing then
+links a board's coordinate to the task name it should spawn into. That is the
+same sync burden as open decision 3, and the same shared-const answer closes it.
 
 ---
 
@@ -316,7 +371,7 @@ would be the single most damaging line in this change.
 | `declareWorkstreamBindings` | replaced by the claim gate chosen in open decision 1 | §"more complicated" #1 |
 | `WORKSTREAM_SOURCE` (`"workstream"`) | `TASK_SOURCE` (`"task"`) | still terminal, still off the re-entry allow-list |
 | `no-workstream-core`, `board-not-routable` | — | inference failures; no longer reachable |
-| `GET /sessions/:id/workstreams` | `GET /sessions/:id/children` | same handler, honest name |
+| `GET /sessions/:id/workstreams` | `GET /sessions/:id/children` | honest name; same handler **only for same-flow children** — see §"more complicated" #3 |
 | `sharedToWorkstream` | `sharedToLineage` | see below |
 | devtool "Workstreams" tab | spawned sessions / session tree | |
 | `deriveChildSessionId`, topic/key seed | kept | shrinks to "first spawn for this row" |
@@ -346,11 +401,25 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 - **Cross-flow spawn shares user resources.** A parent in flow A spawns into flow
   B; both read one user-scoped resource with default isolation. Pass: same cell.
 - **Lineage-bucket collision refused.** Two flows in one lineage declaring the same
-  storage key with different schemas. Pass: refused at context construction.
+  storage key with different schemas. Pass: refused — **by the registry or
+  fingerprint §"more complicated" #2 now says this needs.** The original wording
+  here ("refused at context construction") was checked and is unimplementable:
+  the bucket map sees one flow. Any phase that legalizes cross-flow owes this
+  mechanism first; this bullet does not pass without it.
+- **Cross-flow children list without disclosure.** A public flow spawns into a
+  protected one; list the public parent's children anonymously. Pass: the
+  protected child is refused per-child, not filtered out wholesale and not
+  returned. Same-flow listing unchanged.
 - **Handle-reuse boundary.** A user-scoped board drained from two sessions; a
   handle from session A reused from session B. Pass: refused (or unreachable,
   depending on which option open decision 2 takes).
-- **Conductor's limits are gone.** Two phases on one flow, one host, one board, no
+- **Conductor's *workstream-core* limits are gone** — scoped deliberately, because
+  one of its three is not this proposal's. One phase per conductor and the shared
+  board a second `epic` collides with both go away. "One conductor per host" does
+  **not**: that one is the engine resolving a flow by kind alone, so two
+  instances of one kind are still unaddressable. `flow.tasks` sidesteps it (three
+  task entries need one instance, not three) rather than fixing it. Two phases on
+  one flow, one host, one board, no
   `epic` split. Pass: `fsdev run` drives both phases; neither claims the other's
   rows.
 
@@ -381,6 +450,16 @@ already in the codebase. Every other rename here is cosmetic and can wait.
    time — the failure is a dispatch that resolves nothing, at runtime. A shared
    const between the two declarations closes it without reintroducing a graph
    walk; a naming convention does not.
-4. **Migration.** Nothing is published, so there is no deployed store holding
+4. **Phase cross-flow spawn out of v1?** Raised independently by two reviewers,
+   and the two findings above are the evidence. Same-flow v1 gets the whole
+   routing simplification and owes neither guard.
+   *Recommendation: yes, split — changed from the original v1-together position
+   on the strength of the auth-boundary finding. What would change my mind: a
+   near-term need for cross-flow that same-flow N-entries cannot serve.*
+5. **The spawn rule.** Which flows and tasks may a block spawn into — allowlist,
+   parent-flow constraint, or board ownership? Same-flow-only makes the question
+   disappear, which is one more argument for the split.
+   *Recommendation: defer with cross-flow; do not invent a rule v1 cannot test.*
+6. **Migration.** Nothing is published, so there is no deployed store holding
    workstream addresses (per `state-and-scopes.md`). This can be a clean break
    rather than a dual-read. *Confirm before relying on it.*
