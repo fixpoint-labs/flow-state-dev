@@ -197,6 +197,98 @@ starts runs; it does not continue one across a wait… the association a resume
 reads from is a typed field on the task."* This is that field, in the substrate
 instead of bolted onto one lab's task type.
 
+### 4. How a board knows what it can assign to
+
+**Yes, it is a worker** — a third kind of seat on a roster the board already has.
+
+A board's roster is not new machinery to invent. A skill board already declares
+**agents** (prompt-driven, materialized at runtime) and **assignable tools** (called
+directly with the task input, no model turn), and every tool that writes an
+assignee — `addTask`, `assignTask`, `updateTask` — already *checks the name against
+that roster* and returns the available ones on a mismatch, "instead of letting a
+mistyped name fall through to the default worker at drain time."
+
+So the question "how does the board know what it can assign to" is already
+answered for two seat types. A flow task is the third:
+
+| Seat | Declared as | Runs |
+|---|---|---|
+| Inline block | `summarize: summarizeBlock` | in the claiming request |
+| Tool | any `allowed-tools` key | directly, no model turn |
+| **Flow task** | `implement: { task: "implement" }` | **its own spawned session** |
+
+```ts
+const board = taskBoard({
+  boardId: "issue-work",
+  collection: workBoardCollection,
+  workers: {
+    summarize: summarizeBlock,          // inline — unchanged
+    implement: { task: "implement" },   // flow task — this flow's `tasks.implement`
+    review:    { task: "review" },
+  },
+});
+```
+
+Three things fall out, and none of them is a new mechanism:
+
+- **The roster check covers it.** `addTask({ assignee: "implemnt" })` is rejected
+  with the available names, exactly as a mistyped agent is today.
+- **`dispatch: { mode: "detached" }` disappears from this seat.** A flow task is
+  detached by definition — running in its own session is what makes it a flow task
+  rather than a block. Locality stops being a separate axis to configure and
+  becomes a property of the seat type.
+- **Open decision 3 answers itself.** The board neither carries every block nor
+  references every name: inline seats carry blocks, flow-task seats carry names.
+  The block lives in exactly one place either way, and there is no sync burden
+  because there is no second declaration to drift from.
+
+#### Within a skill
+
+A skill's roster gains the same seat. Its agents stay inline; work that needs its
+own session, its own checkout, or its own long-running conversation names a flow
+task instead:
+
+```yaml
+# SKILL.md
+agents:
+  - name: reviewer
+    prompt-ref: ./prompts/reviewer.md
+tasks:
+  - implement          # a `tasks` entry on the flow this skill is bound into
+```
+
+```ts
+// The generator plans a graph and drains once, exactly as it does today.
+await addTask({ assignee: "implement", input: { issue: "FIX-1219" }, deps: [] });
+await addTask({ assignee: "reviewer",  input: { issue: "FIX-1219" }, deps: [implementId] });
+await runBoard();
+```
+
+The generator does not know or care that `implement` runs in a spawned session and
+`reviewer` runs inline. It assigns a name; the seat type decides where the work
+happens. That is the same indifference the board already gives agents and tools.
+
+#### Cross-flow — the phase-2 shape
+
+A seat naming another flow is the cross-flow case, and it is where the guards in
+*What gets more complicated* come due:
+
+```ts
+workers: {
+  implement: { flow: reviewFlow, task: "implement" },   // phase 2
+}
+```
+
+Note the bare form (`{ task }`) has no cycle: the board lives inside the flow
+whose tasks it names, so naming them by string needs no reference back to the flow
+value. The `{ flow }` form takes a *different* flow's value, which is why it is
+separable and why phase 1 can ship without it.
+
+**This also settles the spawn rule** (open decision 5). A board may assign to the
+flows it declares seats for, and nothing else — board ownership, which was one of
+three candidates and is now the only one that needs no new concept. Phase 1's
+answer is narrower still: its own flow.
+
 ### Worked example: conductor's three phases
 
 What the whole thing looks like assembled — the case that motivated the change.
@@ -213,9 +305,9 @@ const board = taskBoard({
   boardId: "conductor",
   collection: workBoardCollection,
   workers: {
-    spec:      { dispatch: { mode: "detached" } },
-    implement: { dispatch: { mode: "detached" } },
-    review:    { dispatch: { mode: "detached" } },
+    spec:      { task: "spec" },
+    implement: { task: "implement" },
+    review:    { task: "review" },
   },
 });
 ```
@@ -225,16 +317,9 @@ workstream core and two conductor instances share a board. Here the phases are
 three rows with three assignees, and `implement` handing off to `review` in the
 same checkout is `session: ctx.sessionId` on the file.
 
-**The board's `workers` keys and the flow's `tasks` keys must agree**, with
-nothing linking them at compile time — the sync burden. A shared const closes it:
-
-```ts
-const PHASES = { spec: "spec", implement: "implement", review: "review" } as const;
-```
-
-Whether the board should instead *reference* flow task names (making `workers`
-a list of names plus dispatch config, with the blocks living only on the flow) is
-open decision 3 — it removes the burden entirely at the cost of a board API change.
+`implement` handing off to `review` in the same checkout is `session: ctx.sessionId`
+on the file (§3). The board's seats name flow tasks rather than carrying blocks
+(§4), so the block lives in one place and there is nothing to keep in sync.
 
 ---
 
@@ -522,22 +607,19 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 2. **Handle-reuse scope.** Lineage check, or session-scoped boards only?
    *Recommendation: lineage check; it is one comparison and it does not restrict a
    board shape people already use.*
-3. **Does the board carry blocks, or reference flow task names?** With `tasks` on
-   the flow, `taskBoard({ workers })` holds the same assignee keys twice — once
-   with blocks, once with dispatch config — and nothing links them at compile
-   time. Either keep both and close the gap with a shared const, or change
-   `workers` to name flow task entries (`workers: { implement: { dispatch } }`)
-   so the block lives in exactly one place.
-   *Recommendation: reference the names. It removes the sync burden outright
-   rather than documenting it, and the board API change is small and local. What
-   would change my mind: a board that legitimately routes a worker no flow
-   declares — none exists today.*
+3. **~~Does the board carry blocks, or reference flow task names?~~ Both, by seat
+   type.** An inline seat carries a block; a flow-task seat carries a name (§4).
+   The block lives in one place either way, so the sync burden earlier drafts
+   worried about never arises. Left here because two review rounds raised it.
 4. **Phase cross-flow spawn out of v1?** Two findings say yes and both are
    cross-flow's alone (§"more complicated" #2 and #3). Nothing in v1 needs it.
    *Recommendation: split.*
-5. **The spawn rule.** Which flows may a block spawn into — allowlist or
-   parent-flow constraint? The action half needs no rule; only the flow half
-   widens anything. *Recommendation: defer with cross-flow.*
+5. **~~The spawn rule.~~ Board ownership, via the roster (§4).** A board may
+   assign to the flows it declares seats for and nothing else; phase 1 narrows
+   that to its own flow. This needed no new concept — the roster check that
+   already rejects a mistyped agent name does it. Still open for the *spawn* verb
+   proper (§1), which is not board work: which flows may a block spawn a session
+   into? *Recommendation: defer with cross-flow — same-flow-only makes it moot.*
 6. **Migration.** Nothing is published, so there is no deployed store holding
    workstream addresses (per `state-and-scopes.md`). This can be a clean break
    rather than a dual-read. *Confirm before relying on it.*
