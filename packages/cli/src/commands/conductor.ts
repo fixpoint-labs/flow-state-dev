@@ -7,7 +7,6 @@
  * It does not host a second conductor.
  */
 import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
 import type { Command } from "commander";
 import {
   createFlowRegistry,
