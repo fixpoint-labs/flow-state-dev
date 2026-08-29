@@ -409,11 +409,27 @@ export function pushActivity(
   return { ...state, activity: capActivity([...state.activity, item], selectedRequestId(state)) };
 }
 
-/** Operator talk, once. The stream also emits `you ·`; do not double it. */
+/**
+ * Operator talk. The stream also emits `you ·`; do not double this turn.
+ *
+ * A prior turn that used the same words does not count — that was
+ * yesterday's line. Only an unanswered `you ·` on this turn is a repeat.
+ */
 export function echoTalk(state: ViewState, message: string, at: number = Date.now()): ViewState {
   const text = `you · ${message}`;
-  if (state.activity.some((item) => item.requestId === undefined && item.text === text)) {
-    return state;
+  let youAt = -1;
+  for (let i = state.activity.length - 1; i >= 0; i -= 1) {
+    const item = state.activity[i]!;
+    if (item.requestId === undefined && item.text.startsWith("you · ")) {
+      youAt = i;
+      break;
+    }
+  }
+  if (youAt >= 0 && state.activity[youAt]!.text === text) {
+    const replied = state.activity.slice(youAt + 1).some(
+      (item) => item.text.startsWith("message · ") || item.text.startsWith("coord · "),
+    );
+    if (!replied) return state;
   }
   return pushActivity(state, text, at);
 }

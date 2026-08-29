@@ -1004,6 +1004,34 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("shows a second talk turn that uses the same words when the stream did not write one", async () => {
+    const stores = createInMemoryStores();
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 10_000,
+    });
+
+    await waitFor(() => tty.text, "type to talk");
+    tty.input.write("quiet same look\r");
+    await waitFor(() => tty.text, "coord · same look");
+    tty.input.write("quiet same look\r");
+    await waitFor(() => {
+      const frame = stripAnsi(lastFrame(tty.text));
+      return frame.split("you · quiet same look").length - 1 >= 2 ? "two you" : "";
+    }, "two you");
+    const frame = stripAnsi(lastFrame(tty.text));
+    expect(frame.split("you · quiet same look").length - 1).toBeGreaterThanOrEqual(2);
+    expect(frame.split("coord · same look").length - 1).toBeGreaterThanOrEqual(2);
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
   it("shows the second talk reply when the stream did not write one", async () => {
     const stores = createInMemoryStores();
     const tty = fakeTty();

@@ -1461,6 +1461,29 @@ describe("applyTranscriptPatch", () => {
     expect(again.activity).toEqual([{ at: 1, text: "you · what's on the board?" }]);
   });
 
+  it("still shows a second talk turn that uses the same words", () => {
+    let state = applyTranscriptPatch(
+      emptyView("epic"),
+      { lines: ["you · what's on the board?"], live: null },
+      1,
+    );
+    state = applyTranscriptPatch(
+      state,
+      { lines: ["message · No rows yet."], live: null },
+      2,
+    );
+    state = applyTranscriptPatch(
+      state,
+      { lines: ["you · what's on the board?"], live: null },
+      3,
+    );
+    expect(state.activity.map((item) => item.text)).toEqual([
+      "you · what's on the board?",
+      "message · No rows yet.",
+      "you · what's on the board?",
+    ]);
+  });
+
   it("tags a child's lines and keeps its live slot off the operator line", () => {
     const next = applyTranscriptPatch(
       { ...emptyView("epic"), live: "status · reading board" },
@@ -1701,6 +1724,25 @@ describe("activityForView / visibleLive", () => {
   });
 });
 
+describe("echoTalk", () => {
+  it("does not double this turn when the stream repeats the operator line", () => {
+    let state = echoTalk(emptyView("epic"), "what's on the board?", 1);
+    state = echoTalk(state, "what's on the board?", 2);
+    expect(state.activity.map((item) => item.text)).toEqual(["you · what's on the board?"]);
+  });
+
+  it("still records a later talk turn that uses the same words", () => {
+    let state = echoTalk(emptyView("epic"), "what's on the board?", 1);
+    state = pushActivity(state, "message · No rows yet.", 2);
+    state = echoTalk(state, "what's on the board?", 3);
+    expect(state.activity.map((item) => item.text)).toEqual([
+      "you · what's on the board?",
+      "message · No rows yet.",
+      "you · what's on the board?",
+    ]);
+  });
+});
+
 describe("noteSteerReply", () => {
   it("puts the coordinator output on the transcript when this turn did not stream a reply", () => {
     let state = echoTalk(emptyView("epic"), "what's on the board?", 1);
@@ -1731,6 +1773,19 @@ describe("noteSteerReply", () => {
       "message · No rows yet.",
       "you · start FIX-1",
       "coord · started FIX-1",
+    ]);
+  });
+
+  it("still shows the second talk reply when both turns used the same words", () => {
+    let state = echoTalk(emptyView("epic"), "what's on the board?", 1);
+    state = noteSteerReply(state, "No rows yet.", 2);
+    state = echoTalk(state, "what's on the board?", 3);
+    state = noteSteerReply(state, "Still empty.", 4);
+    expect(state.activity.map((item) => item.text)).toEqual([
+      "you · what's on the board?",
+      "coord · No rows yet.",
+      "you · what's on the board?",
+      "coord · Still empty.",
     ]);
   });
 
