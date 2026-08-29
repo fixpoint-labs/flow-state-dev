@@ -16,7 +16,7 @@ import {
   type ConductorDispatch,
 } from "./dispatch";
 import { applyKey, decodeKeys, rowAfterRefresh, type Key } from "./keys";
-import { renderFrame } from "./render";
+import { conductorWindowTitle, renderFrame, windowTitleSequence } from "./render";
 import {
   applyTranscriptPatch,
   createStreamTranscript,
@@ -128,7 +128,9 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
 
   const paint = () => {
     if (closed) return;
-    output.write(`${HOME}${ERASE}${renderFrame(state, size(), now())}`);
+    output.write(
+      `${windowTitleSequence(conductorWindowTitle(state))}${HOME}${ERASE}${renderFrame(state, size(), now())}`,
+    );
   };
 
   const applyOperator = (event: RequestStreamEventWithId) => {
@@ -475,7 +477,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     output.off("resize", onResize);
     input.setRawMode?.(wasRaw ?? false);
     input.pause();
-    output.write(`${PASTE_OFF}${MOUSE_OFF}${SHOW_CURSOR}${LEAVE_ALT}`);
+    output.write(`${windowTitleSequence("")}${PASTE_OFF}${MOUSE_OFF}${SHOW_CURSOR}${LEAVE_ALT}`);
   }
   return 0;
 }

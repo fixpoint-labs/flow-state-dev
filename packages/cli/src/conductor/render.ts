@@ -81,6 +81,28 @@ export interface FrameSize {
 const MIN_COLS = 72;
 const MIN_ROWS = 18;
 
+/**
+ * Tab title so a background board is still readable. Counts match the
+ * header: running, waiting, failed, working.
+ */
+export function conductorWindowTitle(state: ViewState): string {
+  const waiting = state.rows.filter((r) => r.questions.length > 0).length;
+  const live = state.rows.filter((r) => r.status === "in_progress").length;
+  const failed = state.rows.filter(rowFailed).length;
+  const epic = state.epicLabel.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 80);
+  const parts = [`conductor · ${epic}`];
+  if (live > 0) parts.push(`${live} running`);
+  if (waiting > 0) parts.push(`${waiting} waiting`);
+  if (failed > 0) parts.push(`${failed} failed`);
+  if (state.busy) parts.push("working");
+  return parts.join(" · ");
+}
+
+/** OSC title, terminated with ST so this is not a terminal bell. */
+export function windowTitleSequence(title: string): string {
+  return `\x1b]0;${title}\x1b\\`;
+}
+
 export function renderFrame(state: ViewState, size: FrameSize, now: number = Date.now()): string {
   const cols = Math.max(size.cols, MIN_COLS);
   const rows = Math.max(size.rows, MIN_ROWS);

@@ -101,6 +101,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "Which path?");
     expect(tty.text).toContain("FSDEV CONDUCTOR");
     expect(tty.text).toContain("ASK-1");
+    expect(tty.text).toContain("\x1b]0;conductor · fixture-epic · 1 waiting\x1b\\");
 
     tty.input.write("the real file\r");
     await waitFor(() => tty.text, "completed");

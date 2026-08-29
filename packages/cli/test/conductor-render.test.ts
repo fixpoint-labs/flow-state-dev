@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { renderBoardPlain, renderFrame, renderWatchLine, watchExitCode } from "../src/conductor/render";
+import {
+  conductorWindowTitle,
+  renderBoardPlain,
+  renderFrame,
+  renderWatchLine,
+  watchExitCode,
+  windowTitleSequence,
+} from "../src/conductor/render";
 import {
   emptyView,
   lastActivityAt,
@@ -20,6 +27,32 @@ import {
   stripAnsi,
   visibleWidth,
 } from "../src/conductor/theme";
+
+describe("conductorWindowTitle", () => {
+  it("names the epic and the counts the header already shows", () => {
+    expect(conductorWindowTitle(emptyView("epic"))).toBe("conductor · epic");
+    expect(
+      conductorWindowTitle({
+        ...emptyView("epic"),
+        rows: [waiting],
+      }),
+    ).toBe("conductor · epic · 1 waiting");
+    expect(
+      conductorWindowTitle({
+        ...emptyView("epic"),
+        rows: [{ ...waiting, status: "in_progress", questions: [] }],
+        busy: true,
+      }),
+    ).toBe("conductor · epic · 1 running · working");
+  });
+
+  it("sets the tab with ST, not a bell", () => {
+    expect(windowTitleSequence("conductor · epic · 1 waiting")).toBe(
+      "\x1b]0;conductor · epic · 1 waiting\x1b\\",
+    );
+    expect(windowTitleSequence("conductor · epic")).not.toContain("\x07");
+  });
+});
 
 describe("formatAge / lastActivityAt", () => {
   const now = 1_700_000_000_000;
