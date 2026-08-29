@@ -37,6 +37,7 @@ export type Key =
   | { type: "enter" }
   | { type: "escape" }
   | { type: "backspace" }
+  | { type: "delete" }
   | { type: "up" }
   | { type: "down" }
   | { type: "left" }
@@ -195,7 +196,7 @@ export function decodeKeys(chunk: string, pending = ""): { keys: Key[]; rest: st
         if (third === "1" || third === "3" || third === "4" || third === "5" || third === "6" || third === "7" || third === "8") {
           if (i + 3 >= input.length) return { keys, rest: input.slice(i) };
           if (input[i + 3] === "~") {
-            if (third === "3") keys.push({ type: "backspace" });
+            if (third === "3") keys.push({ type: "delete" });
             else if (third === "5") keys.push({ type: "pageup" });
             else if (third === "6") keys.push({ type: "pagedown" });
             else if (third === "1" || third === "7") keys.push({ type: "home" });
@@ -520,6 +521,20 @@ function applyEditing(state: ViewState, key: Key): KeyResult {
       return { state: { ...state, caret: wordRight(state.input, state.caret) } };
     case "killword":
       return { state: killWordBack(state) };
+    case "delete":
+      if (state.caret >= state.input.length) return { state };
+      return {
+        state: {
+          ...withInput(
+            state,
+            state.input.slice(0, state.caret) + state.input.slice(state.caret + 1),
+            state.caret,
+          ),
+          slashAt: 0,
+          draftAt: null,
+          draftHold: null,
+        },
+      };
     case "backspace":
       if (state.input === "") {
         return cancelEdit(state);

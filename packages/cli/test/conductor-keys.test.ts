@@ -71,6 +71,7 @@ describe("decodeKeys", () => {
     expect(decodeKeys("\x1b[<65;1;1M").keys).toEqual([{ type: "wheel", delta: 1 }]);
     expect(decodeKeys("\x1b[5~").keys).toEqual([{ type: "pageup" }]);
     expect(decodeKeys("\x1b[6~").keys).toEqual([{ type: "pagedown" }]);
+    expect(decodeKeys("\x1b[3~").keys).toEqual([{ type: "delete" }]);
     expect(decodeKeys("\x1b[H").keys).toEqual([{ type: "home" }]);
     expect(decodeKeys("\x1b[F").keys).toEqual([{ type: "end" }]);
     expect(decodeKeys("\x1b[27;2;13~").keys).toEqual([{ type: "newline" }]);
@@ -544,6 +545,20 @@ describe("applyKey", () => {
     const deleted = applyKey(inserted.state, { type: "backspace" });
     expect(deleted.state.input).toBe("bc");
     expect(deleted.state.caret).toBe(1);
+    const forward = applyKey(deleted.state, decodeKeys("\x1b[3~").keys[0]!);
+    expect(forward.state.input).toBe("b");
+    expect(forward.state.caret).toBe(1);
+    const atEnd = applyKey(forward.state, { type: "delete" });
+    expect(atEnd.state.input).toBe("b");
+    expect(atEnd.state.caret).toBe(1);
+    const emptyBoard = applyKey(board([]), decodeKeys("\x1b[3~").keys[0]!);
+    expect(emptyBoard.state.input).toBe("");
+    expect(emptyBoard.effect).toBeUndefined();
+    const seeding = applyKey(
+      { ...board([]), inputMode: "seed" as const, input: "", caret: 0 },
+      { type: "delete" },
+    );
+    expect(seeding.state.inputMode).toBe("seed");
     const end = applyKey(deleted.state, { type: "right" });
     expect(end.state.caret).toBe(2);
   });
