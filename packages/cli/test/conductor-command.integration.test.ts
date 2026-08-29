@@ -44,7 +44,7 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
       stderr: talked.output as unknown as NodeJS.WriteStream,
       config: false,
     });
-    expect(code).not.toBe(EXIT_INVALID_ARGS);
+    expect(code).toBe(0);
     expect(talked.text).toMatch(/FIX-99/);
   });
 

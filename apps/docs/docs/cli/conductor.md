@@ -545,7 +545,7 @@ Startup failures — a missing argument, a slashed unknown name, a missing condu
 
 A last attempt failed when a row's `status` is `errored` or `cancelled`, or when `run.outcome` is `"failed"`, including a row whose status is `pending`. An open question is code `2` and wins over a failed attempt.
 
-`seed` always exits `0`, even when the board has pending, failed, or open-question rows. `steer` exits `0` when the talk succeeds, even when the board then has a pending, running, failed, or asking row. When the action returns an error, `steer` prints it and exits `1`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`. `abort` with no running request id exits `1` and prints `nothing running to stop`. After a stop, or when the printed id was not running, it reprints the board and uses the codes above.
+`seed` always exits `0`, even when the board has pending, failed, or open-question rows. `steer` exits `0` when the talk succeeds, even when the board then has a pending, running, failed, or open-question row. When the action returns an error, `steer` prints it and exits `1`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"`. `abort` with no running request id exits `1` and prints `nothing running to stop`. After a stop, or when the printed id was not running, it reprints the board and uses the codes above.
 
 `watch [issue]` polls `status` every couple of seconds and reprints the board whenever it changes. It stops when the code is not `3`. An open question is code `2`. A failed last attempt is code `1`.
 

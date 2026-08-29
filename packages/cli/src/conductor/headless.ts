@@ -1,11 +1,13 @@
 /**
  * Headless verbs. Same actions as the TUI, printed and exited.
  *
- * `watch` re-runs `status` — it does not invent a second read. Exit codes:
+ * `watch` re-runs `status` — it does not invent a second read. Board-outcome
+ * codes (status / wake / watch / abort / headless start):
  *   0  every named row is completed
  *   1  empty / errored / cancelled / last attempt failed / a call failed
  *   2  at least one open question
  *   3  still running or pending, no question and no failed attempt
+ * `seed` and a successful `steer` are 0. A failed `steer` is 1.
  */
 import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
 import {
@@ -155,7 +157,8 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
           const views = await attemptViews(options, status.rows, undefined);
           write(renderBoardPlain(status.rows, false, views));
         }
-        return watchExitCode(status.rows);
+        // Same as seed: a successful turn is 0. status/watch read the board.
+        return 0;
       }
       case "abort": {
         const before = await readBoard(options.dispatch, options.command.issue, onEvent);
