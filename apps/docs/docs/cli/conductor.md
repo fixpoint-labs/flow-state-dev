@@ -281,7 +281,7 @@ On an open board, filing a row with `s`, `/seed`, or `/start` selects that issue
 
 `/quit` remembers the selected row's issue, or that row's task id when it has no issue. Opening the board without `tui <issue>` selects that row when it is on the board, unless a row is waiting on a question. A waiting row wins. The remembered row is per `--session` and per epic (the flow's `id`). Opening an epic that has not remembered a row yet uses the last row this `--session` remembered. Headless verbs do not restore or change it. Without a loaded config, the board does not remember a row.
 
-After `/quit`, reopening the board recalls prior compose lines for that `--session` and that epic. Talk (`steer`) and answer walk their earlier sends. The seed prompt walks earlier seed sends. Empty lines and slash commands other than talk are not recalled. Without a loaded config, the board does not remember compose lines after `/quit`.
+After `/quit`, open the board with `fsdev conductor` and no verb, or `tui`. TRANSCRIPT shows the last talk. `you ·` is what you sent. `message ·` or `coord ·` is the coordinator reply. Talk is per `--session` and per epic (the flow's `id`). Status-poll lines are not recalled. Selecting a row shows that row's request stream. The newest 50 talk lines are recalled. Headless verbs do not restore talk. Compose-line recall (`↑` through prior sends) is separate: talk (`steer`) and answer walk their earlier sends, and the seed prompt walks earlier seed sends. Empty lines and slash commands other than talk are not recalled. Without a loaded config, the board does not remember talk or compose lines after `/quit`.
 
 ### Keys
 
@@ -311,7 +311,7 @@ After `/quit`, reopening the board recalls prior compose lines for that `--sessi
 | `/find [text]` | Search the selected row's transcript |
 | `n` / `N` | Older / newer match while find is on |
 | `?` | Toggle board-key help. The overlay lists the board keys. Any key returns to the board. `fsdev conductor --help` and `fsdev conductor help` print the long CLI form (headless verbs, flags). |
-| `/quit` | Leave the board. Stops every running row. A row waiting on a question stays. The shell prompt returns without waiting for a stopped run to finish. The leftover line (flow `id`, then checkout basename when `CONDUCTOR_REPO` is set) is on the screen you return to. Remembers the selected row. Reopening recalls compose lines for that `--session` and epic. |
+| `/quit` | Leave the board. Stops every running row. A row waiting on a question stays. The shell prompt returns without waiting for a stopped run to finish. The leftover line (flow `id`, then checkout basename when `CONDUCTOR_REPO` is set) is on the screen you return to. Remembers the selected row. Reopening recalls compose lines and the last talk for that `--session` and epic. |
 | `Ctrl-C` | Cancel compose (talk text, a slash line, seed, answer, or find) and stay, including an empty seed, answer, or find prompt. Seed, answer, and find return to the talk prompt. Same as `Esc`. When the prompt is empty and you are not answering, seeding, or finding, stop the selected running row and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. When no row is running, leave, even if a row is waiting on a question. While a seed, wake, answer, or steer is in flight, cancel it and stay. |
 
 You can drag-select text on the board and copy it with the terminal's usual copy command. Clicking a row does not change the selection. The mouse wheel does not scroll the transcript.
@@ -336,7 +336,7 @@ After `/status `, `/watch `, `/abort `, or `/answer `, the list shows ids alread
 
 The TRANSCRIPT pane follows the selected row.
 
-When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), thinking as a compact `think ·` line, and coding tools named with the file or command they touched (`tool · Write src/review.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Tools that run while a sub-agent is open are indented under that `sub ·` line. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` / `steer` you just ran, and the row changes `status` reports. A talk turn shows the operator line as `you ·` and the coordinator reply as a `message ·` line, streamed on the live line while it is in flight.
+When that row has a `run.requestId`, the pane shows that request's stream. Events already written appear first, then new ones as they arrive: status lines (`status · claiming`), streaming assistant text (`message · opened the pull request`), thinking as a compact `think ·` line, and coding tools named with the file or command they touched (`tool · Write src/review.ts`, `tool · Bash pnpm test`, `tool · Read package.json`). When a tool fails, a second line prints: `tool · Bash pnpm test · failed`. Tools that run while a sub-agent is open are indented under that `sub ·` line. Board and operator lines appear in the same pane: the `seed` / `wake` / `status` / `answer` / `steer` you just ran, and the row changes `status` reports. A talk turn shows the operator line as `you ·` and the coordinator reply as a `message ·` or `coord ·` line. `message ·` streams on the live line while it is in flight. Opening the board after `/quit` puts those talk lines on TRANSCRIPT.
 
 When the selected row has no `run.requestId`, the pane shows only those board and operator lines. Another row's coding stream is not shown until that row is selected.
 
@@ -676,10 +676,12 @@ The lab config refuses when `CONDUCTOR_REPO` names the repository that contains 
 - Slash completion does not invent ids that are not on the board. It does not complete `/seed`, `/start`, `/steer`, or `/find`.
 - `brief` is not a row id. `/status`, `/watch`, `/abort`, and the headless verbs take the issue id, or the row's task id when it has no issue.
 - A flow whose `status` rows omit `brief` will not show one.
-- Headless verbs take the id on the argv. There is no list on that path. They do not restore or change the selected row.
+- Headless verbs take the id on the argv. There is no list on that path. They do not restore or change the selected row. They do not restore talk.
 - A talk turn that only reads the board does not change the selected row.
 - Headless `seed`, `wake`, and `steer` do not open the board.
-- Without a loaded config, the board does not remember the selected row or compose lines after `/quit`.
+- Without a loaded config, the board does not remember the selected row, compose lines, or talk after `/quit`.
+- After `/quit`, only talk lines are recalled on TRANSCRIPT. Status-poll lines and that row's coding tools are not.
+- Talk recall keeps the newest 50 talk lines.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
 - Headless `status` and `watch` have no RUN band. They print last-write age on a running row, plus checkout, token counts, spend, and last message when the row has them. A named issue also prints last tool, files, last hunk, and current todo on stdout. A row with a `brief` prints `brief  <text>`. A full-board print does not reprint last tool, files, hunk, or todo on a settled row.
