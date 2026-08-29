@@ -3,8 +3,9 @@
  * Open the conductor board from any directory.
  *
  * Sets `CONDUCTOR_CONFIG` to this lab and `CONDUCTOR_REPO=.` when those
- * are unset, then execs `fsdev conductor` without changing cwd. Sit in
- * the product checkout and run this file (or `pnpm conductor` from this
+ * are unset, then runs `fsdev conductor` as a child without changing cwd.
+ * A stop signal on this process is forwarded to that child. Sit in the
+ * product checkout and run this file (or `pnpm conductor` from this
  * package — that script calls this file). `pnpm --dir labs/conductor`
  * still changes cwd; invoke this bin by path when you need to stay in
  * the product. `conductor install` (this bin only) puts `conductor` on
@@ -14,6 +15,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { attachConductorChild } from "./child.mjs";
 import { applyConductorBinDefaults } from "./env.mjs";
 import { installConductorOnPath, isConductorBinInstall, pathHasDir } from "./install.mjs";
 
@@ -54,11 +56,4 @@ const child = spawn(tsx, [fsdev, "conductor", ...process.argv.slice(2)], {
   cwd: process.cwd(),
   env: process.env,
 });
-
-child.on("exit", (code, signal) => {
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
-  }
-  process.exit(code ?? 1);
-});
+attachConductorChild(child);
