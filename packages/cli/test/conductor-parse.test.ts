@@ -217,6 +217,8 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("Reopening also recalls prior compose lines for that session and epic.");
     expect(HELP_TEXT).toContain("The terminal tab shows running, waiting, and failed counts.");
     expect(HELP_TEXT).toContain("The header names the epic and, when CONDUCTOR_REPO is set, the product checkout.");
+    expect(HELP_TEXT).toContain("Headless dumps and the line left after /quit print the same two strings.");
+    expect(HELP_TEXT).toContain("--json adds epic and repo next to rows.");
     expect(HELP_TEXT).toContain("eight rows around the selection so the prompt stays on screen");
     expect(HELP_TEXT).toContain("Ctrl-C leaves when nothing is running");
     expect(HELP_TEXT).toContain("CONDUCTOR_CONFIG");

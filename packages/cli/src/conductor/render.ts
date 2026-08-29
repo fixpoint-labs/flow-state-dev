@@ -1102,7 +1102,7 @@ export function renderBoardPlain(
       2,
     );
   }
-  const heading = renderBoardIdentity(identity);
+  const heading = formatBoardIdentity(identity);
   if (rows.length === 0) return `${heading}no rows\n`;
   const lines = [
     pad("ISSUE", 16) + pad("PHASE", 12) + pad("STATUS", 18) + pad("ATTEMPT", 8) + pad("OUTCOME", 12) + "ASK",
@@ -1133,10 +1133,16 @@ export function renderBoardPlain(
   return `${heading}${lines.join("\n")}\n`;
 }
 
-function renderBoardIdentity(identity?: BoardIdentity): string {
-  const epic = identity?.epic.trim() ?? "";
+/**
+ * Flow `id` and checkout basename, one line.
+ *
+ * Headless dumps prefix the board with this. The TUI writes it on the
+ * main screen before the alternate buffer so `/quit` leaves it visible.
+ */
+export function formatBoardIdentity(identity?: BoardIdentity): string {
+  const epic = identity?.epic.replace(/[\x00-\x1f\x7f]/g, "").trim() ?? "";
   if (epic === "") return "";
-  const repo = identity?.repo?.trim() ?? "";
+  const repo = identity?.repo?.replace(/[\x00-\x1f\x7f]/g, "").trim() ?? "";
   return repo === "" ? `${epic}\n` : `${epic} · ${repo}\n`;
 }
 

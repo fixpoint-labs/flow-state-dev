@@ -131,8 +131,31 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => tty.text, "FSDEV CONDUCTOR");
     expect(tty.text).toContain("\x1b]0;conductor · fixture-epic · fsd-product\x1b\\");
     expect(stripAnsi(lastFrame(tty.text))).toContain("fsd-product");
+    const beforeAlt = tty.text.slice(0, tty.text.indexOf("\x1b[?1049h"));
+    expect(beforeAlt).toBe("fixture-epic · fsd-product\n");
     tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
+  });
+
+  it("leaves the board name on the main screen so leftover CONDUCTOR_EPIC is visible after /quit", async () => {
+    process.env.CONDUCTOR_REPO = "/tmp/fsd-product";
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores: createInMemoryStores(),
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => tty.text, "\x1b[?1049h");
+    expect(tty.text.slice(0, tty.text.indexOf("\x1b[?1049h"))).toBe(
+      "fixture-epic · fsd-product\n",
+    );
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+    expect(tty.text.startsWith("fixture-epic · fsd-product\n")).toBe(true);
+    expect(tty.text).toContain("\x1b[?1049l");
   });
 
   it("does not enable mouse tracking so the terminal can select text", async () => {

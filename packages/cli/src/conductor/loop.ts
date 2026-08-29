@@ -16,7 +16,7 @@ import {
   type ConductorDispatch,
 } from "./dispatch";
 import { applyKey, decodeKeys, rowAfterRefresh, type Key } from "./keys";
-import { conductorWindowTitle, renderFrame, windowTitleSequence } from "./render";
+import { conductorWindowTitle, formatBoardIdentity, renderFrame, windowTitleSequence } from "./render";
 import {
   applyTranscriptPatch,
   createStreamTranscript,
@@ -462,7 +462,12 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   process.on("SIGINT", onSigint);
   input.setRawMode?.(true);
   input.resume();
-  output.write(`${ENTER_ALT}${MOUSE_OFF}${PASTE_ON}${HIDE_CURSOR}`);
+  output.write(
+    `${formatBoardIdentity({
+      epic: options.epicLabel,
+      ...(options.repoLabel !== undefined ? { repo: options.repoLabel } : {}),
+    })}${ENTER_ALT}${MOUSE_OFF}${PASTE_ON}${HIDE_CURSOR}`,
+  );
   paint();
 
   const onResize = () => paint();
