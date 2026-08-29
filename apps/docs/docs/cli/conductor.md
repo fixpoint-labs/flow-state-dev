@@ -305,7 +305,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `/find [text]` | Search the selected row's transcript |
 | `n` / `N` | Older / newer match while find is on |
 | `?` | Toggle help |
-| `/quit` | Leave the board. Stops every running request first. Remembers the selected row. |
+| `/quit` | Leave the board. Stops every running request first. The shell prompt returns without waiting for a stopped run to finish. Remembers the selected row. |
 | `Ctrl-C` | On a selected running row, stop that run and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. Leave when nothing is running. Aborts a seed, wake, answer, or steer in flight |
 
 On a row with no open question, typing that is not a slash verb is a talk turn (`steer`). Letters talk. `j`, `k`, `a`, `w`, `q`, and `t` are letters. On a row with an open question, typing starts an answer. Letters are the answer, not board keys, including `f`, `h`, `e`, and `H`. `Ctrl-T` expands the todo list. The footer says `type to answer`. `Enter` sends. `Esc` cancels. Slash verbs run the named action either way.
