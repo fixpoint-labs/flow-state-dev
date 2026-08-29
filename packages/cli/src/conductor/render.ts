@@ -304,14 +304,23 @@ function renderAskBand(state: ViewState, cols: number): string {
     .join("  ·  ");
   return [
     rule(cols, MAUVE),
-    ` ${paint(MAUVE + BOLD, "ASK")}`,
+    bandHeading("ASK", MAUVE, hidden),
     ...renderAttemptIdentity(state, inner),
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
-    ...(hidden > 0 ? [` ${dim(`… ${hidden} more`)}`] : []),
     ` ${dim(hint)}`,
     ...renderAttemptStrip(state, inner),
     rule(cols, MAUVE),
   ].join("\n");
+}
+
+/**
+ * ASK / FAIL title. `… N more` lives here so a 24-line pin cannot hide
+ * that the body was clipped — the full text is on the transcript.
+ */
+function bandHeading(label: string, color: string, hidden: number): string {
+  const title = ` ${paint(color + BOLD, label)}`;
+  if (hidden <= 0) return title;
+  return `${title}${dim(`  ·  … ${hidden} more`)}`;
 }
 
 /**
@@ -371,10 +380,9 @@ function renderFailBand(state: ViewState, cols: number): string {
     .join("  ·  ");
   return [
     rule(cols, RUST),
-    ` ${paint(RUST + BOLD, "FAIL")}`,
+    bandHeading("FAIL", RUST, hidden),
     ...renderAttemptIdentity(state, inner),
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
-    ...(hidden > 0 ? [` ${dim(`… ${hidden} more`)}`] : []),
     ` ${dim(hint)}`,
     ...renderAttemptStrip(state, inner),
     rule(cols, RUST),

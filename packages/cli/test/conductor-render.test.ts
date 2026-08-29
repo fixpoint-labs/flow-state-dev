@@ -1641,10 +1641,10 @@ describe("renderFrame", () => {
         renderFrame({ ...emptyView("epic"), rows: [parked] }, { cols: 80, rows: 40 }),
       ),
     );
+    expect(above).toMatch(/^ ASK\s+·\s+… \d+ more\s*$/m);
     expect(above).toContain("AskLine1");
     expect(above).toContain("AskLine8");
     expect(above).not.toContain("AskLine9");
-    expect(above).toMatch(/… \d+ more/);
   });
 
   it("keeps the branch on a 24-line ASK when the question wraps", () => {
@@ -1665,8 +1665,8 @@ describe("renderFrame", () => {
     );
     expect(frame).toContain("conductor/FIX-1--implement");
     expect(frame).toContain("/quit");
-    expect(frame).toMatch(/^ ASK\s*$/m);
-    const askBand = frame.slice(frame.search(/^ ASK\s*$/m));
+    expect(frame).toMatch(/^ ASK\s+·\s+… \d+ more\s*$/m);
+    const askBand = frame.slice(frame.search(/^ ASK\s/m));
     const branchAt = askBand.indexOf("conductor/FIX-1--implement");
     const bodyAt = askBand.indexOf("AskLine1");
     expect(branchAt).toBeGreaterThan(-1);
@@ -1684,11 +1684,10 @@ describe("renderFrame", () => {
         renderFrame({ ...emptyView("epic"), rows: [parked] }, { cols: 80, rows: 40 }),
       ),
     );
-    expect(above).toMatch(/^ FAIL\s*$/m);
+    expect(above).toMatch(/^ FAIL\s+·\s+… \d+ more\s*$/m);
     expect(above).toContain("Fail01");
     expect(above).toContain("Fail08");
     expect(above).not.toContain("Fail09");
-    expect(above).toMatch(/… \d+ more/);
   });
 
   it("keeps the branch on a 24-line FAIL when the reason wraps", () => {
@@ -1709,8 +1708,8 @@ describe("renderFrame", () => {
     );
     expect(frame).toContain("conductor/FAIL-1--implement");
     expect(frame).toContain("/quit");
-    expect(frame).toMatch(/^ FAIL\s*$/m);
-    const failBand = frame.slice(frame.search(/^ FAIL\s*$/m));
+    expect(frame).toMatch(/^ FAIL\s+·\s+… \d+ more\s*$/m);
+    const failBand = frame.slice(frame.search(/^ FAIL\s/m));
     const branchAt = failBand.indexOf("conductor/FAIL-1--implement");
     const bodyAt = failBand.indexOf("Fail01");
     expect(branchAt).toBeGreaterThan(-1);
