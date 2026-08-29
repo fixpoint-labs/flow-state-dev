@@ -211,7 +211,7 @@ function renderTalkStrip(state: ViewState, cols: number): string {
 /** One row's question, attempt, and transcript. Esc returns to the board. */
 function renderInspect(state: ViewState, cols: number, rows: number, now: number): string {
   const header = renderHeader(state, cols);
-  const table = renderInspectTable(state, cols, now);
+  const table = renderInspectIdentity(state, cols, now);
   const meta = state.busy || reservedBandOpen(state) ? "" : renderMeta(state, cols);
   const menu = renderSlashMenu(state, cols);
   const prompt = renderPrompt(state, cols);
@@ -325,14 +325,27 @@ function renderTable(state: ViewState, cols: number, now: number): string {
   return [layout.head, ...lines].join("\n");
 }
 
-/** The selected row only — inspect is one task, not the full list. */
-function renderInspectTable(state: ViewState, cols: number, now: number): string {
-  const layout = tableLayout(cols);
+/**
+ * Which task this inspect screen is. One line, not the board's
+ * column headers — those stay on the board.
+ */
+function renderInspectIdentity(state: ViewState, cols: number, now: number): string {
   const row = selectedRow(state);
   if (row === undefined) {
-    return `${layout.head}\n${padLine(dim("  no row."), cols)}`;
+    return padLine(dim("  no row."), cols);
   }
-  return [layout.head, renderTableRow(row, true, layout, state, now)].join("\n");
+  const mark = paint(ACCENT + BOLD, "▸ ");
+  const issue = paint(BOLD, row.issue ?? row.taskId);
+  const phase = dim(row.phase ?? "—");
+  const age = paintFreshness(row, state.activity, now);
+  const status =
+    age === undefined
+      ? paint(statusColor(row.status), row.status)
+      : `${paint(statusColor(row.status), row.status)} ${age}`;
+  const bits = [issue, phase, status];
+  const usage = rowRunning(row) ? tableUsage(row) : undefined;
+  if (usage !== undefined) bits.push(dim(usage));
+  return padLine(`${mark}${bits.join(dim(" · "))}`, cols);
 }
 
 function renderTableRow(

@@ -326,7 +326,7 @@ Headless (scripting):
   fsdev conductor help
 
 In the TUI:
-  Two screens: the board (what rows are doing, type to talk) and inspect (one row's question, transcript, files). Enter or click a row inspects it. Esc returns to the board.
+  Two screens: the board (what rows are doing, type to talk) and inspect (one row's question, transcript, files). Enter or click a row inspects it. Inspect names the row on one line; the column table stays on the board. Esc returns to the board.
   ↑/↓          select a row on the board; scroll the transcript while inspecting
   A long board shows eight rows around the selection so the prompt stays on screen.
   PgUp/PgDn    page the transcript while inspecting (Ctrl-u/d too)

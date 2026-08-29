@@ -396,6 +396,18 @@ describe("renderFrame", () => {
     expect(frame).toContain("Esc board");
   });
 
+  it("names the inspect row without the board column headers", () => {
+    const inspect = stripAnsi(
+      renderFrame(looking({ ...emptyView("epic"), rows: [waiting] }), { cols: 80, rows: 24 }),
+    );
+    expect(inspect).toMatch(/▸\s+FIX-1\s+·\s+implement\s+·\s+awaiting_review/);
+    expect(inspect).not.toMatch(/ISSUE\s+PHASE\s+STATUS/);
+    const board = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [waiting] }, { cols: 80, rows: 24 }),
+    );
+    expect(board).toMatch(/ISSUE\s+PHASE\s+STATUS/);
+  });
+
   it("renders a markdown question as headings and lists, not one wrap", () => {
     const asked: StatusRow = {
       ...waiting,
