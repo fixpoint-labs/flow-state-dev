@@ -60,6 +60,28 @@ describe("formatCoordinatorBoard", () => {
     expect(text).toContain("added **/.fsdev/ to .gitignore");
     expect(text).not.toContain("/tmp/secret-checkout");
   });
+
+  it("names the seed brief so a later talk turn still sees what attempt 1 was filed with", () => {
+    const row = projectCoordinatorRow({
+      issue: "FIX-1",
+      phase: "implement",
+      status: "pending",
+      attempts: 1,
+      feedback: null,
+      brief: "Rename getSession in client.md",
+      questions: [],
+    });
+    const text = formatCoordinatorBoard([row]);
+    expect(text).toContain("Rename getSession in client.md");
+    expect(formatCoordinatorBoard([projectCoordinatorRow({
+      issue: "FIX-2",
+      phase: "implement",
+      status: "pending",
+      attempts: 1,
+      feedback: null,
+      questions: [],
+    })])).not.toMatch(/brief:/);
+  });
 });
 
 describe("steer", () => {

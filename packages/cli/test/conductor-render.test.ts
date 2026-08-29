@@ -399,6 +399,44 @@ describe("renderFrame", () => {
     expect(text).not.toContain("/find");
   });
 
+  it("shows the seed brief on a pending row, a parked ASK, and headless status", () => {
+    const pending: StatusRow = {
+      ...failed,
+      issue: "FIX-1049",
+      taskId: "FIX-1049--implement",
+      status: "pending",
+      feedback: null,
+      brief: "Rename getSession in client.md",
+      run: { ...failed.run!, outcome: null, reason: null },
+      questions: [],
+    };
+    const pendingFrame = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [pending] }, { cols: 80, rows: 24 }),
+    );
+    expect(pendingFrame).toContain("Rename getSession in client.md");
+    const noBrief = stripAnsi(
+      renderFrame(
+        {
+          ...emptyView("epic"),
+          rows: [{ ...pending, brief: null }],
+        },
+        { cols: 80, rows: 24 },
+      ),
+    );
+    expect(noBrief).not.toMatch(/\bbrief\b/);
+
+    const parked: StatusRow = { ...waiting, brief: "Rename getSession in client.md" };
+    const ask = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [parked] }, { cols: 80, rows: 24 }),
+    );
+    expect(beforeTranscript(ask)).toContain("Rename getSession in client.md");
+    expect(ask).toContain("TRANSCRIPT");
+
+    const text = renderBoardPlain([parked], false);
+    expect(text).toContain("Rename getSession in client.md");
+    expect(renderBoardPlain([waiting], false)).not.toMatch(/\bbrief\b/);
+  });
+
   it("does not offer ↑ prior on seed compose when the only drafts are talk", () => {
     const seeding = {
       ...emptyView("epic"),

@@ -796,6 +796,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
         attempts: z.number(),
         feedback: z.string().nullable(),
         /**
+         * What the operator filed with the issue, when they did. Stored on
+         * the task payload; attempt 1 already reads it. The board and the
+         * coordinator talk turn read it here so that memory is not trapped
+         * in the collection.
+         */
+        brief: z.string().nullable(),
+        /**
          * The run's own row, **as the schema declares it** rather than as a
          * hand-listed subset.
          *
@@ -929,6 +936,8 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
         const payload = conductorTaskInputSchema.safeParse(task.input);
         const issue = payload.success ? payload.data.issue : null;
         const phaseName = payload.success ? payload.data.phase : null;
+        const briefRaw = payload.success ? payload.data.brief?.trim() : undefined;
+        const brief = briefRaw !== undefined && briefRaw !== "" ? briefRaw : null;
         // **Compare the canonical form on both sides.** Identity derivation folds
         // case (`assertSafeSegment`), so seeding `FIX-1` and seeding `fix-1`
         // resolve the same row — but a raw comparison here then hid that row
@@ -1007,6 +1016,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           status: task.status,
           attempts: task.attempts,
           feedback: task.feedback ?? null,
+          brief,
           // The whole row, not a re-listing of it — see the output schema.
           run: record ?? null,
           questions,

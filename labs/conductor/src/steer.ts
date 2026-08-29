@@ -25,6 +25,8 @@ export const coordinatorRowSchema = z.object({
   status: z.string(),
   attempts: z.number(),
   feedback: z.string().nullable(),
+  /** What the operator filed with the issue, when they did. */
+  brief: z.string().nullable(),
   outcome: z.string().nullable(),
   reason: z.string().nullable(),
   healed: z.array(z.string()).nullable(),
@@ -114,6 +116,7 @@ export function projectCoordinatorRow(row: {
   status: string;
   attempts: number;
   feedback: string | null;
+  brief?: string | null;
   run?: {
     outcome?: string | null;
     reason?: string | null;
@@ -121,12 +124,14 @@ export function projectCoordinatorRow(row: {
   } | null;
   questions: ReadonlyArray<{ question: string; text: string }>;
 }): CoordinatorRow {
+  const brief = row.brief?.trim();
   return {
     issue: row.issue,
     phase: row.phase,
     status: row.status,
     attempts: row.attempts,
     feedback: row.feedback,
+    brief: brief !== undefined && brief !== "" ? brief : null,
     outcome: row.run?.outcome ?? null,
     reason: row.run?.reason ?? null,
     healed: row.run?.healed ?? null,
@@ -147,6 +152,7 @@ export function formatCoordinatorBoard(rows: readonly CoordinatorRow[]): string 
     if (row.outcome != null) lines.push(`  outcome: ${row.outcome}`);
     if (row.reason != null && row.reason !== "") lines.push(`  reason: ${row.reason}`);
     if (row.feedback != null && row.feedback !== "") lines.push(`  feedback: ${row.feedback}`);
+    if (row.brief != null && row.brief !== "") lines.push(`  brief: ${row.brief}`);
     if (row.healed != null) {
       for (const heal of row.healed) lines.push(`  healed: ${heal}`);
     }

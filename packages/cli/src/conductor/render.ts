@@ -90,6 +90,14 @@ export const ASK_BODY_MIN = 2;
  */
 export const ACTIVITY_MIN = 4;
 
+/** Seed brief `status` carried, or null when the row never had one. */
+function rowBrief(row: StatusRow | undefined): string | null {
+  const brief = row?.brief;
+  if (brief == null) return null;
+  const trimmed = brief.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 /**
  * Slice of `rows` that the table paints. `end` is exclusive.
  * When everything fits, the window is the whole board.
@@ -398,6 +406,8 @@ function renderAttemptStrip(state: ViewState, inner: number): string[] {
   lines.push(...renderFileLines(state, inner));
   lines.push(...renderHunkLines(state, inner, { onlyCurrent: true }));
   lines.push(...renderPlanLines(state, inner, { onlyCurrent: true }));
+  const brief = rowBrief(row);
+  if (brief !== null) lines.push(` ${dim("brief")}  ${truncate(brief, inner)}`);
   return lines;
 }
 
@@ -645,6 +655,10 @@ function renderRunBits(row: StatusRow, cols: number, opts: { omitReason?: boolea
   }
   if (row.feedback && !opts.omitReason) {
     lines.push(` ${dim("feedback")} ${truncate(row.feedback, cols - 12)}`);
+  }
+  const brief = rowBrief(row);
+  if (brief !== null) {
+    lines.push(` ${dim("brief")}    ${truncate(brief, cols - 12)}`);
   }
   return lines.join("\n");
 }
@@ -1273,6 +1287,8 @@ function renderHeadlessAttempt(row: StatusRow, view?: ViewState, now: number = D
       extra.push(`  ${wrapped}`);
     }
   }
+  const brief = rowBrief(row);
+  if (brief !== null) extra.push(`  brief  ${brief}`);
   if (view !== undefined) extra.push(...renderHeadlessStrip(view));
   return extra;
 }

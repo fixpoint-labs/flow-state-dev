@@ -43,6 +43,8 @@ type StatusRow = {
   status: string;
   attempts: number;
   feedback: string | null;
+  /** What the operator filed with the issue, when they did. */
+  brief?: string | null;
   /** The whole run row, as `status` returns it. */
   run: {
     attempt: number | null;
@@ -1615,6 +1617,25 @@ describe("the ledger is partitioned by tenant", () => {
     await settle(live);
 
     expect(seen).toBe("Rename getSession in client.md");
+  });
+
+  it("returns the seed brief on status so the board can see what attempt 1 was filed with", async () => {
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: () => true,
+    });
+
+    await live.call("seed", {
+      issue: ISSUE,
+      phase: PHASE,
+      brief: "Rename getSession in client.md",
+    });
+    const withBrief = await settle(live);
+    expect(withBrief.brief).toBe("Rename getSession in client.md");
+
+    await live.call("seed", { issue: "FIX-1220", phase: PHASE });
+    const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: "FIX-1220" });
+    expect(rows[0]?.brief).toBeNull();
   });
 
   describe("every action refuses another tenant BEFORE touching the board", () => {

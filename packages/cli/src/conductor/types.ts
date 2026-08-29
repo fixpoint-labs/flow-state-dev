@@ -43,6 +43,11 @@ export interface StatusRow {
   status: string;
   attempts: number;
   feedback: string | null;
+  /**
+   * What the operator filed with the issue, when `status` carried it.
+   * Absent or null on a legacy row.
+   */
+  brief?: string | null;
   run: StatusRun | null;
   questions: StatusQuestion[];
 }
