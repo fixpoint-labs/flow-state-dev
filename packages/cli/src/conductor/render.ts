@@ -1069,21 +1069,41 @@ function fit(frame: string, cols: number, rows: number, pinBottom = 0): string {
   return lines.map((line) => padLine(line, cols)).join("\n");
 }
 
+/**
+ * Board id and checkout name for headless stdout.
+ *
+ * Same strings as the TUI header (`flow.id`, then the `CONDUCTOR_REPO`
+ * basename). Headless `status` prints them so leftover env cannot hide
+ * which board you just read.
+ */
+export interface BoardIdentity {
+  epic: string;
+  repo?: string;
+}
+
 /** Compact board for headless stdout. No alternate screen, no spinner. */
 export function renderBoardPlain(
   rows: StatusRow[],
   json: boolean,
   views?: Readonly<Record<string, ViewState>>,
   now: number = Date.now(),
+  identity?: BoardIdentity,
 ): string {
   if (json) {
+    const epic = identity?.epic.trim() ?? "";
+    const repo = identity?.repo?.trim() ?? "";
     return JSON.stringify(
-      { rows: rows.map((row) => jsonRow(row, viewForRow(row, views))) },
+      {
+        ...(epic !== "" ? { epic } : {}),
+        ...(repo !== "" ? { repo } : {}),
+        rows: rows.map((row) => jsonRow(row, viewForRow(row, views))),
+      },
       null,
       2,
     );
   }
-  if (rows.length === 0) return "no rows\n";
+  const heading = renderBoardIdentity(identity);
+  if (rows.length === 0) return `${heading}no rows\n`;
   const lines = [
     pad("ISSUE", 16) + pad("PHASE", 12) + pad("STATUS", 18) + pad("ATTEMPT", 8) + pad("OUTCOME", 12) + "ASK",
   ];
@@ -1110,7 +1130,14 @@ export function renderBoardPlain(
       }
     }
   }
-  return `${lines.join("\n")}\n`;
+  return `${heading}${lines.join("\n")}\n`;
+}
+
+function renderBoardIdentity(identity?: BoardIdentity): string {
+  const epic = identity?.epic.trim() ?? "";
+  if (epic === "") return "";
+  const repo = identity?.repo?.trim() ?? "";
+  return repo === "" ? `${epic}\n` : `${epic} · ${repo}\n`;
 }
 
 /**

@@ -2246,6 +2246,43 @@ describe("renderBoardPlain / watchExitCode", () => {
     };
     expect(bare.rows[0]?.now).toBeUndefined();
   });
+
+  it("names the board so leftover CONDUCTOR_EPIC is visible", () => {
+    const identity = { epic: "conductor/t0/atlas-prove-add-bye", repo: "fsd-product" };
+    expect(renderBoardPlain([], false, undefined, Date.now(), identity)).toBe(
+      "conductor/t0/atlas-prove-add-bye · fsd-product\nno rows\n",
+    );
+    const withRow = renderBoardPlain([waiting], false, undefined, Date.now(), identity);
+    expect(withRow.startsWith("conductor/t0/atlas-prove-add-bye · fsd-product\nISSUE")).toBe(true);
+    expect(withRow).toContain("FIX-1");
+    expect(JSON.parse(renderBoardPlain([], true, undefined, Date.now(), identity))).toEqual({
+      epic: "conductor/t0/atlas-prove-add-bye",
+      repo: "fsd-product",
+      rows: [],
+    });
+    const loaded = JSON.parse(
+      renderBoardPlain([waiting], true, undefined, Date.now(), identity),
+    ) as { epic: string; repo: string; rows: Array<{ issue?: string }> };
+    expect(loaded.epic).toBe("conductor/t0/atlas-prove-add-bye");
+    expect(loaded.repo).toBe("fsd-product");
+    expect(loaded.rows[0]?.issue).toBe("FIX-1");
+  });
+
+  it("omits epic and repo when the caller did not pass a board identity", () => {
+    expect(renderBoardPlain([], false)).toBe("no rows\n");
+    expect(JSON.parse(renderBoardPlain([], true))).toEqual({ rows: [] });
+  });
+
+  it("names the epic alone when the repo label is absent", () => {
+    const identity = { epic: "conductor/t0/harness-manager" };
+    expect(renderBoardPlain([], false, undefined, Date.now(), identity)).toBe(
+      "conductor/t0/harness-manager\nno rows\n",
+    );
+    expect(JSON.parse(renderBoardPlain([], true, undefined, Date.now(), identity))).toEqual({
+      epic: "conductor/t0/harness-manager",
+      rows: [],
+    });
+  });
 });
 
 describe("renderFrame help", () => {

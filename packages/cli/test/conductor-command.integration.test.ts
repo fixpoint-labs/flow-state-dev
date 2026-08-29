@@ -134,6 +134,44 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     });
     expect(statusCode).toBe(0);
     expect(status.text).toContain("completed");
+    expect(status.text).toContain("fixture-epic");
+  });
+
+  it("names the board on headless status so leftover CONDUCTOR_EPIC is visible", async () => {
+    const prevRepo = process.env.CONDUCTOR_REPO;
+    process.env.CONDUCTOR_REPO = "/tmp/fsd-product";
+    try {
+      const out = capture();
+      const code = await executeConductorCommand(["status"], {
+        cwd: fixtureDir,
+        stores: createInMemoryStores(),
+        output: out.output as unknown as NodeJS.WriteStream,
+        config: false,
+      });
+      expect(code).toBe(1);
+      expect(out.text).toContain("fixture-epic · fsd-product");
+      expect(out.text).toContain("no rows");
+
+      const json = capture();
+      const jsonCode = await executeConductorCommand(["status", "--json"], {
+        cwd: fixtureDir,
+        stores: createInMemoryStores(),
+        output: json.output as unknown as NodeJS.WriteStream,
+        config: false,
+      });
+      expect(jsonCode).toBe(1);
+      const parsed = JSON.parse(json.text) as {
+        epic?: string;
+        repo?: string;
+        rows: unknown[];
+      };
+      expect(parsed.epic).toBe("fixture-epic");
+      expect(parsed.repo).toBe("fsd-product");
+      expect(parsed.rows).toEqual([]);
+    } finally {
+      if (prevRepo === undefined) delete process.env.CONDUCTOR_REPO;
+      else process.env.CONDUCTOR_REPO = prevRepo;
+    }
   });
 
   it("seeds a named phase onto the task id", async () => {

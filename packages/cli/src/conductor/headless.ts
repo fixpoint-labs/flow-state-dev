@@ -21,7 +21,7 @@ import {
   type ConductorDispatch,
 } from "./dispatch";
 import { HELP_TEXT } from "./parse";
-import { renderBoardPlain, renderWatchLine, watchExitCode } from "./render";
+import { renderBoardPlain, renderWatchLine, watchExitCode, type BoardIdentity } from "./render";
 import { createStreamTranscript, viewFromEvents } from "./transcript";
 import { createChildFollow } from "./follow";
 import {
@@ -38,6 +38,10 @@ export interface HeadlessOptions {
   dispatch: ConductorDispatch;
   command: OperatorCommand;
   json: boolean;
+  /** Board id (`flow.id`). Printed on every headless board dump. */
+  epicLabel?: string;
+  /** Basename of `CONDUCTOR_REPO` when set. Printed next to the board id. */
+  repoLabel?: string;
   stdout?: NodeJS.WritableStream;
   stderr?: NodeJS.WritableStream;
   pollMs?: number;
@@ -45,12 +49,25 @@ export interface HeadlessOptions {
   maxPolls?: number;
 }
 
+function boardIdentity(options: HeadlessOptions): BoardIdentity | undefined {
+  const epic = options.epicLabel?.trim() ?? "";
+  if (epic === "") return undefined;
+  const repo = options.repoLabel?.trim() ?? "";
+  return repo === "" ? { epic } : { epic, repo };
+}
+
 export async function runConductorHeadless(options: HeadlessOptions): Promise<number> {
   const out = options.stdout ?? process.stdout;
   const err = options.stderr ?? process.stderr;
+  const identity = boardIdentity(options);
   const write = (text: string) => {
     out.write(text.endsWith("\n") ? text : `${text}\n`);
   };
+  const writeBoard = (
+    rows: readonly StatusRow[],
+    json: boolean,
+    views?: Record<string, ViewState>,
+  ) => write(renderBoardPlain([...rows], json, views, Date.now(), identity));
   const transcript = createStreamTranscript();
   const writeEvent = (text: string) => {
     err.write(text.endsWith("\n") ? text : `${text}\n`);
@@ -84,7 +101,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         }
         flushTranscript();
         const views = await attemptViews(options, status.rows, options.command.issue);
-        write(renderBoardPlain(status.rows, options.json, views));
+        writeBoard(status.rows, options.json, views);
         return watchExitCode(status.rows);
       }
       case "seed": {
@@ -102,7 +119,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         flushTranscript();
         if (!options.json) {
           const views = await attemptViews(options, status.rows, options.command.issue);
-          write(renderBoardPlain(status.rows, false, views));
+          writeBoard(status.rows, false, views);
         }
         return 0;
       }
@@ -112,7 +129,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         const status = await readBoard(options.dispatch, undefined, onEvent);
         flushTranscript();
         const views = await attemptViews(options, status.rows, undefined);
-        write(renderBoardPlain(status.rows, options.json, views));
+        writeBoard(status.rows, options.json, views);
         return watchExitCode(status.rows);
       }
       case "answer": {
@@ -155,7 +172,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         flushTranscript();
         if (!options.json) {
           const views = await attemptViews(options, status.rows, undefined);
-          write(renderBoardPlain(status.rows, false, views));
+          writeBoard(status.rows, false, views);
         }
         // Same as seed: a successful turn is 0. status/watch read the board.
         return 0;
@@ -175,7 +192,7 @@ export async function runConductorHeadless(options: HeadlessOptions): Promise<nu
         const after = await readBoard(options.dispatch, options.command.issue, onEvent);
         flushTranscript();
         const views = await attemptViews(options, after.rows, options.command.issue);
-        write(renderBoardPlain(after.rows, options.json, views));
+        writeBoard(after.rows, options.json, views);
         return watchExitCode(after.rows);
       }
       case "watch":
@@ -212,6 +229,7 @@ async function watchBoard(
   follow: ReturnType<typeof createChildFollow>,
 ): Promise<number> {
   const out = options.stdout ?? process.stdout;
+  const identity = boardIdentity(options);
   const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const pollMs = options.pollMs ?? 2_000;
   const max = options.maxPolls ?? Number.POSITIVE_INFINITY;
@@ -222,7 +240,7 @@ async function watchBoard(
     flush();
     const views = await attemptViews(options, status.rows, issue);
     const rendered = options.json
-      ? renderBoardPlain(status.rows, true, views)
+      ? renderBoardPlain(status.rows, true, views, Date.now(), identity)
       : renderWatchLine(status.rows, views);
     if (rendered !== last) {
       out.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
@@ -242,7 +260,7 @@ async function watchBoard(
         !options.json &&
         (status.rows.some((r) => r.questions.length > 0) || status.rows.some(rowFailed))
       ) {
-        out.write(renderBoardPlain(status.rows, false, exitViews));
+        out.write(renderBoardPlain(status.rows, false, exitViews, Date.now(), identity));
       }
       return code;
     }

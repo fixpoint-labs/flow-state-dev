@@ -375,6 +375,8 @@ export async function executeConductorCommand(
           ...(invocation.command.brief !== undefined ? { brief: invocation.command.brief } : {}),
         },
         json: false,
+        epicLabel,
+        ...(repoLabel !== undefined ? { repoLabel } : {}),
         stdout: options.output,
         stderr: options.stderr,
       });
@@ -396,6 +398,8 @@ export async function executeConductorCommand(
       dispatch,
       command: invocation.command,
       json,
+      epicLabel,
+      ...(repoLabel !== undefined ? { repoLabel } : {}),
       stdout: options.output,
       stderr: options.stderr,
       ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
