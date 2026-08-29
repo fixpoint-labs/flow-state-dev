@@ -288,12 +288,13 @@ After `/quit`, open the board with `fsdev conductor` and no verb, or `tui`. TRAN
 | Key | Does |
 |---|---|
 | `↓` / `↑` | Move the selected row when the prompt is empty. On a long board, the table shows eight rows around the selection. While the slash list is open, choose a verb or board id. While composing, move between lines, then prior sends |
-| `PgUp` / `PgDn` | Scroll the transcript (`Ctrl-U` / `Ctrl-D` too) |
+| `PgUp` / `PgDn` | Scroll the transcript (`Ctrl-U` / `Ctrl-D` too), including while composing |
 | `[` / `]` | Move between open questions on the selected row |
 | `←` / `→` | Move the caret one character while you are typing, answering, or seeding. When the prompt is empty and you are not answering or seeding, move between open questions on the selected row |
 | `Alt-←` / `Alt-→` or `Ctrl-←` / `Ctrl-→` | Jump to the previous or next word while composing |
 | `Ctrl-W` / `Alt-Backspace` | Delete the previous word while composing |
-| `Home` / `End` or `Ctrl-A` / `Ctrl-E` | Start or end of the current compose line |
+| `Home` / `End` | When the prompt is empty and you are not answering, seeding, or finding, jump TRANSCRIPT to the oldest line (`Home`) or the live tail (`End`, follow). Does not change the selected row. While composing (talk, seed, answer), start or end of the current compose line. While find is on, Home and End do not jump the transcript and do not move within the query |
+| `Ctrl-A` / `Ctrl-E` | Start or end of the current compose line while composing (talk, seed, answer). When the prompt is empty or find is on, they do nothing |
 | `Ctrl-J` / `Alt-Enter` / `Shift-Enter` | New line while composing |
 | `s` | Seed. First line is the issue id. Words after the id, or later lines, are the brief attempt 1 reads |
 | `x` | Stop the selected running request. On a row that is not running, `x` is a letter (talk) |
@@ -310,7 +311,7 @@ After `/quit`, open the board with `fsdev conductor` and no verb, or `tui`. TRAN
 | `/status [issue]` | Select that row (if it is on the board) and refresh |
 | `/find [text]` | Search the selected row's transcript |
 | `n` / `N` | Older / newer match while find is on |
-| `?` | Toggle board-key help. The overlay lists the board keys. Any key returns to the board. `fsdev conductor --help` and `fsdev conductor help` print the long CLI form (headless verbs, flags). |
+| `?` | Toggle board-key help. The overlay lists Home/End on the transcript line. Any key returns to the board without moving it. `fsdev conductor --help` and `fsdev conductor help` print the long CLI form (headless verbs, flags), and name Home/End as oldest / follow when the prompt is empty, compose line while typing. |
 | `/quit` | Leave the board. Stops every running row. A row waiting on a question stays. The shell prompt returns without waiting for a stopped run to finish. The leftover line (flow `id`, then checkout basename when `CONDUCTOR_REPO` is set) is on the screen you return to. Remembers the selected row. Reopening recalls compose lines and the last talk for that `--session` and epic. |
 | `Ctrl-C` | Cancel compose (talk text, a slash line, seed, answer, or find) and stay, including an empty seed, answer, or find prompt. Seed, answer, and find return to the talk prompt. Same as `Esc`. When the prompt is empty and you are not answering, seeding, or finding, stop the selected running row and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. When no row is running, leave, even if a row is waiting on a question. While a seed, wake, answer, or steer is in flight, cancel it and stay. |
 
