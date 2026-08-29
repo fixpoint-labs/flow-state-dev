@@ -487,6 +487,34 @@ describe("applyKey", () => {
     expect(sent.state.drafts).toEqual(["FIX-1049\nRename getSession in client.md"]);
   });
 
+  it("files a seed brief from words after the issue id on the first line, same as /seed", () => {
+    const seeding = applyKey(board([]), { type: "char", value: "s" }).state;
+    const sent = applyKey(
+      { ...seeding, input: "FIX-1049 Rename getSession in client.md" },
+      { type: "enter" },
+    );
+    expect(sent.effect).toEqual({
+      type: "dispatch",
+      command: {
+        kind: "seed",
+        issue: "FIX-1049",
+        brief: "Rename getSession in client.md",
+      },
+    });
+    const both = applyKey(
+      { ...seeding, input: "FIX-1049 same-line brief\nand the rest of the ticket" },
+      { type: "enter" },
+    );
+    expect(both.effect).toEqual({
+      type: "dispatch",
+      command: {
+        kind: "seed",
+        issue: "FIX-1049",
+        brief: "same-line brief\nand the rest of the ticket",
+      },
+    });
+  });
+
   it("remembers answers and seed ids, skips find and empty, and Esc keeps the list", () => {
     const waiting = board([row("FIX-1", 1)]);
     const answering = applyKey(waiting, { type: "char", value: "a" }).state;

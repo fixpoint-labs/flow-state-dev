@@ -649,6 +649,21 @@ function clearFind(state: ViewState): KeyResult {
   };
 }
 
+/**
+ * First token on the first line is the issue id. Words after it, and
+ * every later line, are the brief — the same split `/seed` uses.
+ */
+function splitSeedCompose(input: string): { issue: string; brief: string } {
+  const lines = input.split("\n");
+  const head = (lines[0] ?? "").trim();
+  const gap = head.search(/\s/);
+  const issue = (gap < 0 ? head : head.slice(0, gap)).trim();
+  const sameLine = (gap < 0 ? "" : head.slice(gap)).trim();
+  const later = lines.slice(1).join("\n").trim();
+  const brief = [sameLine, later].filter((part) => part !== "").join("\n");
+  return { issue, brief };
+}
+
 function cancelEdit(state: ViewState): KeyResult {
   return {
     state: {
@@ -789,9 +804,7 @@ function submitEdit(state: ViewState): KeyResult {
     };
   }
   if (state.inputMode === "seed") {
-    const lines = state.input.split("\n");
-    const issue = (lines[0] ?? "").trim();
-    const brief = lines.slice(1).join("\n").trim();
+    const { issue, brief } = splitSeedCompose(state.input);
     if (issue === "") {
       return { state: { ...state, notice: "type an issue id, or Esc to cancel" } };
     }
