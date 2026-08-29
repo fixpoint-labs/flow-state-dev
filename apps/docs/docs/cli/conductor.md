@@ -277,6 +277,8 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 
 `fsdev conductor tui PR-482` opens the same board with that row selected, if it exists, even if another row is waiting.
 
+On an open board, filing a row with `s`, `/seed`, or `/start` selects that issue. The table caret (`▸`) is on it. TRANSCRIPT follows it. A talk turn (`/steer …` or unslashed talk) that starts an issue selects that issue unless a row newly has an open question in that same refresh. That waiting row is selected. Answer it first. A talk turn that only reads the board leaves the selected row.
+
 `/quit` remembers the selected row's issue, or that row's task id when it has no issue. Opening the board without `tui <issue>` selects that row when it is on the board, unless a row is waiting on a question. A waiting row wins. The remembered row is per `--session` and per epic (the flow's `id`). Opening an epic that has not remembered a row yet uses the last row this `--session` remembered. Headless verbs do not restore or change it. Without a loaded config, the board does not remember a row.
 
 After `/quit`, reopening the board recalls prior compose lines for that `--session` and that epic. Talk (`steer`) and answer walk their earlier sends. The seed prompt walks earlier seed sends. Empty lines and slash commands other than talk are not recalled. Without a loaded config, the board does not remember compose lines after `/quit`.
@@ -592,7 +594,7 @@ On a TTY it opens the fullscreen board, then files the row. The line left on the
 
 On a pipe it seeds, then watches that issue the same way `watch <issue>` does. It prints the seed line and the watch dump (issue id, pending, and the rest of that print) and uses the watch exit codes.
 
-On an open board, `/start <issue>` files a row the same way `/seed <issue>` does.
+On an open board, `/start <issue>` files a row the same way `/seed <issue>` does, and selects that issue.
 
 Filing a row does not implement or edit product code. Workers do that after the row is filed. On a TTY, `start` does not exit when a coding run finishes.
 
@@ -675,6 +677,8 @@ The lab config refuses when `CONDUCTOR_REPO` names the repository that contains 
 - `brief` is not a row id. `/status`, `/watch`, `/abort`, and the headless verbs take the issue id, or the row's task id when it has no issue.
 - A flow whose `status` rows omit `brief` will not show one.
 - Headless verbs take the id on the argv. There is no list on that path. They do not restore or change the selected row.
+- A talk turn that only reads the board does not change the selected row.
+- Headless `seed` and `steer` do not open the board.
 - Without a loaded config, the board does not remember the selected row or compose lines after `/quit`.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
