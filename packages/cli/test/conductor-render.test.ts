@@ -2574,6 +2574,7 @@ describe("renderFrame help", () => {
     expect(text).toContain("/find");
     expect(text).toContain("Ctrl-W");
     expect(text).toContain("Home/End");
+    expect(text).toContain("Ctrl-R");
     expect(text).toContain("/steer talks");
     expect(text).toContain("any key returns");
     expect(text).not.toContain("click");

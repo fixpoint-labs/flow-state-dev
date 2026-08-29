@@ -357,6 +357,13 @@ function reduceKey(state: ViewState, key: Key, now: number): KeyResult {
     }
     return { state, effect: { type: "quit" } };
   }
+  // Grok's history search. Idle ↑ moves rows, so an empty prompt
+  // otherwise has no door back to a prior send. Compose ↑ moves
+  // lines first; this skips that.
+  if (key.type === "ctrl" && key.value === "r") {
+    if (state.inputMode === "find") return { state };
+    return { state: walkDraft(state, -1) };
+  }
   if (key.type === "pageup" || (key.type === "ctrl" && key.value === "u")) {
     return { state: pageTranscript(state, 1) };
   }

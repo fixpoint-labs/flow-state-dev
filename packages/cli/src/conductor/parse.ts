@@ -341,6 +341,7 @@ In the TUI:
   /            slash command (same verbs)
   Tab          complete the selected slash verb or board id
   ↑/↓          slash match while / is open; lines, then prior compose
+  Ctrl-R       prior send, including on an empty prompt
   ←/→          move in the line while composing
   Alt/Ctrl-←/→ jump a word while composing
   Ctrl-W       delete the previous word while composing

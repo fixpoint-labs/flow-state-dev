@@ -452,6 +452,51 @@ describe("applyKey", () => {
     expect(live.state.draftHold).toBeNull();
   });
 
+  it("recalls a prior send with Ctrl-R on an empty prompt, without moving the row", () => {
+    const rows = [row("FIX-1"), row("FIX-2")];
+    const idle = applyKey(
+      { ...board(rows), selected: 1, drafts: ["what's on the board?", "please retry the failed rows"] },
+      { type: "ctrl", value: "r" },
+    );
+    expect(idle.state.selected).toBe(1);
+    expect(idle.state.input).toBe("please retry the failed rows");
+    expect(idle.state.inputMode).toBe("command");
+    const older = applyKey(idle.state, { type: "ctrl", value: "r" });
+    expect(older.state.input).toBe("what's on the board?");
+    expect(older.state.selected).toBe(1);
+    const none = applyKey(board(rows), { type: "ctrl", value: "r" });
+    expect(none.state.input).toBe("");
+    expect(none.state.selected).toBe(0);
+  });
+
+  it("walks drafts with Ctrl-R while composing a wrapped line, instead of moving the caret first", () => {
+    let state: ViewState = {
+      ...board([row("FIX-1")]),
+      drafts: ["please retry the failed rows"],
+      input: "please\nretry",
+      caret: "please\nretry".length,
+    };
+    const up = applyKey(state, { type: "up" });
+    expect(up.state.input).toBe("please\nretry");
+    expect(up.state.caret).toBe("retry".length);
+    const recall = applyKey(state, { type: "ctrl", value: "r" });
+    expect(recall.state.input).toBe("please retry the failed rows");
+    expect(recall.state.draftHold).toBe("please\nretry");
+  });
+
+  it("does not steal Ctrl-R from find", () => {
+    const finding = {
+      ...board([row("FIX-1")]),
+      inputMode: "find" as const,
+      input: "path",
+      find: "path",
+      drafts: ["please retry the failed rows"],
+    };
+    const next = applyKey(finding, { type: "ctrl", value: "r" });
+    expect(next.state.input).toBe("path");
+    expect(next.state.inputMode).toBe("find");
+  });
+
   it("does not recall a talk line as a seed issue id", () => {
     const talkOnly = applyKey(
       { ...emptyView("epic"), drafts: ["what's on the board?", "please retry the failed rows"] },
@@ -461,6 +506,9 @@ describe("applyKey", () => {
     const skipped = applyKey(talkOnly, { type: "up" });
     expect(skipped.state.input).toBe("");
     expect(skipped.state.draftAt).toBeNull();
+    const skippedR = applyKey(talkOnly, { type: "ctrl", value: "r" });
+    expect(skippedR.state.input).toBe("");
+    expect(skippedR.state.draftAt).toBeNull();
 
     const mixed = applyKey(
       { ...talkOnly, drafts: ["what's on the board?", "LAB-9"] },
