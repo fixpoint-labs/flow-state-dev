@@ -4,6 +4,7 @@
  * that an explicit value wins.
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyConductorBinDefaults } from "../bin/env.mjs";
@@ -33,5 +34,15 @@ describe("applyConductorBinDefaults", () => {
     applyConductorBinDefaults(env, labRoot);
     expect(env.CONDUCTOR_CONFIG).toBe("/other/fsdev.config.ts");
     expect(env.CONDUCTOR_REPO).toBe("/other/product");
+  });
+});
+
+describe("root pnpm conductor", () => {
+  it("invokes the lab bin without changing cwd", () => {
+    const rootPkg = JSON.parse(
+      readFileSync(path.resolve(labRoot, "../../package.json"), "utf8"),
+    ) as { scripts?: Record<string, string> };
+    expect(rootPkg.scripts?.conductor).toBe("node labs/conductor/bin/conductor.mjs");
+    expect(rootPkg.scripts?.conductor).not.toMatch(/--dir/);
   });
 });

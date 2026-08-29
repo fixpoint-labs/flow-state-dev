@@ -7,14 +7,15 @@ what is still dashed, and the env a first run needs (`CONDUCTOR_REPO` is a diffe
 checkout, not this dispatcher). Opening the board and talking do not need an
 `origin` remote or `gh`. Starting a coding run does — `seed`, `wake`, and a talk
 turn that files or retries refuse before they claim if the completion check
-cannot name a repository. Sit in the product checkout and run this lab's `bin/conductor`.
+cannot name a repository. Sit in the product checkout and run `pnpm conductor` (repo-root script) or
+this lab's `bin/conductor`.
 The bin sets `CONDUCTOR_CONFIG` to this lab and `CONDUCTOR_REPO=.` when those
 are unset, and it does not change cwd. `--config` still wins when you pass it.
 Pointing the bin at this dispatcher is still refused.
 The board lives next to this config, not next to cwd, so the same epic is
 the same board from either directory. `pnpm --dir labs/conductor` changes cwd
-to the lab — invoke the bin by path when you need to stay in the product.
-From the repo root, `fsdev conductor` will not find this flow unless
+to the lab — use `pnpm conductor` from the product root, or invoke the bin by
+path. From the repo root, `fsdev conductor` will not find this flow unless
 `CONDUCTOR_CONFIG` or `--config` names it.
 
 A live Claude child authenticates through the Agent SDK. If `ANTHROPIC_API_KEY` is set
