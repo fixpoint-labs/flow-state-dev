@@ -46,6 +46,7 @@ import {
 import { runConductorHeadless } from "../conductor/headless";
 import { runConductorTui } from "../conductor/loop";
 import { lastFocusPath } from "../conductor/last-focus";
+import { boundedDispose, TUI_LEAVE_DRAIN_MS } from "../conductor/leave";
 
 /** Registers `fsdev conductor [verb…]` on the given commander program. */
 export function registerConductorCommand(program: Command): void {
@@ -65,8 +66,15 @@ export function registerConductorCommand(program: Command): void {
     .option("--log-level <level>", "Stderr log level: debug | info | warn | error (board default: silent; headless default: warn)")
     .addHelpText("after", `\n${HELP_TEXT}`)
     .action(async (args: string[] | undefined, options: ConductorCommandOptions) => {
+      const argv = forwardConductorArgv(args, options);
       try {
-        process.exitCode = await executeConductorCommand(forwardConductorArgv(args, options), options);
+        const code = await executeConductorCommand(argv, options);
+        process.exitCode = code;
+        // Detached children keep the event loop after a bounded TUI dispose.
+        // The board is already gone; exit so the shell comes back.
+        if (conductorLeavesProcess(argv, options)) {
+          process.exit(code);
+        }
       } catch (err) {
         if (err instanceof CliError) {
           process.stderr.write(err.message + "\n");
@@ -108,6 +116,27 @@ export interface ConductorCommandInternalOptions extends ConductorCommandOptions
   tty?: boolean;
   /** Sidecar that remembers the selected issue across `/quit`. Tests inject a temp path. */
   lastFocusPath?: string;
+  /**
+   * How long a TUI leave waits for host dispose. Default matches the engine's
+   * abort-unwind reserve. Tests shorten this so a hang cannot stall the suite.
+   */
+  leaveDrainMs?: number;
+  /** Replace the host dispose. Tests inject a hang to pin the leave bound. */
+  dispose?: () => Promise<void>;
+}
+
+/**
+ * After the fullscreen board returns, the process must exit. Headless verbs
+ * wait out the host drain and let the event loop empty.
+ */
+export function conductorLeavesProcess(
+  argv: string[],
+  options: ConductorCommandInternalOptions = {},
+): boolean {
+  const parsed = parseArgv(argv);
+  if (!parsed.ok || parsed.invocation === undefined) return false;
+  if (parsed.invocation.mode === "tui") return true;
+  return parsed.invocation.command.kind === "start" && isInteractive(options);
 }
 
 function isInteractive(options: ConductorCommandInternalOptions): boolean {
@@ -358,6 +387,18 @@ export async function executeConductorCommand(
       ...(options.sleep !== undefined ? { sleep: options.sleep } : {}),
     });
   } finally {
-    if (dispose !== undefined) await dispose();
+    const hostDispose = options.dispose ?? dispose;
+    if (hostDispose !== undefined) {
+      const usedTui =
+        invocation.mode === "tui" ||
+        (invocation.mode === "headless" &&
+          invocation.command.kind === "start" &&
+          isInteractive(options));
+      if (usedTui) {
+        await boundedDispose(hostDispose, options.leaveDrainMs ?? TUI_LEAVE_DRAIN_MS);
+      } else {
+        await hostDispose();
+      }
+    }
   }
 }

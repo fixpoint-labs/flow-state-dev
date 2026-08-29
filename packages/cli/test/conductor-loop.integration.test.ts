@@ -861,6 +861,25 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(stores.request.isAbortRequested("req-live-1")).resolves.toBe(true);
   });
 
+  it("returns from /quit without waiting for a host dispose that never finishes", async () => {
+    const tty = fakeTty();
+    const started = Date.now();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores: createInMemoryStores(),
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 10_000,
+      leaveDrainMs: 30,
+      dispose: () => new Promise(() => {}),
+    });
+    await waitFor(() => tty.text, "no rows");
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
   it("keeps /quit typed before the first status returns", async () => {
     const tty = fakeTty();
     const running = executeConductorCommand(["tui"], {
