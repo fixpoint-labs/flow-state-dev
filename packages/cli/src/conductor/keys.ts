@@ -436,6 +436,11 @@ function applyIdleChar(state: ViewState, value: string, now: number): KeyResult 
     return idleFallback(state, value);
   }
   const running = selectedRunningRequestId(state) !== undefined;
+  // Empty board: every letter talks, including s. /seed files the
+  // first row. Once a row exists, s seeds and r refreshes.
+  if (state.rows.length === 0 && /^[A-Za-z]$/.test(value)) {
+    return idleFallback(state, value);
+  }
   // Letters talk. Keep `s` as seed, `r` as refresh, `x` as abort on a
   // running row, and f/h/e/H as view toggles. Arrows move rows; /wake
   // /quit stay the verbs. Ctrl-T still expands the plan.

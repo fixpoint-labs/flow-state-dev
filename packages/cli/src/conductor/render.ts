@@ -607,7 +607,7 @@ function renderPlanLines(
 function renderMeta(state: ViewState, cols: number): string {
   const row = selectedRow(state);
   if (row === undefined) {
-    return `${rule(cols, INK_3)}\n${dim("  type to talk to the coordinator, or s to seed an issue")}`;
+    return `${rule(cols, INK_3)}\n${dim("  type to talk to the coordinator, or /seed <issue>")}`;
   }
   if (selectedQuestion(state) !== undefined) {
     return renderRunBits(row, cols);
@@ -832,7 +832,9 @@ function renderPrompt(state: ViewState, cols: number): string {
       ? "talk to the coordinator — this row is spent"
       : selectedQuestion(state) !== undefined
         ? "type to answer"
-        : "talk to the coordinator, or /seed /wake /answer",
+        : selected === undefined
+          ? "talk to the coordinator, or /seed <issue>"
+          : "talk to the coordinator, or /seed /wake /answer",
   );
   if (state.inputMode === "answer") {
     prefix = paint(MAUVE, "❯ answer ");
@@ -893,7 +895,7 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     : finding
     ? `${working}n older  ·  N newer  ·  Esc clear  ·  /find  ·  ↑/↓  ·  ?  ·  /quit`
     : empty
-      ? `${working}type to talk  ·  s seed  ·  /  ·  r  ·  ?  ·  /quit`
+      ? `${working}type to talk  ·  /seed  ·  /  ·  ?  ·  /quit`
     : q
       ? `${working}type to answer  ·  ↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
       : fail !== undefined

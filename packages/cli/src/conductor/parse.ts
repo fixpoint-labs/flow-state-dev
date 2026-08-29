@@ -332,8 +332,8 @@ In the TUI:
   Home/End     oldest / follow when the prompt is empty; compose line while typing
   [/]          previous/next question on the row
   { / }        previous / next waiting, failed, or stalled row
-  s            seed a new issue
-  r            poll status now
+  s            seed a new issue (once the board has a row)
+  r            poll status now (once the board has a row)
   x            stop the running request
   f / h / e    expand files, the last hunk, or the last Read / command tail
   H            older hunk
@@ -360,7 +360,7 @@ In the TUI:
   The header names the epic and, when CONDUCTOR_REPO is set, the product checkout. Headless dumps and the line left after /quit print the same two strings. --json adds epic and repo next to rows.
 
   Type anything that is not a slash verb to talk to the coordinator.
-  Letters talk. r still refreshes. /quit leaves. Ctrl-C cancels compose. On an empty line it leaves when nothing is running.
+  Letters talk. On an empty board that includes s and r — /seed files the first row. Once a row exists, s seeds and r refreshes. /quit leaves. Ctrl-C cancels compose. On an empty line it leaves when nothing is running.
   A row with an open question: type the reply. Letters are the answer, not board keys. Enter sends, Esc cancels.
   A new question rings the terminal bell and selects that row when you are not typing.
   A row that finishes rings the terminal bell and selects that row when you are not typing. A new question wins.

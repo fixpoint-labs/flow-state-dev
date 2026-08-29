@@ -1081,6 +1081,25 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(firstRun).resolves.toBe(0);
     expect(readDrafts(lastDrafts)).toEqual(["please retry the failed rows"]);
 
+    const recalled = fakeTty();
+    const recallRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastDraftsPath: lastDrafts,
+      input: recalled.input as unknown as NodeJS.ReadStream,
+      output: recalled.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(recalled.text), "FSDEV CONDUCTOR");
+    recalled.input.write("\x12");
+    await waitFor(() => stripAnsi(lastFrame(recalled.text)), "❯ please retry the failed rows");
+    expect(stripAnsi(lastFrame(recalled.text))).toContain("↑ prior");
+    recalled.input.write("\x1b");
+    await waitFor(() => lastFrame(recalled.text), "type to talk");
+    recalled.input.write("/quit\r");
+    await expect(recallRun).resolves.toBe(0);
+
     const second = fakeTty();
     const secondRun = executeConductorCommand(["tui"], {
       cwd: fixtureDir,
@@ -1375,6 +1394,9 @@ describe("fsdev conductor — TUI over the same actions", () => {
     });
 
     await waitFor(() => tty.text, "type to talk");
+    tty.input.write("/seed ESC-1 cancel compose\r");
+    await waitFor(() => tty.text, "seeded ESC-1");
+    await waitFor(() => stripAnsi(lastFrame(tty.text)), "s seed");
     tty.input.write("s");
     await waitFor(() => stripAnsi(lastFrame(tty.text)), "❯ seed");
     expect(stripAnsi(lastFrame(tty.text))).toContain("issue id");
@@ -1386,8 +1408,8 @@ describe("fsdev conductor — TUI over the same actions", () => {
     }, "idle");
     const frame = stripAnsi(lastFrame(tty.text));
     expect(frame).not.toContain("❯ seed");
-    expect(frame).toContain("type to talk  ·  s seed");
-    expect(frame).not.toContain("seeded");
+    expect(frame).toContain("s seed");
+    expect(frame).not.toContain("seeded ESC-2");
 
     tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);
@@ -1406,9 +1428,8 @@ describe("fsdev conductor — TUI over the same actions", () => {
     });
 
     await waitFor(() => tty.text, "type to talk");
-    tty.input.write("what's on the board?\r");
-    await waitFor(() => tty.text, "you · what's on the board?");
-    await waitFor(() => tty.text, "No rows yet");
+    tty.input.write("start FIX-1 now\r");
+    await waitFor(() => tty.text, "seeded FIX-1");
 
     tty.input.write("/quit\r");
     await expect(running).resolves.toBe(0);

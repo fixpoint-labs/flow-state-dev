@@ -392,11 +392,25 @@ describe("applyKey", () => {
     expect(what.effect).toBeUndefined();
     expect(what.state.input).toBe("w");
 
-    const seed = applyKey(emptyView("epic"), { type: "char", value: "s" });
-    expect(seed.state.inputMode).toBe("seed");
-    expect(applyKey(emptyView("epic"), { type: "char", value: "r" }).effect).toEqual({ type: "refresh" });
+    const start = applyKey(emptyView("epic"), { type: "char", value: "s" });
+    expect(start.effect).toBeUndefined();
+    expect(start.state.inputMode).toBe("command");
+    expect(start.state.input).toBe("s");
+    expect(applyKey(emptyView("epic"), { type: "char", value: "r" }).state.input).toBe("r");
+    expect(applyKey(emptyView("epic"), { type: "char", value: "f" }).state.input).toBe("f");
     expect(applyKey(board([row("FIX-1")]), { type: "char", value: "q" }).state.input).toBe("q");
     expect(applyKey(board([row("FIX-1")]), { type: "char", value: "w" }).state.input).toBe("w");
+
+    let typed = emptyView("epic");
+    for (const value of "start FIX-1 now") {
+      typed = applyKey(typed, { type: "char", value }).state;
+    }
+    expect(typed.inputMode).toBe("command");
+    expect(typed.input).toBe("start FIX-1 now");
+    expect(applyKey(typed, { type: "enter" }).effect).toEqual({
+      type: "dispatch",
+      command: { kind: "start", issue: "FIX-1", brief: "now" },
+    });
   });
 
   it("talks from a populated idle row; s seeds, r refreshes, f expands files", () => {
@@ -499,7 +513,7 @@ describe("applyKey", () => {
 
   it("does not recall a talk line as a seed issue id", () => {
     const talkOnly = applyKey(
-      { ...emptyView("epic"), drafts: ["what's on the board?", "please retry the failed rows"] },
+      { ...board([row("FIX-1")]), drafts: ["what's on the board?", "please retry the failed rows"] },
       { type: "char", value: "s" },
     ).state;
     expect(talkOnly.inputMode).toBe("seed");
@@ -542,7 +556,7 @@ describe("applyKey", () => {
   });
 
   it("files a seed brief from words after the issue id on the first line, same as /seed", () => {
-    const seeding = applyKey(board([]), { type: "char", value: "s" }).state;
+    const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" }).state;
     const sent = applyKey(
       { ...seeding, input: "FIX-1049 Rename getSession in client.md" },
       { type: "enter" },

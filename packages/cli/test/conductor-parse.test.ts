@@ -199,7 +199,8 @@ describe("HELP_TEXT", () => {
     expect(HELP_TEXT).toContain("fsdev conductor steer");
     expect(HELP_TEXT).toContain("talk to the coordinator");
     expect(HELP_TEXT).toContain("Letters talk");
-    expect(HELP_TEXT).toContain("r still refreshes");
+    expect(HELP_TEXT).toContain("On an empty board that includes s and r");
+    expect(HELP_TEXT).toContain("Once a row exists, s seeds and r refreshes");
     expect(HELP_TEXT).toContain("Letters are the answer, not board keys");
     expect(HELP_TEXT).toContain("A new question rings the terminal bell and selects that row when you are not typing");
     expect(HELP_TEXT).toContain("A row that finishes rings the terminal bell and selects that row when you are not typing");

@@ -2,4 +2,4 @@
 "@flow-state-dev/fsdev": patch
 ---
 
-An empty `fsdev conductor` board tells you to type to talk, not only to `/seed`. (LAB-151)
+On an empty conductor board every letter talks, including `s`, so `start FIX-1 …` reaches the coordinator. `/seed` files the first row. (LAB-151)

@@ -389,14 +389,31 @@ describe("renderFrame", () => {
     const frame = renderFrame(emptyView("epic"), { cols: 80, rows: 24 });
     const text = stripAnsi(frame);
     expect(text).toContain("no rows. type to talk, or /seed <issue> to file one.");
-    expect(text).toContain("type to talk to the coordinator, or s to seed an issue");
+    expect(text).toContain("type to talk to the coordinator, or /seed <issue>");
     expect(text).toContain("nothing yet. type to talk.");
-    expect(text).toContain("talk to the coordinator, or /seed /wake /answer");
-    expect(text).toContain("type to talk  ·  s seed");
+    expect(text).toContain("talk to the coordinator, or /seed <issue>");
+    expect(text).toContain("type to talk  ·  /seed");
+    expect(text).not.toContain("s seed");
+    expect(text).not.toContain("/seed /wake /answer");
     expect(text).toContain("/quit");
     expect(text).not.toContain("select a row");
     expect(text).not.toContain("click/j/k");
     expect(text).not.toContain("/find");
+  });
+
+  it("keeps s as seed once a row exists", () => {
+    const pending: StatusRow = {
+      ...waiting,
+      status: "pending",
+      questions: [],
+      run: null,
+    };
+    const text = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [pending] }, { cols: 80, rows: 24 }),
+    );
+    expect(text).toContain("talk to the coordinator, or /seed /wake /answer");
+    expect(text).toContain("s seed");
+    expect(text).toContain("↑/↓");
   });
 
   it("shows the seed brief on a pending row, a parked ASK, a RUN band, and headless status", () => {
