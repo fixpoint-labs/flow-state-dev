@@ -461,7 +461,8 @@ describe("fsdev conductor — TUI over the same actions", () => {
 
     await waitFor(() => tty.text, "Not logged in");
     expect(tty.text).toMatch(/\bFAIL\b/);
-    expect(tty.text).toContain("1 failed");
+    expect(lastFrame(tty.text)).toContain("inspect");
+    expect(lastFrame(tty.text)).not.toContain("1 failed");
     expect(tty.text).toContain("/wake");
 
     tty.input.write("/quit\r");

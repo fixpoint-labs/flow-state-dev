@@ -402,10 +402,15 @@ describe("renderFrame", () => {
     );
     expect(inspect).toMatch(/▸\s+FIX-1\s+·\s+implement\s+·\s+awaiting_review/);
     expect(inspect).not.toMatch(/ISSUE\s+PHASE\s+STATUS/);
+    expect(inspect).toContain("inspect");
+    expect(inspect).not.toContain("1 row");
+    expect(inspect).not.toContain("1 waiting");
     const board = stripAnsi(
       renderFrame({ ...emptyView("epic"), rows: [waiting] }, { cols: 80, rows: 24 }),
     );
     expect(board).toMatch(/ISSUE\s+PHASE\s+STATUS/);
+    expect(board).toContain("1 row");
+    expect(board).toContain("1 waiting");
   });
 
   it("renders a markdown question as headings and lists, not one wrap", () => {
@@ -961,7 +966,8 @@ describe("renderFrame", () => {
     expect(above).toMatch(/^ FAIL\s*$/m);
     expect(above).not.toMatch(/^ ASK\s*$/m);
     expect(above.match(/Not logged in/g)?.length).toBeGreaterThanOrEqual(1);
-    expect(stripAnsi(frame)).toContain("1 failed");
+    expect(stripAnsi(frame)).toContain("inspect");
+    expect(stripAnsi(frame)).not.toContain("1 failed");
     expect(stripAnsi(frame)).toContain("/wake");
     expect(frame).toContain("wake-line-39");
   });
@@ -1019,7 +1025,8 @@ describe("renderFrame", () => {
     expect(above).not.toMatch(/^ ASK\s*$/m);
     expect(above).not.toMatch(/^ FAIL\s*$/m);
     expect(above.match(/conductor\/LIVE-1--implement/g)?.length).toBe(1);
-    expect(stripAnsi(frame)).toContain("1 running");
+    expect(stripAnsi(frame)).toContain("inspect");
+    expect(stripAnsi(frame)).not.toContain("1 running");
     expect(stripAnsi(frame)).toContain("x stop");
     expect(frame).toContain("wake-line-39");
   });

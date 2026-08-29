@@ -255,9 +255,6 @@ function renderInspect(state: ViewState, cols: number, rows: number, now: number
 }
 
 function renderHeader(state: ViewState, cols: number): string {
-  const waiting = state.rows.filter((r) => r.questions.length > 0).length;
-  const live = state.rows.filter((r) => r.status === "in_progress").length;
-  const failed = state.rows.filter(rowFailed).length;
   const parts = [
     paint(BOLD + ACCENT, " FSDEV CONDUCTOR "),
     dim("·"),
@@ -265,17 +262,22 @@ function renderHeader(state: ViewState, cols: number): string {
     ...(state.repoLabel
       ? [dim("·"), ` ${state.repoLabel} `]
       : []),
-    dim("·"),
-    ` ${state.rows.length} row${state.rows.length === 1 ? "" : "s"} `,
   ];
-  if (state.rows.length > TABLE_BODY_MAX) {
-    const { start, end } = visibleTableWindow(state.rows.length, state.selected);
-    parts.push(dim("·"), dim(` ${start + 1}–${end} `));
+  if (!state.inspect) {
+    const waiting = state.rows.filter((r) => r.questions.length > 0).length;
+    const live = state.rows.filter((r) => r.status === "in_progress").length;
+    const failed = state.rows.filter(rowFailed).length;
+    parts.push(dim("·"), ` ${state.rows.length} row${state.rows.length === 1 ? "" : "s"} `);
+    if (state.rows.length > TABLE_BODY_MAX) {
+      const { start, end } = visibleTableWindow(state.rows.length, state.selected);
+      parts.push(dim("·"), dim(` ${start + 1}–${end} `));
+    }
+    if (live > 0) parts.push(dim("·"), paint(ACCENT, ` ${live} running `));
+    if (waiting > 0) parts.push(dim("·"), paint(MAUVE, ` ${waiting} waiting `));
+    if (failed > 0) parts.push(dim("·"), paint(RUST, ` ${failed} failed `));
+  } else {
+    parts.push(dim("·"), paint(GOLD, " inspect "));
   }
-  if (live > 0) parts.push(dim("·"), paint(ACCENT, ` ${live} running `));
-  if (waiting > 0) parts.push(dim("·"), paint(MAUVE, ` ${waiting} waiting `));
-  if (failed > 0) parts.push(dim("·"), paint(RUST, ` ${failed} failed `));
-  if (state.inspect) parts.push(dim("·"), paint(GOLD, " inspect "));
   if (state.busy) parts.push(dim("·"), paint(GOLD, " working "));
   if (state.lastRefreshAt !== null) {
     parts.push(dim("·"), dim(` ${formatClock(state.lastRefreshAt)} `));
