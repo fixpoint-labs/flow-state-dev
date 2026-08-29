@@ -307,8 +307,8 @@ After `/quit`, reopening the board recalls prior compose lines for that `--sessi
 | `/find [text]` | Search the selected row's transcript |
 | `n` / `N` | Older / newer match while find is on |
 | `?` | Toggle board-key help. The overlay lists the board keys. Any key or a click returns to the board. `fsdev conductor --help` and `fsdev conductor help` print the long CLI form (headless verbs, flags). |
-| `/quit` | Leave the board. Stops every running request first. The shell prompt returns without waiting for a stopped run to finish. Remembers the selected row. Reopening recalls compose lines for that `--session` and epic. |
-| `Ctrl-C` | On a selected running row, stop that run and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. Leave when nothing is running. Aborts a seed, wake, answer, or steer in flight |
+| `/quit` | Leave the board. Stops every running row. A row waiting on a question stays. The shell prompt returns without waiting for a stopped run to finish. Remembers the selected row. Reopening recalls compose lines for that `--session` and epic. |
+| `Ctrl-C` | On a selected running row, stop that run and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. Leave when no row is running, even if a row is waiting on a question. Aborts a seed, wake, answer, or steer in flight |
 
 On a row with no open question, typing that is not a slash verb is a talk turn (`steer`). Letters talk. `j`, `k`, `a`, `w`, `q`, and `t` are letters. On a row with an open question, typing starts an answer. Letters are the answer, not board keys, including `f`, `h`, `e`, and `H`. `?` opens help. `/` starts a slash command. `Ctrl-T` expands the todo list. The footer says `type to answer`. `Enter` sends. `Esc` cancels. Slash verbs run the named action either way.
 
