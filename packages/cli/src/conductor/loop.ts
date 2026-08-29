@@ -34,6 +34,7 @@ import {
   focusNewlySettled,
   echoTalk,
   emptyView,
+  noteSteerReply,
   pushActivity,
   idsToFollow,
   runningRequestIds,
@@ -298,16 +299,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
             typeof steered.output === "string" && steered.output.trim() !== ""
               ? steered.output.trim()
               : "";
-          const already = state.activity.some(
-            (item) => item.text.startsWith("message · ") || item.text.startsWith("coord · "),
-          );
-          if (!already) {
-            state = pushActivity(
-              state,
-              said !== "" ? `coord · ${said.split("\n")[0]!.trim()}` : "coordinator turn finished",
-              now(),
-            );
-          }
+          state = noteSteerReply(state, said, now());
           await refresh();
           break;
         }

@@ -419,6 +419,36 @@ export function echoTalk(state: ViewState, message: string, at: number = Date.no
 }
 
 /**
+ * After a steer turn, put the coordinator output on the transcript when
+ * this turn did not already stream a reply.
+ *
+ * A prior turn's `message ·` or `coord ·` does not count — that was the
+ * last reply. Only lines after the latest operator `you ·` do.
+ */
+export function noteSteerReply(
+  state: ViewState,
+  said: string,
+  at: number = Date.now(),
+): ViewState {
+  let start = 0;
+  for (let i = state.activity.length - 1; i >= 0; i -= 1) {
+    const item = state.activity[i]!;
+    if (item.requestId === undefined && item.text.startsWith("you · ")) {
+      start = i + 1;
+      break;
+    }
+  }
+  const already = state.activity.slice(start).some(
+    (item) => item.text.startsWith("message · ") || item.text.startsWith("coord · "),
+  );
+  if (already) return state;
+  const trimmed = said.trim();
+  const text =
+    trimmed !== "" ? `coord · ${trimmed.split("\n")[0]!.trim()}` : "coordinator turn finished";
+  return pushActivity(state, text, at);
+}
+
+/**
  * Re-apply the per-request cap. The selected attempt stays whole so
  * `/find` can still match an early tool.
  */

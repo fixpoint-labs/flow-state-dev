@@ -13,10 +13,12 @@ import {
   ACTIVITY_CAP,
   activityForView,
   emptyView,
+  echoTalk,
   focusNewlyAsked,
   focusNewlySettled,
   fileFromToolLine,
   findMatches,
+  noteSteerReply,
   pushActivity,
   selectedFiles,
   selectedHunk,
@@ -1696,6 +1698,62 @@ describe("activityForView / visibleLive", () => {
       live: "status · reading board",
     };
     expect(visibleLive(state)).toBe("status · reading board");
+  });
+});
+
+describe("noteSteerReply", () => {
+  it("puts the coordinator output on the transcript when this turn did not stream a reply", () => {
+    let state = echoTalk(emptyView("epic"), "what's on the board?", 1);
+    state = noteSteerReply(state, "No rows yet.", 2);
+    expect(state.activity.map((item) => item.text)).toEqual([
+      "you · what's on the board?",
+      "coord · No rows yet.",
+    ]);
+  });
+
+  it("does not double a reply the stream already wrote this turn", () => {
+    let state = echoTalk(emptyView("epic"), "what's on the board?", 1);
+    state = pushActivity(state, "message · No rows yet.", 2);
+    state = noteSteerReply(state, "No rows yet.", 3);
+    expect(state.activity.map((item) => item.text)).toEqual([
+      "you · what's on the board?",
+      "message · No rows yet.",
+    ]);
+  });
+
+  it("still shows the second talk reply after a prior turn already answered", () => {
+    let state = echoTalk(emptyView("epic"), "what's on the board?", 1);
+    state = pushActivity(state, "message · No rows yet.", 2);
+    state = echoTalk(state, "start FIX-1", 3);
+    state = noteSteerReply(state, "started FIX-1", 4);
+    expect(state.activity.map((item) => item.text)).toEqual([
+      "you · what's on the board?",
+      "message · No rows yet.",
+      "you · start FIX-1",
+      "coord · started FIX-1",
+    ]);
+  });
+
+  it("still shows the second talk reply after a prior fallback line", () => {
+    let state = echoTalk(emptyView("epic"), "what's on the board?", 1);
+    state = noteSteerReply(state, "No rows yet.", 2);
+    state = echoTalk(state, "start FIX-1", 3);
+    state = noteSteerReply(state, "started FIX-1", 4);
+    expect(state.activity.map((item) => item.text)).toEqual([
+      "you · what's on the board?",
+      "coord · No rows yet.",
+      "you · start FIX-1",
+      "coord · started FIX-1",
+    ]);
+  });
+
+  it("keeps only the first line of a multi-line output, and names an empty turn", () => {
+    let state = echoTalk(emptyView("epic"), "status?", 1);
+    state = noteSteerReply(state, "one\ntwo", 2);
+    expect(state.activity.at(-1)?.text).toBe("coord · one");
+    state = echoTalk(state, "again", 3);
+    state = noteSteerReply(state, "   ", 4);
+    expect(state.activity.at(-1)?.text).toBe("coordinator turn finished");
   });
 });
 

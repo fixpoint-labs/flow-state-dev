@@ -297,6 +297,12 @@ const steer = handler({
   outputSchema: z.string(),
   sessionStateSchema: boardState,
   execute: async (input, ctx) => {
+    // A talk turn that only returns output — no streamed message — so the
+    // board's fallback line can be tested across two turns.
+    if (input.message.startsWith("quiet ")) {
+      return input.message.slice("quiet ".length);
+    }
+
     const seedHit = /\b(?:seed|start|file|implement)\s+([A-Za-z][\w.-]*)/i.exec(input.message);
     const answerHit = /\banswer\s+(\S+)\s+(.+)/is.exec(input.message);
     const retry = /\b(?:wake|retry|again)\b/i.test(input.message);

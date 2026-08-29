@@ -1004,6 +1004,33 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("shows the second talk reply when the stream did not write one", async () => {
+    const stores = createInMemoryStores();
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 10_000,
+    });
+
+    await waitFor(() => tty.text, "type to talk");
+    tty.input.write("quiet first look\r");
+    await waitFor(() => tty.text, "coord · first look");
+    tty.input.write("quiet second look\r");
+    await waitFor(() => tty.text, "coord · second look");
+    const frame = stripAnsi(lastFrame(tty.text));
+    expect(frame).toContain("you · quiet first look");
+    expect(frame).toContain("coord · first look");
+    expect(frame).toContain("you · quiet second look");
+    expect(frame).toContain("coord · second look");
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
   it("talks from an empty board even when the first letter is a row key", async () => {
     const stores = createInMemoryStores();
     const tty = fakeTty();
