@@ -708,7 +708,7 @@ export function currentFindHit(state: ViewState): FindHit | undefined {
  * child's id on `run.requestId`; the operator surface follows that stream
  * through the same store subscription the HTTP attach route uses.
  */
-export function runningRequestIds(rows: StatusRow[]): string[] {
+export function runningRequestIds(rows: readonly StatusRow[]): string[] {
   const ids: string[] = [];
   for (const row of rows) {
     const id = rowRunningRequestId(row);
