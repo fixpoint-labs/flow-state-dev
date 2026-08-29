@@ -8,11 +8,20 @@
 export const CONDUCTOR_CHILD_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 
 /**
+ * The spawned TUI. Only the fields the wrapper reads.
+ *
+ * @typedef {object} ConductorChild
+ * @property {boolean} killed
+ * @property {(signal?: string) => boolean} kill
+ * @property {(event: "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void) => unknown} on
+ */
+
+/**
  * Forward stop signals to `child`, then exit the wrapper the way the
  * child did. Removes the listeners when the child exits so a re-raise
  * cannot loop.
  *
- * @param {import("node:child_process").ChildProcess} child
+ * @param {ConductorChild} child
  * @param {NodeJS.Process} [proc]
  */
 export function attachConductorChild(child, proc = process) {
