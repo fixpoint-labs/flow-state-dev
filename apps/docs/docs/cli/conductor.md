@@ -275,7 +275,7 @@ It needs a TTY. Piped in or run from a script, it prints a message and exits `1`
 fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, steer, watch, abort).
 ```
 
-`fsdev conductor tui PR-482` opens the same board with that row selected, if it exists. Moving to another row (arrows, click) keeps that row selected. A live poll leaves the selection where you put it. When the prompt is empty and you are not answering, seeding, or finding, a new question or a finished row is selected instead, and if both happen the waiting row is selected.
+`fsdev conductor tui PR-482` opens the same board with that row selected, if it exists. `/quit` remembers the selected row's issue, or that row's task id when it has no issue. Opening the board without `tui <issue>` selects that row when it is on the board. The remembered row is per `--session`, kept with the loaded config. Headless verbs do not read or write it. Without a loaded config, the board does not remember a row. Moving to another row (arrows, click) keeps that row selected. A live poll leaves the selection where you put it. When the prompt is empty and you are not answering, seeding, or finding, a new question or a finished row is selected instead, and if both happen the waiting row is selected.
 
 ### Keys
 
@@ -303,7 +303,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 | `/find [text]` | Search the selected row's transcript |
 | `n` / `N` | Older / newer match while find is on |
 | `?` | Toggle help |
-| `/quit` | Leave the board. Stops every running request first. |
+| `/quit` | Leave the board. Stops every running request first. Remembers the selected row. |
 | `Ctrl-C` | On a selected running row, stop that run and stay. When another row is running, stay and show `a run is still going — stay, or select it and press x`. Leave when nothing is running. Aborts a seed, wake, answer, or steer in flight |
 
 On a row with no open question, typing that is not a slash verb is a talk turn (`steer`). Letters talk. `j`, `k`, `a`, `w`, `q`, and `t` are letters. On a row with an open question, typing starts an answer. Letters are the answer, not board keys, including `f`, `h`, `e`, and `H`. `Ctrl-T` expands the todo list. The footer says `type to answer`. `Enter` sends. `Esc` cancels. Slash verbs run the named action either way.
@@ -590,7 +590,8 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
 - `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem. An unselected request keeps the newest two thousand lines. The selected attempt is kept in full.
 - Slash completion does not invent ids that are not on the board. It does not complete `/seed`, `/start`, `/steer`, or `/find`.
-- Headless verbs take the id on the argv. There is no list on that path.
+- Headless verbs take the id on the argv. There is no list on that path. They do not remember or restore the selected row.
+- Without a loaded config, the board does not remember the selected row.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
 - Headless `status` and `watch` have no RUN band. They print last-write age on a running row, plus checkout, token counts, spend, and last message when the row has them. A named issue also prints last tool, files, last hunk, and current todo on stdout. A full-board print does not reprint last tool, files, hunk, or todo on a settled row.
