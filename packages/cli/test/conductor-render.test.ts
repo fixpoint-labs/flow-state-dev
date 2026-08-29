@@ -399,6 +399,22 @@ describe("renderFrame", () => {
     expect(text).not.toContain("/find");
   });
 
+  it("does not offer ↑ prior on seed compose when the only drafts are talk", () => {
+    const seeding = {
+      ...emptyView("epic"),
+      inputMode: "seed" as const,
+      drafts: ["what's on the board?", "please retry the failed rows"],
+    };
+    const talkOnly = stripAnsi(renderFrame(seeding, { cols: 80, rows: 24 }));
+    expect(talkOnly).toContain("❯ seed");
+    expect(talkOnly).not.toContain("↑ prior");
+
+    const withSeed = stripAnsi(
+      renderFrame({ ...seeding, drafts: [...seeding.drafts, "LAB-9"] }, { cols: 80, rows: 24 }),
+    );
+    expect(withSeed).toContain("↑ prior");
+  });
+
   it("keeps the end of a long compose line so the cursor stays visible", () => {
     const long = `please retry the failed rows and then tell me ${"x".repeat(80)} done`;
     const frame = renderFrame(

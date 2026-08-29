@@ -451,6 +451,24 @@ describe("applyKey", () => {
     expect(live.state.draftHold).toBeNull();
   });
 
+  it("does not recall a talk line as a seed issue id", () => {
+    const talkOnly = applyKey(
+      { ...emptyView("epic"), drafts: ["what's on the board?", "please retry the failed rows"] },
+      { type: "char", value: "s" },
+    ).state;
+    expect(talkOnly.inputMode).toBe("seed");
+    const skipped = applyKey(talkOnly, { type: "up" });
+    expect(skipped.state.input).toBe("");
+    expect(skipped.state.draftAt).toBeNull();
+
+    const mixed = applyKey(
+      { ...talkOnly, drafts: ["what's on the board?", "LAB-9"] },
+      { type: "up" },
+    );
+    expect(mixed.state.input).toBe("LAB-9");
+    expect(applyKey(mixed.state, { type: "up" }).state.input).toBe("LAB-9");
+  });
+
   it("files a seed brief from lines after the issue id", () => {
     const seeding = applyKey(board([row("FIX-1")]), { type: "char", value: "s" }).state;
     const sent = applyKey(

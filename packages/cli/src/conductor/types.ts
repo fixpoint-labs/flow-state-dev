@@ -257,6 +257,21 @@ export function emptyView(epicLabel: string): ViewState {
   };
 }
 
+/**
+ * First line looks like an issue id (`LAB-151`, `FIX-1`). Seed compose
+ * ↑ only walks these so a talk line cannot be filed as an issue.
+ */
+export function isSeedDraft(text: string): boolean {
+  const first = (text.split("\n")[0] ?? "").trim();
+  return /^[A-Za-z][A-Za-z0-9]*-\d+/.test(first);
+}
+
+/** Drafts ↑/↓ may recall in this compose mode. Seed skips talk lines. */
+export function composeDrafts(state: ViewState): string[] {
+  if (state.inputMode === "seed") return state.drafts.filter(isSeedDraft);
+  return state.drafts;
+}
+
 /** The currently selected row, if the board is not empty. */
 export function selectedRow(state: ViewState): StatusRow | undefined {
   return state.rows[state.selected];

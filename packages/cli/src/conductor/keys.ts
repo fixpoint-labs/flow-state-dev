@@ -14,6 +14,7 @@ import { slashMenu } from "./slash";
 import {
   applyFindQuery,
   clampSelected,
+  composeDrafts,
   findMatches,
   pageTranscript,
   selectedQuestion,
@@ -726,27 +727,28 @@ function rememberDraft(state: ViewState, text: string): ViewState {
 
 /** ↑ older, ↓ newer. The first ↑ stashes the unsent line; past newest restores it. */
 function walkDraft(state: ViewState, direction: -1 | 1): ViewState {
-  if (state.drafts.length === 0) return state;
+  const drafts = composeDrafts(state);
+  if (drafts.length === 0) return state;
   if (state.draftAt === null) {
     if (direction === 1) return state;
     return withInput(
       {
         ...state,
         draftHold: state.input,
-        draftAt: state.drafts.length - 1,
+        draftAt: drafts.length - 1,
       },
-      state.drafts[state.drafts.length - 1]!,
+      drafts[drafts.length - 1]!,
     );
   }
   const next = state.draftAt + direction;
   if (next < 0) return state;
-  if (next >= state.drafts.length) {
+  if (next >= drafts.length) {
     return withInput(
       { ...state, draftAt: null, draftHold: null },
       state.draftHold ?? "",
     );
   }
-  return withInput({ ...state, draftAt: next }, state.drafts[next]!);
+  return withInput({ ...state, draftAt: next }, drafts[next]!);
 }
 
 function submitEdit(state: ViewState): KeyResult {

@@ -33,6 +33,7 @@ import {
 } from "./theme";
 import {
   activityForView,
+  composeDrafts,
   currentFindHit,
   failureReason,
   findMatches,
@@ -848,7 +849,7 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     (state.inputMode === "answer" || state.inputMode === "seed" || state.input !== "");
   const empty = state.rows.length === 0;
   const keys = composing
-    ? `${working}${state.drafts.length > 0 ? "↑ prior  ·  " : ""}Ctrl-J line  ·  Enter send  ·  Esc`
+    ? `${working}${composeDrafts(state).length > 0 ? "↑ prior  ·  " : ""}Ctrl-J line  ·  Enter send  ·  Esc`
     : slashing
     ? `${working}Tab complete  ·  ↑/↓ choose  ·  Enter  ·  Esc`
     : finding
