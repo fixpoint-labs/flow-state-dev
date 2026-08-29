@@ -1731,6 +1731,141 @@ describe("renderFrame", () => {
     expect(Number((askBand.match(/^ ASK\s+·\s+… (\d+) more/m) ?? [])[1])).toBeGreaterThan(2);
   });
 
+  it("keeps TRANSCRIPT on an 18-line ASK whose attempt strip is as tall as a parked implement", () => {
+    const words = Array.from({ length: 10 }, (_, i) => `AskLine${i + 1}${"x".repeat(64)}`);
+    const question = words.join(" ");
+    const branch =
+      "conductor/t0/h16ed7875924f09c235bd7ada69126a8c2fdb8adcd20e3b79e41eff5c60875ae8/conductor-tasks--t0--atlas-prove-ask-1/ask-1--implement";
+    const parked: StatusRow = {
+      ...waiting,
+      taskId: "ASK-1--implement",
+      issue: "ASK-1",
+      attempts: 2,
+      run: {
+        ...waiting.run!,
+        attempt: 2,
+        taskId: "ASK-1--implement",
+        workspacePath:
+          "/tmp/conductor-checkouts-ask-1/t0/h16ed7875924f09c235bd7ada69126a8c2fdb8adcd20e3b79e41eff5c60875ae8/conductor-tasks--t0--atlas-prove-ask-1/ask-1--implement",
+        branch,
+        outcome: "running",
+        requestId: "req-ask-1",
+        usage: { inputTokens: 114, outputTokens: 3500 },
+        costUsd: 0.154,
+      },
+      questions: [
+        {
+          question: "ask-1/implement/2/1afff1cd1f128157",
+          text: `## GitHub PR Creation Permission Issue Cannot create a pull request via GitHub CLI. The command \`gh pr create\` fails. ${question}`,
+          attempt: 2,
+          askedAt: 1,
+        },
+      ],
+    };
+    const frame = stripAnsi(
+      renderFrame(
+        {
+          ...emptyView("conductor--t0--atlas-prove-ask-1"),
+          repoLabel: "fsd-product",
+          lastRefreshAt: Date.parse("2026-08-29T04:37:00Z"),
+          rows: [parked],
+          activity: [
+            { at: 1, text: `ASK-1 · asked ${question}`, requestId: "req-ask-1" },
+            { at: 2, text: "tool · Write src/ask-prove.ts", requestId: "req-ask-1" },
+            { at: 3, text: "tool · Write .fsdev/ask/2.md", requestId: "req-ask-1" },
+            { at: 4, text: "01429b0 Add ask-prove module with proveFn function", requestId: "req-ask-1" },
+            {
+              at: 5,
+              text: "Merge pull request #1506 from fixpoint-labs/fix/FIX-150-overlap",
+              requestId: "req-ask-1",
+            },
+            {
+              at: 6,
+              text: "think · Perfect. The implementation is complete with the commit…",
+              requestId: "req-ask-1",
+            },
+          ],
+          childFiles: {
+            "req-ask-1": [
+              "src/ask-prove.ts",
+              ".fsdev/ask/2.md",
+              "src/b.ts",
+              "src/c.ts",
+            ],
+          },
+          childHunks: {
+            "req-ask-1": [
+              {
+                file: "src/ask-prove.ts",
+                lines: [
+                  "01429b0 Add ask-prove module with proveFn function",
+                  "Merge pull request #1506 from fixpoint-labs/fix/FIX-150-overlap",
+                  "+ export function proveFn() { return 1; }",
+                ],
+              },
+            ],
+          },
+          childPlan: {
+            "req-ask-1": [{ mark: "·", text: "open the completing pull request" }],
+          },
+        },
+        { cols: 80, rows: 18 },
+      ),
+    );
+    expect(frame).toContain("TRANSCRIPT");
+    expect(frame).toContain("ask-1--implement");
+    expect(frame).toContain("type to answer");
+    expect(frame).toContain("/quit");
+    expect(frame).toMatch(/^ ASK\s+·\s+… \d+ more\s*$/m);
+    const askBand = frame.slice(frame.search(/^ ASK\s/m), frame.indexOf("TRANSCRIPT"));
+    expect(askBand).toContain("ask-1--implement");
+    expect(askBand).toMatch(/GitHub PR|gh pr create|AskLine1/);
+  });
+
+  it("keeps TRANSCRIPT on an 18-line FAIL whose attempt strip is as tall as a parked implement", () => {
+    const words = Array.from({ length: 10 }, (_, i) => `Fail${String(i + 1).padStart(2, "0")}${"x".repeat(64)}`);
+    const parked: StatusRow = {
+      ...failed,
+      run: {
+        ...failed.run!,
+        reason: words.join(" "),
+        requestId: "req-fail-1",
+        branch:
+          "conductor/t0/h16ed7875924f09c235bd7ada69126a8c2fdb8adcd20e3b79e41eff5c60875ae8/conductor-tasks--t0--atlas-prove-fail-1/fail-1--implement",
+      },
+    };
+    const frame = stripAnsi(
+      renderFrame(
+        {
+          ...emptyView("conductor--t0--atlas-prove-fail-1"),
+          repoLabel: "fsd-product",
+          rows: [parked],
+          activity: [
+            { at: 1, text: "tool · Write src/a.ts", requestId: "req-fail-1" },
+            { at: 2, text: "think · the pull request could not be opened", requestId: "req-fail-1" },
+          ],
+          childFiles: { "req-fail-1": ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"] },
+          childHunks: {
+            "req-fail-1": [
+              {
+                file: "src/a.ts",
+                lines: ["+ a", "+ b", "+ c"],
+              },
+            ],
+          },
+          childPlan: {
+            "req-fail-1": [{ mark: "·", text: "retry the failed rows" }],
+          },
+        },
+        { cols: 80, rows: 18 },
+      ),
+    );
+    expect(frame).toContain("TRANSCRIPT");
+    expect(frame).toContain("fail-1--implement");
+    expect(frame).toMatch(/^ FAIL\s+·\s+… \d+ more\s*$/m);
+    expect(frame).toContain("/quit");
+  });
+
   it("shows eight wrapped lines of a long failure, then how many more", () => {
     const words = Array.from({ length: 10 }, (_, i) => `Fail${String(i + 1).padStart(2, "0")}${"x".repeat(64)}`);
     const parked: StatusRow = {

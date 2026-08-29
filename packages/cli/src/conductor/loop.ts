@@ -135,8 +135,8 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   };
 
   const size = () => ({
-    cols: output.columns ?? 80,
-    rows: output.rows ?? 24,
+    cols: output.columns || 80,
+    rows: output.rows || 24,
   });
 
   const paint = () => {

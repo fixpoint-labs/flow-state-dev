@@ -76,6 +76,7 @@ export const TABLE_BODY_MAX = 8;
  * Wrapped question lines on the ASK band. More than this still shows
  * `… N more`; the full text is on the transcript. A 24-line board
  * shrinks toward `ASK_BODY_MIN` so leftover room still fits TRANSCRIPT.
+ * When the attempt strip would still hide TRANSCRIPT, the strip yields.
  */
 export const ASK_BODY_MAX = 8;
 
@@ -161,11 +162,23 @@ export function renderFrame(state: ViewState, size: FrameSize, now: number = Dat
     lineCount(prompt) +
     lineCount(footer);
   let bodyMax = ASK_BODY_MAX;
-  let band = renderReservedBand(state, cols, now, bodyMax);
+  let stripMax = Number.POSITIVE_INFINITY;
+  let band = renderReservedBand(state, cols, now, bodyMax, stripMax);
   let leftover = Math.max(0, rows - chrome - lineCount(band));
   while (leftover < ACTIVITY_MIN && bodyMax > ASK_BODY_MIN) {
     bodyMax -= 1;
-    band = renderReservedBand(state, cols, now, bodyMax);
+    band = renderReservedBand(state, cols, now, bodyMax, stripMax);
+    leftover = Math.max(0, rows - chrome - lineCount(band));
+  }
+  while (leftover < ACTIVITY_MIN && stripMax > 0) {
+    const withoutStrip = lineCount(renderReservedBand(state, cols, now, bodyMax, 0));
+    const stripLines =
+      stripMax === Number.POSITIVE_INFINITY
+        ? Math.max(0, lineCount(band) - withoutStrip)
+        : stripMax;
+    if (stripLines <= 0) break;
+    stripMax = stripLines - 1;
+    band = renderReservedBand(state, cols, now, bodyMax, stripMax);
     leftover = Math.max(0, rows - chrome - lineCount(band));
   }
   const activity = renderActivity(state, cols, leftover, band !== "");
@@ -298,15 +311,21 @@ function renderReservedBand(
   cols: number,
   now: number,
   bodyMax = ASK_BODY_MAX,
+  stripMax = Number.POSITIVE_INFINITY,
 ): string {
-  const ask = renderAskBand(state, cols, bodyMax);
+  const ask = renderAskBand(state, cols, bodyMax, stripMax);
   if (ask !== "") return ask;
-  const fail = renderFailBand(state, cols, bodyMax);
+  const fail = renderFailBand(state, cols, bodyMax, stripMax);
   if (fail !== "") return fail;
-  return renderRunBand(state, cols, now);
+  return renderRunBand(state, cols, now, stripMax);
 }
 
-function renderAskBand(state: ViewState, cols: number, bodyMax = ASK_BODY_MAX): string {
+function renderAskBand(
+  state: ViewState,
+  cols: number,
+  bodyMax = ASK_BODY_MAX,
+  stripMax = Number.POSITIVE_INFINITY,
+): string {
   const question = selectedQuestion(state);
   if (question === undefined) return "";
   const more = selectedRow(state)?.questions.length ?? 0;
@@ -328,7 +347,7 @@ function renderAskBand(state: ViewState, cols: number, bodyMax = ASK_BODY_MAX): 
     ...renderAttemptIdentity(state, inner),
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
-    ...renderAttemptStrip(state, inner),
+    ...renderAttemptStrip(state, inner).slice(0, stripMax),
     rule(cols, MAUVE),
   ].join("\n");
 }
@@ -381,7 +400,12 @@ function renderAttemptStrip(state: ViewState, inner: number): string[] {
   return lines;
 }
 
-function renderFailBand(state: ViewState, cols: number, bodyMax = ASK_BODY_MAX): string {
+function renderFailBand(
+  state: ViewState,
+  cols: number,
+  bodyMax = ASK_BODY_MAX,
+  stripMax = Number.POSITIVE_INFINITY,
+): string {
   const failure = selectedFailure(state);
   if (failure === undefined) return "";
   const row = selectedRow(state);
@@ -404,12 +428,17 @@ function renderFailBand(state: ViewState, cols: number, bodyMax = ASK_BODY_MAX):
     ...renderAttemptIdentity(state, inner),
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
-    ...renderAttemptStrip(state, inner),
+    ...renderAttemptStrip(state, inner).slice(0, stripMax),
     rule(cols, RUST),
   ].join("\n");
 }
 
-function renderRunBand(state: ViewState, cols: number, now: number): string {
+function renderRunBand(
+  state: ViewState,
+  cols: number,
+  now: number,
+  stripMax = Number.POSITIVE_INFINITY,
+): string {
   const row = selectedRow(state);
   if (row === undefined || !rowRunning(row)) return "";
   const inner = Math.max(20, cols - 8);
@@ -435,22 +464,20 @@ function renderRunBand(state: ViewState, cols: number, now: number): string {
     doing !== undefined && doing !== ""
       ? ` ${paint(GOLD, paintToolNow(doing, inner, tree ?? null))}`
       : "";
-  const peekLines = renderReadPeek(state, inner);
-  const commandLines = renderCommandTail(state, inner);
-  const fileLines = renderFileLines(state, inner);
-  const hunkLines = renderHunkLines(state, inner);
-  const planLines = renderPlanLines(state, inner);
+  const extras = [
+    ...(nowLine !== "" ? [nowLine] : []),
+    ...renderReadPeek(state, inner),
+    ...renderCommandTail(state, inner),
+    ...renderFileLines(state, inner),
+    ...renderHunkLines(state, inner),
+    ...renderPlanLines(state, inner),
+  ].slice(0, stripMax);
   return [
     rule(cols, ACCENT),
     ` ${paint(ACCENT + BOLD, "RUN")}`,
     ...body.map((line) => ` ${paint(BOLD + INK, line)}`),
     ` ${dim(hint)}`,
-    ...(nowLine !== "" ? [nowLine] : []),
-    ...peekLines,
-    ...commandLines,
-    ...fileLines,
-    ...hunkLines,
-    ...planLines,
+    ...extras,
     rule(cols, ACCENT),
   ].join("\n");
 }
