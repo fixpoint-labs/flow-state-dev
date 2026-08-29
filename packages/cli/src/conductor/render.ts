@@ -317,13 +317,14 @@ function renderAskBand(state: ViewState, cols: number): string {
 /**
  * Branch, then PR URL. These sit above the ASK / FAIL body so a long
  * question cannot pin them off a 24-line board. The branch is the
- * handle after a push that could not open a pull request.
+ * handle after a push that could not open a pull request; a long ref
+ * keeps the issue--phase suffix.
  */
 function renderAttemptIdentity(state: ViewState, inner: number): string[] {
   const lines: string[] = [];
   const row = selectedRow(state);
   const branch = row?.run?.branch;
-  if (branch) lines.push(` ${dim(truncate(branch, inner))}`);
+  if (branch) lines.push(` ${dim(shorten(branch, inner))}`);
   const prUrl = row?.run?.prUrl;
   if (prUrl) lines.push(` ${dim(prText(prUrl, inner))}`);
   return lines;
@@ -388,7 +389,7 @@ function renderRunBand(state: ViewState, cols: number, now: number): string {
   const tree = row.run?.workspacePath;
   const id = selectedRunningRequestId(state);
   const body: string[] = [];
-  if (branch) body.push(truncate(branch, inner));
+  if (branch) body.push(shorten(branch, inner));
   if (tree) body.push(fileText(tree, inner));
   const age = paintFreshness(row, state.activity, now);
   const hintBits = [

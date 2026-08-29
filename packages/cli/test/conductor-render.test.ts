@@ -1571,6 +1571,20 @@ describe("renderFrame", () => {
     expect(above).not.toContain("pull/");
   });
 
+  it("keeps the issue--phase suffix when the branch will not fit", () => {
+    const long =
+      "conductor/t0/h16ed7875924f09c235bd7ada69126a8c2fdb8adcd20e3b79e41eff5c60875ae8/conductor-tasks--t0--atlas-prove-ask-1/ask-1--implement";
+    const parked: StatusRow = {
+      ...waiting,
+      run: { ...waiting.run!, branch: long },
+    };
+    const above = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [parked] }, { cols: 80, rows: 24 }),
+    );
+    expect(above).toContain("ask-1--implement");
+    expect(above).not.toContain("conductor/t0/h16ed7875924f09c235bd7ada69126a8c2fdb8adcd20e3b79e…");
+  });
+
   it("keeps files, the current todo, and the PR URL on ASK", () => {
     const parked: StatusRow = {
       ...waiting,
