@@ -275,7 +275,9 @@ It needs a TTY. Piped in or run from a script, it prints a message and exits `1`
 fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, steer, watch, abort).
 ```
 
-`fsdev conductor tui PR-482` opens the same board with that row selected, if it exists. `/quit` remembers the selected row's issue, or that row's task id when it has no issue. Opening the board without `tui <issue>` selects that row when it is on the board. The remembered row is per `--session`, kept with the loaded config. Headless verbs do not read or write it. Without a loaded config, the board does not remember a row. Moving to another row (arrows, click) keeps that row selected. A live poll leaves the selection where you put it. When the prompt is empty and you are not answering, seeding, or finding, a new question or a finished row is selected instead, and if both happen the waiting row is selected.
+`fsdev conductor tui PR-482` opens the same board with that row selected, if it exists, even if another row is waiting.
+
+`/quit` remembers the selected row's issue, or that row's task id when it has no issue. Opening the board without `tui <issue>` selects that row when it is on the board, unless a row is waiting on a question. A waiting row wins. The remembered row is per `--session`. Headless verbs do not restore or change it. Without a loaded config, the board does not remember a row.
 
 ### Keys
 
@@ -590,7 +592,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - The transcript does not read the checkout. A Write or Edit that only names the path has no hunk.
 - `/find` searches only the selected row's transcript. It does not search another row's stream, the checkout, or the filesystem. An unselected request keeps the newest two thousand lines. The selected attempt is kept in full.
 - Slash completion does not invent ids that are not on the board. It does not complete `/seed`, `/start`, `/steer`, or `/find`.
-- Headless verbs take the id on the argv. There is no list on that path. They do not remember or restore the selected row.
+- Headless verbs take the id on the argv. There is no list on that path. They do not restore or change the selected row.
 - Without a loaded config, the board does not remember the selected row.
 - There is no combined transcript of every running row.
 - There is no combined todo list of every running row.
