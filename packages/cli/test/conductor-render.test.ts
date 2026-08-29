@@ -313,6 +313,59 @@ describe("renderFrame", () => {
     expect(bottomText).toContain("/quit");
   });
 
+  it("keeps the prompt when the reserved band is tall", () => {
+    const running: StatusRow = {
+      taskId: "LIVE-1--implement",
+      issue: "LIVE-1",
+      phase: "implement",
+      status: "in_progress",
+      attempts: 1,
+      feedback: null,
+      run: {
+        attempt: 1,
+        taskId: "LIVE-1--implement",
+        workspacePath: "/tmp/very/long/checkout/path/that/wraps",
+        branch: "conductor/t0/hash/conductor-tasks--t0--epic/live-1--implement",
+        outcome: "running",
+        reason: null,
+        sessionId: "sess",
+        finalMessage: null,
+        usage: { inputTokens: 12000, outputTokens: 400 },
+        costUsd: 0.2,
+        childSessionId: "child",
+        requestId: "req-live-1",
+        updatedAt: 1,
+      },
+      questions: [],
+    };
+    const rest: StatusRow[] = Array.from({ length: 19 }, (_, i) => ({
+      taskId: `FIX-${i + 2}--implement`,
+      issue: `FIX-${i + 2}`,
+      phase: "implement",
+      status: "pending",
+      attempts: 1,
+      feedback: null,
+      run: null,
+      questions: [],
+    }));
+    const hunk = { "req-live-1": [{ file: "src/big.ts", lines: Array.from({ length: 20 }, (_, i) => `+ line-${i}`) }] };
+    const frame = renderFrame(
+      {
+        ...emptyView("epic"),
+        rows: [running, ...rest],
+        childHunks: hunk,
+        childFiles: { "req-live-1": Array.from({ length: 12 }, (_, i) => `src/f${i}.ts`) },
+        filesExpanded: true,
+        hunksExpanded: true,
+      },
+      { cols: 80, rows: 24 },
+    );
+    const text = stripAnsi(frame);
+    expect(text).toContain("/quit");
+    expect(text).toContain("type to talk");
+    expect(frame.split("\n")).toHaveLength(24);
+  });
+
   it("opens an empty board on type-to-talk, not a slash-only door", () => {
     const frame = renderFrame(emptyView("epic"), { cols: 80, rows: 24 });
     const text = stripAnsi(frame);

@@ -147,11 +147,13 @@ export function renderFrame(state: ViewState, size: FrameSize, now: number = Dat
     lineCount(footer);
   const leftover = Math.max(4, rows - reserved);
   const activity = renderActivity(state, cols, leftover, band !== "");
+  const pinBottom = lineCount(menu) + lineCount(prompt) + lineCount(footer);
 
   return fit(
     [header, table, band, meta, activity, menu, prompt, footer].filter((s) => s !== "").join("\n"),
     cols,
     rows,
+    pinBottom,
   );
 }
 
@@ -958,8 +960,22 @@ function freshnessLabel(row: StatusRow, activity: readonly ActivityItem[], now: 
   return formatAge(at, now);
 }
 
-function fit(frame: string, cols: number, rows: number): string {
-  const lines = frame.split("\n").slice(0, rows);
+/**
+ * Pad or clip a frame to `rows`. When clipping, `pinBottom` lines from the
+ * end stay — the prompt and footer. Grok never loses the input line; a tall
+ * band plus a long table used to.
+ */
+function fit(frame: string, cols: number, rows: number, pinBottom = 0): string {
+  const raw = frame.split("\n");
+  let lines: string[];
+  if (raw.length <= rows) {
+    lines = raw;
+  } else if (pinBottom <= 0) {
+    lines = raw.slice(0, rows);
+  } else {
+    const pin = Math.min(pinBottom, rows);
+    lines = [...raw.slice(0, rows - pin), ...raw.slice(-pin)];
+  }
   while (lines.length < rows) lines.push(" ".repeat(cols));
   return lines.map((line) => padLine(line, cols)).join("\n");
 }
