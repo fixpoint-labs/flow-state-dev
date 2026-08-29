@@ -6,6 +6,7 @@ import { PassThrough } from "node:stream";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { executeConductorCommand } from "../src/commands/conductor";
 import { readDrafts } from "../src/conductor/compose-history";
+import { writeLastFocus } from "../src/conductor/last-focus";
 import { stripAnsi } from "../src/conductor/theme";
 
 const fixtureDir = resolve(import.meta.dirname, "fixtures-conductor");
@@ -156,6 +157,56 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
     expect(tty.text.startsWith("fixture-epic · fsd-product\n")).toBe(true);
     expect(tty.text).toContain("\x1b[?1049l");
+  });
+
+  it("start on a TTY seeds inside the board, not as a dump first", async () => {
+    const stores = createInMemoryStores();
+    const tty = fakeTty();
+    const running = executeConductorCommand(["start", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+    await waitFor(() => lastFrame(tty.text), "LIVE-1");
+    const alt = tty.text.indexOf("\x1b[?1049h");
+    expect(alt).toBeGreaterThan(-1);
+    const beforeAlt = stripAnsi(tty.text.slice(0, alt));
+    expect(beforeAlt).not.toMatch(/ISSUE|PHASE/);
+    expect(beforeAlt).not.toContain("LIVE-1");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
+    expect(stripAnsi(lastFrame(tty.text))).toContain("seeded LIVE-1");
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
+  it("start on a TTY focuses the seeded row even when last-focus remembered another", async () => {
+    const stores = createInMemoryStores();
+    const lastFocus = join(mkdtempSync(join(tmpdir(), "conductor-start-")), "tui-focus");
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    writeLastFocus(lastFocus, "LIVE-1");
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["start", "LIVE-2"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastFocusPath: lastFocus,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+    await waitFor(() => lastFrame(tty.text), "LIVE-2");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-2/);
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
   });
 
   it("does not enable mouse tracking so the terminal can select text", async () => {

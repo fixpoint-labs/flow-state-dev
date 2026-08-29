@@ -316,7 +316,7 @@ Interactive:
 Headless (scripting):
   fsdev conductor status [issue]  running rows print current action; a named issue also prints last tool, files, hunk, todo; a running row prints last-write age; --json adds now/files/hunk/todo on those same rows
   fsdev conductor seed <issue> [--phase implement] [brief…]
-  fsdev conductor start <issue> [brief…]  seed, then open the TUI
+  fsdev conductor start <issue> [brief…]  open the TUI and seed
   fsdev conductor wake
   fsdev conductor abort [issue]   stop the running request on those rows
   fsdev conductor answer <question-id> <reply…>

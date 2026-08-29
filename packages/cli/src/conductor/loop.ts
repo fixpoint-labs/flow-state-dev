@@ -86,6 +86,11 @@ export interface LoopOptions {
   output?: NodeJS.WriteStream;
   pollMs?: number;
   focusIssue?: string;
+  /**
+   * Run after the first board read. Interactive `start` seeds here so
+   * the row appears inside the alt screen instead of as a dump first.
+   */
+  initialCommand?: OperatorCommand;
   /** Sidecar that remembers the selected issue across `/quit`. */
   lastFocusPath?: string;
   /** Sidecar that remembers submitted compose lines across `/quit`. */
@@ -505,6 +510,21 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     }
     readyToRemember = true;
     rememberFocus();
+
+    if (options.initialCommand !== undefined && !closed) {
+      await dispatchCommand(options.initialCommand);
+      if (closed) {
+        finish();
+        await session;
+        return 0;
+      }
+      if (options.focusIssue !== undefined) {
+        state = rowAfterRefresh(state, options.focusIssue);
+        follow.sync(idsToFollow(state));
+        void loadSelectedJournal();
+        paint();
+      }
+    }
 
     poll = setInterval(() => {
       beginRefresh();

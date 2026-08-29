@@ -363,30 +363,17 @@ export async function executeConductorCommand(
       });
     }
 
-    // `start` is seed-then-operate. A TTY opens the board; a pipe watches it.
-    // Both go through the same actions — this fork is presentation only.
+    // `start` is seed-then-operate. A TTY opens the board and seeds inside
+    // it; a pipe seeds and watches. Both go through the same actions —
+    // this fork is presentation only.
     if (invocation.command.kind === "start" && isInteractive(options)) {
-      const seedCode = await runConductorHeadless({
-        dispatch,
-        command: {
-          kind: "seed",
-          issue: invocation.command.issue,
-          ...(invocation.command.phase !== undefined ? { phase: invocation.command.phase } : {}),
-          ...(invocation.command.brief !== undefined ? { brief: invocation.command.brief } : {}),
-        },
-        json: false,
-        epicLabel,
-        ...(repoLabel !== undefined ? { repoLabel } : {}),
-        stdout: options.output,
-        stderr: options.stderr,
-      });
-      if (seedCode !== 0) return seedCode;
       return await runConductorTui({
         dispatch,
         epicLabel,
         input: options.input,
         output: options.output,
         focusIssue: invocation.command.issue,
+        initialCommand: invocation.command,
         ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
         ...(draftsFile !== undefined ? { lastDraftsPath: draftsFile } : {}),
         ...(repoLabel !== undefined ? { repoLabel } : {}),
