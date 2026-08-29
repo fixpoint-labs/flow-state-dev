@@ -314,17 +314,22 @@ function renderAskBand(state: ViewState, cols: number): string {
 }
 
 /**
- * Compact "what that attempt was doing" — PR, last tool, files, last
- * hunk, current todo. ASK and FAIL keep this on the reserved band so it
- * still shows when inspect is hidden (busy, or a tall transcript).
+ * Compact "what that attempt was doing" — branch, PR, last tool, files,
+ * last hunk, current todo. ASK and FAIL keep this on the reserved band
+ * so it still shows when inspect is hidden (busy, or a tall transcript).
+ * The branch stays when there is no pull request yet — that is the
+ * artifact the operator needs after a push that could not open one.
  */
 function renderAttemptStrip(state: ViewState, inner: number): string[] {
   const lines: string[] = [];
-  const prUrl = selectedRow(state)?.run?.prUrl;
+  const row = selectedRow(state);
+  const branch = row?.run?.branch;
+  if (branch) lines.push(` ${dim(truncate(branch, inner))}`);
+  const prUrl = row?.run?.prUrl;
   if (prUrl) lines.push(` ${dim(prText(prUrl, inner))}`);
   const now = selectedNow(state);
   if (now !== undefined && now !== "") {
-    const cwd = selectedRow(state)?.run?.workspacePath ?? null;
+    const cwd = row?.run?.workspacePath ?? null;
     lines.push(` ${dim(paintToolNow(now, inner, cwd))}`);
   }
   lines.push(...renderReadPeek(state, inner));

@@ -182,6 +182,7 @@ describe("HELP_TEXT", () => {
   it("names --phase with the other flags", () => {
     expect(HELP_TEXT).toMatch(/--phase <name>/);
     expect(HELP_TEXT).toContain("FAIL band");
+    expect(HELP_TEXT).toContain("that attempt's branch, files");
     expect(HELP_TEXT).toContain("that attempt's files");
     expect(HELP_TEXT).toContain("request stream");
     expect(HELP_TEXT).toContain("fsdev conductor abort");

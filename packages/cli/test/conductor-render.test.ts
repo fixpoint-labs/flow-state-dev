@@ -1034,6 +1034,7 @@ describe("renderFrame", () => {
     const above = beforeTranscript(frame);
     expect(above).toMatch(/^ FAIL\s*$/m);
     expect(above).not.toMatch(/^ RUN\s*$/m);
+    expect(above).toContain("conductor/FAIL-1--implement");
     expect(above).toContain("req-fail-1");
     expect(above).toContain("src/hello.js");
     expect(above).toContain("[ ] Open the pull request");
@@ -1561,6 +1562,15 @@ describe("renderFrame", () => {
     expect(afterWrite).not.toContain("Test Files  1 passed (1)");
   });
 
+  it("keeps the branch on ASK when there is no pull request", () => {
+    const above = beforeTranscript(
+      renderFrame({ ...emptyView("epic"), rows: [waiting] }, { cols: 80, rows: 24 }),
+    );
+    expect(above).toMatch(/\bASK\b/);
+    expect(above).toContain("conductor/FIX-1--implement");
+    expect(above).not.toContain("pull/");
+  });
+
   it("keeps files, the current todo, and the PR URL on ASK", () => {
     const parked: StatusRow = {
       ...waiting,
@@ -1596,6 +1606,7 @@ describe("renderFrame", () => {
     expect(above).toContain("Which path?");
     expect(above).toMatch(/\bASK\b/);
     expect(above).not.toMatch(/^ RUN\s*$/m);
+    expect(above).toContain("conductor/FIX-1--implement");
     expect(above).toContain("pull/1496");
     expect(above).toContain("… 2 more");
     expect(above).toContain("src/e.ts");
