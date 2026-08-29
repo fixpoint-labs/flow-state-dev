@@ -337,6 +337,75 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   };
 
   const wasRaw = input.isRaw;
+  let poll: ReturnType<typeof setInterval> | undefined;
+  let finish = () => {};
+
+  const handleKey = (key: Key) => {
+    if (state.busy && key.type === "ctrl" && key.value === "c") {
+      abortInFlight?.();
+      state = pushActivity(state, "abort requested", now());
+      paint();
+      return;
+    }
+    const result = applyKey(state, key);
+    state = result.state;
+    follow.sync(idsToFollow(state));
+    void loadSelectedJournal();
+    if (result.effect === undefined) {
+      paint();
+      return;
+    }
+    if (result.effect.type === "quit") {
+      closed = true;
+      void stopRunning(state).then(finish, finish);
+      return;
+    }
+    if (result.effect.type === "refresh") {
+      beginRefresh();
+      return;
+    }
+    if (result.effect.type === "hold") {
+      queued = result.effect.command;
+      paint();
+      return;
+    }
+    void dispatchCommand(result.effect.command).then(() => {
+      if (closed) finish();
+    });
+  };
+
+  const onData = (buf: Buffer | string) => {
+    if (closed) return;
+    const chunk = typeof buf === "string" ? buf : buf.toString("utf8");
+    const decoded = decodeKeys(chunk, pending);
+    pending = decoded.rest;
+    for (const key of decoded.keys) {
+      handleKey(key);
+      if (closed) break;
+    }
+  };
+
+  const onSigint = () => {
+    if (state.busy) {
+      abortInFlight?.();
+      return;
+    }
+    handleKey({ type: "ctrl", value: "c" });
+  };
+
+  const session = new Promise<void>((resolve) => {
+    finish = () => {
+      if (poll !== undefined) clearInterval(poll);
+      input.off("data", onData);
+      process.off("SIGINT", onSigint);
+      resolve();
+    };
+  });
+
+  // Listen before resume. resume() without a reader drops keys, and the
+  // first status used to run in that window — /quit during load never left.
+  input.on("data", onData);
+  process.on("SIGINT", onSigint);
   input.setRawMode?.(true);
   input.resume();
   output.write(`${ENTER_ALT}${MOUSE_ON}${PASTE_ON}${HIDE_CURSOR}`);
@@ -347,6 +416,11 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
 
   try {
     await refresh();
+    if (closed) {
+      finish();
+      await session;
+      return 0;
+    }
     if (options.focusIssue !== undefined) {
       state = rowAfterRefresh(state, options.focusIssue);
       follow.sync(idsToFollow(state));
@@ -354,74 +428,10 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       paint();
     }
 
-    await new Promise<void>((resolve) => {
-      const poll = setInterval(() => {
-        beginRefresh();
-      }, pollMs);
-
-      const finish = () => {
-        clearInterval(poll);
-        input.off("data", onData);
-        process.off("SIGINT", onSigint);
-        resolve();
-      };
-
-      const handleKey = (key: Key) => {
-        if (state.busy && key.type === "ctrl" && key.value === "c") {
-          abortInFlight?.();
-          state = pushActivity(state, "abort requested", now());
-          paint();
-          return;
-        }
-        const result = applyKey(state, key);
-        state = result.state;
-        follow.sync(idsToFollow(state));
-        void loadSelectedJournal();
-        if (result.effect === undefined) {
-          paint();
-          return;
-        }
-        if (result.effect.type === "quit") {
-          closed = true;
-          void stopRunning(state).then(finish, finish);
-          return;
-        }
-        if (result.effect.type === "refresh") {
-          beginRefresh();
-          return;
-        }
-        if (result.effect.type === "hold") {
-          queued = result.effect.command;
-          paint();
-          return;
-        }
-        void dispatchCommand(result.effect.command).then(() => {
-          if (closed) finish();
-        });
-      };
-
-      const onData = (buf: Buffer | string) => {
-        if (closed) return;
-        const chunk = typeof buf === "string" ? buf : buf.toString("utf8");
-        const decoded = decodeKeys(chunk, pending);
-        pending = decoded.rest;
-        for (const key of decoded.keys) {
-          handleKey(key);
-          if (closed) break;
-        }
-      };
-
-      const onSigint = () => {
-        if (state.busy) {
-          abortInFlight?.();
-          return;
-        }
-        handleKey({ type: "ctrl", value: "c" });
-      };
-
-      input.on("data", onData);
-      process.on("SIGINT", onSigint);
-    });
+    poll = setInterval(() => {
+      beginRefresh();
+    }, pollMs);
+    await session;
   } finally {
     follow.stop();
     output.off("resize", onResize);
