@@ -43,7 +43,7 @@ const fsdev = path.resolve(labRoot, "../../packages/cli/bin/fsdev.ts");
 const tsx = path.resolve(labRoot, "../../node_modules/.bin/tsx");
 
 applyConductorBinDefaults(process.env, labRoot);
-const mismatch = conductorRepoMismatch(process.env, process.cwd());
+const mismatch = conductorRepoMismatch(process.env, process.cwd(), labRoot);
 if (mismatch !== undefined) {
   process.stderr.write(formatRepoMismatch(mismatch));
   process.exit(1);

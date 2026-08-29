@@ -45,16 +45,25 @@ export function gitToplevel(dir) {
 /**
  * When both cwd and `CONDUCTOR_REPO` are git checkouts and they differ.
  *
+ * Standing in the dispatcher (the repo that contains `labs/conductor`) is
+ * allowed: `CONDUCTOR_REPO` must then name the product, or the config door
+ * refuses. Standing in a product checkout with a leftover other tree is not.
+ *
  * @param {NodeJS.ProcessEnv} env
  * @param {string} cwd
+ * @param {string} [labRoot]
  * @returns {{ cwdRoot: string, repoRoot: string } | undefined}
  */
-export function conductorRepoMismatch(env, cwd) {
+export function conductorRepoMismatch(env, cwd, labRoot) {
   const raw = env.CONDUCTOR_REPO?.trim();
   if (!raw) return undefined;
   const cwdRoot = gitToplevel(cwd);
   const repoRoot = gitToplevel(path.resolve(cwd, raw));
   if (!cwdRoot || !repoRoot || cwdRoot === repoRoot) return undefined;
+  if (labRoot !== undefined) {
+    const dispatcherRoot = gitToplevel(path.resolve(labRoot, "..", ".."));
+    if (dispatcherRoot !== undefined && cwdRoot === dispatcherRoot) return undefined;
+  }
   return { cwdRoot, repoRoot };
 }
 

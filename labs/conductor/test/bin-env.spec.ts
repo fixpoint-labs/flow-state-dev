@@ -66,9 +66,9 @@ describe("conductorRepoMismatch", () => {
     try {
       const env: NodeJS.ProcessEnv = {};
       applyConductorBinDefaults(env, labRoot);
-      expect(conductorRepoMismatch(env, here)).toBeUndefined();
+      expect(conductorRepoMismatch(env, here, labRoot)).toBeUndefined();
       env.CONDUCTOR_REPO = here;
-      expect(conductorRepoMismatch(env, here)).toBeUndefined();
+      expect(conductorRepoMismatch(env, here, labRoot)).toBeUndefined();
     } finally {
       rmSync(here, { recursive: true, force: true });
     }
@@ -78,7 +78,7 @@ describe("conductorRepoMismatch", () => {
     const here = scratch();
     const leftover = scratch();
     try {
-      const mismatch = conductorRepoMismatch({ CONDUCTOR_REPO: leftover }, here);
+      const mismatch = conductorRepoMismatch({ CONDUCTOR_REPO: leftover }, here, labRoot);
       expect(mismatch).toEqual({
         cwdRoot: gitToplevel(here),
         repoRoot: gitToplevel(leftover),
@@ -92,11 +92,21 @@ describe("conductorRepoMismatch", () => {
     }
   });
 
+  it("allows the dispatcher to name a product checkout", () => {
+    const product = scratch();
+    const dispatcher = gitToplevel(labRoot);
+    expect(dispatcher).toBeDefined();
+    expect(
+      conductorRepoMismatch({ CONDUCTOR_REPO: product }, dispatcher!, labRoot),
+    ).toBeUndefined();
+    rmSync(product, { recursive: true, force: true });
+  });
+
   it("is undefined when cwd is not a git checkout", () => {
     const leftover = scratch();
     const plain = mkdtempSync(path.join(tmpdir(), "conductor-bin-plain-"));
     try {
-      expect(conductorRepoMismatch({ CONDUCTOR_REPO: leftover }, plain)).toBeUndefined();
+      expect(conductorRepoMismatch({ CONDUCTOR_REPO: leftover }, plain, labRoot)).toBeUndefined();
     } finally {
       rmSync(leftover, { recursive: true, force: true });
       rmSync(plain, { recursive: true, force: true });
