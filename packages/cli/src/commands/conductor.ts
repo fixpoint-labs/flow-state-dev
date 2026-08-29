@@ -61,7 +61,7 @@ export function registerConductorCommand(program: Command): void {
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.* in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
     .option("--quiet", "Suppress runtime logs on stderr")
-    .option("--log-level <level>", "Stderr log level: debug | info | warn | error (default: warn)")
+    .option("--log-level <level>", "Stderr log level: debug | info | warn | error (board default: silent; headless default: warn)")
     .addHelpText("after", `\n${HELP_TEXT}`)
     .action(async (args: string[] | undefined, options: ConductorCommandOptions) => {
       try {
@@ -112,6 +112,19 @@ function isInteractive(options: ConductorCommandInternalOptions): boolean {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   return Boolean(input.isTTY && output.isTTY);
+}
+
+/**
+ * The board is a fullscreen surface. Engine lines on stderr write over it.
+ * Headless verbs keep the warn default so a script still sees a failed drain.
+ */
+export function conductorDefaultLogLevel(
+  invocation: { mode: "tui" } | { mode: "headless"; command: { kind: string } },
+  options: ConductorCommandInternalOptions,
+): "silent" | "warn" {
+  if (invocation.mode === "tui") return "silent";
+  if (invocation.command.kind === "start" && isInteractive(options)) return "silent";
+  return "warn";
 }
 
 /** Where to stand when this cwd has no `kind: "conductor"` flow. */
@@ -189,10 +202,11 @@ export async function executeConductorCommand(
   let dispose: (() => Promise<void>) | undefined;
   let epicLabel = CONDUCTOR_FLOW_KIND;
 
+  const defaultLevel = conductorDefaultLogLevel(invocation, options);
   const logger =
     resolved.source === "config"
-      ? installCliLogger(resolved.flowState, options, "warn")
-      : createCliLogger(resolveLogLevel(options, "warn"));
+      ? installCliLogger(resolved.flowState, options, defaultLevel)
+      : createCliLogger(resolveLogLevel(options, defaultLevel));
 
   if (resolved.source === "config") {
     assertNoFlowDirWithConfig(options.flowDir);

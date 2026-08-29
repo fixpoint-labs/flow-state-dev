@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolve } from "node:path";
-import { Writable } from "node:stream";
+import { PassThrough, Writable } from "node:stream";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import {
+  conductorDefaultLogLevel,
   executeConductorCommand,
   resolveConductorConfigOption,
 } from "../src/commands/conductor";
@@ -821,8 +822,57 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
   });
 });
 
+describe("conductorDefaultLogLevel", () => {
+  it("is silent on the fullscreen board and warn on headless verbs", () => {
+    expect(conductorDefaultLogLevel({ mode: "tui" }, {})).toBe("silent");
+    expect(conductorDefaultLogLevel({ mode: "headless", command: { kind: "status" } }, {})).toBe(
+      "warn",
+    );
+    expect(
+      conductorDefaultLogLevel({ mode: "headless", command: { kind: "wake" } }, { tty: true }),
+    ).toBe("warn");
+    expect(
+      conductorDefaultLogLevel({ mode: "headless", command: { kind: "start" } }, { tty: false }),
+    ).toBe("warn");
+    expect(
+      conductorDefaultLogLevel({ mode: "headless", command: { kind: "start" } }, { tty: true }),
+    ).toBe("silent");
+  });
+});
+
 describe("fsdev conductor — config-path init narration", () => {
   const configDir = resolve(import.meta.dirname, "fixtures-conductor-config");
+
+  function fakeTty() {
+    const input = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      isRaw?: boolean;
+      setRawMode: (mode: boolean) => void;
+    };
+    input.isTTY = true;
+    input.setRawMode = (mode) => {
+      input.isRaw = mode;
+    };
+    const output = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      columns: number;
+      rows: number;
+    };
+    output.isTTY = true;
+    output.columns = 80;
+    output.rows = 24;
+    let text = "";
+    output.on("data", (chunk: Buffer | string) => {
+      text += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    });
+    return {
+      input,
+      output,
+      get text() {
+        return text;
+      },
+    };
+  }
 
   it("does not print the active-profile line at the default warn level", async () => {
     const errors: string[] = [];
@@ -870,6 +920,72 @@ describe("fsdev conductor — config-path init narration", () => {
         logLevel: "info",
       });
       expect(code).toBe(1);
+      expect(stderr.join("")).toMatch(/\[flowstate\] active profile/);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+  });
+
+  it("the fullscreen board is silent unless --log-level is passed", async () => {
+    const stderr: string[] = [];
+    const originalWrite = process.stderr.write;
+    process.stderr.write = ((chunk: unknown) => {
+      stderr.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    const errors: string[] = [];
+    const restoreError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+    try {
+      const tty = fakeTty();
+      const running = executeConductorCommand(["tui"], {
+        cwd: configDir,
+        stores: createInMemoryStores(),
+        input: tty.input as unknown as NodeJS.ReadStream,
+        output: tty.output as unknown as NodeJS.WriteStream,
+        pollMs: 50,
+      });
+      const start = Date.now();
+      while (!tty.text.includes("FSDEV CONDUCTOR") && Date.now() - start < 3_000) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(tty.text).toContain("FSDEV CONDUCTOR");
+      tty.input.write("/quit\r");
+      await expect(running).resolves.toBe(0);
+      expect(stderr.join("")).not.toMatch(/\[flowstate\]|\[flow-state\]/);
+      expect(errors.join("")).not.toMatch(/\[flowstate\]|\[flow-state\]/);
+    } finally {
+      process.stderr.write = originalWrite;
+      console.error = restoreError;
+    }
+  });
+
+  it("TUI --log-level info still prints the active-profile line on stderr", async () => {
+    const stderr: string[] = [];
+    const originalWrite = process.stderr.write;
+    process.stderr.write = ((chunk: unknown) => {
+      stderr.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      const tty = fakeTty();
+      const running = executeConductorCommand(["tui"], {
+        cwd: configDir,
+        stores: createInMemoryStores(),
+        input: tty.input as unknown as NodeJS.ReadStream,
+        output: tty.output as unknown as NodeJS.WriteStream,
+        logLevel: "info",
+        pollMs: 50,
+      });
+      const start = Date.now();
+      while (!tty.text.includes("FSDEV CONDUCTOR") && Date.now() - start < 3_000) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(tty.text).toContain("FSDEV CONDUCTOR");
+      tty.input.write("/quit\r");
+      await expect(running).resolves.toBe(0);
       expect(stderr.join("")).toMatch(/\[flowstate\] active profile/);
     } finally {
       process.stderr.write = originalWrite;
