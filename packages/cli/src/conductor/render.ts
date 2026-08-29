@@ -955,7 +955,7 @@ const TUI_HELP_LINES = [
   "  /quit        stop running work and leave",
   "  A waiting row: type the answer. /steer talks.",
   "  A new question or a finish rings and selects that row.",
-  "  Reopen lands on the row you left, per session and epic.",
+  "  Reopen lands on the row you left, and keeps the talk.",
 ];
 
 function renderHelp(cols: number): string {

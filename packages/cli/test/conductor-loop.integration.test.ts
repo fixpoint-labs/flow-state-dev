@@ -1102,6 +1102,46 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(secondRun).resolves.toBe(0);
   });
 
+  it("reopening the board still shows the last talk on the transcript", async () => {
+    const stores = createInMemoryStores();
+    const lastTalk = join(mkdtempSync(join(tmpdir(), "conductor-talk-")), "tui-talk");
+
+    const first = fakeTty();
+    const firstRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastTalkPath: lastTalk,
+      input: first.input as unknown as NodeJS.ReadStream,
+      output: first.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(first.text), "FSDEV CONDUCTOR");
+    first.input.write("quiet first look\r");
+    await waitFor(() => lastFrame(first.text), "coord · first look");
+    first.input.write("/quit\r");
+    await expect(firstRun).resolves.toBe(0);
+
+    const second = fakeTty();
+    const secondRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastTalkPath: lastTalk,
+      input: second.input as unknown as NodeJS.ReadStream,
+      output: second.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(second.text), "you · quiet first look");
+    await waitFor(() => lastFrame(second.text), "coord · first look");
+    const frame = stripAnsi(lastFrame(second.text));
+    expect(frame).toContain("you · quiet first look");
+    expect(frame).toContain("coord · first look");
+    expect(frame).not.toContain("nothing yet. type to talk.");
+    second.input.write("/quit\r");
+    await expect(secondRun).resolves.toBe(0);
+  });
+
   it("Ctrl-C during a drain aborts the wake even if the operator hits r first", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "HANG-1"], {

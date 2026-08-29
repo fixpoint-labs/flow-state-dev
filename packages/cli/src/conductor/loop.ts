@@ -27,6 +27,7 @@ import {
 import { createChildFollow } from "./follow";
 import { readDrafts, writeDrafts } from "./compose-history";
 import { readLastFocus, writeLastFocus } from "./last-focus";
+import { readTalk, writeTalk } from "./talk-history";
 import {
   clampSelected,
   dropRequestActivity,
@@ -96,6 +97,8 @@ export interface LoopOptions {
   lastFocusPath?: string;
   /** Sidecar that remembers submitted compose lines across `/quit`. */
   lastDraftsPath?: string;
+  /** Sidecar that remembers operator talk across `/quit`. */
+  lastTalkPath?: string;
   now?: () => number;
 }
 
@@ -120,6 +123,15 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   if (options.lastDraftsPath !== undefined) {
     const drafts = readDrafts(options.lastDraftsPath);
     if (drafts.length > 0) state = { ...state, drafts };
+  }
+  if (options.lastTalkPath !== undefined) {
+    const talk = readTalk(options.lastTalkPath);
+    if (talk.length > 0) {
+      state = {
+        ...state,
+        activity: [...talk.map((line) => ({ at: line.at, text: line.text })), ...state.activity],
+      };
+    }
   }
   let pending = "";
   let escFlush: ReturnType<typeof setTimeout> | undefined;
@@ -249,6 +261,10 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   const rememberDrafts = () => {
     if (options.lastDraftsPath === undefined) return;
     writeDrafts(options.lastDraftsPath, state.drafts);
+  };
+  const rememberTalk = () => {
+    if (options.lastTalkPath === undefined) return;
+    writeTalk(options.lastTalkPath, state.activity);
   };
 
   const runAction = <T>(action: ConductorAction, input: unknown) => {
@@ -428,6 +444,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       const next = queued;
       queued = undefined;
       state = { ...state, busy: false };
+      rememberTalk();
       if (next !== undefined && !closed) {
         void dispatchCommand(next);
       } else {
@@ -453,6 +470,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     void loadSelectedJournal();
     rememberFocus();
     rememberDrafts();
+    rememberTalk();
     if (result.effect === undefined) {
       paint();
       return;
@@ -583,6 +601,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   } finally {
     rememberFocus();
     rememberDrafts();
+    rememberTalk();
     follow.stop();
     output.off("resize", onResize);
     input.setRawMode?.(wasRaw ?? false);

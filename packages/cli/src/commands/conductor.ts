@@ -47,6 +47,7 @@ import { runConductorHeadless } from "../conductor/headless";
 import { runConductorTui } from "../conductor/loop";
 import { lastDraftsPath } from "../conductor/compose-history";
 import { lastFocusPath } from "../conductor/last-focus";
+import { lastTalkPath } from "../conductor/talk-history";
 import { conductorRepoLabel } from "../conductor/repo-label";
 import { boundedDispose, TUI_LEAVE_DRAIN_MS } from "../conductor/leave";
 
@@ -120,6 +121,8 @@ export interface ConductorCommandInternalOptions extends ConductorCommandOptions
   lastFocusPath?: string;
   /** Sidecar that remembers submitted compose lines across `/quit`. Tests inject a temp path. */
   lastDraftsPath?: string;
+  /** Sidecar that remembers operator talk across `/quit`. Tests inject a temp path. */
+  lastTalkPath?: string;
   /**
    * How long a TUI leave waits for host dispose. Default matches the engine's
    * abort-unwind reserve. Tests shorten this so a hang cannot stall the suite.
@@ -348,6 +351,11 @@ export async function executeConductorCommand(
       (resolved.source === "config"
         ? lastDraftsPath(resolved.configPath, dispatch.sessionId, epicLabel)
         : undefined);
+    const talkFile =
+      options.lastTalkPath ??
+      (resolved.source === "config"
+        ? lastTalkPath(resolved.configPath, dispatch.sessionId, epicLabel)
+        : undefined);
 
     if (invocation.mode === "tui") {
       return await runConductorTui({
@@ -358,6 +366,7 @@ export async function executeConductorCommand(
         ...(invocation.issue !== undefined ? { focusIssue: invocation.issue } : {}),
         ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
         ...(draftsFile !== undefined ? { lastDraftsPath: draftsFile } : {}),
+        ...(talkFile !== undefined ? { lastTalkPath: talkFile } : {}),
         ...(repoLabel !== undefined ? { repoLabel } : {}),
         ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
       });
@@ -376,6 +385,7 @@ export async function executeConductorCommand(
         initialCommand: invocation.command,
         ...(focusFile !== undefined ? { lastFocusPath: focusFile } : {}),
         ...(draftsFile !== undefined ? { lastDraftsPath: draftsFile } : {}),
+        ...(talkFile !== undefined ? { lastTalkPath: talkFile } : {}),
         ...(repoLabel !== undefined ? { repoLabel } : {}),
         ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
       });
