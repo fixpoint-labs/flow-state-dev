@@ -789,7 +789,9 @@ function renderPrompt(state: ViewState, cols: number): string {
   let placeholder = dim(
     selected !== undefined && rowSpent(selected)
       ? "talk to the coordinator — this row is spent"
-      : "talk to the coordinator, or /seed /wake /answer",
+      : selectedQuestion(state) !== undefined
+        ? "type to answer"
+        : "talk to the coordinator, or /seed /wake /answer",
   );
   if (state.inputMode === "answer") {
     prefix = paint(MAUVE, "❯ answer ");

@@ -291,6 +291,7 @@ describe("renderFrame", () => {
     expect(frame).toContain("/find");
     expect(frame).toContain("TRANSCRIPT");
     expect(stripAnsi(frame)).not.toContain("a answer");
+    expect(stripAnsi(frame)).not.toContain("talk to the coordinator, or /seed /wake /answer");
   });
 
   it("names the product checkout in the header when it is set", () => {
