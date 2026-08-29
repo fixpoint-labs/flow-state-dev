@@ -277,7 +277,7 @@ fsdev conductor: the interactive surface needs a TTY. Use a headless verb (statu
 
 `fsdev conductor tui PR-482` opens the same board with that row selected, if it exists, even if another row is waiting.
 
-`/quit` remembers the selected row's issue, or that row's task id when it has no issue. Opening the board without `tui <issue>` selects that row when it is on the board, unless a row is waiting on a question. A waiting row wins. The remembered row is per `--session`. Headless verbs do not restore or change it. Without a loaded config, the board does not remember a row.
+`/quit` remembers the selected row's issue, or that row's task id when it has no issue. Opening the board without `tui <issue>` selects that row when it is on the board, unless a row is waiting on a question. A waiting row wins. The remembered row is per `--session` and per epic (the flow's `id`). Opening an epic that has not remembered a row yet uses the last row this `--session` remembered. Headless verbs do not restore or change it. Without a loaded config, the board does not remember a row.
 
 ### Keys
 
