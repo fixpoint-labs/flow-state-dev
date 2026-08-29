@@ -29,6 +29,7 @@ import {
   echoTalk,
   pushActivity,
   pushHunk,
+  rowRunning,
   type PlanItem,
   type StatusRow,
   type ViewState,
@@ -847,6 +848,21 @@ export function newlyAsked(prev: StatusRow[], next: StatusRow[]): boolean {
     for (const question of row.questions) {
       if (!before.questions.some((q) => q.question === question.question)) return true;
     }
+  }
+  return false;
+}
+
+/**
+ * True when a row that was running on `prev` is no longer running on
+ * `next`. Opening a board of already-finished rows is silent — we never
+ * saw those runs in flight. Headless `status` / `watch` do not call this.
+ */
+export function newlySettled(prev: StatusRow[], next: StatusRow[]): boolean {
+  const prevByKey = new Map(prev.map((row) => [rowKey(row), row]));
+  for (const row of next) {
+    const before = prevByKey.get(rowKey(row));
+    if (before === undefined) continue;
+    if (rowRunning(before) && !rowRunning(row)) return true;
   }
   return false;
 }

@@ -353,6 +353,7 @@ In the TUI:
   Letters talk. r still refreshes. /quit leaves. Ctrl-C leaves when nothing is running.
   A row with an open question: type the reply. Letters are the answer, not board keys. Enter sends, Esc cancels.
   A new question rings the terminal bell and selects that row when you are not typing.
+  A row that finishes rings the terminal bell and selects that row when you are not typing. A new question wins.
   The ASK band keeps that attempt's files, current todo, PR URL, and token counts.
   A row that failed: the FAIL band holds the reason and that attempt's files. Talk, or /wake if it is still pending. An errored or cancelled row is spent — /wake will not take it.
   s / seed: first line is the issue id. More lines — or words after the id — are the brief attempt 1 reads, so the run does not have to ask what the ticket is.

@@ -370,6 +370,27 @@ export function focusNewlyAsked(prev: StatusRow[], state: ViewState): ViewState 
   });
 }
 
+/**
+ * When a poll shows a row that just stopped running and the operator is
+ * not composing, select that row so the finished attempt is on screen.
+ * A new question wins — answer it first.
+ */
+export function focusNewlySettled(prev: StatusRow[], state: ViewState): ViewState {
+  if (state.inputMode !== "command" || state.input !== "") return state;
+  const index = state.rows.findIndex((row) => {
+    const before = prev.find((r) => r.taskId === row.taskId);
+    if (before === undefined) return false;
+    return rowRunning(before) && !rowRunning(row);
+  });
+  if (index < 0) return state;
+  return clampSelected({
+    ...state,
+    selected: index,
+    questionIndex: 0,
+    scroll: 0,
+  });
+}
+
 /** Newest this many lines are kept per unselected request, and for board-only lines. */
 export const ACTIVITY_CAP = 2000;
 

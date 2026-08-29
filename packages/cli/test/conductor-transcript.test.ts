@@ -5,6 +5,7 @@ import {
   createStreamTranscript,
   diffBoard,
   newlyAsked,
+  newlySettled,
   redactSecrets,
   viewFromEvents,
 } from "../src/conductor/transcript";
@@ -13,6 +14,7 @@ import {
   activityForView,
   emptyView,
   focusNewlyAsked,
+  focusNewlySettled,
   fileFromToolLine,
   findMatches,
   pushActivity,
@@ -1277,6 +1279,64 @@ describe("newlyAsked", () => {
       }),
     ];
     expect(newlyAsked(rows, rows)).toBe(false);
+  });
+});
+
+describe("newlySettled", () => {
+  it("is false when a poll moved nothing", () => {
+    const rows = [row("FIX-1", "in_progress")];
+    expect(newlySettled(rows, rows)).toBe(false);
+  });
+
+  it("is true when a running row is no longer running", () => {
+    const before = [row("FIX-1", "in_progress")];
+    const after = [row("FIX-1", "completed")];
+    expect(newlySettled(before, after)).toBe(true);
+  });
+
+  it("is false when the same finished row is still finished", () => {
+    const rows = [row("FIX-1", "completed")];
+    expect(newlySettled(rows, rows)).toBe(false);
+  });
+
+  it("is false when opening a board of already-finished rows", () => {
+    expect(newlySettled([], [row("FIX-1", "completed")])).toBe(false);
+  });
+
+  it("is false while the row is still running", () => {
+    const before = [row("FIX-1", "pending")];
+    const after = [row("FIX-1", "in_progress")];
+    expect(newlySettled(before, after)).toBe(false);
+  });
+});
+
+describe("focusNewlySettled", () => {
+  it("selects the row that just finished when compose is idle", () => {
+    const prev = [row("LIVE-1", "in_progress"), row("DONE-1", "in_progress")];
+    const next = [row("LIVE-1", "in_progress"), row("DONE-1", "completed")];
+    const state = { ...emptyView("epic"), rows: next, selected: 0 };
+    expect(focusNewlySettled(prev, state).selected).toBe(1);
+  });
+
+  it("does not steal the selection while the operator is typing", () => {
+    const prev = [row("LIVE-1", "in_progress"), row("DONE-1", "in_progress")];
+    const next = [row("LIVE-1", "in_progress"), row("DONE-1", "completed")];
+    const state = { ...emptyView("epic"), rows: next, selected: 0, input: "halfway" };
+    expect(focusNewlySettled(prev, state).selected).toBe(0);
+  });
+
+  it("does not steal while answering or seeding", () => {
+    const prev = [row("DONE-1", "in_progress")];
+    const next = [row("DONE-1", "completed")];
+    const answering = {
+      ...emptyView("epic"),
+      rows: next,
+      inputMode: "answer" as const,
+      answering: "other/q",
+    };
+    expect(focusNewlySettled(prev, answering).selected).toBe(0);
+    const seeding = { ...emptyView("epic"), rows: next, inputMode: "seed" as const };
+    expect(focusNewlySettled(prev, seeding).selected).toBe(0);
   });
 });
 

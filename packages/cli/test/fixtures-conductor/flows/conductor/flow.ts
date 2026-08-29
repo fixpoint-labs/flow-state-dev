@@ -109,8 +109,20 @@ async function drainPending(ctx: {
   };
 }): Promise<number> {
     const rows = ((ctx.session.state as Board).rows ?? []).map((row) => {
+      if (row.issue === "DONE-1" && row.status === "in_progress") {
+        return {
+          ...row,
+          status: "completed",
+          run: {
+            ...emptyRun(),
+            outcome: "succeeded" as const,
+            requestId: "req-done-1",
+          },
+          questions: [],
+        };
+      }
       if (row.status !== "pending") return row;
-      if (row.issue === "LIVE-1" || row.issue === "LIVE-2") {
+      if (row.issue === "DONE-1" || row.issue === "LIVE-1" || row.issue === "LIVE-2") {
         return {
           ...row,
           status: "in_progress",
@@ -118,7 +130,12 @@ async function drainPending(ctx: {
           run: {
             ...emptyRun(),
             outcome: "running" as const,
-            requestId: row.issue === "LIVE-1" ? "req-live-1" : "req-live-2",
+            requestId:
+              row.issue === "LIVE-1"
+                ? "req-live-1"
+                : row.issue === "LIVE-2"
+                  ? "req-live-2"
+                  : "req-done-1",
             branch: `conductor/${row.issue}--implement`,
             workspacePath: `/tmp/conductor-src/.fsdev/workspaces/${row.issue}--implement`,
           },

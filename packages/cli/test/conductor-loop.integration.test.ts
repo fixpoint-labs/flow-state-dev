@@ -471,6 +471,49 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("a row that finishes selects that row when compose is idle", async () => {
+    const stores = createInMemoryStores();
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["seed", "DONE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 50,
+    });
+
+    await waitFor(() => lastFrame(tty.text), "LIVE-1");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+LIVE-1/);
+
+    tty.input.write("/wake\r");
+    await waitFor(() => lastFrame(tty.text), "completed");
+    expect(tty.text).toContain("\x07");
+    expect(stripAnsi(lastFrame(tty.text))).toMatch(/▸\s+DONE-1/);
+
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+  });
+
   it("a new question selects that row when compose is idle", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "LIVE-1"], {

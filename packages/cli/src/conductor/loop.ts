@@ -22,12 +22,14 @@ import {
   createStreamTranscript,
   diffBoard,
   newlyAsked,
+  newlySettled,
 } from "./transcript";
 import { createChildFollow } from "./follow";
 import {
   clampSelected,
   dropRequestActivity,
   focusNewlyAsked,
+  focusNewlySettled,
   echoTalk,
   emptyView,
   pushActivity,
@@ -180,10 +182,15 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     const nextRows = result.output?.rows ?? [];
     const prevRows = state.rows;
     const asked = newlyAsked(prevRows, nextRows);
+    const settled = newlySettled(prevRows, nextRows);
     state = applyStatus(state, result.output ?? { rows: [] }, now());
-    if (asked) {
+    if (asked || settled) {
       output.write("\x07");
+    }
+    if (asked) {
       state = focusNewlyAsked(prevRows, state);
+    } else if (settled) {
+      state = focusNewlySettled(prevRows, state);
     }
     follow.sync(idsToFollow(state));
     void loadSelectedJournal();
