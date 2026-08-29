@@ -960,7 +960,8 @@ function applyClick(state: ViewState, screenRow1: number): KeyResult {
 /**
  * Keep the selected row across a board rewrite. A previous `taskId` wins —
  * that is the row the operator is looking at. `preferIssue` is only the
- * first-paint focus (`tui <issue>` / `start <issue>`).
+ * first-paint focus (`tui <issue>` / `start <issue>`). Issue match folds
+ * case the same way `/status <issue>` does.
  */
 export function rowAfterRefresh(
   state: ViewState,
@@ -974,9 +975,7 @@ export function rowAfterRefresh(
     }
   }
   if (preferIssue !== null && preferIssue !== undefined && preferIssue !== "") {
-    const index = state.rows.findIndex(
-      (row) => row.issue === preferIssue || row.taskId === preferIssue,
-    );
+    const index = rowIndexForIssue(state, preferIssue);
     if (index >= 0) {
       if (index === state.selected) return clampSelected(state);
       return clampSelected({ ...state, selected: index, scroll: 0 });

@@ -852,6 +852,17 @@ describe("applyKey", () => {
     expect(submitted.effect).toEqual({ type: "refresh" });
   });
 
+  it("selects /status <issue> without matching case", () => {
+    let state = board([row("FIX-1"), row("FIX-2")]);
+    state = applyKey(state, { type: "char", value: "/" }).state;
+    for (const ch of "status fix-2") {
+      state = applyKey(state, { type: "char", value: ch }).state;
+    }
+    const submitted = applyKey(state, { type: "enter" });
+    expect(submitted.state.selected).toBe(1);
+    expect(submitted.state.rows[submitted.state.selected]?.issue).toBe("FIX-2");
+  });
+
   it("keeps the selection on /status with no issue", () => {
     const state = { ...board([row("FIX-1"), row("FIX-2")]), selected: 1 };
     let typed = applyKey(state, { type: "char", value: "/" }).state;
@@ -1093,6 +1104,16 @@ describe("rowAfterRefresh / applyStatus", () => {
     const live = row("LIVE-1");
     const focused = rowAfterRefresh({ ...emptyView("epic"), rows: [live, orphan] }, "orphan--implement");
     expect(focused.selected).toBe(1);
+  });
+
+  it("focuses tui <issue> without matching case", () => {
+    // `/status fix-2` already folds case. `conductor tui fix-2` used
+    // exact equality, so the first paint missed LIVE-2.
+    const live1 = row("LIVE-1");
+    const live2 = row("LIVE-2");
+    const focused = rowAfterRefresh({ ...emptyView("epic"), rows: [live1, live2] }, "live-2");
+    expect(focused.selected).toBe(1);
+    expect(focused.rows[focused.selected]?.issue).toBe("LIVE-2");
   });
 });
 
