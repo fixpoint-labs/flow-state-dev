@@ -169,9 +169,10 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
     paint();
   };
 
-  const initialFocus =
-    options.focusIssue ??
-    (options.lastFocusPath !== undefined ? readLastFocus(options.lastFocusPath) : undefined);
+  const rememberedFocus =
+    options.focusIssue === undefined && options.lastFocusPath !== undefined
+      ? readLastFocus(options.lastFocusPath)
+      : undefined;
   let readyToRemember = false;
   const rememberFocus = () => {
     if (!readyToRemember || options.lastFocusPath === undefined) return;
@@ -205,6 +206,8 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       state = focusNewlyAsked(prevRows, state);
     } else if (settled) {
       state = focusNewlySettled(prevRows, state);
+    } else if (!readyToRemember && rememberedFocus !== undefined) {
+      state = rowAfterRefresh(state, rememberedFocus);
     }
     follow.sync(idsToFollow(state));
     void loadSelectedJournal();
@@ -453,14 +456,14 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
       await session;
       return 0;
     }
-    if (initialFocus !== undefined) {
-      state = rowAfterRefresh(state, initialFocus);
+    if (options.focusIssue !== undefined) {
+      state = rowAfterRefresh(state, options.focusIssue);
       follow.sync(idsToFollow(state));
       void loadSelectedJournal();
+      paint();
     }
     readyToRemember = true;
     rememberFocus();
-    if (initialFocus !== undefined) paint();
 
     poll = setInterval(() => {
       beginRefresh();

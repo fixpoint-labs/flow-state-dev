@@ -802,7 +802,9 @@ export function rowAfterRefresh(
     }
   }
   if (preferIssue !== null && preferIssue !== undefined && preferIssue !== "") {
-    const index = state.rows.findIndex((row) => row.issue === preferIssue);
+    const index = state.rows.findIndex(
+      (row) => row.issue === preferIssue || row.taskId === preferIssue,
+    );
     if (index >= 0) {
       if (index === state.selected) return clampSelected(state);
       return clampSelected({ ...state, selected: index, scroll: 0 });

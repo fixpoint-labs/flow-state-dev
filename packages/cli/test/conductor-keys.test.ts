@@ -856,6 +856,13 @@ describe("rowAfterRefresh / applyStatus", () => {
     expect(polled.rows[polled.selected]?.taskId).toBe("FIX-1--implement");
     expect(polled.scroll).toBe(2);
   });
+
+  it("focuses a row by task id when it has no issue", () => {
+    const orphan: StatusRow = { ...row("ORPHAN-1"), issue: null, taskId: "orphan--implement" };
+    const live = row("LIVE-1");
+    const focused = rowAfterRefresh({ ...emptyView("epic"), rows: [live, orphan] }, "orphan--implement");
+    expect(focused.selected).toBe(1);
+  });
 });
 
 describe("operator abort / refresh policy", () => {

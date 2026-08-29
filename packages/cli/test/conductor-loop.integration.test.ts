@@ -652,6 +652,66 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(secondRun).resolves.toBe(0);
   });
 
+  it("a waiting row wins over the remembered row when you reopen", async () => {
+    const stores = createInMemoryStores();
+    const lastFocus = join(mkdtempSync(join(tmpdir(), "conductor-focus-")), "tui-focus");
+    await executeConductorCommand(["seed", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const first = fakeTty();
+    const firstRun = executeConductorCommand(["tui", "LIVE-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastFocusPath: lastFocus,
+      input: first.input as unknown as NodeJS.ReadStream,
+      output: first.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(first.text), "LIVE-1");
+    first.input.write("/quit\r");
+    await expect(firstRun).resolves.toBe(0);
+
+    await executeConductorCommand(["seed", "ASK-1"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+    await executeConductorCommand(["wake"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      output: new PassThrough() as unknown as NodeJS.WriteStream,
+    });
+
+    const second = fakeTty();
+    const secondRun = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores,
+      config: false,
+      lastFocusPath: lastFocus,
+      input: second.input as unknown as NodeJS.ReadStream,
+      output: second.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => lastFrame(second.text), "Which path?");
+    expect(second.text).toContain("\x07");
+    expect(stripAnsi(lastFrame(second.text))).toMatch(/▸\s+ASK-1/);
+    second.input.write("/quit\r");
+    await expect(secondRun).resolves.toBe(0);
+  });
+
   it("an explicit tui issue wins over the remembered row", async () => {
     const stores = createInMemoryStores();
     const lastFocus = join(mkdtempSync(join(tmpdir(), "conductor-focus-")), "tui-focus");
