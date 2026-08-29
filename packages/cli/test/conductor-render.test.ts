@@ -1491,6 +1491,21 @@ describe("renderFrame", () => {
     );
     expect(above).toContain("Bash pnpm test");
     expect(above).not.toContain("tool · Bash");
+
+    const streaming = renderFrame(
+      looking({
+        ...emptyView("epic"),
+        rows: [running],
+        childLive: { "req-live-1": "message · use `proveFn` or **keep** it" },
+      }),
+      { cols: 80, rows: 24 },
+    );
+    const streamingBand = beforeTranscript(streaming);
+    expect(streamingBand).toMatch(/^ RUN\s*$/m);
+    expect(streamingBand).toContain("proveFn");
+    expect(streaming).toContain(TEAL);
+    expect(streaming).toContain(GOLD);
+    expect(streamingBand).toContain("··");
   });
 
   it("lists the selected run's files on the RUN band, last touch last", () => {

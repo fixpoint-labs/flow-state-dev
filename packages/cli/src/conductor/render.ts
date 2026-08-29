@@ -553,7 +553,7 @@ function renderRunBand(
   const doing = selectedNow(state);
   const nowLine =
     doing !== undefined && doing !== ""
-      ? ` ${paint(GOLD, paintToolNow(doing, inner, tree ?? null))}`
+      ? paintRunNowLine(state, doing, inner, tree ?? null)
       : "";
   const brief = rowBrief(row);
   const extras = [
@@ -1104,6 +1104,22 @@ function linkFileLine(original: string, painted: string, cwd?: string | null): s
 
 function paintToolNow(now: string, inner: number, cwd?: string | null): string {
   return linkFileLine(now, shortenToolLine(now, inner), cwd);
+}
+
+/** Current action on the RUN band. A streaming message keeps markdown paint. */
+function paintRunNowLine(
+  state: ViewState,
+  doing: string,
+  inner: number,
+  cwd?: string | null,
+): string {
+  const live = visibleLive(state);
+  const body = live !== null ? transcriptBody(live) : doing;
+  if (/^(message|coord|you) · /.test(body)) {
+    const shown = body.length <= inner ? body : `${body.slice(0, Math.max(1, inner - 1))}…`;
+    return ` ${paint(GOLD, "··")}  ${paintActivityLine(shown)}`;
+  }
+  return ` ${paint(GOLD, paintToolNow(doing, inner, cwd))}`;
 }
 
 function lineCount(block: string): number {
