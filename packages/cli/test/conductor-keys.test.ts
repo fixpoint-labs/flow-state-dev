@@ -427,6 +427,11 @@ describe("applyKey", () => {
 
     const empty = applyKey({ ...cancelled.state, input: "   " }, { type: "enter" });
     expect(empty.state.drafts).toEqual(["LAB-9"]);
+
+    const quit = applyKey({ ...empty.state, input: "/quit" }, { type: "enter" });
+    expect(quit.state.drafts).toEqual(["LAB-9"]);
+    const wake = applyKey({ ...empty.state, input: "/wake" }, { type: "enter" });
+    expect(wake.state.drafts).toEqual(["LAB-9"]);
   });
 
   it("moves the compose caret with ←/→ and inserts in the middle", () => {

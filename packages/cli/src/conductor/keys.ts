@@ -661,7 +661,7 @@ function submitEdit(state: ViewState): KeyResult {
     return { state: { ...withInput(state, ""), notice: parsed.message, draftAt: null, draftHold: null } };
   }
   const command = parsed.command;
-  const remembered = command.kind === "find" ? state : rememberDraft(state, line);
+  const remembered = command.kind === "steer" ? rememberDraft(state, line) : state;
   const cleared: ViewState = { ...withInput(remembered, ""), slashAt: 0, notice: null };
   if (command.kind === "help") return { state: { ...cleared, help: true } };
   if (command.kind === "quit") return { state: cleared, effect: { type: "quit" } };

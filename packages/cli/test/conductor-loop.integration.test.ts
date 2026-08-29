@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { PassThrough } from "node:stream";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { executeConductorCommand } from "../src/commands/conductor";
+import { readDrafts } from "../src/conductor/compose-history";
 import { stripAnsi } from "../src/conductor/theme";
 
 const fixtureDir = resolve(import.meta.dirname, "fixtures-conductor");
@@ -785,6 +786,7 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await waitFor(() => lastFrame(first.text), "you ·");
     first.input.write("/quit\r");
     await expect(firstRun).resolves.toBe(0);
+    expect(readDrafts(lastDrafts)).toEqual(["please retry the failed rows"]);
 
     const second = fakeTty();
     const secondRun = executeConductorCommand(["tui"], {
@@ -797,11 +799,12 @@ describe("fsdev conductor — TUI over the same actions", () => {
       pollMs: 80,
     });
     await waitFor(() => lastFrame(second.text), "FSDEV CONDUCTOR");
-    second.input.write("x");
+    second.input.write("z");
     await waitFor(() => lastFrame(second.text), "↑ prior");
     second.input.write("\x1b[A");
-    await waitFor(() => lastFrame(second.text), "please retry the failed rows");
+    await waitFor(() => stripAnsi(lastFrame(second.text)), "❯ please retry the failed rows");
     second.input.write("\x1b");
+    await waitFor(() => lastFrame(second.text), "type to talk");
     second.input.write("/quit\r");
     await expect(secondRun).resolves.toBe(0);
   });
