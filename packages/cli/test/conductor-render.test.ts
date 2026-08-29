@@ -286,7 +286,8 @@ describe("renderFrame", () => {
       ),
     ).toContain("working");
     expect(frame).toContain("type to answer");
-    expect(frame).toContain("click/↑/↓");
+    expect(frame).toContain("↑/↓");
+    expect(frame).not.toContain("click/");
     expect(frame).toContain("/find");
     expect(frame).toContain("TRANSCRIPT");
     expect(stripAnsi(frame)).not.toContain("a answer");
@@ -2255,6 +2256,8 @@ describe("renderFrame help", () => {
     expect(text).toContain("/quit");
     expect(text).toContain("/find");
     expect(text).toContain("any key returns");
+    expect(text).not.toContain("click");
+    expect(text).not.toContain("wheel");
     expect(text).not.toContain("Headless (scripting)");
     const lines = text.split("\n");
     expect(lines).toHaveLength(24);

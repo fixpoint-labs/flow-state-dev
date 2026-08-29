@@ -135,6 +135,25 @@ describe("fsdev conductor — TUI over the same actions", () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it("does not enable mouse tracking so the terminal can select text", async () => {
+    const tty = fakeTty();
+    const running = executeConductorCommand(["tui"], {
+      cwd: fixtureDir,
+      stores: createInMemoryStores(),
+      config: false,
+      input: tty.input as unknown as NodeJS.ReadStream,
+      output: tty.output as unknown as NodeJS.WriteStream,
+      pollMs: 80,
+    });
+    await waitFor(() => tty.text, "FSDEV CONDUCTOR");
+    expect(tty.text).not.toContain("\x1b[?1000h");
+    expect(tty.text).not.toContain("\x1b[?1006h");
+    tty.input.write("/quit\r");
+    await expect(running).resolves.toBe(0);
+    expect(tty.text).toContain("\x1b[?1000l");
+    expect(tty.text).toContain("\x1b[?1006l");
+  });
+
   it("wakes from the board and writes the drain into the transcript", async () => {
     const stores = createInMemoryStores();
     await executeConductorCommand(["seed", "ASK-1"], {

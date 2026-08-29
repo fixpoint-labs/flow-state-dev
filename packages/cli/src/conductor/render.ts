@@ -827,12 +827,12 @@ function renderFooter(state: ViewState, cols: number, now: number): string {
     : empty
       ? `${working}type to talk  ·  s seed  ·  /  ·  r  ·  ?  ·  /quit`
     : q
-      ? `${working}type to answer  ·  click/↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
+      ? `${working}type to answer  ·  ↑/↓${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
       : fail !== undefined
-        ? `${working}type to talk  ·  click/↑/↓  ·  ${spent ? "spent" : "/wake"}${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`
+        ? `${working}type to talk  ·  ↑/↓  ·  ${spent ? "spent" : "/wake"}${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`
         : running
-          ? `${working}type to talk  ·  click/↑/↓  ·  x stop${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
-          : `${working}type to talk  ·  click/↑/↓${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`;
+          ? `${working}type to talk  ·  ↑/↓  ·  x stop${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  /  ·  ?  ·  /quit`
+          : `${working}type to talk  ·  ↑/↓${filesKey}${hunksKey}${peekKey}${nextKey}  ·  /find  ·  s seed  ·  /  ·  ?  ·  /quit`;
   return padLine(dim(` ${keys}`), cols);
 }
 
@@ -894,7 +894,7 @@ function composeTail(input: string, width: number, caret: number): string {
  */
 const TUI_HELP_LINES = [
   "  ↑/↓          row · while composing: lines, then prior sends",
-  "  PgUp/PgDn    transcript (wheel and Ctrl-u/d too)",
+  "  PgUp/PgDn    transcript (Ctrl-u/d too)",
   "  { / }        previous / next waiting, failed, or stalled row",
   "  s            seed (first line issue, more lines brief)",
   "  r            refresh",

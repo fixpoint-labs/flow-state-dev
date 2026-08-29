@@ -50,7 +50,7 @@ const ENTER_ALT = "\x1b[?1049h";
 const LEAVE_ALT = "\x1b[?1049l";
 const HIDE_CURSOR = "\x1b[?25l";
 const SHOW_CURSOR = "\x1b[?25h";
-const MOUSE_ON = "\x1b[?1000h\x1b[?1006h";
+/** Clear leftover tracking. The board never enables it — yank is out, so native select is the copy path. */
 const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l";
 const PASTE_ON = "\x1b[?2004h";
 const PASTE_OFF = "\x1b[?2004l";
@@ -462,7 +462,7 @@ export async function runConductorTui(options: LoopOptions): Promise<number> {
   process.on("SIGINT", onSigint);
   input.setRawMode?.(true);
   input.resume();
-  output.write(`${ENTER_ALT}${MOUSE_ON}${PASTE_ON}${HIDE_CURSOR}`);
+  output.write(`${ENTER_ALT}${MOUSE_OFF}${PASTE_ON}${HIDE_CURSOR}`);
   paint();
 
   const onResize = () => paint();
