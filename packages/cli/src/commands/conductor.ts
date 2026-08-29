@@ -117,8 +117,24 @@ function isInteractive(options: ConductorCommandInternalOptions): boolean {
 function missingConductorFlowHint(): string {
   return (
     `This command drives a kind: "conductor" flow. cd into the app that defines one ` +
-    `(in this workspace: labs/conductor), or pass --config / --flow-dir pointing at that app.`
+    `(in this workspace: labs/conductor), or pass --config / --flow-dir pointing at that app, ` +
+    `or set CONDUCTOR_CONFIG.`
   );
+}
+
+/**
+ * `--config` and `--no-config` win. When both are omitted, `CONDUCTOR_CONFIG`
+ * is the config path so a product checkout can run `fsdev conductor` after
+ * exporting it once.
+ */
+export function resolveConductorConfigOption(
+  config: string | boolean | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | boolean | undefined {
+  if (config !== undefined) return config;
+  const fromEnv = env.CONDUCTOR_CONFIG?.trim();
+  if (fromEnv) return fromEnv;
+  return undefined;
 }
 
 /**
@@ -158,7 +174,7 @@ export async function executeConductorCommand(
 
   const resolved = await resolveRuntimeSource({
     cwd: options.cwd,
-    config: options.config,
+    config: resolveConductorConfigOption(options.config),
     flowDir: options.flowDir,
     dotenv: options.dotenv,
     // Unrelated apps in this repo fail to import from the root. The miss

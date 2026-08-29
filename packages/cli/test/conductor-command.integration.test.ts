@@ -2,9 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 import { Writable } from "node:stream";
 import { createInMemoryStores } from "@flow-state-dev/engine";
-import { executeConductorCommand } from "../src/commands/conductor";
+import {
+  executeConductorCommand,
+  resolveConductorConfigOption,
+} from "../src/commands/conductor";
 import { CliError } from "../src/resolve-block";
-import { EXIT_DISCOVERY_ERROR, EXIT_INVALID_ARGS } from "../src/exit-codes";
+import { EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INVALID_ARGS } from "../src/exit-codes";
 
 const fixtureDir = resolve(import.meta.dirname, "fixtures-conductor");
 const emptyDir = resolve(import.meta.dirname, "fixtures-chat", "empty");
@@ -31,6 +34,43 @@ beforeEach(() => {
 });
 afterEach(() => {
   process.exitCode = undefined;
+  delete process.env.CONDUCTOR_CONFIG;
+});
+
+describe("resolveConductorConfigOption", () => {
+  it("uses CONDUCTOR_CONFIG when --config is omitted", () => {
+    expect(
+      resolveConductorConfigOption(undefined, {
+        CONDUCTOR_CONFIG: "/tmp/lab/fsdev.config.ts",
+      }),
+    ).toBe("/tmp/lab/fsdev.config.ts");
+  });
+
+  it("lets an explicit --config win over CONDUCTOR_CONFIG", () => {
+    expect(
+      resolveConductorConfigOption("/explicit/fsdev.config.ts", {
+        CONDUCTOR_CONFIG: "/tmp/lab/fsdev.config.ts",
+      }),
+    ).toBe("/explicit/fsdev.config.ts");
+  });
+
+  it("ignores CONDUCTOR_CONFIG when --no-config is set", () => {
+    expect(
+      resolveConductorConfigOption(false, {
+        CONDUCTOR_CONFIG: "/tmp/lab/fsdev.config.ts",
+      }),
+    ).toBe(false);
+  });
+
+  it("returns undefined when neither flag nor env is set", () => {
+    expect(resolveConductorConfigOption(undefined, {})).toBeUndefined();
+  });
+
+  it("ignores a blank CONDUCTOR_CONFIG", () => {
+    expect(
+      resolveConductorConfigOption(undefined, { CONDUCTOR_CONFIG: "  " }),
+    ).toBeUndefined();
+  });
 });
 
 describe("fsdev conductor — headless against a conductor-shaped flow", () => {
@@ -146,6 +186,33 @@ describe("fsdev conductor — headless against a conductor-shaped flow", () => {
     expect((err as CliError).message).toMatch(/^This command drives a kind: "conductor" flow/);
     expect((err as CliError).message).toMatch(/labs\/conductor/);
     expect((err as CliError).message).toMatch(/--config/);
+    expect((err as CliError).message).toMatch(/CONDUCTOR_CONFIG/);
+  });
+
+  it("consults CONDUCTOR_CONFIG when --config is omitted", async () => {
+    process.env.CONDUCTOR_CONFIG = "/no/such/fsdev.config.ts";
+    const err = await executeConductorCommand(["status"], {
+      cwd: emptyDir,
+      stores: createInMemoryStores(),
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect((err as CliError).exitCode).toBe(EXIT_CONFIG_ERROR);
+    expect((err as CliError).message).toMatch(/Config file not found/);
+    expect((err as CliError).message).toMatch(/no\/such\/fsdev\.config\.ts/);
+    expect((err as CliError).message).not.toMatch(/kind: "conductor"/);
+  });
+
+  it("ignores CONDUCTOR_CONFIG when --no-config is set", async () => {
+    process.env.CONDUCTOR_CONFIG = "/no/such/fsdev.config.ts";
+    const err = await executeConductorCommand(["status"], {
+      cwd: emptyDir,
+      stores: createInMemoryStores(),
+      config: false,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect((err as CliError).exitCode).toBe(EXIT_DISCOVERY_ERROR);
+    expect((err as CliError).message).toMatch(/kind: "conductor"/);
+    expect((err as CliError).message).not.toMatch(/Config file not found/);
   });
 
   it("leads with the conductor hint, not unrelated import warnings", async () => {

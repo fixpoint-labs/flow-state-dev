@@ -15,7 +15,7 @@ A conductor row is a unit of work with a status. Talking is one coordinator turn
 
 ## What a conductor flow looks like
 
-`fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, `answer`, and `steer`. If none is found, the error tells you to `cd` into the app that defines one, or pass `--config` / `--flow-dir`. Missing one of those actions is a config error that names it. Every other flow in the project is ignored.
+`fsdev conductor` needs a registered flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, `answer`, and `steer`. If none is found, the error tells you to `cd` into the app that defines one, or pass `--config` / `--flow-dir`, or set `CONDUCTOR_CONFIG`. Missing one of those actions is a config error that names it. Every other flow in the project is ignored.
 
 Those actions are yours to write. The board is whatever `status` returns. `status` is the only board read. Use `abort` or `stop` (or `x` on the board) to stop a running request. Opening the fullscreen board needs a TTY and does not need a model.
 
@@ -570,8 +570,9 @@ fsdev conductor start PR-482 Rename getSession in the docs
 | `--phase <name>` | Phase for `seed` and `start` (default: `implement`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file (repeatable, resolved from cwd) |
-| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
-| `--no-config` | Ignore any config and force directory discovery |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd. Used even when `CONDUCTOR_CONFIG` is set. |
+| `--no-config` | Ignore config files and `CONDUCTOR_CONFIG`, and discover from the cwd |
+| `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. A missing path errors with `Config file not found: …`. |
 | `--quiet` | Suppress runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `warn`) |
 
@@ -594,6 +595,7 @@ Runtime resolution matches `fsdev run` and [`fsdev chat`](./interactive-chat.md)
 - There is no combined todo list of every running row.
 - Headless `status` and `watch` have no RUN band. They print last-write age on a running row, plus checkout, token counts, spend, and last message when the row has them. A named issue also prints last tool, files, last hunk, and current todo on stdout. A full-board print does not reprint last tool, files, hunk, or todo on a settled row.
 - The interactive surface needs a TTY. There's no web UI for it — use the headless verbs from a script, or [`fsdev dev`](./overview.md#when-to-use-it) if you want a browser.
+- `CONDUCTOR_CONFIG` is read only by `fsdev conductor`. `fsdev run`, `fsdev chat`, and the other commands do not use it.
 
 ## Related pages
 

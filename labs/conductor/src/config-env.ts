@@ -81,7 +81,8 @@ export function repositoryIdentity(dir: string): string | undefined {
  *
  * **`process.cwd()` is not the dispatcher.** Treating it as one refuses the
  * daily-drive: stand in the product checkout, set `CONDUCTOR_REPO=.` (or that
- * product's path), and load this lab with `--config`. The process's directory
+ * product's path), and load this lab with `CONDUCTOR_CONFIG` (or `--config`).
+ * The process's directory
  * is then the product — the repository the coding agent should work on — and a
  * match with cwd refused it.
  *

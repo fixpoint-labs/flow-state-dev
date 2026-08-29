@@ -362,4 +362,5 @@ In the TUI:
   The transcript tails that run's request stream. Thinking is a compact think · line.
 
 Flags: --json  --phase <name>  --user <id>  --session <id>  --config <path>
-       --flow-dir  --dotenv  --quiet  --log-level`;
+       --flow-dir  --dotenv  --quiet  --log-level
+  CONDUCTOR_CONFIG  config path when --config is omitted`;

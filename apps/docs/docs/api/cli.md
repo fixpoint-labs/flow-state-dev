@@ -202,8 +202,9 @@ fsdev conductor abort PR-482
 | `--json` | Headless verbs print JSON instead of a plain-text board |
 | `--phase <name>` | Phase for `seed` and `start` (default: `implement`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
-| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
-| `--no-config` | Ignore any config and force directory discovery |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd. Used even when `CONDUCTOR_CONFIG` is set. |
+| `--no-config` | Ignore config files and `CONDUCTOR_CONFIG`, and discover from the cwd |
+| `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
 | `--quiet` | Suppress runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (default: `warn`) |
