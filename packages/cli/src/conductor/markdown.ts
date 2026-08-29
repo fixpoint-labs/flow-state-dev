@@ -2,8 +2,9 @@
  * Markdown → wrapped lines for inspect. Questions and transcript
  * messages arrive as markdown; wrapping them as one blob made a
  * heading, a list, and a code span read as the same paragraph.
+ * Numbered lists keep their numbers. A pipe table lays out as columns.
  */
-import { ACCENT, BOLD, DIM, INK, TEAL, UNDERLINE, link, paint, wrap } from "./theme";
+import { ACCENT, BOLD, DIM, INK, TEAL, UNDERLINE, link, pad, paint, wrap } from "./theme";
 
 /**
  * Render markdown into lines that already fit `width`. Headings, lists,
@@ -30,13 +31,28 @@ export function layoutMarkdown(text: string, width: number, painted = false): st
   return lines.length === 0 ? [""] : lines;
 }
 
+type ListItem = { mark: string; text: string };
+
 type Block =
   | { kind: "heading"; text: string }
   | { kind: "paragraph"; text: string }
-  | { kind: "list"; items: string[] }
+  | { kind: "list"; items: ListItem[] }
   | { kind: "quote"; text: string }
   | { kind: "fence"; lines: string[] }
+  | { kind: "table"; rows: string[][] }
   | { kind: "rule" };
+
+/** First non-empty line as the board ASK column should show it. */
+export function askHintLine(text: string): string {
+  const first =
+    text.replace(/\r\n/g, "\n").split("\n").find((line) => line.trim() !== "") ?? "";
+  const stripped = first.replace(/^#{1,6}\s+/, "").replace(/^\s*[-*]\s+/, "");
+  const trimmed = stripped.trim();
+  if (isPipeRow(trimmed) && !isSeparatorRow(trimmed)) {
+    return parseCells(trimmed).join("  ");
+  }
+  return stripped;
+}
 
 function splitBlocks(src: string): Block[] {
   const raw = src.split("\n");
@@ -78,10 +94,26 @@ function splitBlocks(src: string): Block[] {
       blocks.push({ kind: "quote", text: quoted.join(" ") });
       continue;
     }
+    if (startsTable(raw, i)) {
+      const rows = [parseCells(raw[i]!)];
+      i += 2;
+      while (i < raw.length && isPipeRow(raw[i]!) && !isSeparatorRow(raw[i]!)) {
+        rows.push(parseCells(raw[i]!));
+        i += 1;
+      }
+      blocks.push({ kind: "table", rows });
+      continue;
+    }
     if (/^\s*[-*]\s+\S/.test(line) || /^\s*\d+\.\s+\S/.test(line)) {
-      const items: string[] = [];
+      const items: ListItem[] = [];
       while (i < raw.length && (/^\s*[-*]\s+\S/.test(raw[i]!) || /^\s*\d+\.\s+\S/.test(raw[i]!))) {
-        items.push(raw[i]!.replace(/^\s*(?:[-*]|\d+\.)\s+/, ""));
+        const item = raw[i]!;
+        const ordered = /^\s*(\d+)\.\s+(\S.*)$/.exec(item);
+        if (ordered) {
+          items.push({ mark: `${ordered[1]}.`, text: ordered[2]! });
+        } else {
+          items.push({ mark: "•", text: item.replace(/^\s*[-*]\s+/, "") });
+        }
         i += 1;
       }
       blocks.push({ kind: "list", items });
@@ -96,7 +128,8 @@ function splitBlocks(src: string): Block[] {
         /^\s{0,3}>\s?/.test(next) ||
         /^\s*[-*]\s+\S/.test(next) ||
         /^\s*\d+\.\s+\S/.test(next) ||
-        /^[-*_]{3,}\s*$/.test(next.trim())
+        /^[-*_]{3,}\s*$/.test(next.trim()) ||
+        startsTable(raw, i)
       ) {
         break;
       }
@@ -118,11 +151,9 @@ function layoutBlock(block: Block, width: number): string[] {
     case "rule":
       return ["─".repeat(Math.max(1, width))];
     case "list":
-      return block.items.flatMap((item) => {
-        const mark = `• `;
-        const rest = wrap(item, Math.max(1, width - mark.length));
-        return rest.map((line, j) => (j === 0 ? `${mark}${line}` : `  ${line}`));
-      });
+      return block.items.flatMap((item) => layoutListItem(item, width));
+    case "table":
+      return layoutTable(block.rows, width);
     case "fence":
       return block.lines.map((line) =>
         line.length <= width ? line : `${line.slice(0, Math.max(1, width - 1))}…`,
@@ -141,11 +172,9 @@ function renderBlock(block: Block, width: number): string[] {
     case "rule":
       return [paint(DIM, "─".repeat(Math.max(1, width)))];
     case "list":
-      return block.items.flatMap((item) => {
-        const mark = `• `;
-        const rest = wrap(item, Math.max(1, width - mark.length));
-        return rest.map((line, j) => (j === 0 ? `${mark}${paintInline(line)}` : `  ${paintInline(line)}`));
-      });
+      return block.items.flatMap((item) => renderListItem(item, width));
+    case "table":
+      return renderTable(block.rows, width);
     case "fence":
       return block.lines.map((line) => {
         const body = line.length <= width ? line : `${line.slice(0, Math.max(1, width - 1))}…`;
@@ -172,4 +201,81 @@ export function paintInline(text: string): string {
   out = out.replace(/\0L(\d+)\0/g, (_, i: string) => links[Number(i)] ?? "");
   out = out.replace(/\0C(\d+)\0/g, (_, i: string) => codes[Number(i)] ?? "");
   return out;
+}
+
+function layoutListItem(item: ListItem, width: number): string[] {
+  const mark = `${item.mark} `;
+  const rest = wrap(item.text, Math.max(1, width - mark.length));
+  return rest.map((line, j) => (j === 0 ? `${mark}${line}` : `${" ".repeat(mark.length)}${line}`));
+}
+
+function renderListItem(item: ListItem, width: number): string[] {
+  const mark = `${item.mark} `;
+  const rest = wrap(item.text, Math.max(1, width - mark.length));
+  return rest.map((line, j) =>
+    j === 0 ? `${mark}${paintInline(line)}` : `${" ".repeat(mark.length)}${paintInline(line)}`,
+  );
+}
+
+function isPipeRow(line: string): boolean {
+  return /^\s*\|.+\|\s*$/.test(line);
+}
+
+function isSeparatorRow(line: string): boolean {
+  if (!isPipeRow(line)) return false;
+  const cells = parseCells(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-+:?$/.test(cell));
+}
+
+function startsTable(raw: string[], i: number): boolean {
+  return isPipeRow(raw[i]!) && i + 1 < raw.length && isSeparatorRow(raw[i + 1]!);
+}
+
+function parseCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function tableColumnWidths(rows: string[][], width: number): number[] {
+  const cols = Math.max(1, ...rows.map((row) => row.length));
+  const widths = Array.from({ length: cols }, (_, c) =>
+    Math.max(1, ...rows.map((row) => (row[c] ?? "").length)),
+  );
+  const gutter = 2;
+  let total = widths.reduce((sum, w) => sum + w, 0) + gutter * Math.max(0, cols - 1);
+  let overflow = total - width;
+  for (let c = cols - 1; c >= 0 && overflow > 0; c -= 1) {
+    const cut = Math.min(overflow, Math.max(0, widths[c]! - 1));
+    widths[c] -= cut;
+    overflow -= cut;
+  }
+  return widths;
+}
+
+function layoutTable(rows: string[][], width: number): string[] {
+  const widths = tableColumnWidths(rows, width);
+  return rows.map((row) =>
+    widths
+      .map((colW, c) => pad(row[c] ?? "", colW))
+      .join("  ")
+      .trimEnd(),
+  );
+}
+
+function renderTable(rows: string[][], width: number): string[] {
+  const widths = tableColumnWidths(rows, width);
+  return rows.map((row, i) =>
+    widths
+      .map((colW, c) => {
+        const cell = row[c] ?? "";
+        const painted = i === 0 ? paint(BOLD + ACCENT, cell) : paintInline(cell);
+        return pad(painted, colW);
+      })
+      .join("  ")
+      .trimEnd(),
+  );
 }

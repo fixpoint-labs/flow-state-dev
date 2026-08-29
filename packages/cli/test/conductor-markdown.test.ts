@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutMarkdown, paintInline, renderMarkdown } from "../src/conductor/markdown";
+import { askHintLine, layoutMarkdown, paintInline, renderMarkdown } from "../src/conductor/markdown";
 import { stripAnsi } from "../src/conductor/theme";
 
 describe("renderMarkdown", () => {
@@ -39,5 +39,31 @@ describe("renderMarkdown", () => {
     expect(paintInline("use `foo`")).toContain("\x1b[");
     expect(paintInline("[docs](https://example.com)")).toContain("\x1b]8;;https://example.com");
     expect(stripAnsi(paintInline("[docs](https://example.com)"))).toBe("docs");
+  });
+
+  it("keeps numbered list markers so a reply of 1 or 2 still matches the question", () => {
+    const lines = layoutMarkdown("1. proveFn\n2. askProve", 40);
+    expect(lines).toEqual(["1. proveFn", "2. askProve"]);
+    expect(lines.join("\n")).not.toContain("•");
+  });
+
+  it("flattens a table's first row for the board ASK hint", () => {
+    expect(askHintLine("| export | meaning |\n| --- | --- |\n| proveFn | the function |")).toBe(
+      "export  meaning",
+    );
+    expect(askHintLine("## Which export?\n\n1. proveFn")).toBe("Which export?");
+  });
+
+  it("lays out a markdown table as columns, not a pipe paragraph", () => {
+    const lines = layoutMarkdown(
+      ["| export | meaning |", "| --- | --- |", "| proveFn | the function |", "| askProve | the other |"].join(
+        "\n",
+      ),
+      40,
+    );
+    expect(lines[0]).toMatch(/export\s+meaning/);
+    expect(lines.some((line) => /proveFn\s+the function/.test(line))).toBe(true);
+    expect(lines.join("\n")).not.toContain("|");
+    expect(lines.join("\n")).not.toContain("---");
   });
 });

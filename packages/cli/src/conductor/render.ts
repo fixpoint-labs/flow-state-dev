@@ -3,7 +3,7 @@
  * assert on it. A frame that cannot be produced from a fixture is a frame
  * nobody can pin.
  */
-import { layoutMarkdown, paintInline, renderMarkdown } from "./markdown";
+import { askHintLine, layoutMarkdown, paintInline, renderMarkdown } from "./markdown";
 import { slashMenu } from "./slash";
 import {
   ACCENT,
@@ -1121,10 +1121,7 @@ function isProseLive(text: string | undefined): boolean {
 
 /** One-line ASK hint for a question. Headings drop; the words stay. */
 function askQuestionHint(asked: string, width: number): string {
-  const first =
-    asked.replace(/\r\n/g, "\n").split("\n").find((line) => line.trim() !== "") ?? "";
-  const stripped = first.replace(/^#{1,6}\s+/, "").replace(/^\s*[-*]\s+/, "");
-  return truncate(stripAnsi(paintInline(stripped)), width);
+  return truncate(stripAnsi(paintInline(askHintLine(asked))), width);
 }
 
 /** ASK scan: a streaming message keeps markdown paint; a tool stays gold. */

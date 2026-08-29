@@ -417,6 +417,66 @@ describe("renderFrame", () => {
     expect(frame).toContain("• rename it");
   });
 
+  it("keeps numbered options on an inspect question", () => {
+    const asked: StatusRow = {
+      ...waiting,
+      questions: [
+        {
+          question: "FIX-1/implement/1/q0",
+          text: "## Which export?\n\n1. proveFn\n2. askProve",
+          attempt: 1,
+          askedAt: 1,
+        },
+      ],
+    };
+    const frame = stripAnsi(
+      renderFrame(looking({ ...emptyView("epic"), rows: [asked] }), { cols: 80, rows: 24 }),
+    );
+    expect(frame).toContain("1. proveFn");
+    expect(frame).toContain("2. askProve");
+    expect(frame).not.toContain("• proveFn");
+  });
+
+  it("lays out a markdown table on an inspect question", () => {
+    const asked: StatusRow = {
+      ...waiting,
+      questions: [
+        {
+          question: "FIX-1/implement/1/q0",
+          text: "Pick one:\n\n| export | meaning |\n| --- | --- |\n| proveFn | the function |\n| askProve | the other |",
+          attempt: 1,
+          askedAt: 1,
+        },
+      ],
+    };
+    const frame = stripAnsi(
+      renderFrame(looking({ ...emptyView("epic"), rows: [asked] }), { cols: 80, rows: 24 }),
+    );
+    expect(frame).toMatch(/export\s+meaning/);
+    expect(frame).toMatch(/proveFn\s+the function/);
+    expect(frame).not.toContain("| --- |");
+  });
+
+  it("shows a table question on the board ASK column without pipe marks", () => {
+    const asked: StatusRow = {
+      ...waiting,
+      questions: [
+        {
+          question: "FIX-1/implement/1/q0",
+          text: "| export | meaning |\n| --- | --- |\n| proveFn | the function |",
+          attempt: 1,
+          askedAt: 1,
+        },
+      ],
+    };
+    const frame = stripAnsi(
+      renderFrame({ ...emptyView("epic"), rows: [asked] }, { cols: 80, rows: 24 }),
+    );
+    const table = frame.split("\n").find((line) => line.includes("FIX-1"));
+    expect(table).toMatch(/export\s+meaning/);
+    expect(table).not.toContain("|");
+  });
+
   it("shows a markdown question on the board ASK column without heading marks", () => {
     const asked: StatusRow = {
       ...waiting,
