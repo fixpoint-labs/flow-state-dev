@@ -2,8 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "allowJs": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "fsdev.config.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "bin/env.mjs", "fsdev.config.ts"],
   "exclude": ["node_modules"]
 }
