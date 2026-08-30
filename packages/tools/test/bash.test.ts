@@ -1207,11 +1207,16 @@ describe("createBashBlocks", () => {
   });
 
   it("still reports success for a scratch write, which no mount was ever going to take", async () => {
-    // The counterpart to the read-only case above. Both used to come back from
-    // the projection as "nothing to decide", and the fix has to separate them:
-    // a scratch write is doing exactly what ./tmp/ is for and succeeded, a
-    // read-only write is work about to be lost. Collapse them again in either
-    // direction and one of these two tests fails.
+    // Pins the OTHER half of the contract: a refusal has to stay rare enough to
+    // mean something, and ./tmp/ is doing exactly what it is for.
+    //
+    // It is NOT a red-check of the read-only fix, and an earlier version of
+    // this comment claimed it was. `routeWrittenFile` returns on
+    // `isScratch(relativePath)` before it ever calls `projection.put`, so
+    // reverting `put` cannot fail this test — confirmed by reverting it and
+    // watching only the read-only tests go red. The separation of read-only
+    // from metadata is red-checked in `packages/workspace/test/projection.spec.ts`,
+    // on both sides.
     const { createBashBlocks } = await import("../src/bash/blocks");
 
     const skills = createMockCollectionWithPattern("skills/**");

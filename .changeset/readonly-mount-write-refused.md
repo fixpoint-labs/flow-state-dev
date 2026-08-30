@@ -3,7 +3,7 @@
 "@flow-state-dev/tools": patch
 ---
 
-A write to a read-only mount is now refused instead of reported as saved.
+A write to a read-only mount is now refused instead of reported as saved (FIX-1284).
 
 `Projection.put` used to resolve `undefined` for a read-only mount, the same
 answer it gives for a collection's own metadata. The bash `writeFile` tools

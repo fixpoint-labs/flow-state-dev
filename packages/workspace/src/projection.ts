@@ -387,7 +387,14 @@ export function createProjection({
     const routed = routePath(mounts, path);
     if (routed === undefined) return { kind: "orphan", path };
     const { mount, key } = routed;
-    if (!mount.writable) return { kind: "readonly", path, prefix: mount.prefix };
+    // `normalizePath`d for the same reason `routePath` normalizes before it
+    // compares: `Mount` is public and `createProjection` takes hand-built ones,
+    // so a prefix written `./artifacts` or `artifacts/` would otherwise reach a
+    // model as `"./artifacts/"`. In-repo prefixes come from `getPatternPrefix`
+    // and carry neither.
+    if (!mount.writable) {
+      return { kind: "readonly", path, prefix: normalizePath(mount.prefix) };
+    }
     if (isMetadataKey(key)) return undefined;
     return await claiming((holder) => decide(mount, key, path, content, holder));
   }
