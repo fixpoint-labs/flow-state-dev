@@ -134,18 +134,15 @@ export type FlushOutcome =
    */
   | { kind: "orphan"; path: string }
   /**
-   * The path is under a mount that is hydrated and never written back, so
-   * nothing was saved and nothing ever will be.
+   * The path is under a read-only mount, so nothing was saved and nothing ever
+   * will be.
    *
-   * Only `put` produces this. A flush walks a read-only mount's paths without
-   * deciding anything about them, and correctly so: it keeps no baseline
-   * there, so it cannot tell an edit from the content it laid down itself.
-   * `put` is the opposite case — the caller named one path and asked for it to
-   * persist, and the honest answer is that this mount does not take writes.
+   * **Only `put` produces this**, because only `put` was handed one path and
+   * asked to persist it; a flush keeps no baseline on a read-only mount and so
+   * cannot tell an edit from what it laid down itself.
    *
-   * Distinct from `contested` and `conflict`, which are about timing and clear
-   * on a retry. This one never clears, so a caller relaying it should say so
-   * rather than inviting the write again.
+   * Unlike `contested` and `conflict` it never clears on a retry, and a caller
+   * relaying it should say so rather than inviting the write again.
    */
   | { kind: "readonly"; path: string; prefix: string }
   /**

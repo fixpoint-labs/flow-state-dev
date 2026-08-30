@@ -193,12 +193,8 @@ export function refusalReason(outcome: FlushOutcome | undefined): string | null 
 /**
  * Warn about the outcomes of a flush a caller cannot act on without being told.
  *
- * **No `readonly` branch, deliberately.** Only `put` produces one, and the one
- * put outcome that reaches here — `createBashTool`'s write door — builds every
- * mount `writable: true`, so it is unreachable rather than merely unhandled.
- * That door hands the same outcome to `refusalReason` on the next line, which
- * does cover it, so the party that asked for the write is told either way.
- * Add the branch when a door here can actually mount something read-only.
+ * **No `readonly` branch:** only `put` produces one, and every door feeding this
+ * mounts `writable: true`. Add it when one can mount something read-only.
  */
 export function warnUnsettled(outcomes: readonly FlushOutcome[]): void {
   const orphans = outcomes.filter((o) => o.kind === "orphan").map((o) => o.path);
