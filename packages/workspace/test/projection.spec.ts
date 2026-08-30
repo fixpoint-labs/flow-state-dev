@@ -502,14 +502,23 @@ describe("put commits one named path without walking the place", () => {
     expect(collection.contents()).toEqual({});
   });
 
-  it("has nothing to decide for a read-only mount", async () => {
+  it("refuses a write to a read-only mount, naming the mount", async () => {
+    // Paired with the metadata case below on purpose. Both used to resolve
+    // `undefined`, which the tools read as success — so a model editing a
+    // reference file was told its work was saved when the mount takes no
+    // writes at all. Collapsing the two again fails one of these two tests
+    // whichever way it is collapsed.
     const reference = createFakeCollection("reference/**", { "doc.md": "read me" });
     const projection = createProjection({
       mounts: [{ prefix: "reference", collectionId: "reference", collection: reference, writable: false }],
       place: createMemoryPlace(),
     });
 
-    expect(await projection.put("reference/doc.md", "edited")).toBeUndefined();
+    expect(await projection.put("reference/doc.md", "edited")).toEqual({
+      kind: "readonly",
+      path: "reference/doc.md",
+      prefix: "reference",
+    });
     expect(reference.contents()["doc.md"]).toBe("read me");
   });
 

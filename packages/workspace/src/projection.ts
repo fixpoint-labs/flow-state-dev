@@ -69,9 +69,10 @@ export interface Projection {
    * one path, and advances the baseline so the next flush reads the write as
    * ours rather than as somebody else's.
    *
-   * Resolves `undefined` when the path is nothing for this projection to
-   * decide: a read-only mount, or a collection's own metadata. The same two
-   * cases a flush passes over without recording an outcome.
+   * Resolves `undefined` only when the path is genuinely nothing to decide —
+   * a collection's own metadata. A read-only mount used to resolve `undefined`
+   * too, which the tools read as success and relayed to the model as a saved
+   * file; it comes back as a `readonly` outcome instead.
    */
   put(path: string, content: string): Promise<FlushOutcome | undefined>;
   /**
@@ -386,7 +387,7 @@ export function createProjection({
     const routed = routePath(mounts, path);
     if (routed === undefined) return { kind: "orphan", path };
     const { mount, key } = routed;
-    if (!mount.writable) return undefined;
+    if (!mount.writable) return { kind: "readonly", path, prefix: mount.prefix };
     if (isMetadataKey(key)) return undefined;
     return await claiming((holder) => decide(mount, key, path, content, holder));
   }
