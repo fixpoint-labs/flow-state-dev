@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/workspace": patch
+"@flow-state-dev/workspace": minor
 "@flow-state-dev/tools": patch
 ---
 
