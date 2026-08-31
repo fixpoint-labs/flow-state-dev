@@ -10,6 +10,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
+import { readRelayStamp, type RelayDispatchStamp } from "./relay-metadata";
 import { RESUME_ACTION_STATUS, workstreamBindingKey } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
@@ -17,7 +18,7 @@ import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResume
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import { resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -563,6 +564,69 @@ async function emitAbortedMessage(
 }
 
 /**
+ * Undo the acceptance-time writes of a relay delivery that must not run
+ * (FIX-1230).
+ *
+ * The request record and the `activeRequests` entry are written when the host
+ * *accepts* a delivery, while the original recipient session is still alive and
+ * valid — so a mismatch check placed before them would pass and prove nothing.
+ * They are therefore reconciled here rather than prevented, and the writes that
+ * have not happened yet are simply not made.
+ *
+ * **Deleted, not marked terminal**, which is where this parts company with
+ * `terminateUnenqueuedRequest`. A failed row is a row: session deletion removes
+ * no request records, so listing the replacement session's requests would return
+ * the dropped delivery and its message would appear in that session's
+ * reconstructed history. The promise is that the replacement sees nothing of it,
+ * and a tombstoned row does not deliver that.
+ *
+ * Best-effort: this runs while a delivery is already being abandoned, and a
+ * store failure here must not replace the drop with a different error.
+ */
+async function reconcileDroppedRelayDelivery(
+  stores: Pick<StoreRegistry, "request" | "activeRequests">,
+  requestId: string
+): Promise<void> {
+  try {
+    await stores.request.delete(requestId);
+  } catch {
+    // Best-effort; the drop is what propagates.
+  }
+  try {
+    await stores.activeRequests.deregister(requestId);
+  } catch {
+    // Best-effort; the sweeper reaps anything left behind.
+  }
+}
+
+/**
+ * The default text a relay delivery's input item carries when its binding
+ * declared no `userMessage` (FIX-1230).
+ *
+ * **It renders the payload, not a placeholder,** and that is the contract rather
+ * than a nicety. The promise a message makes is that the recipient's next turn
+ * can act on *what was sent*; a visible item saying "a relay message arrived"
+ * satisfies every visibility assertion and none of the promise, while the
+ * generator has no way to recover the payload. The kind and the sending session
+ * come first because they are what the turn needs to decide whether the message
+ * is for it at all.
+ *
+ * Deterministic, so a test can assert the payload's own values appear. A payload
+ * that will not serialize falls back to its `String()` form rather than throwing
+ * — a message that cannot be rendered is still a message that arrived, and
+ * failing the whole delivery over its formatting would be the worse trade.
+ */
+function describeRelayMessage(relay: RelayDispatchStamp, payload: unknown): string {
+  let rendered: string;
+  try {
+    rendered = payload === undefined ? "(no payload)" : JSON.stringify(payload) ?? String(payload);
+  } catch {
+    rendered = String(payload);
+  }
+  return `Message "${relay.kind}" from session ${relay.from}: ${rendered}`;
+}
+
+/**
  * Public action execution API using default internal seams.
  */
 export async function runAction<
@@ -811,11 +875,84 @@ export async function runActionInternal<
       // execution context reads/writes; a bare key would miss a tenant session.
       const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
       const session = await options.stores.session.get(sessionKey);
+
+      // INCARNATION GUARD for a relay delivery (FIX-1230), and it sits here for
+      // a reason the write two guards below makes plain.
+      //
+      // The send's checks — owner, tenant, org, flow boundary, the two-axis door
+      // — all read the recipient's record BEFORE this dispatch. Acceptance and
+      // execution are not the same moment: a delivery can be accepted, sit
+      // behind a held concurrency key, and run later, in a plain single-process
+      // deployment. A recipient session deleted and recreated under the same id
+      // in that window gets a NEW lineage, and nothing downstream re-checks —
+      // `createExecutionContext` validates user, tenant and org bindings and not
+      // `flowKind` or parentage. The send's door choice would then execute
+      // against a *replacement* session.
+      //
+      // Placed immediately after the load and before the write, beside the
+      // tenant-binding guard below, because the two are the same shape for the
+      // same reason: both compare a property of the just-loaded session against
+      // the request before letting that `latestRequestId` write land.
+      //
+      // It cannot be moved earlier. The acceptance-time writes — the
+      // `activeRequests` entry and the `in_progress` stub — happen while the
+      // original session is still alive and valid, so a check placed before them
+      // would pass and prove nothing; the corruption is created later, when the
+      // session is deleted and the already-written request row is inherited.
+      // Those two are therefore RECONCILED here rather than prevented, while the
+      // writes that have not happened yet are simply not made.
+      //
+      // WHAT THIS DOES AND DOES NOT PROMISE. When the mismatch is visible here,
+      // the delivery is dropped and the acceptance-time writes are reconciled. A
+      // recreate landing AFTER this check is narrower and is not promised
+      // against: the delivery's own request row carries a bare session id and
+      // session deletion removes no request records, so its message can still
+      // reach the replacement's reconstructed history. Closing that needs a
+      // predicate CAS the scope store does not have, or lineage-scoped request
+      // keys — both changes to a contract every other caller shares.
+      const relay = readRelayStamp(options.source, options.metadata);
+      if (relay !== undefined) {
+        const actualLineage = resolveLineageId({ id: sessionKey, lineageId: session?.lineageId });
+        if (session === undefined || actualLineage !== relay.recipientLineageId) {
+          logRuntimeEvent(
+            logger,
+            "warn",
+            "[flow-state] dropping a relay delivery: the recipient session was replaced " +
+              "between the send and this run",
+            { requestId, sessionId: options.sessionId, flowKind: options.flow.kind }
+          );
+          stopHeartbeatTimer();
+          // Reconcile what acceptance already wrote. `latestRequestId` is never
+          // written and no input item is emitted, because both are below.
+          await reconcileDroppedRelayDelivery(options.stores, requestId);
+          throw new Error(
+            `Relay delivery "${requestId}" was dropped: session "${options.sessionId}" was ` +
+              "deleted and recreated between the send and this run"
+          );
+        }
+      }
+
       // Tenant-binding guard (FIX-682): this write runs before
       // createExecutionContext's binding check, so without it a no-tenant caller
       // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
       // latestRequestId (an auto-resume hijack) even though the run then fails.
-      if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
+      //
+      // A RELAY delivery does not stamp `latestRequestId` at all. That field
+      // serves auto-resume discovery — a client attaching to a session finds the
+      // newest request and attaches its stream — and a delivery is not
+      // caller-addressed, so no client is waiting to resume it; the recipient's
+      // own conversation should not have its auto-resume target replaced by an
+      // inbound message. It also makes the resurrection hazard unreachable for
+      // relay rather than merely narrowed: the write spreads the record read
+      // before a concurrent delete, so a recreate landing between the `get` and
+      // the `set` would resurrect the old session's fields over the replacement.
+      // A UI watching the recipient still SEES the relay input item; it will not
+      // auto-attach to the delivery's stream.
+      if (
+        relay === undefined &&
+        session !== undefined &&
+        tenantMatches(session.tenantId, options.tenantId)
+      ) {
         await options.stores.session.set(
           sessionKey,
           { ...session, latestRequestId: requestId, updatedAt: Date.now() },
@@ -1002,8 +1139,26 @@ export async function runActionInternal<
     // provenance (no logical block owner), so the canonical-log collapse — which
     // dedups by block ownership — cannot remove the duplicate; the only correct
     // place to prevent it is here, at the source.
-    if (action.userMessage !== undefined && !isReplayMode) {
-      const text = action.userMessage(parsedInput);
+    // A relay delivery emits its input item BY CONSTRUCTION, whether or not the
+    // binding declared a `userMessage` (FIX-1230). The promise is that the
+    // message arrives in the recipient's history and its next turn can act on
+    // what was sent; a binding that declares nothing must not silently deliver
+    // nothing, and the headline example in the design declares none.
+    const relayStamp = readRelayStamp(options.source, options.metadata);
+    const userMessageText =
+      action.userMessage !== undefined
+        ? action.userMessage(parsedInput)
+        : relayStamp !== undefined
+          ? describeRelayMessage(relayStamp, parsedInput)
+          : undefined;
+
+    // Skip the user-message echo on a continuation (FIX-811): it represents the
+    // INITIAL caller input and is already in the merged prior log, so emitting
+    // it again on resume / crash recovery would double it. It carries runtime
+    // provenance (no logical block owner), so the canonical-log collapse — which
+    // dedups by block ownership — cannot remove the duplicate; the only correct
+    // place to prevent it is here, at the source.
+    if (userMessageText !== undefined && !isReplayMode) {
       const userItem: MessageItem = {
         id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "message",
@@ -1014,7 +1169,18 @@ export async function runActionInternal<
         itemIndex: getResponseItemCount(response),
         provenance: RUNTIME_PROVENANCE,
         ts: Date.now(),
-        content: [{ type: "output_text", text }]
+        content: [{ type: "output_text", text: userMessageText }],
+        // STAMPED EXPLICITLY for a relay delivery, on both axes, rather than
+        // left to the conversational default that happens to match today.
+        // Visibility has two axes and this item needs a specific answer on each:
+        // client-visible because a UI watching the recipient should show the
+        // message that arrived, and history-visible because history is how the
+        // recipient's next generator turn learns there was one. A structural
+        // carrier would be persisted, pass a presence test, and be invisible to
+        // that turn — green everywhere while the promise is broken.
+        ...(relayStamp !== undefined
+          ? { itemVisibility: { client: true, history: true } as const }
+          : {})
       };
       await response.emitItemAdded(userItem);
       await response.emitItemDone(userItem);

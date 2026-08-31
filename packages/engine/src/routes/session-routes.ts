@@ -183,6 +183,12 @@ export async function handleCreateSession(
     // lineage, which is what makes a surviving descendant of the old one keep
     // its own address with nothing conjoined in to keep them apart (FIX-1068).
     lineageId: generateId("lin"),
+    // A session created through the public route is one a caller named, so it is
+    // caller-addressable at both ends of a relay send (FIX-1230). Stamped here
+    // rather than inherited from `ensureSessionRecord` because this route does
+    // not go through that helper — it owes the caller a 409 on a lost race,
+    // which the helper resolves into an adoption instead.
+    sessionKind: "top-level",
     version: 0,
     createdAt: now,
     updatedAt: now,

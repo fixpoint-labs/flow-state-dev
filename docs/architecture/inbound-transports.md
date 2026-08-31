@@ -82,7 +82,8 @@ across crashes. See [Action forms](./action-forms.md).
 `source` is provenance — first-class on `RequestRecord` and
 `ActiveRequestEntry`, propagated through to DevTool's request list. It is
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
-`scheduled`, `notification`, `chat`. Custom transports pick their own.
+`scheduled`, `notification`, `chat`, `workstream`, `relay`. Custom transports
+pick their own.
 
 ### Execution configuration is per-host, with one per-envelope exception
 
@@ -290,7 +291,23 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 | `mcp` | MCP server adapter (`@flow-state-dev/mcp`) |
 | `webhook` | Webhook receivers |
 | `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`, FIX-440) |
+| `chat` | Chat subscriptions (`@flow-state-dev/chat-sdk`) |
 | `notification` | Cross-flow event subscribers |
+| `workstream` | Detached dispatch, stamped by the injection seam — no adapter |
+| `relay` | A message from another session, stamped by the send seam — no adapter |
+
+The last two are stamped by the framework rather than by a transport, which is
+what makes them trustworthy enough to authorize on: nothing anywhere derives
+`source` from a request body, query or params.
+
+**Neither is publicly re-enterable, and they are on the never-list rather than
+merely absent from the allow-list** — a deployment cannot open them through
+`publicReentrySources`, and naming one is refused at router construction. The
+criterion is worth stating rather than leaving as a third name on a list, since
+it is what tells the next transport author which side they are on: retry accepts
+a caller-supplied `inputOverride`, so re-entry would feed caller-chosen input to
+a handler nobody outside the system ever addressed. A source with **no
+caller-facing entry has no caller-facing re-entry.**
 
 Custom transports pick their own string. DevTool renders known sources
 with affordances (icon, label) and falls back to the raw value for

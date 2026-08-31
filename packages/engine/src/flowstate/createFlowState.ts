@@ -36,7 +36,12 @@ import {
   type DispatchedDetachedChild
 } from "../context/detached-start-operation";
 import type { DetachedStartOperation } from "../context/create-request-host";
+import {
+  createRelaySendOperation,
+  type RelaySendOperation
+} from "../context/relay-send-operation";
 import type { StoreRegistry } from "../stores/types";
+import type { InboundTransportHost } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { createConcurrencyArbiter } from "../transports/concurrency/arbiter";
@@ -228,6 +233,14 @@ class InternalFlowState<TSettings extends object>
   #routerRequested = false;
   /** Dispatcher built by the worker adapter during runtime init. */
   #workerDispatcher: FlowDispatcher | undefined;
+  /**
+   * The host the request-host operations dispatch through, built on first use.
+   *
+   * One host, so the detached start and the relay send cannot come to different
+   * conclusions about which dispatcher is effective — the same reason the
+   * arbiter is shared.
+   */
+  #requestHostOperationsHost: InboundTransportHost | undefined;
   /** Started worker, closed by dispose() before store adapters. */
   #workerHandle: WorkerHandle | undefined;
   /**
@@ -923,6 +936,7 @@ class InternalFlowState<TSettings extends object>
     // BEFORE the worker wiring and before any router exists, so every later copy
     // of `requestHost` carries it. See `#installDetachedStart`.
     this.#installDetachedStart(runtimeConfig, stores);
+    this.#installRelaySend(runtimeConfig, stores);
 
     this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
 
@@ -1058,7 +1072,69 @@ class InternalFlowState<TSettings extends object>
   }
 
   /**
-   * Build the host and the operation it dispatches through, on first use.
+   * The host the request-host operations dispatch through, built on first use
+   * and shared between them.
+   *
+   * Built lazily so everything it reads — the worker's dispatcher, the shared
+   * arbiter — is resolved by the time it runs, rather than captured at a moment
+   * when the worker adapter has not been consulted yet.
+   *
+   * Shared rather than one per operation because a second host in this process
+   * would be a second place the same questions get answered — which dispatcher
+   * is effective, whether it is external — and two answers to one question is
+   * how a verb and a dispatch branch come to disagree. The arbiter is already
+   * shared for exactly that reason.
+   */
+  #hostForRequestHostOperations(
+    runtimeConfig: RuntimeConfig,
+    stores: StoreRegistry
+  ): InboundTransportHost {
+    this.#requestHostOperationsHost ??= createInboundTransportHost({
+      registry: this.#registry,
+      stores,
+      // Never consulted by `dispatch` — a detached or relay envelope carries a
+      // server-derived principal — but it is what the router would pass, so the
+      // host is not subtly different from the one HTTP gets.
+      resolvePrincipal:
+        this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
+      runtimeConfig,
+      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher,
+      // One arbiter across every host in the process — see `#arbiter`.
+      arbiter: this.#arbiter
+    });
+    return this.#requestHostOperationsHost;
+  }
+
+  /**
+   * Install the relay send operation on the shared config, before any fork of
+   * `requestHost` exists (FIX-1230).
+   *
+   * Installed here rather than left to the router's last-resort installer for
+   * the reason that installer's own comment gives: `createFlowApiRouter` rebuilds
+   * `requestHost` as a fresh literal, so anything stamped there lands on a copy a
+   * colocated worker never sees — and a worker running a flow that sends
+   * messages would meet `no-send-operation`.
+   *
+   * Unlike the detached start this wraps nothing: a delivery is an ordinary
+   * request the host already registers as background work, so there is no child
+   * for `dispose()` to drain and no disposal gate to add. The operation is built
+   * on first use for the same reason the detached one is.
+   */
+  #installRelaySend(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
+    const requestHost = runtimeConfig.requestHost;
+    if (requestHost === undefined) return;
+    if (requestHost.relaySendOperation !== undefined) return;
+
+    let operation: RelaySendOperation | undefined;
+    requestHost.relaySendOperation = (spec) => {
+      const host = this.#hostForRequestHostOperations(runtimeConfig, stores);
+      operation ??= createRelaySendOperation({ host });
+      return operation(spec);
+    };
+  }
+
+  /**
+   * Build the detached start operation, on first use.
    *
    * Split from the install so everything it reads — the worker's dispatcher, the
    * shared arbiter — is resolved by the time it runs, rather than captured at a
@@ -1069,20 +1145,7 @@ class InternalFlowState<TSettings extends object>
     stores: StoreRegistry
   ): DetachedStartOperation {
     const dispatcher = this.#options.dispatcher ?? this.#workerDispatcher;
-
-    const host = createInboundTransportHost({
-      registry: this.#registry,
-      stores,
-      // Never consulted by `dispatch` — a detached envelope carries a
-      // server-derived principal — but it is what the router would pass, so the
-      // host is not subtly different from the one HTTP gets.
-      resolvePrincipal:
-        this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
-      runtimeConfig,
-      dispatcher,
-      // One arbiter across every host in the process — see `#arbiter`.
-      arbiter: this.#arbiter
-    });
+    const host = this.#hostForRequestHostOperations(runtimeConfig, stores);
 
     // Track children for the shutdown drain ONLY when they run here.
     //

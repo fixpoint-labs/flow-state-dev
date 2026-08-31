@@ -154,7 +154,19 @@ export async function ensureSessionRecord(
   // `purgeStaleResourceState` for why this order and no other.
   await purgeStaleResourceState(stores, storageKey);
 
-  const record: SessionRecord = { ...build(), lineageId: generateId("lin") };
+  // `sessionKind` defaults HERE rather than at each caller, for the same reason
+  // `lineageId` is minted here: it is a decision with one right answer that
+  // three creators would otherwise re-derive and disagree about (FIX-1230). A
+  // caller that genuinely mints something else — the detached child writer, the
+  // one site that says `"workstream"` — does not come through this helper at
+  // all, so the default is safe rather than merely convenient. A seed that
+  // states its own kind wins, so this is a default and not an override.
+  const seed = build();
+  const record: SessionRecord = {
+    ...seed,
+    sessionKind: seed.sessionKind ?? "top-level",
+    lineageId: generateId("lin")
+  };
   const created = await stores.session.set(storageKey, record, "absent");
   if (created.ok) return record;
 

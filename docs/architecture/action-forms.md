@@ -28,7 +28,7 @@ The core is independent of how the action is addressed or authenticated.
 Generalizing it is what lets a webhook handler, a chat handler, or a scheduled
 handler be a first-class action without living in `flow.actions`.
 
-## Two address forms
+## Three address forms
 
 ### Caller-addressed: `ActionConfig` in `flow.actions`
 
@@ -147,9 +147,60 @@ reason:
   A deployment adds its **own** transports' sources with the
   `publicReentrySources` host option, since `InboundTransportAdapter.source` is
   an open string and the framework cannot enumerate them. It cannot add these
-  two: `webhook` and the detached source are stamped by the framework and are
-  refused at router construction, because the reason each is excluded is a
-  property of the framework rather than of the deployment.
+  three: `webhook`, the detached source and the relay source are stamped by the
+  framework and are refused at router construction, because the reason each is
+  excluded is a property of the framework rather than of the deployment.
+
+## Message-addressed: the relay door
+
+A running request can also address a session that already exists — a peer, not a
+descendant — through `ctx.requestHost.sendMessage`. That dispatch is stamped
+`source: "relay"` by the seam, and it is the fourth thing `resolveActionCore`
+knows about.
+
+**Relay is the one form with two doors**, and which one a message enters is
+decided at the *send*, never here:
+
+- a **declared** binding, `flow.relay.on[kind]`, which is an action in message
+  form exactly as a webhook binding is an action in transport form — it carries
+  its `ActionCore` inline plus an `input` mapper, and never appears in
+  `flow.actions`;
+- a **fallthrough** to `flow.actions[kind]`, which is gated.
+
+The gate reads a persisted discriminator, `SessionRecord.sessionKind`, at **both
+ends** of the send. A declared binding is reachable whatever those are. The
+fallthrough requires both the recipient *and the sender* to be
+`"top-level"`/`"sibling"`, so a detached background session neither exposes its
+public actions to a message nor reaches a peer's — two properties that read alike
+and are not the same, since closing only the first still lets a confined agent
+reach outward. An **absent** kind at either end refuses before any door is
+resolved: a record written before the field existed is a record the framework
+cannot classify, and the tolerant reading is the exploitable one.
+
+**The branch here is terminal, like the detached one, but for a slightly
+different reason: the door's answer is a stamp rather than a computation.**
+Resolution runs before the recipient's session record is loaded, and the sender's
+session kind never crosses the dispatch boundary at all — so the send writes its
+answer onto `metadata.relay.door` and the worker routes on that. `metadata` is
+the caller's own bag, so the stamp is authority **only** behind the same source
+gate every event coordinate sits behind.
+
+The same three neighbouring paths classify relay:
+
+- **Concurrency.** Policy follows the *door form*: a declared binding takes the
+  flow default, exactly as an event or a detached dispatch does, because its
+  `actionName` is provenance and could collide with an unrelated public action; a
+  fallthrough is that action addressed as itself, so its own override applies.
+  Admission is unbounded — a queued delivery waits rather than being dropped,
+  since nobody is holding a connection at the other end.
+- **Public re-entry.** Not re-enterable, on the never-list rather than merely
+  absent from the allow-list, for the criterion already written for the detached
+  source: no caller-facing entry, therefore no caller-facing re-entry.
+- **Suspension.** A `RELAY_SOURCE` request is refused at `ctx.suspend()`. The
+  door additionally refuses a `durable` fallthrough target and `defineFlow`
+  refuses a binding declaring `durable: true`, but those are the early, nameable
+  cases: `ctx.suspend()` is gated on the host's `DurabilityProvider` and never
+  reads the action's flag, so an undeclared suspension is invisible to both.
 
 ### Where the workstream core comes from: the binding registry
 

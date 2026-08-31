@@ -62,6 +62,7 @@ import { createRequestSideChainPool } from "../execution/request-side-chain-pool
 import { createRequestHost } from "./create-request-host";
 import { ensureSessionRecord } from "./ensure-session-record";
 import { resolveActionCore } from "../execution/resolve-action-core";
+import { RELAY_SOURCE } from "../execution/transport-sources";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys } from "@flow-state-dev/core/helpers";
@@ -80,6 +81,7 @@ import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
   resolveOrgStorageKey,
+  resolveLineageId,
   resolveResourceIsolation,
   resolveResourceScopeId,
   resolveSessionStorageKey,
@@ -688,7 +690,7 @@ export async function createExecutionContext<
   // an unstamped session's lineage id were its session key the two would be
   // indistinguishable — routing unshared resources into the lineage namespace
   // along with the shared ones.
-  const lineageId = sessionRecord.lineageId ?? `lin_${sessionKey}`;
+  const lineageId = resolveLineageId({ id: sessionKey, lineageId: sessionRecord.lineageId });
 
   const resolvedOrgKey =
     resolvedOrgId !== undefined
@@ -754,9 +756,21 @@ export async function createExecutionContext<
             tenantId: options.tenantId,
             orgId: resolvedOrgId,
             sessionId,
-            lineageId
+            lineageId,
+            // Off the record this function has already loaded and
+            // identity-checked, which is what makes relay's door BP-031-clean:
+            // the sender's kind is server-derived and never asserted by the
+            // sender. `undefined` for a legacy record, which relay refuses
+            // rather than defaulting.
+            sessionKind: sessionRecord.sessionKind,
+            // Whether the CALLER named this session, rather than having one
+            // minted for it above. Passed as a fact rather than inferred from
+            // the id's shape: what makes a minted session unaddressable is that
+            // nobody was told its id, and that is knowable only here.
+            sessionWasCallerSupplied: options.sessionId !== undefined
           },
           startOperation: options.requestHost.startOperation,
+          relaySendOperation: options.requestHost.relaySendOperation,
           parentTask: options.requestHost.parentTask,
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           liveness: {
@@ -3213,6 +3227,33 @@ export async function createExecutionContext<
             }
             return resumeCtx.data;
           }
+        }
+        // A relay delivery may not suspend, and THIS is the check that closes
+        // the hazard — not the two that key on `ActionCore.durable` (FIX-1230).
+        //
+        // Suspension is gated on the host having a `DurabilityProvider`, which
+        // is the guard immediately below; it never consults the action's flag.
+        // So a relay handler or fallthrough action with `durable` **unset** can
+        // suspend on a durability-enabled host, and no construction-time or
+        // resolution-time flag check can see it — a block calling
+        // `ctx.suspend()` is not visible in a flow definition. Those two checks
+        // cover the DECLARED subset, early and by name, where an author can act
+        // on it; this covers every request that actually reaches suspension.
+        // Different sets, not one set at two times.
+        //
+        // Refused rather than allowed because `RELAY_SOURCE` is permanently
+        // non-re-enterable: a relay delivery has no caller-facing entry, so it
+        // has no caller-facing retry / continue / resume, and a suspension here
+        // would be one nothing in any configuration could resume. `source` is
+        // already in scope on this function, so this reads a value that is
+        // present rather than threading a new one.
+        if (options.source === RELAY_SOURCE) {
+          throw new Error(
+            "ctx.suspend() is not available to a relay delivery. A message sent to a session " +
+              "has no caller-facing entry, so it has no caller-facing way to be resumed — a " +
+              "suspension here could never be continued. Handle the work without ctx.suspend(), " +
+              "or have the handler start durable work of its own."
+          );
         }
         if (!options.durabilityEnabled) {
           throw new Error(

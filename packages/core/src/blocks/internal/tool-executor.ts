@@ -12,6 +12,7 @@ import type {
   RetryPolicy,
 } from "../../types/block";
 import { asRuntime } from "../../types/block";
+import { mergeRetryPolicy } from "../../types/retry-merge";
 import type { ItemVisibility } from "../../items/types";
 import type { ModelIdentity } from "../../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../../types/flow";
@@ -73,8 +74,29 @@ export function buildToolExecutor(
   ctx: BlockContext,
 ): (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => Promise<unknown> {
   const { flowTools, generatorBlockName, itemVisibility, agentName, statusGuard } = config;
-  const timeoutMs = flowTools?.defaults?.timeoutMs;
-  const retry = flowTools?.defaults?.retry;
+  // The tool's OWN config wins over the flow default (FIX-1230), which closes an
+  // inconsistency rather than adding an exemption: `executeBlock` already
+  // resolves retry as a per-block override merged over the ambient policy, this
+  // path simply ignored `config.retry` while reading `config.cacheable` two
+  // lines later — so the field was declared and never honoured here.
+  //
+  // Merged rather than replaced, so `config.retry` means one thing on both
+  // paths: block-level wins field by field, the nearer declaration being the
+  // more specific one. Replacing would give one field name two precedence rules
+  // and a reader who learned one would be wrong about the other half the time.
+  //
+  // Timeout REPLACES rather than merges, because it is a scalar with nothing to
+  // merge; `0` is already "no wrapper timeout" in `withTimeout`, so a tool can
+  // say "my own clock governs" without new vocabulary.
+  //
+  // Why this matters beyond tidiness: `withTimeout` rejects on its timer and
+  // does nothing to the underlying promise, so a flow-wide default shorter than
+  // a tool's real work lets `runWithRetry` start a second call while the first is
+  // still live. For a tool with a side effect that is a duplicate, and the only
+  // alternatives were disabling the defaults flow-wide (changing every other
+  // tool) or leaving them on (duplicating).
+  const timeoutMs = tool.config.timeoutMs ?? flowTools?.defaults?.timeoutMs;
+  const retry = mergeRetryPolicy(tool.config.retry, flowTools?.defaults?.retry);
 
   return async (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => {
     const cacheable = tool.config.cacheable;

@@ -207,6 +207,12 @@ async function seedStores(options: {
     await options.stores.session.set(options.sessionId, {
       id: options.sessionId,
       flowKind: options.flow.kind,
+      // The published helpers are a FIFTH session-record writer beside the four
+      // in the runtime, and relay refuses a record with no `sessionKind`
+      // (FIX-1230). Without this every fixture session would read as legacy and
+      // could not be relayed to, so a test of the feature would have to patch
+      // the row by hand — the helper silently doing the opposite of its job.
+      sessionKind: "top-level",
       userId: options.userId,
       orgId: options.orgId,
       metadata: undefined,

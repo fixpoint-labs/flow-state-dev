@@ -1,6 +1,11 @@
 export { createExecutionContext } from "./context/createExecutionContext";
 export { ensureSessionRecord } from "./context/ensure-session-record";
 export type { SessionRecordSeed } from "./context/ensure-session-record";
+export { backfillSessionKind } from "./stores/backfill-session-kind";
+export type {
+  BackfillSessionKindOptions,
+  BackfillSessionKindResult
+} from "./stores/backfill-session-kind";
 export type {
   CreateExecutionContextOptions,
   ExecutionContext,
@@ -83,6 +88,7 @@ export type {
   PersistErrorHandler,
   PersistErrorInfo,
   RequestStore,
+  SessionKind,
   SessionListOptions,
   SessionParentage,
   SessionRecord,

@@ -12,6 +12,9 @@
  *   - webhook: `flow.webhooks[provider].on[event]`, keyed by `(provider, eventType)`;
  *   - chat: `flow.chat.on[eventKey]`, keyed by the matched subscription key;
  *   - scheduled (static): `flow.schedules.static[scheduleId]`, keyed by the id.
+ *   - relay: `flow.relay.on[kind]` or `flow.actions[kind]`, selected by the door
+ *     the SEND already decided and stamped on `metadata.relay`. Terminal for its
+ *     source, like the detached dispatch below.
  *
  * An event dispatch carries its coordinate in a namespaced metadata slot
  * (`metadata.webhook` / `metadata.chat` / `metadata.schedule`), stamped by the
@@ -38,8 +41,10 @@
  * `runAction`'s `resolveAction`.
  */
 import type { ActionCore, FlowInstance } from "@flow-state-dev/core/types";
+import { readRelayStamp } from "./relay-metadata";
 import {
   CHAT_SOURCE,
+  RELAY_SOURCE,
   SCHEDULED_SOURCE,
   WEBHOOK_SOURCE,
   WORKSTREAM_SOURCE
@@ -111,6 +116,27 @@ export function resolveActionCore(
   // caller turns into a named refusal.
   if (source === WORKSTREAM_SOURCE) {
     return flow.workstream;
+  }
+
+  // Relay delivery (FIX-1230). TERMINAL for this source, for the same reason the
+  // detached branch above is: `actionName` is provenance, and the routing answer
+  // is the stamp. Falling through would hand a framework-stamped dispatch a
+  // caller-addressed handler the door never approved.
+  //
+  // The door is NOT decided here. It was decided once at the `sendMessage` verb,
+  // from the sender's and recipient's session kinds — neither of which exists at
+  // this point in the run, since resolution happens before the recipient's
+  // session record is loaded and the sender's kind never crosses the dispatch
+  // boundary at all. So this honours the stamped answer rather than recomputing
+  // a second one, and `readRelayStamp` is what makes reading it safe: the
+  // coordinate is the caller's own bag, and only the seam-stamped `source` says
+  // the runtime put it there.
+  if (source === RELAY_SOURCE) {
+    const relay = readRelayStamp(source, metadata);
+    if (relay === undefined) return undefined;
+    return relay.door === "declared"
+      ? flow.relay?.on?.[relay.kind]
+      : flow.actions[relay.kind];
   }
 
   return flow.actions[actionName];

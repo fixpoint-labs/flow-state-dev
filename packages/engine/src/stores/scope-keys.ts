@@ -271,3 +271,29 @@ export async function mergeScopeReads<T>(
   const results = await Promise.all(reads);
   return Object.assign({}, ...results) as Record<string, T>;
 }
+
+/**
+ * The lineage address of a session, applying the fallback for records written
+ * before `SessionRecord.lineageId` existed (FIX-1068).
+ *
+ * **The prefix is load-bearing, not decoration.** The fallback must never equal
+ * the session storage key: the resource layer decides a storage scope by
+ * comparing a resolved address against that key, so an unstamped session whose
+ * lineage id *was* its key would make unshared resources indistinguishable from
+ * lineage-shared ones and route them into the wrong namespace.
+ *
+ * One copy, because four callers now need this answer and they must agree: the
+ * execution context resolves it per request, the resource layer resolves it per
+ * address, and relay writes it onto a delivery at send time and compares it
+ * again where the delivery runs. A send and its own guard disagreeing about a
+ * legacy record would drop every delivery to one.
+ *
+ * @param session Storage key and stored lineage id — a `SessionRecord`, or the
+ * pair read from one.
+ */
+export function resolveLineageId(session: {
+  id: string;
+  lineageId?: string | null;
+}): string {
+  return session.lineageId ?? `lin_${session.id}`;
+}

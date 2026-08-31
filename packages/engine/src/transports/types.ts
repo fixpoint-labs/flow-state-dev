@@ -276,6 +276,19 @@ export interface InboundTransportHost {
   readonly logger?: RuntimeLogger;
 
   /**
+   * Whether this host's effective dispatcher hands work to an external queue
+   * rather than running it here (FIX-1230).
+   *
+   * Exposed because two capabilities of the request-host seam are void across
+   * that boundary and must refuse rather than under-deliver — the concurrency
+   * gate does not apply to external dispatch at all, and a run in another
+   * process cannot be woken by this one. The host already computes this to pick
+   * its own dispatch branch; publishing it is what stops a caller re-deriving it
+   * from the dispatcher and reaching a different answer than the host did.
+   */
+  readonly usesExternalDispatcher: boolean;
+
+  /**
    * Dispatch an action-execution envelope. Fire-and-forget: returns a
    * synchronous `DispatchHandle` whose `liveStream` and `requestId` are
    * available immediately, while `finished` resolves when the action

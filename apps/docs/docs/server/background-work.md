@@ -20,6 +20,10 @@ inside a running request, usually as a task board with a worker declared
 detached. See [Work that outlives the
 turn](/guides/background-work#workstreams-a-job-with-its-own-session).
 
+You can also reach one while it is still running: a job's session has an address,
+and a message sent to it arrives as an ordinary request in that session. See
+[Messaging a session](./session-messages.md).
+
 ## Listing a conversation's jobs
 
 ```

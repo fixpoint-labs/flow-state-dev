@@ -39,6 +39,7 @@ import {
   type ConcurrencyArbiter
 } from "../concurrency/arbiter";
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
+import { RELAY_SOURCE } from "../../execution/transport-sources";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import {
   combineSignals,
@@ -296,6 +297,8 @@ export function createInboundTransportHost(
     // liveStream, finished) is still returned synchronously, so an SSE client
     // gets an open stream while queued. External dispatchers run elsewhere, so
     // they skip arbitration (no key, passthrough) — see the arbiter note above.
+    const isRelayDelivery = envelope.source === RELAY_SOURCE;
+
     const decision = isExternalDispatcher
       ? { policy: "allow" as const, key: undefined }
       : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
@@ -440,7 +443,26 @@ export function createInboundTransportHost(
         return handle.finished;
       };
 
-      if (decision.policy === "queue" && decision.key !== undefined) {
+      // A RELAY delivery takes this branch whatever its policy (FIX-1230), and
+      // the reason is the meaning of `accepted` rather than the concurrency
+      // queue.
+      //
+      // `sendMessage` returns a `deliveryRequestId` the moment acceptance
+      // resolves, and later questions about that delivery are authorized off the
+      // relation persisted in its request record's `metadata.relay`. On the
+      // ordinary non-queued path acceptance is `onRegistered`, fired immediately
+      // after `activeRequests.register` and well before the request record is
+      // written — so the sender would be handed an id whose durable
+      // authorization does not exist yet, and a failure in that window leaves an
+      // accepted but permanently unauthorizable delivery.
+      //
+      // The queued branch already resolves acceptance off its own enqueue-time
+      // writes, so the delivery id and its authorization become durable
+      // together. That is the shape to copy rather than invent, which is why
+      // this is a widened condition rather than a second materialization path.
+      // Under `allow` the gate below is a passthrough, so the run still starts
+      // immediately — what changes is only what `accepted` waits for.
+      if (isRelayDelivery || (decision.policy === "queue" && decision.key !== undefined)) {
         // Registered HERE rather than left to `runAction`, because between this
         // dispatch and the run's own registration the request is real,
         // discoverable, and cancellable by anyone reading the store — and yet
@@ -836,6 +858,7 @@ export function createInboundTransportHost(
       voice: runtimeConfig.voiceProvider
     },
     logger: runtimeConfig.logger,
+    usesExternalDispatcher: isExternalDispatcher,
     dispatch,
     continueRequest,
     validateDispatch,

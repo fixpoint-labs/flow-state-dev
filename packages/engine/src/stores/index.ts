@@ -64,6 +64,7 @@ export type {
   RequestStore,
   ScopeRecordBase,
   SessionListOptions,
+  SessionKind,
   SessionParentage,
   SessionRecord,
   SessionStore,

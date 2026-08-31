@@ -106,6 +106,7 @@ const sidebars: SidebarsConfig = {
             "advanced/manual-flow-execution",
             "persistence/overview",
             "server/background-work",
+            "server/session-messages",
             "server/authentication",
             {
               type: "category",

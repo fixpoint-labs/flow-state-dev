@@ -63,6 +63,10 @@ export function createMockTransportHost(
   const host: InboundTransportHost = {
     registry: minimalRegistry(),
     stores: minimalStores(),
+    // This stub runs every dispatch inline, so it is in-process by
+    // construction. Adapters that branch on it get the branch a default
+    // deployment takes.
+    usesExternalDispatcher: false,
     async validateDispatch() {},
     dispatch(envelope) {
       dispatchCalls.push({ envelope });

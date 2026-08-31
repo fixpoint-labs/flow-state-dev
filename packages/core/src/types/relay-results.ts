@@ -67,7 +67,17 @@ export type SendMessageRefusal =
    */
   | "no-durable-sender"
   /** `waitForResponse` before the waiting half ships. */
-  | "mode-not-available";
+  | "mode-not-available"
+  /**
+   * This process executes requests but was not wired to dispatch one, so there
+   * is nothing to send *through*.
+   *
+   * The sibling of `startDetached`'s `no-start-operation`, and here for the same
+   * reason: a deployment whose capabilities dispatch must supply the operation
+   * in every process that runs them, and a capability whose precondition a
+   * deployment has not met is named rather than silently broken.
+   */
+  | "no-send-operation";
 
 /**
  * Outcome of {@link sendMessage}. `deliveryRequestId` is present on all three

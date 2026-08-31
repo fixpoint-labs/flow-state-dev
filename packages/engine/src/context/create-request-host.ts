@@ -14,22 +14,33 @@
  * - the flow declares no workstream core → refuses `no-workstream-core`
  * - this request was not dispatched for a task → `parentTask()` resolves
  *   `undefined` and `settleParentTask` refuses `no-parent-task`
+ * - no host send operation wired → `sendMessage` refuses `no-send-operation`
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
+ *
+ * One verb here takes a **session id**, and that is the contract rather than an
+ * exception to it: `sendMessage` authorizes by **peerage** — checking the named
+ * session's owner, tenant, org binding and flow kind against the running
+ * request's own — where every other verb authorizes by **descent**. Identity is
+ * still server-derived either way; see `core/types/request-host.ts`.
  */
 import type {
   FlowInstance,
   LivenessAnswers,
   RequestHost,
+  SendMessageInput,
+  SendMessageResult,
   SettleParentTaskInput,
   SettleParentTaskResult,
   StartDetachedInput,
   StartDetachedResult
 } from "@flow-state-dev/core/types";
-import type { SessionRecord, StoreRegistry } from "../stores/types";
+import type { SessionKind, SessionRecord, StoreRegistry } from "../stores/types";
+import { resolveRelayDoor } from "../execution/relay-door";
+import type { RelaySendOperation } from "./relay-send-operation";
 import { workstreamBindingKey } from "@flow-state-dev/core/types";
 import { workstreamDispatchInputSchema } from "@flow-state-dev/core";
 import type { RuntimeConfig } from "../runtime-config";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
+import { resolveLineageId, resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
 import { purgeStaleResourceState } from "./ensure-session-record";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
@@ -88,6 +99,21 @@ export type DetachedStartOperation = (spec: {
   | { notStarted: true; reason: string }
 >;
 
+/**
+ * The largest `timeoutMs` a send accepts.
+ *
+ * Node's timers are 32-bit: `setTimeout` with anything past this clamps to a
+ * **1 ms** timer with only a warning, so a caller asking for an unbounded wait
+ * would be answered almost immediately and could not tell that from an ordinary
+ * timeout. The bound is refused rather than clamped for exactly that reason.
+ */
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+/** Whether a caller-supplied wait budget is one Node's timers can actually hold. */
+function isSupportedTimeout(timeoutMs: number): boolean {
+  return Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= MAX_TIMEOUT_MS;
+}
+
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
   read(): Promise<unknown | undefined>;
@@ -112,9 +138,41 @@ export type RequestHostInputs = {
      * address one bucket — there is nothing to re-derive and nothing to agree on.
      */
     lineageId: string;
+    /**
+     * What kind of session the RUNNING request is in (FIX-1230) — the sender's
+     * half of relay's two-axis door.
+     *
+     * Read off the session record `createExecutionContext` has already loaded
+     * and identity-checked, which is what makes gating on it BP-031-clean: it is
+     * server-derived, and never asserted by the sender. `undefined` for a record
+     * written before the field existed, and relay **refuses** that rather than
+     * defaulting it.
+     */
+    sessionKind: SessionKind | undefined;
+    /**
+     * Whether the running request named its own session, or had one minted for
+     * it (FIX-1230).
+     *
+     * An action dispatched with no `sessionId` runs under a privately minted
+     * session whose id the response never carries, so no later request can name
+     * it. A send from there would hand back a delivery id nothing could ever ask
+     * about — status authorizes by the sending *session* — so relay refuses it.
+     *
+     * Passed as a fact rather than inferred from the id's shape: what makes the
+     * session unaddressable is that nobody was told it, and that is knowable
+     * only where the request was assembled.
+     */
+    sessionWasCallerSupplied: boolean;
   };
   /** Absent when this process executes requests but cannot start one. */
   startOperation?: DetachedStartOperation;
+  /**
+   * Dispatches a relay delivery through the host. Absent → `sendMessage` refuses
+   * `no-send-operation`, the same residual shape `startDetached` has for its own
+   * missing operation: a process that executes requests but was not wired to
+   * start one.
+   */
+  relaySendOperation?: RelaySendOperation;
   /**
    * The config this request runs under, handed to the start operation so a
    * detached child inherits it rather than the host's construction-time one
@@ -284,6 +342,14 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
         ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
         parentSessionId: identity.sessionId,
+        // The one site in the framework that mints a `"workstream"` session
+        // (FIX-1230), and the reason relay's door has two axes. This child is
+        // inside-world: a relay message reaches only what its flow declares
+        // under `relay.on`, never `flow.actions`, and a message sent *from* it
+        // is confined the same way. The other three writers default
+        // `"top-level"`, so an enumeration that stamped three of four would
+        // ship a session nobody can reach.
+        sessionKind: "workstream" as const,
         // Inherited verbatim. Not a hash, not a re-derivation — the same
         // value, so parent and child address one bucket by construction (FIX-1068).
         lineageId: identity.lineageId,
@@ -416,6 +482,275 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     return { ok: true, sessionId: childId, requestId: started.requestId, adopted };
   };
 
+  /**
+   * Send a message to another session (FIX-1230).
+   *
+   * **Every refusal is decided here**, at the verb, which is the single place a
+   * relay message is created. The agent-facing tool is a thin surface over this
+   * same function precisely so it cannot skip one — a guard added at the tool is
+   * a guard the verb's other callers skip.
+   *
+   * The order below is not arbitrary. Sender-side checks run **first**, so a
+   * caller that cannot legitimately send learns that without also learning
+   * whether the recipient it named exists. Recipient-side checks then run
+   * outside-in: identity, then the flow boundary, then the door.
+   */
+  const sendMessage = async (args: SendMessageInput): Promise<SendMessageResult> => {
+    // ---- Sender-side. Nothing here reads the recipient. ----
+
+    if (args.mode === "waitForResponse") {
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "mode-not-available",
+        detail:
+          'waiting for a reply is not available yet. Send with mode: "fireAndForget", or wait ' +
+          "for the release that adds it."
+      };
+    }
+
+    // Validated whenever supplied, even on a mode with no clock, so one value
+    // cannot mean two things. REFUSED rather than clamped: Node's timers are
+    // 32-bit, so `Infinity`, `NaN` and anything past `2**31 - 1` become a 1 ms
+    // timer — a caller asking for an unbounded wait would get an immediate
+    // timeout, indistinguishable from an ordinary one.
+    if (args.timeoutMs !== undefined && !isSupportedTimeout(args.timeoutMs)) {
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "invalid-timeout",
+        detail: `timeoutMs must be a positive integer no greater than ${MAX_TIMEOUT_MS}; received ${String(args.timeoutMs)}`
+      };
+    }
+
+    if (inputs.relaySendOperation === undefined) {
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "no-send-operation",
+        detail:
+          "this process executes requests but was not wired to dispatch one; a deployment " +
+          "whose capabilities send messages must supply a send operation in every process " +
+          "that runs them"
+      };
+    }
+
+    // Both modes, not just the waiting one. Status authorizes by the sending
+    // SESSION, so an unaddressable sender is handed a `deliveryRequestId` no
+    // future request can ever query — and for fire-and-forget that status is the
+    // only feedback path there is. A promise whose durable backing does not
+    // exist is not improved by the caller not blocking on it.
+    if (!identity.sessionWasCallerSupplied) {
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "no-durable-sender",
+        detail:
+          "this request runs in a session nobody named, so its id is known to no later " +
+          "request and the delivery could never be asked about. Send from a request that " +
+          "supplied a session id."
+      };
+    }
+
+    // "Caller-supplied" is a fact about request START, and a session id outlives
+    // the session. A caller can delete and recreate its own session while this
+    // request is still executing — deletion removes the record and no request
+    // records, and does not abort running requests — and this closure would keep
+    // naming a session that no longer exists *as itself*. The delivery id would
+    // then be authorized to an extinct lineage no later turn can query, which is
+    // the same permanent status loss, reached by a different road. Same code
+    // deliberately: the caller-visible consequence is identical, and a second one
+    // would only say which way it lost.
+    //
+    // Compared through the SAME fallback `createExecutionContext` applies, not
+    // against the raw field. A session record written before lineages existed
+    // carries none, and the runtime reads it as `lin_${storageKey}` — so
+    // comparing the bare field would refuse every legacy sender here, with a
+    // code telling it to use a session that has an id rather than the one
+    // telling it to run the migration. Both would refuse; only one would say
+    // anything true.
+    const senderStorageKey = resolveSessionStorageKey(identity.sessionId, identity.tenantId);
+    const senderRecord = await stores.session.get(senderStorageKey);
+    const senderLineage = resolveLineageId({
+      id: senderStorageKey,
+      lineageId: senderRecord?.lineageId
+    });
+    if (senderRecord === undefined || senderLineage !== identity.lineageId) {
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "no-durable-sender",
+        detail:
+          "the sending session no longer exists as the one this request started in, so a " +
+          "delivery id it received could never be resolved"
+      };
+    }
+
+    // ---- Recipient-side. ----
+
+    const recipientStorageKey = resolveSessionStorageKey(args.to, identity.tenantId);
+    const recipient = await stores.session.get(recipientStorageKey);
+
+    // Absent, another owner, and another TENANT all answer the same code on
+    // purpose. A distinct reason would confirm that a session exists across a
+    // boundary the caller cannot see past, which is an existence oracle —
+    // `livenessOf` makes the same trade. The tenant arm is also the one that has
+    // to be checked HERE rather than left downstream: without it
+    // `createExecutionContext` throws `TenantBindingMismatchError` once the
+    // dispatch is already under way, which both breaks the returned-refusal
+    // taxonomy and leaks the same oracle through the error.
+    if (
+      recipient === undefined ||
+      recipient.userId !== identity.userId ||
+      (recipient.tenantId ?? undefined) !== identity.tenantId
+    ) {
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "unknown-recipient",
+        detail: `no session "${args.to}" is reachable from this request`
+      };
+    }
+
+    // Org is the one identity field whose downstream check permits a difference:
+    // the existing binding check fires only when both are set and differ, so an
+    // unbound sender naming an org-bound recipient would silently resolve to the
+    // recipient's org. Compared as bound-vs-unbound here for that reason.
+    if ((recipient.orgId ?? undefined) !== identity.orgId) {
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "org-mismatch",
+        detail: "the sender and the recipient are bound to different organizations"
+      };
+    }
+
+    // NOTHING DOWNSTREAM ENFORCES THIS. `createExecutionContext` validates a
+    // reused session's user, tenant and org and reads `flowKind` nowhere — the
+    // framework states outright that a session id is not a flow boundary and one
+    // session can host requests of two flows. So without this check a same-owner
+    // send naming a session that belongs to another flow passes every existing
+    // check and runs *the sender's* flow handler against that session's history
+    // and state. Refused with the addressing code, again to avoid an oracle.
+    if (recipient.flowKind !== flow.kind) {
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "unknown-recipient",
+        detail: `no session "${args.to}" is reachable from this request`
+      };
+    }
+
+    const door = resolveRelayDoor({
+      flow,
+      kind: args.kind,
+      senderKind: identity.sessionKind,
+      recipientKind: recipient.sessionKind
+    });
+    if (!door.ok) {
+      return { ok: false, outcome: "refused", refused: door.refused, detail: door.detail };
+    }
+
+    const started = await inputs.relaySendOperation({
+      sessionId: args.to,
+      flowKind: flow.kind,
+      // Provenance only — the relay source resolves the stamped door.
+      actionName: door.core.block.name,
+      // A declared binding maps the message itself; the fallthrough dispatches
+      // the BARE payload, because a public action validates the dispatched value
+      // against its own schema and would reject a wrapper even when the sender
+      // supplied exactly the right body. `kind` and `from` ride the stamp, where
+      // the recipient can read them without their being part of validated input.
+      //
+      // Mapped HERE rather than at the delivery, matching the webhook route,
+      // which resolves its binding's `input` at the transport boundary before
+      // dispatching. A mapper that throws therefore surfaces to the SENDING
+      // block rather than becoming a returned refusal — deliberately: a broken
+      // mapper is the recipient flow author's bug, not a refusal of this send,
+      // and the taxonomy's "no refusal throws" is about refusals.
+      input:
+        door.door === "declared"
+          ? await door.core.input({
+              kind: args.kind,
+              payload: args.payload,
+              from: identity.sessionId
+            })
+          : args.payload,
+      userId: identity.userId,
+      ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
+      ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
+      relay: {
+        kind: args.kind,
+        door: door.door,
+        from: identity.sessionId,
+        // The sender-side half of the status authorization relation, persisted
+        // now even though nothing reads it until the status verb ships. A verb
+        // arriving late is a missing feature; a delivery record written without
+        // the relation that authorizes reading it is a hole in data users
+        // already created, and no later release could repair it.
+        fromLineageId: identity.lineageId,
+        // The incarnation the checks above approved. Acceptance and execution
+        // are not the same moment — a delivery can be accepted, sit behind a
+        // held concurrency key, and run later, in a plain single-process
+        // deployment — and a recipient deleted and recreated under the same id
+        // in that window gets a new lineage that nothing downstream re-checks.
+        // This is what the guard in `runAction` compares against.
+        recipientLineageId: resolveLineageId({
+          id: recipientStorageKey,
+          lineageId: recipient.lineageId
+        })
+      },
+      ...(inputs.effectiveRuntimeConfig !== undefined
+        ? { runtimeConfig: inputs.effectiveRuntimeConfig }
+        : {})
+    });
+
+    if ("notStarted" in started) {
+      // Two guarantees relay makes are void past an external queue boundary, not
+      // one: the concurrency gate does not apply to external dispatch at all, so
+      // the recipient's declared policy is not enforced on a delivery, and a run
+      // in another process cannot be woken by this one. Refusing by name beats
+      // under-delivering silently.
+      //
+      // There is deliberately NO capability flag that lifts this. Relay needs
+      // three guarantees past that boundary — wake support, door authority and
+      // arbitration — and a single flag would let one be enabled without the
+      // other two. Lifting it is a later change that must demonstrate all three,
+      // and inverting a shipped guard is the correct cost: it forces the change
+      // to be argued, which a flag flip does not.
+      if ("externalDispatcher" in started) {
+        return {
+          ok: false,
+          outcome: "refused",
+          refused: "external-dispatcher",
+          detail:
+            "this deployment dispatches work to an external queue, where a delivery is not " +
+            "arbitrated and the recipient's concurrency policy is not applied to it. " +
+            "Messaging refuses rather than under-delivering."
+        };
+      }
+      if ("recipientBusy" in started) {
+        return {
+          ok: false,
+          outcome: "refused",
+          refused: "recipient-busy",
+          detail: `the recipient declined the delivery: ${started.reason}`
+        };
+      }
+      // A dispatch that never happened, reported as the addressing refusal it
+      // most resembles rather than thrown — the taxonomy admits no throws, and a
+      // caller can act on a named value.
+      return {
+        ok: false,
+        outcome: "refused",
+        refused: "unknown-recipient",
+        detail: `the host refused the delivery before starting it: ${started.reason}`
+      };
+    }
+
+    return { ok: true, outcome: "accepted", deliveryRequestId: started.requestId };
+  };
+
   const parentTask = async (): Promise<unknown | undefined> => {
     if (inputs.parentTask === undefined) return undefined;
     return inputs.parentTask.read();
@@ -434,7 +769,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     return inputs.parentTask.settle(input);
   };
 
-  const host: RequestHost = { startDetached, parentTask, settleParentTask };
+  const host: RequestHost = { startDetached, sendMessage, parentTask, settleParentTask };
 
   if (gate.enabled) {
     const staleThresholdMs = gate.staleThresholdMs;

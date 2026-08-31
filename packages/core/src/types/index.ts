@@ -31,6 +31,8 @@ export type {
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
+  SendMessageInput,
+  SendMessageMode,
   SettleParentTaskInput,
   SettleParentTaskResult,
   StartDetachedInput,
@@ -39,6 +41,14 @@ export type {
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
+
+export type { SendMessageRefusal, SendMessageResult } from "./relay-results";
+
+export type {
+  RelayConfig,
+  RelayInboundMessage,
+  RelayMessageBinding
+} from "./relay";
 
 export type { WorkstreamBinding, WorkstreamBindings } from "./workstream";
 

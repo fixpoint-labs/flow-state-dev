@@ -15,7 +15,7 @@ Related, and deliberately not restated here:
 - [State and Scopes](./state-and-scopes.md) → *Workstreams and Scope* — what a
   child session inherits, and where a `sharedToWorkstream` resource stores.
 - [Inbound Transports](./inbound-transports.md) — the dispatch seam and the
-  request host's four verbs.
+  request host's verbs.
 - `packages/orchestration/README.md` → *Declaring detached work* — the task-board
   surface that is the ordinary way to start one.
 

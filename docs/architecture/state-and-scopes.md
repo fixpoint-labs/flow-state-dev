@@ -602,7 +602,7 @@ Four channels, and none of them is shared session state:
 3. **`record` on `StartDetachedInput`** — caller bookkeeping persisted on the child session record. Metadata rather than state, and also frozen.
 4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at spawn and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 
-**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is closed at four verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row.
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is a **sealed** seam — adding a verb to it is a decision someone reviews, not a surface that grows by transitivity — and it passes behaviour rather than handles: no type on it names a store, a session record or a task row. Read the verbs off the `RequestHost` interface rather than off a count in prose; the seal is a property, and messaging (`sendMessage`) is the one place it has been deliberately reopened since.
 
 ### Resources shared to the lineage (FIX-1068)
 

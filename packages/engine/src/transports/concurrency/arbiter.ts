@@ -33,6 +33,7 @@ import type {
   ConcurrencyPolicyName
 } from "@flow-state-dev/core";
 import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
+import { readRelayStamp } from "../../execution/relay-metadata";
 import { WORKSTREAM_SOURCE } from "../../execution/transport-sources";
 import { ConcurrencyRejectedError } from "../errors";
 import type { DispatchEnvelope } from "../dispatcher";
@@ -51,6 +52,19 @@ export interface ConcurrencyFlowView {
 export interface ResolvedDecision {
   policy: ConcurrencyPolicyName;
   key: string | undefined;
+  /**
+   * How long a `queue` dispatch waits for the key before giving up. Absent →
+   * the default budget.
+   *
+   * `Infinity` means *never give up*, and it is what a relay delivery gets
+   * (FIX-1230). A message is not a caller holding a connection: nobody is
+   * waiting on a timer at the other end, and dropping one because a busy
+   * recipient held its key past thirty seconds would break the promise that a
+   * queued delivery still runs. The trade is a burst — deliveries that piled up
+   * behind a held key all run when it releases — which is the price of never
+   * dropping one, and which the concurrency docs name.
+   */
+  waitTimeoutMs?: number;
 }
 
 export interface ConcurrencyArbiter {
@@ -154,11 +168,43 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       // is required here because the source alone identifies the dispatch, and
       // the source is stamped by the seam rather than by a caller.
       const isDetached = view.source === WORKSTREAM_SOURCE;
+
+      // A relay delivery (FIX-1230) resolves its policy BY DOOR FORM, which is
+      // the same rule the two branches above apply, taken one step further
+      // because relay has two doors rather than one.
+      //
+      // A declared `relay.on[kind]` binding carries a provenance-only name
+      // against `flow.actions` — exactly like an event or a detached dispatch —
+      // so it takes the flow default; inheriting a same-named public action's
+      // policy would let an unrelated action's back-pressure decide whether
+      // messages run. A `flow.actions[kind]` fallthrough is that action
+      // addressed as itself, so its own override applies, for the same reason a
+      // caller-addressed dispatch's does.
+      //
+      // Read through `readRelayStamp`, which gates on the seam-stamped `source`
+      // before believing the coordinate — the rule this file already states for
+      // `metadata.webhook`, applied to a third transport rather than restated.
+      const relay = readRelayStamp(view.source, view.metadata);
+
       const actionConfig =
-        isEvent || isDetached ? undefined : flow.actions[actionName]?.concurrency;
+        isEvent || isDetached
+          ? undefined
+          : relay !== undefined
+            ? relay.door === "action"
+              ? flow.actions[relay.kind]?.concurrency
+              : undefined
+            : flow.actions[actionName]?.concurrency;
       const effective = actionConfig ?? flow.request?.concurrency;
       const { policy, key } = normalizeConfig(effective);
-      return { policy, key: resolveKey(key, view) };
+      return {
+        policy,
+        key: resolveKey(key, view),
+        // Unbounded admission for relay. See `ResolvedDecision.waitTimeoutMs`:
+        // a stalled delivery must stay queued rather than be dropped, which is
+        // what makes the sender-side collision refusal the right place to catch
+        // a self-inflicted stall instead of a timeout here.
+        ...(relay !== undefined ? { waitTimeoutMs: Number.POSITIVE_INFINITY } : {})
+      };
     },
 
     gate(decision, requestId) {
@@ -220,7 +266,7 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
               holders.delete(key);
             }
           },
-          { waitTimeoutMs: QUEUE_WAIT_TIMEOUT_MS }
+          { waitTimeoutMs: decision.waitTimeoutMs ?? QUEUE_WAIT_TIMEOUT_MS }
         );
     }
   };

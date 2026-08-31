@@ -17,17 +17,30 @@
  * session crosses as `unknown` and the consumer parses it with its own schema —
  * `core` cannot name `orchestration`'s types either.
  *
- * **Identity is never a parameter, and neither is a session id.** Every operation
- * closes over the running request's server-derived identity (tenant, user, org,
- * session, flow). A caller supplies the *target* of an operation and never the
- * *authority* for it: it hands over a routing seed and the seam derives the child
- * session key from that seed together with the running request's principal *and*
- * parent session. Another user's session is not a value a capability can produce,
- * and neither is another parent session's child.
+ * **Identity is never a parameter.** Every operation closes over the running
+ * request's server-derived identity (tenant, user, org, session, flow). A caller
+ * supplies the *target* of an operation and never the *authority* for it.
  *
- * The seam is **closed at four verbs**. Adding a fifth is a decision someone
- * reviews, not a surface that grows by transitivity.
+ * **A session id, however, is a parameter of exactly one verb, and the
+ * distinction is the contract rather than an exception.** Most verbs here
+ * authorize by **descent**: the caller hands over a routing seed and the seam
+ * derives the child session key from it together with the running request's
+ * principal *and* parent session, so another parent session's child is not a
+ * value a capability can produce. {@link RequestHost.sendMessage} authorizes by
+ * **peerage** instead: it takes a recipient session id, because reaching a
+ * session you were *given* the address of is the whole point of it, and that
+ * locator's authority comes from an owner / tenant / org / flow-kind check made
+ * at the verb rather than from descent. Identity stays server-derived either
+ * way — what changes is what the check is against.
+ *
+ * **The seam is sealed, and reopening it is a decision someone reviews** — not a
+ * surface that grows by transitivity. That property, and not any particular
+ * count, is what the seal means: read the verbs off this interface rather than
+ * off a sentence, since a number in prose drifts and the type does not. Note the
+ * declared set is not the same as the runtime bundle — `livenessOf` is attached
+ * only when the liveness gate is enabled.
  */
+import type { SendMessageResult } from "./relay-results";
 
 /**
  * The caller's routing intent for a detached child. Never a session id: the seam
@@ -174,6 +187,55 @@ export type StartDetachedResult =
       readonly detail: string;
     };
 
+/**
+ * Whether a send waits for the recipient's answer (FIX-1230).
+ *
+ * `"fireAndForget"` resolves once the system has **accepted** the message — not
+ * once it has run — and hands back the delivery's request id.
+ *
+ * `"waitForResponse"` parks the sending request until the recipient replies or
+ * the clock runs out. It is not available yet and is refused
+ * `mode-not-available`; it is named here rather than added later so a caller
+ * writes the switch once.
+ */
+export type SendMessageMode = "fireAndForget" | "waitForResponse";
+
+/** Arguments to {@link RequestHost.sendMessage}. */
+export type SendMessageInput = {
+  /**
+   * The recipient session's id — the one caller-supplied value in the
+   * authorization tuple, and a deliberate exception to "never decide from
+   * caller input" (BP-031).
+   *
+   * It is a **locator**, not an authority: the seam checks it against the
+   * running request's own owner, tenant, org and flow before anything is
+   * dispatched, and a session that fails any of those is refused as unknown.
+   * Over-applying the rule here would make the whole feature unreachable —
+   * addressing a session you were *given* the address of is the point of it.
+   */
+  readonly to: string;
+  /**
+   * Which message this is. Selects the recipient's declared `relay.on[kind]`
+   * binding, or — between two caller-addressable sessions with no binding for
+   * it — a public action of that name.
+   */
+  readonly kind: string;
+  /** The message body. Opaque to the seam; the recipient's binding shapes it. */
+  readonly payload?: unknown;
+  readonly mode: SendMessageMode;
+  /**
+   * How long a `"waitForResponse"` send waits, in milliseconds.
+   *
+   * Validated and **refused out of range, never clamped**: Node's timers are
+   * 32-bit, so `Infinity`, `NaN` and anything past `2**31 - 1` silently become a
+   * 1 ms timer — a caller asking for an unbounded wait would get an immediate
+   * timeout, which is the opposite of the request and indistinguishable from an
+   * ordinary one. Ignored by `"fireAndForget"`, which has no clock, but still
+   * validated when supplied so the same value cannot mean two things.
+   */
+  readonly timeoutMs?: number;
+};
+
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
 
@@ -252,6 +314,28 @@ export interface RequestHost {
    * could read the successor's attempt and settle over work it no longer owns.
    */
   settleParentTask(input: SettleParentTaskInput): Promise<SettleParentTaskResult>;
+
+  /**
+   * Send a message to another session in this same system, addressed by its id
+   * (FIX-1230).
+   *
+   * The message arrives on the recipient as an ordinary request, resolved
+   * against the handler its flow declared under `relay.on[kind]` — or, between
+   * two caller-addressable sessions with no binding for that kind, against a
+   * public action of that name. A detached background session never reaches
+   * `flow.actions` in either direction, so what such a session exposes and what
+   * it can reach out to are both exactly what its author declared.
+   *
+   * **This is the one verb that takes a session id** — see the note on peerage
+   * in this file's header for why, and for what the locator's authority rests
+   * on instead.
+   *
+   * `"fireAndForget"` resolves once the host has *accepted* the delivery, so an
+   * `accepted` result means the message is discoverable — not that it has run.
+   * Every refusal is **returned**, never thrown, including the recipient's own
+   * `reject` concurrency policy, which throws underneath and is translated here.
+   */
+  sendMessage(input: SendMessageInput): Promise<SendMessageResult>;
 
   /**
    * Ask whether requests you dispatched are still running.

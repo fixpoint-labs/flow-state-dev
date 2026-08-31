@@ -65,6 +65,7 @@ import {
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { createDetachedStartOperation } from "../context/detached-start-operation";
+import { createRelaySendOperation } from "../context/relay-send-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
@@ -286,6 +287,21 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.startOperation === undefined
   ) {
     runtimeConfig.requestHost.startOperation = createDetachedStartOperation({ host });
+  }
+
+  // The same last-resort install, for the same reason, for the relay send
+  // operation (FIX-1230). It carries no shutdown tracking of its own — a
+  // delivery is an ordinary request the host already registers as background
+  // work — so unlike the detached start there is nothing an owner needs to wrap,
+  // and this installer serves every deployment rather than only the ones with no
+  // `FlowState`. `createFlowState` still installs its own on the shared config
+  // before any fork exists, and the guard below is what keeps the two from
+  // racing to define one field.
+  if (
+    runtimeConfig.requestHost !== undefined &&
+    runtimeConfig.requestHost.relaySendOperation === undefined
+  ) {
+    runtimeConfig.requestHost.relaySendOperation = createRelaySendOperation({ host });
   }
 
   // Detect interrupted requests from previous runs on startup

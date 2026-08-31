@@ -297,9 +297,37 @@ single-generator  0.720±0.070   0.690±0.090          0.705±0.083
 
 See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for the methodology and the [walkthrough guide](https://flow-state.dev/guides/choosing-patterns-with-benchmarks) for a worked example.
 
+### `fsdev migrate` — Run a one-time store repair
+
+Applies a repair to the stores your committed `fsdev.config.*` resolves, so it reaches the real data rather than a scratch registry. One subcommand per repair, run by an operator when a release asks for it.
+
+Deliberately not a startup hook: a sweep that fires on every cold start scans the whole store for one deploy's worth of benefit, and gives you no way to see what it did.
+
+```bash
+# Classify sessions recorded before session kinds existed
+fsdev migrate session-kind
+
+# One tenant only
+fsdev migrate session-kind --tenant acme
+```
+
+`session-kind` is what makes [messaging](https://flow-state.dev/docs/server/session-messages) work on a deployment that already has sessions. A session recorded before that release does not say what kind it is, and messaging refuses it rather than guessing which door it should get; this classifies them.
+
+Safe to run again — a session it has already classified is skipped, so a second pass over a repaired store costs reads and nothing else. That matters during a rolling deploy, where an older instance can still create an unclassified row after the scan has passed it.
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--tenant <id>` | Limit the sweep to one tenant (default: every tenant) |
+| `--config <path>` | Path to an fsdev config file (required — migrations never use directory discovery) |
+| `--dotenv <path>` | Load a specific `.env` file (repeatable) |
+
+It prints what it examined and what it changed. A row that a concurrent writer held throughout every attempt is reported by id and the command exits `1`, because that session is still one messaging refuses — run it again.
+
 ## Environment variables
 
-`fsdev run`, `fsdev dev`, `fsdev serve`, `fsdev chat`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys. `fsdev serve` also reads `$HOST` and `$PORT` for its bind defaults.
+`fsdev run`, `fsdev dev`, `fsdev serve`, `fsdev chat`, `fsdev migrate`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys. `fsdev serve` also reads `$HOST` and `$PORT` for its bind defaults.
 
 Resolution, highest precedence first:
 

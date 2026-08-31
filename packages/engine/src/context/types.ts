@@ -12,6 +12,7 @@ import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { DetachedStartOperation, ParentTaskBinding } from "./create-request-host";
+import type { RelaySendOperation } from "./relay-send-operation";
 import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {
@@ -142,6 +143,12 @@ export type RequestHostConstructionInputs = {
    * deployment whose capabilities dispatch must supply this there explicitly.
    */
   startOperation?: DetachedStartOperation;
+  /**
+   * Dispatches a relay delivery through the host's arbiter and enqueue-time
+   * materialization (FIX-1230). Absent → `sendMessage` refuses
+   * `no-send-operation`, the same residual case `startOperation` has.
+   */
+  relaySendOperation?: RelaySendOperation;
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
   /** The stale-request sweeper's threshold. */

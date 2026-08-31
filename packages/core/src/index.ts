@@ -124,6 +124,8 @@ export type {
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
+  SendMessageInput,
+  SendMessageMode,
   SettleParentTaskInput,
   SettleParentTaskResult,
   StartDetachedInput,
@@ -200,6 +202,8 @@ export {
   workstreamDispatchInputSchema,
   type WorkstreamDispatchInput,
 } from "./flow";
+export { relaySendTool } from "./tools/relay-send-tool";
+export type { RelaySendToolOptions } from "./tools/relay-send-tool";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";

@@ -25,6 +25,33 @@ export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
   updatedAt: number;
 };
 
+/**
+ * What kind of session a record is (FIX-1230) — the discriminator relay's door
+ * gates on, at BOTH ends of a send.
+ *
+ * - `"top-level"` — a session a caller named. Every session that reaches the
+ *   public create route or is adopted by a caller-addressed action. May receive
+ *   a relay message at a declared `relay.on` handler *and*, when the sender is
+ *   also addressable, at a public `flow.actions` entry.
+ * - `"workstream"` — a detached child, minted by the injection seam from a
+ *   routing seed. It is inside-world: a relay message reaches its declared
+ *   `relay.on` surface and **never** `flow.actions`, and a message *from* one
+ *   never reaches a peer's `flow.actions` either. Two axes, not one — confining
+ *   the recipient alone would still let an agent reach out.
+ * - `"sibling"` — reserved for sessions that are parented but caller-addressable.
+ *   Nothing mints one today; it is named here because `parentSessionId` stops
+ *   discriminating the moment one exists, which is the reason this field is
+ *   persisted rather than derived.
+ *
+ * Stamped by four writers: `ensureSessionRecord` (which defaults it, so its own
+ * callers — action execution and the webhook session resolver — are covered by
+ * construction), the public session-create route, and the detached child writer
+ * in `context/create-request-host.ts`, which is the one site that says
+ * `"workstream"`. The published testing helpers are a fifth and stamp
+ * `"top-level"`, so a fixture session is relayable without hand-patching a row.
+ */
+export type SessionKind = "top-level" | "workstream" | "sibling";
+
 export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
   flowKind: string;
   userId: string;
@@ -69,6 +96,36 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * records can never both fall back to one id.
    */
   lineageId?: string;
+  /**
+   * What kind of session this is, for the purpose of deciding who may relay a
+   * message to it and who may relay one out (FIX-1230).
+   *
+   * **Absent is not a default — it is a legacy record, and relay REFUSES it**
+   * (BP-030's *reject the missing key loudly* side). A record persisted before
+   * this field existed reads back `undefined`, and a store that nulls absent
+   * keys hands back `null`; both mean *unclassified*, and the tolerant reading
+   * is the exploitable one here — a legacy workstream read as top-level would
+   * get the public-action door this field exists to close. A one-time backfill
+   * (`backfillSessionKind`) repairs existing rows; the refusal is what holds
+   * until it has run. Guard with `== null`.
+   *
+   * **This field carries authority, unlike {@link SessionRecord.topic} and
+   * {@link SessionRecord.coordinate}** — which is exactly why it is a persisted
+   * discriminator rather than something re-derived at read time. No cheaper
+   * lever survives: `flowKind` is flow-level and cannot separate two sessions of
+   * one flow; `parentSessionId` will not survive sibling sessions, which have a
+   * parent too; and `metadata` is the caller's own bag.
+   *
+   * The *backfill* may classify by `parentSessionId` even though the runtime
+   * door may not, and the distinction is the point: the door has to survive
+   * sibling sessions, while the backfill runs once over rows that all predate
+   * them, so the ambiguity that disqualifies the field at runtime provably does
+   * not exist at backfill time.
+   *
+   * Stamped at every site that mints a session record — see
+   * {@link SessionKind} for the enumeration and the writers.
+   */
+  sessionKind?: SessionKind;
   /**
    * Human-readable name for the body of work a detached child session was
    * started for (FIX-1010). Stamped by the detached-start writer
@@ -132,8 +189,22 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * Provenance of the inbound transport that produced this request.
    * Set from `InboundRequestEnvelope.source` (FIX-438). Open string —
    * documented known-set: `http` | `mcp` | `webhook` | `scheduled` |
-   * `notification`. Reads of records persisted before this field existed
-   * default to `"http"` in the store implementations.
+   * `chat` | `notification` | `workstream` | `relay`. Reads of records
+   * persisted before this field existed default to `"http"` in the store
+   * implementations.
+   *
+   * The last three are stamped by the framework itself rather than by a
+   * transport adapter, and that is what makes them trustworthy: a caller can
+   * set a request body, a query and a header, and none of them reaches this
+   * field. `workstream` and `relay` are also permanently non-re-enterable —
+   * neither has a caller-facing entry, so neither may have a caller-facing
+   * re-entry.
+   *
+   * **This list drifts, and it is not a registry.** Two other copies of it
+   * exist (`docs/architecture/inbound-transports.md`, in prose and as a table)
+   * and they have disagreed with each other before. Treat all three as
+   * documentation of what has been seen, not as an enumeration anything
+   * validates against.
    */
   source: string;
   status: RequestStatus;

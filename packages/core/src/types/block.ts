@@ -829,6 +829,28 @@ export interface BlockConfig<
    * No effect when the block is used outside a generator's tool slot.
    */
   cacheable?: BlockCacheableConfig | true;
+  /**
+   * This tool's own execution timeout, in milliseconds (FIX-1230). Overrides
+   * `flow.tools.defaults.timeoutMs` for this tool alone.
+   *
+   * `0` means *this tool's own clock governs* — no wrapper timeout at all. That
+   * is what a tool needs when its work is bounded by something the wrapper
+   * cannot see and cannot cancel: the generic timeout rejects on its timer and
+   * does nothing to the underlying promise, so a flow default shorter than the
+   * operation lets a retry start a second one while the first is still live. For
+   * anything with a side effect, that is a duplicate.
+   *
+   * Pair it with `retry: { maxAttempts: 1 }` when a duplicate would be harmful;
+   * a timeout with no retry rejects the call, while a retry with no timeout
+   * cannot fire in the first place.
+   *
+   * No effect when the block is used outside a generator's tool slot — the same
+   * caveat {@link BlockConfig.cacheable} carries, and the same convention: there
+   * is no tool-scoped config type to put this on, because a tool *is* a block
+   * definition. The two tool-only fields on a general config are reconciled
+   * deliberately rather than forked into a second pattern.
+   */
+  timeoutMs?: number;
 }
 
 /**
