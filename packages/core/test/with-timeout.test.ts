@@ -71,6 +71,22 @@ describe("withTimeout", () => {
    * failures needs the timeout to arrive as its own error type, not as a plain
    * `Error` it would have to re-derive from the message.
    */
+  /**
+   * A factory that throws is caller code misbehaving, but the blast radius is
+   * out of proportion: the throw happens inside the timer callback, so it is
+   * never seen by the executor. Node reports an uncaught exception — which by
+   * default kills the process — and the returned promise stays pending for
+   * ever. `never` is assignable to `Error`, so a factory that only throws
+   * type-checks against this signature.
+   */
+  it("rejects rather than escaping when the caller's error factory throws", async () => {
+    const bounded = withTimeout(new Promise(() => {}), 5, "work", () => {
+      throw new Error("factory blew up");
+    });
+
+    await expect(bounded).rejects.toThrow("factory blew up");
+  });
+
   it("rejects with the caller's error when one is supplied", async () => {
     vi.useFakeTimers();
     class Refused extends Error {}

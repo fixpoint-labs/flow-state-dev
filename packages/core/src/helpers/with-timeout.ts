@@ -9,6 +9,8 @@
  * than an inline race per call site.
  */
 
+import { toError } from "./to-error";
+
 /** Default rejection: `"<label> timed out after <ms>ms"`. */
 function defaultTimeoutError(label: string, timeoutMs: number): Error {
   return new Error(`${label} timed out after ${timeoutMs}ms`);
@@ -46,7 +48,18 @@ export function withTimeout<TValue>(
 
   return new Promise<TValue>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      reject(onTimeout(label, timeoutMs));
+      // The factory is caller code, and a throw here does not reach the
+      // executor — it is an uncaught exception inside a timer callback, which
+      // by default kills the process while leaving this promise pending for
+      // ever. `never` is assignable to `Error`, so a factory that only throws
+      // satisfies the signature and the compiler says nothing.
+      try {
+        reject(onTimeout(label, timeoutMs));
+      } catch (factoryError) {
+        reject(
+          toError(factoryError, `${label} timed out after ${timeoutMs}ms, and its error factory threw`),
+        );
+      }
     }, timeoutMs);
 
     promise
