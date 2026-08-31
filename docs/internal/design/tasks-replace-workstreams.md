@@ -47,9 +47,9 @@ verb." In the whole repo there is **one caller**
 producer of bindings** (`packages/orchestration/src/task-board/index.ts:1202`). A
 flow with no task board that calls `startDetached` is refused
 `no-workstream-core`. The seam is general; the only door through it is
-board-shaped — which is the tell that **two capabilities were fused into one
-verb.** Spawning a session and filing a task are different things, and
-`startDetached` is both, which is why it can be neither cleanly.
+board-shaped — which is the tell that **the verb had no named target.** It took a
+seed and an opaque payload, so the only way to know what a call meant was to look
+at what it carried.
 
 And because the seam cannot know whether its caller is a board, it *guesses*:
 `create-request-host.ts:198` parses the caller's opaque `input` against the board
@@ -65,8 +65,8 @@ when the caller says what it wants.
 
 ## The message protocol
 
-**Added 2026-08-31.** This section is the frame the rest of the document sits in.
-It changes no decision below it — it names what those decisions are instances of.
+This section is the frame the rest of the document sits in: what the change is an
+instance of, before the shape it takes.
 
 ### The inbox already exists
 
@@ -123,13 +123,17 @@ seats collapse to one.
 
 ### The message types
 
-| Type | Arrives from | Schema owner | Addressed by |
-|---|---|---|---|
-| user | a caller — HTTP, chat, MCP, voice | the author | `flowKind` + action |
-| webhook | an external sender | the sender | flow binding |
-| schedule | the scheduler firing | the framework | flow binding |
-| task | a board drain | the framework | `flowKind` + task name |
-| internal | a block (`ctx.dispatch`) | the author | `flowKind` + action + `session?` |
+Every type is addressed the same way — `(type, name)`, plus a session when the
+message targets an existing one. What differs is who owns the input schema and
+who may put a message through the door.
+
+| Type | Arrives from | Schema owner |
+|---|---|---|
+| user | a caller — HTTP, chat, MCP, voice | the author |
+| webhook | an external sender | the sender |
+| schedule | the scheduler firing | the framework |
+| task | a board drain | the framework |
+| internal | a `dispatcher` block in another request | the author |
 
 An adapter is already `{ source, createBindings(host) }` — an immutable factory
 that produces routes and puts envelopes through the door
@@ -184,14 +188,14 @@ fire-and-forget sender asked for.
 
 ## The typed entry
 
-**Added 2026-08-31, after review.** This section records decisions taken on the
-message-protocol frame above and supersedes it where they disagree.
+The decisions taken on that frame, each with the reason it went the way it did.
+Shapes that lost are in §"Considered and not taken".
 
 ### The address is `(type, name)`, not a bare name
 
-The section above says *"a message's kind **is** the action name."* That was
-aimed at the right target — no parallel `relay.on[kind]` binding table — but it
-stated the fix too narrowly. **The address is a pair.**
+The third guard above rules out a second namespace. An earlier draft stated that
+as *"a message's kind is the action name"* — aimed at the right target, a parallel
+`relay.on[kind]` table, but too narrow. **The address is a pair.**
 
 ```ts
 flow.user.actions.chat
@@ -309,13 +313,9 @@ derivation is what makes a spawn idempotent — "first spawn for this row". They
 are not the rule for caller-created sessions, and a named session is a
 legitimate shape: a channel, `status-updates`.
 
-So the three-way on `dispatchMessage` is:
-
-| `session` | Behaviour |
-|---|---|
-| omitted | mint one |
-| given, found | deliver into it |
-| given, not found | **reject** — unless the entry declares itself channel-shaped, in which case create at that name |
+So a dispatch naming a session that does not exist **rejects** by default, and
+creates only where the target entry declares itself channel-shaped. (The full
+three-way is in §"The shape".)
 
 Reject is the default because an unknown id is a typo, a stale reference to a
 reaped session, or — once a send verb is in a model's hands — a hallucination,
@@ -330,104 +330,65 @@ people address one channel, which is what channels are for. And a channel wants
 `queue` concurrency rather than the `allow` default, or two messages to
 `status-updates` interleave.
 
-### Conductor ships as A; B is the endpoint
-
-A flow is a set of entries, so the test for "flow or session?" is whether two
-roles accept different messages. A coordinator takes chat and seeds; an epic
-takes wakes, task work, and a person's answer to a parked question. Different
-sets — so on the test they are different flows, and **B (a coordinator flow plus
-an epic flow) is the endpoint.** It is also what a workstream always was: a
-second entry surface bolted onto one flow, promoted to the thing it imitated.
-
-**A ships first** — one flow, sessions differing by role.
-
-The reason is narrower than "fewer moving parts at once." Of the two verified
-findings behind this document's *phase cross-flow spawn out of v1*
-recommendation, **only one bites Conductor, and it is the one that would break
-the devtool breadcrumb.**
-
-| Phase-2 finding | Applies to Conductor? |
-|---|---|
-| Lineage-bucket collisions cannot be refused at context construction | **No.** The lab uses no lineage sharing at all |
-| The child listing's `flowKind` clause | **Yes** — but as a listing gap, not an auth hole |
-
-**Lineage is inert here, and that is recorded rather than assumed.**
-`run-record.ts:23–37` documents that lineage sharing was tried in this lab and
-abandoned: *"a new coordinator session is a different lineage root… it was three
-lineages."* The run record moved to `user` scope, `flow.ts:16` states
-*"`user`-scoped, no `sharedToWorkstream`"*, and `inbox.ts:141` confirms *"with no
-`sharedToWorkstream` anywhere."* `run-record.ts:143` adds that user scope spans
-every session the principal touches, **a superset of what lineage sharing gave**
-— so B would not reintroduce the need either.
-
-**The listing gap is real but is not the security case.** The `flowKind` clause
-exists because *"a public parent authorizes anonymously, so a child stamped with
-a protected flow's kind would be handed to a caller hop 2 refuses."* That is an
-asymmetry between a public parent and a protected child. Coordinator and epic
-would both sit behind the same tenant gate, resolved from the request's own
-authenticated principal (`flow.ts:831`), so the asymmetry does not arise. What
-does arise is duller: the listing filters children by the **parent's** flowKind,
-so a coordinator asking for its epic sessions gets an empty answer.
-
-Under A that costs nothing — every session is on one flow, so the listing and the
-devtool breadcrumb work as they do today. Under B the breadcrumb is dark until
-that route carries per-child authorization.
-
-**So the migration trigger is a single item.** When the child listing gains
-per-child authorization, B is close to free for Conductor: the other blocker
-never applied. Until then A holds, with one honest weakness.
-
-**A's weakness, stated rather than glossed.** Entries belong to the flow, not the
-session, so an epic session on the shared flow *does* accept `user.seed` — and
-under no-fallbacks that is not a routing accident to be caught, it is a real
-entry on that flow. The guard has to be a check inside the entry reading the
-session's role. That is convention enforced by vigilance, which is the class of
-thing this whole document is trying to reduce. It is an accepted, temporary cost
-of A, and it disappears in B, where the split is structural.
-
-### Why this reads as message-driven rather than as an event system
-
-The earlier framing for this work was an eventing system bolted onto the
-framework. What it became is closer to a message-passing runtime, and the
-resemblance is load-bearing in one place: **`handle_call` versus `handle_cast` is
-exactly the two-ack cut.** A call expects a reply; a cast does not. Needs an
-outcome ⇒ a row; needs only delivery ⇒ nothing minted.
-
-Four places the resemblance stops, recorded because each is a way to reason
-wrongly by analogy:
-
-- **The mailbox is durable, not in-memory.** A crashed process takes its mailbox
-  with it and supervision restarts from known state. Our rows outlive
-  everything, so "let it crash" leaves durable rows something must reclaim. That
-  is the lease, and it has no counterpart in the analogy.
-- **There is no authorization axis in the analogy.** Any process may send to any
-  address it can name. Per-entry addressability, BP-031 and
-  `PUBLIC_REENTRY_SOURCES` have no equivalent — so the analogy gives no guidance
-  precisely where the risk is.
-- **Ordering is not free.** Per-pair ordering is a runtime guarantee there. Here
-  it holds under `queue` and not under `allow`, which is the default.
-- **Sessions are not cheap processes.** A session carries storage. "One process
-  per unit of work" does not port.
-
 ---
 
 ## The shape
 
-One verb, one address, one place the claim envelope is opened.
+One address, one block kind that reaches it, one place the claim envelope is
+opened.
+
+### Dispatch is a block, not a method on `ctx`
+
+A block does not *call* a dispatch. It **is** one:
 
 ```ts
-ctx.dispatchMessage({
+const handOff = dispatcher({
+  name: "hand-off-to-implement",
   type: "task",              // user · webhook · schedule · task · internal
-  name: "implement",         // resolves flow.task.actions.implement
-  session,                   // omitted → mint · given+found → deliver · given+missing → reject
-  input,
+  target: "implement",       // resolves flow.task.actions.implement
+  inputSchema: z.object({ issue: z.string(), session: z.string().optional() }),
 });
 ```
 
-That is the whole surface. Spawning a session, filing background work, and
-messaging a peer are **not three capabilities** — they are one verb whose message
-type decides whether a durable row is minted and whose `session` argument decides
-whether a session is created or continued.
+`type` and `target` are the address, and they are **static**. The session and the
+payload are the block's *input*, so they stay runtime values:
+
+| `session` on the input | Behaviour |
+|---|---|
+| absent | mint one |
+| present, found | deliver into it |
+| present, not found | **reject** — unless the target entry is channel-shaped |
+
+**There is deliberately no `ctx.dispatchMessage`.** An imperative escape hatch
+would defeat all three reasons the dispatcher kind exists: a board could no longer
+tell statically which workers hand off, `defineFlow`'s walk could not see targets
+buried in handler bodies, and "declared rather than inferred" would be optional —
+which in practice means absent. A lint that reports on a subset it cannot bound is
+worse than none, because it looks complete.
+
+It is also the call this codebase has already made twice: BP-011 (a handler does
+not call blocks — compose as a sequencer) and BP-012 (`.tap()` rather than mutating
+state inline). An imperative dispatch is the same violation one level out.
+
+Four cases look like they need the hatch. None does:
+
+| Looks like it needs an imperative call | What it actually is |
+|---|---|
+| Target chosen from data (`row.assignee`) | a **router** over the declared dispatchers — the roster *is* the declared set |
+| Dispatch only under a condition | `.stepIf` / `.sideChainIf` (BP-036) |
+| Session or payload computed at runtime | the dispatcher's **input**, which is already a runtime value |
+| A model choosing the recipient (`relaySendTool`) | a router over the allowed dispatchers |
+
+**The last row is the one that argues hardest for the restriction.** Putting send
+in a model's hands with a free-text address means a hallucinated session id is a
+dispatch attempt. A router over declared dispatchers makes the model's reachable
+set an allowlist checked at definition time instead of a string checked at
+runtime — which is the recipient scoping this document otherwise had to bolt onto
+the tool.
+
+**The framework still needs the seam; it is just not on `ctx`.** The board drain,
+the task wrapper and every transport adapter dispatch. That is the same shape
+`host.dispatch` has today — real, used, and not author-facing.
 
 ### The board is the only thing that mints rows
 
@@ -486,6 +447,10 @@ The third seat is a **dispatcher**:
 | Inline block | `summarize: summarizeBlock` | in the claiming request |
 | Tool | any roster tool key | directly, no model turn |
 | **Dispatcher** | `implement: dispatchTo("task", "implement")` | **its own session** |
+
+`dispatchTo(type, target, opts?)` is shorthand for the `dispatcher({ … })` above —
+a factory returning a dispatcher block, so a roster seat is an ordinary block like
+the other two.
 
 ```ts
 const board = taskBoard({
@@ -772,7 +737,7 @@ them, so per-entry addressability ships **with** the collapse, not after it.
 | `workstreamBindingKey` | — | deleted; no composite key |
 | `declareWorkstreamBindings` | hand-declared entries; the wrapper keeps the gate | §"more complicated" #1 |
 | `assertWorkstreamBindingsReachable` | a `defineFlow` walk for `dispatcher` blocks | demoted from routing source to lint |
-| `startDetached`, sibling spawn, `sendMessage` | `dispatchMessage({ type, name, session? })` | three verbs, one shape |
+| `startDetached`, sibling spawn, `sendMessage` | a `dispatcher` block | three verbs, one declared block kind |
 | `WORKSTREAM_SOURCE` (`"workstream"`) | `TASK_SOURCE` (`"task"`) | still terminal, still off the re-entry allow-list |
 | `no-workstream-core`, `board-not-routable` | — | inference failures; no longer reachable |
 | `GET /sessions/:id/workstreams` | `GET /sessions/:id/children` | honest name; same handler **only for same-flow children** — §"more complicated" #3 |
@@ -846,6 +811,89 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 
 ---
 
+## Conductor ships as A; B is the endpoint
+
+A flow is a set of entries, so the test for "flow or session?" is whether two
+roles accept different messages. A coordinator takes chat and seeds; an epic
+takes wakes, task work, and a person's answer to a parked question. Different
+sets — so on the test they are different flows, and **B (a coordinator flow plus
+an epic flow) is the endpoint.** It is also what a workstream always was: a
+second entry surface bolted onto one flow, promoted to the thing it imitated.
+
+**A ships first** — one flow, sessions differing by role.
+
+The reason is narrower than "fewer moving parts at once." Of the two verified
+findings behind this document's *phase cross-flow spawn out of v1*
+recommendation, **only one bites Conductor, and it is the one that would break
+the devtool breadcrumb.**
+
+| Phase-2 finding | Applies to Conductor? |
+|---|---|
+| Lineage-bucket collisions cannot be refused at context construction | **No.** The lab uses no lineage sharing at all |
+| The child listing's `flowKind` clause | **Yes** — but as a listing gap, not an auth hole |
+
+**Lineage is inert here, and that is recorded rather than assumed.**
+`run-record.ts:23–37` documents that lineage sharing was tried in this lab and
+abandoned: *"a new coordinator session is a different lineage root… it was three
+lineages."* The run record moved to `user` scope, `flow.ts:16` states
+*"`user`-scoped, no `sharedToWorkstream`"*, and `inbox.ts:141` confirms *"with no
+`sharedToWorkstream` anywhere."* `run-record.ts:143` adds that user scope spans
+every session the principal touches, **a superset of what lineage sharing gave**
+— so B would not reintroduce the need either.
+
+**The listing gap is real but is not the security case.** The `flowKind` clause
+exists because *"a public parent authorizes anonymously, so a child stamped with
+a protected flow's kind would be handed to a caller hop 2 refuses."* That is an
+asymmetry between a public parent and a protected child. Coordinator and epic
+would both sit behind the same tenant gate, resolved from the request's own
+authenticated principal (`flow.ts:831`), so the asymmetry does not arise. What
+does arise is duller: the listing filters children by the **parent's** flowKind,
+so a coordinator asking for its epic sessions gets an empty answer.
+
+Under A that costs nothing — every session is on one flow, so the listing and the
+devtool breadcrumb work as they do today. Under B the breadcrumb is dark until
+that route carries per-child authorization.
+
+**So the migration trigger is a single item.** When the child listing gains
+per-child authorization, B is close to free for Conductor: the other blocker
+never applied. Until then A holds, with one honest weakness.
+
+**A's weakness, stated rather than glossed.** Entries belong to the flow, not the
+session, so an epic session on the shared flow *does* accept `user.seed` — and
+under no-fallbacks that is not a routing accident to be caught, it is a real
+entry on that flow. The guard has to be a check inside the entry reading the
+session's role. That is convention enforced by vigilance, which is the class of
+thing this whole document is trying to reduce. It is an accepted, temporary cost
+of A, and it disappears in B, where the split is structural.
+
+---
+
+## Why this reads as message-driven rather than as an event system
+
+The earlier framing for this work was an eventing system bolted onto the
+framework. What it became is closer to a message-passing runtime, and the
+resemblance is load-bearing in one place: **`handle_call` versus `handle_cast` is
+exactly the two-ack cut.** A call expects a reply; a cast does not. Needs an
+outcome ⇒ a row; needs only delivery ⇒ nothing minted.
+
+Four places the resemblance stops, recorded because each is a way to reason
+wrongly by analogy:
+
+- **The mailbox is durable, not in-memory.** A crashed process takes its mailbox
+  with it and supervision restarts from known state. Our rows outlive
+  everything, so "let it crash" leaves durable rows something must reclaim. That
+  is the lease, and it has no counterpart in the analogy.
+- **There is no authorization axis in the analogy.** Any process may send to any
+  address it can name. Per-entry addressability, BP-031 and
+  `PUBLIC_REENTRY_SOURCES` have no equivalent — so the analogy gives no guidance
+  precisely where the risk is.
+- **Ordering is not free.** Per-pair ordering is a runtime guarantee there. Here
+  it holds under `queue` and not under `allow`, which is the default.
+- **Sessions are not cheap processes.** A session carries storage. "One process
+  per unit of work" does not port.
+
+---
+
 ## Reconciliation with the Relay epic (FIX-1197)
 
 **Added after the epic and its first PR were read.** Everything above was written
@@ -883,9 +931,9 @@ addresses."* That framing only makes sense while a workstream is a thing you min
 separately. Without it:
 
 ```ts
-ctx.dispatch({ flow, action, session? })
-//   session omitted → mint a session   (was issue 3 / startDetached)
-//   session given   → deliver into it  (was issue 1 / sendMessage)
+dispatcher({ type: "internal", target: action })   // + an optional session on its input
+//   session absent  → mint a session   (was issue 3 / startDetached)
+//   session present → deliver into it  (was issue 1 / sendMessage)
 ```
 
 Same shape as the HTTP route (`flowKind`, `actionName`, `sessionId?`), which is
@@ -1075,9 +1123,27 @@ offers no seam for a question." Issue-level work runs in a session Claude Code
 owns; FSD holds the durable row and the resume handle, not the run. An issue flow
 would declare no entries and execute nothing.
 
+### `ctx.dispatchMessage` as an author-facing verb
+
+Earlier revisions of this document put dispatch on the execution context as a
+method any block could call.
+
+**Dropped because it nullifies the dispatcher kind.** Every reason to make
+dispatch a block kind — a board seeing statically which workers hand off,
+`defineFlow` walking for unresolvable targets, no shape-sniffing — depends on
+there being no other way to dispatch. With an escape hatch the walk reports on a
+subset it cannot bound, which is worse than not having it, because it looks
+complete. The four cases that appear to need it all decompose into existing
+composition (§"The shape"), and the hardest of them — a model choosing a
+recipient — comes out *better* as a router over declared dispatchers, because the
+reachable set becomes an allowlist rather than a runtime string.
+
+The seam still exists for the framework, as `host.dispatch` does today. What was
+dropped is the author-facing method, not the mechanism.
+
 ### Auto-creating a session on an unknown id
 
-Considered so that a `dispatchMessage` naming a missing session would just work.
+Considered so that a dispatch naming a missing session would just work.
 
 **Dropped as the default, kept as a declaration.** An unknown id is a typo, a
 stale reference to a reaped session, or — once a send verb is in a model's hands —
