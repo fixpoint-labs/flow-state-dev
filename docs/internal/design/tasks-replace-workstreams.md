@@ -327,6 +327,61 @@ people address one channel, which is what channels are for. And a channel wants
 `queue` concurrency rather than the `allow` default, or two messages to
 `status-updates` interleave.
 
+### Conductor ships as A; B is the endpoint
+
+A flow is a set of entries, so the test for "flow or session?" is whether two
+roles accept different messages. A coordinator takes chat and seeds; an epic
+takes wakes, task work, and a person's answer to a parked question. Different
+sets — so on the test they are different flows, and **B (a coordinator flow plus
+an epic flow) is the endpoint.** It is also what a workstream always was: a
+second entry surface bolted onto one flow, promoted to the thing it imitated.
+
+**A ships first** — one flow, sessions differing by role.
+
+The reason is narrower than "fewer moving parts at once." Of the two verified
+findings behind this document's *phase cross-flow spawn out of v1*
+recommendation, **only one bites Conductor, and it is the one that would break
+the devtool breadcrumb.**
+
+| Phase-2 finding | Applies to Conductor? |
+|---|---|
+| Lineage-bucket collisions cannot be refused at context construction | **No.** The lab uses no lineage sharing at all |
+| The child listing's `flowKind` clause | **Yes** — but as a listing gap, not an auth hole |
+
+**Lineage is inert here, and that is recorded rather than assumed.**
+`run-record.ts:23–37` documents that lineage sharing was tried in this lab and
+abandoned: *"a new coordinator session is a different lineage root… it was three
+lineages."* The run record moved to `user` scope, `flow.ts:16` states
+*"`user`-scoped, no `sharedToWorkstream`"*, and `inbox.ts:141` confirms *"with no
+`sharedToWorkstream` anywhere."* `run-record.ts:143` adds that user scope spans
+every session the principal touches, **a superset of what lineage sharing gave**
+— so B would not reintroduce the need either.
+
+**The listing gap is real but is not the security case.** The `flowKind` clause
+exists because *"a public parent authorizes anonymously, so a child stamped with
+a protected flow's kind would be handed to a caller hop 2 refuses."* That is an
+asymmetry between a public parent and a protected child. Coordinator and epic
+would both sit behind the same tenant gate, resolved from the request's own
+authenticated principal (`flow.ts:831`), so the asymmetry does not arise. What
+does arise is duller: the listing filters children by the **parent's** flowKind,
+so a coordinator asking for its epic sessions gets an empty answer.
+
+Under A that costs nothing — every session is on one flow, so the listing and the
+devtool breadcrumb work as they do today. Under B the breadcrumb is dark until
+that route carries per-child authorization.
+
+**So the migration trigger is a single item.** When the child listing gains
+per-child authorization, B is close to free for Conductor: the other blocker
+never applied. Until then A holds, with one honest weakness.
+
+**A's weakness, stated rather than glossed.** Entries belong to the flow, not the
+session, so an epic session on the shared flow *does* accept `user.seed` — and
+under no-fallbacks that is not a routing accident to be caught, it is a real
+entry on that flow. The guard has to be a check inside the entry reading the
+session's role. That is convention enforced by vigilance, which is the class of
+thing this whole document is trying to reduce. It is an accepted, temporary cost
+of A, and it disappears in B, where the split is structural.
+
 ### Why this reads as message-driven rather than as an event system
 
 The earlier framing for this work was an eventing system bolted onto the
