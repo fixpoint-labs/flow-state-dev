@@ -31,6 +31,7 @@
  * path of its own.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
+import { withTimeout } from "@flow-state-dev/core/helpers";
 import type {
   BlockContext,
   DeclaredResourceEntry,
@@ -496,34 +497,28 @@ function managerState(ctx: BlockContext): z.infer<typeof managerStateSchema> {
 /**
  * Run `work`, and reject if it has not settled within `ms`.
  *
- * **The timer never outlives the call.** A bare `setTimeout` race leaks a
- * pending timer per invocation — harmless once, and this runs on every settled
- * attempt of every row, so the handles accumulate on a long-lived dispatcher and
- * hold the event loop open past a shutdown that is otherwise finished.
- *
  * The bounded work is not cancelled, because nothing here can cancel it: the
  * hook is somebody else's function. What this buys is that the *worker* stops
  * waiting and the row settles, which is the property the drain budget rests on.
+ *
+ * The deadline itself is core's `withTimeout` — including the guarantee the
+ * drain budget rests on, that the timer never outlives the call. What is local
+ * is the *verdict*: a hook that misses its deadline is a failed attempt, not a
+ * conductor defect, so it rejects with {@link ConductorAttemptFailed} and the
+ * board records the message as the next attempt's feedback.
  */
 export async function withDeadline<T>(
   work: () => Promise<T>,
   ms: number,
   what: string,
 ): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new ConductorAttemptFailed(`${what} did not answer within ${ms}ms`)),
-          ms,
-        );
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
+  return withTimeout(
+    work(),
+    ms,
+    what,
+    (label, timeoutMs) =>
+      new ConductorAttemptFailed(`${label} did not answer within ${timeoutMs}ms`),
+  );
 }
 
 export function conductorDrainBudgetMs(options: {

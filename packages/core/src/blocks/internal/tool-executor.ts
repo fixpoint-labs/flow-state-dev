@@ -16,7 +16,8 @@ import type { ItemVisibility } from "../../items/types";
 import type { ModelIdentity } from "../../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../../types/flow";
 import type { GeneratorTool } from "../generator";
-import { toError, withTimeout } from "./utils";
+import { toError } from "./utils";
+import { withTimeout } from "../../helpers/with-timeout";
 import {
   SuspensionError,
   SuspensionRejectedError,
