@@ -30,13 +30,7 @@
  * or to `errored` once the retry budget is spent). Conductor adds no settlement
  * path of its own.
  */
-import {
-  defineCapability,
-  handler,
-  sequencer,
-  type DefinedCapability,
-  type PresetDef,
-} from "@flow-state-dev/core";
+import { handler, sequencer } from "@flow-state-dev/core";
 import type {
   BlockContext,
   DeclaredResourceEntry,
@@ -700,58 +694,6 @@ export function resolveOwnership(options: {
   return { ownership, maxLockHeldMs };
 }
 
-/**
- * Every collection the manager and its phase read, as ONE capability.
- *
- * A factory rather than a singleton, because the set is per-conductor: the
- * board ledger is registered under its own collection id, and that id
- * partitions by tenant and epic. The capability's name carries the same id for
- * the same reason — two conductors in one process are two capabilities, and a
- * shared name is a merge collision.
- *
- * **The widened return type is load-bearing, not decoration.** Left to
- * inference, the capability's resources are a literal object type, which
- * narrows `ctx.resources` AND `ctx.targets` on every block that lists it — and
- * a narrowed `BlockContext` is not assignable to a plain one, so all fourteen
- * helper calls in this file would need `ctx as BlockContext` back. That is the
- * invariance trap {@link RequestIdentityContext} describes, reached from the
- * `uses` side. The accessor set is genuinely open here (a phase brings its
- * own), so declaring it open is the honest type as well as the usable one.
- */
-function createConductorCapability(options: {
-  /** The board's ledger collection id — also the accessor the fence reads it under. */
-  boardCollectionId: string;
-  /** The board's ledger declaration — the same object the board itself registers. */
-  boardCollection: DefinedTaskCollection;
-  /** {@link PhaseSpec.readable}, already checked against the reserved accessors. */
-  readable: Record<string, DeclaredResourceEntry>;
-}): DefinedCapability<
-  string,
-  Record<string, never>,
-  never,
-  Record<string, PresetDef>,
-  undefined,
-  Record<string, DeclaredResourceEntry>
-> {
-  const { boardCollectionId, boardCollection, readable } = options;
-  return defineCapability({
-    name: `conductor:${boardCollectionId}`,
-    resources: {
-      ...readable,
-      [RUNS]: runRecordCollection,
-      // Where a question is posted, withdrawn, and read back as an answer. The
-      // `answer` and `status` actions declare the same definition object, so the
-      // question a detached workstream writes is the one the coordinator session
-      // reads — one registration, not two storage slots that look alike.
-      [INBOX]: inboxCollection,
-      // Declared so the fence can read the LIVE claim off the board row. The
-      // board declares the same definition object, so this is one registration
-      // rather than a second storage slot that looks like the first.
-      [boardCollectionId]: boardCollection,
-    },
-  });
-}
-
 /** Build the manager: one detached worker for one phase. */
 export function harnessManager(options: ManagerOptions): TaskWorker {
   const {
@@ -804,11 +746,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     );
   }
 
-  const conductor = createConductorCapability({
-    boardCollectionId,
-    boardCollection,
-    readable: phase.readable,
-  });
+  const resources: Record<string, DeclaredResourceEntry> = {
+    ...phase.readable,
+    [RUNS]: runRecordCollection,
+    // Where a question is posted, withdrawn, and read back as an answer. The
+    // `answer` and `status` actions declare the same definition object, so the
+    // question a detached workstream writes is the one the coordinator session
+    // reads — one registration, not two storage slots that look alike.
+    [INBOX]: inboxCollection,
+    // Declared so the fence can read the LIVE claim off the board row. The
+    // board declares the same definition object, so this is one registration
+    // rather than a second storage slot that looks like the first.
+    [boardCollectionId]: boardCollection as unknown as DeclaredResourceEntry,
+  };
 
   /**
    * The board's rows as the SUBSTRATE sees them, not as a resource collection.
@@ -856,7 +806,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.void(),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
+    resources,
     execute: async (input, ctx) => {
       const { issue, phase: phaseName } = taskPayload(input);
 
@@ -1019,7 +969,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ prompt: z.string() }),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
+    resources,
     execute: async (input, ctx) => {
       const state = managerState(ctx.sequencer?.state);
 
@@ -1192,7 +1142,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     }),
     outputSchema: managerOutputSchema,
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
+    resources,
     execute: async (handle, ctx) => {
       const state = managerState(ctx.sequencer?.state);
       const identity = identityFrom(ctx.sequencer?.state, boardCollectionId);
@@ -1332,7 +1282,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     inputSchema: z.unknown(),
     outputSchema: z.never(),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
+    resources,
     execute: async (error: unknown, ctx): Promise<never> => {
       // **Release the tree on the way out, whatever failed.**
       //
