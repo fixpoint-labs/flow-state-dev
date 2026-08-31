@@ -11,6 +11,7 @@ export {
   SDK_SESSION_ID_KEY,
   SDK_AGENT_RUNS_KEY,
   type ClaudeCodeAgentOptions,
+  type SandboxSettings,
 } from "./agent";
 export { createClaudeCodeAgentCapability } from "./capability";
 export {
@@ -45,6 +46,7 @@ export {
   type ResolvedClaudeAgent,
   type ClaudeAgentQuery,
   type ClaudeAgentQueryOptions,
+  type ClaudeAgentSettingSource,
   type ToolApprovalRequest,
   type ToolApprovalDecision,
 } from "./types";
@@ -77,3 +79,18 @@ export {
   type RemoteAgentSource,
   type RemoteAgentStatus,
 } from "../shared/handle";
+
+export {
+  createWorkspaceAgentCapability,
+  containmentSandbox,
+} from "./workspace";
+export type {
+  WorkspaceAgentCapabilityOptions,
+  WorkspaceCollectionSpec,
+} from "./workspace";
+export {
+  WORKSPACE_OUTCOMES,
+  workspaceOutcomesCollection,
+  workspaceOutcomeStateSchema,
+  workspaceResources,
+} from "./workspace-collections";

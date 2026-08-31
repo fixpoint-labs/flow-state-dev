@@ -31,6 +31,7 @@ import { workstreamDispatchInputSchema } from "@flow-state-dev/core";
 import type { RuntimeConfig } from "../runtime-config";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
+import { purgeStaleResourceState } from "./ensure-session-record";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
 
@@ -94,7 +95,9 @@ export type ParentTaskBinding = {
 };
 
 export type RequestHostInputs = {
-  stores: Pick<StoreRegistry, "session" | "activeRequests">;
+  // `resourceState` is here only for the tombstone reclamation a newly created
+  // child owes itself — see the `purgeStaleResourceState` call below.
+  stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState">;
   flow: FlowInstance;
   /** Server-derived identity of the running request. Never caller-supplied. */
   identity: {
@@ -304,6 +307,17 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         ...label("coordinate", args.seed.key),
         ...(args.record !== undefined ? { metadata: { ...args.record } } : {})
       };
+
+      // Reclaim the id's resource-state tombstones before the create, and only
+      // on this branch — `existing === undefined`, so no child is being adopted
+      // here (FIX-1258). It matters more on this path than anywhere: a child's
+      // key is DERIVED from its seed, so the same seed always lands on the same
+      // key, and reuse is the norm rather than the exception — which is why
+      // this path has an adoption branch at all. Without it, a child whose
+      // session was deleted comes back with every static resource permanently
+      // unwritable. Before the create for the ordering reason
+      // `purgeStaleResourceState` carries: nothing may commit ahead of it.
+      await purgeStaleResourceState(stores, storageKey);
 
       // Create-if-absent: this is how a caller wins or loses a create race,
       // rather than silently overwriting a concurrent adopter's child.

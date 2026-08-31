@@ -196,6 +196,17 @@ Resource options:
 - `llmReadable?: boolean` — allows read access when `readResourceContentTool()` is installed
 - `llmWritable?: boolean` — allows write access when `writeResourceContentTool()` is installed
 
+Runtime resource state methods (`ResourceRef`). The mutators resolve to `void` — read the result back off the synchronous `ref.state` getter:
+
+- `patchState(updates)` — merge fields into the stored state
+- `setState(next)` — replace the stored state
+- `updateState(updater)` — read-modify-write through a callback that may run more than once
+- `incState({ field: delta })` — add to number-valued fields
+- `pushState(field, value)` — append one value to an array-valued field
+- `getOrPatchState(key, compute)` — resolves to `state[key]` if present, otherwise runs `compute`, stores it under `key`, and returns it
+
+`incState` and `pushState` are keyed to `TState` on a `ResourceRef<TState>` whose state type is written out: number fields for `incState`, array fields and their element type for `pushState`. A handle read off `ctx.resources.<name>` is not narrowed to the resource's schema, so a wrong-kind delta there is caught at runtime — `FlowError` with code `resource_delta_refused`, and nothing written. An absent or `null` field counts as `0` / `[]` rather than a wrong kind. See [Writing resource state](/docs/resources/overview#writing-resource-state).
+
 Runtime resource content methods:
 
 - `await ctx.resources.plan.readContent()` → rendered content or `null`
@@ -242,8 +253,9 @@ Config options:
 - `stateSchema: ZodTypeAny` — schema for each instance's state
 - `maxInstances?: number` — cap on simultaneous instances (must be >= 1)
 - `eviction?: "none" | "lru" | "oldest"` — what to do when cap is reached (default: `"none"` = throw)
+- `writable?: boolean` — whether blocks can modify instance state (`patchState` / `setState` / `updateState` / `incState` / `pushState` / `upsert` on an existing key) and instance content (`writeContent`). Default `true`. Independent of `llmWritable`. `create` / `getOrCreate` / `delete` are not gated
 - `llmReadable?: boolean` — exposes every instance's content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`). Default `false`
-- `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable`
+- `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable` and of `writable`
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook

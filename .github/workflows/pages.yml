@@ -1,0 +1,57 @@
+name: Deploy Atlas to Pages
+
+on:
+  # Filtered to the published directory and this file. Nearly every push to main
+  # changes neither, and an unfiltered deploy would queue behind the `pages`
+  # concurrency group below to republish bytes that did not change.
+  push:
+    branches: [main]
+    paths:
+      - "docs/atlas/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# The set `actions/deploy-pages` needs: `pages: write` to create the deployment,
+# `id-token: write` for the OIDC token it exchanges for one, and `contents: read`
+# so checkout still works — naming any permission narrows the default grant.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Not CI's `${{ github.workflow }}-${{ github.ref }}`: Pages has one live site,
+# so the queue is per-site, not per-ref. `cancel-in-progress` stays false because
+# a half-finished deployment is worse than a redundant one.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish docs/atlas
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fails with "Get Pages site failed" until Pages is enabled for the repo
+      # (Settings -> Pages -> Source: GitHub Actions). Nothing here can enable
+      # it: `enablement` defaults to false and needs a token other than
+      # GITHUB_TOKEN. So until that switch is flipped this is a red run that
+      # publishes nothing, not a silent no-op.
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      # `docs/atlas` is uploaded as the site root, so each atlas serves at
+      # /<name>.html and the index.html beside them lists what is there.
+      - name: Upload atlas
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/atlas
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

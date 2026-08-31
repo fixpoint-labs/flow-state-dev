@@ -6,6 +6,8 @@ sidebar_position: 1
 
 Build a streaming chat in five minutes. By the end you have a typed flow, a Next.js API route, and a React UI that talks to an LLM with conversation history.
 
+If you already have a Next.js App Router or Node project, start at [Existing project](/docs/getting-started/existing-project).
+
 ## Prerequisites
 
 - Node.js 22 or newer
@@ -194,6 +196,7 @@ Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/
 
 ## Next steps
 
+- **[Existing project](/docs/getting-started/existing-project)** — Add a demo flow to an app you already run.
 - **[Your First Flow](/docs/getting-started/your-first-flow)** — The same app, with the why for each piece.
 - **[CLI](/docs/cli/overview)** — run the same flow from the terminal. **[DevTool](/docs/devtool/overview)** inspects it while it runs.
 - **[Anatomy of a Flow](/guides/anatomy-of-a-flow)** — Mental model without a project to build.

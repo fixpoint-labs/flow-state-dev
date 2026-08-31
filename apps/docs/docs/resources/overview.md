@@ -33,7 +33,7 @@ const artifactResource = defineResource({
 
 `defineResource() requires an explicit scope of "session", "user", or "org" (got …)`
 
-The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations.
+The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations. A state write persists only when the result satisfies `stateSchema` and is a JSON object. See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
 
 Config options:
 
@@ -42,7 +42,7 @@ Config options:
 - **content** — initial content body (a string: markdown, code, prose, anything)
 - **contentFile** — load initial content from a file path (mutually exclusive with `content`). A bare string resolves from the working directory; pass `{ path, importerUrl: import.meta.url }` to resolve relative to the declaring module instead
 - **render** — template renderer: `(content, state) => string` for interpolating state into content
-- **writable** — whether blocks can modify the resource
+- **writable** — whether blocks can modify the resource. Default `true`
 - **llmReadable**, **llmWritable** — control whether generators can read/write the content
 
 ## Resources vs scope state
@@ -81,6 +81,134 @@ defineFlow({
 ```
 
 There's a third tier for resources you want to defer even further. A `prefetchMode: 'lazy'` resource skips the action-level burst: a lazy single resource loads when the specific block that declares it dispatches, and a lazy collection loads per access (one store read per key you touch). `prefetchMode` is a cost optimization, not an API change. Collection reads (`get`, `getOptional`, `list`, `count`) are async in both modes, so you `await` them either way; eager just resolves against a preloaded cache while lazy fetches on demand. The default is `'eager'`. Lazy is worth reaching for on large or unbounded collections where you only read a handful of keys per request. See [Eager vs lazy collections](/docs/resources/collections#eager-vs-lazy-collections) for the read semantics and tradeoffs.
+
+## Writing resource state
+
+Some of a resource handle's state writers take the state object:
+
+```ts
+const usage = ctx.resources.usage;
+
+await usage.patchState({ calls: 0 });                 // merge fields
+await usage.setState({ calls: 0, errors: [] });       // replace everything
+await usage.updateState((s) => ({ ...s, calls: 0 })); // read, modify, write
+```
+
+The other two take a delta, so you describe the change rather than computing the result:
+
+```ts
+await usage.incState({ calls: 1 });              // add to a number field
+await usage.pushState("errors", "rate_limited"); // append to an array field
+```
+
+None of them returns the new state. Read it back off `ref.state`, which is a synchronous getter.
+
+In a block:
+
+```ts
+import { defineResource, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const usageResource = defineResource({
+  scope: "session",
+  stateSchema: z.object({
+    calls: z.number().default(0),
+    errors: z.array(z.string()).default([]),
+  }),
+});
+
+const recordCall = handler({
+  name: "record-call",
+  inputSchema: z.object({ rateLimited: z.boolean() }),
+  resources: { usage: usageResource },
+  execute: async (input, ctx) => {
+    await ctx.resources.usage.incState({ calls: 1 });
+
+    if (input.rateLimited) {
+      await ctx.resources.usage.pushState("errors", "rate_limited");
+    }
+
+    return ctx.resources.usage.state;
+    // after one rate-limited call: { calls: 1, errors: ["rate_limited"] }
+  },
+});
+```
+
+Both signatures are keyed to the state shape: `incState` takes only the number-valued fields, `pushState` only the array-valued ones, and the appended value has to be the field's element type. That checking bites wherever the state type is written out, as it is on a helper that takes a `ResourceRef<UsageState>`:
+
+```ts
+import type { ResourceRef } from "@flow-state-dev/core/types";
+
+type UsageState = { calls: number; errors: string[] };
+
+async function record(usage: ResourceRef<UsageState>) {
+  await usage.incState({ calls: 1 });
+  await usage.pushState("errors", "rate_limited");
+
+  await usage.incState({ errors: 1 }); // build error: not a number field
+  await usage.pushState("calls", 1);   // build error: not an array field
+}
+```
+
+A handle read off `ctx.resources.<name>` is not narrowed to that resource's schema, so those last two lines compile there and refuse at runtime instead. `incState` still requires each delta to be a number wherever you call it from.
+
+Collection instances carry the same methods. Look one up, then increment it:
+
+```ts
+const readme = await ctx.resources.files.get("readme.md");
+await readme.incState({ views: 1 });
+```
+
+### Deltas and concurrent writers
+
+Each delta call is a single guarded write. One that loses a race re-runs against the value that won instead of committing a number it computed from a snapshot that has since moved. Two requests incrementing the same counter both land, and two appending to the same list both keep their entry. Computing the total yourself — reading `state.calls`, adding one, patching the result back — can't promise that.
+
+Which store is underneath matters here. The in-memory, SQLite, and Postgres stores compare and swap inside the store itself. The filesystem store holds its guard per key on the store instance, which covers every execution context sharing that instance but does not coordinate two stores pointed at the same directory. The full versioning contract, including what happens when the retry budget runs out, is in [the state mutation model](/docs/state/mutation-model#the-resource-state-store-is-versioned-too).
+
+Losing writers still retry, so a delta isn't faster than the read-modify-write it replaces; it just doesn't lose the update.
+
+### When a delta is refused
+
+A delta aimed at a field holding something it can't work with refuses, and leaves the stored value where it was. That happens on a call the signature didn't narrow away, and on a stored value that disagrees with its declared type: an open `passthrough()` schema, a union, or a row written before the field's type changed.
+
+```ts
+import { defineResource, FlowError, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const countersResource = defineResource({
+  scope: "session",
+  stateSchema: z.object({}).passthrough(),
+  default: { label: "beta" },
+});
+
+const bumpLabel = handler({
+  name: "bump-label",
+  resources: { counters: countersResource },
+  execute: async (_input, ctx) => {
+    try {
+      await ctx.resources.counters.incState({ label: 1 });
+    } catch (err) {
+      if (FlowError.isInstance(err) && err.code === "resource_delta_refused") {
+        err.retryable; // false
+        err.message;
+        // Resource "counters" incState target "label" is not a number (got string)
+      }
+    }
+
+    return ctx.resources.counters.state; // still { label: "beta" }
+  },
+});
+```
+
+`pushState` refuses the same way over a field holding something other than an array. Its message reads `Resource "counters" pushState target "errors" is not an array (got string)`.
+
+An absent field, and a field holding `null`, are that field's empty state rather than a wrong kind of value. `incState` starts them from `0` and `pushState` from `[]`, so a counter declared `.nullable().default(null)` increments correctly on its first touch.
+
+One `incState` call is one write. If any field in a multi-field call is wrong-typed, none of the call applies.
+
+`incState` also refuses a result that isn't finite. `z.number()` accepts `Infinity`, so the schema won't catch one, and the stores don't agree on it: the in-memory store keeps `Infinity` where every JSON-serializing store writes `null`. Two finite numbers can reach it, since adding `Number.MAX_VALUE` to a field already holding `Number.MAX_VALUE` overflows. The check is on the result, so a delta that is a perfectly ordinary number can still be turned away.
+
+A delta that commits is validated against `stateSchema` like every other state write. `incState({ retries: -1 })` on a `z.number().nonnegative()` field throws and stores nothing; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). And a resource declared `writable: false` refuses `incState` and `pushState` alongside `patchState`, `setState`, and `updateState`.
 
 ## Working with content
 

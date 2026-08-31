@@ -114,17 +114,20 @@ export const decisionSnapshotStateSchema = z.object({
 export type DecisionSnapshotState = z.infer<typeof decisionSnapshotStateSchema>;
 
 /**
- * The decision-snapshot resource. No `default` — it is created explicitly by
- * the PM commit (the first `patchState` initializes it, filling unspecified
- * nullable fields from their `.default(null)`). Absent on stopped/in-progress
- * runs. `client.expose` opts the read-relevant fields into the session snapshot
- * so a future Summary/outcome surface can read them via `useResource` without a
- * debug endpoint.
+ * The decision-snapshot resource. Absent until PM commit writes it;
+ * `seedSession` clears a prior run with `setState(null)` (same reset as the
+ * other derived surfaces). Schema is `.nullable()` with `default: null` so that
+ * clear is schema-valid and persists as `{}`. The first `patchState` at commit
+ * initializes it. Readers guard on a required field (`finalRating`), so a
+ * cleared `{}` degrades like null. `client.expose` opts the read-relevant
+ * fields into the session snapshot so a future Summary/outcome surface can
+ * read them via `useResource` without a debug endpoint.
  */
 export const decisionSnapshotResource = defineResource({
   scope: "session",
   ref: "tradingDeskDecisionSnapshot",
-  stateSchema: decisionSnapshotStateSchema,
+  stateSchema: decisionSnapshotStateSchema.nullable(),
+  default: null,
   writable: true,
   client: {
     expose: [

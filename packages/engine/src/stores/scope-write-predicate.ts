@@ -26,8 +26,17 @@
  * So create-if-absent could not be spelled `0` here without breaking the first
  * CAS write of every new scope record. It is spelled `"absent"` — a value that
  * is not a number, cannot collide with a version, and means the same thing in
- * both store families. `ResourceStateStore` refuses it rather than aliasing it
- * (`assertExpectedVersion`), so the sentinel never acquires a second meaning.
+ * both store families.
+ *
+ * `ResourceStateStore` honours the word on `set` with that same meaning, and it
+ * is **not** an alias for that store's `0`. A tombstone is a record, so
+ * `"absent"` refuses one where `0` admits it — the gap that lets the resource
+ * side tell a never-written key from a deleted one. Its `delete` still rejects
+ * the word outright (`assertDeleteExpectedVersion` in
+ * `resource-state-predicate.ts`), because `0` already covers "no live row, so
+ * the terminal state holds" and the stricter form asks nothing on top of it.
+ * Keeping the refusal to that one verb is what stops the sentinel acquiring a
+ * second, verb-dependent meaning.
  */
 
 import type { ExpectedVersion } from "./types";
@@ -74,10 +83,10 @@ export function checkScopeWriteVersion<TRecord extends { version: number }>(
  * Every delta verb read-modify-writes an **existing** record, so "only if this
  * record does not exist" is unsatisfiable by construction rather than a race
  * that might go the caller's way. It throws for the same reason
- * `assertExpectedVersion` throws on a negative version: returning a conflict
- * would report a concurrency outcome the store never observed and send the
- * caller into a retry loop that can never converge. `set(id, record,
- * "absent")` is how a record gets created.
+ * `assertSetExpectedVersion` (`resource-state-predicate.ts`) throws on a
+ * negative version: returning a conflict would report a concurrency outcome the
+ * store never observed and send the caller into a retry loop that can never
+ * converge. `set(id, record, "absent")` is how a record gets created.
  *
  * Mirrored in both SQL adapters' delta paths and pinned across all four by the
  * scope-store conformance suite.

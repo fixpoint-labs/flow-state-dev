@@ -5,7 +5,15 @@
  * safe to share a storage key, it reports incompatible — Wave 1 accepts
  * false-positive conflicts (asks the developer to reconcile or isolate)
  * over false negatives (silent data loss).
+ *
+ * Zod `_def` reads go through `@flow-state-dev/core/helpers` so a
+ * Zod-internals change stays a single-site fix.
  */
+import {
+  getZodInnerType,
+  getZodObjectShape,
+  getZodTypeName,
+} from "@flow-state-dev/core/helpers";
 import type { ZodTypeAny } from "zod";
 
 export type CompatibilityResult =
@@ -44,8 +52,8 @@ export function compareZodSchemas(a: ZodTypeAny, b: ZodTypeAny): CompatibilityRe
     return compareZodSchemas(unwrappedA, unwrappedB);
   }
 
-  const nameA = typeName(a);
-  const nameB = typeName(b);
+  const nameA = getZodTypeName(a) ?? "Unknown";
+  const nameB = getZodTypeName(b) ?? "Unknown";
   if (nameA !== nameB) {
     return { kind: "incompatible", reason: "incompatible-types", detail: `${nameA} vs ${nameB}` };
   }
@@ -59,32 +67,19 @@ export function compareZodSchemas(a: ZodTypeAny, b: ZodTypeAny): CompatibilityRe
   return { kind: "compatible", warnings: [] };
 }
 
-function typeName(schema: ZodTypeAny): string {
-  return (schema as { _def?: { typeName?: string } })._def?.typeName ?? "Unknown";
-}
-
 function unwrap(schema: ZodTypeAny): ZodTypeAny {
-  if (!WRAPPER_TYPE_NAMES.has(typeName(schema))) {
+  if (!WRAPPER_TYPE_NAMES.has(getZodTypeName(schema) ?? "Unknown")) {
     return schema;
   }
-  const def = (schema as { _def?: { innerType?: ZodTypeAny; schema?: ZodTypeAny } })._def;
-  return def?.innerType ?? def?.schema ?? schema;
+  return getZodInnerType(schema) ?? schema;
 }
 
 function getShape(schema: ZodTypeAny): Record<string, ZodTypeAny> | undefined {
-  const direct = (schema as { shape?: unknown }).shape;
-  if (direct && typeof direct === "object") {
-    return direct as Record<string, ZodTypeAny>;
+  try {
+    return getZodObjectShape(schema);
+  } catch {
+    return undefined;
   }
-  const shapeFn = (schema as { _def?: { shape?: () => Record<string, ZodTypeAny> } })._def?.shape;
-  if (typeof shapeFn === "function") {
-    try {
-      return shapeFn();
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
 }
 
 function compareObjectShapes(a: ZodTypeAny, b: ZodTypeAny): CompatibilityResult {
@@ -98,8 +93,14 @@ function compareObjectShapes(a: ZodTypeAny, b: ZodTypeAny): CompatibilityResult 
   const keysA = Object.keys(shapeA);
   const keysB = Object.keys(shapeB);
 
+  // Own-key tests, never `in`: a state schema may legitimately declare a field
+  // named `toString` / `constructor` / `valueOf`, and `in` would find the
+  // Object.prototype member on the OTHER shape and compare a builtin function
+  // against a real Zod type — reporting a conflict between two schemas that
+  // merely have disjoint fields. It also made the comparison asymmetric, since
+  // an inherited hit silently dropped the field from the disjoint report.
   for (const key of keysA) {
-    if (!(key in shapeB)) continue;
+    if (!Object.hasOwn(shapeB, key)) continue;
     const result = compareZodSchemas(shapeA[key]!, shapeB[key]!);
     if (result.kind === "incompatible") {
       return {
@@ -113,8 +114,8 @@ function compareObjectShapes(a: ZodTypeAny, b: ZodTypeAny): CompatibilityResult 
     }
   }
 
-  const onlyInA = keysA.filter((k) => !(k in shapeB));
-  const onlyInB = keysB.filter((k) => !(k in shapeA));
+  const onlyInA = keysA.filter((k) => !Object.hasOwn(shapeB, k));
+  const onlyInB = keysB.filter((k) => !Object.hasOwn(shapeA, k));
   if (onlyInA.length > 0 || onlyInB.length > 0) {
     warnings.push(`disjoint fields: A-only [${onlyInA.join(", ")}] B-only [${onlyInB.join(", ")}]`);
   }

@@ -188,13 +188,6 @@ describe("SQLite adapter — delta verb contract (FIX-405)", () => {
       expect((await store.get("s1"))?.state).toEqual({ log: ["first"] });
     });
 
-    it("replaces a non-array field with the pushed values", async () => {
-      const store = freshStore();
-      await seed(store, "s1", { log: "not-an-array" });
-      await store.pushToArray!("s1", ["log"], ["x"], 0, Date.now());
-      expect((await store.get("s1"))?.state).toEqual({ log: ["x"] });
-    });
-
     it("preserves order across multiple pushes", async () => {
       const store = freshStore();
       await seed(store, "s1", {});

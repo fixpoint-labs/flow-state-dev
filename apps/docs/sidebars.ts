@@ -10,6 +10,7 @@ const sidebars: SidebarsConfig = {
         "getting-started/installation",
         "getting-started/setting-up-models",
         "getting-started/quick-start",
+        "getting-started/existing-project",
         "getting-started/your-first-flow",
         "getting-started/project-structure",
       ],
@@ -272,6 +273,7 @@ const sidebars: SidebarsConfig = {
             "tools/mcp",
             "tools/claude-code-cli",
             "tools/claude-code-sdk",
+            "tools/workspace",
           ],
         },
         {

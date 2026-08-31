@@ -151,7 +151,8 @@ export type ScopeStateOpsOptions<TState extends object> = {
  *   dispatch runs unlocked.
  *
  * The durable dispatch (`runDurableMutation`) sends commutative hints to
- * `runCommutative` (one persist against `"any"`) and everything else to
+ * `runCommutative` (one persist, version-checked or not depending on whether
+ * the adapter advertises the verb) and everything else to
  * `runWithCAS`, which drives the optimistic load → mutate → persist cycle
  * with exponential backoff. The `hint` is forwarded to the persist callback
  * unchanged across retries (it describes user intent, not derived state).
@@ -212,8 +213,10 @@ async function applyMutation<TState extends object>(
 
 /**
  * Durable write dispatch shared by request scope (under `withScopeLock`) and
- * session/user/org (unlocked). Commutative hints persist once against
- * `"any"`; everything else drives the CAS retry loop.
+ * session/user/org (unlocked). Commutative hints take a single persist with
+ * no retry behind it — against `"any"` where the adapter advertises the delta
+ * verb, otherwise a version-checked full-record `set` that can be refused.
+ * Everything else drives the CAS retry loop.
  */
 async function runDurableMutation<TState extends object>(
   container: StateContainer<TState>,
@@ -238,10 +241,15 @@ async function runDurableMutation<TState extends object>(
 
 /**
  * Commutative write path for blind/commutative ops on external-store scopes.
- * Calls persist once with `expectedVersion: "any"` — the store applies the
- * delta atomically and returns the merged record. The container is refreshed
- * from the store-returned record (authoritative), guarded by a max-version
- * check to prevent out-of-order local regressions.
+ * Calls persist exactly once, with no retry behind it either way. Whether that
+ * one call is version-checked is the adapter's to decide, not this function's:
+ * `createScopePersist` downgrades to `expectedVersion: "any"` only when the
+ * store advertises the matching delta verb, and otherwise writes the full
+ * record at the held numeric version. On the `"any"` path the store applies
+ * the delta atomically and returns the merged record; on the fallback the
+ * single attempt can lose a version race, which arrives here as `!result.ok`.
+ * The container is refreshed from the store-returned record (authoritative),
+ * guarded by a max-version check to prevent out-of-order local regressions.
  */
 async function runCommutative<TState extends object>(
   container: StateContainer<TState>,
@@ -263,9 +271,23 @@ async function runCommutative<TState extends object>(
   );
 
   if (!result.ok) {
-    // Commutative ops should never conflict when using "any" expectedVersion.
-    // If the store returns a conflict (e.g. missing record), report no-op
-    // without committing locally — the record may not exist.
+    // The `"any"` expectedVersion that makes a commutative op unconflictable
+    // is applied by `createScopePersist` only INSIDE its four delta-verb
+    // branches, each guarded on `typeof store.<verb> === "function"`. An
+    // adapter that advertises no verb falls through to that function's
+    // full-record `set` at the raw numeric version, so this branch is reached
+    // by an ordinary lost version race against a LIVE record just as readily
+    // as by the missing record it used to name. Measured: a store with no
+    // delta verbs holding version 7 against a container at version 0 refused
+    // three `deleteStateRecord` calls in a row, every `set` sent
+    // `expectedVersion: 0`, and the record was there the whole time.
+    //
+    // Either way there is nothing to commit and nothing to retry here: the
+    // write did not land, and the container keeps the state and version it
+    // already held — so a repeat sends the version that just lost, and
+    // `ctx.<scope>.state` still reads the stale copy. Refreshing is the
+    // CAS path's job (`runWithCAS` re-reads and re-runs the mutator), or a
+    // fresh execution context's.
     return false;
   }
 

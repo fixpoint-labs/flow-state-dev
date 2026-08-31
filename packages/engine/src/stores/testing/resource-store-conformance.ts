@@ -575,6 +575,35 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
+    it('"absent" inserts when there is no row at all', async () => {
+      await withStore(async (store) => {
+        const created = await store.set("session", "s1", "k", makeState(1), "absent");
+        expect(created).toEqual({ ok: true, version: 1 });
+      });
+    });
+
+    it('"absent" conflicts against a tombstone, where 0 admits one', async () => {
+      await withStore(async (store) => {
+        await seed(store, "k", makeState(1));
+        await store.delete("session", "s1", "k", 1);
+
+        // The pair is the rule. A tombstone is a row, so the stricter
+        // expectation refuses it — and reports no current value, which is what
+        // tells a caller "deleted" rather than "retry from what you had".
+        const refused = await store.set("session", "s1", "k", makeState(2), "absent");
+        expect(refused).toEqual({
+          ok: false,
+          conflict: { currentValue: undefined, currentVersion: 1 }
+        });
+        expect(await store.get("session", "s1", "k")).toBeUndefined();
+
+        // ...while `0` — "no live row" — still recreates it, which is what an
+        // explicit create after a delete rides on.
+        const recreated = await store.set("session", "s1", "k", makeState(2), 0);
+        expect(recreated).toEqual({ ok: true, version: 2 });
+      });
+    });
+
     // --- tombstones and lifecycle ----------------------------------------
 
     it("a tombstoned key reads as absent through all three readers", async () => {
@@ -671,21 +700,12 @@ export function createResourceStateStoreConformanceTests(
         // `-1` is the sharp one: the SQL adapters carry it as the in-band
         // "any" sentinel inside the delete predicate, so before this guard a
         // direct `delete(…, -1)` tombstoned any live row.
-        //
-        // `"absent"` is the scope stores' create-if-absent sentinel. This
-        // store keeps spelling create-if-absent `0`, and refuses the word
-        // rather than aliasing it: the two agree on `set` and not on
-        // `delete`, where `0` means "no live row, so the terminal state
-        // already holds" and "delete only if absent" means nothing. Pinning
-        // it here is what keeps the three restated copies of this guard —
-        // one shared, one per SQL adapter — from drifting apart.
         const notVersions: ExpectedVersion[] = [
           -1,
           -5,
           1.5,
           Number.NaN,
-          Number.POSITIVE_INFINITY,
-          "absent"
+          Number.POSITIVE_INFINITY
         ];
         for (const invalid of notVersions) {
           await expect(store.delete("session", "s1", "k", invalid)).rejects.toThrow(
@@ -695,6 +715,28 @@ export function createResourceStateStoreConformanceTests(
             store.set("session", "s1", "k", makeState(2), invalid)
           ).rejects.toThrow(/expectedVersion/);
         }
+
+        // `"absent"` splits by verb, and that split is the point. `set`
+        // honours it as the stricter of its two create expectations ("no row
+        // at all", where `0` is "no live row"). `delete` refuses it: `0`
+        // already means "no live row, so the terminal state already holds",
+        // and "delete only if absent" asks nothing on top of that. Pinning
+        // both halves here keeps the three restated copies of this guard —
+        // one shared, one per SQL adapter — from drifting apart.
+        await expect(store.delete("session", "s1", "k", "absent")).rejects.toThrow(
+          /expectedVersion/
+        );
+        const refusedByLiveRow = await store.set(
+          "session",
+          "s1",
+          "k",
+          makeState(2),
+          "absent"
+        );
+        expect(refusedByLiveRow).toEqual({
+          ok: false,
+          conflict: { currentValue: makeState(1), currentVersion: 1 }
+        });
 
         // Nothing was written, and in particular `-1` did not delete the row.
         expect(await store.get("session", "s1", "k")).toEqual({
@@ -858,6 +900,73 @@ export function createResourceStateStoreConformanceTests(
         // a straggler from the previous generation still cannot land
         const straggler = await store.set("session", "s1", "k", makeState(9), 2);
         expect(straggler.ok).toBe(false);
+      });
+    });
+
+    // --- purgeTombstones, the scope-re-creation altitude ------------------
+
+    it("purgeTombstones lets a write at \"absent\" land on a deleted key again", async () => {
+      await withStore(async (store) => {
+        // The whole reason this operation exists. `deleteAll` leaves rows a
+        // write at `"absent"` is refused by — correct while the scope is dead,
+        // and a permanent brick once its id is reused. This is what a caller
+        // re-creating the scope runs to say the new incarnation inherits none
+        // of the old one's refusals.
+        await seed(store, "k", makeState(1));
+        await store.deleteAll("session", "s1");
+
+        const refused = await store.set("session", "s1", "k", makeState(2), "absent");
+        expect(refused.ok).toBe(false);
+
+        await store.purgeTombstones("session", "s1");
+
+        const admitted = await store.set("session", "s1", "k", makeState(3), "absent");
+        // Version restarts at 1: no row survived to continue from. That IS the
+        // trade — pinned so nobody reads the number as a bug.
+        expect(admitted).toEqual({ ok: true, version: 1 });
+        expect((await store.get("session", "s1", "k"))?.state).toEqual(makeState(3));
+      });
+    });
+
+    it("purgeTombstones leaves live rows and other scopes untouched", async () => {
+      await withStore(async (store) => {
+        // Two controls in one, and both are load-bearing. Without the live-row
+        // one, an implementation that wiped the scope would pass the case
+        // above — and would silently destroy state written under a scope id
+        // before its record existed. Without the other-scope one, so would an
+        // implementation that ignored the scope predicate entirely.
+        await seed(store, "live", makeState(1));
+        await store.set("session", "s1", "dead", makeState(2), 0);
+        await store.delete("session", "s1", "dead", 1);
+        await store.set("session", "s2", "gone", makeState(3), 0);
+        await store.delete("session", "s2", "gone", 1);
+
+        await store.purgeTombstones("session", "s1");
+
+        expect((await store.get("session", "s1", "live"))?.state).toEqual(makeState(1));
+        // s2's tombstone is untouched, which `get` cannot show — an absent key
+        // and a tombstone both read `undefined`. A write at `"absent"` is what
+        // separates them, so ask each scope the same question and compare.
+        expect((await store.set("session", "s2", "gone", makeState(4), "absent")).ok).toBe(
+          false
+        );
+        expect((await store.set("session", "s1", "dead", makeState(5), "absent")).ok).toBe(
+          true
+        );
+      });
+    });
+
+    it("purgeTombstones on a scope with nothing to reclaim is a no-op, not an error", async () => {
+      await withStore(async (store) => {
+        // The ordinary case at the call site: every newborn scope purges,
+        // because the caller cannot know whether its id was used before. The
+        // overwhelmingly common answer is "no".
+        await store.purgeTombstones("session", "never-existed");
+        expect(await store.getAll("session", "never-existed")).toEqual({});
+
+        await seed(store, "k", makeState(1));
+        await store.purgeTombstones("session", "s1");
+        expect((await store.get("session", "s1", "k"))?.version).toBe(1);
       });
     });
   });

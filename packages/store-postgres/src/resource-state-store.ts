@@ -33,6 +33,15 @@ import type { QueryExecutor } from "./types";
 type RawRow = { state: JsonObject; version: number | string; lifecycle: string };
 
 export function createPostgresResourceStateStore(executor: QueryExecutor): ResourceStateStore {
+  /** Parse one raw result row into the shape the shared contract logic takes. */
+  const parseRow = (row: RawRow): ResourceStateRow => ({
+    state: row.state,
+    // node-pg returns BIGINT as a string, so coerce rather than letting a
+    // string version silently fail every `===` comparison downstream.
+    version: Number(row.version),
+    lifecycle: row.lifecycle === "live" ? "live" : "deleted"
+  });
+
   /** Read the row and parse it into the shape the shared contract logic takes. */
   const readRow = async (
     scopeType: StorageScopeType,
@@ -45,59 +54,73 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       [scopeType, scopeId, resourceKey]
     );
     const row = result.rows[0] as RawRow | undefined;
-    if (row === undefined) return undefined;
-    return {
-      state: row.state,
-      // node-pg returns BIGINT as a string, so coerce rather than letting a
-      // string version silently fail every `===` comparison downstream.
-      version: Number(row.version),
-      lifecycle: row.lifecycle === "live" ? "live" : "deleted"
-    };
+    return row === undefined ? undefined : parseRow(row);
   };
 
   /**
    * Refuse an `expectedVersion` that cannot name a version.
    *
-   * Mirrors `assertExpectedVersion` in the engine's
+   * Mirrors `assertVersionNumber` in the engine's
    * `stores/resource-state-predicate` module — restated for the same reason as
    * {@link conflictFrom} below, and pinned across all four adapters by the
-   * shared conformance suite. `ExpectedVersion` is `number | "any" | "absent"`,
-   * so a caller can legally pass a value the contract has no meaning for: `0`
-   * means "no live row" and real versions start at `1`. Refused loudly, because
-   * that is a programming error and not a lost race — reporting it as a
-   * conflict would name a concurrency outcome this store never observed.
+   * shared conformance suite. `0` means "no live row" and real versions start
+   * at `1`, so a negative, fractional, `NaN` or infinite version is refused
+   * loudly: that is a programming error and not a lost race, and reporting it
+   * as a conflict would name a concurrency outcome this store never observed.
    *
-   * `"absent"` is the scope stores' create-if-absent sentinel and is refused
-   * here rather than aliased onto this store's `0` — the two agree on `set`
-   * but not on `delete`, where "delete only if absent" has no meaning.
-   *
-   * This is also what keeps the `-1` sentinel in `delete` sound. `-1` is safe
-   * over the versions the store *produces*; it says nothing about what a caller
-   * may *pass*, and without this guard `delete(…, -1)` matched the sentinel
-   * branch and tombstoned any live row. It is equally what keeps `"absent"`
-   * out of the numeric bind parameter below, where a string would fail
-   * silently rather than loudly.
+   * This is what keeps the `-1` sentinel in `delete` sound. `-1` is safe over
+   * the versions the store *produces*; it says nothing about what a caller may
+   * *pass*, and without this guard `delete(…, -1)` matched the sentinel branch
+   * and tombstoned any live row.
+   */
+  const assertVersionNumber = (expectedVersion: unknown): void => {
+    if (!Number.isInteger(expectedVersion) || (expectedVersion as number) < 0) {
+      throw new TypeError(
+        `expectedVersion must be a non-negative integer or "any", received ${String(expectedVersion)}`
+      );
+    }
+  };
+
+  /**
+   * `set` honours all three members of the union, and the two non-numeric ones
+   * are not interchangeable: `0` is "no live row" (create-if-absent, a
+   * tombstone satisfies it) and `"absent"` is the stricter "no row at all" (a
+   * tombstone is a row and refuses it). Mirrors `assertSetExpectedVersion` in
+   * the engine module.
    *
    * The assertion signature lets the arithmetic and the numeric binds further
-   * down rely on that without restating the check. The narrowing is a promise
-   * the compiler takes on trust, so the check is an allowlist:
-   * `Number.isInteger` refuses every non-numeric value, including members this
+   * down rely on the narrowing without restating the check — which is also
+   * what keeps a string out of a numeric bind parameter, where it would fail
+   * silently rather than loudly. The narrowing is a promise the compiler takes
+   * on trust, so the check is an allowlist: `Number.isInteger` plus the two
+   * string early-returns refuse every other value, including members this
    * union does not have yet.
    */
-  const assertExpectedVersion: (
+  const assertSetExpectedVersion: (
+    expectedVersion: ExpectedVersion
+  ) => asserts expectedVersion is number | "any" | "absent" = (expectedVersion) => {
+    if (expectedVersion === "any" || expectedVersion === "absent") return;
+    assertVersionNumber(expectedVersion);
+  };
+
+  /**
+   * `delete` refuses `"absent"`: "delete only if the row does not exist" states
+   * no condition a delete could act on, since `0` already covers "no live row,
+   * so the terminal state already holds." Mirrors
+   * `assertDeleteExpectedVersion` in the engine module. Keeping the refusal on
+   * this verb only is what lets `set` honour the word without it meaning two
+   * things.
+   */
+  const assertDeleteExpectedVersion: (
     expectedVersion: ExpectedVersion
   ) => asserts expectedVersion is number | "any" = (expectedVersion) => {
     if (expectedVersion === "any") return;
     if (expectedVersion === "absent") {
       throw new TypeError(
-        'expectedVersion "absent" is not supported by ResourceStateStore; use 0, which means "no live row" here'
+        'expectedVersion "absent" is not supported by ResourceStateStore.delete; use 0, which means "no live row" here'
       );
     }
-    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
-      throw new TypeError(
-        `expectedVersion must be a non-negative integer or "any", received ${String(expectedVersion)}`
-      );
-    }
+    assertVersionNumber(expectedVersion);
   };
 
   /**
@@ -143,7 +166,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       state: JsonObject,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<JsonObject>> {
-      assertExpectedVersion(expectedVersion);
+      assertSetExpectedVersion(expectedVersion);
       const payload = JSON.stringify(state);
 
       if (expectedVersion === "any") {
@@ -165,6 +188,53 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
           [scopeType, scopeId, resourceKey, payload]
         );
         return { ok: true, version: Number(written.rows[0]!.version) };
+      }
+
+      if (expectedVersion === "absent") {
+        // "No row at all" is the insert, and nothing else: the PK arbitrates,
+        // and `DO NOTHING` turns any existing row — live OR tombstoned — into
+        // zero rows. That is the whole difference from the `0` branch below,
+        // which goes on to revive a tombstone. Deliberately one statement: a
+        // read-then-insert would let a delete land in between and put the
+        // write back on the resurrection path this exists to close.
+        //
+        // The conflicting row comes back from the SAME statement, because a
+        // separate read afterwards is a time-of-check/time-of-use split: an
+        // explicit `create()` at `0` can revive the key in between, and the
+        // read would then describe a LIVE row where a tombstone did the
+        // refusing. `runResourceCAS` reads a conflict carrying a current value
+        // as retryable, so it would re-run the mutator and apply it to the
+        // recreated generation instead of throwing `ResourceDeletedError` —
+        // the write landing on a delete, which is the whole thing `"absent"`
+        // exists to stop.
+        const attempt = await executor.query(
+          `WITH ins AS (
+             INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
+             VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
+             ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING
+             RETURNING version, state, lifecycle
+           )
+           SELECT version, state, lifecycle, true AS inserted FROM ins
+           UNION ALL
+           SELECT version, state, lifecycle, false AS inserted
+             FROM resource_state
+            WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3
+              AND NOT EXISTS (SELECT 1 FROM ins)`,
+          [scopeType, scopeId, resourceKey, payload]
+        );
+        const attempted = attempt.rows[0] as (RawRow & { inserted: boolean }) | undefined;
+        if (attempted === undefined) {
+          // No arm produced a row, which happens in exactly one case: the
+          // conflicting row was committed by another transaction AFTER this
+          // statement's snapshot, so the unique index refused the insert while
+          // the `UNION` arm — reading under that snapshot — could not see it.
+          // That is a racing first insert, not the revive above: a tombstone
+          // old enough to refuse us predates the snapshot and is visible to
+          // both arms. Nothing atomic is available here, so re-read.
+          return conflictFrom(await readRow(scopeType, scopeId, resourceKey));
+        }
+        if (attempted.inserted) return { ok: true, version: 1 };
+        return conflictFrom(parseRow(attempted));
       }
 
       if (expectedVersion === 0) {
@@ -232,9 +302,9 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       // `-1` is the "any" sentinel. What makes it safe is not that a real
       // version is always >= 1 — that is a fact about the versions the store
       // produces, and the guard sits on the input side. It is safe because
-      // `assertExpectedVersion` has already refused every negative, so no
+      // `assertDeleteExpectedVersion` has already refused every negative, so no
       // caller-supplied value can reach the sentinel branch.
-      assertExpectedVersion(expectedVersion);
+      assertDeleteExpectedVersion(expectedVersion);
       const guard = expectedVersion === "any" ? -1 : expectedVersion;
       const marked = await executor.query(
         `UPDATE resource_state SET state = '{}'::jsonb, lifecycle = 'deleted'
@@ -337,6 +407,19 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       await executor.query(
         `UPDATE resource_state SET state = '{}'::jsonb, lifecycle = 'deleted'
          WHERE scope_type = $1 AND scope_id = $2 AND lifecycle = 'live'`,
+        [scopeType, scopeId]
+      );
+    },
+
+    async purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void> {
+      // Scope re-creation: a real DELETE of the dead rows only, so the new
+      // incarnation of a reused scope id inherits no tombstone. The inverse of
+      // `deleteAll` above — same scope predicate, opposite lifecycle — and
+      // deliberately not reachable from teardown. See `purgeTombstones` on
+      // `ResourceStateStore` for what giving those versions back costs.
+      await executor.query(
+        `DELETE FROM resource_state
+         WHERE scope_type = $1 AND scope_id = $2 AND lifecycle = 'deleted'`,
         [scopeType, scopeId]
       );
     }

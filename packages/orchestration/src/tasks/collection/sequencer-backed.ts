@@ -293,7 +293,8 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           guards,
           collectionId,
           now(),
-          requireFrom
+          requireFrom,
+          kind ?? undefined
         );
         if (reason !== undefined) {
           return {

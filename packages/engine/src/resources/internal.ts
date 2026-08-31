@@ -30,6 +30,7 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
+import { isCollectionConfig } from "./is-collection-config";
 import { resourceStorageKeys } from "./storage-keys";
 import { readSessionScopeWithLineage } from "./lineage-scope";
 import {
@@ -59,19 +60,7 @@ export type ResourcePersistenceContext = {
   stores: StoreRegistry;
 };
 
-/**
- * True when a resource entry shape is a collection (has a `pattern`
- * field). Single resources expose `stateSchema`; collections add
- * `pattern` + collection-specific schemas.
- */
-export function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pattern" in value &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
-  );
-}
+export { isCollectionConfig } from "./is-collection-config";
 
 // Re-export so older callers keep working.
 export { resourceStorageKeys } from "./storage-keys";

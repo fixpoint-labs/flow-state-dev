@@ -23,8 +23,10 @@
 export { createBashTool } from "./create-bash-tool";
 export { createBashBlocks, releaseBashSandbox } from "./blocks";
 export { createBashCapability } from "./capability";
-export { FileSync } from "./file-sync";
-export { hashContent } from "./hash";
+// `hashContent` is the projection's, re-exported so the bash module keeps a
+// single implementation rather than a second copy of the same digest.
+export { hashContent } from "@flow-state-dev/workspace";
+export { createSandboxPlace } from "./sandbox-place";
 
 // Adapters — only re-export adapters with zero external dependencies.
 // Vercel, Upstash, and just-bash adapters are loaded dynamically when

@@ -50,6 +50,11 @@ function makeHost(flows: FlowInstance[]): RecordingHost {
     },
     stores: {
       session: { get: async () => undefined, set: async () => ({ ok: true as const }) },
+      // `ensureSessionRecord` reclaims the id's resource-state tombstones once
+      // it wins the create (FIX-1258), so a stores bag that resolves a session
+      // needs this. `SessionBirthStores` has always required it; the cast is
+      // what let the shape be incomplete.
+      resourceState: { purgeTombstones: async () => {} },
     },
     logger: { warn, error, info: vi.fn(), debug: vi.fn() },
     dispatch(envelope: InboundRequestEnvelope) {
@@ -242,6 +247,7 @@ describe("dispatchChatEvent — concurrency reject", () => {
       },
       stores: {
         session: { get: async () => undefined, set: async () => ({ ok: true as const }) },
+        resourceState: { purgeTombstones: async () => {} },
       },
       logger: { warn: vi.fn(), error, info, debug: vi.fn() },
       dispatch() {

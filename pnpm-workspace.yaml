@@ -5,3 +5,7 @@ packages:
   - examples/guides/*
   - labs/*
   - goals
+  # The shipped plugin tree. It is a workspace member only so its tests run in CI — nothing
+  # inside it imports from this monorepo, because it runs from an installed plugin on somebody
+  # else's machine.
+  - plugins/*

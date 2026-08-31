@@ -59,6 +59,7 @@ import {
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
 import { resolveGoalSynthesisStep } from "../shared/planning-entry";
+import { pickTaskCapOverrides } from "../shared/task-caps";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
 import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
 
@@ -719,13 +720,7 @@ export function planAndExecute<
     // who legitimately needs a bigger board must be able to say so. Unset falls
     // through to the 500/100 defaults, and `board.caps` is what the seed writer
     // is handed, so the two can never disagree.
-    ...(config.maxTotalRetries !== undefined
-      ? { maxTotalRetries: config.maxTotalRetries }
-      : {}),
-    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
-    ...(config.maxEnqueuedTasks !== undefined
-      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
-      : {}),
+    ...pickTaskCapOverrides(config),
     workers: adaptedWorker,
     concurrency: maxConcurrency,
     dispatcher: "topological",

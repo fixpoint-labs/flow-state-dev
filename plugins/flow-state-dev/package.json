@@ -1,0 +1,16 @@
+{
+  "name": "@flow-state-dev/plugin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Claude Code plugin tree — skills a developer installs onto their own machine, and the detection scripts that travel with them.",
+  "scripts": {
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root .",
+    "lint": "echo 'lint not configured yet'"
+  },
+  "devDependencies": {
+    "@flow-state-dev/fsdev": "workspace:*",
+    "vitest": "^3.2.4"
+  }
+}

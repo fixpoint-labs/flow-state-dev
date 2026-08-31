@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Roadmap Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root {
+  --paper:      #F2F2EE;
+  --surface:    #FCFCFA;
+  --surface-2:  #E8E8E1;
+  --ink:        #191C21;
+  --ink-2:      #4C535B;
+  --ink-3:      #7A828B;
+  --rule:       #D5D4CB;
+  --rule-soft:  #E3E2D9;
+  --accent:     #3E4E8C;
+  --accent-2:   #2B386B;
+  --accent-soft:#E0E3F0;
+  --code:       #2C7C69;
+  --code-soft:  #DCEDE7;
+  --prose:      #A8761C;
+  --prose-soft: #F3E8D2;
+  --human:      #8C4A7D;
+  --human-soft: #F1E1EC;
+  --gone:       #A9544F;
+  --shadow:     0 1px 2px rgba(25,28,33,.06), 0 8px 24px -16px rgba(25,28,33,.28);
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Archivo", "IBM Plex Sans", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:#111417; --surface:#181C1F; --surface-2:#202528;
+    --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+    --rule:#2B3135; --rule-soft:#222728;
+    --accent:#8B9BD8; --accent-2:#A9B5E4; --accent-soft:#1B2140;
+    --code:#5DBBA1; --code-soft:#14302A;
+    --prose:#D9A44B; --prose-soft:#332612;
+    --human:#D392C0; --human-soft:#331F2D;
+    --gone:#DE8A84;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:#111417; --surface:#181C1F; --surface-2:#202528;
+  --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+  --rule:#2B3135; --rule-soft:#222728;
+  --accent:#8B9BD8; --accent-2:#A9B5E4; --accent-soft:#1B2140;
+  --code:#5DBBA1; --code-soft:#14302A;
+  --prose:#D9A44B; --prose-soft:#332612;
+  --human:#D392C0; --human-soft:#331F2D;
+  --gone:#DE8A84;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--sans); font-size: 16px; line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+.shell { display: grid; grid-template-columns: 236px minmax(0,1fr); max-width: 1240px; margin: 0 auto; }
+.rail { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+  padding: 34px 20px 40px 24px; border-right: 1px solid var(--rule); }
+.rail-mark { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: -.01em; line-height: 1.25; margin-bottom: 4px; }
+.rail-sub { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 22px; }
+.sib { font-family: var(--mono); font-size: 11px; color: var(--ink-3); line-height: 1.45; }
+.sib a { color: var(--accent); text-decoration: none; }
+.sib a:hover { text-decoration: underline; }
+.rail .sib { margin: -14px 0 20px; }
+.masthead .sib { margin: 16px 0 0; }
+.rail nav { display: flex; flex-direction: column; gap: 1px; }
+.rail nav a { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); text-decoration: none; padding: 3px 8px; border-radius: 3px; }
+.rail nav a:hover { color: var(--ink); background: var(--surface-2); }
+.rail nav a.grp { color: var(--ink-3); text-transform: uppercase; font-size: 10px; letter-spacing: .09em; margin-top: 16px; pointer-events: none; padding-left: 0; }
+main { padding: 34px 44px 120px; min-width: 0; }
+
+.masthead { border-bottom: 1px solid var(--rule); padding-bottom: 30px; margin-bottom: 40px; }
+.eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(32px, 5vw, 52px); line-height: 1.03; letter-spacing: -.028em; margin: 0 0 16px; text-wrap: balance; }
+.standfirst { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 64ch; margin: 0 0 20px; }
+.standfirst strong { color: var(--ink); font-weight: 600; }
+
+section { margin-bottom: 60px; scroll-margin-top: 20px; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: -.02em; line-height: 1.15; margin: 0; text-wrap: balance; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 22px; }
+.sec-num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: .06em; flex: none; padding-top: 2px; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: -.012em; margin: 34px 0 10px; }
+p { margin: 0 0 14px; max-width: 70ch; }
+.lede { color: var(--ink-2); font-size: 16.5px; max-width: 68ch; }
+ul, ol { max-width: 70ch; padding-left: 20px; margin: 0 0 14px; }
+li { margin-bottom: 5px; }
+code, .m { font-family: var(--mono); font-size: .875em; background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
+strong { font-weight: 600; }
+blockquote { margin: 16px 0; padding: 0 0 0 18px; border-left: 3px solid var(--rule); color: var(--ink-2); font-size: 15px; max-width: 68ch; }
+blockquote cite { display: block; margin-top: 6px; font-family: var(--mono); font-size: 10.5px; font-style: normal; color: var(--ink-3); letter-spacing: .04em; }
+
+pre.code { margin: 18px 0 24px; padding: 15px 18px; border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+  border-radius: 0 5px 5px 0; background: var(--surface); overflow-x: auto;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.62; color: var(--ink); box-shadow: var(--shadow); }
+pre.code i { color: var(--ink-3); font-style: normal; }
+pre.code b { color: var(--accent-2); font-weight: 600; }
+pre.code em { color: var(--code); font-style: normal; }
+
+figure { margin: 24px 0 28px; border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); overflow: hidden; box-shadow: var(--shadow); }
+.fig-body { padding: 22px 20px 12px; overflow-x: auto; }
+figure svg { display: block; width: 100%; max-width: 100%; height: auto; min-width: 620px; }
+figcaption { font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: var(--ink-2); padding: 11px 20px 13px; border-top: 1px solid var(--rule-soft); background: var(--surface-2); }
+figcaption b { color: var(--ink); font-weight: 600; }
+
+.tw { overflow-x: auto; margin: 18px 0 24px; border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 540px; }
+th { text-align: left; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-3); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--rule); background: var(--surface-2); white-space: nowrap; }
+td { padding: 9px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; line-height: 1.5; }
+tbody tr:last-child td { border-bottom: 0; }
+td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
+td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; white-space: nowrap; display: inline-block; font-weight: 500; }
+.t-code  { background: var(--code-soft);  color: var(--code); }
+.t-real  { background: var(--code-soft);  color: var(--code); }
+.t-prop  { background: var(--accent-soft);color: var(--accent-2); }
+.t-prose { background: var(--prose-soft); color: var(--prose); }
+.t-human { background: var(--human-soft); color: var(--human); }
+.t-gone  { background: var(--surface-2);  color: var(--gone); }
+.t-none  { background: var(--surface-2);  color: var(--ink-3); }
+
+.key { display: flex; flex-wrap: wrap; gap: 18px; margin: 16px 0 6px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+.key span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+.sw-solid { width: 15px; height: 11px; border-radius: 2px; display: inline-block; background: var(--surface); border: 1.2px solid var(--ink-3); }
+.sw-dash { width: 15px; height: 11px; border-radius: 2px; display: inline-block; background: var(--surface); border: 1.2px dashed var(--accent); }
+
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; margin: 18px 0 22px; border-radius: 0 4px 4px 0; }
+.note p { margin: 0; font-size: 14px; max-width: 66ch; }
+.note p + p { margin-top: 8px; }
+.note .lbl { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-2); display: block; margin-bottom: 4px; }
+
+.tension { border: 1px solid var(--rule); border-left: 3px solid var(--gone); border-radius: 0 5px 5px 0; background: var(--surface); padding: 14px 18px 16px; margin-bottom: 14px; }
+.tension h5 { font-family: var(--display); font-size: 15.5px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.01em; }
+.tension p { font-size: 14px; margin: 0 0 8px; color: var(--ink-2); max-width: 68ch; }
+.tension p:last-child { margin: 0; }
+.tension .ask { font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--surface-2); padding: 7px 10px; border-radius: 3px; display: block; margin-top: 8px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 14px; margin: 20px 0 26px; }
+.card { border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); padding: 14px 16px 16px; border-top: 3px solid var(--tc, var(--accent)); }
+.card h5 { font-family: var(--mono); font-size: 12px; margin: 0 0 3px; font-weight: 600; color: var(--ink); }
+.card .role { font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 8px; }
+.card p { font-size: 13px; margin: 0; color: var(--ink-2); line-height: 1.5; max-width: none; }
+
+.t   { fill: var(--ink); font-family: var(--sans); font-size: 12.5px; }
+.t-b { fill: var(--ink); font-family: var(--display); font-weight: 600; font-size: 13px; }
+.t-s { fill: var(--ink-2); font-family: var(--mono); font-size: 10px; }
+.t-xs{ fill: var(--ink-3); font-family: var(--mono); font-size: 9px; letter-spacing: .05em; }
+.t-lbl { fill: var(--ink-3); font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
+.t-api { fill: var(--ink-3); font-family: var(--mono); font-size: 10px; letter-spacing: .03em; }
+.f-accent { fill: var(--accent); }
+.f-code   { fill: var(--code); }
+.f-gone   { fill: var(--gone); }
+.f-human  { fill: var(--human); }
+.n-box { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
+.n-box2{ fill: var(--surface-2); stroke: var(--rule); stroke-width: 1.2; }
+.n-grp { fill: none; stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 3; }
+.n-prop{ fill: var(--surface); stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.n-code { fill: var(--code-soft); stroke: var(--code); stroke-width: 1.3; }
+.n-prose{ fill: var(--prose-soft); stroke: var(--prose); stroke-width: 1.3; }
+.n-human{ fill: var(--human-soft); stroke: var(--human); stroke-width: 1.4; }
+.ln { stroke: var(--ink-3); stroke-width: 1.2; fill: none; }
+.ln-soft { stroke: var(--rule); stroke-width: 1; fill: none; }
+.ln-gone { stroke: var(--gone); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 24px 22px; }
+  .rail nav { flex-direction: row; flex-wrap: wrap; gap: 4px 10px; }
+  .rail nav a.grp { display: none; }
+  main { padding: 26px 22px 80px; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+<aside class="rail">
+  <div class="rail-mark">The Roadmap Atlas</div>
+  <div class="rail-sub">product horizon &middot; aug 2026</div>
+  <p class="sib">sibling · <a href="conductor.html">Conductor atlas</a><br>sibling · <a href="workforce.html">Workforce atlas</a></p>
+  <nav>
+    <a class="grp">Orientation</a>
+    <a href="#jobs">01 &middot; Three jobs</a>
+    <a href="#stack">02 &middot; Who sits on whom</a>
+    <a class="grp">The horizon</a>
+    <a href="#now">03 &middot; This cycle</a>
+    <a href="#collab">04 &middot; Collaboration</a>
+    <a href="#clocks">05 &middot; The clocks</a>
+    <a class="grp">The ground</a>
+    <a href="#exists">06 &middot; What the tree has</a>
+    <a href="#hold">07 &middot; What stays held</a>
+  </nav>
+</aside>
+
+<main>
+<header class="masthead">
+  <p class="eyebrow">Product horizon</p>
+  <h1>Three jobs, one substrate</h1>
+  <p class="standfirst">This is the public product horizon. Not a company plan. FSD is <strong>three jobs</strong>, not two products: an unopinionated framework, a set of opinions other people can take as a component, and one user product that drives coding harnesses. The sibling atlases design the last two. This page keeps the horizon from flattening them into a pair of installs.</p>
+  <div class="key">
+    <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
+    <span><i class="sw-dash"></i> proposed &#8212; design, not built</span>
+  </div>
+  <p class="sib">Sibling atlases: <a href="conductor.html">Conductor</a> &#8212; the user-product design. <a href="workforce.html">Workforce</a> &#8212; the opinions layer. Neither page is rewritten here.</p>
+</header>
+
+<section id="jobs">
+  <div class="sec-head"><span class="sec-num">01</span><h2>Three jobs</h2></div>
+  <p class="lede">A framework other people build on. Opinions they can take without inventing their own. One user product we are dogfooding. Those are different jobs. Drawing the last two as products people install is the mistake this page exists to prevent.</p>
+
+  <div class="cards">
+    <div class="card" style="--tc: var(--code)">
+      <h5>Layer 1</h5><span class="role">unopinionated framework</span>
+      <p>The substrate. Four block kinds, flows, sessions, resources, capabilities, the board, skills. Releasing. Not on the market. Other people can build on it. It can land inside other products.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Workforce</h5><span class="role">opinions / component</span>
+      <p>An opinionated open-source extension of Layer&nbsp;1 so authors get going. Releasable as a component. Not a user product. Not something people install beside Conductor.</p>
+    </div>
+    <div class="card" style="--tc: var(--human)">
+      <h5>Conductor</h5><span class="role">the user-product focus</span>
+      <p>A software-dev meta-harness that drives coding harnesses. Unpublished lab. Session owned by the workflow is its opinion, not Layer&nbsp;1 law.</p>
+    </div>
+  </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Three jobs side by side, not two products. Left, solid: Layer 1, the unopinionated framework, releasing, not on the market, other people build on it. Centre, mixed: Workforce, a thin package that exists, opinions so authors get going, not a user product people install. Right, dashed as a product: Conductor, the Layer 2 user-product focus, a software-dev meta-harness, unpublished lab.">
+        <rect class="n-code" x="16" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="40">JOB 1 &#183; EXISTS &#183; RELEASING</text>
+        <text class="t-b" x="34" y="72">Layer 1</text>
+        <text class="t-s" x="34" y="96">unopinionated framework</text>
+        <text class="t-xs" x="34" y="128">FOUR BLOCK KINDS &#183; FLOWS</text>
+        <text class="t-xs" x="34" y="146">SESSIONS &#183; RESOURCES</text>
+        <text class="t-xs" x="34" y="164">CAPABILITIES &#183; BOARD &#183; SKILLS</text>
+        <text class="t-xs" x="34" y="190">OTHER PEOPLE BUILD ON IT</text>
+        <text class="t-xs" x="34" y="208">IT CAN LAND INSIDE OTHER PRODUCTS</text>
+        <text class="t-b f-code" x="34" y="240">not on the market yet</text>
+
+        <rect class="n-prop" x="324" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl" x="342" y="40">JOB 2 &#183; COMPONENT</text>
+        <rect class="n-code" x="342" y="56" width="256" height="44" rx="4"/>
+        <text class="t-s f-code" x="356" y="74">thin package exists</text>
+        <text class="t-xs" x="356" y="90">defineAgent &#183; materializeAgent</text>
+        <text class="t-b f-accent" x="342" y="128">Workforce</text>
+        <text class="t-s" x="342" y="152">opinions on Layer 1</text>
+        <text class="t-xs" x="342" y="178">OSS EXTENSION &#183; RELEASABLE</text>
+        <text class="t-xs" x="342" y="196">NOT A USER PRODUCT</text>
+        <text class="t-b f-accent" x="342" y="240">do not draw as an install</text>
+
+        <rect class="n-prop" x="632" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl" x="650" y="40">JOB 3 &#183; USER PRODUCT</text>
+        <rect class="n-code" x="650" y="56" width="256" height="44" rx="4"/>
+        <text class="t-s f-code" x="664" y="74">unpublished lab exists</text>
+        <text class="t-xs" x="664" y="90">labs/conductor &#183; private</text>
+        <text class="t-b f-accent" x="650" y="128">Conductor</text>
+        <text class="t-s" x="650" y="152">software-dev meta-harness</text>
+        <text class="t-xs" x="650" y="178">DRIVES CODING HARNESSES</text>
+        <text class="t-xs" x="650" y="196">SESSION OWNED BY THE WORKFLOW</text>
+        <text class="t-b f-accent" x="650" y="240">the focus. not launched.</text>
+      </svg>
+    </div>
+    <figcaption><b>Jobs, not SKUs.</b> Layer&nbsp;1 is the thing other people compose. Workforce is opinions they can take. Conductor is the product a person uses. The centre box is a component; treating it as a second product is how the horizon lies.</figcaption>
+  </figure>
+</section>
+
+<section id="stack">
+  <div class="sec-head"><span class="sec-num">02</span><h2>Who sits on whom</h2></div>
+  <p class="lede">Layer&nbsp;1 has substrate opinions only. Workforce packages a way to start. Conductor consumes both and adds a coding-product opinion. A new box on this figure is an opinion or a product, never a fifth block kind.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 420" role="img" aria-label="A stack of three jobs. Top dashed band: Conductor, the user-product focus, unpublished, session owned by the workflow. Middle band: Workforce opinions as a shared floor and releasable component, with a later maybe peel-off for a Workforce user product drawn as a small dashed aside, not as a second install. Bottom solid band: Layer 1 substrate that exists — four block kinds, flows, sessions, resources, capabilities, task board, skills, the Agent type. Arrows show Conductor sitting on opinions sitting on substrate. A note: do not lift session-owned-by-workflow into Layer 1.">
+        <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
+        <text class="t-lbl" x="34" y="38">USER PRODUCT &#8212; UNPUBLISHED LAB</text>
+        <rect class="n-box" x="34" y="52" width="520" height="48" rx="4"/>
+        <text class="t-b" x="48" y="72">Conductor</text>
+        <text class="t-xs" x="48" y="88">SOFTWARE-DEV META-HARNESS &#183; SESSION OWNED BY THE WORKFLOW</text>
+        <rect class="n-prop" x="570" y="52" width="334" height="48" rx="4"/>
+        <text class="t-s f-accent" x="584" y="72">faces the world later</text>
+        <text class="t-xs" x="584" y="88">AFTER DOGFOOD HOLDS &#183; NO DATE</text>
+
+        <path class="ln" d="M470,116 L470,132"/>
+
+        <rect class="n-prop" x="16" y="132" width="908" height="128" rx="5"/>
+        <text class="t-lbl" x="34" y="154">OPINIONS &#8212; SHARED FLOOR &#183; NOT AN INSTALL</text>
+        <rect class="n-code" x="34" y="168" width="420" height="72" rx="4"/>
+        <text class="t-s f-code" x="48" y="190">exists, thin</text>
+        <text class="t-xs" x="48" y="210">defineAgent &#183; registry &#183; materializeAgent</text>
+        <text class="t-xs" x="48" y="226">definePersona &#183; capability stub</text>
+        <rect class="n-prop" x="470" y="168" width="434" height="72" rx="4"/>
+        <text class="t-s f-accent" x="484" y="190">later maybe</text>
+        <text class="t-xs" x="484" y="210">OPINIONS STAY THE SHARED FLOOR</text>
+        <text class="t-xs" x="484" y="226">A WORKFORCE USER-PRODUCT IS A PEEL-OFF</text>
+
+        <path class="ln" d="M470,260 L470,276"/>
+
+        <rect class="n-code" x="16" y="276" width="908" height="122" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="298">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS &#183; DO NOT INVENT HERE</text>
+        <text class="t-s" x="34" y="322">handler &#183; generator &#183; sequencer &#183; router</text>
+        <text class="t-s" x="34" y="340">defineFlow / actions &#183; session carries flowKind &#183; resources (session / user / org)</text>
+        <text class="t-s" x="34" y="358">capabilities &#183; task board &#183; skills runtime &#183; startDetached</text>
+        <text class="t-s" x="34" y="376">Agent type in core &#8212; a named participant, not a persistent identity</text>
+      </svg>
+    </div>
+    <figcaption><b>Conductor sits on opinions sitting on primitives.</b> The middle band is a component authors take, not a second product in the store. If a Workforce user-product ever exists, it peels off this floor. It does not replace it. Layer&nbsp;1 stays mute enough that both readings of a session still fit.</figcaption>
+  </figure>
+
+  <div class="note">
+    <span class="lbl">Do not merge the harnesses</span>
+    <p>The <a href="conductor.html">Conductor atlas</a> and the <a href="workforce.html">Workforce atlas</a> stay separate designs. Conductor may own &#8220;a session belongs to the workflow.&#8221; Layer&nbsp;1 may not. Workforce collaboration later talks through the same Relay door Conductor uses. This page triangulates the horizon. It does not settle either atlas&#8217;s open threads.</p>
+  </div>
+</section>
+
+<section id="now">
+  <div class="sec-head"><span class="sec-num">03</span><h2>This cycle</h2></div>
+  <p class="lede">Prove Layer&nbsp;1. Keep Conductor an unpublished lab until dogfood holds. Ship Workforce as opinions and a component, not as a user product. Collaboration is off this floor.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 300" role="img" aria-label="This cycle floor. Left solid column, on: prove Layer 1, releasing not launched; Conductor unpublished lab; Workforce as opinions and a releasable component. Right dashed column, off: collaboration, a Workforce user product, Conductor facing the world, a launch date. A band under both: Relay address and fire-and-forget is the intended first cut of one Layer 1 door, filed, not in the tree; wait is not this cycle.">
+        <rect class="n-code" x="16" y="16" width="446" height="188" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="40">ON THIS FLOOR</text>
+        <text class="t-b" x="34" y="72">prove Layer 1</text>
+        <text class="t-xs" x="34" y="90">RELEASING &#183; NOT ON THE MARKET</text>
+        <text class="t-b" x="34" y="122">Conductor stays a lab</text>
+        <text class="t-xs" x="34" y="140">UNPUBLISHED &#183; DOGFOOD FIRST</text>
+        <text class="t-b" x="34" y="172">Workforce as a component</text>
+        <text class="t-xs" x="34" y="190">OPINIONS &#183; NOT A USER PRODUCT</text>
+
+        <rect class="n-prop" x="478" y="16" width="446" height="188" rx="5"/>
+        <text class="t-lbl" x="496" y="40">OFF THIS FLOOR</text>
+        <text class="t-b f-accent" x="496" y="72">collaboration</text>
+        <text class="t-xs" x="496" y="90">ADDRESS + WAIT &#183; SECTION 4</text>
+        <text class="t-b f-accent" x="496" y="122">a Workforce user-product</text>
+        <text class="t-xs" x="496" y="140">LATER MAYBE &#183; A PEEL-OFF</text>
+        <text class="t-b f-accent" x="496" y="172">Conductor facing the world</text>
+        <text class="t-xs" x="496" y="190">NO LAUNCH DATE</text>
+
+        <rect class="n-box" x="16" y="220" width="908" height="64" rx="5"/>
+        <text class="t-lbl" x="34" y="242">RELAY &#183; ONE LAYER 1 DOOR &#183; FILED, NOT IN THE TREE</text>
+        <text class="t-s" x="34" y="266">address + fire-and-forget is the first cut. wait is not this cycle. collaboration rides wait, not a second door.</text>
+      </svg>
+    </div>
+    <figcaption><b>The floor is proof, not launch.</b> Layer&nbsp;1 has to be something other people can trust. Conductor has to hold under dogfood before it faces anyone. Workforce&#8217;s job this cycle is to stay a component. Talking across sessions is the next clock, not this one.</figcaption>
+  </figure>
+</section>
+
+<section id="collab">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Collaboration</h2></div>
+  <p class="lede">A generator can send a message to another session and wait for the reply. That is Workforce-facing. It is address + wait on the existing Relay door. It is not a second messaging primitive, and it is not this cycle.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Collaboration on the one Relay door. Two session boxes, dashed: session A holds a generator that addresses session B and waits; session B receives and replies. Between them, one Layer 1 Relay door, also dashed because it is not in the tree. The door has two halves: address plus fire-and-forget, the first cut, and address plus wait, the collaboration half. A third box notes that startDetached already exists and is a child of the current flow, not a message to another session. A closing line: one door, no second bus, session-owned-by-workflow stays Conductor.">
+        <rect class="n-prop" x="16" y="16" width="250" height="132" rx="5"/>
+        <text class="t-lbl" x="34" y="38">SESSION A &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="34" y="68">a generator</text>
+        <text class="t-xs" x="34" y="90">ADDRESSES SESSION B</text>
+        <text class="t-xs" x="34" y="108">SENDS, AND WAITS</text>
+        <text class="t-xs" x="34" y="126">WORKFORCE-FACING</text>
+
+        <path class="ln" d="M266,82 L330,82"/>
+        <text class="t-xs" x="270" y="72">ADDRESS</text>
+
+        <rect class="n-prop" x="330" y="16" width="280" height="132" rx="5"/>
+        <text class="t-lbl" x="348" y="38">RELAY &#183; ONE DOOR</text>
+        <text class="t-s" x="348" y="64">filed, not in the tree</text>
+        <text class="t-xs" x="348" y="86">ADDRESS + FIRE-AND-FORGET</text>
+        <text class="t-xs" x="348" y="104">FIRST CUT &#183; THIS CYCLE</text>
+        <text class="t-xs" x="348" y="122">ADDRESS + WAIT &#183; NEXT</text>
+
+        <path class="ln" d="M610,82 L674,82"/>
+        <text class="t-xs" x="618" y="72">DELIVER</text>
+
+        <rect class="n-prop" x="674" y="16" width="250" height="132" rx="5"/>
+        <text class="t-lbl" x="692" y="38">SESSION B &#183; PROPOSED</text>
+        <text class="t-b f-accent" x="692" y="68">another session</text>
+        <text class="t-xs" x="692" y="90">RECEIVES THE MESSAGE</text>
+        <text class="t-xs" x="692" y="108">REPLIES ON THE SAME DOOR</text>
+        <text class="t-xs" x="692" y="126">NOT A NEW BUS</text>
+
+        <rect class="n-code" x="16" y="168" width="446" height="80" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="190">ALREADY EXISTS &#8212; NOT THIS</text>
+        <text class="t-s" x="34" y="214">startDetached &#8594; a child of the current flow</text>
+        <text class="t-xs" x="34" y="232">SAME FLOW KIND. NOT A MESSAGE TO ANOTHER SESSION.</text>
+
+        <rect class="n-code" x="478" y="168" width="446" height="80" rx="5"/>
+        <text class="t-lbl f-code" x="496" y="190">ALSO EXISTS &#8212; NOT THIS</text>
+        <text class="t-s" x="496" y="214">waitForSideChain &#8594; background work</text>
+        <text class="t-xs" x="496" y="232">SAME REQUEST. NOT A WAIT ON ANOTHER SESSION.</text>
+
+        <rect class="n-box" x="16" y="264" width="908" height="76" rx="5"/>
+        <text class="t-lbl" x="34" y="286">ONE DOOR. TWO HALVES. TWO OPINIONS THAT MUST NOT MOVE.</text>
+        <text class="t-s" x="34" y="312">Workforce collaboration = address + wait on Relay. Session-owned-by-workflow stays Conductor. Neither lifts into Layer 1.</text>
+      </svg>
+    </div>
+    <figcaption><b>Same door, later half, different job.</b> Relay is one Layer&nbsp;1 send door: address, send, no fan-out. Fire-and-forget is the first cut. Collaboration is the wait on that address. A child from <code>startDetached</code> is not a conversation. A second messaging primitive would have to be unwound.</figcaption>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Claim</th><th>Whose</th><th>What being wrong costs</th></tr></thead>
+      <tbody>
+        <tr><td>A generator talks to another session</td><td>Workforce, next</td><td>Right as a conventions need. Fatal if it becomes a second bus, or if it waits on a door that was never opened.</td></tr>
+        <tr><td>That talk is address + wait on Relay</td><td>Layer 1 door, already filed</td><td>One door both jobs use. A Workforce-shaped messenger beside it is the parasite the Workforce atlas already warned against.</td></tr>
+        <tr><td>A session belongs to the workflow</td><td>Conductor only</td><td>Right for a coding meta-harness. Fatal as Layer&nbsp;1 law, because a later Workforce channel <em>is</em> an agent-owned session.</td></tr>
+        <tr><td>Fire-and-forget ships before wait</td><td>this cycle, then next</td><td>Collaboration stays off this floor. Conductor can send without blocking. Wait is the half Workforce collaboration actually needs.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="clocks">
+  <div class="sec-head"><span class="sec-num">05</span><h2>The clocks</h2></div>
+  <p class="lede">Three horizons. No dates. The next clock starts when this floor is true, not when a calendar says so.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 340" role="img" aria-label="Three clocks. Now, solid on the work that exists: prove Layer 1, Conductor unpublished lab, Workforce as opinions and a component, collaboration off. Next, dashed: collaboration via Relay address plus wait as Workforce-facing; Conductor still unpublished until dogfood holds; no launch date. Later, dashed: a possible Workforce user-product peel-off, opinions remaining the shared floor; Conductor facing the world after dogfood. No dates on any column.">
+        <rect class="n-code" x="16" y="16" width="292" height="308" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="40">NOW</text>
+        <text class="t-b" x="34" y="72">prove Layer 1</text>
+        <text class="t-xs" x="34" y="90">RELEASING &#183; NOT LAUNCHED</text>
+        <text class="t-b" x="34" y="122">Conductor unpublished</text>
+        <text class="t-xs" x="34" y="140">LAB &#183; DOGFOOD</text>
+        <text class="t-b" x="34" y="172">Workforce component</text>
+        <text class="t-xs" x="34" y="190">OPINIONS &#183; NOT A PRODUCT</text>
+        <text class="t-b f-gone" x="34" y="230">collaboration off</text>
+        <text class="t-xs" x="34" y="248">WAIT IS NOT ON THIS FLOOR</text>
+        <text class="t-b f-code" x="34" y="292">this cycle</text>
+
+        <rect class="n-prop" x="324" y="16" width="292" height="308" rx="5"/>
+        <text class="t-lbl" x="342" y="40">NEXT</text>
+        <text class="t-b f-accent" x="342" y="72">collaboration</text>
+        <text class="t-xs" x="342" y="90">RELAY ADDRESS + WAIT</text>
+        <text class="t-xs" x="342" y="108">WORKFORCE-FACING</text>
+        <text class="t-b f-accent" x="342" y="148">Conductor still a lab</text>
+        <text class="t-xs" x="342" y="166">UNTIL DOGFOOD HOLDS</text>
+        <text class="t-xs" x="342" y="184">NO LAUNCH DATE</text>
+        <text class="t-b f-accent" x="342" y="224">same Relay door</text>
+        <text class="t-xs" x="342" y="242">NO SECOND PRIMITIVE</text>
+        <text class="t-b f-accent" x="342" y="292">after this floor</text>
+
+        <rect class="n-prop" x="632" y="16" width="292" height="308" rx="5"/>
+        <text class="t-lbl" x="650" y="40">LATER</text>
+        <text class="t-b f-accent" x="650" y="72">Workforce peel-off</text>
+        <text class="t-xs" x="650" y="90">MAYBE A USER PRODUCT</text>
+        <text class="t-xs" x="650" y="108">OPINIONS STAY THE FLOOR</text>
+        <text class="t-b f-accent" x="650" y="148">Conductor faces the world</text>
+        <text class="t-xs" x="650" y="166">AFTER DOGFOOD HOLDS</text>
+        <text class="t-xs" x="650" y="184">NO DATE</text>
+        <text class="t-b f-accent" x="650" y="224">still three jobs</text>
+        <text class="t-xs" x="650" y="242">A PEEL-OFF IS NOT A MERGE</text>
+        <text class="t-b f-accent" x="650" y="292">no calendar</text>
+      </svg>
+    </div>
+    <figcaption><b>Clocks, not a launch plan.</b> Now is proof. Next is the wait on Relay, shown as Workforce collaboration. Later is optional peel-off and a Conductor that has earned a public face. None of these rows is a date.</figcaption>
+  </figure>
+</section>
+
+<section id="exists">
+  <div class="sec-head"><span class="sec-num">06</span><h2>What the tree has</h2></div>
+  <p class="lede">Read from the checkout, not from a guess. Solid means the source is there. Dashed means the design is named and the code is not.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
+      <tbody>
+        <tr><td>Layer&nbsp;1 packages</td><td><span class="tag t-real">exists</span></td><td><code>core</code>, <code>engine</code>, <code>orchestration</code>, and the rest of the published set. Version <code>0.0.0</code>. Releasing. Not on the market.</td></tr>
+        <tr><td>Four block kinds, flows, sessions, resources</td><td><span class="tag t-real">exists</span></td><td>The substrate both jobs sit on. A session carries a <code>flowKind</code> and nothing that says who owns it.</td></tr>
+        <tr><td>Task board, skills, <code>startDetached</code></td><td><span class="tag t-real">exists</span></td><td>Detached work is a <strong>child</strong> of the current flow. It is not a send to another session.</td></tr>
+        <tr><td><code>waitForSideChain</code></td><td><span class="tag t-real">exists</span></td><td>Waits for background work on the same request. Not a wait on an addressed session.</td></tr>
+        <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>A named participant. No <code>resources</code> field. No scope. Not a persistent identity.</td></tr>
+        <tr><td><code>@flow-state-dev/workforce</code></td><td><span class="tag t-real">exists</span> thin</td><td>Public package. <code>defineAgent</code>, registry, <code>materializeAgent</code>, <code>definePersona</code>. Capability factory is a stub. One example seats a skill. Not a user product.</td></tr>
+        <tr><td>Conductor</td><td><span class="tag t-real">exists</span> lab</td><td><code>labs/conductor/</code>, <code>private: true</code>. One phase, seed / wake / status / answer. Unpublished. Not a launched product.</td></tr>
+        <tr><td>Relay door</td><td><span class="tag t-prop">filed</span></td><td>Designed as one Layer&nbsp;1 send door: address, send, no fan-out. <strong>Not in the tree.</strong> No <code>packages/relay</code>. No <code>relay</code> on <code>FlowDefinition</code>. No send-to-session verb in <code>engine</code>.</td></tr>
+        <tr><td>Address + fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td>The first cut of that door. Intended. Not shipped. Enough to send. Not enough to collaborate.</td></tr>
+        <tr><td>Address + wait</td><td><span class="tag t-prop">next</span></td><td>The half collaboration needs. Workforce-facing. Same door. Not a new primitive.</td></tr>
+        <tr><td>Workforce user-product</td><td><span class="tag t-prop">later maybe</span></td><td>A peel-off. Opinions stay the shared floor. Not drawn as a second install.</td></tr>
+        <tr><td>Conductor facing the world</td><td><span class="tag t-prop">later</span></td><td>After dogfood holds. No date.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="lbl">The guess that did not survive the tree</span>
+    <p>Relay fire-and-forget is <em>designed</em> as Layer&nbsp;1, and it is already filed as that door. It is not already in Layer&nbsp;1 source. Address + wait is later on the same door. Collaboration is shown as that wait, not as a second messenger, and not as a claim that the send verb shipped.</p>
+  </div>
+</section>
+
+<section id="hold">
+  <div class="sec-head"><span class="sec-num">07</span><h2>What stays held</h2></div>
+  <p class="lede">A horizon page that starts inventing primitives has failed. These stay off the floor on purpose.</p>
+
+  <div class="tension">
+    <h5>Do not invent a Layer 1 primitive</h5>
+    <p>Collaboration is a use of Relay, not a fifth block kind, not a second bus, not a new scope. If the door is missing a field, that is a Layer&nbsp;1 gap on the existing door. It is not a Workforce package.</p>
+  </div>
+
+  <div class="tension">
+    <h5>Do not lift session-owned-by-workflow into Layer 1</h5>
+    <p>That sentence is a Conductor opinion. A session already carries a <code>flowKind</code> and nothing more binding. Bake workflow-ownership into the substrate and a later agent-owned channel is designed out.</p>
+  </div>
+
+  <div class="tension">
+    <h5>Do not draw Workforce as a second product</h5>
+    <p>Today it is opinions and a component. A user-product peel-off is a later maybe. The opinions stay the shared floor either way. Two install boxes on a slide is the lie this page is for.</p>
+  </div>
+
+  <div class="tension">
+    <h5>Do not date Conductor</h5>
+    <p>It stays unpublished until dogfood holds. Facing the world is a later clock with no calendar attached. A date invented here would be a promise the lab has not earned.</p>
+  </div>
+
+  <div class="note" style="margin-top:26px">
+    <span class="lbl">The one-sentence version</span>
+    <p>Prove the framework; keep the coding product in the lab; keep Workforce a component; open collaboration later as wait on the one Relay door. Three jobs. One substrate. No second product hiding in the middle.</p>
+  </div>
+</section>
+
+</main>
+</div>
+</body>
+</html>

@@ -383,9 +383,10 @@ export type OrgListOptions = {
  * - A number means "only write if the current stored version equals this"
  * - "any" means "write unconditionally" (used for creates, migrations, and
  *   system writes that fall outside the CAS retry loop)
- * - "absent" means "only write if no record exists at this id" — create-if-
- *   absent. An existing record at **any** version, including `0`, is a
- *   conflict carrying that record.
+ * - "absent" means "only write if no record exists at this id" — an existing
+ *   record at **any** version, including `0`, is a conflict carrying that
+ *   record. On `ResourceStateStore` a **tombstone is a record**, so it
+ *   conflicts too.
  *
  * ## `"absent"` is a distinct sentinel, not a re-use of `0`
  *
@@ -403,10 +404,14 @@ export type OrgListOptions = {
  *
  * Because the scope stores' `0` is taken, create-if-absent could not be
  * ported to them as a number. `"absent"` means the same thing in both
- * families and collides with neither. `ResourceStateStore` **refuses** it
- * (`assertExpectedVersion`) rather than aliasing it onto its `0`, so
- * `"absent"` never acquires a second, verb-dependent meaning on the resource
- * side's delete predicate.
+ * families — "no record exists" — and collides with neither.
+ *
+ * On the resource side that makes `"absent"` the **stricter** of two create
+ * expectations rather than a synonym for `0`: `0` admits a tombstone (which
+ * is what recreating a deleted resource needs) and `"absent"` refuses one
+ * (which is what stops a read-modify-write that never saw the resource from
+ * undoing a delete). `ResourceStateStore.delete` still refuses the word
+ * outright, so it never acquires a second, verb-dependent meaning.
  *
  * Two consequences for anyone branching on this type:
  *  - `expectedVersion !== "any"` no longer implies `typeof === "number"`.
@@ -488,9 +493,9 @@ export interface DeltaStoreOps<TRecord> {
 
   /**
    * Append `values` (in order) to the array at `path` inside `state`. Treats
-   * a missing value as an empty array; throws via the adapter's normal error
-   * surface if the existing value is non-array. Other record fields are
-   * preserved unchanged.
+   * a missing key as an empty array; throws via the adapter's normal error
+   * surface if a value is already present and is not an array, including
+   * `null`. Other record fields are preserved unchanged.
    */
   pushToArray?(
     id: string,
@@ -1001,6 +1006,8 @@ export type VersionedResourceState = {
  *
  *  - **`expectedVersion: 0` means "no live row"** — it is create-if-absent,
  *    and it is satisfied by a tombstoned key as well as a never-existed one.
+ *    `"absent"` is the stricter form and is refused by a tombstone, which is
+ *    how a write that never observed the key is kept from undoing a delete.
  *  - **Some conflicts are terminal, not retryable.** A conflict against a
  *    tombstone must not be retried into a resurrection, and a losing
  *    create-if-absent must not be retried into an overwrite. Callers drive
@@ -1017,14 +1024,20 @@ export type VersionedResourceState = {
  * | Version | First create writes `1`; each committed write bumps by 1; **never reused**. A recreate continues from the tombstone's version + 1 |
  * | `delete` | Retains the version, drops the payload (stores `{}`), marks `deleted`. The version is the only thing a tombstone carries |
  * | `deleteAll` | Bulk-marks every live key in the scope `deleted`. A scope operation, so it takes no expected version |
- * | Retention | **Tombstones are retained indefinitely, in every scope.** Nothing reclaims one, and nothing here depends on anything ever doing so |
+ * | `purgeTombstones` | Removes the scope's tombstoned rows outright and touches no live one. The only operation that reclaims a tombstone, and the one a scope's **re-creation** performs |
+ * | Retention | **The store never reclaims a tombstone on its own** — no sweep, no TTL, in any scope. Only an explicit `purgeTombstones` removes one |
  * | Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
  * | Version domain | A numeric `expectedVersion` must be a **non-negative integer**. Negative, fractional, `NaN` and `Infinity` **throw** — a programming error, not a lost race, so it is never folded into a conflict |
  *
- * Retention is what closes the delete/recreate ABA: because a tombstone keeps
- * its version, an observer holding a pre-delete version never matches the row
- * that replaces it. A tombstone that is never removed is always sound — it
- * costs one row and can never resurrect anything.
+ * Retention is what closes the delete/recreate ABA **within one incarnation of
+ * a scope id**: because a tombstone keeps its version, an observer holding a
+ * pre-delete version never matches the row that replaces it. Nothing ages a
+ * tombstone out, so that guarantee does not weaken with time.
+ *
+ * It is `purgeTombstones` — and only that — which gives those versions back,
+ * which is why it is not something teardown does. See its own doc for the
+ * trade it makes and why a scope's re-creation is the one caller entitled to
+ * make it.
  *
  * ## Per-adapter guarantee
  *
@@ -1051,6 +1064,9 @@ export interface ResourceStateStore {
    * - A number writes only when the current **live** version equals it.
    * - `0` is create-if-absent: it succeeds when there is no live row
    *   (never existed, or tombstoned) and conflicts against a live one.
+   * - `"absent"` is the stricter create: it succeeds only when there is no
+   *   row **at all**, so a tombstone conflicts. Pass it when the write must
+   *   not be the thing that brings a deleted key back.
    * - `"any"` writes unconditionally — the opt-out, and the posture every
    *   caller that has not adopted CAS passes explicitly.
    *
@@ -1134,6 +1150,62 @@ export interface ResourceStateStore {
    * predicate.
    */
   deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
+
+  /**
+   * Remove a scope instance's **tombstoned** rows outright, so each of those
+   * keys reads as one that was never written. Live rows are not touched, and
+   * a scope with no tombstones is unchanged.
+   *
+   * This is **not** teardown; `deleteAll` is. This is what a scope's
+   * **re-creation** calls, and the two differ on exactly what `"absent"`
+   * tests for. After `deleteAll` a deleted key is still a row, so a write from
+   * a context that never saw it live is refused and a delete stays deleted.
+   * After this, there is no row, so such a write creates the key.
+   *
+   * Both are needed because scope ids are caller-supplied and reusable. A
+   * session id like `chat-42` can be deleted and used again, and the session
+   * store keeps no tombstone of its own, so the id really is free. Without
+   * this at that point the dead incarnation's tombstones outlive it and make
+   * every **static** resource in the new one permanently unwritable — a static
+   * `ResourceRef` has no create-if-absent verb to escape through, unlike a
+   * collection instance.
+   *
+   * Why tombstones only, rather than the whole scope: a tombstone's only
+   * effect is to refuse writes, so removing one when it has stopped applying
+   * costs nothing. A live row is data. State written under a scope id before
+   * that scope's record exists is a real pattern — pre-seeding, and a
+   * partially-failed teardown — and a blanket purge would silently delete it
+   * on the next create.
+   *
+   * The trade, stated rather than implied: a purged key's version restarts at
+   * `1`, so a straggler from the previous incarnation holding version `N` can
+   * match a row in the new one. Two things keep that narrow. It opens only
+   * once a scope has been deliberately re-created under a reused id — never
+   * during the delete itself, where retention still holds. And it is the same
+   * residual `deleteAll` already documents: separating incarnations rather
+   * than merely detecting them needs a scope generation, not a per-key
+   * predicate.
+   *
+   * Callers own the ordering, and it matters: a caller that reclaims on scope
+   * creation must reclaim **first** and create second. There is no transaction
+   * across the two stores, so a create that commits ahead of a reclamation
+   * which then fails leaves a live scope over intact tombstones with nothing
+   * left to retry it — the permanent version of the very bug this closes.
+   * Reclaiming first commits nothing until it has succeeded, and reclaiming
+   * twice is a no-op.
+   *
+   * That order has its own known limit, and it is not a small one. A caller
+   * that reclaims and then loses the create has removed tombstones under a
+   * scope somebody else owns, and a later ordinary write at `"absent"` — which
+   * is what every fresh context sends for a key it holds no version for — then
+   * finds no row and recreates the key. Checking for an existing record first
+   * narrows this to a true create race but cannot close it; only a **scope
+   * generation** can, which is tracked and specced as FIX-1000 ("A create
+   * racing session deletion lands in a purged, caller-reusable scope — fence
+   * the scope generation"). Callers must know they are choosing between that
+   * and the permanent brick the other order causes.
+   */
+  purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }
 
 /**

@@ -32,10 +32,10 @@ import {
 } from "@flow-state-dev/core";
 import type { ErrorItem } from "@flow-state-dev/core/items";
 import {
-  isCollectionConfig,
   type ResourceChangeDelta,
   type ResourceSeamChangeType,
 } from "./resource-registry";
+import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import type { ExecutionContext } from "./types";
 import { executeBlock } from "../execution/executeBlock";

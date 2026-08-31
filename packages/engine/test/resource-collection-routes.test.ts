@@ -473,3 +473,62 @@ describe("delete collection item route — conflict before ContentStore is touch
     expect((await del(ctx, "ghost")).status).toBe(200);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Create route — the seeded row must clear the same bar as every other write
+// ---------------------------------------------------------------------------
+
+/**
+ * FIX-1260, second path (BP-035). `handleCreateCollectionItem` is the only
+ * route in the engine that writes resource state, and it seeded its row from a
+ * bare `safeParse` beside the guard the registry's write verbs go through. So a
+ * schema the registry refuses could still be seeded over HTTP, and the row it
+ * left behind rejected every later mutation.
+ *
+ * Both cases assert on the absence of the persisted row, not just the status:
+ * the bug's whole signature is a 201 with a bad row under it.
+ */
+describe("create collection item route — the seeded row clears the write bar", () => {
+  /** Adds one to `n` on every pass, so its own output never parses back. */
+  const unstableSchema = z.object({ n: z.number().default(0).transform((v) => v + 1) });
+
+  /** Nothing fills `title`, so `{}` — all the route can seed — fails outright. */
+  const unseedableSchema = z.object({ title: z.string() });
+
+  it("refuses a create whose schema cannot parse its own seed back", async () => {
+    const ctx = await setupCtx(FULL_GRANTS, { stateSchema: unstableSchema });
+
+    const response = await create(ctx, "a");
+
+    expect(response.status).toBe(400);
+    expect((await response.json()) as { error: string }).toMatchObject({
+      error: expect.stringContaining("notes/a"),
+    });
+    // The row is what matters. Before this guard the route answered 201 and
+    // stored `{ n: 1 }` — a live, listable item every later mutation rejected.
+    expect(await storedState(ctx)).toBeUndefined();
+  });
+
+  it("refuses a create whose schema rejects the empty seed", async () => {
+    // The route has no way to supply initial state, so this collection cannot
+    // be created over HTTP at all — which is the honest answer. It previously
+    // fell back to `{}` and stored a row that failed its own schema.
+    const ctx = await setupCtx(FULL_GRANTS, { stateSchema: unseedableSchema });
+
+    const response = await create(ctx, "a");
+
+    expect(response.status).toBe(400);
+    expect(await storedState(ctx)).toBeUndefined();
+  });
+
+  it("still seeds an ordinary defaulting schema", async () => {
+    // The control. A schema whose parse settles must keep creating normally,
+    // defaults and all — otherwise the guard above is just a ban on `.default()`.
+    const ctx = await setupCtx(FULL_GRANTS, {
+      stateSchema: z.object({ title: z.string().default("untitled"), n: z.number().default(0) }),
+    });
+
+    expect((await create(ctx, "a")).status).toBe(201);
+    expect((await storedState(ctx))?.state).toEqual({ title: "untitled", n: 0 });
+  });
+});

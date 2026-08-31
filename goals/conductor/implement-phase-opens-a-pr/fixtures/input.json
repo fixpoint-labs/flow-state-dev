@@ -1,0 +1,6 @@
+{
+  "issue": "FIX-1219",
+  "phase": "implement",
+  "epic": "harness-manager",
+  "job": "The header comment on the scheduled dispatch path states the auth and idempotency steps in the wrong order relative to what the code does. Read the code, correct the comment so it matches, and change nothing else. Then commit on the current branch and open a pull request for it."
+}
