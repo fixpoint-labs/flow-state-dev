@@ -1,4 +1,4 @@
-# Design — one message protocol replaces Workstreams
+# Design — one message protocol replaces Workstreams and reshapes Relay
 
 **Date:** 2026-08-29 · substantially revised 2026-08-31
 **Status:** Proposal — not approved, nothing implemented.
@@ -7,6 +7,7 @@ document carried and moved off are collected in §"Considered and not taken" at
 the end, with the reason each was dropped.
 **Type:** Framework change — `@flow-state-dev/core` (flow surface, detached source), `@flow-state-dev/engine` (request host, routes), `@flow-state-dev/orchestration` (task board), `@flow-state-dev/devtool`.
 **Supersedes in effect:** the routing half of FIX-982 (P2 bindings, P3a core assembly) and FIX-999's `workstream` source naming. Keeps FIX-1068 (lineage) intact under a better name.
+**Changes an approved epic:** the Relay epic (FIX-1197) was scoped while workstreams existed. Two of its six issues merge into one verb, one is not built, and one is promoted from a supporting piece to the primitive — see §"Reconciliation with the Relay epic". **This removes work from that epic; it adds none.**
 
 ---
 
@@ -36,8 +37,17 @@ wrong. All of it is a second copy of concepts the framework already has.
 
 **This proposal deletes the second copy** — and then finds it was never the only
 one. Every arrival becomes a named entry addressed by `(type, name)`, reached by
-one verb. A spawned session becomes an ordinary session. The word "Workstream"
-stops having a referent and goes away.
+one declared block kind. A spawned session becomes an ordinary session. The word
+"Workstream" stops having a referent and goes away.
+
+**And that reaches further than workstreams.** The Relay epic (FIX-1197) is
+approved and in flight, and it was scoped against the same premise this document
+removes — that a workstream is a session you can start but cannot reach. Relay
+exists to add the reaching. Delete the premise and relay is not a subsystem beside
+the transports: it is the `internal` row of one message-type table, and its send
+verb is the same verb a spawn already uses with the session argument filled in.
+So this is not only a deletion. **It is a smaller Relay**, and §"Reconciliation
+with the Relay epic" walks its six issues one at a time.
 
 ### The symptom that makes it concrete
 
@@ -106,6 +116,41 @@ The mailroom is not a thing to build. It is a thing to stop special-casing.
 Delivery is uniform. Addressing is five special cases. This document deletes the
 last row — but deleting one of five leaves four, and all five exist for the same
 reason, so it is worth stating once.
+
+
+Drawn, because the asymmetry is the whole argument:
+
+```mermaid
+flowchart TB
+  caller["caller · HTTP MCP voice"] --> door
+  wh["webhook"] --> door
+  chat["chat"] --> door
+  sch["scheduled · cron"] --> door
+  det["startDetached"] --> door
+
+  door["host.dispatch( InboundRequestEnvelope )
+  principal · request record · stream · acceptance · concurrency
+  DELIVERY CONVERGES HERE — already built"]
+
+  door --> r["resolveActionCore — keyed on source"]
+  r --> m1["flow.actions[name]
+  author's schema"]
+  r --> m2["webhook core
+  sender's schema"]
+  r --> m3["chat event core
+  protocol's schema"]
+  r --> m4["schedule core
+  framework's schema"]
+  r --> m5["workstream core · terminal
+  board's schema"]
+
+  m1 --> one["one inbox — typed entries
+  who owns the schema · who may address it"]
+  m2 --> one
+  m3 --> one
+  m4 --> one
+  m5 -.->|deleted| gone["✕"]
+```
 
 **They exist because for four of them the input schema is not the author's.** A
 webhook carries what the sender sends; a schedule carries a fire event; a task
@@ -390,6 +435,39 @@ the tool.
 the task wrapper and every transport adapter dispatch. That is the same shape
 `host.dispatch` has today — real, used, and not author-facing.
 
+
+One action fanning into four kinds of work, with only one of them using a verb at
+all:
+
+```mermaid
+flowchart TB
+  subgraph R1["REQUEST 1 · SESSION A · FLOW A"]
+    entry["user.analyze
+    entry — type known statically"] --> seq["sequencer"]
+    seq --> bg["dispatcher
+    type: internal"]
+    seq --> drain["board.drain"]
+    drain --> inline["inline worker · block
+    never leaves request 1"]
+    drain --> rows[("rows · a resource
+    durable")]
+    drain --> ho["dispatcher
+    type: task"]
+  end
+
+  bg --> S2["SESSION B · REQUEST 2
+  internal.status
+  nothing minted — delivery ack only"]
+  ho --> S3["SESSION C · REQUEST 3 · FLOW B
+  task.work
+  the row is the outcome ack"]
+```
+
+The background branch and the handed-off task differ only in message type, and the
+type is what decides whether a durable row is minted. The inline worker is the
+reminder that not every task becomes a request: it runs inside the drain that
+claimed it, so the row settles with nothing dispatched.
+
 ### The board is the only thing that mints rows
 
 A `task` message is the one type that carries a claim. Rows are minted by a task
@@ -446,20 +524,19 @@ The third seat is a **dispatcher**:
 |---|---|---|
 | Inline block | `summarize: summarizeBlock` | in the claiming request |
 | Tool | any roster tool key | directly, no model turn |
-| **Dispatcher** | `implement: dispatchTo("task", "implement")` | **its own session** |
+| **Dispatcher** | `implement: implementDispatcher` | **its own session** |
 
-`dispatchTo(type, target, opts?)` is shorthand for the `dispatcher({ … })` above —
-a factory returning a dispatcher block, so a roster seat is an ordinary block like
-the other two.
+All three seats are blocks. A dispatcher seat holds the `dispatcher({ … })` value
+declared above — there is no second spelling and no roster-only shorthand.
 
 ```ts
 const board = taskBoard({
   boardId: "issue-work",
   collection: workBoardCollection,
   workers: {
-    summarize: summarizeBlock,                    // inline — unchanged
-    implement: dispatchTo("task", "implement"),   // hands off
-    review:    dispatchTo("task", "review"),
+    summarize: summarizeBlock,     // inline — unchanged
+    implement: implementDispatcher, // hands off, per-task session
+    review:    reviewDispatcher,
   },
 });
 ```
@@ -475,64 +552,116 @@ build-time check the collapse would otherwise lose. See §"The typed entry".
 detached by being a dispatcher; locality stops being an axis to configure and
 becomes a property of the seat.
 
-### Session reuse: the handle is a field on the row
+### Where a worker's tasks land: one session or many
 
-A worker whose follow-up belongs in the same session names it when filing:
+A dispatcher decides this, and it is a policy rather than a per-call argument:
+
+```ts
+const implement = dispatcher({
+  name: "implement",
+  type: "task",
+  target: "implement",
+  session: "per-task",        // default
+});
+```
+
+| `session` | Each task gets | Use when |
+|---|---|---|
+| `"per-task"` *(default)* | a freshly derived session | work is independent — a checkout per issue, a run per row. Parallel-safe by construction |
+| `"per-worker"` | one long-lived session for every task this dispatcher sends | the worker accumulates context worth keeping — a reviewer that should remember what it already flagged |
+| `(row) => key` | one session per derived key | the natural grain is neither: one per issue across phases, one per epic |
+
+This is a policy over machinery that exists. `deriveChildSessionId` already derives
+from a seed and a topic/key; the three options are three seeds, not three
+mechanisms.
+
+**A row may still override.** A worker handing off inside its own checkout names
+its session explicitly when it files, and that wins over the policy:
 
 ```ts
 // Inside the `implement` worker, after opening a PR.
-await ctx.tasks.file({
+await ctx.cap.issueWork.addTask({
   assignee: "review",
   input: { pr: pr.url },
   session: ctx.sessionId,      // ← continue in THIS session
 });
 ```
 
-Omit `session` and the follow-up gets a fresh child derived the usual way. Pass it
-and the next drain routes that row back into the session that filed it — same
-checkout, same conversation, same resources. The board resolves it at dispatch,
-handing `session` straight to the verb.
+**Filing goes through the board's capability, not an ambient `ctx` method.**
+`addTask` is already `ctx.cap.<name>.addTask({...})` (`task-board/capability.ts:9`),
+alongside `addTasks`/`getTask`/`listTasks`/`countTasks`, and the capability threads
+`TInput` so a mismatched payload fails to compile. There is no `ctx.tasks` — an
+ambient filing method would be the same mistake as an ambient dispatch method, one
+layer over.
 
-Two rules the reuse path owes, both from review:
+**`per-worker` plus `queue` is the channel shape.** One session, arrivals
+serialized in order — which is the same construction §"Sessions can be named"
+describes, reached from the other side.
 
-- **Same lineage.** `lineageId` is stamped at creation and never rewritten, so a
-  handle from another lineage would write this run's `sharedToLineage` resources
-  into someone else's bucket. Refuse a handle whose lineage differs from the
-  caller's. Not free: `defineTaskCollection` accepts `user`/`org` scope, where
-  "the ledger already spans every session the principal touches" — so two sessions
-  can drain one board and a row's handle can name a sibling's child.
-- **Parentage is immutable.** `GET /sessions/:id/children` keys on
-  `parentSessionId`. Set it at creation and leave it; mutable parentage makes the
-  listing stop being historical.
+### Concurrency: three limits, and the one that is missing
 
-**This is the resume conductor is missing.** Its README: *"No resume. Conductor
-starts runs; it does not continue one across a wait… the association a resume
-reads from is a typed field on the task."* This is that field, in the substrate
-rather than bolted onto one lab's task type.
+Three separate things bound how much runs at once, and they are easy to conflate.
+
+| Limit | Where it lives | What it bounds | Default |
+|---|---|---|---|
+| Worker pool | `taskBoard({ concurrency })` | parallel workers **across the whole board** | 4 |
+| Add burst | `taskBoard({ maxPending })` | rows added while others are `pending` | 100 |
+| Entry arbitration | `flow.<type>.actions.<name>.concurrency` | competing dispatches **on one key** | `allow` |
+
+**"Max 2 `implement` workers" is not expressible today, and that is worth knowing
+before this design leans on it.** Board `concurrency` is a pool size for the whole
+board — `.forEach({ maxConcurrency })` over one worker set — so setting it to 2
+caps *every* assignee, not one. Entry arbitration does not fill the gap either:
+under the default `per-task` session policy every dispatch carries a different
+session, so a session-keyed policy has nothing to serialize.
+
+What the existing surface *can* express:
+
+- **Board-wide cap** — `concurrency: 2`. Bounds everything, which is often what a
+  rate-limited backend actually wants.
+- **One at a time for an entry** — a custom `ConcurrencyKey` returning a constant
+  (`() => "task:implement"`) with `queue`. `ConcurrencyKey` already accepts a
+  function, so this needs no new mechanism.
+- **One at a time per session** — the default session key, which is what
+  `per-worker` and explicit reuse both produce.
+
+What it cannot: **max-N for one entry.** The arbiter is built on
+`keyed-async-gate`, a mutex — one holder per key. Max-1 falls out; max-2 needs a
+counting semaphore. That is a real addition, not a config, and this document does
+not propose it. Noted so that a spec which assumes per-worker limits knows it is
+proposing the semaphore too.
 
 ### Within a skill
 
-A skill's roster gains the same seat. Agents stay inline; work needing its own
-session, checkout, or long-running conversation names a task entry:
+A skill declares **one list: which registered workers it may assign to.** Not
+`agents` plus `tasks` plus `allowed-tools` — those were three lists describing one
+fact, and each carried its own inline definition, so a skill could mint a worker
+nobody else could see.
 
 ```yaml
 # SKILL.md
-agents:
-  - name: reviewer
-    prompt-ref: ./prompts/reviewer.md
-tasks:
-  - implement          # a task entry on the flow this skill is bound into
+workers: [reviewer, implement]
 ```
+
+The names resolve in the registry. Whether `reviewer` is a prompt-driven agent
+running inline and `implement` a dispatcher handing off to its own session is the
+registry's business, not the skill's — the skill states only what it is permitted
+to assign.
 
 ```ts
-await addTask({ assignee: "implement", input: { issue: "FIX-1219" }, deps: [] });
-await addTask({ assignee: "reviewer",  input: { issue: "FIX-1219" }, deps: [implementId] });
-await runBoard();
+await ctx.cap.issueWork.addTask({ assignee: "implement", input: { issue: "FIX-1219" }, deps: [] });
+await ctx.cap.issueWork.addTask({ assignee: "reviewer",  input: { issue: "FIX-1219" }, deps: [implementId] });
 ```
 
-The generator does not know or care that `implement` hands off and `reviewer` runs
-inline. It assigns a name; the seat type decides where the work happens — the same
-indifference the board already gives agents and tools.
+The generator does not know or care which is which. It assigns a name; the seat
+type decides where the work happens — the same indifference the board already
+gives agents and tools.
+
+**Two things this collapses.** Inline agent definitions go away: a skill that wants
+a worker registers it, so the same worker is reachable from a board, another skill,
+or a flow, and there is one place it is defined. And `allowed-tools` stops being a
+separate axis — a tool is a registered worker like the others, so "what may this
+skill assign to" has one answer instead of three.
 
 ### Cross-flow is phase 2
 
@@ -541,7 +670,7 @@ guards in *What gets more complicated* come due:
 
 ```ts
 workers: {
-  implement: dispatchTo("task", "implement", { flow: reviewFlow }),   // phase 2
+  implement: dispatcher({ type: "task", target: "implement", flow: reviewFlow }), // phase 2
 }
 ```
 
@@ -569,9 +698,9 @@ const board = taskBoard({
   boardId: "conductor",
   collection: workBoardCollection,
   workers: {
-    spec:      dispatchTo("task", "spec"),
-    implement: dispatchTo("task", "implement"),
-    review:    dispatchTo("task", "review"),
+    spec:      specDispatcher,
+    implement: implementDispatcher,
+    review:    reviewDispatcher,
   },
 });
 ```
@@ -630,7 +759,7 @@ construction rather than registration. The residual cost is different and
 smaller: `flow.task.actions` keys and the board's roster keys are two
 declarations of one fact.
 
-**The dispatcher kind closes most of it.** A `dispatchTo("task", name)` seat is a
+**The dispatcher kind closes most of it.** A dispatcher seat is a
 dispatcher block, and `defineFlow`'s walk verifies that every dispatcher's target
 resolves. What remains uncovered is the inverse — a task entry no seat names —
 which is dead configuration rather than a runtime failure.
