@@ -299,9 +299,7 @@ See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for th
 
 ### `fsdev migrate` — Run a one-time store repair
 
-Applies a repair to the stores your committed `fsdev.config.*` resolves, so it reaches the real data rather than a scratch registry. One subcommand per repair, run by an operator when a release asks for it.
-
-Deliberately not a startup hook: a sweep that fires on every cold start scans the whole store for one deploy's worth of benefit, and gives you no way to see what it did.
+Applies a repair to the stores your committed `fsdev.config.*` resolves, so it reaches the real data rather than a scratch registry. One subcommand per repair. Nothing runs it for you; an operator runs it when a release asks for it.
 
 ```bash
 # Classify sessions recorded before session kinds existed
@@ -311,7 +309,7 @@ fsdev migrate session-kind
 fsdev migrate session-kind --tenant acme
 ```
 
-`session-kind` is what makes [messaging](https://flow-state.dev/docs/server/session-messages) work on a deployment that already has sessions. A session recorded before that release does not say what kind it is, and messaging refuses it rather than guessing which door it should get; this classifies them.
+`session-kind` is what makes [messaging](https://flow-state.dev/docs/server/session-messages) work on a deployment that already has sessions. Messaging needs to know what kind of session it is addressing, and a session whose record does not say is refused rather than guessed at; this classifies them.
 
 Safe to run again — a session it has already classified is skipped, so a second pass over a repaired store costs reads and nothing else. That matters during a rolling deploy, where an older instance can still create an unclassified row after the scan has passed it.
 

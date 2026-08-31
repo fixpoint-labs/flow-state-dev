@@ -121,28 +121,19 @@ Over HTTP, a `reject` instead returns `409` carrying the in-flight `requestId`, 
 
 A message sent to a session ([Messaging a session](../server/session-messages.md))
 arrives as an ordinary request on the recipient, so it obeys the recipient's
-policy like anything else. Two things differ, and both are worth knowing before
-you set a key on a flow that receives messages.
+policy like anything else.
 
 **A queued delivery waits as long as it has to.** An ordinary queued request
 gives up after thirty seconds, because a caller is holding a connection at the
 other end and a stalled request is worse for them than a refused one. Nobody is
-holding a connection behind a message, so it waits instead — the trade being that
-deliveries pile up behind a held key and then all run in a burst when it frees.
-That is deliberate: never dropping a message is the property, and a burst is what
-it costs. If you have a key that is held for a long time and a sender that emits
-often, you will see the burst before you see anything else.
+holding a connection behind a message, so it waits instead. Deliveries pile up
+behind a held key and then all run in a burst when it frees. If you have a key
+that is held for a long time and a sender that emits often, you will see the
+burst before you see anything else.
 
 **A busy recipient under `reject` refuses by name.** The send comes back
 `recipient-busy` rather than throwing, so the sender can decide whether to try
-again — which is the same shape every other messaging refusal takes.
-
-There is also a case you cannot hit yet but will: waiting for a reply is
-incompatible with a key the *sender itself* holds, because the reply can only
-come from a delivery that is queued behind the sender's own request. That
-combination will be refused at the moment of sending rather than discovered as a
-timeout. Two ways out — send without waiting, or narrow the key so the sender and
-the recipient do not share one.
+again. That is the shape every other messaging refusal takes.
 
 ## Coming next
 

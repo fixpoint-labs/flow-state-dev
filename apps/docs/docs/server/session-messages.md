@@ -5,8 +5,8 @@ sidebar_label: Messaging a session
 
 # Messaging a session
 
-A background job that hits a question has two exits: finish on a stale brief, or
-fail. Neither is what you want when the thing it needs is one sentence from the
+A background job that hits a question can only finish on a stale brief or fail.
+Neither is what you want when the thing it needs is one sentence from the
 conversation that started it.
 
 Messaging closes that. A session — the record the framework keeps for one
@@ -30,7 +30,7 @@ await ctx.requestHost.sendMessage({
 })
 ```
 
-The call resolves once the system has **accepted** the message — not once the
+The call resolves once the system has **accepted** the message, not once the
 recipient has run it. What comes back is the delivery's own request id:
 
 ```ts
@@ -64,31 +64,29 @@ defineFlow({
 ```
 
 Each binding carries its handler block inline plus an `input` mapper. `m` is the
-inbound message — `{ kind, payload, from }` — and the mapper turns it into
+inbound message (`{ kind, payload, from }`), and the mapper turns it into
 whatever the handler takes. A binding never appears in `flow.actions`, so
 declaring one does not put a new endpoint on your HTTP surface.
 
 The mapper's result is validated against the binding's schema exactly the way a
-request body would be, so a message carrying the wrong shape fails at the door
-rather than inside the handler.
+request body would be, so a message carrying the wrong shape fails before the
+handler runs.
 
-### Falling through to a public action
+### Falling back to a public action
 
-If the flow declares no binding for a kind, a message from one top-level session
-to another can reach a public action of that name instead, and it arrives as the
-bare payload — the shape that action's own schema already describes. This is a
-convenience for peer sessions, and it is deliberately narrow:
+If the flow declares no binding for a kind, the message can reach a public action
+of that name instead, and it arrives as the bare payload, the shape that action's
+own schema already describes.
 
-- A **background job** never reaches a public action, in either direction: not
-  as the recipient, and not as the sender. Its declared bindings are the whole of
-  what it exposes and the whole of what it can reach out to. That is what keeps a
-  job's surface something its author wrote down rather than something it
-  inherited.
-- A public action declared `durable` is not reachable this way. Messages cannot
-  suspend (see below), and an action that can suspend would hang.
+A background job is not reachable by fallback and cannot reach one, in either
+direction. Its declared bindings are the whole of what it exposes and the whole
+of what it can reach.
+
+A public action declared `durable` is not reachable this way, since messages
+cannot suspend (see [Limits](#limits)).
 
 If you want a background job reachable, declare a binding. There is no setting
-that widens the fallthrough.
+that widens this fallback.
 
 ## What the recipient sees
 
@@ -97,9 +95,6 @@ recipient's next generator turn can read it and act on it. If the binding
 declares its own `userMessage`, that is what appears; otherwise the framework
 writes the kind, the sending session, and the payload's values.
 
-This matters more than it sounds. A message the recipient's next turn cannot
-recover the payload from is a message that arrived and told nobody anything.
-
 ## Where the authority comes from
 
 Who may send is decided by the server from the sending request, never from
@@ -107,12 +102,13 @@ anything written in the message. Sender identity, tenant, organization and flow
 are all read off the running request; the recipient's are read off its own
 session record.
 
-The one thing the caller supplies is the **address** — that is what an address
-is for. It is checked, not trusted: the recipient must belong to the same owner,
-the same tenant, the same organization binding, and the same flow. A session id
-that fails any of those is refused as unknown, which is deliberately the same
-answer as a session that does not exist. Telling the two apart would confirm that
-someone else's session exists.
+The one thing the caller supplies is the **address**. It is checked, not trusted:
+the recipient must belong to the same owner, the same tenant, and the same flow.
+A session id that fails any of those is refused `unknown-recipient`, the same
+answer a session that does not exist gets. You cannot tell the two apart.
+
+Organization is checked on its own. A sender and a recipient bound to different
+organizations, including one bound and the other not, is refused `org-mismatch`.
 
 ## Sending from a generator
 
@@ -128,71 +124,61 @@ const coordinator = generator({
 })
 ```
 
-A generator that does not declare it cannot see it. The tool resolves the same
-verb the programmatic call does and returns the same result, so a model reads
+A generator that does not declare it cannot see it. The tool makes the same
+`sendMessage` call your code does and returns the same result, so a model reads
 `refused: "unknown-recipient"` where your code reads it.
 
-One thing the factory handles for you: a flow-wide `tools.defaults.timeoutMs`
-short enough to fire before the send is accepted would otherwise let the retry
-wrapper start a *second* send while the first is still live, and the recipient
-would get the message twice. The factory declares its own timeout and retry so
-that cannot happen, and your other tools keep the flow defaults.
+The factory sets its own timeout and retry. A flow-wide `tools.defaults.timeoutMs`
+does not apply to it; your other tools keep the flow defaults.
 
-## Two things messages will not do
+## Limits
 
-**They do not suspend.** A message handler that calls `ctx.suspend()` is refused
-at that call. A message has no caller-facing entry, so it has no caller-facing
-way back in — a suspended one could never be resumed, and refusing is better than
-hanging.
+**Messages do not suspend.** A message handler that calls `ctx.suspend()` is
+refused at that call. A message has no caller-facing entry, so it has no
+caller-facing way back in, and a suspended one could never be resumed.
 
-**They do not run on a queue-backed deployment.** If your dispatcher hands work
-to an external queue, a send is refused `external-dispatcher` rather than
-half-working: the delivery would not be subject to the recipient's concurrency
-policy, and the routing decision the send made would have nothing on the other
-side enforcing it. This is a refusal we expect to lift, and lifting it will be a
-deliberate change rather than a flag.
+**Messages do not run on a queue-backed deployment.** If your dispatcher hands
+work to an external queue, a send is refused `external-dispatcher`.
 
 ## Waiting for a reply
 
-Not available yet. `mode: "waitForResponse"` is refused `mode-not-available`
-today; it lands in a following release along with a way to ask what became of a
-delivery you sent.
+Not available yet. `mode: "waitForResponse"` is refused `mode-not-available`.
 
 ## Concurrency
 
 A message obeys the recipient's declared [concurrency
-policy](/advanced/concurrency-policies). Under `queue`, deliveries wait behind
-the key and all run when it frees — none is dropped. Under `reject`, a send to a
-busy recipient comes back `recipient-busy`.
+policy](../advanced/concurrency-policies.md). Under `queue`, deliveries wait
+behind the key and all run when it frees; none is dropped. Under `reject`, a send
+to a busy recipient comes back `recipient-busy`.
 
-A flow that declares no concurrency policy — the default — is unaffected.
+A flow that declares no concurrency policy runs deliveries as they arrive.
 
 ## Existing sessions
 
-Sessions created before this release do not record what kind of session they are,
-and messaging refuses them rather than guessing which door they should get. Run
-the classification once:
+Messaging needs to know what kind of session it is addressing, and a session
+whose record does not say is refused rather than guessed at. One command
+classifies them:
 
 ```
 fsdev migrate session-kind
 ```
 
-It is safe to run again — a session it has already classified is skipped — and it
-reports anything a concurrent writer held throughout, which a second run
-generally resolves.
+It is safe to run again, since a session it has already classified is skipped. A
+session that a concurrent writer held throughout is reported by id and the
+command exits `1`; run it again to resolve those.
 
 ## Refusals
 
 | Name | What happened |
 |---|---|
-| `unknown-recipient` | No such session, or one under another owner, tenant, organization or flow |
-| `org-mismatch` | Sender and recipient disagree on organization binding |
+| `unknown-recipient` | No such session, or one under another owner, tenant or flow |
+| `org-mismatch` | Sender and recipient are bound to different organizations |
 | `no-relay-door` | The recipient's flow declares neither a binding nor a public action of that kind |
-| `recipient-not-addressable` | A door exists but this pair may not use it — or one of the two sessions predates classification |
-| `durable-action` | The fallthrough landed on a public action declared `durable` |
+| `recipient-not-addressable` | One end is a background job, or one end's record does not say what kind of session it is |
+| `durable-action` | The fallback landed on a public action declared `durable` |
 | `recipient-busy` | The recipient's own `reject` concurrency policy |
 | `external-dispatcher` | The effective dispatcher is external |
+| `no-send-operation` | This process runs requests but was not set up to dispatch one, so there is nothing to send through |
 | `no-durable-sender` | The sending request named no session, so nothing could ask about the delivery later |
 | `mode-not-available` | `waitForResponse`, which has not shipped |
 | `invalid-timeout` | A `timeoutMs` that is not a finite integer in the supported range |
-| `key-collision` | The delivery would queue behind a concurrency key the sender itself holds |

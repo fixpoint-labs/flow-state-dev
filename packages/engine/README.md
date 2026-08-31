@@ -398,10 +398,11 @@ once the recipient has run it, and hands back the delivery's request id. Every
 refusal is a returned `{ ok: false, refused }`, never a throw.
 
 Who may send is decided from the running request. The recipient locator is the
-one caller-supplied value, and it is checked rather than trusted: owner, tenant,
-org binding and **flow kind** must all match, and any mismatch answers
-`unknown-recipient` — the same code a session that does not exist gets, so the
-check is not an existence oracle.
+one caller-supplied value, and it is checked rather than trusted: owner, tenant
+and **flow kind** must all match, and a mismatch on any of them answers
+`unknown-recipient`, the same code a session that does not exist gets. A
+recipient bound to a different organization than the sender, including one bound
+and the other not, answers `org-mismatch`.
 
 A flow declares what it accepts with a `relay` group, a sibling of `webhooks`:
 
@@ -413,19 +414,20 @@ defineFlow({
 ```
 
 A binding carries its handler inline and never enters `flow.actions`. With no
-binding for a kind, a message between two caller-addressable sessions falls
-through to `flow.actions[kind]` and arrives as the bare payload; a **detached**
-session neither exposes its public actions to a message nor reaches a peer's.
+binding for a kind, a message falls back to `flow.actions[kind]` and arrives as
+the bare payload. A **background job** is outside that fallback in both
+directions: it neither exposes its public actions to a message nor reaches a
+peer's.
 
 The delivery is an ordinary request stamped `source: "relay"`, carrying its
 coordinate on `metadata.relay`. Read that bag only behind the `source` check —
 `metadata` is caller-writable on an ordinary request and `source` is not.
 
-Session records carry `sessionKind` for this, and a record written before it
-existed is **refused** rather than guessed at. `backfillSessionKind(stores)`
-repairs them, and `fsdev migrate session-kind` is the operator entry point.
+Session records carry `sessionKind` for this, and a record that does not carry
+one is **refused** rather than guessed at. `backfillSessionKind(stores)` repairs
+them, and `fsdev migrate session-kind` is the operator entry point.
 
-Generators reach the same verb through `relaySendTool()` from
+Generators make the same call through `relaySendTool()` from
 `@flow-state-dev/core`, added to one generator's `tools`.
 
 See [Messaging a session](https://flow-state.dev/docs/server/session-messages)
