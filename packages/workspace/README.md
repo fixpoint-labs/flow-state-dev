@@ -64,6 +64,7 @@ After `hydrate`, `/tmp/run-42/artifacts/notes.md` holds whatever the `artifacts`
 | `deleted` | The run removed a file the projection owned, and nobody else had changed it. |
 | `orphan` | A file written outside every writable mount. Reported, never guessed into a collection. |
 | `conflict` | Two writers, one path. Nothing was written. |
+| `readonly` | A single-path `put` under a read-only mount. Nothing was written, and a retry won't change that. |
 
 A conflict is an outcome of a flush that *succeeded*. Everything uncontested still landed; the contested path was left exactly as both writers left it. The report hands you three hashes so you can say why:
 
@@ -203,7 +204,9 @@ if (outcome?.kind === "conflict") {
 
 It's not a shortcut for `flush`. A full flush would walk everything to learn one thing, and a projection holding no baseline would report every pre-existing file in the place as new. `put` takes ownership of the path, so a later flush can delete it if the run removes it.
 
-It resolves `undefined` when there's nothing to decide: a read-only mount, or a collection's own metadata.
+It resolves `undefined` only when there's genuinely nothing to decide — a collection's own metadata.
+
+A read-only mount is not that case. A flush passes over one because it holds no baseline there and can't tell an edit from what it laid down itself, but `put` was handed one path and asked to persist it, so it answers `readonly` with the mount's prefix. Relay that as a refusal: unlike `conflict` and `contested`, which clear once the other writer is done, this one never does.
 
 ## License
 

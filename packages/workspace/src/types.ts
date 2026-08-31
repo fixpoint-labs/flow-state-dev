@@ -134,6 +134,18 @@ export type FlushOutcome =
    */
   | { kind: "orphan"; path: string }
   /**
+   * The path is under a read-only mount, so nothing was saved and nothing ever
+   * will be.
+   *
+   * **Only `put` produces this**, because only `put` was handed one path and
+   * asked to persist it; a flush keeps no baseline on a read-only mount and so
+   * cannot tell an edit from what it laid down itself.
+   *
+   * Unlike `contested` and `conflict` it never clears on a retry, and a caller
+   * relaying it should say so rather than inviting the write again.
+   */
+  | { kind: "readonly"; path: string; prefix: string }
+  /**
    * Another live projection is writing this path, so this one did not.
    *
    * Distinct from `conflict`, and the difference is who the other writer is.

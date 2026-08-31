@@ -1178,16 +1178,57 @@ describe("createBashBlocks", () => {
 
     const ctx = buildCtx("ro-1", { org: { skills } });
     await runForTest(bashCommand, { command: "ls" }, ctx);
-    await runForTest(bashWriteFile, 
-      { path: "skills/foo/SKILL.md", content: "EDITED" },
-      ctx,
-    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let result: { success: boolean; refused: string | null };
+    try {
+      result = (await runForTest(
+        bashWriteFile,
+        { path: "skills/foo/SKILL.md", content: "EDITED" },
+        ctx,
+      )) as { success: boolean; refused: string | null };
+    } finally {
+      warn.mockRestore();
+    }
 
     // Local edit visible in sandbox.
     expect(sandbox.files.get("/workspace/skills/foo/SKILL.md")).toBe("EDITED");
     // But the resource stays untouched.
     expect(await skills.getOptional("foo/SKILL.md")).toBeDefined();
     expect(await (await skills.getOptional("foo/SKILL.md"))!.readContent()).toBe("original");
+    // And the model is TOLD. This half is the bug FIX-1284 fixed: the write
+    // above was refused and always will be, and the tool used to answer
+    // `{ success: true }` — so a model would move on believing its edit had
+    // been saved. The message has to name the mount and rule out a retry;
+    // "another run is writing it" would be a lie of a different kind.
+    expect(result.success).toBe(false);
+    expect(result.refused).toContain("skills/");
+    expect(result.refused).toMatch(/read-only/);
+    expect(result.refused).toMatch(/retrying will not/);
+  });
+
+  it("still reports success for a scratch write, which no mount was ever going to take", async () => {
+    // `isScratch` short-circuits before `put`, so this pins that ./tmp/ is not
+    // refused — not the read-only fix, which `projection.spec.ts` red-checks.
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const skills = createMockCollectionWithPattern("skills/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+      collections: [{ key: "skills", writable: false }],
+    });
+
+    const ctx = buildCtx("ro-scratch-1", { org: { skills } });
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    const result = (await runForTest(
+      bashWriteFile,
+      { path: "tmp/notes.txt", content: "scratch" },
+      ctx,
+    )) as { success: boolean; refused: string | null };
+
+    expect(result).toEqual({ success: true, refused: null });
+    expect(sandbox.files.get("/workspace/tmp/notes.txt")).toBe("scratch");
   });
 
   it("drops orphan files with a console warning (not under any mount or ./tmp/)", async () => {

@@ -69,9 +69,10 @@ export interface Projection {
    * one path, and advances the baseline so the next flush reads the write as
    * ours rather than as somebody else's.
    *
-   * Resolves `undefined` when the path is nothing for this projection to
-   * decide: a read-only mount, or a collection's own metadata. The same two
-   * cases a flush passes over without recording an outcome.
+   * Resolves `undefined` only when the path is genuinely nothing to decide —
+   * a collection's own metadata. A read-only mount used to resolve `undefined`
+   * too, which the tools read as success and relayed to the model as a saved
+   * file; it comes back as a `readonly` outcome instead.
    */
   put(path: string, content: string): Promise<FlushOutcome | undefined>;
   /**
@@ -386,8 +387,20 @@ export function createProjection({
     const routed = routePath(mounts, path);
     if (routed === undefined) return { kind: "orphan", path };
     const { mount, key } = routed;
-    if (!mount.writable) return undefined;
+    // **Metadata first, and the order is the whole point.** A `_`-prefixed key
+    // is the collection's own bookkeeping, which no projection writes under any
+    // mount — so a read-only mount does not make it a refusal, it was never
+    // going to be written. Checking writability first told a caller to find a
+    // writable mount for a key no mount accepts.
     if (isMetadataKey(key)) return undefined;
+    // `normalizePath`d for the same reason `routePath` normalizes before it
+    // compares: `Mount` is public and `createProjection` takes hand-built ones,
+    // so a prefix written `./artifacts` or `artifacts/` would otherwise reach a
+    // model as `"./artifacts/"`. In-repo prefixes come from `getPatternPrefix`
+    // and carry neither.
+    if (!mount.writable) {
+      return { kind: "readonly", path, prefix: normalizePath(mount.prefix) };
+    }
     return await claiming((holder) => decide(mount, key, path, content, holder));
   }
 

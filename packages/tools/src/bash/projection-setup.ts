@@ -180,9 +180,22 @@ export function refusalReason(outcome: FlushOutcome | undefined): string | null 
   if (outcome.kind === "contested") {
     return `"${outcome.path}" is being written by another run — the write was NOT applied.`;
   }
+  if (outcome.kind === "readonly") {
+    // Says "will not" where the others say "was not". The other refusals clear
+    // once the other writer is done, so a model retrying them is doing the
+    // right thing; this one never clears, and a model that keeps retrying it
+    // burns the run.
+    return `"${outcome.path}" is under "${outcome.prefix}/", which is read-only — the write was NOT saved, and retrying will not save it.`;
+  }
   return null;
 }
 
+/**
+ * Warn about the outcomes of a flush a caller cannot act on without being told.
+ *
+ * **No `readonly` branch:** only `put` produces one, and every door feeding this
+ * mounts `writable: true`. Add it when one can mount something read-only.
+ */
 export function warnUnsettled(outcomes: readonly FlushOutcome[]): void {
   const orphans = outcomes.filter((o) => o.kind === "orphan").map((o) => o.path);
   if (orphans.length > 0) {
