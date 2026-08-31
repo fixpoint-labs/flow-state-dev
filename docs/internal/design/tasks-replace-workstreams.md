@@ -60,6 +60,124 @@ when the caller says what it wants.
 
 ---
 
+## The message protocol
+
+**Added 2026-08-31.** This section is the frame the rest of the document sits in.
+It changes no decision below it — it names what those decisions are instances of.
+
+### The inbox already exists
+
+Every transport converges on one seam. `InboundRequestEnvelope`
+(`packages/engine/src/transports/types.ts:68`) is the single shape an adapter
+builds, and `host.dispatch` is the single door it hands it to — HTTP, chat,
+webhook, scheduled, MCP, voice, and `startDetached`, whose own header says
+reaching past `host.dispatch` is the thing not to do
+(`context/detached-start-operation.ts:18`). Principal resolution, the request
+record, streaming, acceptance and concurrency arbitration all happen once, there.
+
+Two consequences are easy to miss:
+
+- **Concurrency config is already an inbox drain policy.** `ConcurrencyFlowView`
+  is `{ actions: {…concurrency}, request: { concurrency } }` — a flow-level
+  default with a per-entry override, keyed on session, offering `allow` /
+  `queue` / `reject`. That is how the inbox drains. It reads as request config
+  only because nothing named the inbox.
+- **Cron is already a message.** The scheduled adapter builds an envelope at fire
+  time and puts it through the same door. The relay epic's issue 4 ("cron as
+  scheduled message") is therefore a naming change, not a mechanism.
+
+The mailroom is not a thing to build. It is a thing to stop special-casing.
+
+### What is not unified: routing, not delivery
+
+`resolveActionCore` is five maps keyed on `source`:
+
+| `source` | resolves | input schema owned by |
+|---|---|---|
+| *(caller)* | `flow.actions[name]` | the author |
+| `webhook` | the flow's webhook core | the sender's protocol |
+| `chat` | the chat event core | the chat protocol |
+| `scheduled` | the schedule core | the framework |
+| `workstream` | the one assembled core, **terminal** | the board |
+
+Delivery is uniform. Addressing is five special cases. This document deletes the
+last row — but deleting one of five leaves four, and all five exist for the same
+reason, so it is worth stating once.
+
+**They exist because for four of them the input schema is not the author's.** A
+webhook carries what the sender sends; a schedule carries a fire event; a task
+carries the board's dispatch payload. An action's `inputSchema` is
+author-declared, so an entry whose schema someone else owns could not live in
+`flow.actions` — and each grew its own map instead.
+
+What that actually needs is a **typed inbox entry**, not a separate map. One
+namespace; entries differ in who owns the schema and who may address them.
+
+Which settles a question this document left half-open: **`flow.tasks` is not a
+third roster seat beside `actions` and `workstream`. It is an inbox entry whose
+input schema the framework owns.** `on.webhook` is the same kind of thing. The
+seats collapse to one.
+
+### The message types
+
+| Type | Arrives from | Schema owner | Addressed by |
+|---|---|---|---|
+| user | a caller — HTTP, chat, MCP, voice | the author | `flowKind` + action |
+| webhook | an external sender | the sender | flow binding |
+| schedule | the scheduler firing | the framework | flow binding |
+| task | a board drain | the framework | `flowKind` + task name |
+| internal | a block (`ctx.dispatch`) | the author | `flowKind` + action + `session?` |
+
+An adapter is already `{ source, createBindings(host) }` — an immutable factory
+that produces routes and puts envelopes through the door
+(`transports/types.ts:339`). Formalizing the protocol means an adapter stops
+*also* inventing its own addressing convention: it declares a message type, and
+the inbox resolves it the same way for every type. The payoff is on the extension
+path — adding a transport becomes implementing a contract, rather than writing an
+adapter *and* a routing map to go with it.
+
+This is a formalization, not a new mechanism. Most of it is already true. What it
+buys is that the next transport cannot quietly add a sixth map.
+
+### An ack is two things, and only one of them is a task
+
+`DispatchHandle` already splits them, and that comment is visibly scar tissue
+(`transports/types.ts:179`):
+
+- **Delivery ack** (`accepted`) — the message is discoverable and will not
+  silently not exist. Synchronous, every message has it, costs nothing.
+- **Outcome ack** (`finished`, or a durable row) — the work settled with a
+  result, possibly many requests later.
+
+So: **needs an outcome ⇒ it is a task. Needs only delivery ⇒ nothing is minted.**
+
+That is what removes relay's separate reply plumbing. A send that expects a reply
+does not need a deliver-with-output mechanism; it needs somewhere durable to put
+the reply and something that can watch it. A board row is exactly that, and the
+board already exists.
+
+The distinction has to survive the collapse. A sender that wants nothing back
+still needs to know the letter got into the building, and a task row is the wrong
+instrument for it — durable, claimable, leased, and none of that is what a
+fire-and-forget sender asked for.
+
+### Three things the collapse must not break
+
+1. **Addressability becomes an explicit per-entry declaration.** Today
+   `workstream` is safe partly because a caller cannot stamp the source, and the
+   source is absent from `PUBLIC_REENTRY_SOURCES`. Flatten the maps and that
+   protection leaves with them. Every inbox entry declares who may address it.
+   Cheap, but part of the collapse — not a follow-up.
+2. **`resolvedActionCore` is a live escape hatch.** A dynamic schedule's core is
+   produced at dispatch time by a resolver, so it has no static coordinate to
+   resolve from. A static inbox either keeps that hatch or dynamic schedules lose
+   their path. Named now rather than discovered later.
+3. **A message's kind is the action name.** If `kind` becomes its own binding
+   table (`relay.on[kind]`), the shadow system has been deleted at one layer and
+   regrown at the next. There is no second namespace.
+
+---
+
 ## The shape
 
 Two capabilities, deliberately **not** one verb. Conflating them is what made the
@@ -76,6 +194,10 @@ A *task* is a board concept — a durable row, an assignee, a claim, a lease. Us
 the word for anything a block can start would make `tasks` a misnomer on the flow
 config. So board-less background work goes through the surface that already
 exists.
+
+Both columns are inbox entries — see **The message protocol** above. They differ
+in who owns the input schema (the author, or the framework) and who may address
+them, not in which registry they live in.
 
 ### 1. Spawning a session needs no board
 
@@ -674,6 +796,11 @@ a mailroom… what changes is who may put a message through the door, not how it
 routed once inside."* A parallel `relay.on` binding table is the one thing that
 does not follow from that premise — a private action is the same entry behind the
 same routing.
+
+**The message protocol section above generalizes this.** The epic reached the
+mailroom premise for relay specifically; it holds for every message type, and an
+internal send is one of five. Relay is not a subsystem next to the transports —
+it is the `internal` row of the same table.
 
 ### Issue-by-issue
 
