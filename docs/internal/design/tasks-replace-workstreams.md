@@ -128,24 +128,16 @@ flowchart TB
   sch["scheduled · cron"] --> door
   det["startDetached"] --> door
 
-  door["host.dispatch( InboundRequestEnvelope )
-  principal · request record · stream · acceptance · concurrency
-  DELIVERY CONVERGES HERE — already built"]
+  door["host.dispatch( InboundRequestEnvelope )<br/>principal · request record · stream · acceptance · concurrency<br/>DELIVERY CONVERGES HERE — already built"]
 
   door --> r["resolveActionCore — keyed on source"]
-  r --> m1["flow.actions[name]
-  author's schema"]
-  r --> m2["webhook core
-  sender's schema"]
-  r --> m3["chat event core
-  protocol's schema"]
-  r --> m4["schedule core
-  framework's schema"]
-  r --> m5["workstream core · terminal
-  board's schema"]
+  r --> m1["flow.actions[name]<br/>author's schema"]
+  r --> m2["webhook core<br/>sender's schema"]
+  r --> m3["chat event core<br/>protocol's schema"]
+  r --> m4["schedule core<br/>framework's schema"]
+  r --> m5["workstream core · terminal<br/>board's schema"]
 
-  m1 --> one["one inbox — typed entries
-  who owns the schema · who may address it"]
+  m1 --> one["one inbox — typed entries<br/>who owns the schema · who may address it"]
   m2 --> one
   m3 --> one
   m4 --> one
@@ -442,25 +434,16 @@ all:
 ```mermaid
 flowchart TB
   subgraph R1["REQUEST 1 · SESSION A · FLOW A"]
-    entry["user.analyze
-    entry — type known statically"] --> seq["sequencer"]
-    seq --> bg["dispatcher
-    type: internal"]
+    entry["user.analyze<br/>entry — type known statically"] --> seq["sequencer"]
+    seq --> bg["dispatcher<br/>type: internal"]
     seq --> drain["board.drain"]
-    drain --> inline["inline worker · block
-    never leaves request 1"]
-    drain --> rows[("rows · a resource
-    durable")]
-    drain --> ho["dispatcher
-    type: task"]
+    drain --> inline["inline worker · block<br/>never leaves request 1"]
+    drain --> rows[("rows · a resource<br/>durable")]
+    drain --> ho["dispatcher<br/>type: task"]
   end
 
-  bg --> S2["SESSION B · REQUEST 2
-  internal.status
-  nothing minted — delivery ack only"]
-  ho --> S3["SESSION C · REQUEST 3 · FLOW B
-  task.work
-  the row is the outcome ack"]
+  bg --> S2["SESSION B · REQUEST 2<br/>internal.status<br/>nothing minted — delivery ack only"]
+  ho --> S3["SESSION C · REQUEST 3 · FLOW B<br/>task.work<br/>the row is the outcome ack"]
 ```
 
 The background branch and the handed-off task differ only in message type, and the
