@@ -18,7 +18,7 @@
  */
 import { z, type ZodTypeAny } from "zod";
 import { transientSlot } from "@flow-state-dev/core";
-import { taskClaimTicketSchema, type Task } from "../tasks";
+import { taskClaimTicketSchema, type Task, type TaskWorkerInput } from "../tasks";
 
 /**
  * Default outer-sequencer state shape: a `tasks` record under the default key.
@@ -123,6 +123,11 @@ export type ClaimResult = {
  * structurally. Defined as a Zod schema here (instead of a bare TS
  * type) so the pattern's worker-router can declare it as `inputSchema`
  * and have the framework validate every dispatch.
+ *
+ * Because it is a declared `inputSchema`, it is also a FILTER: Zod strips
+ * every key the schema does not name, so a field the substrate packs but this
+ * object omits reaches no worker that declares it. The type-level lock below
+ * keeps the two definitions from drifting apart again.
  */
 export const taskWorkerInputSchema = z.object({
   taskId: z.string(),
@@ -134,7 +139,53 @@ export const taskWorkerInputSchema = z.object({
   feedback: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
   deps: z.record(z.unknown()).optional(),
+  // `z.unknown().optional()`, not a narrower `TaskPriorWork` mirror: the TS
+  // slot is `unknown` on purpose (a worker that never reaches for prior work
+  // shouldn't pick up the transitive type), and a structural Zod mirror would
+  // re-validate a value the board itself authored. Optional matters twice
+  // over: this schema is the gate a worker's declared input passes through,
+  // and `packWorkerInput` spreads the key CONDITIONALLY so an unselected slot
+  // is an absent key rather than a present `undefined` — the distinction the
+  // detached path's JSON-safety gate rejects by name. Zod leaves an absent
+  // optional key absent on the way out, so a board with no selection stays
+  // wire-identical.
+  priorWork: z.unknown().optional(),
 });
+
+/**
+ * Make every optional property required-but-`undefined`-able, so two shapes
+ * that differ only in which OPTIONAL keys they carry stop being mutually
+ * assignable. Plain assignability ignores a missing optional property, which
+ * is exactly the drift this file has to catch.
+ */
+type Complete<T> = { [K in keyof Required<T>]: T[K] };
+
+/** `true` only when `A` and `B` have the same keys, optionality, and value types. */
+type MutuallyAssignable<A, B> = [Complete<A>] extends [Complete<B>]
+  ? [Complete<B>] extends [Complete<A>]
+    ? true
+    : false
+  : false;
+
+/**
+ * The anti-drift lock (FIX-1288).
+ *
+ * `taskWorkerInputSchema` above and `TaskWorkerInput` in
+ * `../tasks/workers/types.ts` are two spellings of one contract, and the Zod
+ * one is load-bearing: it is what workers declare as `inputSchema`, and Zod
+ * strips whatever the schema does not name. A key added to the TS type alone
+ * is therefore a field the substrate packs and no schema-declaring worker can
+ * ever read — silently, which is how `priorWork` went missing for a release.
+ *
+ * This assignment fails to compile the moment either side gains, loses, or
+ * retypes a key. It is derived from the two definitions rather than restating
+ * them, so there is no third list to keep in sync.
+ */
+const _taskWorkerInputMirrorsTsType: MutuallyAssignable<
+  TaskWorkerInput,
+  z.infer<typeof taskWorkerInputSchema>
+> = true;
+void _taskWorkerInputMirrorsTsType;
 
 /**
  * Output of `checkBoard` — drives the worker's `loopBack` predicate, and
