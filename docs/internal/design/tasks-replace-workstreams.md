@@ -623,3 +623,122 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 6. **Migration.** Nothing is published, so there is no deployed store holding
    workstream addresses (per `state-and-scopes.md`). This can be a clean break
    rather than a dual-read. *Confirm before relying on it.*
+
+---
+
+## Reconciliation with the Relay epic (FIX-1197)
+
+**Added after the epic and its first PR were read.** Everything above was written
+before, and this section supersedes it wherever the two disagree.
+
+The relay epic ([PR #1357](https://github.com/fixpoint-labs/flow-state-dev/pull/1357),
+approved) and its first implementation ([PR #1527](https://github.com/fixpoint-labs/flow-state-dev/pull/1527),
+draft) were designed while workstreams existed — a second class of session that
+could be started but not reached. Remove that premise and three of the epic's six
+issues change shape. **None of this adds work to the epic; it removes some.**
+
+### The epic already contains `park()`
+
+> **Issue 5 — An exit/park mode for `awaiting_review` — a parked task whose
+> request may end.** *Issue 1 does not depend on issue 5.*
+
+That is the settlement mechanism this document proposes, approved and already
+scoped as independent of the send verb. Nothing new to specify.
+
+### The epic recorded the question this document answers
+
+> **Where I'm unsure:** which callers use `waitForCondition` versus
+> wake-to-a-new-request — specifically a workstream drain.
+
+**A drain parks and ends.** Something later settles the row by presenting the
+claim reference. Two of the epic's own deployment facts argue the same way: an
+expected wait holds a request open, which a hard request ceiling forbids; and
+enough blocked waiters exhaust the worker pool before recipients ever run. A
+coding run is hours, so holding a drain open is the pathological case for both.
+
+### Sibling spawn and the send verb are one verb
+
+The epic frames issue 3 as **address supply** — *"it mints the peer the send verb
+addresses."* That framing only makes sense while a workstream is a thing you mint
+separately. Without it:
+
+```ts
+ctx.dispatch({ flow, action, session? })
+//   session omitted → mint a session   (was issue 3 / startDetached)
+//   session given   → deliver into it  (was issue 1 / sendMessage)
+```
+
+Same shape as the HTTP route (`flowKind`, `actionName`, `sessionId?`), which is
+the epic's own mailroom premise honored rather than restated: *"a flow is already
+a mailroom… what changes is who may put a message through the door, not how it is
+routed once inside."* A parallel `relay.on` binding table is the one thing that
+does not follow from that premise — a private action is the same entry behind the
+same routing.
+
+### Issue-by-issue
+
+| Epic issue | Becomes | Why |
+|---|---|---|
+| 1 — address + send verb | merges | one half of the dispatch verb |
+| 2 — cross-worker wake channel *(conditional)* | **not built** | it exists only if blocking waits do; park-and-end means the drain never blocks. The epic's own alternative outcome — *"AC 4 is the whole answer and issue 2 has nothing left"* |
+| 3 — sibling spawn | **promoted** | not address supply — the spawn primitive, replacing what workstreams did |
+| 4 — cron as scheduled message | unchanged | the same verb on a schedule trigger; deferred |
+| 5 — park for `awaiting_review` | unchanged | already approved; this is `ctx.task.park()` |
+| 6 — watch | open | adjacent to the steering-checkpoint question; semantics sit below the epic doc's fold |
+
+### Same-user is an approved invariant, and it collapses the door
+
+The epic states it twice — *"relay always sends within a single user identity…
+user-to-user communication is not possible in the framework"* and *"every send is
+same-owner by design invariant."*
+
+PR #1527's door has two axes; the second requires **both ends caller-addressable**,
+so a background job neither exposes its public actions nor reaches a peer's. Under
+a same-user invariant that is not a privilege boundary — a foreground session
+reads pasted content and a background one reads a diff; neither is less trusted
+than the other, and both act as the same user. The containment surface is what
+the flow declares, not which session it runs in.
+
+**One guard has to move rather than disappear.** `relaySendTool()` puts send in a
+model's hands, and session ids are not secret — they appear in items, traces and
+prior messages. Recipient scoping belongs on the tool (an allowlist, or ids the
+block placed in state), which is where per-tool config already lives.
+
+### What this costs, stated plainly
+
+`sessionKind` in PR #1527 is not a name — it is a persisted field, a `SessionKind`
+type, a backfill sweep, `fsdev migrate session-kind`, a refusal path and eight
+tests, and the door reads it. If sibling spawn subsumes workstreams, that field
+loses its consumer. PR #1527 is a draft at ~4,900 additions across 65 files;
+raising this while it is still draft is cheaper than unwinding it after.
+
+### Relay does not steer — and was never meant to
+
+A send creates a **new** request: refused `recipient-busy` under a reject policy,
+queued behind the current one otherwise. The epic lists FIX-1179 out of scope,
+noting it *"gates steer-with-continuity, not the ask direction."*
+
+Steering needs a checkpoint the running block reads — between sequencer steps, or
+between agent turns. That is a shared-scope collection plus a convention, not a
+message layer, and it must live at a scope both parties can address (lineage,
+user or topic), because cross-session state writes do not exist by design. The
+mailbox holds pending mail; session history holds the record, so rows can be
+deleted on read.
+
+### Still open
+
+- Park's lease policy — hold (waiting on a person) vs release (waiting on a
+  child run). Unverified: whether the substrate can release a lease without
+  settling.
+- Whether `execute_action` with a `sessionId` already delivers the same
+  semantics as a relay send (input item, arbitration, incarnation check). If it
+  does, `sendMessage` is provably its in-process twin.
+- What the door's first axis protects that `private: true` on an action would
+  not.
+- Topic/project scope — try it as an org-scoped parameterized collection before
+  adding a `StorageScopeType`; whole-scope read cost decides. Note the epic's
+  own named gap, *one user with sessions in two orgs*, is adjacent.
+
+**Read against:** the epic PR body and #1527's body, not `spec/_epics/relay.md`
+itself. C1–C6 and issue 6's semantics sit below that fold and could change any of
+the above.
