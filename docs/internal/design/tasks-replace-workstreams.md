@@ -172,9 +172,184 @@ fire-and-forget sender asked for.
    produced at dispatch time by a resolver, so it has no static coordinate to
    resolve from. A static inbox either keeps that hatch or dynamic schedules lose
    their path. Named now rather than discovered later.
-3. **A message's kind is the action name.** If `kind` becomes its own binding
-   table (`relay.on[kind]`), the shadow system has been deleted at one layer and
-   regrown at the next. There is no second namespace.
+3. **There is no second namespace.** If `kind` becomes its own binding table
+   (`relay.on[kind]`), the shadow system has been deleted at one layer and
+   regrown at the next. *(Refined below: the address is `(type, name)` — one
+   key with two segments, not a name plus a parallel concept.)*
+
+---
+
+## The typed entry
+
+**Added 2026-08-31, after review.** This section records decisions taken on the
+message-protocol frame above and supersedes it where they disagree.
+
+### The address is `(type, name)`, not a bare name
+
+The section above says *"a message's kind **is** the action name."* That was
+aimed at the right target — no parallel `relay.on[kind]` binding table — but it
+stated the fix too narrowly. **The address is a pair.**
+
+```ts
+flow.user.actions.chat
+flow.internal.actions.status
+flow.scheduled.actions.dream
+flow.webhook.actions.github
+flow.task.actions.work
+```
+
+This is not the five maps returning. Those are five *mechanisms* — one of them a
+router assembled by a fixpoint graph walk — with different resolution rules and
+different failure modes. This is **one mechanism with a two-part key.** The rule
+the earlier section was reaching for survives intact: there is no second
+namespace, because `type` is the first segment of the one address rather than a
+parallel concept.
+
+**Nesting: `flow.<type>.actions`, not `flow.actions.<type>`.** The deciding
+factor is per-type config, which the second shape has nowhere to put.
+`flow.task.retries` and `flow.user.concurrency` want a home, and one already
+exists a level up: `flow.request.concurrency` is the all-types default today
+(`ConcurrencyFlowView`). So the ladder is **default → per-type → per-action**,
+which is the shape already shipped, extended by one rung.
+
+### No fallbacks — and this is a generalization, not an invention
+
+A message addressed to a type that declares no such entry is refused. It does
+not fall through to another type's map.
+
+One type already works this way: `WORKSTREAM_SOURCE` resolution is terminal, and
+an absent core is a named refusal rather than a fall-through to `flow.actions`.
+The change generalizes that rule to all five and deletes the implicit fallback
+where any non-special source lands in `flow.actions`.
+
+**The cost is deliberate: a handler reachable from two types is declared twice.**
+That is not an edge case — a chat bot serving `user.chat` and `webhook.mention`
+is the ordinary case (see the atlas's third stress test). Two entries, one block,
+and the block cannot assume which type it runs under. Which decides the next
+question.
+
+### The typed envelope lives at the entry, not on `ctx`
+
+Since a shared block may be entered from two types, `ctx.task` cannot be
+non-optional. Three shapes were considered:
+
+| | |
+|---|---|
+| `ctx.task?` everywhere | honest, but every task worker null-checks a field it certainly has |
+| `ctx.as("task")`, throwing off-type | the same check, worse ergonomics |
+| **envelope handled at the entry** | **chosen** |
+
+The typed part reaches the **entry** as input; blocks below it that need the row
+take it as input too. `ctx.task` shrinks to the ambient lifecycle verbs the
+substrate genuinely owns — `park`, `heartbeat`.
+
+This is the same rule that killed passing a task into an action wholesale: the
+claim envelope is handled before the action is called, rather than pushed onto
+implementers. Applied one level in. `sender` gets the same treatment — a field
+on the entry's input for `internal` and `task` alike, not `ctx.sender`.
+
+### `task`, not `worker`
+
+Every other type names **what arrives** — a webhook, a schedule, a user message.
+`worker` names who handles it. One transport named after its receiver breaks the
+set.
+
+### `dispatcher` — a fifth block kind
+
+Block kinds are a locked contract at exactly four (`handler`, `generator`,
+`sequencer`, `router`). This proposes a fifth, and the argument is not symmetry
+with `router`.
+
+A **router** picks a block to run *here*. A **dispatcher** names a destination to
+run *elsewhere* — one destination per invocation. Fan-out still goes through
+rows; a dispatcher that fans out is a router with side effects.
+
+Three things a kind buys that a handler-returning-a-message-shape does not:
+
+1. **It avoids shape-sniffing, which is the defect this whole document
+   diagnoses.** Recognizing a dispatch by parsing what a block returned is
+   `create-request-host.ts:198` again — the seam guessing at its caller. A named
+   kind removes the question exactly as a named target did.
+2. **A board can see, statically, which workers hand off.** Today inline-vs-
+   handed-off is a runtime distinction. With a kind, the roster carries it at
+   definition time.
+3. **It recovers the build-time check the collapse otherwise loses.** Deleting
+   the derived `workstreamBindings` also deletes
+   `assertWorkstreamBindingsReachable` (`defineFlow.ts:659`), which catches a
+   reachable block declaring a worker the flow never received. A hand-declared
+   map cannot reproduce it — there is nothing to compare against. But
+   `defineFlow` **can** walk the graph for dispatcher blocks and check each
+   target `(type, name)` resolves. Same class of error, caught at the same time,
+   without the bubble-up machinery.
+
+So the graph walk survives the collapse — demoted from *routing source* to
+*lint*. That is the honest fix for the one capability the deletion was otherwise
+giving up.
+
+The taxonomy also reads better as three groups than five flat kinds: leaves that
+compute (`handler`, `generator`), a leaf that hands off (`dispatcher`),
+composites (`sequencer`, `router`).
+
+### Sessions can be named, so "not found" is a per-entry decision
+
+**A correction.** An earlier claim in this document's discussion — that session
+ids are derived and never author-chosen — is false as a general statement.
+`handleCreateSession` accepts a caller-supplied id today:
+
+```ts
+// packages/engine/src/routes/session-routes.ts:136
+const sessionId = getString(body.sessionId) ?? generateId("sess");
+```
+
+Derived ids (`deriveChildSessionId`) are the rule for **spawns**, where the
+derivation is what makes a spawn idempotent — "first spawn for this row". They
+are not the rule for caller-created sessions, and a named session is a
+legitimate shape: a channel, `status-updates`.
+
+So the three-way on `dispatchMessage` is:
+
+| `session` | Behaviour |
+|---|---|
+| omitted | mint one |
+| given, found | deliver into it |
+| given, not found | **reject** — unless the entry declares itself channel-shaped, in which case create at that name |
+
+Reject is the default because an unknown id is a typo, a stale reference to a
+reaped session, or — once a send verb is in a model's hands — a hallucination,
+and auto-create turns all three into real work nobody is watching. Reject is also
+the recoverable branch: drop the id and mint. A spawn cannot be un-spawned.
+
+**Two things to know before leaning on channels.**
+`resolveSessionStorageKey(sessionId, tenantId)` namespaces by **tenant, not
+user**, so a slug is tenant-global while the record's `userId` is merely whoever
+created it first. Harmless under the same-user invariant; sharp the moment two
+people address one channel, which is what channels are for. And a channel wants
+`queue` concurrency rather than the `allow` default, or two messages to
+`status-updates` interleave.
+
+### Why this reads as message-driven rather than as an event system
+
+The earlier framing for this work was an eventing system bolted onto the
+framework. What it became is closer to a message-passing runtime, and the
+resemblance is load-bearing in one place: **`handle_call` versus `handle_cast` is
+exactly the two-ack cut.** A call expects a reply; a cast does not. Needs an
+outcome ⇒ a row; needs only delivery ⇒ nothing minted.
+
+Four places the resemblance stops, recorded because each is a way to reason
+wrongly by analogy:
+
+- **The mailbox is durable, not in-memory.** A crashed process takes its mailbox
+  with it and supervision restarts from known state. Our rows outlive
+  everything, so "let it crash" leaves durable rows something must reclaim. That
+  is the lease, and it has no counterpart in the analogy.
+- **There is no authorization axis in the analogy.** Any process may send to any
+  address it can name. Per-entry addressability, BP-031 and
+  `PUBLIC_REENTRY_SOURCES` have no equivalent — so the analogy gives no guidance
+  precisely where the risk is.
+- **Ordering is not free.** Per-pair ordering is a runtime guarantee there. Here
+  it holds under `queue` and not under `allow`, which is the default.
+- **Sessions are not cheap processes.** A session carries storage. "One process
+  per unit of work" does not port.
 
 ---
 
@@ -655,12 +830,13 @@ would be the single most damaging line in this change.
 
 | Today | After | Note |
 |---|---|---|
-| `flow.workstream` | `flow.taskRunner` + `flow.tasks` | the board's runner, plus a hand-declared assignee map — not an assembled router |
+| `flow.workstream` | `flow.task.actions` + the board's runner | typed entries, hand-declared — not an assembled router. See §"The typed entry" |
 | `flow.workstreamBindings` | — | deleted; nothing bubbles |
 | `core/types/workstream.ts` | — | deleted |
 | `core/flow/workstream-core.ts` | — | deleted |
 | `workstreamBindingKey` | — | deleted; no composite key |
-| `declareWorkstreamBindings` | hand-declared `flow.tasks`; runner keeps the gate | §"more complicated" #1 |
+| `declareWorkstreamBindings` | hand-declared `flow.task.actions`; runner keeps the gate | §"more complicated" #1 |
+| `assertWorkstreamBindingsReachable` | a `defineFlow` walk for `dispatcher` blocks | demoted from routing source to lint — see §"The typed entry" |
 | `WORKSTREAM_SOURCE` (`"workstream"`) | `TASK_SOURCE` (`"task"`) | still terminal, still off the re-entry allow-list |
 | `no-workstream-core`, `board-not-routable` | — | inference failures; no longer reachable |
 | `GET /sessions/:id/workstreams` | `GET /sessions/:id/children` | honest name; same handler **only for same-flow children** — see §"more complicated" #3 |
