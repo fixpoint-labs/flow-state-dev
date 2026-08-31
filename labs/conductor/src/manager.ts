@@ -495,17 +495,14 @@ function managerState(ctx: BlockContext): z.infer<typeof managerStateSchema> {
  * a cancelled run, which is neither.
  */
 /**
- * Run `work`, and reject if it has not settled within `ms`.
+ * Core's `withTimeout`, with the conductor's verdict on top.
  *
- * The bounded work is not cancelled, because nothing here can cancel it: the
- * hook is somebody else's function. What this buys is that the *worker* stops
- * waiting and the row settles, which is the property the drain budget rests on.
- *
- * The deadline itself is core's `withTimeout` — including the guarantee the
- * drain budget rests on, that the timer never outlives the call. What is local
- * is the *verdict*: a hook that misses its deadline is a failed attempt, not a
- * conductor defect, so it rejects with {@link ConductorAttemptFailed} and the
- * board records the message as the next attempt's feedback.
+ * All this adds is *whose fault it is*: a hook that misses its deadline is a
+ * failed attempt, not a conductor defect, so it rejects with
+ * {@link ConductorAttemptFailed} and the board records that message as the next
+ * attempt's feedback. The wording differs from core's for the same reason — a
+ * person reading the feedback is being told the hook did not answer, not that a
+ * timer expired.
  */
 export async function withDeadline<T>(
   work: () => Promise<T>,

@@ -22,7 +22,7 @@ function defaultTimeoutError(label: string, timeoutMs: number): Error {
  * waiting. Pair it with an `AbortSignal` when the work itself is cancellable.
  *
  * @param promise    The work to bound.
- * @param timeoutMs  The deadline. `undefined` or `<= 0` means "no deadline" —
+ * @param timeoutMs  The deadline. `undefined`, `Infinity` or `<= 0` means "no deadline" —
  *                   `promise` is returned untouched and no timer is created.
  * @param label      Names the bounded work in the rejection message.
  * @param onTimeout  Builds the rejection. Override it when a caller needs its
@@ -35,7 +35,12 @@ export function withTimeout<TValue>(
   label: string,
   onTimeout: (label: string, timeoutMs: number) => Error = defaultTimeoutError
 ): Promise<TValue> {
-  if (timeoutMs === undefined || timeoutMs <= 0) {
+  // `Infinity` is not defensive padding. It is this repo's no-deadline
+  // sentinel (`engine/stores/scope-lock.ts` disables on exactly these three),
+  // and Node inverts it: `setTimeout(fn, Infinity)` warns
+  // `TimeoutOverflowWarning` and coerces the duration to 1ms — so without this
+  // the value meaning "never" would reject at once.
+  if (timeoutMs === undefined || timeoutMs === Infinity || timeoutMs <= 0) {
     return promise;
   }
 

@@ -47,12 +47,22 @@ describe("withTimeout", () => {
    * pass an optional config value straight through, and an unconfigured timeout
    * must not arm anything.
    */
-  it("arms nothing when the deadline is absent or non-positive", async () => {
+  /**
+   * `Infinity` is the third case, and the one with teeth. It is this repo's
+   * no-deadline sentinel already — `engine/stores/scope-lock.ts` disables on
+   * `undefined`, `Infinity`, or non-positive — so a caller wiring a config
+   * value through arrives here expecting the same. Node does the opposite:
+   * `setTimeout(fn, Infinity)` warns `TimeoutOverflowWarning` and coerces the
+   * duration to **1ms**, so the value meaning "never time out" would reject
+   * almost at once.
+   */
+  it("arms nothing when the deadline is absent, non-positive, or Infinity", async () => {
     vi.useFakeTimers();
     const work = Promise.resolve("done");
 
     expect(withTimeout(work, undefined, "work")).toBe(work);
     expect(withTimeout(work, 0, "work")).toBe(work);
+    expect(withTimeout(work, Infinity, "work")).toBe(work);
     expect(vi.getTimerCount()).toBe(0);
   });
 
