@@ -5,7 +5,7 @@
 "@flow-state-dev/testing": patch
 ---
 
-Send a message to a session that is already running.
+Send a message to a session that is already running (FIX-1230).
 
 A session now has an address — the id it already has — and `ctx.requestHost.sendMessage({ to, kind, payload, mode: "fireAndForget" })` reaches it. The message arrives as an ordinary request on the recipient and shows up in that session's history like anything else, so the recipient's next turn can act on it. The call resolves once the system has accepted the delivery, and hands back the delivery's request id.
 
