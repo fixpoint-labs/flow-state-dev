@@ -7,9 +7,35 @@ document carried and moved off are collected in §"Considered and not taken" at
 the end, with the reason each was dropped.
 **Type:** Framework change — `@flow-state-dev/core` (flow surface, detached source), `@flow-state-dev/engine` (request host, routes), `@flow-state-dev/orchestration` (task board), `@flow-state-dev/devtool`.
 **Supersedes in effect:** the routing half of FIX-982 (P2 bindings, P3a core assembly) and FIX-999's `workstream` source naming. Keeps FIX-1068 (lineage) intact under a better name.
+**Layer:** Layer 1 addressing. Workstreams is **already** Layer 1 — a shipped routing surface on the substrate — so removing it is a Layer 1 change, not a rename, and citing only FIX-1197 would hide that. FIX-867's Agent / Team / Channel are Layer 2 conventions and are **out of scope**. The Workforce atlas states the rule this respects: *"do not bake a Conductor opinion into Layer 1 just because it ships first."*
 **Changes an approved epic:** the Relay epic (FIX-1197) was scoped while workstreams existed. Two of its six issues merge into one verb, one is not built, and one is promoted from a supporting piece to the primitive — see §"Reconciliation with the Relay epic". **This removes work from that epic; it adds none.**
 
 ---
+
+## Locked contracts this amends
+
+`docs/contributing/architecture-reference.md` → "Locked Contracts (Phase 1)".
+**Three lines change, not one.** They are listed here so the amendment is
+explicit and auditable rather than a silent exception discovered at
+implementation.
+
+| Line | Today | After |
+|---|---|---|
+| 15 — block kinds | `handler`, `generator`, `sequencer`, `router` | **plus `dispatcher`** — see §"`dispatcher` — a fifth block kind" |
+| 31 — action forms & resolution | `resolveActionCore` reads a namespaced coordinate gated on `source`, falling back to `flow.actions[name]`, terminal only for `"workstream"` | one keyed lookup on `(type, name)`; **no fallback for any type**; `"workstream"` has no referent |
+| 32 — public re-entry | allow-list `http` / `mcp` / `chat` / `scheduled`; `webhook` and `workstream` never openable | unchanged in shape; `task` inherits `workstream`'s exclusion — see §"What must not silently change" |
+
+**The fifth kind is the one that needs a decision, not a note.** Either this
+change amends line 15, or `dispatcher` stays a handler and the document loses its
+three arguments for a kind: no shape-sniffing at the dispatch seam, a roster that
+shows statically which workers hand off, and a `defineFlow` walk that replaces
+`assertWorkstreamBindingsReachable`. Leaving a fifth kind as an unstated exception
+is the worst of the three options.
+
+*This document declares the amendment; it does not edit the reference. Editing a
+locked-contract file from an unapproved proposal would assert the change before it
+is agreed. The edit lands with the approval.*
+
 
 ## The problem, plainly
 
@@ -337,6 +363,20 @@ belongs to. So it stays in the adapter, and its output is an ordinary
 map. That distinction is what keeps this from being the sixth map wearing a new
 hat: a subscription selects an address, a routing map *is* the address.
 
+### One registry — `flow.tasks` as a sibling map is not the design
+
+Stated here rather than only in §"Considered and not taken", because this is where
+an implementer looks.
+
+An earlier revision proposed `flow.tasks` beside `flow.actions`: two hand-written
+maps of name → block, differing in who may address them. **Do not build it.** It
+deletes `flow.workstream` and leaves `webhook`, `chat` and `scheduled` untouched,
+so it reduces the shadow-registry problem rather than removing it — and it
+rebuilds two registries where the entire point is one.
+
+A task entry is `flow.task.actions.<name>`: the same mechanism, the same two-part
+key, differing only in who owns the input schema and who may address it.
+
 ### No fallbacks — and this is a generalization, not an invention
 
 A message addressed to a type that declares no such entry is refused. It does
@@ -431,8 +471,7 @@ derivation is what makes a spawn idempotent — "first spawn for this row". They
 are not the rule for caller-created sessions, and a named session is a
 legitimate shape: a channel, `status-updates`.
 
-So a dispatch naming a session that does not exist **rejects** by default, and
-creates only where the target entry declares itself channel-shaped. (The full
+So a dispatch naming a session that does not exist **rejects**. (The full
 three-way is in §"The shape".)
 
 Reject is the default because an unknown id is a typo, a stale reference to a
@@ -440,7 +479,15 @@ reaped session, or — once a send verb is in a model's hands — a hallucinatio
 and auto-create turns all three into real work nobody is watching. Reject is also
 the recoverable branch: drop the id and mint. A spawn cannot be un-spawned.
 
-**Two things to know before leaning on channels.**
+**Channel-shaped auto-create is deferred out of v1.** An entry that creates a
+session on an unknown name is the one behavior here resembling a Layer 2
+convention — Workforce's agent-owned channel — and the atlas rule is *"do not bake
+a Conductor opinion into Layer 1 just because it ships first."* **v1 rejects, with
+no per-entry exception.** If a channel is needed sooner it belongs to Conductor or
+Workforce as a convention over the caller-named session `handleCreateSession`
+already supports, not as new Layer 1 behavior.
+
+**Two things to know before that lands.**
 `resolveSessionStorageKey(sessionId, tenantId)` namespaces by **tenant, not
 user**, so a slug is tenant-global while the record's `userId` is merely whoever
 created it first. Harmless under the same-user invariant; sharp the moment two
@@ -472,6 +519,15 @@ const handOff = dispatcher({
   }),
 });
 ```
+
+`type` and `target` are the address, and they are **static**. The session, the
+payload and the delivery time are computed:
+
+| `session` after `resolve` | Behaviour |
+|---|---|
+| absent | mint one |
+| present, found | deliver into it |
+| present, not found | **reject.** v1 has no exception — see §"Sessions can be named" |
 
 **The address is static so it can be verified. The envelope is dynamic so it can
 be useful.** `(type, target)` never varies, because that pair is exactly what
@@ -1146,9 +1202,10 @@ already in the codebase. Every other rename here is cosmetic and can wait.
   throws, naming the block and the target. This is the replacement for
   `assertWorkstreamBindingsReachable` and does not pass without the dispatcher
   kind.
-- **A named session is created only where declared.** Dispatch with an unknown
-  `session` to an ordinary entry, then to a channel-shaped one. Pass: refused,
-  then created.
+- **An unknown session is always refused in v1.** Dispatch with a `session` that
+  does not exist. Pass: refused by name, and no entry can opt out. The channel
+  exception is deferred, so a test asserting creation would assert a behavior v1
+  does not have.
 - **A block cannot dispatch a protocol-owned type.** A flow declaring a
   `dispatcher({ type: "webhook" })`. Pass: `defineFlow` rejects it by name. Assert
   on the refusal reason — a dispatch that merely fails to deliver also "fails".
