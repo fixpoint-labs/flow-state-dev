@@ -15,9 +15,15 @@ with the reason each was dropped.
 
 ## This cycle's slice
 
-Agreed with the Cycle PM under Goal 1. **One direction, a narrower first cut.**
-The body below describes the whole design. This section says which part of it
-this cycle builds, so a reader does not mistake the endpoint for the scope.
+**The record is D-8** — *"One-inbox this cycle (same-flow); dispatcher is a
+handler"* (#1530, closed 2026-09-01). Architect and Cycle PM each applied their
+own lens and agreed; it is not an owner leftover. Cite D-8 rather than this
+document or the PR thread when a later change asks why dispatcher is a handler
+this cycle.
+
+**One direction, a narrower first cut.** The body below describes the whole
+design. This section says which part of it this cycle builds, so a reader does
+not mistake the endpoint for the scope.
 
 **In this cycle**
 
@@ -37,6 +43,7 @@ later cycle:
 | Amending `architecture-reference.md` | the reference stays the single spine; this document must not become a second one |
 | Cross-flow dispatch | already phased out of v1 by two independent findings — §"more complicated" #2 and #3 |
 | Layer 2 — Agent / Team / Channel (FIX-867) | out of scope, unchanged |
+| PR #1527 | held as written — see §"What this costs, stated plainly" |
 
 **The fence.** The leftover Workstream maps stay where they are and **do not
 grow**. Nothing new routes through `flow.workstream`, `workstreamBindings`, or
