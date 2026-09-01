@@ -387,7 +387,7 @@ describe("the writes-nothing check ignores git's own bookkeeping", () => {
     const root = makeTree({ ...base, ".gitignore": ".env.local\n" });
     initGit(root);
     const before = snapshotTree(root);
-    writeFileSync(join(root, ".git/objects/maintenance.lock"), "");
+    writeFileSync(join(root, ".git/objects/fsd-test-created.lock"), "");
     buildReport(root);
     expect(snapshotTree(root)).toEqual(before);
   });
@@ -395,9 +395,10 @@ describe("the writes-nothing check ignores git's own bookkeeping", () => {
   it("does not walk .git/, so an entry that vanishes there between listing and stat cannot throw", () => {
     // A dangling symlink is listed by readdirSync and fails statSync with ENOENT — the same shape
     // as git deleting its lock between the two calls, without having to win a race to show it.
+    // Planted under a name git never creates, so the setup can't collide with git's own lock.
     const root = makeTree({ ...base, ".gitignore": ".env.local\n" });
     initGit(root);
-    symlinkSync(join(root, ".git/objects/gone.lock"), join(root, ".git/objects/maintenance.lock"));
+    symlinkSync(join(root, ".git/objects/gone.lock"), join(root, ".git/objects/fsd-test-vanished.lock"));
     expect(() => snapshotTree(root)).not.toThrow();
   });
 });
