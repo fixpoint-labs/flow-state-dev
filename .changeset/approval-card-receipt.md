@@ -1,10 +1,9 @@
 ---
 "@flow-state-dev/react": minor
-"@flow-state-dev/ui": minor
 ---
 
 Split the approval UI into logic (react) and presentation (ui), and collapse it to
-a receipt once resolved.
+a receipt once resolved (FIX-276).
 
 Previously a resolved suspension left the approval card on screen with its buttons
 merely disabled, and the only card was a styled component living in

@@ -2,10 +2,9 @@
 "@flow-state-dev/orchestration": minor
 "@flow-state-dev/core": minor
 "@flow-state-dev/patterns": minor
-"@flow-state-dev/ui": minor
 ---
 
-Tasks gain optional first-class `title` (a concise label) and `context` (readable per-task support text), carried end-to-end to workers and rendered as `title ?? goal` in the plan UI.
+Tasks gain optional first-class `title` (a concise label) and `context` (readable per-task support text), carried end-to-end to workers and rendered as `title ?? goal` in the plan UI (FIX-827).
 
 The `utility.decomposer` planner now emits `title` and `context` per task, prompting the model to copy the concrete facts each task needs into `context`.
 

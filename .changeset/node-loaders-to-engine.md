@@ -1,9 +1,9 @@
 ---
-"@flow-state-dev/core": major
+"@flow-state-dev/core": minor
 "@flow-state-dev/engine": minor
 ---
 
-Move the node-only filesystem loaders out of `@flow-state-dev/core` into `@flow-state-dev/engine`, so `core` carries only isomorphic code and the `fs`-backed loaders live with the node execution runtime.
+Move the node-only filesystem loaders out of `@flow-state-dev/core` into `@flow-state-dev/engine`, so `core` carries only isomorphic code and the `fs`-backed loaders live with the node execution runtime (FIX-684).
 
 - `@flow-state-dev/core/prompt-file/node` → `@flow-state-dev/engine/prompt-file` (`loadPromptFile`, `createPromptLoader`, `moduleDir`, `resolveBaseDir`, and their option/loader types).
 - `@flow-state-dev/core/resource-template/node` → `@flow-state-dev/engine/resource-template` (`loadResourceTemplate`, `createResourceTemplateLoader`, `ResourceTemplateLoadError`).

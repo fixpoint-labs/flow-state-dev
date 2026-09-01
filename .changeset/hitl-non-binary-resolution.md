@@ -4,10 +4,9 @@
 "@flow-state-dev/engine": minor
 "@flow-state-dev/client": minor
 "@flow-state-dev/react": minor
-"@flow-state-dev/ui": minor
 ---
 
-Human-in-the-loop suspensions can now pause for more than a yes/no decision. A durable flow can suspend for a clarifying question, a small form, or a single/multi selection, and receive the human's typed answer as the value `ctx.suspend()` returns; a step can be made optional, where a skip returns the new `SUSPENSION_SKIPPED` sentinel instead of aborting the run.
+Human-in-the-loop suspensions can now pause for more than a yes/no decision. A durable flow can suspend for a clarifying question, a small form, or a single/multi selection, and receive the human's typed answer as the value `ctx.suspend()` returns; a step can be made optional, where a skip returns the new `SUSPENSION_SKIPPED` sentinel instead of aborting the run (FIX-849).
 
 - **core / contracts:** the resolution vocabulary gains `submitted` and `skipped`; `ctx.suspend()` accepts `allow` to declare permitted resolutions (defaulting `human_input` to submit-only) and returns `SUSPENSION_SKIPPED` on a skip; resume actions widen to `approve | reject | submit | skip`.
 - **engine:** the resume route maps each action to its status, rejects an action outside the suspension's `allow` set, and validates the submitted payload against the stored `resumeSchema` before the run continues.
