@@ -2,9 +2,10 @@
 
 **Date:** 2026-08-29 · substantially revised 2026-08-31
 **Status:** Proposal — not approved, nothing implemented.
-**Reading order:** the body describes the current shape. Earlier shapes this
-document carried and moved off are collected in §"Considered and not taken" at
-the end, with the reason each was dropped.
+**Reading order:** §"This cycle's slice" says what is in this cut and what is
+deferred; the body then describes the whole shape. Earlier shapes this document
+carried and moved off are collected in §"Considered and not taken" at the end,
+with the reason each was dropped.
 **Type:** Framework change — `@flow-state-dev/core` (flow surface, detached source), `@flow-state-dev/engine` (request host, routes), `@flow-state-dev/orchestration` (task board), `@flow-state-dev/devtool`.
 **Supersedes in effect:** the routing half of FIX-982 (P2 bindings, P3a core assembly) and FIX-999's `workstream` source naming. Keeps FIX-1068 (lineage) intact under a better name.
 **Layer:** Layer 1 addressing. Workstreams is **already** Layer 1 — a shipped routing surface on the substrate — so removing it is a Layer 1 change, not a rename, and citing only FIX-1197 would hide that. FIX-867's Agent / Team / Channel are Layer 2 conventions and are **out of scope**. The Workforce atlas states the rule this respects: *"do not bake a Conductor opinion into Layer 1 just because it ships first."*
@@ -12,25 +13,60 @@ the end, with the reason each was dropped.
 
 ---
 
+## This cycle's slice
+
+Agreed with the Cycle PM under Goal 1. **One direction, a narrower first cut.**
+The body below describes the whole design. This section says which part of it
+this cycle builds, so a reader does not mistake the endpoint for the scope.
+
+**In this cycle**
+
+- **One inbox per flow, addressed `(type, name)`, same-flow only** — the address,
+  the five message types, the no-fallback rule, and the typed entry.
+- **`dispatcher` as a handler that returns a typed envelope** — not a fifth block
+  kind. See §"`dispatcher` — a handler this cycle, a kind later".
+- No `relay.on`. No `sessionKind`.
+
+**Out this cycle.** Deferred is not rejected; each of these stays live for a
+later cycle:
+
+| Deferred | Why it is not in this cut |
+|---|---|
+| Full Workstreams deletion | the addressing lands first; the deletion is its own change with its own published-package migration — §"Deletions and renames" |
+| A fifth `dispatcher` block kind | a locked-contract amendment is not something a first cut should carry. The three arguments for it survive in §"`dispatcher` — a handler this cycle, a kind later" |
+| Amending `architecture-reference.md` | the reference stays the single spine; this document must not become a second one |
+| Cross-flow dispatch | already phased out of v1 by two independent findings — §"more complicated" #2 and #3 |
+| Layer 2 — Agent / Team / Channel (FIX-867) | out of scope, unchanged |
+
+**The fence.** The leftover Workstream maps stay where they are and **do not
+grow**. Nothing new routes through `flow.workstream`, `workstreamBindings`, or
+`WORKSTREAM_SOURCE`, and they are not a compatibility path for the new
+addressing. Work that would need them is out of this cycle rather than bridged
+into it.
+
+---
+
 ## Locked contracts this amends
 
 `docs/contributing/architecture-reference.md` → "Locked Contracts (Phase 1)".
-**Three lines change, not one.** They are listed here so the amendment is
-explicit and auditable rather than a silent exception discovered at
-implementation.
+**Two lines change this cycle; a third is deferred.** They are listed here so
+the amendment is explicit and auditable rather than a silent exception
+discovered at implementation.
 
 | Line | Today | After |
 |---|---|---|
-| 15 — block kinds | `handler`, `generator`, `sequencer`, `router` | **plus `dispatcher`** — see §"`dispatcher` — a fifth block kind" |
-| 31 — action forms & resolution | `resolveActionCore` reads a namespaced coordinate gated on `source`, falling back to `flow.actions[name]`, terminal only for `"workstream"` | one keyed lookup on `(type, name)`; **no fallback for any type**; `"workstream"` has no referent |
+| 15 — block kinds | `handler`, `generator`, `sequencer`, `router` | **unchanged this cycle.** `dispatcher` ships as a handler factory; the fifth kind is deferred, not rejected — see §"`dispatcher` — a handler this cycle, a kind later" |
+| 31 — action forms & resolution | `resolveActionCore` reads a namespaced coordinate gated on `source`, falling back to `flow.actions[name]`, terminal only for `"workstream"` | one keyed lookup on `(type, name)`; **no fallback for any type**. `"workstream"` keeps its existing terminal path this cycle, behind the fence and taking no new callers; it loses its referent with the deletion |
 | 32 — public re-entry | allow-list `http` / `mcp` / `chat` / `scheduled`; `webhook` and `workstream` never openable | unchanged in shape; `task` inherits `workstream`'s exclusion — see §"What must not silently change" |
 
-**The fifth kind is the one that needs a decision, not a note.** Either this
-change amends line 15, or `dispatcher` stays a handler and the document loses its
-three arguments for a kind: no shape-sniffing at the dispatch seam, a roster that
-shows statically which workers hand off, and a `defineFlow` walk that replaces
-`assertWorkstreamBindingsReachable`. Leaving a fifth kind as an unstated exception
-is the worst of the three options.
+**The fifth kind was the one that needed a decision, and it has one: not this
+cycle.** `dispatcher` ships as a handler factory, so line 15 stands and no
+unstated exception is left behind. The three arguments for a kind — no
+shape-sniffing at the dispatch seam, a roster that shows statically which workers
+hand off, and a `defineFlow` walk replacing `assertWorkstreamBindingsReachable`
+— are not withdrawn; they are the case a later cycle answers, kept in
+§"`dispatcher` — a handler this cycle, a kind later" together with what the
+handler form costs.
 
 *This document declares the amendment; it does not edit the reference. Editing a
 locked-contract file from an unapproved proposal would assert the change before it
@@ -63,7 +99,7 @@ wrong. All of it is a second copy of concepts the framework already has.
 
 **This proposal deletes the second copy** — and then finds it was never the only
 one. Every arrival becomes a named entry addressed by `(type, name)`, reached by
-one declared block kind. A spawned session becomes an ordinary session. The word
+one declared block. A spawned session becomes an ordinary session. The word
 "Workstream" stops having a referent and goes away.
 
 **And that reaches further than workstreams.** The Relay epic (FIX-1197) is
@@ -438,41 +474,64 @@ Every other type names **what arrives** — a webhook, a schedule, a user messag
 `worker` names who handles it. One transport named after its receiver breaks the
 set.
 
-### `dispatcher` — a fifth block kind
-
-Block kinds are a locked contract at exactly four (`handler`, `generator`,
-`sequencer`, `router`). This proposes a fifth, and the argument is not symmetry
-with `router`.
+### `dispatcher` — a handler this cycle, a kind later
 
 A **router** picks a block to run *here*. A **dispatcher** names a destination to
 run *elsewhere* — one destination per invocation. Fan-out still goes through
 rows; a dispatcher that fans out is a router with side effects.
 
-Three things a kind buys that a handler-returning-a-message-shape does not:
+That is a real distinction, and it argued for a fifth block kind. Block kinds
+are a locked contract at exactly four, and **this cycle does not amend it.**
 
-1. **It avoids shape-sniffing, which is the defect this whole document
-   diagnoses.** Recognizing a dispatch by parsing what a block returned is
-   `create-request-host.ts:198` again — the seam guessing at its caller. A named
-   kind removes the question exactly as a named target did.
-2. **A board can see, statically, which workers hand off.** Today inline-vs-
-   handed-off is a runtime distinction. With a kind, the roster carries it at
-   definition time.
-3. **It recovers the build-time check the collapse otherwise loses.** Deleting
-   the derived `workstreamBindings` also deletes
-   `assertWorkstreamBindingsReachable` (`defineFlow.ts:659`), which catches a
-   reachable block declaring a worker the flow never received. A hand-declared
-   map cannot reproduce it — there is nothing to compare against. But
-   `defineFlow` **can** walk the graph for dispatcher blocks and check each
-   target `(type, name)` resolves. Same class of error, caught at the same time,
-   without the bubble-up machinery.
+**What ships this cycle.** `dispatcher({ … })` is a **factory that returns a
+handler**. The handler's return value is a **typed envelope** — a branded value
+the factory alone can mint — and the framework's dispatch seam recognizes that
+brand. The block it produces also carries its `(type, target)` as metadata, so
+the roster and `defineFlow` can read the address without running anything.
+
+Two of the three arguments for a kind survive that form intact, and they survive
+**because the brand is unforgeable**:
+
+1. **A board can still see, statically, which workers hand off.** The seat holds
+   a factory-made block; the board reads its metadata instead of its kind.
+2. **The build-time check still exists.** Deleting the derived
+   `workstreamBindings` also deletes `assertWorkstreamBindingsReachable`
+   (`defineFlow.ts:659`), which catches a reachable block declaring a worker the
+   flow never received. A hand-declared map cannot reproduce it — there is
+   nothing to compare against. But `defineFlow` **can** walk the graph for
+   factory-made dispatchers and check each target `(type, name)` resolves. The
+   walk is complete over the reachable set precisely because no other code path
+   can produce an envelope. Same class of error, caught at the same time, without
+   the bubble-up machinery.
 
 So the graph walk survives the collapse — demoted from *routing source* to
 *lint*. That is the honest fix for the one capability the deletion was otherwise
 giving up.
 
-The taxonomy also reads better as three groups than five flat kinds: leaves that
-compute (`handler`, `generator`), a leaf that hands off (`dispatcher`),
-composites (`sequencer`, `router`).
+**What the handler form costs.** Three things, stated rather than glossed:
+
+- **The seam checks a value instead of a structure.** Dispatching on `kind` is a
+  structural fact; checking a returned brand is a check on the ordinary handler
+  path. An exact brand is not shape-sniffing — it is not
+  `create-request-host.ts:198` guessing at a caller — but it is the seam reading
+  values again, which is the family this document diagnoses. The bound holds only
+  while the brand stays unmintable outside the factory, so that is a verification
+  item, not an assumption.
+- **The graph no longer says what the block does.** Devtool, traces, and anything
+  else that renders the block graph see `handler`. Inline-versus-handed-off is
+  legible to the board through metadata and invisible to a reader.
+- **The block's declared output is not what its body returns.** The factory types
+  the block's output as the handle so composition downstream is ordinary, while
+  the body returns the envelope the seam substitutes. A kind would not need that
+  sleight.
+
+**Deferred, not rejected.** The taxonomy still reads better as three groups than
+five flat kinds — leaves that compute (`handler`, `generator`), a leaf that hands
+off (`dispatcher`), composites (`sequencer`, `router`) — and the three costs
+above are exactly what a later cycle would buy back by amending line 15. Nothing
+in this cut forecloses it: the factory is the same author-facing surface either
+way, so promoting it to a kind later changes the engine and the graph, not the
+flows people wrote.
 
 ### Sessions can be named, and "not found" still rejects
 
@@ -518,12 +577,14 @@ people address one channel, which is what channels are for. And a channel wants
 
 ## The shape
 
-One address, one block kind that reaches it, one place the claim envelope is
+One address, one declared block that reaches it, one place the claim envelope is
 opened.
 
 ### Dispatch is a block, not a method on `ctx`
 
-A block does not *call* a dispatch. It **is** one:
+A block does not *call* a dispatch. It **is** one — a handler the `dispatcher`
+factory builds, returning a typed envelope the seam recognizes
+(§"`dispatcher` — a handler this cycle, a kind later"):
 
 ```ts
 const handOff = dispatcher({
@@ -565,11 +626,11 @@ value the flow calculated, so it is the likely path rather than a defensive one.
 The refusal must name the computed value and the block that produced it.
 
 **There is deliberately no `ctx.dispatchMessage`.** An imperative escape hatch
-would defeat all three reasons the dispatcher kind exists: a board could no longer
-tell statically which workers hand off, `defineFlow`'s walk could not see targets
-buried in handler bodies, and "declared rather than inferred" would be optional —
-which in practice means absent. A lint that reports on a subset it cannot bound is
-worse than none, because it looks complete.
+would defeat both reasons the factory exists: a board could no longer tell
+statically which workers hand off, and `defineFlow`'s walk could not see targets
+buried in handler bodies. It would also break the condition the walk rests on —
+that the envelope is mintable in exactly one place — so the lint would report on
+a subset it cannot bound, which is worse than none because it looks complete.
 
 It is also the call this codebase has already made twice: BP-011 (a handler does
 not call blocks — compose as a sequencer) and BP-012 (`.tap()` rather than mutating
@@ -703,12 +764,13 @@ const board = taskBoard({
 });
 ```
 
-**Making the dispatcher a block kind is what lets the board see this statically.**
+**The factory's metadata is what lets the board see this statically.**
 Inline-versus-handed-off used to be a runtime fact discovered at claim time. A
-kind puts it in the roster at definition time, and it gives `defineFlow` something
-to walk: every dispatcher block in the graph names a `(type, name)` that must
-resolve. That walk is what replaces `assertWorkstreamBindingsReachable` — the
-build-time check the collapse would otherwise lose. See §"The typed entry".
+factory-made block carries its address at definition time, so the roster shows
+it, and it gives `defineFlow` something to walk: every dispatcher in the graph
+names a `(type, name)` that must resolve. That walk is what replaces
+`assertWorkstreamBindingsReachable` — the build-time check the collapse would
+otherwise lose. See §"The typed entry".
 
 `dispatch: { mode: "detached" }` disappears from this seat. A dispatcher is
 detached by being a dispatcher; locality stops being an axis to configure and
@@ -1050,9 +1112,9 @@ construction rather than registration. The residual cost is different and
 smaller: `flow.task.actions` keys and the board's roster keys are two
 declarations of one fact.
 
-**The dispatcher kind closes most of it.** A dispatcher seat is a
-dispatcher block, and `defineFlow`'s walk verifies that every dispatcher's target
-resolves. What remains uncovered is the inverse — a task entry no seat names —
+**The dispatcher factory closes most of it.** A dispatcher seat holds a
+factory-made block, and `defineFlow`'s walk verifies that every dispatcher's
+target resolves. What remains uncovered is the inverse — a task entry no seat names —
 which is dead configuration rather than a runtime failure.
 
 ### 2. Two flows can now share one lineage bucket
@@ -1148,6 +1210,11 @@ them, so per-entry addressability ships **with** the collapse, not after it.
 
 ## Deletions and renames
 
+**The full deletion is out of this cycle** (§"This cycle's slice"). The table is
+the endpoint, not the first cut. What the fence requires meanwhile: the rows
+below stay as they are and take no new callers — the new addressing does not
+route through them.
+
 | Today | After | Note |
 |---|---|---|
 | `flow.workstream` | `flow.task.actions` | typed entries, hand-declared — not an assembled router |
@@ -1156,8 +1223,8 @@ them, so per-entry addressability ships **with** the collapse, not after it.
 | `core/flow/workstream-core.ts` | — | deleted |
 | `workstreamBindingKey` | — | deleted; no composite key |
 | `declareWorkstreamBindings` | hand-declared entries; the wrapper keeps the gate | §"more complicated" #1 |
-| `assertWorkstreamBindingsReachable` | a `defineFlow` walk for `dispatcher` blocks | demoted from routing source to lint |
-| `startDetached`, sibling spawn, `sendMessage` | a `dispatcher` block | three verbs, one declared block kind |
+| `assertWorkstreamBindingsReachable` | a `defineFlow` walk over factory-made dispatchers | demoted from routing source to lint |
+| `startDetached`, sibling spawn, `sendMessage` | a `dispatcher` block | three verbs, one declared factory |
 | `WORKSTREAM_SOURCE` (`"workstream"`) | `TASK_SOURCE` (`"task"`) | still terminal, still off the re-entry allow-list |
 | `no-workstream-core`, `board-not-routable` | — | inference failures; no longer reachable |
 | `GET /sessions/:id/workstreams` | `GET /sessions/:id/children` | honest name; same handler **only for same-flow children** — §"more complicated" #3 |
@@ -1219,8 +1286,13 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 - **The dispatcher walk catches an unresolvable target.** A flow containing a
   dispatcher naming a `(type, name)` that does not exist. Pass: `defineFlow`
   throws, naming the block and the target. This is the replacement for
-  `assertWorkstreamBindingsReachable` and does not pass without the dispatcher
-  kind.
+  `assertWorkstreamBindingsReachable`.
+- **The envelope cannot be minted outside the factory.** The walk is only
+  complete while that holds, so it is checked rather than assumed: a handler
+  hand-constructing an envelope shape. Pass: the seam does not treat it as a
+  dispatch, and the value carries no brand a test can forge. Assert on the brand
+  being unreachable from the public surface, not merely on the dispatch not
+  firing — a malformed shape also fails to fire.
 - **An unknown session is always refused in v1.** Dispatch with a `session` that
   does not exist. Pass: refused by name, and no entry can opt out. The channel
   exception is deferred, so a test asserting creation would assert a behavior v1
@@ -1281,10 +1353,10 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 6. **Per-entry concurrency above one.** Max-1 falls out of a constant key with
    `queue`. Max-N needs a counting semaphore the arbiter does not have. Not
    proposed here; recorded so a spec that assumes it knows it is proposing one.
-4. **Park's lease policy.** Hold (waiting on a person) versus release (waiting on
+7. **Park's lease policy.** Hold (waiting on a person) versus release (waiting on
    a child run). Unverified: whether the substrate can release a lease without
    settling.
-5. **Topic/project scope.** Try it as an org-scoped parameterized collection
+8. **Topic/project scope.** Try it as an org-scoped parameterized collection
    before adding a `StorageScopeType`; whole-scope read cost decides.
 
 
@@ -1607,10 +1679,10 @@ would declare no entries and execute nothing.
 Earlier revisions of this document put dispatch on the execution context as a
 method any block could call.
 
-**Dropped because it nullifies the dispatcher kind.** Every reason to make
-dispatch a block kind — a board seeing statically which workers hand off,
-`defineFlow` walking for unresolvable targets, no shape-sniffing — depends on
-there being no other way to dispatch. With an escape hatch the walk reports on a
+**Dropped because it nullifies the dispatcher factory.** Every reason to make
+dispatch a declared block — a board seeing statically which workers hand off,
+`defineFlow` walking for unresolvable targets, one place an envelope is minted —
+depends on there being no other way to dispatch. With an escape hatch the walk reports on a
 subset it cannot bound, which is worse than not having it, because it looks
 complete. The four cases that appear to need it all decompose into existing
 composition (§"The shape"), and the hardest of them — a model choosing a
