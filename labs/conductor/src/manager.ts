@@ -37,6 +37,7 @@ import {
   type DefinedCapability,
   type PresetDef,
 } from "@flow-state-dev/core";
+import { withTimeout } from "@flow-state-dev/core/helpers";
 import type {
   BlockContext,
   DeclaredResourceEntry,
@@ -507,36 +508,27 @@ function managerState(state: ManagerState | undefined): ManagerState {
  * a cancelled run, which is neither.
  */
 /**
- * Run `work`, and reject if it has not settled within `ms`.
+ * Core's `withTimeout`, with the conductor's verdict on top.
  *
- * **The timer never outlives the call.** A bare `setTimeout` race leaks a
- * pending timer per invocation — harmless once, and this runs on every settled
- * attempt of every row, so the handles accumulate on a long-lived dispatcher and
- * hold the event loop open past a shutdown that is otherwise finished.
- *
- * The bounded work is not cancelled, because nothing here can cancel it: the
- * hook is somebody else's function. What this buys is that the *worker* stops
- * waiting and the row settles, which is the property the drain budget rests on.
+ * All this adds is *whose fault it is*: a hook that misses its deadline is a
+ * failed attempt, not a conductor defect, so it rejects with
+ * {@link ConductorAttemptFailed} and the board records that message as the next
+ * attempt's feedback. The wording differs from core's for the same reason — a
+ * person reading the feedback is being told the hook did not answer, not that a
+ * timer expired.
  */
 export async function withDeadline<T>(
   work: () => Promise<T>,
   ms: number,
   what: string,
 ): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new ConductorAttemptFailed(`${what} did not answer within ${ms}ms`)),
-          ms,
-        );
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
+  return withTimeout(
+    work(),
+    ms,
+    what,
+    (label, timeoutMs) =>
+      new ConductorAttemptFailed(`${label} did not answer within ${timeoutMs}ms`),
+  );
 }
 
 export function conductorDrainBudgetMs(options: {

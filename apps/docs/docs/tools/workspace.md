@@ -108,7 +108,9 @@ if (outcome?.kind === "conflict") {
 }
 ```
 
-The path becomes the projection's from then on, so a later flush can delete it if the run removes the file. `put` resolves `undefined` when there's nothing to decide — a read-only mount, or a collection's own metadata.
+The path becomes the projection's from then on, so a later flush can delete it if the run removes the file. `put` resolves `undefined` only when there's genuinely nothing to decide — a collection's own metadata.
+
+A read-only mount is not that case. A flush passes over one, because it keeps no baseline there and can't tell an edit from the content it laid down itself. But `put` was handed one path and asked to persist it, so it answers `readonly` with the mount's prefix. Pass that on as a refusal: unlike `conflict` and `contested`, it never clears.
 
 ## Two runs, one file
 

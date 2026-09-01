@@ -290,7 +290,7 @@ On the first bash call in a session:
 3. **Run the command** — whatever the agent requested.
 4. **Flush** — walk the workspace with `find`. For each file:
    - Under a writable mount → upsert to that mount's collection with the prefix stripped.
-   - Under a read-only mount → skip.
+   - Under a read-only mount → skip. (The flush keeps no baseline there, so it can't tell an edit from what it hydrated. `bash-write-file` names its path, so it *can* — see below.)
    - Under `./tmp/` → skip silently.
    - Under nothing known → log a warning and drop.
 5. **Delete** — a file the run removed is deleted from its collection.
@@ -322,6 +322,14 @@ The unit is the collection entry rather than the path, so two sessions each writ
 ```
 
 The file is in the workspace either way; the workspace is the run's own. What `success` reports is whether it reached its collection, so a model that is told `false` can retry rather than move on believing the artifact was saved.
+
+One refusal is not worth retrying, and says so. A write under a read-only mount will be refused every time, so `refused` names the mount and states that retrying won't save it:
+
+```json
+{ "success": false, "refused": "\"skills/foo/SKILL.md\" is under \"skills/\", which is read-only — the write was NOT saved, and retrying will not save it." }
+```
+
+Somewhere writable, or `./tmp/`, is the only way forward there.
 
 ### Orphan writes
 
