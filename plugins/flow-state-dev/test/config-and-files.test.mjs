@@ -380,11 +380,8 @@ describe("detection writes nothing", () => {
 });
 
 describe("the writes-nothing check ignores git's own bookkeeping", () => {
-  // `git init` schedules background maintenance (`gc --auto`, `maintenance run`) that creates and
-  // removes files under `.git/` on its own clock. A snapshot that walks `.git/` races git instead
-  // of checking the script: a lock file present in one walk and gone in the next is a spurious
-  // mismatch, and one deleted between `readdirSync` and `statSync` is an ENOENT thrown from inside
-  // the walk. Neither says anything about what detect.mjs wrote to the project.
+  // Why the snapshot skips `.git/` is on `snapshotTree` in helpers.mjs; these pin the two ways the
+  // race showed up before it did.
 
   it("does not flag a file git created under .git/ between the two snapshots", () => {
     const root = makeTree({ ...base, ".gitignore": ".env.local\n" });
@@ -395,7 +392,7 @@ describe("the writes-nothing check ignores git's own bookkeeping", () => {
     expect(snapshotTree(root)).toEqual(before);
   });
 
-  it("survives a .git/ entry that vanishes between listing and stat", () => {
+  it("does not walk .git/, so an entry that vanishes there between listing and stat cannot throw", () => {
     // A dangling symlink is listed by readdirSync and fails statSync with ENOENT — the same shape
     // as git deleting its lock between the two calls, without having to win a race to show it.
     const root = makeTree({ ...base, ".gitignore": ".env.local\n" });
