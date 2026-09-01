@@ -5,6 +5,7 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
+import { symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildReport, REPORT_SCHEMA, meetsNodeFloor } from "../skills/install-fsd/detect/report.mjs";
 import { inspectRegistry, resolveLoadedConfig } from "../skills/install-fsd/detect/fsdev-config.mjs";
@@ -375,6 +376,32 @@ describe("detection writes nothing", () => {
       { encoding: "utf-8" },
     );
     expect(snapshotTree(root)).toEqual(before);
+  });
+});
+
+describe("the writes-nothing check ignores git's own bookkeeping", () => {
+  // `git init` schedules background maintenance (`gc --auto`, `maintenance run`) that creates and
+  // removes files under `.git/` on its own clock. A snapshot that walks `.git/` races git instead
+  // of checking the script: a lock file present in one walk and gone in the next is a spurious
+  // mismatch, and one deleted between `readdirSync` and `statSync` is an ENOENT thrown from inside
+  // the walk. Neither says anything about what detect.mjs wrote to the project.
+
+  it("does not flag a file git created under .git/ between the two snapshots", () => {
+    const root = makeTree({ ...base, ".gitignore": ".env.local\n" });
+    initGit(root);
+    const before = snapshotTree(root);
+    writeFileSync(join(root, ".git/objects/maintenance.lock"), "");
+    buildReport(root);
+    expect(snapshotTree(root)).toEqual(before);
+  });
+
+  it("survives a .git/ entry that vanishes between listing and stat", () => {
+    // A dangling symlink is listed by readdirSync and fails statSync with ENOENT — the same shape
+    // as git deleting its lock between the two calls, without having to win a race to show it.
+    const root = makeTree({ ...base, ".gitignore": ".env.local\n" });
+    initGit(root);
+    symlinkSync(join(root, ".git/objects/gone.lock"), join(root, ".git/objects/maintenance.lock"));
+    expect(() => snapshotTree(root)).not.toThrow();
   });
 });
 
