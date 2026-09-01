@@ -166,11 +166,15 @@ who may put a message through the door.
 
 | Type | Arrives from | Schema owner |
 |---|---|---|
-| user | a caller — HTTP, chat, MCP, voice | the author |
-| webhook | an external sender | the sender |
-| schedule | the scheduler firing | the framework |
+| user | a caller — HTTP, MCP, voice, or a matched chat subscription | the author |
+| webhook | an external sender; named `provider/event` | the sender |
+| schedule | the outbox sweep — from a static cron or from a block | the framework |
 | task | a board drain | the framework |
 | internal | a `dispatcher` block in another request | the author |
+
+Two of these carry a coordinate the author does not own, and one is selected by a
+subscription rather than addressed directly. Both cases are handled below under
+§"Protocol-owned types carry a compound name" and §"Subscription is not routing".
 
 An adapter is already `{ source, createBindings(host) }` — an immutable factory
 that produces routes and puts envelopes through the door
@@ -255,6 +259,83 @@ factor is per-type config, which the second shape has nowhere to put.
 exists a level up: `flow.request.concurrency` is the all-types default today
 (`ConcurrencyFlowView`). So the ladder is **default → per-type → per-action**,
 which is the shape already shipped, extended by one rung.
+
+### Who may address an entry
+
+Guard 1 above says addressability becomes an explicit declaration. This is that
+declaration, and the rule behind it.
+
+Every entry carries `from`, naming which message types may reach it. The default
+is the entry's own type and nothing else.
+
+```ts
+flow.user.actions.chat        // from: ["user"] — the default
+flow.internal.actions.status  // from: ["internal", "task"]
+```
+
+**A block may dispatch a type only when it can itself supply that type's trust.**
+Not "internal versus external" — that cut is wrong, and it excludes scheduling,
+which a block has every reason to do.
+
+| Type | Where its trust comes from | A block may dispatch it |
+|---|---|---|
+| `webhook` | a signature over raw bytes | **No** — the block does not hold the bytes |
+| `user` | a principal resolved at the edge | **No** — manufacturing one is BP-031 |
+| `internal` | the running request's own authority | Yes |
+| `task` | the same, plus a verified claim | Yes |
+| `schedule` | time passing | **Yes** — see §"Scheduled delivery" |
+
+Without this rule a `dispatcher({ type: "webhook", target: "github" })` invokes a
+webhook handler with **no signature check at all** — the verification lives in the
+adapter the dispatch went around. The rule states *why* rather than listing which
+types are allowed, so a sixth type gets classified rather than forgotten.
+
+`schedule` is deliberately on both sides. The `schedules` config is already *"a
+resolution surface: a static map (the framework-cron case) plus an optional
+`resolve(scheduleId, ctx)` hook"* (`types/schedules.ts:10`) — the static map is
+the externally declared half and the resolver is the internally created half.
+That split ships today.
+
+### Protocol-owned types carry a compound name
+
+`(type, name)` is enough for `user`, `internal` and `task`, where the author owns
+both halves. It is **not** enough for types whose coordinate belongs to a
+protocol.
+
+A webhook resolves today by two coordinates, not one:
+`webhooks: { <provider>: { on: { <eventType>: binding } } }`
+(`types/webhook.ts:5`). One segment after `webhook` loses a dimension: either two
+GitHub events cannot pick different handlers, or `push` from two verified
+providers collides.
+
+**The name is a compound the type defines.** For `webhook` it is
+`provider/event`:
+
+```
+flow.webhook.actions["github/pull_request"]
+flow.webhook.actions["stripe/charge.succeeded"]
+```
+
+The address stays one keyed lookup, and the structure lives inside the name where
+the type owns it. The separator is part of each type's contract, so provider names
+containing it are rejected at definition time rather than silently re-parsed.
+
+### Subscription is not routing
+
+Chat is the other protocol-owned case, and folding it into `user` as "just another
+arrival" was wrong. `flow.chat` is *"per-flow chat-transport subscriptions"* whose
+adapter *"discovers these declarations at mount and dispatches matching inbound
+chat events to the named actions"* (`flow.ts:450`). It evaluates `when`
+predicates, maps protocol events onto handler input and session ids, and stamps
+the matched key.
+
+None of that is addressing. It is **matching** — deciding which entry an event
+belongs to. So it stays in the adapter, and its output is an ordinary
+`(type, name)` dispatch.
+
+`flow.chat` therefore survives as a **subscription declaration**, not a routing
+map. That distinction is what keeps this from being the sixth map wearing a new
+hat: a subscription selects an address, a routing map *is* the address.
 
 ### No fallbacks — and this is a generalization, not an invention
 
@@ -381,20 +462,32 @@ A block does not *call* a dispatch. It **is** one:
 ```ts
 const handOff = dispatcher({
   name: "hand-off-to-implement",
-  type: "task",              // user · webhook · schedule · task · internal
-  target: "implement",       // resolves flow.task.actions.implement
-  inputSchema: z.object({ issue: z.string(), session: z.string().optional() }),
+  type: "task",              // static — the address
+  target: "implement",       // static — resolves flow.task.actions.implement
+  session: "per-task",       // the session policy
+  resolve: (input, ctx) => ({
+    session: input.threadId, // computed, and wins over the policy
+    payload: { issue: input.issue },
+    deliverAt: input.when,   // optional — see §"Scheduled delivery"
+  }),
 });
 ```
 
-`type` and `target` are the address, and they are **static**. The session and the
-payload are the block's *input*, so they stay runtime values:
+**The address is static so it can be verified. The envelope is dynamic so it can
+be useful.** `(type, target)` never varies, because that pair is exactly what
+`defineFlow`'s walk checks — the replacement for
+`assertWorkstreamBindingsReachable`. Make the target dynamic and that check dies.
+Everything else — session, payload, delivery time — is computed at run time.
 
-| `session` on the input | Behaviour |
-|---|---|
-| absent | mint one |
-| present, found | deliver into it |
-| present, not found | **reject** — unless the target entry is channel-shaped |
+If the *address* genuinely varies, that is a **router over declared dispatchers**,
+not a dynamic target. The reachable set stays declared, which is the whole point.
+
+A dispatcher **returns a handle** — the session id, the request id, and for a task
+the row id — so a later step can record what it started.
+
+One consequence of a computed session: the reject-on-unknown rule now fires on a
+value the flow calculated, so it is the likely path rather than a defensive one.
+The refusal must name the computed value and the block that produced it.
 
 **There is deliberately no `ctx.dispatchMessage`.** An imperative escape hatch
 would defeat all three reasons the dispatcher kind exists: a board could no longer
@@ -413,20 +506,18 @@ Four cases look like they need the hatch. None does:
 |---|---|
 | Target chosen from data (`row.assignee`) | a **router** over the declared dispatchers — the roster *is* the declared set |
 | Dispatch only under a condition | `.stepIf` / `.sideChainIf` (BP-036) |
-| Session or payload computed at runtime | the dispatcher's **input**, which is already a runtime value |
+| Session or payload computed at run time | the dispatcher's `resolve` slot, above |
 | A model choosing the recipient (`relaySendTool`) | a router over the allowed dispatchers |
 
-**The last row is the one that argues hardest for the restriction.** Putting send
-in a model's hands with a free-text address means a hallucinated session id is a
-dispatch attempt. A router over declared dispatchers makes the model's reachable
-set an allowlist checked at definition time instead of a string checked at
-runtime — which is the recipient scoping this document otherwise had to bolt onto
-the tool.
+**The last row argues hardest for the restriction.** Putting send in a model's
+hands with a free-text address means a hallucinated session id is a dispatch
+attempt. A router over declared dispatchers makes the model's reachable set an
+allowlist checked at definition time instead of a string checked at run time —
+which is the recipient scoping this document otherwise had to bolt onto the tool.
 
 **The framework still needs the seam; it is just not on `ctx`.** The board drain,
-the task wrapper and every transport adapter dispatch. That is the same shape
-`host.dispatch` has today — real, used, and not author-facing.
-
+the task wrapper, the outbox sweep and every transport adapter dispatch. That is
+the same shape `host.dispatch` has today — real, used, and not author-facing.
 
 One action fanning into four kinds of work, with only one of them using a verb at
 all:
@@ -480,6 +571,8 @@ a given task's work looks like:
 
 ```ts
 type TaskInput<TPayload = unknown> = {
+  boardId: string;          // which board claimed this
+  collectionKey: string;    // which ledger to re-read and settle against
   taskId: string;
   attempt: number;
   createdAt: number;
@@ -487,6 +580,17 @@ type TaskInput<TPayload = unknown> = {
   payload: TPayload;        // materialized worker input, packed at claim time
 };
 ```
+
+**`boardId` and `collectionKey` are not optional, and an earlier revision dropped
+them.** One flow may hold several boards. Task ids can repeat across collections,
+and one worker can be reached from more than one board, so `taskId` + `attempt` +
+`incarnationId` do not say which ledger the wrapper must re-read. Today that fact
+survives because the dispatch envelope carries `boardId` and each runner is closed
+over its own collection; a replacement envelope without them lets the four checks
+inspect the wrong ledger, or none.
+
+Both are **server-derived** — stamped by the claiming board, never read from a
+payload — so they add no caller-facing surface (BP-031).
 
 Everything but `payload` is the claim envelope — compared against the re-read row,
 verified and never trusted. The entry sees `payload`; `ctx.task` carries only the
@@ -535,51 +639,64 @@ build-time check the collapse would otherwise lose. See §"The typed entry".
 detached by being a dispatcher; locality stops being an axis to configure and
 becomes a property of the seat.
 
-### Where a worker's tasks land: one session or many
+### Where a worker's tasks land: four modes
 
-A dispatcher decides this, and it is a policy rather than a per-call argument:
+Two questions decide this. Does the work get its own request? If so, what keys its
+session?
 
-```ts
-const implement = dispatcher({
-  name: "implement",
-  type: "task",
-  target: "implement",
-  session: "per-task",        // default
-});
-```
-
-| `session` | Each task gets | Use when |
+| Mode | Session | Use it when |
 |---|---|---|
-| `"per-task"` *(default)* | a freshly derived session | work is independent — a checkout per issue, a run per row. Parallel-safe by construction |
-| `"per-worker"` | one long-lived session for every task this dispatcher sends | the worker accumulates context worth keeping — a reviewer that should remember what it already flagged |
-| `(row) => key` | one session per derived key | the natural grain is neither: one per issue across phases, one per epic |
+| **inline** | none — runs in the claiming drain's request | the work is short and needs nothing the drain lacks |
+| **per task** *(default when dispatched)* | keyed on the task id | work is independent — a checkout per issue, a run per row |
+| **per key** | keyed on a value from the row | one issue across spec, implement and review |
+| **per worker** | one long-lived session for this worker | the worker should remember what it already did |
 
-This is a policy over machinery that exists. `deriveChildSessionId` already derives
-from a seed and a topic/key; the three options are three seeds, not three
-mechanisms.
+**Dispatch when at least one of these is true.** Otherwise stay inline.
 
-**A row may still override.** A worker handing off inside its own checkout names
-its session explicitly when it files, and that wins over the policy:
+- The work outlives the parent request — hours, or a wait on a person.
+- It needs its own workspace: a checkout, a working directory, a harness session.
+- It needs a different capability set, model, or token budget than the drain.
+- Someone must address it later — to follow it, steer it, or resume it.
+- Its failure must not take its siblings with it.
 
-```ts
-// Inside the `implement` worker, after opening a PR.
-await ctx.cap.issueWork.addTask({
-  assignee: "review",
-  input: { pr: pr.url },
-  session: ctx.sessionId,      // ← continue in THIS session
-});
-```
+A sharper form of the isolation test: **if two workers would collide on
+session-scoped state, they cannot both run inline.** Dispatch them, or move that
+state to task scope. That is checkable against the scope model rather than a
+matter of taste.
 
-**Filing goes through the board's capability, not an ambient `ctx` method.**
-`addTask` is already `ctx.cap.<name>.addTask({...})` (`task-board/capability.ts:9`),
-alongside `addTasks`/`getTask`/`listTasks`/`countTasks`, and the capability threads
-`TInput` so a mismatched payload fails to compile. There is no `ctx.tasks` — an
-ambient filing method would be the same mistake as an ambient dispatch method, one
-layer over.
+Getting it wrong cheaply costs a session record and a request record nobody
+needed. Getting it wrong expensively costs a worker that dies with its parent.
 
-**`per-worker` plus `queue` is the channel shape.** One session, arrivals
-serialized in order — which is the same construction §"Sessions can be named"
-describes, reached from the other side.
+**A shared session needs `queue`, not the `allow` default.** Per-key and
+per-worker both let two tasks dispatch into one session at once, interleaving
+writes to its state and history. Those modes should default to `queue`; inheriting
+the global `allow` is a footgun, not a choice.
+
+**Failure timing differs, and it is operational.** Inline fails fast into the
+drain. A dispatched worker that dies silently costs a full lease before anything
+reclaims the row. "How long until we notice" is part of choosing a mode.
+
+#### `per-worker` needs a derivation it does not have yet
+
+This was stated too easily in an earlier revision as "three seeds, not three
+mechanisms." That is wrong, and the code says so.
+`deriveChildSessionId` hashes `[tenantId, userId, parentSessionId, lineageId,
+topic, key]` (`detached-child.ts:68`) — the parent session and lineage come
+**before** the key. So a user- or org-scoped board drained from two sessions
+produces two children from one per-worker seed, not the single long-lived session
+the mode promises.
+
+Two ways out, and this is an open decision:
+
+- **Narrow the contract** to one worker session per parent, which the existing
+  derivation already gives. Cheap, and weaker than advertised.
+- **Give the mode its own derivation** that omits `parentSessionId`, which then
+  needs its own owner, adoption rule and authorization check — a real addition,
+  not a seed change.
+
+*Recommendation: narrow the contract for v1 and record the wider version as
+follow-on.* A worker that must remember across parents is a channel, and channels
+have their own naming path.
 
 ### Concurrency: three limits, and the one that is missing
 
@@ -667,6 +784,43 @@ seats for and nothing else — board ownership, which needs no new concept becau
 the roster check that already rejects a mistyped agent name does it. Phase 1
 narrows that to its own flow, which makes the question moot for now.
 
+### Not everything durable is a task
+
+Conductor holds epics and issues. It is tempting to make them board rows, because
+they are durable and there are lots of them. They should be a **resource
+collection** instead, and one question separates the two:
+
+> **Does anything claim it?**
+
+A task row is a unit of claimable work with a lease: pending → claimed → settled,
+one worker at a time. An epic is a record people edit. Nobody claims an epic. It
+has no lease and no worker, and it sits for weeks while its priority changes and
+issues move in and out.
+
+| | Store | Lifecycle |
+|---|---|---|
+| `epics`, `issues` | resource collection | created, edited, reprioritized, closed |
+| `tasks` | task board | pending → claimed → settled, then gone |
+
+The board is a **work queue derived from the record.** It is not the record.
+
+Three consequences make this more than vocabulary:
+
+- **`maxPending` defaults to 100 and applies to the board.** Thirty long-lived
+  epics as rows would sit `pending` forever, consuming that budget and making
+  every drain walk past them.
+- **Board `concurrency` is a pool for the whole board.** Mixing bookkeeping rows
+  with real work makes that number mean nothing.
+- **Deprioritizing an epic becomes a resource edit** — no claim to break, no lease
+  to reason about. Cancelling its work fails task rows and leaves the epic row
+  untouched.
+
+The healthy steady state is thirty epics and an empty board. That state is only
+expressible when the two live in different stores.
+
+Conductor already leans this way: its run record is a resource, separate from the
+board rows. This makes that separation the rule rather than an accident.
+
 ### Worked example: conductor
 
 ```ts
@@ -697,6 +851,85 @@ file.
 This is shape **A** — one flow, sessions by role. See §"Conductor ships as A".
 
 ---
+
+---
+
+## Scheduled delivery
+
+A schedule is not a timer that reaches into the framework from outside. **Sending
+writes a row; a sweep decides what is due.**
+
+```
+dispatcher(… deliverAt) ──► outbox row { deliverAt, envelope, status, repeat? }
+                                       ▲
+host cron ──► POST /sweep ─────────────┘  claim due rows · dispatch · settle
+```
+
+This is what makes `send_later` possible at all: a block cannot ask Vercel Cron to
+add an entry, but it can write a row.
+
+**It moves scheduling ownership.** Today the host owns every schedule — each cron
+entry is its own host job. With an outbox the **host owns one heartbeat** and the
+framework owns the schedule. The framework still cannot wake itself, so the single
+external tick stays.
+
+### The outbox is not a task board
+
+A board is per-flow; the sweep must be host-level. An outbox row has no assignee,
+no worker roster, and no claim ticket a model presents. And routing `send_later`
+through a board would mean **every flow wanting a timer needs a board** — which is
+`no-workstream-core` again, the exact defect this document deletes.
+
+### Four cases, not two
+
+§"An ack is two things" had two. Deferred delivery adds a second axis, because a
+row can exist to hold a *message* rather than to record an *answer*.
+
+| | needs no outcome | needs an outcome |
+|---|---|---|
+| **immediate** | nothing minted | task row |
+| **deferred** | **outbox row** | task row with `notBefore` |
+
+Tasks have no `notBefore` today. The bottom-right cell is therefore not
+expressible, and a spec that wants "wake me later and confirm it happened" is
+proposing that field.
+
+### Mechanics that must be decided, not discovered
+
+- **Granularity is the tick.** `deliverAt` five minutes out on a one-minute tick
+  delivers between five and six minutes. The contract says *not before*, never
+  *at*.
+- **The sweep claims.** Two overlapping ticks otherwise deliver twice. Reuse the
+  board's lease rather than inventing a second fence.
+- **At-least-once, not exactly-once.** Dispatch, then mark delivered; a process
+  that dies between the two lets the lease lapse and the row redeliver. Receiving
+  entries tolerate a duplicate.
+- **Cap the batch.** A tick that finds ten thousand due rows does not dispatch ten
+  thousand.
+
+### A recurring schedule can stop itself
+
+A recurring row re-arms after each delivery, so the receiving action needs a way
+to end it. These are lifecycle verbs the substrate owns, which is exactly the
+carve-out `ctx.task` already has for `park` and `heartbeat`:
+
+```ts
+ctx.schedule.cancel();            // stop re-arming
+ctx.schedule.reschedule(next);    // change the cadence from inside
+```
+
+`reschedule` earns its place: it is how a poller backs off rather than hammering a
+fixed interval.
+
+**Cancel must survive at-least-once delivery.** A duplicate can arrive after the
+action already cancelled, so cancel writes to the row and the row's status gates
+re-arming. Otherwise a redelivery resurrects a schedule someone killed.
+
+**Cancelling from outside is a different surface.** A coordinator ending a schedule
+it created is not inside that message's action and cannot use `ctx.schedule`. That
+is a capability method — `ctx.cap.schedule.cancel(id)` — the same shape as
+`addTask`. Both surfaces exist, or the second is discovered late.
+
 
 ## What gets simpler
 
@@ -858,6 +1091,30 @@ them, so per-entry addressability ships **with** the collapse, not after it.
 | `deriveChildSessionId`, topic/key seed | kept | shrinks to "first spawn for this row" |
 | `lineageId`, `lineage-scope.ts`, `StorageScopeType.lineage` | kept, unchanged | FIX-1068 survives intact |
 
+### The purge is wider than the deletions above
+
+The table covers the framework's own machinery. **It does not cover the published
+client surface, and an earlier revision's "deletion is real" check would pass
+while Workstream stayed public.**
+
+| Surface | Where |
+|---|---|
+| `WorkstreamSummary` | exported from `client/src/index.ts:111` |
+| `SessionClient.listWorkstreams` | `client/src/session-client/sessions.ts:124` |
+| the `…/workstreams` URL the client calls | same file, line 232 |
+| React `workstreams` options and state | `packages/react` |
+| `maxWorkstreamListLimit` | client options |
+| persisted `metadata.workstream` | request records (BP-030 applies) |
+
+The word appears in seven packages. Two of them — `client` and `react` — are
+published API, so removing it is a breaking change with a rename path, not an
+internal edit.
+
+**This needs a repo-wide vocabulary gate**, with deliberate exclusions for
+historical references (changelogs, this document's own "Considered and not taken").
+Without one, the deletion check is satisfied by removing two files while the
+concept survives in everything a consumer imports.
+
 ### On `sharedToLineage` — the one rename worth its churn
 
 Not `sharedWithSpawns`. The storage address **is** `lineageId`; `lineage` is
@@ -892,6 +1149,30 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 - **A named session is created only where declared.** Dispatch with an unknown
   `session` to an ordinary entry, then to a channel-shaped one. Pass: refused,
   then created.
+- **A block cannot dispatch a protocol-owned type.** A flow declaring a
+  `dispatcher({ type: "webhook" })`. Pass: `defineFlow` rejects it by name. Assert
+  on the refusal reason — a dispatch that merely fails to deliver also "fails".
+- **A webhook address keeps both coordinates.** Two events for one provider, and
+  one event name across two providers. Pass: four distinct handlers, none
+  shadowed.
+- **A chat subscription still selects an entry.** One inbound chat event matching
+  a `when` predicate. Pass: it reaches the named entry as a `user` message, and
+  `flow.chat` remains a subscription rather than a resolution map.
+- **The task envelope names its ledger.** Two boards in one flow with colliding
+  task ids. Pass: each wrapper re-reads its own collection; neither settles the
+  other's row.
+- **The sweep delivers once under overlap.** Two ticks racing on one due row.
+  Pass: one dispatch. Then kill the process between dispatch and settle. Pass:
+  redelivery, since the contract is at-least-once — assert the duplicate is
+  *tolerated*, not that it never happens.
+- **A cancelled recurring schedule stays cancelled.** Cancel inside the action,
+  then redeliver the same row. Pass: no re-arm.
+- **`per-worker` returns one session.** Drain one user-scoped board from two
+  sessions. Pass: whatever §"four modes" settles — one session under the wide
+  contract, or a documented two under the narrow one. **This bullet does not pass
+  against the current derivation**, which hashes `parentSessionId` first.
+- **Workstream is gone from the published API.** A vocabulary gate over
+  `packages/*/src`, excluding changelogs. Pass: no hits outside the exclusions.
 - **Cross-flow spawn shares user resources.** A parent in flow A spawns into flow
   B; both read one user-scoped resource with default isolation. Pass: same cell.
 - **Lineage-bucket collision refused.** Two flows in one lineage declaring the same
@@ -913,7 +1194,17 @@ already in the codebase. Every other rename here is cosmetic and can wait.
    *Recommendation: split.*
 3. **Migration.** Nothing is published, so no deployed store holds workstream
    addresses (per `state-and-scopes.md`). This can be a clean break rather than a
-   dual-read. *Confirm before relying on it.*
+   dual-read. **But the client and React packages are published**, so the
+   Workstream rename there is a breaking change with its own path — see
+   §"The purge is wider than the deletions above". *Confirm before relying on it.*
+4. **`per-worker` contract.** Narrow to one session per parent, which the existing
+   derivation gives, or build a derivation that omits `parentSessionId`?
+   *Recommendation: narrow for v1.*
+5. **`notBefore` on tasks.** Adding it makes "wake me later and confirm it
+   happened" expressible. Without it that quadrant stays empty.
+6. **Per-entry concurrency above one.** Max-1 falls out of a constant key with
+   `queue`. Max-N needs a counting semaphore the arbiter does not have. Not
+   proposed here; recorded so a spec that assumes it knows it is proposing one.
 4. **Park's lease policy.** Hold (waiting on a person) versus release (waiting on
    a child run). Unverified: whether the substrate can release a lease without
    settling.
@@ -1252,6 +1543,46 @@ reachable set becomes an allowlist rather than a runtime string.
 
 The seam still exists for the framework, as `host.dispatch` does today. What was
 dropped is the author-facing method, not the mechanism.
+
+### The outbox as a task board
+
+Scheduled delivery looked like it could ride the existing board: a row with a
+`notBefore`, drained by the usual claim and lease.
+
+**Dropped because a board is per-flow and the sweep must be host-level**, and
+because it would make every flow that wants a timer declare a board. That is
+`no-workstream-core` in a new costume — the precise failure this document exists
+to remove. The outbox reuses the board's *lease*, not its structure.
+
+### Batch dispatch — many rows, one request
+
+Attractive for cost: review ten pull requests in one session, one request.
+
+**Dropped because one request would hold ten claims.** A partial failure then has
+no settlement: three failed and seven completed cannot be expressed against a
+single lease, so the claim model would need reworking to support it. If batching
+matters, batch at row *creation* — one row carrying ten items.
+
+### A parent that waits for its child
+
+A "slow call": the parent holds its request open until the child answers.
+
+**Dropped because §"four modes" already covers it.** If the parent waits, the
+parent's own request record is the durable trace and no row is needed — so it is
+not a task, it is a block call. A fresh-context sub-agent is a generator with its
+own context, which is inline. The only real gap is wanting isolated *session
+storage* while waiting, and nothing needs that yet.
+
+### A dynamic dispatch target
+
+Letting a dispatcher compute `target` at run time, so one dispatcher serves many
+addresses.
+
+**Dropped because it kills the build-time check.** `(type, target)` static is
+exactly what `defineFlow`'s walk verifies — the replacement for
+`assertWorkstreamBindingsReachable`. A varying address is a router over declared
+dispatchers, which keeps the reachable set declared and reads better besides. The
+*envelope* is dynamic; only the address is fixed.
 
 ### Auto-creating a session on an unknown id
 
