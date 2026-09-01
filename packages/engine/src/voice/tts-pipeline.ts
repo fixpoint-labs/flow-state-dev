@@ -12,6 +12,7 @@
 import type { OutputAudioContent } from "@flow-state-dev/core/items";
 import type { SpeakChunk, TTSConfig, VoiceProvider } from "@flow-state-dev/core/types";
 import { canSpeakStream, VoiceError } from "@flow-state-dev/core/types";
+import { withTimeout } from "@flow-state-dev/core/helpers";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import { uint8ArrayToBase64 } from "../streaming/binary";
 import { createSentenceBuffer, type SentenceBuffer } from "./sentence-buffer";
@@ -221,7 +222,8 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
             model: options.config.model,
             signal: speakSignal
           }),
-          SYNTHESIS_TIMEOUT_MS
+          SYNTHESIS_TIMEOUT_MS,
+          "tts batch synthesis"
         );
       } finally {
         releaseSlot();
@@ -507,26 +509,6 @@ function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
       (error) => {
         signal.removeEventListener("abort", onAbort);
         reject(error);
-      }
-    );
-  });
-}
-
-/**
- * Resolves a promise but rejects if it doesn't settle within `ms`. Argument
- * order is `(promise, ms)`. Used for the batch whole-call timeout.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
       }
     );
   });

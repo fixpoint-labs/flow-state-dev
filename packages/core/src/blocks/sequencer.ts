@@ -25,7 +25,8 @@ import type { StepOutcome } from "./internal/arg-shapes";
 import { runSideChain, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
 import type { WorkstreamBindings } from "../types/workstream";
-import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError, withTimeout } from "./internal/utils";
+import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError } from "./internal/utils";
+import { withTimeout } from "../helpers/with-timeout";
 import {
   blockPathBranch,
   blockPathIteration,

@@ -23,32 +23,6 @@ export function matchesRescueHandler(error: Error, handler: RescueHandlerSpec): 
 
 export { toError } from "../../helpers/to-error";
 
-export function withTimeout<TValue>(
-  promise: Promise<TValue>,
-  timeoutMs: number | undefined,
-  label: string
-): Promise<TValue> {
-  if (timeoutMs === undefined || timeoutMs <= 0) {
-    return promise;
-  }
-
-  return new Promise<TValue>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    promise
-      .then((value) => {
-        clearTimeout(timeout);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-  });
-}
-
 /**
  * Returns the number of items already emitted on the given response object.
  * Used by block code in this package to assign sequential `itemIndex` values
