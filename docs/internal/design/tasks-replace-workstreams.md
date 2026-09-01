@@ -455,7 +455,7 @@ The taxonomy also reads better as three groups than five flat kinds: leaves that
 compute (`handler`, `generator`), a leaf that hands off (`dispatcher`),
 composites (`sequencer`, `router`).
 
-### Sessions can be named, so "not found" is a per-entry decision
+### Sessions can be named, and "not found" still rejects
 
 **A correction.** An earlier claim in this document's discussion — that session
 ids are derived and never author-chosen — is false as a general statement.
@@ -1645,10 +1645,16 @@ dispatchers, which keeps the reachable set declared and reads better besides. Th
 
 Considered so that a dispatch naming a missing session would just work.
 
-**Dropped as the default, kept as a declaration.** An unknown id is a typo, a
-stale reference to a reaped session, or — once a send verb is in a model's hands —
-a hallucination, and auto-create turns all three into real work nobody is
-watching. Reject is also the recoverable branch: drop the id and mint. A spawn
-cannot be un-spawned. Channel-shaped entries opt back in, because a named channel
-is a legitimate shape and caller-named sessions already exist
-(`session-routes.ts:136`).
+**Dropped outright. v1 has no exception, per-entry or otherwise.** An unknown id
+is a typo, a stale reference to a reaped session, or — once a send verb is in a
+model's hands — a hallucination, and auto-create turns all three into real work
+nobody is watching. Reject is also the recoverable branch: drop the id and mint. A
+spawn cannot be un-spawned.
+
+An earlier revision kept a channel-shaped entry as an opt-in. **That is also
+dropped**, because an entry that creates a session on an unknown name is a Layer 2
+convention — Workforce's agent-owned channel — and Layer 1 does not acquire it by
+shipping first. A named channel remains a legitimate shape; it belongs to
+Conductor or Workforce as a convention over the caller-named session
+`handleCreateSession` already supports (`session-routes.ts:136`), not as new
+Layer 1 behavior.
