@@ -146,7 +146,8 @@ spec that will write it.*
    - **Wait** in **`parked`**, not as a suspended request. **`parked` is the status** and
      **dependencies stay `blocked`**; **`needs_input` is the human-ask display/reason**. Shipped
      `awaiting_review` stays until [FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245)
-     renames it; this epic consumes the rename and does not own it.
+     renames it ([#1513](https://github.com/fixpoint-labs/flow-state-dev/pull/1513), draft); this epic
+     consumes the rename and does not own it.
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
      normally as `status: "errored"`, so settling on a normal return alone reports a failed run as
      completed. The manager's `decide` step does this today; the moved manager must still.
@@ -171,7 +172,11 @@ spec that will write it.*
    the epic's outcome.)* The contract is what a harness block owes the manager: **dispatch a run in
    a working directory → hand back a handle → resume by a session id with a follow-up prompt →
    abort under a caller-enforced deadline**, with the handle carrying status, session id, result
-   classification, final text, usage and cost. **The tell is unchanged: a clause that names a
+   classification, final text, usage and cost. **The working directory is harness *configuration*,
+   never per-run input** — a harness block is exposed to models as a tool through its capability,
+   so a directory on the input would let a model choose where a run writes (BP-031, theme 6's
+   line). Settled by LAB-152's contract and commented up (#1362, 2026-09-01); it binds LAB-153 the
+   same way. **The tell is unchanged: a clause that names a
    Claude Code notion** — a turn cap, an exit code, `detached`, `recordWork` — has broken it, and
    the fix is to restate that clause as the capability underneath it. **LAB-152 writes the
    contract with the source open; LAB-153 is its falsifier** — a clause Codex cannot satisfy
@@ -194,8 +199,12 @@ spec that will write it.*
    *(Engineering-manager call, 2026-09-01; the owner rules on it at LAB-154's spec gate. The
    alternative is named so the ruling is on a real fork.)* The manager takes its harness as a
    block: `harness: BlockDefinition<HarnessInput, HarnessHandle>`, dropped into the `.step()`
-   where `claudeCodeAgent(...)` sits by name today. **Why not one manager per harness package:**
-   per-package managers duplicate the loop — lease, verdict, question channel, retry — which is
+   where `claudeCodeAgent(...)` sits by name today. **Because the checkout path is configuration,
+   not input (theme 7), the slot has to hand its harness that path some other way** — a slot that
+   takes a factory (a harness *per checkout*), or a known state the harness's own resolver reads.
+   LAB-154's spec picks (§5); the contract precludes neither, and a slot that smuggles the
+   directory onto the input has hit theme 6, not a design problem. **Why not one manager per
+   harness package:** per-package managers duplicate the loop — lease, verdict, question channel, retry — which is
    exactly the reinvention the owner has said they do not want, and the loop already reads nothing
    Claude-specific (§1's handle fact). What *is* Claude-specific (`detached`, `recordWork`, `cwd`,
    forwarding `ctx.signal` into the SDK abort controller) belongs in the adapter, behind the slot.
@@ -248,7 +257,10 @@ spec that will write it.*
     `resume` / previous-session input **reaches the harness on the detached path**: the manager
     already carries `previousSessionId`, the contract (theme 7) carries resume-by-id, and today the
     two never meet because `detached: true` suppresses the SDK `resume`. This epic closes that gap
-    at the harness boundary; the typed resume association **on the task** stays FIX-1179's
+    in two halves with owners: **LAB-152 the harness half** — resume-by-id is on the input contract
+    and `claudeCodeAgent` honours it on the detached path — and **LAB-154 the manager half**,
+    sending `previousSessionId` into the slot, plus the end-to-end check that an answered run
+    continues its session; the typed resume association **on the task** stays FIX-1179's
     (FIX-1246 the POC under it). **(iv)** `PhaseSpec.readable` is used or removed — a phase's
     readable set is theme 2's own definition of what a phase *is*, so an unused slot there means
     the definition is wrong or the slot is; LAB-154 decides which. **(v)** The goal check drives
@@ -259,9 +271,9 @@ spec that will write it.*
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [LAB-152](https://linear.app/fixpoint-labs/issue/LAB-152) | The harness contract — input and handle — lives in a neutral home below every harness package (theme 10, recommended `@flow-state-dev/core`), and `claudeCodeAgent` is verified against it with no caller change. Blocks LAB-153 and LAB-154 | spec | — | — | Needs spec |
-| [LAB-153](https://linear.app/fixpoint-labs/issue/LAB-153) | `@flow-state-dev/codex` — a Codex harness block that dispatches, resumes by session id and aborts a run through the contract, reporting usage and an estimated cost (theme 11). Blocked by LAB-152. Theme 7's falsifier | spec | — | — | Needs spec |
-| [LAB-154](https://linear.app/fixpoint-labs/issue/LAB-154) | The harness manager is a framework block with a harness slot, published out of labs/ (theme 9); the `leases` Map gets a home or a recorded deferral, the previous-session input reaches the harness, `PhaseSpec.readable` is used or removed (theme 12). Blocked by LAB-152 and by FIX-1291 ([#1523](https://github.com/fixpoint-labs/flow-state-dev/pull/1523), open) | spec | — | — | Needs spec |
+| [LAB-152](https://linear.app/fixpoint-labs/issue/LAB-152) | The harness contract — input and handle — lives in a neutral home below every harness package (theme 10, recommended `@flow-state-dev/core`), and `claudeCodeAgent` is verified against it with no caller change — and honours resume-by-id on the detached path (theme 12 iii, harness half). Blocks LAB-153 and LAB-154 | spec | [#1534](https://github.com/fixpoint-labs/flow-state-dev/pull/1534) | — | In Spec Review |
+| [LAB-153](https://linear.app/fixpoint-labs/issue/LAB-153) | `@flow-state-dev/codex` — a Codex harness block that dispatches, resumes by session id and aborts a run through the contract, reporting usage and an estimated cost (theme 11); its working directory is configuration, never input (theme 7). Blocked by LAB-152. Theme 7's falsifier | spec | — | — | Needs spec |
+| [LAB-154](https://linear.app/fixpoint-labs/issue/LAB-154) | The harness manager is a framework block with a harness slot, published out of labs/ (theme 9); the `leases` Map gets a home or a recorded deferral, the manager sends `previousSessionId` into the slot and proves an answered run continues its session (theme 12 iii, manager half), `PhaseSpec.readable` is used or removed (theme 12); how the slot hands its harness the checkout path (§5). Blocked by LAB-152 and by FIX-1291 ([#1523](https://github.com/fixpoint-labs/flow-state-dev/pull/1523), open) | spec | — | — | Needs spec |
 | [LAB-141](https://linear.app/fixpoint-labs/issue/LAB-141) | Harnesses compose under one system: a harness is chosen per task — the manager parameterised per phase, or a router on a task field; the spec picks — and **carries the Proof**: one real issue through both harnesses. Blocked by LAB-153 and LAB-154 | spec | — | — | Needs spec |
 | [LAB-150](https://linear.app/fixpoint-labs/issue/LAB-150) | The ask marker lives inside the tree the run commits from; move it beside the checkout (or record the residual as accepted). Sequenced behind LAB-154 so it is fixed once, against the new manager | **bug** | — | — | Blocked (LAB-154) |
 | [LAB-151](https://linear.app/fixpoint-labs/issue/LAB-151) | `fsdev conductor` operator board on the existing run host. **Owner-driven** — the epic does not dispatch it, and nothing here waits on it | spec | — | [#1496](https://github.com/fixpoint-labs/flow-state-dev/pull/1496) | In Review |
@@ -315,6 +327,19 @@ is properly ruled on where the mechanism is written.
   below the harnesses (recommended `@flow-state-dev/core`, LAB-152's spec argues it) and the
   *manager* may sit on orchestration. What is closed: it is not `labs/conductor`, and
   `labs/conductor` stays as the repo-specific consumer.
+- **How does a manager with a block slot hand its harness the per-run checkout path?** *Open —
+  **LAB-154's spec** picks; raised by LAB-152's spec commenting up (#1362, 2026-09-01).* The
+  contract settled that the working directory is harness configuration, not input (theme 7,
+  BP-031), which closes the obvious route — a `cwd` field on `HarnessInput`. What is left is a
+  factory-shaped slot or a known state the harness's resolver reads; the contract precludes
+  neither. Blocks nothing: LAB-153 builds its block with the directory as configuration either
+  way. Not an owner ask — no user-visible outcome turns on it, and it is cheap to reverse before
+  LAB-141 selects.
+- **~~Which issue makes resume reach the harness?~~** *Decided on LAB-152's spec commenting up
+  (2026-09-01): two halves.* LAB-152 the harness half — the contract carries resume-by-id and
+  `claudeCodeAgent` honours it on the detached path; LAB-154 the manager half — `previousSessionId`
+  into the slot — and the end-to-end check. Neither owns the typed task field (FIX-1179). Theme
+  12 (iii) and the two §4 rows carry the split so a spec does not build the other's half.
 - **Where does the `leases` Map go?** *Open — **LAB-154's spec** decides between a framework home
   (FIX-1289, a request-scoped ephemeral side-channel for `onSettled`) and an explicit recorded
   deferral (theme 12 ii).* Not an owner ask: a wrong answer changes nothing a user experiences
@@ -990,3 +1015,12 @@ is properly ruled on where the mechanism is written.
   `conductor-decide`'s six-field handle and the Claude-specific options on the `.step()` call
   (`labs/conductor/src/manager.ts` on `main`), the `leases` Map, `PhaseSpec.readable` set to `{}`
   by the only phase, and the three packages' `dependencies`.
+- **After LAB-152's spec commented up (2026-09-01)** — two cross-cutting settlements folded, not a
+  review round. **The working directory is harness *configuration*, never per-run input**, because a
+  harness block is model-callable through its capability (BP-031) — so theme 9's slot can no longer
+  be read as a bare block handed the checkout on its input: a factory-shaped slot or a resolver-read
+  state, LAB-154 picks (§5). And **theme 12 (iii) is now two halves with owners** — LAB-152 the
+  harness half, LAB-154 the manager half and the end-to-end check — where it read as one gap nobody
+  in §4 was named for. §4: LAB-152's spec PR #1534 is open (In Spec Review); FIX-1245's rename has a
+  draft (#1513). **§1's five lines — Outcome, Proof, Lead measure, Not doing, Kill line — are
+  unchanged.**
