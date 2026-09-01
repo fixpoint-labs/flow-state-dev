@@ -97,6 +97,25 @@ explains that nothing in the seam identifies the caller.
 A named target removes the question. There is nothing to infer from a payload
 when the caller says what it wants.
 
+### The second derivation: building the UI found the same thing
+
+Everything above is code archaeology — reading the seam and counting its callers.
+The Conductor TUI POC reached the same conclusion from the opposite direction, by
+trying to *show* the model to a person.
+
+**Its finding: all flows are top-level. You communicate to them and you spawn
+them. Workstreams hid everything behind one coordinator session.**
+
+That is worth recording because it is independent. Nobody arrived at it by
+reading `resolveActionCore`; it fell out of asking what a user should see. A
+workstream has no natural place in that picture — it is a run you can start and
+then cannot point at, so a UI either invents a second navigation concept for it or
+leaves it invisible. The devtool's separate "Workstreams" tab is that invention.
+
+A design supported from two directions — the seam cannot identify its caller, and
+the interface cannot name what the seam produced — is a stronger case than either
+alone.
+
 ---
 
 ## The message protocol
