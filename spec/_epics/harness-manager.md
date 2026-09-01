@@ -2,256 +2,105 @@
 
 ## 1. Purpose & objective *(the gated sign-off surface)*
 
-**Objective.** Nothing has yet driven one real issue end to end through the Conductor seam.
-Every piece under that seam works on its own — the board claims and routes, `claudeCodeAgent`
-runs, `startDetached` spawns, and a detached run settles its own task row — and no one has put a
-real issue through the join between them. This epic does exactly that, once, on real work, and
-treats the join as the thing under test rather than the parts. The hardest case is **a run that
-asks something on its first turn**, before anything has been observed about it; this set is
-designed against that case, not against the happy one.
+**Objective.** The harness manager exists and works, and it is a prototype: it lives in an
+unpublished lab, it knows exactly one coding harness, and nothing outside this repo can build on
+it. The first generation of this epic proved the join — a real issue went from a task row to an
+open pull request under Conductor, asked a question on the way and was answered — and that proof
+is what makes the second generation worth doing. **This epic now finishes the manager as a
+production-ready framework piece: one manager, published, driving a second harness (OpenAI Codex)
+through the same contract Claude Code drives, with a clean block-oriented way to choose which
+harness runs a given piece of work.** The owner's words (`/goal`, 2026-09-01): *"vastly improve
+the design of how we have implemented this to be production ready, ensuring that we support at
+least one more harness (cursor or codex), and ensure that our harness manager either works across
+harnesses or we have one manager per harness … and then make a clean block oriented way to bring
+those managers together under one clean system."*
 
-> **Outcome** — A real issue in this repo goes from a task row to an open PR driven by
-> Conductor rather than by a person in a Claude session, including at least one point where
-> the run needed a decision and got one without anybody opening a terminal.
+> **Outcome** — A framework user can point the harness manager at Claude Code *or* at Codex,
+> per task, and get the same watched, settled, resumable, cancellable run either way — with the
+> manager imported from a published package rather than copied out of a lab.
 >
-> **Proof** — LAB-139's goal check: one real Linear issue —
-> **[FIX-1166](https://linear.app/fixpoint-labs/issue/FIX-1166)**, *CLAUDE.md says skills live in
-> `agents/skills/` and the real path is `.agents/skills/`* — driven from a conductor task row to
-> an open PR, where the run posted a question to the inbox, the answer went back in, and the run
-> finished on it. Readable off the run's own `runs/*` row, the inbox row carrying the question and
-> its answer, and the PR. One file, one line, zero blast radius, and outside every package this epic touches: a join
-> proof wants a fix small enough that nothing about the fix can explain a failure. *(It replaces
-> FIX-1177, which is stale — that describes a defect on PR #1297's branch, which closed unmerged;
-> `packages/claude-code/src/sdk/headless.ts` does not exist and `maxTurns` is forwarded straight
-> into the query options at `agent.ts:443`.)*
+> **Proof** — LAB-141's goal check: **one real Linear issue driven from a task row to an open PR
+> through each harness** — once under `claudeCodeAgent`, once under the Codex block — including a
+> question the run raises mid-flight and gets answered, with the harness chosen per task rather
+> than by editing the manager. Readable off the run rows, the inbox rows and the two PRs.
 >
-> **What the Proof does not show** — four limits, stated so it is not oversold:
-> - **The ask is forced, not spontaneous.** LAB-139's implement prompt *requires* the run to
->   confirm one named decision through the inbox before it opens the PR. That is a chosen
->   experimental design: it isolates the variable under test — the channel, not the model's
->   judgment about when to reach for it. Whether a run asks unprompted is the *next* epic's
->   evidence, not this one's. FIX-1166 makes this weigh **more**, not less: the fix is one line,
->   so almost none of this run's value is the fix — the ask *is* the experiment, and it is staged.
-> - **The Proof depends on four named pieces of work outside this epic, and they are not one
->   dependency.** *(Corrected: this document previously priced them as one "Relay" dependency, and
->   put park-exit under Relay. It is not.)*
->   - **The ask** is **Relay's** — [FIX-1230](https://linear.app/fixpoint-labs/issue/FIX-1230)
->     (address a session, send it a message), **In Development**, under
->     [FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197).
->   - **The park and the wake** are the **honest task substrate's** —
->     [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980), *related to* Relay but **not
->     parented under it**: park-exit [FIX-1234](https://linear.app/fixpoint-labs/issue/FIX-1234)
->     (**In Review**) and unblock-with-input
->     [FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (**Backlog**).
->   - **Continuing the same coding session** across the wait —
->     [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246), a **POC** under
->     [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), **Backlog**. New, and it is a
->     **Proof blocker**: see the continuity limit below.
+> **Lead measure** — the set's goal-proven issues, named each report: LAB-152 · LAB-153 · LAB-154
+> · LAB-141 (and LAB-150 behind LAB-154).
 >
->   **Four pieces, and this epic consumes all of them and owns none** (owner decisions on
->   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429), where **D-1 is now
->   closed**). Priced the way FIX-150 is priced (theme 4) — named rather than hidden, and **the
->   epic's schedule is not quietly made anyone else's.** Before they land, LAB-139 can **build and
->   unit-test its components** — the phase record, the question's inbox row and its replay-safe write,
->   the human-wait status write in isolation, and settlement's handle check.
+> **Not doing** — a third harness (Cursor is rejected, theme 11) · a new worker abstraction beyond
+> `BlockDefinition` (theme 9) · one manager per harness (theme 9) · a CLI door for Codex (a later
+> spawn wrapper, not this epic) · the typed resume field **on the task**, which stays FIX-1179's
+> (the manager already carries `previousSessionId`; this epic makes it *reach the harness*, theme
+> 12) · the `awaiting_review → parked` rename (FIX-1245) · the operator board's product surface
+> (LAB-151 is owner-driven and in the index, not on the Proof's path) · any inbox UI · building
+> Relay.
 >
->   **What it cannot do before FIX-1234 is goal-check the parked phase end to end through the manager
->   loop**, and this document already says why: today's runner is unconditionally
->   `.step(worker).tap(recordSuccess)`, so an `awaitReview` write is **stomped to `completed` on any
->   normal return** — row 1 of theme 5's measured table. The loop completes the row out from under the
->   park. So *"build and unit-test the parts"* and *"goal-check the phase"* are **different claims**,
->   and only the first is available now. *(Same class as the status correction below: a claim about
->   what is **decided** outrunning what is **landed**.)* And what LAB-139 cannot do until all four
->   land is run the round trip — which is the Proof.
->
->   **On the status, the distinction that keeps tripping this document: the *name* is decided and the
->   *enum member* is not landed, and those are different facts.** `parked` is the decided target name
->   (theme 5). `TaskStatus` today accepts **`awaiting_review`** and not `parked`, and the rename is
->   **[FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245)** — Backlog, external, consumed by
->   this epic. **So LAB-139 builds against the shipped `awaiting_review` now**, per the owner:
->   *"keep shipped `awaiting_review` in this cycle… park-exit ships against whichever name is live."*
->   The status **is** buildable — against today's name, not tomorrow's. **This is not a re-gate:** the
->   enum-landing confirm did return, so the gate that once sat on LAB-139's spec at the field-naming
->   point is gone and stays gone. *(Third revision of this passage — gated · buildable ·
->   buildable-against-the-shipped-name — which is why the two facts are now separated on the page
->   rather than left to be inferred.)*
-> - **The wake has an owner and does not have an implementation, and the second half is the risk.**
->   **[FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) — unblock-with-input, under
->   FIX-980 — owns it**, and says so itself: park-exit lets a drain *leave* while a row sits parked,
->   *"that is half the pair"*, and no framework primitive yet **resumes that row with a payload as a
->   new workstream request** — *"without this verb, an honest park-exit is a dead letter."*
->   **LAB-139 is its first consumer, never its owner.** *(Corrected: this document called the wake
->   unowned. That is false and the distinction matters — it is a **schedule** dependency, not an
->   **ownership** gap.)*
->   **The schedule point stands undiminished: FIX-1244 is Backlog, so the verb the Proof's round trip
->   needs is not built.** It sits on the Proof's critical path, because *"the answer went back in and
->   the run finished on it"* is half of what the Proof claims. **This document proposes no wake** —
->   reaffirmed by the owner — and an issue that finds itself inventing one has hit this limit and
->   should raise it on the epic PR rather than solve it locally. *(FIX-1244 independently reaches this
->   epic's own finding from the other side: `resumeFromReview`/`continueRequest` are the wrong shape
->   after park-exit, because they assume the launching request is still open.)*
->
-> - **Restart is not Proof — the run must continue the *same* coding session across the wait.**
->   **Reversed by the owner**, and this document carried the opposite since it was drafted:
->   *"LAB-139's 'continuity out of scope / restart accepted' is **stale** — strike it. This epic is
->   **blocked on that POC for Proof**, it does not build the resume itself."* So a run that answers by
->   **re-stating the prompt and starting the agent over does not count as the Proof passing.** The
->   POC is [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under
->   [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), **Backlog**, in its own words:
->   *"the task is already associated to the coding session, so resume from a second request should be
->   possible… This is a POC, not Proof. Restart is not the POC passing."*
->   **The division of labour, with the subject spelled out because this sentence has been misread
->   once already: *this epic* builds no resume machinery — *FIX-1246 builds it*, and this epic
->   consumes what it produces.** In FIX-1246's own words, *"Substrate owns the resume; Conductor
->   consumes it."* **"POC" there describes how the substrate is de-risking the work, not that the
->   output is throwaway** — §4's session-resume entry carries the substrate's own outcome line, and
->   **the risk block below names what happens if that reading turns out wrong.** *(What this replaces: "a steer restarts the coding
->   agent — correct and expensive; accepted, and not to be worked around." That was wrong, not merely
->   open, and it is struck wherever it appeared.)*
->
-> **Decided — the shipped same-session resume, and what `detached: true` actually is.** *(Owner call
-> on [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362), **2026-08-24**. This replaces
-> the fifth limit this passage carried until then — *"nothing currently owns a shipped same-session
-> resume"* — which was accurate when written and is now stale. Recorded as the **owner's**, not as a
-> recommendation that was accepted.)*
->
-> - **The gap has an owner: [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), with the
->   POC [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under it.** **Not LAB-139**, and
->   **not a second workstream verb** (theme 8).
-> - **The mechanism is the session handle on the task** — the owner: *"Shipped resume is
->   `sdkSessionId` (or equivalent) **on the task**, then the agent resumes."*
-> - **`claudeCodeAgent({ detached: true })` is not a product bet that a detached agent cannot
->   resume.** The owner reads it as **leftover confusion, not a design decision**: the workstream is
->   already the background job, and the flag exists so a **detached board will construct** —
->   `assertDetachedBoardSupported` refuses any worker declaring `sessionStateSchema` (two routes on
->   one Workstream flow, a silent key collision). **Resume was bundled into that flag by mistake**,
->   and **the throw's own prescribed fix is the mechanism above** — verified in source, its last line
->   verbatim: *"Keep the worker's state on the task instead."*
->   (`packages/orchestration/src/task-board/detached.ts:409-430`). So **`detached: true` is not to be
->   read as "this agent cannot resume."**
-> - **Restart is still not Proof** (D-1) — unchanged, and the limit above stands.
->
-> **Three constraints this epic inherits and does not build:**
-> - **`assertDetachedBoardSupported` is not relaxed this epic.**
-> - **`claudeCodeAgent`'s schema-off behaviour is not deleted this epic** — existing detached boards
->   still need it to construct. **Renaming or deprecating the public `detached` option is FIX-1179's**,
->   not this epic's design.
-> - **No `@flow-state-dev/conductor`** (§5's package call — conductor stays unpublished at
->   `labs/conductor/`).
->
-> **One constraint on the shipped path, routed to FIX-1179 and designed nowhere here:** the session
-> handle goes in a **typed top-level field on the task, never in `metadata`**. `Task.metadata` is
-> `z.record(z.unknown()).optional()` (`packages/orchestration/src/tasks/schema/task.ts:151`) and `patchMetadata`
-> merges arbitrary caller keys with a plain spread, **exposed to a model through `updateTask`**; the
-> schema's own `abandonments` docblock sets exactly this precedent (`task.ts:91-97` — *"Top level,
-> never inside `metadata` (BP-031)"*, closing *"the typed write surface reaches no top-level field, so
-> this placement needs no per-seam guard"*). Resuming into a caller-supplied session id is an
-> **identity decision made from caller-controllable input** — the BP-031 line theme 6 already binds
-> and never widens. **No field is designed and no shape is named here**, it is an implementer note on
-> FIX-1179, and **no scope is added to LAB-139**.
-> **This constrains the resume association only — it does not constrain bookkeeping.** Owner,
-> 2026-08-24: *"LAB-138 storing an id on `runs/*` is bookkeeping, not that path — typed Task field
-> remains 1179."* So **LAB-138 writing a run's id onto its own `runs/*` row is legitimate and nothing
-> here forbids it**; what belongs in a typed top-level field on the task is the **resume
-> association**, and **that field is FIX-1179's to add**, not this epic's.
-> **The consumed set is unchanged — FIX-1230, FIX-1234, FIX-1244, FIX-1246 — and FIX-1179 is not in
-> it.**
->
-> **Risk on the Proof's critical path — the residual that matters, named here and designed nowhere.**
-> **If [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) lands as a throwaway harness
-> rather than a path LAB-139 can call, the Proof stalls — and that answer is
-> [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179)'s, not this epic's.** The ambiguity is
-> in the words, across three documents: *"POC"* and *"shippable capability"* are used
-> interchangeably, and **nobody has confirmed FIX-1246 lands as something LAB-139 can call.** Its
-> outcome line reads like a capability — *"Substrate owns the resume; Conductor consumes it"*,
-> *"resumed from a second request onto the **same** session… not a cold start"* — and its in-scope
-> line reads like an experiment — *"POC that the association already on the task is enough to resume
-> the same session from a new request"*, with *"full FIX-1179 rewrite if the POC is narrower"*
-> explicitly out. **Both readings are live in the substrate's own text, and the Proof survives only
-> one of them.**
-> **What this is not.** It is **not** a change to the consumed set — that stays exactly **FIX-1230 ·
-> FIX-1234 · FIX-1244 · FIX-1246**, the owner's structure of 2026-08-24, and **FIX-1179 is not in
-> it** — and it is **not** a re-scoping of FIX-1179's shipped milestone from here. **This epic
-> consumes; it does not re-scope.** Endorsed by the owner on
-> [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362), 2026-08-24: *"The watch item is
-> the residual that matters: if FIX-1246 lands as a throwaway harness rather than a path LAB-139 can
-> call, the Proof stalls and that answer is FIX-1179's."* §4's session-resume entry carries the
-> substrate's wording in full.
->
-> **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
->
-> **Not doing** — **building** Relay (FIX-1197 is its own epic; this epic consumes the channel and
-> does not build it — the dependency is priced in the limits above, not hidden here) ·
-> **building** the session resume itself — **FIX-1246 builds it, under FIX-1179**, and *this epic*
-> consumes what it produces; the Proof now *requires* continuation, so this is a scope-out of the
-> building, never of the outcome · the spec and review phase records and the durable approval gate between phases · the
-> coordinator's classify-and-route generator (an answer names its inbox row explicitly) · the
-> manager and architect roles · more than one issue on the board at a time · any inbox UI ·
-> the measurement instrument · the workforce-layer question.
->
-> **Kill line** — if the join does not hold — a detached worker cannot post an inbox row and
-> be continued from it, or the board cannot settle a run the manager watched — then the bet
-> that the coordinator stays small because the open questions live in a resource has failed at
-> its first real test, and the design goes back to shape rather than forward to the phase
-> machine.
+> **Kill line** — if a second harness cannot be expressed as *dispatch → handle → resume-by-id →
+> abort*, the slot design is wrong and the fork in theme 9 reopens the other way before LAB-154
+> builds against it. Reversible: the loop stays in one place either way, and the cost is LAB-153's
+> spec round, not shipped surface.
 
-**Holistic necessity.** Three issues, and the honest question is whether it is two. LAB-138
-(dispatch-and-settle) and LAB-139 (ask-and-answer) are separable on paper, and they are two
-Linear rows today. But they share **one manager loop**, and LAB-139's goal check is the only
-end-to-end evidence *either* of them produces — LAB-138 finishing alone proves a run can be
-watched and settled, which is a part, and this epic exists because parts are what we already
-have. So the split buys two review surfaces over one body of work, and the case for keeping it
-is that the ask-and-answer path is where the design bet actually gets tested and deserves its
-own spec rather than a section in someone else's. **Kept as two, with the seam named**: if
-LAB-139's spec finds it cannot describe its own loop without restating LAB-138's, that is the
-signal they should have been one issue, and merging them then is cheaper than discovering it
-at implementation. *(Re-raised by both automated reviews and ruled on by the product owner —
-§5, decided.)* FIX-150 is not in question and is **not on the Proof's critical path** (theme 4).
-It buys this epic one line: a run's files come back as state and the agent is fenced into its
-workspace — which is *not* what LAB-134 delivered, since `claudeCodeAgent({ recordWork: true })`
-shipped the *index* of a run's file writes and left the **contents** out of scope.
+**What the first generation delivered, and what it left.** LAB-138 (the manager loop: a task row
+becomes a watched, settled coding run, in its own checkout, settled on a handle-status check),
+LAB-139 (a run that needs a decision asks through a durable inbox row, parks, and is answered by
+one zero-model action), FIX-150 (workspaces — a run's files as a projection), and three bugs found
+by running it — LAB-146, LAB-147, LAB-148 — are all **Done** (§4). It left four things this
+generation finishes, each stated at the altitude of a limit rather than buried: **(a)** the
+manager is `labs/conductor/src/manager.ts`, private and unpublished, with `claudeCodeAgent` written
+into its `.step()` by name; **(b)** the answered run **restarts rather than resumes** — the manager
+tracks the last attempt's session id (`previousSessionId`) but the detached path never hands it to
+the harness, so the first generation's "continues the same session" leg is still owed (FIX-1179 /
+FIX-1246 remain Backlog); **(c)** a module-level `leases` Map keeps a checkout lease alive between
+`prepare` and the harness step's synchronous `onSettled`, because FSD state is JSON and the hook
+cannot read the request (FIX-1289 is the framework-side answer); **(d)** `PhaseSpec.readable` is
+declared, set to `{}` by the only phase, and read by nothing but a name-collision guard. None of
+those is a defect in the join; all four are what "prototype" means, and "production ready" is the
+owner's instruction to close them.
 
-**Which project objective this serves.** `docs/objectives.md` Goal 1, *validate through real
-usage*. This is the framework driving its own development on real models — the most demanding
-real workload we have, exercising the task board, detached child sessions, shared-lineage
-resources and durable state on a multi-turn run rather than a synthetic one. It also closes a
-named gap in the corpus: **no goal check today runs a development process end to end**; every
-green check certifies a part.
+**Holistic necessity.** Four feature issues and one bug, and the honest question is whether it is
+three. **LAB-152** (the contract in a neutral home) could fold into **LAB-154** (the manager gets a
+slot and leaves labs/); they are kept apart because **LAB-153** (Codex) needs the contract and does
+not need the manager move, so folding them serialises the second harness behind a package
+relocation it has no stake in. **LAB-141** (selection + the two-harness Proof) is the issue most
+worth cutting on paper — "selection" could be a paragraph in LAB-154 — and it is kept because the
+Proof needs both LAB-153 and LAB-154 landed and is the epic's whole outcome; an issue that owns the
+proof is what stops two green sub-issues from reading as a finished epic. **LAB-150** is a bug
+sequenced behind LAB-154 so the ask marker is moved once, against the manager that will ship, not
+twice. **What the set is deliberately not doing** is in the Not-doing line; the largest temptation
+is a generic "harness registry" — rejected, because a block slot *is* the registry (theme 9).
 
-**Context.** The design this epic implements is the **Conductor Atlas**, a living design
-artifact: <https://claude.ai/code/artifact/f926ff40-e96d-4fd1-87f5-5c7ca05ab3ae>. This epic is
-its **open thread 1** — *"nothing has driven one real issue end to end through this seam"* —
-and sections 4, 5, 6 and 7 are the substance. The Atlas's per-element status tables say which
-APIs exist today and which are proposed; **treat that as a starting inventory, not as
-verified.** [LAB-68](https://linear.app/fixpoint-labs/issue/LAB-68/conductor-the-development-orchestration-system-epic)
-(Done) is the previous generation of this work and delivered layer zero: a coding run is an FSD
-session, and its file writes and todos are readable as state.
+**Which project objective this serves.** `docs/objectives.md` **Goal 2, differentiate on hard
+problems** — a composable block pattern with a resumable, cancellable run behind a swappable
+harness is exactly the kind of capability other frameworks handle poorly — and **Goal 1, validate
+through real usage**: the Proof drives a real issue through two real harnesses.
 
-**Two inventory corrections, checked in source rather than assumed.** First, a detached run's row
-is **not** settled through `RequestHost.settleParentTask`. That verb refuses by name
-(`no-parent-task`) unless a host wires `inputs.parentTask`, and `createFlowState.ts` leaves it
-unwired on purpose. The real path is `packages/orchestration/src/task-board/detached-runner.ts`,
-where the Workstream settles its own task through the same ticket-fenced recorders the inline
-drain uses — *"not a second settlement path."* **LAB-138 builds against the runner's fenced
-write-back** — wanting the verb instead means budgeting the `parentTask` wiring as framework
-work, not assuming a seam. Second — and this is the same correction seen from the failure side —
-**the fenced write-back is the settlement path, but it is not a failure detector.** A terminal
-SDK error subtype (`error_max_turns`, budget exhaustion) is an *outcome*, not a throw:
-`claudeCodeAgent` returns normally with `status: "errored"` (`sdk/agent.ts:353-362` docblock;
-`agent.ts:553-556` constructs and returns it), the runner takes its success path, and the task
-and the Workstream request both settle **`completed`** for a run that produced no PR — with
-normal task retry never firing. So **a handle-status check must precede settlement** (theme 5).
-Without it the manager's "settle, retry, or wait" decision can never observe a failure, which is
-the one job that step exists to do.
+**Gate status.** The owner applied `epic approved` to [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)
+on 2026-08-24 for the first-generation objective. The label does not expire on a push, and the
+owner authored the second-generation objective, so the gate is treated as **still passed**;
+removing the label is how the owner re-gates this revised objective. The three hard-to-reverse
+engineering calls under it — one manager with a slot, Codex as the second harness, the manager's
+published home — each land for the owner's ruling at the issue spec gates (LAB-152 / LAB-153 /
+LAB-154), which is where a call about mechanism is properly ruled on.
+
+**Context.** The design is the **Conductor Atlas**: <https://claude.ai/code/artifact/f926ff40-e96d-4fd1-87f5-5c7ca05ab3ae>,
+which frames Conductor as a *meta-harness* whose harness is swappable. The first generation proved
+the join (its open thread 1); this generation makes the swappability true. [LAB-68](https://linear.app/fixpoint-labs/issue/LAB-68/conductor-the-development-orchestration-system-epic)
+(Done) is layer zero underneath both. Two source facts every issue here rests on, checked rather
+than assumed: **the manager's `decide` step already reads a six-field handle with nothing
+Claude-specific in it** — `{ status, sessionId, resultSubtype, finalMessage, usage, costUsd }`
+(`labs/conductor/src/manager.ts`, `conductor-decide`'s `inputSchema`) — and **what *is*
+Claude-specific sits on the `.step()` call, not in the loop**: `detached: true`, `recordWork:
+true`, the `cwd` callback, and `ctx.signal` forwarded into the SDK's abort controller. That split
+is why the fork in theme 9 has a recommendation and not just two options.
 
 ## 2. Themes & long-horizon direction
 
 *Altitude rule for this document, learned the hard way: **the epic-spec names constraints and
 the reference implementation to mirror; the issue specs name the calls.** Three separate reviews
-have now caught this document naming a specific API as "the mechanism" — `settleParentTask`,
-then a bare `continueRequest` — and each time the named API was incomplete, because an epic-spec
-specifies mechanism without the source open. A theme that reads like a call sequence has drifted
-down an altitude; push it into the issue spec that will write it.*
+caught the first generation of this document naming a specific API as "the mechanism" and each
+time the named API was incomplete, because an epic-spec specifies mechanism without the source
+open. A theme that reads like a call sequence has drifted down an altitude; push it into the issue
+spec that will write it.*
 
 1. **The coordinator stays small on purpose.** The bet under test is that the session a person
    talks to holds only the *currently-open questions*, because the run's memory lives in
@@ -259,403 +108,280 @@ down an altitude; push it into the issue spec that will write it.*
    whether it keeps that true. An issue that finds itself wanting to hold run history in the
    coordinator has hit this theme, not a local design problem — comment up on the epic PR.
 
-2. **One manager, one record — a constraint this epic honours, not a claim it tests.** The
-   Atlas's §7 argument is that phases differ in a *prompt builder*, a *done-condition predicate*
-   and a *readable set*, not in three block sequences. This epic writes the manager and
-   **exactly one record (implement)** — and writing one record **cannot falsify** "a fourth
-   phase costs a record, not an adapter." At best it yields a non-regression constraint; at
-   worst an implement-shaped manager that nothing here would catch. So the theme binds as a
-   constraint: **a manager that cannot be pointed at a different record without editing the
-   manager has broken it.** The claim itself is the *next* epic's to test, and no evidence from
-   this one should be cited for it.
+2. **One manager; a phase is a record and a harness is a slot — neither edits the manager.** The
+   Atlas's argument is that phases differ in a *prompt builder*, a *done-condition predicate* and
+   a *readable set*, not in three block sequences. The first generation wrote the manager and
+   exactly one record (implement), which cannot falsify that claim, so it bound as a constraint:
+   **a manager that cannot be pointed at a different record without editing the manager has broken
+   it.** This generation adds the second axis with the same test: **a manager that cannot be
+   pointed at a different harness without editing the manager has broken it.** Two harnesses *do*
+   falsify the harness half, which is what LAB-141's Proof is for.
 
-3. **Gaps go in the framework, never in conductor** — LAB-68's standing rule, carried forward.
-   The tell that this has gone wrong is **a capability only conductor can call**. When an issue
-   needs something the framework doesn't have, the work is to add it to the framework layer,
-   not to grow a conductor-shaped shortcut. This is why the inbox is built as an ordinary
-   user-scoped resource collection rather than as a new capability (§5, decided).
+3. **Gaps go in the framework, never in conductor** — LAB-68's standing rule, carried forward and
+   now acted on at the largest scale this epic has: the generic loop (lease, prepare, run, decide,
+   rescue, the question channel, retry) **leaves `labs/`** for a published framework package
+   (theme 9), and `labs/conductor` stays as the repo-specific consumer — seed, wake, status,
+   Linear, `gh`. The tell that this has gone wrong is unchanged: **a capability only conductor
+   can call.**
 
-4. **Sequencing — and FIX-150 is not a dependency.** LAB-138 lands before LAB-139: the
-   ask-and-answer path needs a run that is already watched and settled. They can be *specced*
-   in parallel; they cannot merge out of order. **FIX-150 runs on its own track, and the Proof
-   does not wait on it.** LAB-138 provisions the run's working directory with a plain
-   `git worktree add` and hands it down — a seam named on purpose — until FIX-150's PR (c)
-   subsumes it, at which point the manager adopts the workspace projection with no reshaping.
-   Nothing in this set is *blocked by* FIX-150: an accepted deferral and a blocking dependency
-   read identically in a dependency column and mean opposite things, so the distinction is
-   stated here rather than left to be inferred. **Handing that directory down needs a per-run
-   `cwd` seam, and it is framework work inside LAB-138** — a sibling of FIX-1179's resume-id
-   input, not a reason to re-couple FIX-150. **It is a missing capability on the one surface that
-   can host it — not a choice between two surfaces.** The SDK surface — the one carrying detached
-   dispatch, `recordWork` and the session handle — forwards no `cwd`
-   (`sdk/work-recorder.ts:109-112` says so outright), and the CLI dispatch path is **not** the
-   alternative it looks like: it dispatches a `claude --remote` **cloud task**, fire-and-forget,
-   with no headless way to poll or stream progress (`cli/dispatch.ts:1-11`), so it cannot host a
-   watched local run at all. **So LAB-138 adds `cwd` to the SDK path**; theme 7 carries the
-   portability constraint that path's runner contract still owes.
-   *(An earlier revision read this as an open fork between two surfaces, on the strength of a `cwd`
-   the CLI path takes for an unrelated purpose. Corrected — left open, it sends LAB-138's spec to
-   evaluate an option that cannot work.)* Left unstated, the Proof run edits the conductor's own
-   checkout instead of the run's workspace.
+4. **Sequencing.** **LAB-152 lands first**: LAB-153 and LAB-154 both build against the contract
+   it names, and they can be *specced* in parallel but not merged before it. LAB-153 and LAB-154
+   are independent of each other and run in parallel. **LAB-141 lands last** — selection needs a
+   second harness to select and a manager with a slot to select for. **FIX-1291
+   ([#1523](https://github.com/fixpoint-labs/flow-state-dev/pull/1523), open) feeds LAB-154** as
+   a blocking dependency: the manager that moves out of labs/ is the one that uses the framework
+   instead of hand-plumbing, so LAB-154 does not relocate twenty-one casts. **LAB-150 is behind
+   LAB-154** — a *dependency*, not a deferral: the ask marker moves out of the tree once, against
+   the manager that ships. **LAB-151 is owner-driven** (PR #1496, In Review) and the epic does not
+   dispatch it; it is in the index because it is a sub-issue, and nothing here waits on it.
 
 5. **The ask travels Relay, a human wait is a task *status*, and a normal return always settles the
    task `completed`.** *(Owner decision **D-1** — GitHub issue
    [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429), mirrored as FIX-1241.
-   **Conductor does not use `ctx.suspend` for ask/HITL.**)* Three obligations; this theme states
-   what must hold, and LAB-138 and LAB-139 write the mechanism with the code open.
+   **Conductor does not use `ctx.suspend` for ask/HITL.** Delivered by LAB-139; binds every issue
+   here because the loop that carries it is the loop being moved.)* Three obligations:
 
    - **Ask** over **Relay**. The question leaves the run through the relay channel, not by
-     suspending the request in place. Conductor **consumes** that channel and does not build it —
-     Relay is its own epic (FIX-1197), and §1's limits price the dependency rather than hide it.
-   - **Wait** in **`parked`**, not as a suspended request. A row waiting on a person must be
-     distinguishable from a row waiting on other work; **`parked` is the status** and
-     **dependencies stay `blocked`**. **`needs_input` is the human-ask display/reason — the *why*, not
-     the *what*** — so a row is `parked`, and `needs_input` says what it is parked on. *(Owner call,
-     and it **supersedes** an earlier call in this document that made `needs_input` the status
-     itself.)*
-     **Shipped `awaiting_review` stays this cycle.** The rename `awaiting_review → parked` is
-     [FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245) under
-     [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980), Backlog, to land before FIX-980's
-     human-wait closes — **this epic consumes it and does not own it.** Park-exit (#1422) is **not**
-     gated on it and ships against whichever name is live.
-     **There is no longer a gate on LAB-139's spec here.** It existed only while the representation
-     was undecided; the confirm returned, so the spec names the field and proceeds — **and the field
-     it names today is the shipped `awaiting_review`.** `parked` is the decided name, not a landed
-     enum member; **the decision and the schema are different facts**, and conflating them is what
-     made this passage move three times (§1).
-     *(Neutral fact, unchanged throughout: the shipped **verbs** `awaitReview` and `resumeFromReview`
-     are not renamed by any of this.)*
+     suspending the request in place. Conductor **consumes** that channel and does not build it.
+   - **Wait** in **`parked`**, not as a suspended request. **`parked` is the status** and
+     **dependencies stay `blocked`**; **`needs_input` is the human-ask display/reason**. Shipped
+     `awaiting_review` stays until [FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245)
+     renames it; this epic consumes the rename and does not own it.
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
      normally as `status: "errored"`, so settling on a normal return alone reports a failed run as
-     completed. `buildDetachedRunner`'s body is unconditionally `.step(worker).tap(recordSuccess)`,
-     so any successful return calls `collection.complete()`. **Untouched by D-1** — this is a
-     property of the runner, not of the park.
+     completed. The manager's `decide` step does this today; the moved manager must still.
 
-   **The inbox row still carries the question, and writing it must still be replay-safe.** A step
-   with no committed output re-executes on re-entry, so an unguarded write can recreate or reset the
-   row and attach an answer to a stale one. LAB-139 owns that obligation; D-1 changed the channel the
-   question travels, not the row it is written to.
-
-   **No single primitive covers all of this, and the split is deliberate.** Worth stating because it
-   is why this is not a retreat (the architect's note on #1429): an **in-request `suspend`**, a
-   **board wait-status**, and a **Relay send** are three different things. The design uses the right
-   one at each point instead of forcing one primitive to serve all three.
-
-   **A caution, no longer a reason: do not combine `awaitReview` with `ctx.suspend` on today's
-   detached runner.** That combination strands the attempt permanently while the outer request still
-   resolves `error: undefined` — [FIX-1200](https://linear.app/fixpoint-labs/issue/FIX-1200), still
-   true as a fact about the runner. **It is not an argument for choosing suspend.** The reasoning
-   this document previously ran — *"`awaiting_review` is unusable, therefore suspend is the only
-   option"* — is superseded by D-1, and FIX-1200's sequencing is open (§5).
-
-   **Evidence, superseded as the plan — kept because it is why D-1 is well-founded.** The three ways
-   to park a detached worker, all measured on the real path with real `taskBoard()`, a durable
-   collection and real SQLite. **None of these is the design any more.** Read the table as the
-   measurement that ruled out parking-by-request and pointed at a board-level wait status — not as a
-   menu to choose from.
-
-   | Park via | Measured result |
-   |---|---|
-   | `awaitReview` + normal return | row stomped to `completed` in the same request — the question is lost |
-   | `ctx.suspend` **alone** | parks correctly, but lease renewal stops (120 s default), so the next drain reclaims → duplicate run, and the answered original's write-back is then refused `lost-claim` |
-   | `awaitReview` **+** `ctx.suspend` | attempt **permanently stranded**, and the outer request still resolves `error: undefined` |
-
-   The third is the trap, because it is exactly what the lease's own docblock suggests
-   (`task-board/index.ts:958-965` — *"a board that wants a long human pause … should park the
-   TASK (`awaitReview`), which the lease deliberately does not govern"*). The exemption is real
-   (a forced `reclaim(now + 10min)` returned `reclaimedCount 0`); the combination still fails.
+   **The inbox row still carries the question, and writing it must still be replay-safe.**
+   **A caution, not a reason: do not combine `awaitReview` with `ctx.suspend` on today's detached
+   runner** — that strands the attempt permanently ([FIX-1200](https://linear.app/fixpoint-labs/issue/FIX-1200)).
+   The measured park table that produced D-1 is kept in §5's first entry as evidence, not as a menu.
 
 6. **The operator's answer never travels the public caller-addressed route, and the allow-list is
    never widened.** `packages/engine/src/routes/public-reentry.ts` places `WORKSTREAM_SOURCE` in
    `NEVER_PUBLIC_REENTRY_SOURCES`, no host option overrides it, and
-   `test/public-reentry-opt-in.test.ts` covers it. The reason is in the source and it is
-   deliberate: a detached dispatch is not caller-addressed at all, so re-entering it from a public
-   route would run it with caller-supplied input — BP-031, exactly. An implementer meets this as a
-   **404** from `/api/flows/:kind/requests/:id/resume`. **Under D-1 that 404 is simply less likely
-   to come up** — Conductor does not resume requests at all, so nobody on this path is knocking on
-   that route. Said plainly rather than dressed in a new illustration.
-   **The rule binds exactly as hard, and the reason is the Relay path itself:** an answer arrives
-   from **outside** the run, and it must still never re-enter a detached dispatch through a
-   caller-addressed route — a detached dispatch was never caller-addressed, so doing so would run it
-   with caller-supplied input (BP-031). **An issue that reaches for the allow-list has hit this
-   theme, not a bug**; the answer's route in is theme 5's, over Relay.
+   `test/public-reentry-opt-in.test.ts` covers it: a detached dispatch is not caller-addressed, so
+   re-entering it from a public route would run it with caller-supplied input — BP-031. **An issue
+   that reaches for the allow-list has hit this theme, not a bug.** The same line governs where a
+   resume handle lives on the task — a typed top-level field, never `metadata`
+   (`tasks/schema/task.ts:91-97` sets the precedent) — and that field is FIX-1179's.
 
-7. **The runner contract must not encode any one harness's shape.** The Atlas frames Conductor as
-   a *meta-harness* whose harness is swappable, and the runner is the seam where that lives, so a
-   contract only Claude Code can satisfy forecloses it silently. **Proving a second harness is
-   explicitly not in scope** — nothing here builds one, tests one, or waits on one; this epic
-   drives Claude Code only, and this constraint is not a commitment to a second adapter. **The
-   tell: a clause of the contract that names a Claude Code notion** — a turn cap, an exit code —
-   has broken it, and the fix is to restate that clause as the capability underneath it.
-   **Portability is served by the adapter boundary, not by the seam's transport**, so nothing here
-   is in tension with theme 4's finding that the in-process SDK path is the only watched local
-   coding-agent path that exists.
-
-   **LAB-138 defines the contract clause by clause, with the code open, and its implementer notes
-   carry the clause-level detail** — the bound, the result shape, token usage, permission posture,
-   and the documented-not-executed Codex/Cursor evidence behind them. That detail lived here and
-   was wrong three times in three days, every time in a way only the source could catch. This
-   document names the constraint; the issue spec that will write the interface names the clauses.
+7. **The runner contract names capabilities, not any harness's notions — and it is now *proven*
+   by a second adapter rather than merely constrained.** *(Reversed 2026-09-01: the first
+   generation said "proving a second harness is explicitly not in scope". A second harness is now
+   the epic's outcome.)* The contract is what a harness block owes the manager: **dispatch a run in
+   a working directory → hand back a handle → resume by a session id with a follow-up prompt →
+   abort under a caller-enforced deadline**, with the handle carrying status, session id, result
+   classification, final text, usage and cost. **The tell is unchanged: a clause that names a
+   Claude Code notion** — a turn cap, an exit code, `detached`, `recordWork` — has broken it, and
+   the fix is to restate that clause as the capability underneath it. **LAB-152 writes the
+   contract with the source open; LAB-153 is its falsifier** — a clause Codex cannot satisfy
+   without bespoke handling on the manager side is a clause that was Claude-shaped. Portability is
+   served by the adapter boundary, not by the seam's transport: the SDK path is still the only
+   watched local path for Claude Code, and that is an adapter fact, not a contract clause.
 
 8. **Starting a run and continuing a parked one are the *same* workstream core, not two verbs.**
    Owner constraint on [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362):
    *"Do not design `taskStart`/`taskUnpark` as two workstream actions — one `flow.workstream` core,
-   reuse-or-mint the harness session id inside it."* **The tell that this has been broken: a caller
-   choosing between two entry points**, or a pair of workstream actions whose names distinguish
-   *fresh* from *resumed*.
-   **The reason, so nobody re-derives it the other way:** two verbs put the reuse-or-mint decision in
-   the **caller**, which is exactly where it cannot live — the caller does not know whether a session
-   already exists for that task. The core does. It also matches FIX-1246's premise — *"the task is
-   already associated to the coding session"* — and the owner's 2026-08-24 call settles that it does
-   live there (the session handle is **on the task**, §1), so a caller-side fork is redundant at best
-   and divergent at worst.
-   **This constrains a seam that already exists; this epic does not build it.** `flow.workstream` is
-   today the single `ActionCore` a `source: "workstream"` dispatch resolves to
-   (`packages/core/src/flow/workstream-core.ts`, *"the one workstream core a detached dispatch
-   resolves"*; the resolve site is `engine/src/execution/resolve-action-core.ts`). So the constraint
-   is about **not growing two verbs beside it**, not about standing one up. **LAB-138 enters it to
-   start a run and LAB-139 re-enters it after a wait — the same core both times.**
-   **The mechanism is the issue specs', with the source open** — how the session id is reused or
-   minted, where the association is read, and what the core's shape is are all theirs, not this
-   document's (§2's altitude rule).
+   reuse-or-mint the harness session id inside it."* **The tell: a caller choosing between two
+   entry points.** Two verbs put the reuse-or-mint decision in the caller, which cannot know
+   whether a session exists for the task; the core can. `flow.workstream` is today the single
+   `ActionCore` a `source: "workstream"` dispatch resolves to
+   (`packages/core/src/flow/workstream-core.ts`). **Theme 12's resume input is where this
+   constraint meets the harness**: reuse-or-mint happens inside the manager, and the harness
+   receives one input either way.
+
+9. **One manager with a harness *slot* — not one manager per harness — published out of labs/.**
+   *(Engineering-manager call, 2026-09-01; the owner rules on it at LAB-154's spec gate. The
+   alternative is named so the ruling is on a real fork.)* The manager takes its harness as a
+   block: `harness: BlockDefinition<HarnessInput, HarnessHandle>`, dropped into the `.step()`
+   where `claudeCodeAgent(...)` sits by name today. **Why not one manager per harness package:**
+   per-package managers duplicate the loop — lease, verdict, question channel, retry — which is
+   exactly the reinvention the owner has said they do not want, and the loop already reads nothing
+   Claude-specific (§1's handle fact). What *is* Claude-specific (`detached`, `recordWork`, `cwd`,
+   forwarding `ctx.signal` into the SDK abort controller) belongs in the adapter, behind the slot.
+   **"Bringing them together" (the owner's words) is then either the manager parameterised per
+   phase or a router that selects the harness per task** — by assignee or a task field —
+   **and LAB-141's spec picks.** Two constraints bind that pick: **no per-harness manager, and no
+   new worker abstraction beyond `BlockDefinition`** — the `TaskWorker` alias is deliberately not
+   an installation point; workers are board configuration. **The generic loop leaves `labs/` for a
+   published framework package; `labs/conductor` stays as the repo-specific consumer.** Which
+   package is LAB-154's spec to argue (§5). *(This supersedes the owner's 2026-08-24 call that
+   conductor stays unpublished at `labs/conductor/` — superseded by the owner's own "production
+   ready", and the part that survives is that the repo-specific layer *does* stay there.)*
+   **What would change the recommendation:** a harness whose lifecycle cannot be expressed as
+   dispatch → handle → resume-by-id → abort. None of the three candidates is that. **Cost of being
+   wrong:** a slot nobody's second harness fits, discovered at LAB-153's goal check — reversible,
+   since the loop stays in one place either way.
+
+10. **Dependency direction: no harness package depends on `@flow-state-dev/orchestration`.**
+    Today `@flow-state-dev/claude-code` and `@flow-state-dev/orchestration` each depend on `core`
+    + `zod` only, and `labs/conductor` depends on claude-code, core, engine and orchestration. A
+    harness block is a leaf; the manager composes leaves. So **the contract lives below both** —
+    recommended home **`@flow-state-dev/core`** (LAB-152's spec argues it; the constraint, not the
+    package, is the theme) — and a harness package that imports the task substrate has inverted
+    the layering. **The tell: `@flow-state-dev/codex` or `claude-code` listing `orchestration` in
+    `dependencies`.** The manager's package (LAB-154) may depend on orchestration; the harnesses
+    it drives may not.
+
+11. **The second harness is OpenAI Codex, via `@openai/codex-sdk`, pinned exactly.** *(Engineering
+    call, 2026-09-01; the owner rules at LAB-153's spec gate.)* Doc-evidenced, not yet executed:
+    `startThread({ workingDirectory, sandboxMode: "workspace-write", approvalPolicy: "never" })` →
+    `run()` returns a typed `{ finalResponse, usage }`; `thread.id` is the resume key;
+    `resumeThread(id).run(answer)` is the whole resume story; `signal: AbortSignal` cancels; and it
+    spawns `codex exec --experimental-json … resume <id>` underneath, so a CLI door later is a
+    spawn wrapper over the same contract, not a new one — mirroring claude-code's `cli/` vs `sdk/`
+    split. Headless auth is `CODEX_API_KEY`. **Cursor is rejected**: no npm package (a
+    curl-installed binary, nothing to pin), an output-format reference that omits usage and cost,
+    self-described "still in beta", and no headless abort or exit-code contract. **Two risks
+    recorded here so LAB-153 prices them rather than discovers them:** the JSONL wire sits behind
+    `--experimental-json` and can change in a lockstep CLI+SDK bump — **pin exactly (0.152.1
+    today) and keep the translate layer thin**; and **Codex exposes no cost field** — cost is
+    derived from usage × a price table we own, so the handle's `costUsd` is an estimate for this
+    harness and the contract must allow that honestly.
+
+12. **Production-ready has a minimum bar, and every item on it is a completion criterion, not
+    polish.** **(i)** The manager is published out of labs/ (theme 9). **(ii)** The module-level
+    `leases` Map — kept because `onSettled` is synchronous and FSD state is JSON — gets a framework
+    home *or* an explicit recorded deferral in LAB-154's spec; FIX-1289 (a request-scoped ephemeral
+    side-channel so `onSettled` has somewhere to read from) is the framework-side candidate, and
+    silently carrying the Map into a published package is the one outcome not allowed. **(iii)** A
+    `resume` / previous-session input **reaches the harness on the detached path**: the manager
+    already carries `previousSessionId`, the contract (theme 7) carries resume-by-id, and today the
+    two never meet because `detached: true` suppresses the SDK `resume`. This epic closes that gap
+    at the harness boundary; the typed resume association **on the task** stays FIX-1179's
+    (FIX-1246 the POC under it). **(iv)** `PhaseSpec.readable` is used or removed — a phase's
+    readable set is theme 2's own definition of what a phase *is*, so an unused slot there means
+    the definition is wrong or the slot is; LAB-154 decides which. **(v)** The goal check drives
+    one real issue through **both** harnesses (LAB-141). An epic that wraps with any of the five
+    unmet has shipped a prototype with a package name.
 
 ## 4. Running index
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4). **Names where conductor's code lives — `labs/conductor/`, unpublished** (owner call, 2026-08-24, §5); `@flow-state-dev/conductor` is not introduced this epic | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** (now closed) — the question travels **Relay**, and the row sits in **`parked`** (dependencies stay **`blocked`**; `needs_input` is the human-ask **reason**, not the status; shipped `awaiting_review` stays this cycle, renamed by FIX-1245 under FIX-980, which this epic consumes). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until four consumed pieces land** — the ask (FIX-1230), park-exit (FIX-1234), the wake (FIX-1244) and **session resume (FIX-1246)**; **restart is not Proof**. Before that it can build and **unit-test** the phase record, the inbox row and its replay-safe write, the human-wait status — **against the shipped `awaiting_review`, since `parked` is the decided name but not yet a landed enum member (FIX-1245)** — and settlement; **goal-checking the parked phase through the loop waits on FIX-1234** (§1) | spec | — | — | Needs spec |
-| [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
+| [LAB-152](https://linear.app/fixpoint-labs/issue/LAB-152) | The harness contract — input and handle — lives in a neutral home below every harness package (theme 10, recommended `@flow-state-dev/core`), and `claudeCodeAgent` is verified against it with no caller change. Blocks LAB-153 and LAB-154 | spec | — | — | Needs spec |
+| [LAB-153](https://linear.app/fixpoint-labs/issue/LAB-153) | `@flow-state-dev/codex` — a Codex harness block that dispatches, resumes by session id and aborts a run through the contract, reporting usage and an estimated cost (theme 11). Blocked by LAB-152. Theme 7's falsifier | spec | — | — | Needs spec |
+| [LAB-154](https://linear.app/fixpoint-labs/issue/LAB-154) | The harness manager is a framework block with a harness slot, published out of labs/ (theme 9); the `leases` Map gets a home or a recorded deferral, the previous-session input reaches the harness, `PhaseSpec.readable` is used or removed (theme 12). Blocked by LAB-152 and by FIX-1291 ([#1523](https://github.com/fixpoint-labs/flow-state-dev/pull/1523), open) | spec | — | — | Needs spec |
+| [LAB-141](https://linear.app/fixpoint-labs/issue/LAB-141) | Harnesses compose under one system: a harness is chosen per task — the manager parameterised per phase, or a router on a task field; the spec picks — and **carries the Proof**: one real issue through both harnesses. Blocked by LAB-153 and LAB-154 | spec | — | — | Needs spec |
+| [LAB-150](https://linear.app/fixpoint-labs/issue/LAB-150) | The ask marker lives inside the tree the run commits from; move it beside the checkout (or record the residual as accepted). Sequenced behind LAB-154 so it is fixed once, against the new manager | **bug** | — | — | Blocked (LAB-154) |
+| [LAB-151](https://linear.app/fixpoint-labs/issue/LAB-151) | `fsdev conductor` operator board on the existing run host. **Owner-driven** — the epic does not dispatch it, and nothing here waits on it | spec | — | [#1496](https://github.com/fixpoint-labs/flow-state-dev/pull/1496) | In Review |
+| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | *First generation.* The manager loop — a task row becomes a watched, settled coding run, in its own checkout, settled on a handle-status check; the per-run `cwd` seam on the SDK path; the runner contract as first written | spec | [#1437](https://github.com/fixpoint-labs/flow-state-dev/pull/1437) | [#1441](https://github.com/fixpoint-labs/flow-state-dev/pull/1441) | Done |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | *First generation.* A run that needs a decision asks through a durable inbox row, parks (D-1), and is answered by one zero-model action. Carried the first Proof (FIX-1166); its answered run **restarts rather than resumes** — the leg theme 12 (iii) closes at the harness boundary | spec | [#1440](https://github.com/fixpoint-labs/flow-state-dev/pull/1440) | [#1451](https://github.com/fixpoint-labs/flow-state-dev/pull/1451) | Done |
+| [LAB-146](https://linear.app/fixpoint-labs/issue/LAB-146) | *First generation.* A failed conductor build no longer leaves the phase pinned to the repository it just checked | **bug** | — | [#1480](https://github.com/fixpoint-labs/flow-state-dev/pull/1480) | Done |
+| [LAB-147](https://linear.app/fixpoint-labs/issue/LAB-147) | *First generation.* The ask marker's do-not-commit rule is checked where the marker lands | **bug** | — | [#1483](https://github.com/fixpoint-labs/flow-state-dev/pull/1483) | Done |
+| [LAB-148](https://linear.app/fixpoint-labs/issue/LAB-148) | *First generation.* A run that asked is never completed by an earlier attempt's PR | **bug** | — | [#1482](https://github.com/fixpoint-labs/flow-state-dev/pull/1482) | Done |
+| [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | *First generation.* Workspaces — the file-projection component (`@flow-state-dev/workspace`), the bash tool on it, the coding-agent path, the per-request workspace scope | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) | [#1497](https://github.com/fixpoint-labs/flow-state-dev/pull/1497) · [#1499](https://github.com/fixpoint-labs/flow-state-dev/pull/1499) · [#1501](https://github.com/fixpoint-labs/flow-state-dev/pull/1501) · [#1502](https://github.com/fixpoint-labs/flow-state-dev/pull/1502) · [#1505](https://github.com/fixpoint-labs/flow-state-dev/pull/1505) · [#1506](https://github.com/fixpoint-labs/flow-state-dev/pull/1506) · [#1511](https://github.com/fixpoint-labs/flow-state-dev/pull/1511) | Done |
 
-*FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
-spec gate is already passed (`spec approved` on #1345), so it enters at implementation. It is a
-member of this set because the manager will adopt its projection — not because anything here
-waits on it (theme 4).*
+*A bug carries no spec PR by design — it routes straight to implementation
+([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec"). An
+empty Spec PR cell on a `bug` row is correct, not a gap.*
 
-**What this index does not contain — and why that is correct.** **Four** pieces the Proof's round
-trip needs are not in this table, because they are **not this epic's to build**. It consumes all
-four and owns none.
-
-- **The ask** — [FIX-1230](https://linear.app/fixpoint-labs/issue/FIX-1230) (In Development), under
-  Relay (FIX-1197).
-- **Park-exit** — [FIX-1234](https://linear.app/fixpoint-labs/issue/FIX-1234) (In Review), under the
-  honest task substrate [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980).
-- **The wake** — [FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (Backlog), under
-  FIX-980; LAB-139 is its **first consumer, not its owner**.
-- **Session resume** — [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) (Backlog), a POC
-  under FIX-1179. **New, and a Proof blocker: restart is not Proof** (§1). **"POC" describes how the
-  substrate is de-risking the work, not a throwaway**, and the substrate says so in its own words:
-  *"Substrate owns the resume; Conductor consumes it"*, with the desired outcome
-  *"A coding session parked for input is resumed from a second request onto the **same** session.
-  Observable: same session id / harness thread, not a cold start."* That is a consumable capability,
-  not a demo. **And FIX-1179 itself names the Proof's dependency as this POC** — *"Conductor Proof
-  (LAB-139) now depends on that POC"* — which is why the consumed set names **FIX-1246** and not
-  FIX-1179's shipped milestone.
-  - **The residual risk this entry's own wording carries is named in §1**, at the same altitude as
-    the limits, because it sits on the Proof's critical path: **if FIX-1246 lands as a throwaway
-    harness rather than a path LAB-139 can call, the Proof stalls, and that answer is FIX-1179's.**
-    The evidence is the gap between the two lines above and its in-scope line — *"POC that the
-    association already on the task is enough to resume the same session from a new request"*, with
-    *"full FIX-1179 rewrite if the POC is narrower"* explicitly out. **Not a change to the consumed
-    set, and not a re-scoping of FIX-1179's milestone from here.**
-
-*(Also consumed, not owned, and not Proof blockers: **FIX-1245**, the `awaiting_review → parked`
-rename under FIX-980; and **FIX-1247**, the fence making `ctx.suspend` error inside a workstream,
-under FIX-1200.)*
-
-**The visibility point is unchanged and still worth stating: every issue in this index can close
-while the Proof's round trip is still unrunnable**, because **FIX-1244 and FIX-1246 are Backlog** —
-a **schedule** gap, and no longer an ownership one. *(This once carried a second, independent reason:
-*"nothing owns a shipped same-session resume at all."* The owner closed that on 2026-08-24 — the
-shipped path is **FIX-1179's**, the mechanism is the session handle **on the task**, and
-`detached: true` is not a bet against resume (§1). The schedule point is what survives.)* Said here
-because the table otherwise reads as the whole set. **This is visibility, not a plan** — no
-issue is proposed, no scope is added to LAB-139, and this document designs no wake, no resume and no
-rename. Whether that **schedule** ever changes this epic's shape is the **owner's**, live on the epic
-PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
+**Consumed, not owned — and still not landed.** The first generation's Proof leaned on four
+pieces of substrate outside this epic; two are still open and both touch this generation:
+[FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179) /
+[FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) (the typed resume association on the
+task, Backlog) — theme 12 (iii) makes the harness side of resume real and leaves the task-side
+field there; and [FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (unblock-with-input,
+In Spec Review), whose retry discount and second-answer handling LAB-139 documented as its own
+limits. [FIX-1234](https://linear.app/fixpoint-labs/issue/FIX-1234) (park-exit) is Done;
+[FIX-1230](https://linear.app/fixpoint-labs/issue/FIX-1230) (Relay's announcement) is In
+Development and its absence only means the operator reads rather than being told. **The one
+framework issue this generation adds to that list is
+[FIX-1289](https://linear.app/fixpoint-labs/issue/FIX-1289)** — the `leases` Map's candidate home
+(theme 12 ii), consumed if it lands, deferred explicitly if it does not.
 
 ## 5. Open cross-cutting questions
 
-- **~~Can a detached worker's task be parked in `awaiting_review` and continued by a later
-  request?~~** *Resolved: **no**, in every combination **on today's detached runner** — and the
-  conclusion once drawn from that is superseded.* **Read this entry as measurement, not as
-  direction.** Its findings stand; what does not is the inference that followed them — *"parking the
-  task is unusable, therefore suspend"*. Owner decision **D-1** (#1429 / FIX-1241) chose a **board
-  wait-status plus Relay** instead, so `awaitReview`'s behaviour on today's runner is now a
-  **caution about combining primitives**, not a reason to park the request. Raised
-  by review on this PR (#1362), settled by three POCs on the real path — real `taskBoard()`,
-  durable user-scoped collection, real SQLite, the real HTTP surface, asserting on observable
-  behaviour only — rather than by a third round of argument. **Theme 5 carries the settled table
-  of all three park mechanisms and the four moves that work; it is the reference, and this entry
-  records only what the settlements additionally establish.**
-  - **The blocker is auto-completion, not visibility.** `awaitReview` succeeds
-    (`in_progress → awaiting_review` is legal), but `recordSuccess` then calls
-    `collection.complete()` and stomps the row in the same request; a later `resumeFromReview`
-    threw *"illegal status transition for task 'question-1': completed → pending"*. The
-    request-scoped task mirror was the reviewer's reasoning and it is **not** the problem — a
-    second request's fresh resolution read the terminal row correctly.
-  - **One of the three combinations *is* a framework defect, and it is filed rather than fixed
-    here.** `awaitReview` + `ctx.suspend` strands the attempt permanently while the outer request
-    reports success — [FIX-1200](https://linear.app/fixpoint-labs/issue/FIX-1200), evidence on
-    draft PR [#1363](https://github.com/fixpoint-labs/flow-state-dev/pull/1363)
-    (`poc/LAB-139-awaitreview-suspend-lease`). Plain `recordSuccess` is *not* a defect: it is
-    unconditional by design, and the design this epic opened with did not fit that contract.
-  - **The shipped public resume route refuses it, and that guard stays** (theme 6). The same
-    requestId that 404s is proven live and resumable via `continueRequest()`, so the 404 is the
-    guard, not a missing record. `continueRequest` carries no source gating — the check lives only
-    in the HTTP handler. *(That observation was once the basis for an in-process resume action as
-    the HITL wake. D-1 removed that path; theme 6's guard is what survives here, and it is
-    unaffected.)*
-  - **"The lease, not the task status, is the real limit on how long a question can stay open"** —
-    this document's conclusion for three folds, and **D-1 reverses it.** The task status is the
-    limit; the lease was an artefact of parking the request. See the entry below.
+**Second generation — three engineering calls made 2026-09-01, each landing for the owner's ruling
+at an issue spec gate, and one genuinely open question routed to a spec.** Recorded here as the
+durable record; the owner is not asked to rule on them on this PR, because a call about mechanism
+is properly ruled on where the mechanism is written.
 
-- **~~How long can a question stay open before the board takes the row back?~~** *Answered
-  differently by **D-1**: the row is not held by a lease at all, because the run does not park the
-  request. **Superseded as the plan; kept as the evidence that produced it.*** Whether a pre-chosen
-  lease is an acceptable product control at all is **moot** — the lease design was withdrawn with the
-  suspend park, so there is no window to accept or reject (entry below); the owner leaned **no** on
-  it in any case, given the Relay path. The measurements in this entry are why the question was
-  worth asking, and they remain accurate about the board.
-  *(What follows is the measurement, with the superseded scope removed.)*
-  Suspending stops lease renewal by design (`task-board/index.ts:958-965`), so on the 120 s default
-  (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) a parked run's row becomes
-  claimable about two minutes in — and it **is** then reclaimed: the next drain on that board takes
-  the task and re-runs the work from scratch. Settled from **tests already committed and passing on
-  `main`** rather than by argument — `test/task-board/lease-recovery.test.ts` (park · lapse · a
-  separately constructed board drains → `attempts 2 · abandonments 1`, a genuinely new worker having
-  run it), corroborated by FIX-982's detached-child-death scenario and by `claim-task.ts`'s own *"a
-  lease reclaim deliberately hands an abandoned task to a second worker"*. And when the answer
-  arrives afterwards, the resumed original's settle is **declined `lost-claim`**, because its claim
-  ticket no longer names the row's current attempt (`test/collection/lease-fence.test.ts`) — the
-  answer lands in a run whose write-back is discarded, silently.
-  **That last fact is the one that outlived the design, and it is why D-1 is well-founded.** Holding
-  a human answer against a *lease* means the whole round trip rests on a duration chosen before the
-  question is asked, and choosing it too short fails without a sound. A **board wait-status** does
-  not have that property: waiting is a state of the row, not a countdown. *(An earlier fold priced
-  the window as five lines of dispatcher configuration in Conductor's own code, which was true and
-  is now moot — there is no window to configure, because the run does not park the request.)*
-
-- **~~D-1's own open items~~ — ALL CLOSED.** *(Owner, #1362: "Issue #1429 still-open list is
-  empty.")* D-1 settled the path (Relay + a board wait-status, not `ctx.suspend`) and for a while
-  carried a live open list. **That list is now empty.** The questions are kept below as **answered**
-  rather than deleted, so a reader can see they were asked — and so nobody re-opens one thinking it
-  was never considered.
-  - **~~The human-wait status and how it lands on the row~~ — ANSWERED: the status is `parked`.**
-    `needs_input` is **demoted to the human-ask display/reason — the *why*, not the *what***;
-    dependencies stay `blocked`. **This supersedes an earlier answer recorded here** that made
-    `needs_input` the status itself. **Shipped `awaiting_review` stays this cycle**; the rename
-    `awaiting_review → parked` is [FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245) under
-    FIX-980 (Backlog), to land before FIX-980's human-wait closes. **Park-exit #1422 is not gated on
-    it** and ships against whichever name is live. *(The three readings this entry once weighed —
-    rename · two statuses · display name — are moot; the answer is a rename, owned by FIX-1245,
-    which this epic consumes and does not own. **The gate this put on LAB-139's spec is gone.**)*
-  - **~~Who wakes a parked-and-exited board, and where park-exit lives~~ — ANSWERED (D-1
-    membership).** The wake is **FIX-1244** (unblock-with-input) and park-exit is **FIX-1234**, both
-    under **[FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980)** — **related to Relay, not
-    parented under it, and not under LAB-140.** **This epic consumes them and owns neither**;
-    LAB-139 is FIX-1244's first consumer. What remains is a **schedule** dependency (FIX-1244 is
-    Backlog), carried in §1's limits — and **this document still proposes no wake.**
-  - **~~Does "answered" mean continuing the coding agent's own conversation?~~ — ANSWERED: yes, and
-    it is a Proof blocker.** **Restart is not Proof.** The POC is
-    [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under FIX-1179 (Backlog); **this
-    epic builds no resume machinery — FIX-1246 does**, and this epic consumes what it produces
-    (*"Substrate owns the resume; Conductor consumes it"*). §1 carries it as a limit. *(This reverses this
-    document's oldest decided entry — see the struck entry below.)*
-  - **~~FIX-1200's sequencing~~ — ANSWERED, and narrower than the question assumed.** The scoped
-    piece is a **fence**: `ctx.suspend` must **error** if called inside a workstream —
-    [FIX-1247](https://linear.app/fixpoint-labs/issue/FIX-1247) under FIX-1200, Backlog. **Not a full
-    FIX-1200 rewrite**, and not this epic's to build.
-  - **~~BullMQ / serverless this release~~ — ANSWERED: out of cycle.** **In-process Relay is enough
-    for the Proof**; BullMQ HITL is not in this cycle.
-  - **~~Are `onIdle: complete` HITL boards in or out?~~ — ANSWERED, as a substrate expectation this
-    epic relies on rather than builds:** `onIdle: complete` **must not report success while parked
-    rows are still open.** The owner's model — *"a drain drains what it can. Held rows block
-    dependents. The board is **not complete** while anything is on hold and not cancelled."*
-    Recorded here because the Proof leans on it; **nothing in this set implements it.**
-  - **~~Whether a pre-chosen lease is an acceptable product control~~ — moot.** The lease design was
-    withdrawn with the suspend park; there is no pre-chosen window to accept or reject.
-  - **Coordinator UX — not D-1's, and not the substrate's.** Both constructions are already allowed
-    by the substrate, so there is no substrate pick to make. Any remaining presentation choice is
-    **this epic's own product decision** (LAB-139 / LAB-140), and it is moved out of the D-1 list on
-    that basis.
-
-- **~~What is the human-wait status called?~~** *Decided: the status is **`parked`**.* Owner call on
-  #1362, and it **supersedes an earlier answer recorded here** — this entry read *"Decided:
-  `needs_input`"* for part of a day. **`needs_input` is the human-ask display/reason, not the
-  status**: a row is `parked`, and `needs_input` says what it is parked *on*. **Dependencies stay
-  `blocked`.** The reasoning that produced the distinction is unchanged and still holds — a board
-  must be able to show which rows wait on a **person** rather than on other work, so this was never a
-  naming preference. **Shipped `awaiting_review` stays this cycle**; the rename to `parked` is
-  **[FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245)** under FIX-980 (Backlog), which this
-  epic **consumes and does not own**, and **park-exit #1422 is not gated on it.** The shipped
-  **verbs** `awaitReview` and `resumeFromReview` are unchanged by any of it.
+- **One manager with a harness slot, or one manager per harness package?** *Decided as an
+  engineering call: **one manager, `harness: BlockDefinition<HarnessInput, HarnessHandle>` as a
+  block slot** (theme 9); the owner rules at **LAB-154's** spec gate.* The alternative — a manager
+  inside each harness package, "brought together" by a router — is named because it is the owner's
+  own either/or. Rejected because it duplicates the loop the owner has said not to reinvent, and
+  because the loop's `decide` step already reads a harness-neutral handle. What would flip it: a
+  harness that cannot be expressed as dispatch → handle → resume-by-id → abort.
+- **Codex or Cursor as the second harness?** *Decided as an engineering call: **Codex via
+  `@openai/codex-sdk`, pinned exactly** (theme 11); the owner rules at **LAB-153's** spec gate.*
+  Cursor fails on pinnability, usage/cost reporting and a headless abort contract. Two risks are
+  priced in the theme rather than hidden: the experimental JSONL wire, and cost being derived, not
+  reported.
+- **Where does the generic manager live once it leaves labs/?** *Open — **LAB-154's spec
+  argues it**; the owner rules at that gate.* The constraint that binds every candidate is theme
+  10: **no harness package may depend on `@flow-state-dev/orchestration`**, so the *contract* sits
+  below the harnesses (recommended `@flow-state-dev/core`, LAB-152's spec argues it) and the
+  *manager* may sit on orchestration. What is closed: it is not `labs/conductor`, and
+  `labs/conductor` stays as the repo-specific consumer.
+- **Where does the `leases` Map go?** *Open — **LAB-154's spec** decides between a framework home
+  (FIX-1289, a request-scoped ephemeral side-channel for `onSettled`) and an explicit recorded
+  deferral (theme 12 ii).* Not an owner ask: a wrong answer changes nothing a user experiences
+  and is cheap to reverse; what is not allowed is carrying the Map into a published package
+  without a line saying so.
 
 - **~~Where conductor's own code lives.~~** *Decided by the **product owner on 2026-08-24**
-  (#1362): **unpublished, `labs/conductor/`.*** In the owner's words — *"keep conductor unpublished
-  as `labs/conductor/`… Publish vs `labs/` is no longer open."* **LAB-138 names that path**, and the
-  gate this entry put on LAB-138's spec is gone. **Standing constraint for the set:
-  `@flow-state-dev/conductor` is not introduced this epic** — there is no published package and no
-  release story, so nothing outside this repo can depend on conductor's code this cycle.
-  *(Recorded as the **owner's call**, not as a coordinator recommendation that was accepted: this
-  document carried the fork with a recommendation for the same path, and the two are different
-  facts.)* The reason `labs/` was the concrete candidate is unchanged and still useful: it is an
-  existing pattern rather than an invention — `labs/` already holds `knowledge-hub` and
-  `trading-desk`, and `labs/knowledge-hub/src/inbox.ts` already implements the inbox as a plain
-  user-scoped collection.
+  (#1362): unpublished, `labs/conductor/` — **and superseded on 2026-09-01 by the owner's own
+  second-generation objective, "production ready".*** What survives of the 24 Aug call: the
+  repo-specific layer (seed, wake, status, Linear, `gh`) **does** stay at `labs/conductor`, beside
+  `knowledge-hub` and `trading-desk`. What is superseded: "no published package this epic" — the
+  generic loop leaves labs/ (theme 9), and which package is LAB-154's spec to argue (above).
+  *(Recorded as the owner's call and the owner's supersession, not as a recommendation that was
+  accepted.)*
 
+**First generation — every entry below is closed, kept with its answer so nobody reopens it.**
+
+- **~~Can a detached worker's task be parked in `awaiting_review` and continued by a later
+  request?~~** *Resolved: **no**, in every combination on the detached runner as it then was — and
+  the conclusion first drawn from that ("therefore suspend") is superseded by D-1.* Settled by
+  three POCs on the real path (real `taskBoard()`, durable collection, real SQLite). The evidence,
+  kept because it is why D-1 is well-founded and not as a menu:
+
+  | Park via | Measured result |
+  |---|---|
+  | `awaitReview` + normal return | row stomped to `completed` in the same request — the question is lost |
+  | `ctx.suspend` **alone** | parks, but lease renewal stops (120 s default), so the next drain reclaims → duplicate run, and the answered original's write-back is refused `lost-claim` |
+  | `awaitReview` **+** `ctx.suspend` | attempt **permanently stranded** while the outer request resolves `error: undefined` — [FIX-1200](https://linear.app/fixpoint-labs/issue/FIX-1200), evidence on draft PR [#1363](https://github.com/fixpoint-labs/flow-state-dev/pull/1363) |
+
+  The lesson that outlived the design: holding a human answer against a *lease* rests on a
+  duration chosen before the question is asked, and too short fails silently. A board wait-status
+  does not have that property. **For a claim about the task board, read
+  `packages/orchestration/test/` before reasoning from source and before commissioning a POC.**
+- **~~How long can a question stay open before the board takes the row back?~~** *Moot under
+  D-1: the row is not held by a lease because the run does not park the request.* The measurement
+  stands (`DEFAULT_LEASE_DURATION_MS`, `lease-recovery.test.ts`, `lease-fence.test.ts`).
+- **~~D-1's own open items~~ — ALL CLOSED** *(owner, #1362: "Issue #1429 still-open list is
+  empty").* The status is **`parked`**; `needs_input` is the human-ask display/reason;
+  dependencies stay `blocked`; shipped `awaiting_review` stays until FIX-1245. The wake is
+  FIX-1244 and park-exit FIX-1234, both under FIX-980 — consumed, never owned. "Answered" means
+  **continuing the coding agent's own session — restart is not Proof**, and the POC is FIX-1246
+  under FIX-1179. FIX-1200's scoped piece is a fence (FIX-1247). In-process Relay is enough; BullMQ
+  HITL is out of cycle. `onIdle: complete` must not report success while parked rows are open
+  (substrate expectation, not built here). Coordinator UX is this epic's own product call.
+- **~~What is the human-wait status called?~~** *Decided: **`parked`** (owner, #1362), superseding
+  a same-day answer of `needs_input`.* The shipped verbs `awaitReview` / `resumeFromReview` are
+  unchanged.
 - **~~Do LAB-138 and LAB-139 merge into one issue?~~** *Decided: no — two, as composed.* Both
-  automated reviews on this PR pushed to fold them (one "definite", one "lean fold"); **the
-  product owner ruled against**, because §1's necessity check already interrogates the split and
-  names a concrete reconsideration trigger. That trigger is the only route back to this.
-
+  automated reviews pushed to fold them; the product owner ruled against, and both shipped as two.
 - **~~Do questions ride the hot path, or wait for the relay layer?~~** *Reversed by **D-1**: the
-  questions ride **Relay**.* This document carried "the hot path, by parking the run" for four
-  folds. Owner decision D-1 (#1429 / FIX-1241) chose Relay plus a board wait-status instead, so the
-  answer here is the one this entry previously argued against. **The reversal is the owner's and is
-  not re-litigated in this document.**
-  **What the entry established that is still true and still useful:** a parked run holds **no board
-  worker slot** — the suspended request settles and lets go
-  (`packages/engine/src/execution/runAction.ts:1503-1520`) and the launching board never counted the
-  row (`countWaitable` skips handed-off rows, `task-board/shared.ts:184-198`). Both were claims this
-  document asserted for three rounds before checking, and both were withdrawn on checking. They no
-  longer price anything here, because nothing in the chosen design parks a request.
-  **What it got wrong, recorded because the class recurs:** it claimed the lease and the board's
-  wait count interlock. True of the predicate, inert in the running system — `countWaitable` decides
-  anything only while a drain is running, and this set's launching drain has already exited
-  (`task-board/quiescence.ts:95-110`). The correction to *that* correction is in the lease entry
-  above: expiry invokes no claim, but the next drain reclaims the row and re-runs the work.
-  **FIX-1197's relay is no longer a thing this epic declines — it is the channel.** §1's limits
-  price the dependency: Relay is its own epic, this one consumes it, and the epic's schedule is not
-  silently made Relay's.
-
-- **~~Does an answer continue the coding-agent conversation, or restart it?~~** *Answered: **it must
-  continue**, and **restart is not Proof**.* **This reverses this document's oldest decided entry**,
-  which read *"it restarts it… correct and expensive; accepted, and not to be worked around"* from
-  the day the epic was drafted. The owner: *"LAB-139's 'continuity out of scope / restart accepted'
-  is **stale** — strike it. This epic is **blocked on that POC for Proof**, it does not build the
-  resume itself."*
-  So a run that answers by **re-stating the prompt and starting the agent over does not count as the
-  Proof passing.** The POC is [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under
-  [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), **Backlog**, and it says the same in
-  its own words: *"the task is already associated to the coding session, so resume from a second
-  request should be possible… This is a POC, not Proof. Restart is not the POC passing."*
-  **This epic builds no resume machinery — FIX-1246 does, and this epic consumes what it produces**
-  (*"Substrate owns the resume; Conductor consumes it"*) — that boundary is the one part of the old
-  entry that survives. §1 carries it as a limit and as the fourth consumed dependency.
-  *(Entry history, because this one moved twice: decided *restart* at drafting; re-grounded twice on
-  premises that kept moving; held open when D-1 listed it; now answered the other way.)*
-
+  questions ride **Relay**.* What the entry established that is still true: a parked run holds
+  **no board worker slot** (`execution/runAction.ts:1503-1520`; `countWaitable` skips handed-off
+  rows), and lease expiry *invokes* no claim but the next drain reclaims the row.
+- **~~Does an answer continue the coding-agent conversation, or restart it?~~** *Answered: **it
+  must continue**, and **restart is not Proof**.* Reversed this document's oldest decided entry
+  (owner: *"strike it… blocked on that POC for Proof, it does not build the resume itself"*).
+  **The shipped same-session resume is FIX-1179's, by a session handle on the task** (owner,
+  2026-08-24): `claudeCodeAgent({ detached: true })` is leftover confusion, not a product bet —
+  resume was bundled into that flag by mistake, and the throw's own prescribed fix is *"keep the
+  worker's state on the task instead"* (`task-board/detached.ts`). **Still true today**, which is
+  why theme 12 (iii) exists: LAB-139 shipped a restart and documented it as a limit. This
+  generation makes the previous-session input reach the harness; the typed task field remains
+  FIX-1179's; `assertDetachedBoardSupported` is not relaxed and `claudeCodeAgent`'s schema-off
+  behaviour is not deleted by anything here.
 - **~~Is the inbox a new framework capability?~~** *Decided: no — a plain user-scoped resource
-  collection.* FIX-1075 asks the right scoping question and the answer here is *nothing this
-  epic needs*; a plain collection keeps theme 3 intact and gives FIX-1075 its evidence.
-  FIX-1056 is the same gap from the steering side.
-
-**Every entry in this section is now answered**, including the two the owner closed on
-**2026-08-24**: conductor's home (above) and the **shipped same-session resume** — owned by FIX-1179,
-the session handle **on the task**, recorded in **§1** as a decision rather than a limit. What
-remains is a **schedule**, not a direction: §1's four limits carry the consumed work the Proof waits
-on, and they stay there rather than being restated here.
+  collection.* FIX-1075 asked the right scoping question and the answer was *nothing this epic
+  needs*; `labs/conductor/src/inbox.ts` is the pattern, and theme 3 stays intact.
 
 ---
 
@@ -748,7 +474,8 @@ on, and they stay there rather than being restated here.
   in-process SDK call**, which is new evidence on one side of LAB-138's `cwd` surface fork (theme
   4) and is **routed there rather than resolved here** — the SDK surface still uniquely carries
   `detached`, `recordWork` and the session handle. **§1's five lines are unchanged.** This epic
-  still drives Claude Code only.
+  still drives Claude Code only. *(**Superseded 2026-09-01** by the objective fold below: a second
+  harness is now in scope, and theme 7 reads the other way.)*
 - **Correction fold — two clauses of that constraint were wrong, and a cost we priced does not
   exist.** Not a review round. A Codex review of `92028c5`, verified against the source, overturned
   three things the entry above and its predecessors asserted. **The bound was over-drawn:** "a
@@ -1156,7 +883,9 @@ on, and they stay there rather than being restated here.
   *(**Superseded in part** by the owner's 2026-08-24 call — the last entry below. The resume question
   is closed: FIX-1179 owns the shipped path, the mechanism is the session handle on the task, and the
   limit count went back to four. The goal-check narrowing in the first half of this entry stands.)*
-- **Owner decision fold — conductor stays unpublished at `labs/conductor/`.** Trigger: the owner on
+- **Owner decision fold — conductor stays unpublished at `labs/conductor/`.** *(**Superseded
+  2026-09-01** by the owner's own "production ready" — the objective fold below; the generic loop
+  leaves labs/, the repo-specific consumer stays.)* Trigger: the owner on
   [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362) (2026-08-24) — *"keep conductor
   unpublished as `labs/conductor/`… Publish vs `labs/` is no longer open."* §5's package-location
   entry moves from an open fork with a coordinator recommendation to **decided, by the owner, dated**
@@ -1229,3 +958,35 @@ on, and they stay there rather than being restated here.
   FIX-1246 — **FIX-1179 is still not in it**, the resume decision, the package call and D-1 are not
   re-opened, no scope was added to LAB-138 or LAB-139, no mechanism was written, and the epic PR's
   description and threads are the coordinator's surface.
+- **Objective fold — the second generation: production-ready, a second harness, one manager with
+  a slot.** Trigger: the product owner's new objective (`/goal`, 2026-09-01) — *"vastly improve
+  the design … to be production ready, ensuring that we support at least one more harness (cursor
+  or codex), and ensure that our harness manager either works across harnesses or we have one
+  manager per harness … and then make a clean block oriented way to bring those managers together
+  under one clean system."* Not a review round (`epic_review: 0`). **§1 is re-drafted, not
+  appended**: the first generation (LAB-138 · LAB-139 · LAB-146 · LAB-147 · LAB-148 · FIX-150,
+  all Done) is recorded as delivered with the four things it left — the manager private and
+  Claude-by-name, the answered run restarting rather than resuming, the module-level `leases` Map,
+  the unused `PhaseSpec.readable` — and the new Outcome / Proof / Lead measure / Not doing / Kill
+  line sit on top of it. **Two decisions reversed, both named where they stood:** theme 7 no
+  longer says a second harness is out of scope — the contract is now *proven* by a second adapter,
+  and LAB-153 is its falsifier; and the owner's 24 Aug *"conductor stays unpublished at
+  `labs/conductor/`"* is superseded by the owner's own *"production ready"* — the generic loop
+  leaves labs/ for a published package, the repo-specific consumer stays. **Four themes added
+  (9–12):** one manager with a harness slot rather than one per package, with the alternative
+  named and the owner's ruling routed to LAB-154's gate; no harness package depends on
+  orchestration, so the contract lives below the harnesses (recommended `@flow-state-dev/core`,
+  LAB-152's gate); Codex via `@openai/codex-sdk` pinned exactly, Cursor rejected, two risks priced
+  (LAB-153's gate); and the production bar as five completion criteria. **Themes 2 and 4
+  re-derived** (a harness is a slot, a phase is a record; the new sequencing LAB-152 → {LAB-153,
+  LAB-154} → LAB-141, FIX-1291 feeding LAB-154, LAB-150 behind LAB-154 as a dependency, LAB-151
+  owner-driven). **§4 refreshed**: the six delivered rows carry their spec and impl PRs; six new
+  rows (LAB-152 · LAB-153 · LAB-154 · LAB-141 · LAB-150 · LAB-151). **§5 condensed**: the
+  first-generation entries keep their answers and lose their narratives; the new calls are
+  recorded as engineering calls landing at spec gates, and the two genuinely open questions (the
+  manager's package, the `leases` Map's home) are routed to LAB-154's spec. **Gate:** `epic
+  approved` (24 Aug) stands — the label does not expire on a push and the owner authored the new
+  objective; removing it is how the owner re-gates. **Checked in source before writing:**
+  `conductor-decide`'s six-field handle and the Claude-specific options on the `.step()` call
+  (`labs/conductor/src/manager.ts` on `main`), the `leases` Map, `PhaseSpec.readable` set to `{}`
+  by the only phase, and the three packages' `dependencies`.
