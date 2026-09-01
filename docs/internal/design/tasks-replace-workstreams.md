@@ -29,8 +29,10 @@ not mistake the endpoint for the scope.
 
 - **One inbox per flow, addressed `(type, name)`, same-flow only** — the address,
   the five message types, the no-fallback rule, and the typed entry.
-- **`dispatcher` as a handler that returns a typed envelope** — not a fifth block
-  kind. See §"`dispatcher` — a handler this cycle, a kind later".
+- **`dispatcher` as a handler built around a typed envelope** — not a fifth
+  block kind. D-8 says the handler *returns* the envelope; the execution model
+  settles where the envelope actually goes, and it is down into the seam rather
+  than up to a caller — see §"`dispatcher` — a handler this cycle, a kind later".
 - No `relay.on`. No `sessionKind`.
 
 **Out this cycle.** Deferred is not rejected; each of these stays live for a
@@ -38,7 +40,7 @@ later cycle:
 
 | Deferred | Why it is not in this cut |
 |---|---|
-| Full Workstreams deletion | the addressing lands first; the deletion is its own change with its own published-package migration — §"Deletions and renames" |
+| Full Workstreams deletion | the addressing lands first; the deletion is its own change with its own public-surface rename in `client` and `react` — §"Deletions and renames" |
 | A fifth `dispatcher` block kind | a locked-contract amendment is not something a first cut should carry. The three arguments for it survive in §"`dispatcher` — a handler this cycle, a kind later" |
 | Amending `architecture-reference.md` | the reference stays the single spine; this document must not become a second one |
 | Cross-flow dispatch | already phased out of v1 by two independent findings — §"more complicated" #2 and #3 |
@@ -256,12 +258,14 @@ who may put a message through the door.
 |---|---|---|
 | user | a caller — HTTP, MCP, voice, or a matched chat subscription | the author |
 | webhook | an external sender; named `provider/event` | the sender |
-| schedule | the outbox sweep — from a static cron or from a block | the framework |
+| schedule | the host cron for a static entry; the outbox sweep for a row a block wrote | the framework |
 | task | a board drain | the framework |
 | internal | a `dispatcher` block in another request | the author |
 
-Two of these carry a coordinate the author does not own, and one is selected by a
-subscription rather than addressed directly. Both cases are handled below under
+The `schedule` type is what the existing `"scheduled"` transport source already
+names; the string need not change. Two of these carry a coordinate the author
+does not own, and one is selected by a subscription rather than addressed
+directly. Both cases are handled below under
 §"Protocol-owned types carry a compound name" and §"Subscription is not routing".
 
 An adapter is already `{ source, createBindings(host) }` — an immutable factory
@@ -329,7 +333,7 @@ as *"a message's kind is the action name"* — aimed at the right target, a para
 ```ts
 flow.user.actions.chat
 flow.internal.actions.status
-flow.scheduled.actions.dream
+flow.schedule.actions.dream
 flow.webhook.actions.github
 flow.task.actions.work
 ```
@@ -345,21 +349,28 @@ parallel concept.
 factor is per-type config, which the second shape has nowhere to put.
 `flow.task.retries` and `flow.user.concurrency` want a home, and one already
 exists a level up: `flow.request.concurrency` is the all-types default today
-(`ConcurrencyFlowView`). So the ladder is **default → per-type → per-action**,
-which is the shape already shipped, extended by one rung.
+(`ConcurrencyFlowView`, `transports/concurrency/arbiter.ts:44`). So the ladder
+is **default → per-type → per-action**.
+
+That is one rung more than ships, and the bottom rung is narrower today than it
+looks. The arbiter reads `flow.actions[name].concurrency` for caller actions
+only; an event (`webhook`, `chat`, `scheduled`) and a detached dispatch go
+straight to the flow default (`arbiter.ts:144–160`), so a webhook or schedule
+entry has no per-entry policy at all. Typed entries give every type the same
+three rungs, and the arbiter's `isEvent` / `isDetached` special case goes with
+the maps it was written for.
 
 ### Who may address an entry
 
-Guard 1 above says addressability becomes an explicit declaration. This is that
-declaration, and the rule behind it.
-
-Every entry carries `from`, naming which message types may reach it. The default
-is the entry's own type and nothing else.
-
-```ts
-flow.user.actions.chat        // from: ["user"] — the default
-flow.internal.actions.status  // from: ["internal", "task"]
-```
+Guard 1 above says addressability becomes an explicit declaration. Under a
+two-part key that declaration is the map itself: an entry in
+`flow.internal.actions` is reachable by an `internal` message and by nothing
+else, because the lookup is keyed on the type and there is no fallback. An
+earlier revision put a per-entry `from` list on top of that. It was either
+redundant with the map or a way to resolve one type's message in another type's
+map — which is the fallback the previous section deletes. **There is no
+`from`.** What remains to declare is the other half — which types a *block* may
+put through the door — and that is a rule rather than a per-entry list.
 
 **A block may dispatch a type only when it can itself supply that type's trust.**
 Not "internal versus external" — that cut is wrong, and it excludes scheduling,
@@ -467,8 +478,9 @@ non-optional. Three shapes were considered:
 | **envelope handled at the entry** | **chosen** |
 
 The typed part reaches the **entry** as input; blocks below it that need the row
-take it as input too. `ctx.task` shrinks to the ambient lifecycle verbs the
-substrate genuinely owns — `park`, `heartbeat`.
+take it as input too. `ctx.task` shrinks to the ambient lifecycle verb the
+substrate genuinely owns — `park`. (Heartbeat is automatic lease renewal,
+`tasks/lease-renewal.ts`, and needs no verb.)
 
 This is the same rule that killed passing a task into an action wholesale: the
 claim envelope is handled before the action is called, rather than pushed onto
@@ -491,13 +503,27 @@ That is a real distinction, and it argued for a fifth block kind. Block kinds
 are a locked contract at exactly four, and **this cycle does not amend it.**
 
 **What ships this cycle.** `dispatcher({ … })` is a **factory that returns a
-handler**. The handler's return value is a **typed envelope** — a branded value
-the factory alone can mint — and the framework's dispatch seam recognizes that
-brand. The block it produces also carries its `(type, target)` as metadata, so
-the roster and `defineFlow` can read the address without running anything.
+handler**. Inside its body the handler builds a **typed envelope** — the
+`(type, target)` it was declared with, plus the session, payload and delivery
+time `resolve` computed — hands it to the framework's dispatch seam, and returns
+the handle the seam gives back. The block it produces also carries its
+`(type, target)` as metadata, so the roster and `defineFlow` can read the
+address without running anything.
+
+**The envelope goes down into the seam, not up to a caller.** An earlier
+revision had the handler *return* the envelope for an executor to recognize.
+The codebase has no executor in that position. A child block is invoked in
+`core`'s own runner — `blocks/sequencer.ts:413`, *"the one place a child block
+is invoked"* — which calls the block's `run` directly and hands the output to
+the next step; the engine observes that output only through the trace scope
+and `_runtimeHooks`. Recognizing a brand there would mean either teaching
+`core`'s runner about dispatch, which it has no host to perform, or rewriting a
+block's output from a trace hook. So the handler performs the dispatch itself,
+and the envelope is the seam's *argument*.
 
 Two of the three arguments for a kind survive that form intact, and they survive
-**because the brand is unforgeable**:
+**because the seam is reachable from the factory and from nothing an author
+writes**:
 
 1. **A board can still see, statically, which workers hand off.** The seat holds
    a factory-made block; the board reads its metadata instead of its kind.
@@ -508,33 +534,35 @@ Two of the three arguments for a kind survive that form intact, and they survive
    nothing to compare against. But `defineFlow` **can** walk the graph for
    factory-made dispatchers and check each target `(type, name)` resolves. The
    walk is complete over the reachable set precisely because no other code path
-   can produce an envelope. Same class of error, caught at the same time, without
+   can reach the seam. Same class of error, caught at the same time, without
    the bubble-up machinery.
 
 So the graph walk survives the collapse — demoted from *routing source* to
 *lint*. That is the honest fix for the one capability the deletion was otherwise
 giving up.
 
-**What the handler form costs.** Three things, stated rather than glossed:
+**What the handler form costs.** Two things, stated rather than glossed:
 
-- **The seam checks a value instead of a structure.** Dispatching on `kind` is a
-  structural fact; checking a returned brand is a check on the ordinary handler
-  path. An exact brand is not shape-sniffing — it is not
-  `create-request-host.ts:198` guessing at a caller — but it is the seam reading
-  values again, which is the family this document diagnoses. The bound holds only
-  while the brand stays unmintable outside the factory, so that is a verification
-  item, not an assumption.
+- **The seam has to be hidden, and "on `ctx`" does not hide it.** The
+  cautionary precedent is `startDetached`. It lives on the block context, and
+  `types/request-host.ts:63` says what that means: *"which every block author
+  reaches — an application block or a custom capability can call it."* A
+  dispatch seam the factory reaches through an ordinary `ctx` member is
+  `ctx.dispatchMessage` under another name. So the seam is not a `ctx` member.
+  It is reached through a slot `core` does not export — a symbol-keyed field the
+  factory closes over, or a capability only the factory installs. The bound on
+  the walk holds only while that stays true, so it is a verification item, not
+  an assumption.
 - **The graph no longer says what the block does.** Devtool, traces, and anything
   else that renders the block graph see `handler`. Inline-versus-handed-off is
   legible to the board through metadata and invisible to a reader.
-- **The block's declared output is not what its body returns.** The factory types
-  the block's output as the handle so composition downstream is ordinary, while
-  the body returns the envelope the seam substitutes. A kind would not need that
-  sleight.
+
+A kind would need neither: dispatch would be what the engine does *with* the
+block, so there would be no seam for a handler body to reach.
 
 **Deferred, not rejected.** The taxonomy still reads better as three groups than
 five flat kinds — leaves that compute (`handler`, `generator`), a leaf that hands
-off (`dispatcher`), composites (`sequencer`, `router`) — and the three costs
+off (`dispatcher`), composites (`sequencer`, `router`) — and the two costs
 above are exactly what a later cycle would buy back by amending line 15. Nothing
 in this cut forecloses it: the factory is the same author-facing surface either
 way, so promoting it to a kind later changes the engine and the graph, not the
@@ -557,7 +585,11 @@ are not the rule for caller-created sessions, and a named session is a
 legitimate shape: a channel, `status-updates`.
 
 So a dispatch naming a session that does not exist **rejects**. (The full
-three-way is in §"The shape".)
+three-way is in §"The shape".) A session that exists but belongs to another
+user rejects too, and that check is already there: the loaded session record's
+`userId` is authoritative and a mismatch throws (`createExecutionContext.ts:642`,
+`UserBindingMismatchError`). An `internal` delivery into a named session passes
+through it like any request that carries a `sessionId`.
 
 Reject is the default because an unknown id is a typo, a stale reference to a
 reaped session, or — once a send verb is in a model's hands — a hallucination,
@@ -590,8 +622,8 @@ opened.
 ### Dispatch is a block, not a method on `ctx`
 
 A block does not *call* a dispatch. It **is** one — a handler the `dispatcher`
-factory builds, returning a typed envelope the seam recognizes
-(§"`dispatcher` — a handler this cycle, a kind later"):
+factory builds, which puts a typed envelope through the framework's seam and
+returns the handle (§"`dispatcher` — a handler this cycle, a kind later"):
 
 ```ts
 const handOff = dispatcher({
@@ -636,7 +668,7 @@ The refusal must name the computed value and the block that produced it.
 would defeat both reasons the factory exists: a board could no longer tell
 statically which workers hand off, and `defineFlow`'s walk could not see targets
 buried in handler bodies. It would also break the condition the walk rests on —
-that the envelope is mintable in exactly one place — so the lint would report on
+that the seam is reachable from exactly one place — so the lint would report on
 a subset it cannot bound, which is worse than none because it looks complete.
 
 It is also the call this codebase has already made twice: BP-011 (a handler does
@@ -737,7 +769,13 @@ payload — so they add no caller-facing surface (BP-031).
 
 Everything but `payload` is the claim envelope — compared against the re-read row,
 verified and never trusted. The entry sees `payload`; `ctx.task` carries only the
-ambient lifecycle verbs the substrate owns (`park`, `heartbeat`).
+ambient lifecycle verb the substrate owns (`park`).
+
+A `task` dispatcher is therefore meaningful only as a roster seat. Invoked from
+anywhere else it reaches the wrapper with no claimed row and is refused at run
+time. `defineFlow` can say so earlier: a factory-made `task` dispatcher that is
+reachable from an action root but held by no board is the same class of error
+as an unresolvable target, and the same walk finds it.
 
 ### The board's roster: three seat types
 
@@ -1012,10 +1050,20 @@ host cron ──► POST /sweep ─────────────┘  clai
 This is what makes `send_later` possible at all: a block cannot ask Vercel Cron to
 add an entry, but it can write a row.
 
-**It moves scheduling ownership.** Today the host owns every schedule — each cron
-entry is its own host job. With an outbox the **host owns one heartbeat** and the
-framework owns the schedule. The framework still cannot wake itself, so the single
-external tick stays.
+**It moves scheduling ownership — at the endpoint.** Today the host owns every
+schedule: each cron entry is its own host job, and the scheduled adapter builds
+the envelope when that job fires (`scheduled/src/routes.ts`), with no row
+anywhere. Rows are what the outbox adds, and v1 adds them for the messages a
+*block* writes; static entries keep the path they have. Folding static
+schedules into the outbox — materializing them as rows at mount, re-arming them,
+doing so once across instances — is its own change, and "the **host owns one
+heartbeat**" is where that change ends, not where this one starts. The framework
+still cannot wake itself, so the single external tick stays either way.
+
+Both paths deliver a `schedule` message to the same entry. The arrival transport
+is a different axis from the message type: the cron route and the sweep are two
+*sources* for one *type*, and re-entry keys on the source
+(§"What must not silently change").
 
 ### The outbox is not a task board
 
@@ -1050,12 +1098,25 @@ proposing that field.
   entries tolerate a duplicate.
 - **Cap the batch.** A tick that finds ten thousand due rows does not dispatch ten
   thousand.
+- **A row carries its principal.** A static schedule runs as
+  `schedule.principal ?? gatewayPrincipal` today (`types/schedules.ts:81`). A row
+  a block wrote has no gateway: it runs as the request that wrote it, so the row
+  persists that request's tenant, user and org, and the sweep dispatches under
+  them. The sweep itself runs with host authority across every tenant, which is
+  why it is a transport and not a block.
+- **The lease is not where the outbox is.** "Reuse the board's lease" names a
+  primitive that lives in `orchestration` (`tasks/lease-renewal.ts`,
+  `task-board/shared.ts`), and `engine` cannot depend on `orchestration`
+  (`orchestration/package.json:78` depends on `engine`). A host-level sweep
+  needs the claim-and-lease primitive one package down — moved, not reused.
 
 ### A recurring schedule can stop itself
 
 A recurring row re-arms after each delivery, so the receiving action needs a way
-to end it. These are lifecycle verbs the substrate owns, which is exactly the
-carve-out `ctx.task` already has for `park` and `heartbeat`:
+to end it. These are lifecycle verbs the substrate owns — the same carve-out
+this document makes for `ctx.task`, for the same reason. (Neither exists today:
+`park` is a board *mode* that excuses `awaiting_review` rows from the drain's
+waitable count, `task-board/park-exit.ts`, and there is no `ctx.task` at all.)
 
 ```ts
 ctx.schedule.cancel();            // stop re-arming
@@ -1064,6 +1125,11 @@ ctx.schedule.reschedule(next);    // change the cadence from inside
 
 `reschedule` earns its place: it is how a poller backs off rather than hammering a
 fixed interval.
+
+`ctx.schedule` has the shape problem `ctx.task` had — a block reachable from two
+types cannot assume it — and gets the same answer: the entry declared under
+`schedule` receives the schedule handle, and a block shared with another type
+takes it as input.
 
 **Cancel must survive at-least-once delivery.** A duplicate can arrive after the
 action already cancelled, so cancel writes to the row and the row's status gates
@@ -1199,14 +1265,33 @@ entry rather than on `ctx`.
 It has no caller-facing entry at all, so it must have no caller-facing re-entry."*
 Retry additionally accepts a caller-supplied `inputOverride`.
 
-**`TASK_SOURCE` must inherit that exclusion.** The goal of "spawned sessions are
-callable" is served by dispatching a `user` message to the spawned session id — an
-ordinary caller-addressed request, already supported. A `task` message stays
-non-re-enterable from any public surface.
+**`task` and `internal` go into `NEVER_PUBLIC_REENTRY_SOURCES`, not merely
+stay out of the allow-list.** There are three tiers, not two
+(`public-reentry.ts:47–98`): the built-in allow-list; a `never` set the
+framework enforces at host construction (`assertPublicReentrySources`); and a
+host-supplied `publicReentrySources` that may admit anything not in the `never`
+set. A source that is only *absent* from the allow-list can be re-opened by one
+line of deployment config. `workstream` sits in the `never` set for the reason
+the file gives — it has no caller-facing entry — and both new framework-stamped
+types inherit the reason, so they inherit the set. The goal of "spawned sessions
+are callable" is served by dispatching a `user` message to the spawned session
+id — an ordinary caller-addressed request, already supported.
 
-Adding `task` to `PUBLIC_REENTRY_SOURCES` would be the single most damaging line
-in this change. The allow-list is an allow-list precisely so a new internal type
-does not inherit public re-entry by being forgotten.
+**A block-originated `schedule` message is not re-enterable either.** The
+`scheduled` source is on the allow-list because retry and continue on a
+cron-fired request are *"existing, relied-upon behaviour"*. That covers a
+request whose input a host cron produced. It does not cover an outbox row a
+block wrote, whose payload is that block's computed value; re-entering one with
+a caller-supplied `inputOverride` is the bypass the allow-list exists to close.
+The outbox sweep is its own transport source, and that source goes in the
+`never` set; the cron route keeps `scheduled` and its behaviour. One message
+type, two sources, two re-entry answers — which is why type and source stay
+separate axes (§"Scheduled delivery").
+
+Adding any new type to the allow-list, or leaving one out of the `never` set,
+would be the single most damaging line in this change. The allow-list is an
+allow-list precisely so a new internal type does not inherit public re-entry by
+being forgotten — and the `never` set exists so a deployment cannot un-forget it.
 
 **And the collapse removes a structural guard that has to be replaced by a
 declared one.** `workstream` is safe today partly *because* it has its own map: a
@@ -1234,6 +1319,7 @@ route through them.
 | `startDetached`, sibling spawn, `sendMessage` | a `dispatcher` block | three verbs, one declared factory |
 | `WORKSTREAM_SOURCE` (`"workstream"`) | `TASK_SOURCE` (`"task"`) | still terminal, still off the re-entry allow-list |
 | `no-workstream-core`, `board-not-routable` | — | inference failures; no longer reachable |
+| arbiter `isEvent` / `isDetached` special case (`arbiter.ts:144–160`) | one lookup on `(type, name)` | every type gets the same concurrency ladder |
 | `GET /sessions/:id/workstreams` | `GET /sessions/:id/children` | honest name; same handler **only for same-flow children** — §"more complicated" #3 |
 | `sharedToWorkstream` | `sharedToLineage` | see below |
 | devtool "Workstreams" tab | spawned sessions / session tree | |
@@ -1242,7 +1328,7 @@ route through them.
 
 ### The purge is wider than the deletions above
 
-The table covers the framework's own machinery. **It does not cover the published
+The table covers the framework's own machinery. **It does not cover the public
 client surface, and an earlier revision's "deletion is real" check would pass
 while Workstream stayed public.**
 
@@ -1256,8 +1342,11 @@ while Workstream stayed public.**
 | persisted `metadata.workstream` | request records (BP-030 applies) |
 
 The word appears in seven packages. Two of them — `client` and `react` — are
-published API, so removing it is a breaking change with a rename path, not an
-internal edit.
+the public API surface, so removing it is a documented breaking change under
+Changesets (BP-022), not an internal edit. It is not a migration: nothing has
+been published — every package sits at `0.0.0`, and `state-and-scopes.md`
+records that *"no version of this package has been published"* — so there is
+no consumer to carry across, and the changeset is the whole path.
 
 **This needs a repo-wide vocabulary gate**, with deliberate exclusions for
 historical references (changelogs, this document's own "Considered and not taken").
@@ -1284,8 +1373,10 @@ already in the codebase. Every other rename here is cosmetic and can wait.
   runner's role, so these should need no edit beyond the lookup it consults.
   Pass: same tests green without weakening an assertion, particularly the
   unfenced-settlement case, which fails silently if the re-mint regresses.
-- **`task` is not publicly re-enterable.** A test asserting `retry` / `continue` /
-  `resume` refuse a `task`-source request. Pass: three refusals.
+- **`task`, `internal` and the outbox source are not publicly re-enterable.** A
+  test asserting `retry` / `continue` / `resume` refuse a request on each of the
+  three sources, and that `assertPublicReentrySources` throws on a host that
+  names any of them. Pass: nine refusals and three construction errors.
 - **No fallbacks.** A message addressed to a type declaring no such entry is
   refused by name. Pass: the refusal names `(type, name)` and no other type's map
   is consulted — assert on the refusal reason, not merely on non-execution, since
@@ -1294,12 +1385,12 @@ already in the codebase. Every other rename here is cosmetic and can wait.
   dispatcher naming a `(type, name)` that does not exist. Pass: `defineFlow`
   throws, naming the block and the target. This is the replacement for
   `assertWorkstreamBindingsReachable`.
-- **The envelope cannot be minted outside the factory.** The walk is only
-  complete while that holds, so it is checked rather than assumed: a handler
-  hand-constructing an envelope shape. Pass: the seam does not treat it as a
-  dispatch, and the value carries no brand a test can forge. Assert on the brand
-  being unreachable from the public surface, not merely on the dispatch not
-  firing — a malformed shape also fails to fire.
+- **The seam cannot be reached from authored code.** The walk is only complete
+  while that holds, so it is checked rather than assumed: a hand-written handler
+  that builds an envelope-shaped value and tries every public `ctx` member and
+  every `@flow-state-dev/core` export. Pass: nothing dispatches, and the seam's
+  slot is absent from the package's public surface. Assert on the surface, not
+  merely on the dispatch not firing — a malformed value also fails to fire.
 - **An unknown session is always refused in v1.** Dispatch with a `session` that
   does not exist. Pass: refused by name, and no entry can opt out. The channel
   exception is deferred, so a test asserting creation would assert a behavior v1
@@ -1326,7 +1417,7 @@ already in the codebase. Every other rename here is cosmetic and can wait.
   sessions. Pass: whatever §"four modes" settles — one session under the wide
   contract, or a documented two under the narrow one. **This bullet does not pass
   against the current derivation**, which hashes `parentSessionId` first.
-- **Workstream is gone from the published API.** A vocabulary gate over
+- **Workstream is gone from the public API surface.** A vocabulary gate over
   `packages/*/src`, excluding changelogs. Pass: no hits outside the exclusions.
 - **Cross-flow spawn shares user resources.** A parent in flow A spawns into flow
   B; both read one user-scoped resource with default isolation. Pass: same cell.
@@ -1347,11 +1438,12 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 2. **Phase cross-flow out of v1?** Two findings say yes and both are cross-flow's
    alone (§"more complicated" #2 and #3). Nothing in v1 needs it.
    *Recommendation: split.*
-3. **Migration.** Nothing is published, so no deployed store holds workstream
-   addresses (per `state-and-scopes.md`). This can be a clean break rather than a
-   dual-read. **But the client and React packages are published**, so the
-   Workstream rename there is a breaking change with its own path — see
-   §"The purge is wider than the deletions above". *Confirm before relying on it.*
+3. **Migration.** Nothing is published — no package has a version above
+   `0.0.0`, and `state-and-scopes.md` records that no deployed store holds
+   workstream addresses — so this is a clean break with no dual-read, and the
+   `client` / `react` rename is a breaking changeset rather than a migration
+   (§"The purge is wider than the deletions above"). *Decided, unless a
+   deployment exists that this document does not know about.*
 4. **`per-worker` contract.** Narrow to one session per parent, which the existing
    derivation gives, or build a derivation that omits `parentSessionId`?
    *Recommendation: narrow for v1.*
@@ -1688,7 +1780,7 @@ method any block could call.
 
 **Dropped because it nullifies the dispatcher factory.** Every reason to make
 dispatch a declared block — a board seeing statically which workers hand off,
-`defineFlow` walking for unresolvable targets, one place an envelope is minted —
+`defineFlow` walking for unresolvable targets, one place the seam is reached —
 depends on there being no other way to dispatch. With an escape hatch the walk reports on a
 subset it cannot bound, which is worse than not having it, because it looks
 complete. The four cases that appear to need it all decompose into existing
