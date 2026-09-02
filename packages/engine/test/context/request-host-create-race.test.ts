@@ -64,6 +64,9 @@ function winnerRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
     flowKind: FLOW.kind,
     userId: IDENTITY.userId,
     parentSessionId: IDENTITY.sessionId,
+    // The seam stamps the parent's lineage on every child it mints, and
+    // adoption re-checks it — a winner that wrote this record wrote this too.
+    lineageId: IDENTITY.lineageId,
     journal: [],
     ...overrides
   } as SessionRecord;

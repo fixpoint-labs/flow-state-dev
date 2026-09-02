@@ -87,6 +87,8 @@ export type ExpectedChildIdentity = {
   tenantId: string | undefined;
   orgId: string | undefined;
   parentSessionId: string;
+  /** The parent's lineage; a child shares it, which is what `sharedToLineage` rests on. */
+  lineageId: string;
 };
 
 /** The subset of a stored session record adoption inspects. */
@@ -96,6 +98,7 @@ export type AdoptionCandidate = {
   tenantId?: string;
   orgId?: string;
   parentSessionId?: string;
+  lineageId?: string;
 };
 
 /** Which field disagreed. Reported for diagnostics; the caller refuses by name. */
@@ -104,7 +107,8 @@ export type AdoptionMismatch =
   | "userId"
   | "tenantId"
   | "orgId"
-  | "parentSessionId";
+  | "parentSessionId"
+  | "lineageId";
 
 export type AdoptionVerdict =
   | { adoptable: true }
@@ -156,6 +160,14 @@ export function evaluateAdoption(
   }
   if (!sameOptional(record.parentSessionId, expected.parentSessionId)) {
     return { adoptable: false, mismatch: "parentSessionId" };
+  }
+  // The lineage is in the derivation, so a record the seam minted here carries
+  // the parent's lineage by construction. A pre-created record does not: it
+  // was minted with whatever lineage the session route gave it, and adopting
+  // it would put every `sharedToLineage` resource in the child on a different
+  // root than the parent's — the ledger the hand-off must settle against.
+  if (!sameOptional(record.lineageId, expected.lineageId)) {
+    return { adoptable: false, mismatch: "lineageId" };
   }
   return { adoptable: true };
 }

@@ -80,7 +80,10 @@ describe("board.tasks — the entries a board produces", () => {
     const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
 
     expect(isTaskEntry(board.tasks.implement)).toBe(true);
-    expect(board.tasks.implement![TASK_ENTRY]).toEqual({ boardId: "issue-work" });
+    expect(board.tasks.implement![TASK_ENTRY]).toEqual({
+      boardId: "issue-work",
+      block: board.tasks.implement!.block,
+    });
   });
 
   it("produces no task entries and hands nothing off on an inline board", () => {

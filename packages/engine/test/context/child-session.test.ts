@@ -100,10 +100,21 @@ describe("adoption identity validation", () => {
     userId: base.userId,
     tenantId: base.tenantId,
     orgId: undefined,
-    parentSessionId: base.parentSessionId
+    parentSessionId: base.parentSessionId,
+    lineageId: base.lineageId
   };
 
   const genuineChild = { ...expected, id: childId };
+
+  it("refuses a record minted for a different lineage", () => {
+    // The lineage is in the derivation, so the seam's own child carries the
+    // parent's. A pre-created record at the same id carries whatever lineage
+    // the session route gave it; adopting it would resolve every
+    // `sharedToLineage` resource in the child against a different root than
+    // the parent's, and the hand-off would settle against an empty ledger.
+    const result = evaluateAdoption({ ...genuineChild, lineageId: "lin_someone_else" }, expected);
+    expect(result).toEqual({ adoptable: false, mismatch: "lineageId" });
+  });
 
   it("adopts a record whose full identity matches", () => {
     expect(evaluateAdoption(genuineChild, expected)).toEqual({ adoptable: true });

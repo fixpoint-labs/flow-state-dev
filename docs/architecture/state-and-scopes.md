@@ -580,7 +580,7 @@ This section covers what a child session *addresses*. For what happens to it ove
 
 A `{ key }` session target derives the child's session id rather than accepting one (`deriveChildSessionId`, `packages/engine/src/context/child-session.ts`). The key material is the running request's `tenantId`, `userId`, `parentSessionId` and `lineageId` plus the dispatcher's `key`, each length-framed, hashed to `dsx_<sha256[0:32]>`. The caller supplies the *target* of the operation and never the *authority* for it. The derivation is deterministic, which is what makes "adopt if it already exists" the ordinary second-task-same-topic path rather than a conflict.
 
-The child inherits `flowKind`, `userId`, `tenantId` and `orgId`, and records `parentSessionId`. `evaluateAdoption` re-checks all five before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id, and `createExecutionContext` validates user, tenant and org bindings but not `flowKind` or `parentSessionId`.
+The child inherits `flowKind`, `userId`, `tenantId`, `orgId` and `lineageId`, and records `parentSessionId`. `evaluateAdoption` re-checks all six before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id, and `createExecutionContext` validates user, tenant and org bindings but not `flowKind`, `parentSessionId` or `lineageId`. The lineage check is what keeps a `sharedToLineage` resource in an adopted child on the parent's root rather than on whatever lineage the pre-created record was minted with.
 
 ### What each scope resolves to inside a child session
 

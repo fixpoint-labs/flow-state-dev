@@ -567,6 +567,16 @@ function validateEntryMaps(
           `\`tasks: board.tasks\` (or \`{ ...boardA.tasks, ...boardB.tasks }\`), never written by hand.`
       );
     }
+    // The brand survives a spread — that is what lets `{ ...board.tasks.x,
+    // concurrency: "queue" }` work — so the brand alone cannot prove the gate
+    // is still in front of the worker. The block recorded at branding time can.
+    if (entry.block !== entry[TASK_ENTRY].block) {
+      throw new Error(
+        `Flow "${kind}" task entry "${name}" no longer runs its board's claim gate: the ` +
+          `entry's block was replaced after the board produced it. Override an entry's ` +
+          `policy (concurrency, onCompleted, onErrored) by spreading it, never its block.`
+      );
+    }
     validateConcurrencyConfig(`Flow "${kind}" task entry "${name}"`, entry.concurrency);
   }
 }

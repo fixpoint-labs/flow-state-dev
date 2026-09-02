@@ -190,7 +190,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       userId: identity.userId,
       tenantId: identity.tenantId,
       orgId: identity.orgId,
-      parentSessionId: identity.sessionId
+      parentSessionId: identity.sessionId,
+      lineageId: identity.lineageId
     };
 
     const existing = await stores.session.get(storageKey);

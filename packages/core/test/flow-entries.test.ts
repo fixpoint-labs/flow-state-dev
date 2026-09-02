@@ -185,13 +185,38 @@ describe("task entries", () => {
       { type: "task", target, boardId }
     );
 
+  it("refuses a board entry whose block was replaced after branding", () => {
+    // The brand survives a spread on purpose — `{ ...board.tasks.x,
+    // concurrency: "queue" }` is the documented way to override policy — so
+    // the brand alone cannot prove the claim gate is still in front of the
+    // worker. Swapping the block keeps the brand and drops the gate.
+    const gated = entryFor("issues");
+    const ungated = { ...gated, block: wake };
+    expect(() =>
+      defineFlow({
+        kind: "swapped-gate",
+        actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } },
+        tasks: { implement: ungated }
+      })
+    ).toThrow(/task entry "implement" no longer runs its board's claim gate/);
+
+    // The same spread that keeps the block is fine.
+    expect(() =>
+      defineFlow({
+        kind: "kept-gate",
+        actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } },
+        tasks: { implement: { ...gated, concurrency: "queue" } }
+      })
+    ).not.toThrow();
+  });
+
   it("accepts entries a board produced and mirrors them on the blueprint", () => {
     const flow = defineFlow({
       kind: "board-entries",
       actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } },
       tasks: { implement: entryFor("issues") }
     });
-    expect(flow.tasks?.implement[TASK_ENTRY]).toEqual({ boardId: "issues" });
+    expect(flow.tasks?.implement[TASK_ENTRY]).toEqual({ boardId: "issues", block: noop });
     expect(flow().tasks?.implement.block).toBe(noop);
   });
 

@@ -31,6 +31,7 @@
  * that must reach the seam directly (the task board's drain) marks its block
  * with `markDispatcher` so the walk stays complete.
  */
+import type { BlockDefinition } from "./block";
 import type { ActionCore } from "./flow";
 
 /** The kinds of message a flow can receive. Each resolves one map on the flow. */
@@ -231,8 +232,19 @@ export type InternalEntry = ActionCore;
 /** The brand a task board stamps on the entries it produces. */
 export const TASK_ENTRY: unique symbol = Symbol.for("@flow-state-dev/task-entry");
 
-/** What the brand records: which board's claim gate wraps the entry. */
-export type TaskEntryMark = { readonly boardId: string };
+/**
+ * What the brand records: which board's claim gate wraps the entry, and the
+ * gate itself. The block is in the mark so that the brand cannot outlive the
+ * gate: an entry spread from `board.tasks` keeps its brand, which is what
+ * lets an author override `concurrency` or the hooks — but one that swaps
+ * `block` no longer runs the gate, and `defineFlow` refuses it by comparing
+ * the two.
+ */
+export type TaskEntryMark = {
+  readonly boardId: string;
+  /** The claim gate the board built; must still be the entry's `block`. */
+  readonly block: BlockDefinition<any, any>;
+};
 
 /**
  * A `task` entry: the block a board drain hands a claimed row to, in a session
@@ -251,11 +263,17 @@ export function isTaskEntry(value: unknown): value is TaskEntry {
   return (
     typeof mark === "object" &&
     mark !== null &&
-    typeof (mark as TaskEntryMark).boardId === "string"
+    typeof (mark as TaskEntryMark).boardId === "string" &&
+    typeof (mark as TaskEntryMark).block === "object" &&
+    (mark as TaskEntryMark).block !== null
   );
 }
 
-/** Brand an entry as board-produced. Substrate-facing; called by `taskBoard()`. */
-export function markTaskEntry(entry: ActionCore, mark: TaskEntryMark): TaskEntry {
-  return { ...entry, [TASK_ENTRY]: mark };
+/**
+ * Brand an entry as board-produced. Substrate-facing; called by `taskBoard()`.
+ * The mark records the entry's block at branding time — the board's claim
+ * gate — so a later `block` override is detectable.
+ */
+export function markTaskEntry(entry: ActionCore, mark: { readonly boardId: string }): TaskEntry {
+  return { ...entry, [TASK_ENTRY]: { boardId: mark.boardId, block: entry.block } };
 }
