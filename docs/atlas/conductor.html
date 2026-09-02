@@ -196,7 +196,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <aside class="rail">
   <div class="rail-mark">The Conductor Atlas</div>
   <div class="rail-sub">living design &middot; aug 2026</div>
-  <p class="sib">sibling · <a href="workforce.html">Workforce atlas</a><br>sibling · <a href="roadmap.html">Roadmap atlas</a></p>
+  <p class="sib">sibling &middot; <a href="workforce.html">Workforce atlas</a><br>sibling &middot; <a href="roadmap.html">Roadmap atlas</a></p>
   <nav>
     <a class="grp">Orientation</a>
     <a href="#what">01 &middot; What Conductor is</a>
@@ -225,7 +225,10 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   <div class="key">
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; design, not built</span>
+    <span><span class="tag t-real">exists &middot; fenced</span> shipped and kept this cycle; takes no new callers; slated for deletion in a later cycle</span>
+    <span><span class="tag t-real">exists &middot; lab</span> shipped on main under <code>labs/conductor</code>; not yet a framework block</span>
   </div>
+  <p class="sib">Two names collide on this page, and every use keeps them apart. The board's <code>dispatcher: "topological"</code> is an ordering <em>strategy</em> (exists); the <code>dispatcher()</code> of section 6 is a proposed block <em>factory</em>. This page's <code>inbox/**</code> is the <em>question collection</em>; the message-protocol design's &#8220;one inbox per flow&#8221; is the <em>typed entry set</em>.</p>
   <p class="sib">The other intended harness: <a href="workforce.html">Workforce atlas</a>. Not this cycle. Same substrate, different opinions.</p>
 </header>
 
@@ -260,7 +263,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="note">
     <span class="lbl">Why this is not today's process with extra steps</span>
-    <p>The <code>epic-em</code> skill already plays the coordinator role &#8212; it dispatches workers, surfaces gates, and holds a status table. Two things it cannot do. It cannot stay <strong>bounded</strong>: everything it learns accumulates in one transcript, so a long epic and a rotting context are the same event. And it cannot <strong>separate the jobs</strong>: coordinating, talking to you, planning the architecture and managing the workstreams all happen in that one context. Conductor's coordinator is bounded by construction &#8212; section 6 is where that construction lives &#8212; and narrow by role, which is the rest of this section.</p>
+    <p>The <code>epic-em</code> skill already plays the coordinator role &#8212; it dispatches workers, surfaces gates, and holds a status table. Two things it cannot do. It cannot stay <strong>bounded</strong>: everything it learns accumulates in one transcript, so a long epic and a rotting context are the same event. And it cannot <strong>separate the jobs</strong>: coordinating, talking to you, planning the architecture and managing the runs all happen in that one context. Conductor's coordinator is bounded by construction &#8212; section 6 is where that construction lives &#8212; and narrow by role, which is the rest of this section.</p>
   </div>
 
   <h3>A session is owned by a workflow, not by an agent</h3>
@@ -345,11 +348,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <figcaption><b>Where the isolation is allowed to sit.</b> Sub-agents give a harness isolated context, so they are not the difference. The difference is the layer above them: on the left, one agent holds the plan, talks to you and routes your reply, and no sub-agent can take that over. On the right that layer is itself roles, and the coordinator is one of them. That is the whole of why the coordinator can stay bounded without anybody being disciplined about it.</figcaption>
   </figure>
 
-  <p>So read the claim above precisely, because the flattering reading is the wrong one. The coordinator is <em>not</em> holding the epic, the specs and the workstreams and exercising restraint about what it looks at. It <strong>delegates to role blocks that each hold their own narrow context</strong>, and its own job &#8212; classify a reply, route it &#8212; stays small because there is nothing else in it.</p>
+  <p>So read the claim above precisely, because the flattering reading is the wrong one. The coordinator is <em>not</em> holding the epic, the specs and the runs and exercising restraint about what it looks at. It <strong>delegates to role blocks that each hold their own narrow context</strong>, and its own job &#8212; classify a reply, route it &#8212; stays small because there is nothing else in it.</p>
 
   <h3>Three jobs, three roles</h3>
 
-  <p>The skill-based process we run today puts all of it in one place. One top-level agent coordinates the work, talks to you, keeps the architecture coherent, and manages the workstreams. Those are separate jobs, and running them in one context is what makes a long epic degrade &#8212; so they should be separate roles.</p>
+  <p>The skill-based process we run today puts all of it in one place. One top-level agent coordinates the work, talks to you, keeps the architecture coherent, and manages the runs. Those are separate jobs, and running them in one context is what makes a long epic degrade &#8212; so they should be separate roles.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
@@ -358,7 +361,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Manager</h5><span class="role">owns the work &middot; same session</span>
-      <p>Reads the board and pushes. Is anything stalled, is a workstream not progressing, does the plan still fit. A block in the coordinator's own chain &#8212; a different role, not a different session.</p>
+      <p>Reads the board and pushes. Is anything stalled, is a run not progressing, does the plan still fit. A block in the coordinator's own chain &#8212; a different role, not a different session.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Architect</h5><span class="role">consults &middot; org-scoped</span>
@@ -372,9 +375,9 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <h3>A role is always a block. The call site and the scope are what vary</h3>
 
-  <p>&#8220;Is this role a block or a workstream?&#8221; looks like an open question and is not one. <strong>Isolation is free in a block. Concurrency is what costs a session.</strong> Both a block and a workstream give a role its own <code>context</code> and its own <code>tools</code>, so isolation cannot be the thing that decides between them. What only a workstream adds is running <em>concurrently with</em>, or <em>longer than</em>, the coordinator's turn.</p>
+  <p>&#8220;Is this role a block or a spawned session?&#8221; looks like an open question and is not one. <strong>Isolation is free in a block. Concurrency is what costs a session.</strong> Both a block and a spawned session give a role its own <code>context</code> and its own <code>tools</code>, so isolation cannot be the thing that decides between them. What only a spawned session adds is running <em>concurrently with</em>, or <em>longer than</em>, the coordinator's turn.</p>
 
-  <p>So a role is always a block, and the first question left is <strong>where it is called</strong>: invoked in-turn, or dispatched into a workstream that runs that same block. The architect is not <em>either</em> a block <em>or</em> a workstream. A quick cohesion check is in-turn; a sweep across every open spec is dispatched. Same role, same block, two call sites. &#8220;Workstream per role&#8221; is a false frame &#8212; it is workstream per long-running <em>invocation</em>.</p>
+  <p>So a role is always a block, and the first question left is <strong>where it is called</strong>: invoked in-turn, or dispatched into a spawned session that runs that same block. The architect is not <em>either</em> a block <em>or</em> a workstream. A quick cohesion check is in-turn; a sweep across every open spec is dispatched. Same role, same block, two call sites. &#8220;A session per role&#8221; is a false frame &#8212; it is a session per long-running <em>invocation</em>.</p>
 
   <p>The second question is <strong>scope</strong>, and it is orthogonal to the first. <strong>Agents and sessions are not bound together</strong> &#8212; an agent can be invoked into any session, and what decides what it <em>knows</em> is not where it runs but <strong>where its resources live</strong>. Put a role's memory in session-scoped resources and it knows this conversation. Put it in org-scoped resources and every session that invokes it gets the same role, seeing across everything. The agent travels; the memory stays put.</p>
 
@@ -382,19 +385,19 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <table>
       <thead><tr><th>The question</th><th>What decides it</th><th>The answers</th></tr></thead>
       <tbody>
-        <tr><td>Block, or dispatched into a workstream</td><td>Concurrency and duration &#8212; does this run beside the coordinator's turn, or outlast it?</td><td>in-turn &middot; dispatched</td></tr>
+        <tr><td>Block, or dispatched into a spawned session</td><td>Concurrency and duration &#8212; does this run beside the coordinator's turn, or outlast it?</td><td>in-turn &middot; dispatched</td></tr>
         <tr><td>What the role knows</td><td>Where its resources live</td><td><code>session</code> &middot; <code>user</code> &middot; <code>org</code></td></tr>
       </tbody>
     </table>
   </div>
 
-  <p>One constraint here is real and worth quoting exactly, because it is written into the only spawn verb there is &#8212; and because the inference usually drawn from it does not hold.</p>
+  <p>One constraint here is real and worth quoting exactly, because it is written into the only spawn verb there is today <span class="tag t-real">exists &middot; fenced</span> &#8212; the message-protocol design replaces it with a <code>dispatcher</code> block, section 6 &#8212; and because the inference usually drawn from it does not hold.</p>
 
   <div class="note">
     <span class="lbl">The contract, verbatim</span>
     <p><code>startDetached</code> creates a derived <strong>child</strong> session. Its own documentation: the child session key is derived from <code>[principal, parent session, seed]</code>; the child <em>&#8220;inherits tenant, user, org and flow kind from the running request and records it as its parent&#8221;</em>; and <em>&#8220;there is no flow or action parameter, so <code>flow.actions</code> is not reachable.&#8221;</em></p>
-    <p>So a workstream is fixed in its parent's flow kind and cannot dispatch to an action. That much is a fact. The conclusion people draw from it &#8212; that a manager therefore cannot be a workstream &#8212; is not, because <strong><code>flow.actions</code> is not the route to the board</strong>. A detached manager reaches the board the way any block does, through <code>ctx.cap.&lt;board&gt;.addTask(&#8230;)</code>. That was run rather than reasoned about: the row landed in the durable store, and the same manager spawned a peer.</p>
-    <p>That makes the manager being a <strong>block</strong> in the coordinator's own chain a <strong>design choice</strong>, not a shape the framework forced. The choice is single-writer: one author per board transition, one place to look when a task is in a state nobody expects. Section 6 makes the same call for workstreams generally, and thread 5 holds it open rather than closing it.</p>
+    <p>So a spawned run is fixed in its parent's flow kind and cannot dispatch to an action. That much is a fact, and it is fenced: at the endpoint a <code>task</code> dispatch names <code>flow.task.actions[row.assignee]</code> and infers nothing from a payload. The conclusion people draw from it &#8212; that a manager therefore cannot run in a spawned session &#8212; is not, because <strong><code>flow.actions</code> is not the route to the board</strong>. A detached manager reaches the board the way any block does, through <code>ctx.cap.&lt;board&gt;.addTask(&#8230;)</code>. That was run rather than reasoned about: the row landed in the durable store, and the same manager spawned a peer.</p>
+    <p>That makes the manager being a <strong>block</strong> in the coordinator's own chain a <strong>design choice</strong>, not a shape the framework forced. The choice is single-writer: one author per board transition, one place to look when a task is in a state nobody expects. Section 6 makes the same call for spawned runs generally, and thread 5 holds it open rather than closing it.</p>
   </div>
 
   <div class="note">
@@ -423,7 +426,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <p><strong>It does not design.</strong> When a feature is being specced, the harness does that work, at that point in the flow, with the code in front of it. The architect is a <strong>consultant and a monitor</strong>: it checks that final designs find alignment and cohesion &#8212; within an epic, and across epics. That is a narrower job than &#8220;owns the architecture,&#8221; and it is the job that actually needs cross-epic sight.</p>
 
-  <p>It has <strong>no write authority over any epic's board</strong>. It raises; the coordinator decides. That is the same request-don't-mutate rule section 6 states for workstreams, applied to a role sitting above the board rather than inside it, and for the same reason: a board with one writer is a board you can reason about.</p>
+  <p>It has <strong>no write authority over any epic's board</strong>. It raises; the coordinator decides. That is the same request-don't-mutate rule section 6 states for runs, applied to a role sitting above the board rather than inside it, and for the same reason: a board with one writer is a board you can reason about.</p>
 
   <div class="tw">
     <table>
@@ -436,7 +439,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </table>
   </div>
 
-  <p><strong>The architect may hold a task board of its own</strong>, org-scoped like the rest of it. <span class="tag t-prop">proposed</span> Two instances of the architect running in two sessions is not a contention problem to design around &#8212; it is a board working exactly as designed, since a board exists to be claimed from by N workers. The argument for giving it one is not concurrency at all. It is <strong>deduplication</strong>: two sessions consulting the architect about the same epic produce one claimed check, not two.</p>
+  <p><strong>The architect may hold a task board of its own</strong>, org-scoped like the rest of it. <span class="tag t-prop">proposed</span> Two instances of the architect running in two sessions is not a contention problem to design around &#8212; it is a board working exactly as designed, since a board exists to be claimed from by N workers. The argument for giving it one is not concurrency at all. It is <strong>deduplication</strong>: two sessions consulting the architect about the same epic produce one claimed check, not two. A board at that scope is drained from many sessions, which is where a row's stored session handle can point at another session's child &#8212; thread 17.</p>
 
   <div class="note">
     <span class="lbl">The agent surface is thin, and this would be its first real use</span>
@@ -553,7 +556,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <figcaption><b>The loop Conductor automates.</b> A bug skips the spec and both of its gates &#8212; the PR becomes its review surface. The concurrency limit is deliberately a human-attention argument, not a machine one: past two parallel issues, gates queue and attention splits.</figcaption>
   </figure>
 
-  <p>Gates are not the only time a person is needed. A running agent also <em>asks things</em> &#8212; a spec decision it cannot derive, a permission, an ambiguity in the issue. Those arrive unpredictably, from any workstream, and they are the subject of section 6.</p>
+  <p>Gates are not the only time a person is needed. A running agent also <em>asks things</em> &#8212; a spec decision it cannot derive, a permission, an ambiguity in the issue. Those arrive unpredictably, from any run, and they are the subject of section 6.</p>
 
   <p>Two rules decide which parts of this loop become code. A rule that must not be half-remembered &#8212; a review budget, a feedback cap, dependency ordering &#8212; belongs in something that executes. A decision priced in customers, promises or timing stays human, and gets somewhere durable to live rather than a message in a chat window.</p>
 
@@ -576,7 +579,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <p>EM absorbs engineering forks. PM may <strong>cut</strong> scope inside an approved objective but never <strong>add</strong> &#8212; additions always go back to the owner.</p>
     </div>
     <div class="card" style="--tc: var(--prose)">
-      <h5>Workstreams</h5><span class="role">bounded, disposable</span>
+      <h5>Runs</h5><span class="role">bounded, disposable</span>
       <p>One harness run per issue-phase, in its own session and its own worktree. Each returns at most a screen; the transcript stays where it ran.</p>
     </div>
   </div>
@@ -696,7 +699,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-box" x="40" y="674" width="860" height="50" rx="4"/>
         <text class="t-s" x="60" y="697">the detached runner&#8217;s ticket-fenced recorders</text>
-        <text class="t-xs" x="60" y="715">EXISTS &middot; THE WORKSTREAM SETTLES ITS OWN ROW. THE PARENT RETURNED LONG AGO, WITH terminationReason: "handed-off"</text>
+        <text class="t-xs" x="60" y="715">EXISTS &middot; FENCED &middot; THE RUN SETTLES ITS OWN ROW. THE PARENT RETURNED LONG AGO, WITH terminationReason: "handed-off"</text>
       </svg>
     </div>
     <figcaption><b>The spine.</b> Everything solid is assembly of parts that already work. Note what is <em>not</em> here: three adapters. There is <b>one</b> harness manager and three small records that differ only in prompt, done-condition, and readable collections &#8212; section 7 shows the work of getting to that answer.</figcaption>
@@ -740,20 +743,20 @@ export const conductor = <em>defineFlow</em>({
       <thead><tr><th>Element</th><th>Status</th><th>Real shape</th></tr></thead>
       <tbody>
         <tr><td><code>defineFlow(def)</code></td><td><span class="tag t-real">exists</span></td><td>Returns a callable <code>FlowType</code>; <code>flow({ id: "default" })</code> gives a <code>FlowInstance</code>. Options include <code>kind, requireUser, actions, resources, tools, session, request, user, org, tokenCounter, costEstimator, defaultBlockRenderer</code></td></tr>
-        <tr><td>The conductor flow itself</td><td><span class="tag t-prop">proposed</span></td><td>Nothing declares <code>kind: "conductor"</code>. It is assembly, but unwritten assembly</td></tr>
+        <tr><td>The conductor flow itself</td><td><span class="tag t-real">exists &middot; lab</span></td><td><code>labs/conductor/src/flow.ts</code> declares <code>kind: "conductor"</code> with <code>seed</code>, <code>wake</code>, <code>status</code> and <code>answer</code>, one detached manager worker at <code>concurrency: 1</code>, and <code>onReview: "exit"</code>. One flow per epic, built by a factory, on a user-scoped task collection. The epic-shaped flow above is still assembly: the typed entry groups, a second worker and the roles are unwritten</td></tr>
         <tr><td>Action shape</td><td><span class="tag t-real">exists</span></td><td><code>{ block, inputSchema?, onCompleted?, onErrored?, userMessage?, tokenBudget?, durable?, description?, mcp?, concurrency? }</code>. Input schema <strong>defaults to</strong> <code>block.inputSchema</code>. Real multi-action example: <code>apps/kitchen-sink/flows/chat-agent/flow.ts</code></td></tr>
         <tr><td>Where <code>userId</code> comes from</td><td><span class="tag t-real">exists</span></td><td>Not on the action. The flow carries <code>requireUser?</code> (default true); the caller passes it at dispatch: <code>runAction({ flow, actionName, input, userId, sessionId, stores, runtimeConfig })</code></td></tr>
         <tr><td><code>request: { concurrency }</code></td><td><span class="tag t-real">exists</span></td><td><code>"allow"</code> (default) | <code>"queue"</code> | <code>"reject"</code>, keyed on <code>session</code> by default. <code>queue</code> serializes same-key requests FIFO &#8212; the property section 6 relies on. <code>debounce</code> and <code>restart</code> parse but are rejected today</td></tr>
         <tr><td>The five actions</td><td><span class="tag t-prop">proposed</span></td><td><code>startEpic</code>, <code>wake</code>, <code>approve</code>, <code>steer</code>, <code>status</code>. None of them suspends: <code>approve</code> releases a parked task row, the same way <code>steer</code> answers one</td></tr>
         <tr><td><code>taskBoard(...)</code></td><td><span class="tag t-real">exists</span></td><td>Returns <code>{ drain, collectionId, capability, backing, boardId, detachedWorkers, caps }</code>. <code>drain</code> is a plain <code>SequencerDefinition</code>, used as a step. The capability lands at <code>ctx.cap.&lt;name&gt;.addTask / listTasks / tasks()</code></td></tr>
-        <tr><td><code>collection: epicTasks(epicId)</code></td><td><span class="tag t-real">exists</span></td><td><code>defineTaskCollection({ id, scope: "user" })</code>. User scope is deliberate: a parked row is the resume point for a question answered tomorrow morning, so the ledger has to outlive the session that opened it. The <strong>id</strong> is the partition, not the scope. One collection id is one claim pool, the claim predicate tests status and deps only, and nothing narrows a claim to an epic &#8212; so two epics sharing an id can claim and settle each other's rows. Deriving the collection id and the <code>boardId</code> from the epic is what makes &#8220;one board per epic&#8221; true in the code and not only in the prose</td></tr>
+        <tr><td><code>collection: epicTasks(epicId)</code></td><td><span class="tag t-real">exists</span></td><td><code>defineTaskCollection({ id, scope: "user" })</code>. User scope is deliberate: a parked row is the resume point for a question answered tomorrow morning, so the ledger has to outlive the session that opened it. The <strong>id</strong> is the partition, not the scope. One collection id is one claim pool, the claim predicate tests status and deps only, and nothing narrows a claim to an epic &#8212; so two epics sharing an id can claim and settle each other's rows. Deriving the collection id and the <code>boardId</code> from the epic is what makes &#8220;one board per epic&#8221; true in the code and not only in the prose. <span class="tag t-real">exists &middot; lab</span> The lab locks exactly this: <code>labs/conductor/src/flow.ts</code> derives the collection id and the <code>boardId</code> from the epic and states that a distinct <code>boardId</code> alone is not sufficient, because it never reaches the ledger. The message-protocol design's worked example partitions by session on one static board and does not say what keeps two epic sessions out of one claim pool &#8212; thread 16</td></tr>
         <tr><td>Tasks as (issue &#215; phase)</td><td><span class="tag t-prop">proposed</span></td><td>The shape exists &#8212; <code>TaskInit { id, goal, deps?, assignee?, priority?, maxAttempts? }</code>. This use of it does not. Both the issue graph and the phase order inside an issue are just <code>deps</code></td></tr>
         <tr><td><code>dispatcher: "topological"</code></td><td><span class="tag t-real">exists</span></td><td>All three dispatchers respect <code>deps</code>: the collection's admission predicate enforces it, not the dispatcher. <code>fifo</code> and <code>topological</code> are byte-identical today, and <code>priority</code> adds only an <code>order</code> comparator. They differ in ordering among eligible tasks, and <code>topological</code> is chosen because it names the intent</td></tr>
         <tr><td>Routing by <code>assignee</code></td><td><span class="tag t-real">exists</span></td><td>A router. Worker input is <code>{ taskId, goal, title?, context?, input?, attempts, feedback?, metadata?, deps? }</code></td></tr>
-        <tr><td>The harness manager</td><td><span class="tag t-prop">proposed</span></td><td>The one block of substance this design adds. Its nearest precedent is real: <code>packages/orchestration/src/skills/worker-materializer.ts</code> already adapts non-worker-shaped blocks into board workers by wrapping them compositionally</td></tr>
+        <tr><td>The harness manager</td><td><span class="tag t-real">exists &middot; lab</span></td><td>The one block of substance this design adds, and the lab ships it: <code>labs/conductor/src/manager.ts</code> &#8212; open the run row, build the prompt and take the checkout, run the harness, read the verdict, settle or fail. One detached worker, constructed from a prompt builder, a done-condition and the collections the phase may read. Not a framework block. Its nearest framework precedent is still <code>packages/orchestration/src/skills/worker-materializer.ts</code>, which adapts non-worker-shaped blocks into board workers by wrapping them compositionally</td></tr>
         <tr><td><code>claudeCodeAgent(options)</code></td><td><span class="tag t-real">exists</span></td><td>A factory returning a handler with <code>inputSchema: z.object({ prompt: z.string() })</code> &#8212; <em>not</em> <code>taskWorkerInputSchema</code>, so it is never a board worker directly. Options include <code>model, systemPrompt, allowedTools, permissionMode, maxTurns, onToolApproval</code></td></tr>
-        <tr><td><code>dispatch: { mode: "detached" }</code></td><td><span class="tag t-real">exists</span></td><td>Needs <code>boardId</code> and a durable collection. Spawns via <code>requireRequestHost(ctx).startDetached({ seed, input, provenance })</code>; the parent returns immediately with the row <code>in_progress</code></td></tr>
-        <tr><td><code>ctx.suspend(options)</code></td><td><span class="tag t-real">exists</span></td><td>Durable human gate. <code>{ reason, message?, data?, resumeSchema?, timeoutMs?, render?, allow? }</code>. Pauses the request that calls it &#8212; including inside a workstream, where nothing refuses the call and nothing upstream notices. Which is why a workstream's question cannot use it (section 6)</td></tr>
+        <tr><td><code>dispatch: { mode: "detached" }</code></td><td><span class="tag t-real">exists &middot; fenced</span></td><td>Needs <code>boardId</code> and a durable collection. Spawns via <code>requireRequestHost(ctx).startDetached({ seed, input, provenance })</code>; the parent returns immediately with the row <code>in_progress</code>. The message-protocol design removes the option from the seat: a <code>dispatcher</code> seat is detached by being a dispatcher, and <code>startDetached</code> takes no new callers <span class="tag t-prop">proposed</span></td></tr>
+        <tr><td><code>ctx.suspend(options)</code></td><td><span class="tag t-real">exists</span></td><td>Durable human gate. <code>{ reason, message?, data?, resumeSchema?, timeoutMs?, render?, allow? }</code>. Pauses the request that calls it &#8212; including inside a spawned run, where nothing refuses the call and nothing upstream notices. Which is why a run's question cannot use it (section 6)</td></tr>
       </tbody>
     </table>
   </div>
@@ -762,9 +765,9 @@ export const conductor = <em>defineFlow</em>({
 
   <p><code>ctx.suspend(options)</code> durably pauses a flow pending external human action: request status becomes <code>"suspended"</code>, a <code>SuspensionRecord</code> persists the whole context (<code>suspensionId, requestId, flowKind, actionName, sessionId, userId, reason, message, data, resumeSchema, render, allow, status, blockInstanceId, stepIndex</code>), and an HTTP resume route re-enters the action with <strong>completed steps replayed from the durable log rather than re-executed</strong>. <code>reason: "human_approval"</code> defaults <code>allow</code> to <code>["approve","reject"]</code>; <code>"human_input"</code> to <code>["submit"]</code>. It needs <code>durable: true</code> on the action and on the runtime. Four working shapes live in <code>apps/kitchen-sink/flows/chat-agent/</code>: <code>requestApproval</code>, <code>askQuestion</code>, <code>collectForm</code>, <code>chooseOption</code>.</p>
 
-  <p>All of that belongs to the <strong>main session</strong>, and it stays exactly as described. It is not the mechanism for anything a workstream is involved in &#8212; and today nothing stops one reaching for it anyway. A workstream that calls <code>ctx.suspend</code> gets a suspension: its request parks, the row reads as a job still going, and nobody upstream is told. A fence making the call an error inside a workstream is decided and filed. <span class="tag t-prop">proposed</span> It is not built.</p>
+  <p>All of that belongs to the <strong>main session</strong>, and it stays exactly as described. It is not the mechanism for anything a spawned run is involved in &#8212; and today nothing stops one reaching for it anyway. A run that calls <code>ctx.suspend</code> gets a suspension: its request parks, the row reads as a job still going, and nobody upstream is told. A fence making the call an error inside a run is decided and filed. <span class="tag t-prop">proposed</span> It is not built.</p>
 
-  <p>Which reaches further than the detached case. Take the three gates of section 3. Two of them &#8212; a spec waiting on approval, a PR waiting on a merge &#8212; are raised <em>after</em> the workstream that did the work has ended, so there is no request left to suspend by the time anyone is asked. The third could suspend and does not, because running one gate on a different mechanism from the other two buys nothing and costs a second thing to reason about. What waits in all three cases is the task row, parked, and <code>approve</code> releases it. Nothing is given up by dropping the suspension: a parked row is durable state, so it survives a restart the same way a suspension record does, and it survives the run that created it too. The next section is that mechanism.</p>
+  <p>Which reaches further than the detached case. Take the three gates of section 3. Two of them &#8212; a spec waiting on approval, a PR waiting on a merge &#8212; are raised <em>after</em> the run that did the work has ended, so there is no request left to suspend by the time anyone is asked. The third could suspend and does not, because running one gate on a different mechanism from the other two buys nothing and costs a second thing to reason about. What waits in all three cases is the task row, parked, and <code>approve</code> releases it. Nothing is given up by dropping the suspension: a parked row is durable state, so it survives a restart the same way a suspension record does, and it survives the run that created it too. The next section is that mechanism.</p>
 </section>
 
 <section id="start">
@@ -832,11 +835,11 @@ export const conductor = <em>defineFlow</em>({
 
 <section id="channel">
   <div class="sec-head"><span class="sec-num">06</span><h2>Questions, in and out</h2></div>
-  <p class="lede">The load-bearing subsystem. A detached workstream cannot stop and ask you something &#8212; so a question travels as data, and an answer travels back the same way.</p>
+  <p class="lede">The load-bearing subsystem. A spawned run cannot stop and ask you something &#8212; so a question travels as data, and an answer travels back the same way.</p>
 
-  <p>Start with the constraint, because it is why this section exists. <code>ctx.suspend</code> pauses <em>the request that calls it</em>. A detached worker's parent has already returned &#8212; the row is <code>in_progress</code> and the parent's <code>terminationReason</code> is <code>"handed-off"</code>. If a workstream suspends, the workstream pauses and nothing else does. You are never told. The epic keeps running around a run that is quietly waiting for a person who does not know they are needed.</p>
+  <p>Start with the constraint, because it is why this section exists. <code>ctx.suspend</code> pauses <em>the request that calls it</em>. A detached worker's parent has already returned &#8212; the row is <code>in_progress</code> and the parent's <code>terminationReason</code> is <code>"handed-off"</code>. If a run suspends, the run pauses and nothing else does. You are never told. The epic keeps running around a run that is quietly waiting for a person who does not know they are needed.</p>
 
-  <p>And nothing refuses the call, which is the half worth saying out loud rather than assuming. A fence making <code>ctx.suspend</code> an error inside a workstream is decided and filed <span class="tag t-prop">proposed</span> &#8212; it is not built, and section 11 is where it sits. Until it lands the wrong mechanism stays reachable and fails quietly, which is an argument for building the right one rather than for waiting on the fence.</p>
+  <p>And nothing refuses the call, which is the half worth saying out loud rather than assuming. A fence making <code>ctx.suspend</code> an error inside a run is decided and filed <span class="tag t-prop">proposed</span> &#8212; it is not built, and section 11 is where it sits. Until it lands the wrong mechanism stays reachable and fails quietly, which is an argument for building the right one rather than for waiting on the fence.</p>
 
   <figure>
     <div class="fig-body">
@@ -865,14 +868,14 @@ export const conductor = <em>defineFlow</em>({
         <text class="t-lbl" x="470" y="272" text-anchor="middle">SO A QUESTION TRAVELS AS DATA, NOT AS A PAUSE</text>
       </svg>
     </div>
-    <figcaption><b>Two ways to wait, and a workstream only has one of them.</b> All three gates of section 3 park a row: the request ends, the board holds the state, an answer starts a new one. Suspend is the main session's own mechanism &#8212; and today nothing refuses it inside a workstream, which is what the filed, unbuilt fence is for. The pause it prevents is not a missing feature; it is what "detached" means. So a question travels as data either way, and that is a subsystem with three faces: a place questions land, a thing that watches each run, and a channel back in.</figcaption>
+    <figcaption><b>Two ways to wait, and a spawned run only has one of them.</b> All three gates of section 3 park a row: the request ends, the board holds the state, an answer starts a new one. Suspend is the main session's own mechanism &#8212; and today nothing refuses it inside a run, which is what the filed, unbuilt fence is for. The pause it prevents is not a missing feature; it is what "detached" means. So a question travels as data either way, and that is a subsystem with three faces: a place questions land, a thing that watches each run, and a channel back in.</figcaption>
   </figure>
 
   <div class="note">
     <span class="lbl">Detached closes session state, not resources</span>
     <p><code>detached: true</code> on <code>claudeCodeAgent</code> suppresses three things at once, and the option's own doc explains why they are one decision rather than three: the <code>sessionStateSchema</code> <strong>declaration</strong>, the <strong>reads and writes</strong> that go with it, and the SDK <strong><code>resume</code></strong> &#8212; <em>&#8220;the session provider is not consulted at all.&#8221;</em> Every one of those three is <code>ctx.session.state</code> or <code>ctx.session.patchState</code>.</p>
     <p><strong>Read why the flag is set, though, because it is easy to mistake for a stance.</strong> It is set so the board will construct at all: a detached worker may declare no <code>sessionStateSchema</code> anywhere in its tree, and <code>claudeCodeAgent</code> authors one unless the flag is on. A construction shim. It is not a decision that every run starts fresh, and it is not a bet that runs cannot be resumed.</p>
-    <p><strong>Resources are a separate channel, and it stays open.</strong> The same block declares three session-scoped collections under <code>recordWork</code> and writes them from a detached run. The inbox is how a workstream asks a question, and it travels a channel <code>detached</code> leaves open, which is why asking needs no guard narrowed. Continuity is not a resource at all &#8212; it rides the task, below &#8212; and it does not travel that channel either.</p>
+    <p><strong>Resources are a separate channel, and it stays open.</strong> The same block declares three session-scoped collections under <code>recordWork</code> and writes them from a detached run. The inbox is how a run asks a question, and it travels a channel <code>detached</code> leaves open, which is why asking needs no guard narrowed. Continuity is not a resource at all &#8212; it rides the task, below &#8212; and it does not travel that channel either.</p>
   </div>
 
   <figure>
@@ -920,7 +923,7 @@ export const conductor = <em>defineFlow</em>({
         <text class="t-lbl" x="470" y="368" text-anchor="middle">ONE INBOX. THE COORDINATOR SERIALIZES. THE ANSWER GOES BACK TO THE RUN THAT ASKED.</text>
       </svg>
     </div>
-    <figcaption><b>Out, and back in.</b> One subsystem with two directions, and a manager on the workstream end of it. The coordinator's context is the middle box &#8212; the open rows &#8212; and nothing larger. Everything a workstream knows stays in the workstream.</figcaption>
+    <figcaption><b>Out, and back in.</b> One subsystem with two directions, and a manager on the run's end of it. The coordinator's context is the middle box &#8212; the open rows &#8212; and nothing larger. Everything a run knows stays in the run.</figcaption>
   </figure>
 
   <h3>Out &#8212; the inbox resource</h3>
@@ -949,17 +952,17 @@ export const inbox = <em>defineResourceCollection</em>({
   }),
 });</pre>
 
-  <p><code>client.live: true</code> streams each mutated row's projected data mid-stream instead of flagging a snapshot refetch. It is a real option on the real config. The delta rides the mutating request's own stream, though, so it makes the inbox live for the session doing the writing and reaches no session watching from outside. A coordinator-attached client picks a workstream's row up on its next entry, through the snapshot read.</p>
+  <p><code>client.live: true</code> streams each mutated row's projected data mid-stream instead of flagging a snapshot refetch. It is a real option on the real config. The delta rides the mutating request's own stream, though, so it makes the inbox live for the session doing the writing and reaches no session watching from outside. A coordinator-attached client picks a run's row up on its next entry, through the snapshot read.</p>
 
-  <h3>A workstream requests a plan change; it does not make one</h3>
+  <h3>A run requests a plan change; it does not make one</h3>
 
   <p>A run that discovers the <em>plan</em> is wrong &#8212; this issue needs splitting, that dependency points the wrong way, this task should not exist &#8212; has the board within reach. It should not touch it. It posts a <strong>plan-change request</strong> the same way it posts a question, and the top session decides what to do with it. <span class="tag t-prop">proposed</span></p>
 
-  <p>The reason is <strong>single-writer</strong>. A board only one session writes is a board you can reason about: every transition has one author, and &#8220;why is this task pending&#8221; has one place to look. Let N workstreams edit the plan they are being run by and the board stops being a plan and becomes a negotiation, with no one holding the whole of it. The restriction also costs close to nothing once addressed messaging exists: the request travels the channel a mutation would have travelled anyway, and it arrives somewhere that can weigh it against the other seven issues rather than only against its own. Whether some workstreams should be trusted to write directly is carried as thread 5, not settled here.</p>
+  <p>The reason is <strong>single-writer</strong>. A board only one session writes is a board you can reason about: every transition has one author, and &#8220;why is this task pending&#8221; has one place to look. Let N runs edit the plan they are being run by and the board stops being a plan and becomes a negotiation, with no one holding the whole of it. The restriction also costs close to nothing once addressed messaging exists: the request travels the channel a mutation would have travelled anyway, and it arrives somewhere that can weigh it against the other seven issues rather than only against its own. Whether some runs should be trusted to write directly is carried as thread 5, not settled here.</p>
 
   <h3>Signal and content are separate</h3>
 
-  <p>The question and the wake are two different things, and keeping them apart is what makes the wake cheap to build. The <strong>content</strong> &#8212; what was asked, by which workstream, against which task &#8212; is the <code>inbox/**</code> row. It is durable, it is re-readable, and it is the truth. The <strong>signal</strong> carries nothing but <em>there is something for you</em>. It is ephemeral, and it is an optimization over polling rather than a delivery guarantee.</p>
+  <p>The question and the wake are two different things, and keeping them apart is what makes the wake cheap to build. The <strong>content</strong> &#8212; what was asked, by which run, against which task &#8212; is the <code>inbox/**</code> row. It is durable, it is re-readable, and it is the truth. The <strong>signal</strong> carries nothing but <em>there is something for you</em>. It is ephemeral, and it is an optimization over polling rather than a delivery guarantee.</p>
 
   <p>The failure mode is the point. If the coordinator is down when the signal fires, the wake is lost &#8212; and nothing else is, because the row is still sitting in the collection and the next re-entry finds it. <strong>So the signal never has to be durable</strong>, and that removes most of what makes an event bus expensive: no persisted queue, no redelivery, no dead-letter, no acknowledgement protocol. A dropped wake costs latency.</p>
 
@@ -979,14 +982,14 @@ export const inbox = <em>defineResourceCollection</em>({
 
   <h3>How the coordinator wakes</h3>
 
-  <p>Honestly: <strong>not by a resource hook.</strong> <code>reactTo</code> is real &#8212; a collection can bind a block to <code>created</code> / <code>stateUpdated</code> / <code>deleted</code> / <code>contentUpdated</code> &#8212; but the engine runs a reactive block <em>in-session, inline in the mutating turn</em>. A workstream writing an inbox row fires the hook inside the workstream's own request. It cannot reach the coordinator's session. Designing around a hook that quietly fires in the wrong place is the class of mistake this document exists to catch.</p>
+  <p>Honestly: <strong>not by a resource hook.</strong> <code>reactTo</code> is real &#8212; a collection can bind a block to <code>created</code> / <code>stateUpdated</code> / <code>deleted</code> / <code>contentUpdated</code> &#8212; but the engine runs a reactive block <em>in-session, inline in the mutating turn</em>. A run writing an inbox row fires the hook inside the run's own request. It cannot reach the coordinator's session. Designing around a hook that quietly fires in the wrong place is the class of mistake this document exists to catch.</p>
 
-  <p>Two situations wear the same name. <strong>Hot</strong> is a wake while work is in flight: something is already looping, so the only question is how it notices a new row. <strong>Cold</strong> is a wake when nothing is running at all &#8212; the board drained, every workstream settled, and the epic waiting on a person who may take until tomorrow. Nothing is looping, so something outside has to re-enter. The useful thing about the split is that <strong>one answer covers both</strong>, and it is a watch.</p>
+  <p>Two situations wear the same name. <strong>Hot</strong> is a wake while work is in flight: something is already looping, so the only question is how it notices a new row. <strong>Cold</strong> is a wake when nothing is running at all &#8212; the board drained, every run settled, and the epic waiting on a person who may take until tomorrow. Nothing is looping, so something outside has to re-enter. The useful thing about the split is that <strong>one answer covers both</strong>, and it is a watch.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--accent)">
       <h5>A watch on the task</h5><span class="role">both situations &middot; proposed</span>
-      <p>The coordinator registers a watch and stops. When the workstream's task settles, the settle sends it a message and the transport re-enters. Nothing loops, nothing polls, and no request is held open while a person thinks.</p>
+      <p>The coordinator registers a watch and stops. When the run's task settles, the settle sends it a message and the transport re-enters. Nothing loops, nothing polls, and no request is held open while a person thinks.</p>
     </div>
     <div class="card" style="--tc: var(--code)">
       <h5><code>awaiting_review</code></h5><span class="role">a blocking wait &middot; exists today</span>
@@ -997,7 +1000,7 @@ export const inbox = <em>defineResourceCollection</em>({
   <div class="note">
     <span class="lbl">Nothing is held open, and nothing polls</span>
     <p>The blocking wait is tempting because it costs nothing to build. It is the wrong shape for the workload this project exists to survive. Holding a worker slot and a live loop open for the hours &#8212; or days &#8212; a person takes to answer means the machinery carrying a multi-day epic is a loop that must not die for a multi-day epic. Anything that restarts, redeploys, or trips a lease inside that window takes the run with it. A design that leans on an idle poll has quietly made the poll interval its liveness guarantee, which is not a guarantee.</p>
-    <p>So the intended path is quieter than that. <strong>A workstream blocked on a question ends its request, carrying the question out with it. Its task stays on the board, parked.</strong> The coordinator is not looping either &#8212; it holds a watch, and a watch costs a row. Nothing has to drain to nothing, because <strong>the board is the durable state</strong>: when the next request arrives, hopefully the answer, it picks that task back up and continues from there. Half of that is shipped and half is not, and the note below separates them. <code>awaiting_review</code> stays as the short-horizon convenience for &#8220;the operator is right here, answering now&#8221; &#8212; not as the thing the design depends on. What is left to design carefully is what re-enters, and how it finds the right outstanding row. The rest of this section is the answer; section 12 carries what it leaves to a separate build. Read it as the shape the first real run ships on rather than as a later upgrade to it. The Proof is relay plus a parked task row, and the short-horizon loop is not a stepping stone toward that &#8212; section 11 is why.</p>
+    <p>So the intended path is quieter than that. <strong>A run blocked on a question ends its request, carrying the question out with it. Its task stays on the board, parked.</strong> The coordinator is not looping either &#8212; it holds a watch, and a watch costs a row. Nothing has to drain to nothing, because <strong>the board is the durable state</strong>: when the next request arrives, hopefully the answer, it picks that task back up and continues from there. Half of that is shipped and half is not, and the note below separates them. <code>awaiting_review</code> stays as the short-horizon convenience for &#8220;the operator is right here, answering now&#8221; &#8212; not as the thing the design depends on. What is left to design carefully is what re-enters, and how it finds the right outstanding row. The rest of this section is the answer; section 12 carries what it leaves to a separate build. Read it as the shape the first real run ships on rather than as a later upgrade to it. The Proof is relay plus a parked task row, and the short-horizon loop is not a stepping stone toward that &#8212; section 11 is why.</p>
   </div>
 
   <div class="note">
@@ -1014,14 +1017,14 @@ export const inbox = <em>defineResourceCollection</em>({
     <table>
       <thead><tr><th>Wake route</th><th>Path</th><th>Status</th><th>What it is</th></tr></thead>
       <tbody>
-        <tr><td>A <strong>watch</strong> on the workstream&#8217;s task</td><td>both</td><td><span class="tag t-prop">proposed</span></td><td><strong>The route the coordinator uses.</strong> A keyed row saying <em>when this task goes terminal, send me a message</em>. It holds nothing open and polls nothing; the settle is what fires it. Its shape is below, and it is filed as work of its own (section 11)</td></tr>
+        <tr><td>A <strong>watch</strong> on the run&#8217;s task</td><td>both</td><td><span class="tag t-prop">proposed</span></td><td><strong>The route the coordinator uses.</strong> A keyed row saying <em>when this task goes terminal, send me a message</em>. It holds nothing open and polls nothing; the settle is what fires it. Its shape is below, and it is filed as work of its own (section 11)</td></tr>
         <tr><td>Mail addressed to the coordinator&#8217;s session</td><td>both</td><td><span class="tag t-prop">proposed</span></td><td><strong>What a watch sends &#8212; and what anything else sends too.</strong> One message, one named recipient, handled as a request on that session. Nothing in the tree sends a message today, so this is a build rather than a wiring job. Its shape is below; the build is scoped and under review (section 11)</td></tr>
         <tr><td><code>awaiting_review</code> keeps the drain alive</td><td>hot</td><td><span class="tag t-real">exists</span></td><td>The <strong>blocking</strong> wait, and the only route here that holds a request open. An <code>awaiting_review</code> row keeps the worker loop alive in both <code>complete</code> and <code>complete-or-blocked</code>, because the worker's <code>.waitForCondition</code> blocks until someone moves the row back to <code>pending</code>; the loop's idle poll (<code>idlePollMs</code>, default 50ms) is what turns while it waits. Real, and fine for a wait measured in minutes. Not what the coordinator uses, and not what the first real run ships on</td></tr>
         <tr><td>A scheduled action re-enters</td><td>cold</td><td><span class="tag t-none">no address</span></td><td><strong>The transport is real. The route is not.</strong> <code>@flow-state-dev/scheduled</code> does dispatch on a timer and stamp <code>source: "scheduled"</code> &#8212; but it dispatches with <strong>no session</strong> (<em>&#8220;scheduled envelopes have no session&#8221;</em>), and a dynamic schedule&#8217;s row carries a user, not a session. A tick can start fresh work; it cannot re-enter the coordinator, because it cannot name it. Cron becomes a sender instead &#8212; below</td></tr>
         <tr><td>You open the session and see the row</td><td>cold</td><td><span class="tag t-real">exists</span></td><td>A person re-entering is itself a wake, and the inbox is visible without anything else happening</td></tr>
         <tr><td>An existing inbound transport</td><td>&#8212;</td><td><span class="tag t-none">wrong seam</span></td><td>The packages are real and none of them is this. <code>mcp</code>, <code>chat-sdk</code>, <code>voice-openai</code> and <code>scheduled</code> carry <em>external</em> origin into a flow. <code>node</code> and <code>bullmq</code> host the server and run the jobs &#8212; they are not receivers at all</td></tr>
         <tr><td>Session-addressed messaging</td><td>&#8212;</td><td><span class="tag t-none">doesn&#8217;t exist</span></td><td>&#8220;Send this to that session&#8221; has no implementation today &#8212; which is precisely the gap mail fills. <code>RequestHost</code> is closed at four verbs &#8212; <code>startDetached</code>, <code>parentTask</code>, <code>settleParentTask</code>, <code>livenessOf?</code> &#8212; and the only child-to-parent verb among them is <code>settleParentTask</code>, which has no production caller and is in any case <strong>structural</strong>: a task row transition, not a message</td></tr>
-        <tr><td><code>reactTo</code> on the inbox</td><td>&#8212;</td><td><span class="tag t-none">wrong tool</span></td><td>Runs in the mutating session, inline in the workstream's own turn. Useful for workstream-side bookkeeping; it can never reach the coordinator</td></tr>
+        <tr><td><code>reactTo</code> on the inbox</td><td>&#8212;</td><td><span class="tag t-none">wrong tool</span></td><td>Runs in the mutating session, inline in the run's own turn. Useful for run-side bookkeeping; it can never reach the coordinator</td></tr>
       </tbody>
     </table>
   </div>
@@ -1042,7 +1045,7 @@ export const inbox = <em>defineResourceCollection</em>({
     </table>
   </div>
 
-  <p>The coordinator never does the work, so it has no business claiming anything. What it wants is to know when a workstream's task settles, so it can route the result. <strong>That is a watch, and today there is no way to say it</strong> &#8212; which is most of why the wake looked like a hard problem. The only relationship on offer was the wrong one.</p>
+  <p>The coordinator never does the work, so it has no business claiming anything. What it wants is to know when a run's task settles, so it can route the result. <strong>That is a watch, and today there is no way to say it</strong> &#8212; which is most of why the wake looked like a hard problem. The only relationship on offer was the wrong one.</p>
 
   <p><strong>A watch is mail with a trigger.</strong> &#8220;When this row goes terminal, send me a message.&#8221; That framing is what makes it cheap, because it is not a new subsystem: addressing, delivery and arbitration on the session key all belong to the message layer described next, and a watch adds only the condition that decides when to send. Each watch names one recipient, so a task with three watchers settles into three addressed messages &#8212; three sends, not one broadcast. Fan-out stays ruled out, for the reason the next section gives.</p>
 
@@ -1110,7 +1113,7 @@ export const inbox = <em>defineResourceCollection</em>({
 
   <h3>The wake is mail, not a broadcast</h3>
 
-  <p>The reason no existing package covers the cold-path wake is worth stating precisely rather than filing as a gap. An <strong>inbound transport carries external origin into a flow</strong>: <code>mcp</code>, <code>chat-sdk</code>, <code>voice-openai</code> and <code>scheduled</code> each translate somebody else's protocol into a dispatch and stamp where it came from. <code>node</code> and <code>bullmq</code> are host and runtime adapters &#8212; they serve the process and run the jobs, and receive nothing on their own account. A workstream telling a coordinator it has a question is neither of those. It is session-to-session, inside one system, under one principal. That is a <strong>different seam</strong>, and it is empty.</p>
+  <p>The reason no existing package covers the cold-path wake is worth stating precisely rather than filing as a gap. An <strong>inbound transport carries external origin into a flow</strong>: <code>mcp</code>, <code>chat-sdk</code>, <code>voice-openai</code> and <code>scheduled</code> each translate somebody else's protocol into a dispatch and stamp where it came from. <code>node</code> and <code>bullmq</code> are host and runtime adapters &#8212; they serve the process and run the jobs, and receive nothing on their own account. A run announcing a question is neither of those. It is session-to-session, inside one system, under one principal. That is a <strong>different seam</strong>, and it is empty.</p>
 
   <p>What fills it is <strong>mail: a message bus, not an event bus</strong> &#8212; a working name this document keeps for readability, though the name is now settled: the filed epic is called <strong>relay</strong> (thread 3, section 11). One message travels from one request to one named recipient &#8212; another session, or the same session as a new request. Sessions address each other directly, so a workstream reaches the coordinator, the coordinator reaches a workstream, and two top-level sessions reach each other the same way. There is no topic, no subscriber list, and <strong>no fan-out</strong>. What a sender may legally address is settled: a session it already holds, or one it spawned itself. There is no lookup, and there is not going to be one (thread 2).</p>
 
@@ -1290,7 +1293,7 @@ export const inbox = <em>defineResourceCollection</em>({
 
   <h3>The harness manager loop</h3>
 
-  <p>Something has to be running while a Claude Code agent works, or a stall is indistinguishable from progress. That something is the harness manager: one per run, and the thing that makes a workstream more than a fire-and-forget dispatch. It is not a supervisor for failures only &#8212; the common case is the agent finishing a turn with a question, and the manager deciding what happens next.</p>
+  <p>Something has to be running while a Claude Code agent works, or a stall is indistinguishable from progress. That something is the harness manager: one per run, and the thing that makes a run more than a fire-and-forget dispatch. It is not a supervisor for failures only &#8212; the common case is the agent finishing a turn with a question, and the manager deciding what happens next.</p>
 
   <div class="tw">
     <table>
@@ -1314,7 +1317,7 @@ export const inbox = <em>defineResourceCollection</em>({
   <div class="note">
     <span class="lbl">The settle verb, and the settle that actually runs</span>
     <p><code>settleParentTask</code> sits on the <code>RequestHost</code> interface and is not the route anything takes. It has <strong>zero production callers</strong>. <code>createFlowState</code> leaves <code>parentTask</code> unwired and says so in a comment. Nothing anywhere constructs a <code>ParentTaskBinding</code>. And with no binding the verb does not throw &#8212; it <strong>returns a refusal</strong>, <code>{ ok: false, refused: "no-parent-task" }</code>. Worth a clause of its own, because a test that only checks nothing threw walks straight past that.</p>
-    <p>What runs instead is the <strong>detached runner's ticket-fenced recorders</strong>. The runner mints a ticket from the row it has just re-read and verified, never from the dispatch payload, and the workstream settles its own task through the <em>same</em> recorders the inline drain uses. One settlement path, not two. Which is also why a displaced child's settle comes back <code>"fence-rejected"</code> rather than corrupting a row: the fence sits on the recorder, and every settle goes through it.</p>
+    <p>What runs instead is the <strong>detached runner's ticket-fenced recorders</strong>. The runner mints a ticket from the row it has just re-read and verified, never from the dispatch payload, and the run settles its own task through the <em>same</em> recorders the inline drain uses. One settlement path, not two. Which is also why a displaced child's settle comes back <code>"fence-rejected"</code> rather than corrupting a row: the fence sits on the recorder, and every settle goes through it.</p>
   </div>
 
   <h3>In &#8212; the steer action</h3>
@@ -1366,7 +1369,7 @@ export const runs = <em>defineResourceCollection</em>({
 
   <p><code>sharedToWorkstream</code> is why this is the right primitive rather than a near-enough one. Its contract: <em>&#8220;Give this session-scoped collection ONE identity across the whole session lineage. A session and the background child sessions it spawns resolve the collection against the lineage root, so they read and write one instance set.&#8221;</em> The coordinator's session and every workstream it spawns therefore address one set of rows without the index going user-wide &#8212; and the set dies with the lineage, which is coherent, because the SDK sessions it points at die then too. Session scope only: <code>defineResourceCollection</code> rejects the flag at user or org scope, and rejects any scope that is not <code>"session"</code>, <code>"user"</code> or <code>"org"</code>.</p>
 
-  <p><strong>One row per run &#8212; not one row holding an array of runs.</strong> N concurrent workstreams read-modify-writing a single row lose each other's writes, and that contention is exactly what a collection removes. "All sessions" is a <code>list()</code>, not an array you rewrite. And if the index should later outlive the session lineage &#8212; a handle you want on Monday for a run that started Friday &#8212; the same collection moves to <code>scope: "user"</code> and drops the flag. That is a scope change, not a redesign.</p>
+  <p><strong>One row per run &#8212; not one row holding an array of runs.</strong> N concurrent runs read-modify-writing a single row lose each other's writes, and that contention is exactly what a collection removes. "All sessions" is a <code>list()</code>, not an array you rewrite. And if the index should later outlive the session lineage &#8212; a handle you want on Monday for a run that started Friday &#8212; the same collection moves to <code>scope: "user"</code> and drops the flag. That is a scope change, not a redesign.</p>
 
   <p><strong>The write side needs nothing from the agent block.</strong> Its detached guard is on persistence alone, and the comment sitting on it draws the line explicitly: <em>&#8220;Skipped wholesale when conversation state is off &#8212; a value written under an undeclared key is a silent corruption. The handle is still RETURNED; that is this block's output, not persisted state.&#8221;</em> The returned <code>SdkAgentHandle</code> carries <code>sessionId</code> whether or not the block is detached. The manager takes it off the output and writes it onto the task.</p>
 
@@ -1394,7 +1397,7 @@ await runs.<b>upsert</b>(key, {
 
   <p><strong>The read is where the framework has to move.</strong> <code>sessionProvider.resolve(&#8230;)</code> is consulted inside <code>if (!detached)</code> and nowhere else, so today there is no way to hand a prior id in on the detached path. An input carrying a resume id narrows no guard: session state stays off, the board's refusal stays intact, and the id arrives as ordinary block input. <span class="tag t-prop">proposed</span> &#8212; filed as a change of its own.</p>
 
-  <p>It is <strong>on the Proof's critical path, not beside it</strong>. A second turn that re-reads a diff the agent had already read is not the loop this design claims; proving the loop means resuming. What is still open is what that work leaves behind &#8212; a path the workstreams epic can call, or a harness that proves it and goes away. Thread 14.</p>
+  <p>It is <strong>on the Proof's critical path, not beside it</strong>. A second turn that re-reads a diff the agent had already read is not the loop this design claims; proving the loop means resuming. What is still open is what that work leaves behind &#8212; a path later work can call, or a harness that proves it and goes away. Thread 14.</p>
 
   <p><strong>Three ways into a live run, and only the first is a steer.</strong> Stopping one is two mechanisms, not one. The mid-turn abort stops the <em>run</em> and writes no task <em>row</em>: the runner's own fenced recorders settle that row <code>errored</code>, or re-pend it for another attempt on a row carrying <code>maxAttempts</code> &#8212; so a cancelled run can come back as a retry. Only the before-the-next-turn transport writes <code>cancelled</code>. Both transports below are real. What is not built is the <strong>coordination</strong>: cancelling the row and aborting the request as one act, with the conductor moving whatever row that run left open to <code>withdrawn</code>. <span class="tag t-prop">proposed</span></p>
 
@@ -1423,7 +1426,7 @@ await runs.<b>upsert</b>(key, {
         <tr><td>Does a steer wait for a free worker slot?</td><td>Yes, if it rides a task row and the board is at <code>concurrency</code>. On the cold path that is the ordinary case: the run ended when it asked and its task is parked, so the answer arrives as fresh work, picks the parked task back up, and queues like any other &#8212; through the unblock verb that is filed rather than built. A steer aimed at a run still waiting in <code>awaiting_review</code> does not contend &#8212; but that is the short-horizon path, not the one to size for</td></tr>
         <tr><td>The agent answers its own question before the steer lands?</td><td>Possible. The row moves to <code>withdrawn</code> rather than being deleted, and a late answer against a withdrawn row is reported back, not applied</td></tr>
         <tr><td>The run died while the question was open?</td><td><code>livenessOf</code> is the hint, never the proof. Corroborate against the durable row before re-dispatching &#8212; re-dispatching on a <code>false</code> answer alone is how double execution ships</td></tr>
-        <tr><td>Who settles the row?</td><td>The workstream, through the runner's fenced recorders. Never the parent</td></tr>
+        <tr><td>Who settles the row?</td><td>The run, through the runner's fenced recorders. Never the parent</td></tr>
       </tbody>
     </table>
   </div>
@@ -1500,9 +1503,9 @@ type PhaseLogic = {
         <tr><td>epics</td><td><code>epics/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>The objective, gate state, the issue set, wrap output</td></tr>
         <tr><td>issues</td><td><code>epics/[epicId]/issues/[issueId]</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Category, position in the graph, current phase, PR, review rounds spent</td></tr>
         <tr><td>specs</td><td><code>specs/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Spec body and approval state</td></tr>
-        <tr><td><strong>inbox</strong></td><td><code>inbox/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>The coordinator's working set.</strong> One row per open question, keyed <code>&lt;issue&gt;/&lt;phase&gt;/&lt;attempt&gt;/&lt;fingerprint&gt;</code> so a list spans every epic, with the workstream that asked it</td></tr>
+        <tr><td><strong>inbox</strong></td><td><code>inbox/**</code></td><td>user</td><td><span class="tag t-real">exists &middot; lab</span></td><td><strong>The working set a person answers from.</strong> One row per open question, keyed <code>&lt;issue&gt;/&lt;phase&gt;/&lt;attempt&gt;/&lt;fingerprint&gt;</code> so a list spans every epic, with the task that asked it (<code>askedBy</code>, server-derived). The question collection &#8212; not the typed entry set the message-protocol design calls an inbox</td></tr>
         <tr><td><strong>sessions</strong></td><td><code>sessions/*</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>What the other coordinators are doing.</strong> One row per session, written by that session: the epic it holds, phase and open counts, when it last moved</td></tr>
-        <tr><td>runs</td><td><code>runs/**</code></td><td>session + <code>sharedToWorkstream</code></td><td><span class="tag t-prop">proposed</span></td><td>One row per run, keyed by topic and phase: child session, request id, worktree, branch, outcome, cost, and a copy of the resume handle. The handle itself rides the task; this row is what a person reads (section 6)</td></tr>
+        <tr><td>runs</td><td><code>runs/**</code></td><td>user</td><td><span class="tag t-real">exists &middot; lab</span></td><td>One row per issue-phase, keyed <code>&lt;epic&gt;/&lt;issue&gt;/&lt;phase&gt;</code>: checkout and branch, outcome and reason, the harness session as a copy, usage and cost, child session, request id. This document proposed session scope with <code>sharedToWorkstream</code>; the lab measured that and reversed it (section 6). The resume handle still rides the task and no such field is built; this row is what a person reads</td></tr>
         <tr><td>decisions</td><td><code>decisions/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Gates and steers as records: what was asked, who answered, when, and the reason given</td></tr>
         <tr><td>observed-file-ops</td><td><code>[topic]/observations</code></td><td>session</td><td><span class="tag t-real">exists</span></td><td>What a run changed</td></tr>
         <tr><td>observed-plan</td><td><code>[topic]/observations</code></td><td>session</td><td><span class="tag t-real">exists</span></td><td>What a run thought its job was</td></tr>
@@ -1513,7 +1516,7 @@ type PhaseLogic = {
 
   <p><strong>A pattern either parameterizes or wildcards, and it cannot do both.</strong> <code>epics/[epicId]/issues/[issueId]</code> takes the parameterized resolver; <code>epics/**</code> takes the glob one. Mixing them &#8212; <code>epics/[epicId]/issues/**</code> &#8212; validates cleanly and then behaves as neither, because the parameterized path escapes <code>**</code> to a literal: the collection quietly holds one degenerate row per epic with the asterisks still in the key. Nothing in the repo mixes the two.</p>
 
-  <p>Scope is not a detail here. <code>user</code> scope is what lets a workstream and the coordinator see one instance set, because a detached child inherits tenant, user and org from the request that started it. <code>session</code> scope needs <code>sharedToWorkstream: true</code> to span a session and its background children at all, and the framework rejects that flag anywhere else. <code>runs/**</code> takes that route deliberately: the SDK sessions it indexes die with the lineage, so an index outliving them would be a list of dead handles. Section 6 carries the reasoning, and the escape hatch if that ever stops being true.</p>
+  <p>Scope is not a detail here. <code>user</code> scope is what lets a run and the session that answers it see one instance set, because a spawned child inherits tenant, user and org from the request that started it. <code>session</code> scope needs <code>sharedToWorkstream: true</code> <span class="tag t-real">exists &middot; fenced</span> &#8212; renamed <code>sharedToLineage</code> at the endpoint &#8212; to span a session and its spawned children at all, and the framework rejects that flag anywhere else. <code>runs/**</code> was designed to take that route, and the lab took it and measured the cost: a new coordinator session is a different lineage root, so a <code>status</code> call from one answered <code>run: null</code>. The row moved to <code>user</code> scope, the escape hatch section 6 named, and nothing in the lab uses lineage sharing now.</p>
 
   <p><code>llmReadable</code>, <code>llmWritable</code> and <code>contentTemplate</code> decide what a phase prompt can show and what a run may write back without a block in between. Those are policy calls per collection, not defaults to accept &#8212; a review phase that can write to <code>specs/**</code> is a different product from one that cannot.</p>
 
@@ -1623,7 +1626,7 @@ type PhaseLogic = {
         <tr><td>How does the parent find them?</td><td>It re-reads the durable task rows. That is the handle</td></tr>
         <tr><td>Can it enumerate live runs?</td><td>Enumerate, yes &#8212; <code>GET /api/flows/sessions/:sessionId/workstreams</code> lists a session's children, each with a derived status <span class="tag t-real">exists</span>. Live, no &#8212; a derived status is not proof a run is alive; liveness is the next row. The durable rows stay the handle</td></tr>
         <tr><td>Can it tell whether one is alive?</td><td><code>ctx.requestHost.livenessOf(requestIds)</code> &#8212; an <em>optional</em> method, absent when the liveness gate refuses. Design for it being missing</td></tr>
-        <tr><td>What settles a row?</td><td>The workstream, through the runner's fenced recorders. Never the parent</td></tr>
+        <tr><td>What settles a row?</td><td>The run, through the runner's fenced recorders. Never the parent</td></tr>
         <tr><td>What does the operator see?</td><td><code>task-change</code> items plus a transient board-meta component carrying <code>{ status, terminationReason, counts }</code>, both already emitted</td></tr>
       </tbody>
     </table>
@@ -1966,15 +1969,15 @@ export const conductorConfig = <b>createConductorCapability</b>({
   </div>
 
   <div class="tension">
-    <h5>5 &middot; May some workstreams manage the board directly?</h5>
-    <p>Section 6 states the answer the design runs on: a workstream <strong>requests</strong> a plan change, and the top session decides. That keeps the board single-writer, which is what makes it reasonable about &#8212; one author per transition, and one place to look when a task is in a state nobody expects.</p>
-    <p>The doubt is real, though. Some workstreams sit closer to the plan than the coordinator does: a review run that finds an issue needs splitting knows more about the split than anyone upstream, and routing it through a request adds a hop and a translation. A narrow write grant &#8212; this worker may add sub-tasks under its own issue, and nothing else &#8212; is a coherent middle rather than a fudge.</p>
+    <h5>5 &middot; May some runs manage the board directly?</h5>
+    <p>Section 6 states the answer the design runs on: a run <strong>requests</strong> a plan change, and the top session decides. That keeps the board single-writer, which is what makes it reasonable about &#8212; one author per transition, and one place to look when a task is in a state nobody expects.</p>
+    <p>The doubt is real, though. Some runs sit closer to the plan than the coordinator does: a review run that finds an issue needs splitting knows more about the split than anyone upstream, and routing it through a request adds a hop and a translation. A narrow write grant &#8212; this worker may add sub-tasks under its own issue, and nothing else &#8212; is a coherent middle rather than a fudge.</p>
     <span class="ask">Unresolved. The argument for the stated answer is that single-writer is a property you lose all at once and cannot cheaply get back, while the request path costs a hop rather than a capability. What would change it: a plan-change round trip measurably slower than the work it gates.</span>
   </div>
 
   <div class="tension">
     <h5>6 &middot; A detached agent has no way to be handed a resume id</h5>
-    <p>The design's one real dependency on framework code, and it is small. <code>claudeCodeAgent</code> consults its session provider only on the non-detached path, so nothing today carries a prior <code>sdkSessionId</code> into a detached run. Until something does, a steer starts the coding agent from nothing: the workstream keeps its item history and the model loses its own. The write half already works &#8212; the handle is returned regardless of <code>detached</code> &#8212; so what is missing is an input and a conditional <code>resume</code>, not a change to what <code>detached</code> means.</p>
+    <p>The design's one real dependency on framework code, and it is small. <code>claudeCodeAgent</code> consults its session provider only on the non-detached path, so nothing today carries a prior <code>sdkSessionId</code> into a detached run. Until something does, a steer starts the coding agent from nothing: the spawned session keeps its item history and the model loses its own. The write half already works &#8212; the handle is returned regardless of <code>detached</code> &#8212; so what is missing is an input and a conditional <code>resume</code>, not a change to what <code>detached</code> means.</p>
     <span class="ask">Answered &#8212; resume, not restart. Restarting is correct and expensive: a re-stated prompt pays again for a diff the agent had already read, and a Proof whose second turn does that is not proving the loop it claims to. So the input is on the Proof's critical path rather than beside it, and shipping the Proof without it is off the table. Two things follow that are not settled by this answer: the shape of the typed handle field on the task (section 6), and what the resume work lands as &#8212; thread 14.</span>
   </div>
 
@@ -1992,7 +1995,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
 
   <div class="tension">
     <h5>9 &middot; Durability over a multi-day run</h5>
-    <p>The success criterion is literally "multi-day without degrading". A multi-day epic is the longest-running, most failure-exposed workload we have, and the board's load-bearing areas are lease, retry and durable resume: a stranded lease can hang a drain for hours, a reclaim can reset every in-flight task, a dead detached child can look stalled for a full lease, and a blind retry re-runs unchanged work. Resting the question channel on the cold path removes one of these &#8212; no worker slot and no lease is held across a human's answer, because the workstream's request ends and its task waits as a durable row &#8212; and leaves the rest untouched.</p>
+    <p>The success criterion is literally "multi-day without degrading". A multi-day epic is the longest-running, most failure-exposed workload we have, and the board's load-bearing areas are lease, retry and durable resume: a stranded lease can hang a drain for hours, a reclaim can reset every in-flight task, a dead detached child can look stalled for a full lease, and a blind retry re-runs unchanged work. Resting the question channel on the cold path removes one of these &#8212; no worker slot and no lease is held across a human's answer, because the run's request ends and its task waits as a durable row &#8212; and leaves the rest untouched.</p>
     <span class="ask">Harden the board first, or find these on the first real epic? These are not adjacent bugs &#8212; they are the criterion's failure modes, and the third clause fails on exactly this class.</span>
   </div>
 
@@ -2014,7 +2017,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
 
   <div class="tension">
     <h5>12 &middot; Does the manager decide to re-plan, or only say that re-planning is needed?</h5>
-    <p>The manager reads the board and pushes &#8212; something is stalled, a workstream is not progressing, the plan no longer fits what the work turned out to be. What it may then <em>do</em> is not settled. It could adjust the plan itself, inside the approved objective, and tell you afterwards. Or it could surface that re-planning is needed and let the coordinator put the question to you.</p>
+    <p>The manager reads the board and pushes &#8212; something is stalled, a run is not progressing, the plan no longer fits what the work turned out to be. What it may then <em>do</em> is not settled. It could adjust the plan itself, inside the approved objective, and tell you afterwards. Or it could surface that re-planning is needed and let the coordinator put the question to you.</p>
     <p>That is the difference between a manager and a reporter, and it is a product call rather than an implementation detail: it sets how much autonomy the system takes on your behalf while you are not watching.</p>
     <span class="ask">Leaning: surface rather than decide, until the manager has a track record you can read. Deciding is the better product if it is right most of the time and the worse one if a bad re-plan surfaces a day later &#8212; and there is no evidence yet about which. What would change it: a run of epics where the re-plans it proposes are approved unchanged.</span>
   </div>
@@ -2031,7 +2034,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
 
   <div class="tension">
     <h5>14 &middot; Does the resume POC land as a path, or as a harness?</h5>
-    <p>The Proof needs resume rather than restart (thread 6), so the work that proves it sits on the critical path rather than beside it. What that work <em>leaves behind</em> is not decided. It could land as <strong>a path the workstreams epic can call</strong> &#8212; a real seam, carried forward, at the cost of having to get its shape right before anything has resumed once. Or it could land as <strong>a throwaway harness</strong> that establishes the behaviour and is then deleted, with the seam built afterwards against a known answer.</p>
+    <p>The Proof needs resume rather than restart (thread 6), so the work that proves it sits on the critical path rather than beside it. What that work <em>leaves behind</em> is not decided. It could land as <strong>a path later work can call</strong> &#8212; a real seam, carried forward, at the cost of having to get its shape right before anything has resumed once. Or it could land as <strong>a throwaway harness</strong> that establishes the behaviour and is then deleted, with the seam built afterwards against a known answer.</p>
     <p>Not colour to bury at the end of a section. The two produce different plans: one puts the seam's design inside the Proof, the other puts it after &#8212; and the typed handle field on the task (section 6) is undesigned either way. It belongs to the parent resume issue, which is where the shape of the resume input is being settled in any case.</p>
     <span class="ask">Which does the Proof need &#8212; a callable path, or a proof and a delete? Both ways of being wrong are the expensive kind. A throwaway that quietly becomes the path is the one this document keeps naming; a permanent seam designed before anything has resumed once is the other. Answered inside the resume issue it costs a paragraph. Answered after the Proof ships it costs a rewrite.</span>
   </div>
