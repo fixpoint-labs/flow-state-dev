@@ -587,47 +587,58 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="conductor">
   <div class="sec-head"><span class="sec-num">04</span><h2>The conductor flow</h2></div>
-  <p class="lede">One flow, five actions, one sequencer, one board per epic, one harness manager behind every phase. Solid borders exist today. Dashed borders are proposed and unwritten.</p>
+  <p class="lede">One flow, three typed entry groups &#8212; <code>user</code>, <code>internal</code>, <code>task</code> &#8212; one sequencer, one board per epic, one harness manager behind every phase. Solid borders exist today, in the framework or in the lab. Dashed borders are proposed and unwritten.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 738" role="img" aria-label="The proposed conductor flow. A flow declares five actions: startEpic which seeds the board, wake which runs one drain step, approve which releases a parked task row, steer which classifies a reply and dispatches it into a running workstream, and status which only reads rows. Four of them feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The board claims the next ready task, dispatches it with the topological dispatcher which honours dependencies expressing both the issue graph and the phase order, and routes it by assignee to one of three thin phase-logic records for spec, implement and review. All three feed one shared harness manager, the only proposed block of substance, which provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits for a steer, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state. The flag is a board-construction shim rather than a decision to start fresh, and continuity comes from a resume handle carried on the task itself, as described in section six. The workstream settles its own task row through the detached runner's ticket-fenced recorders, the same ones the inline drain uses.">
+      <svg viewBox="0 0 940 738" role="img" aria-label="The proposed conductor flow. One typed entry set, flow dot type dot actions, in three groups. The user group, addressed by a caller: status, which only reads rows; seed, which files an issue-phase as a row and drains once; and answer, which re-queues a parked row and drains. The internal group, addressed by a dispatcher block in another request: wake, which runs one drain step. The task group, reached by the board's dispatcher seats below: spec, implement and review. Seed, answer and wake feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The four user and internal entries ship in the lab as flat actions; the typed grouping and the task entries are proposed. The board claims the next ready task, orders it with the topological strategy which honours dependencies expressing both the issue graph and the phase order, and routes it by assignee to one of three thin phase-logic records for spec, implement and review. All three feed one shared harness manager, which the lab ships for one phase, and which provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits for an answer, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state. The flag is a board-construction shim rather than a decision to start fresh, and continuity comes from a resume handle carried on the task itself, as described in section six. The run settles its own task row through the detached runner's ticket-fenced recorders, fenced this cycle, the same ones the inline drain uses.">
         <rect class="n-grp" x="16" y="26" width="908" height="112" rx="5"/>
-        <text class="t-api" x="32" y="46">PROPOSED &middot; defineFlow({ kind, actions, resources, uses })</text>
+        <text class="t-api" x="32" y="46">PROPOSED &middot; flow.&lt;type&gt;.actions &middot; ONE INBOX, ADDRESSED (type, name), NO FALLBACK</text>
 
-        <rect class="n-prop" x="28" y="58" width="168" height="64" rx="4"/>
-        <text class="t-b f-accent" x="42" y="80">startEpic</text>
-        <text class="t-xs" x="42" y="97">OBJECTIVE &#8594; TASKS</text>
-        <text class="t-s" x="42" y="113">seeds the board</text>
+        <rect class="n-prop" x="28" y="56" width="368" height="76" rx="4"/>
+        <text class="t-lbl f-accent" x="36" y="68">user &middot; A CALLER &middot; LAB: seed, status, answer</text>
 
-        <rect class="n-prop" x="208" y="58" width="168" height="64" rx="4"/>
-        <text class="t-b f-accent" x="222" y="80">wake</text>
-        <text class="t-xs" x="222" y="97">ONE EVENT, ONE STEP</text>
-        <text class="t-s" x="222" y="113">runs the drain</text>
+        <rect class="n-box" x="36" y="76" width="116" height="50" rx="4"/>
+        <text class="t-b" x="46" y="95">status</text>
+        <text class="t-xs" x="46" y="113">READS ROWS</text>
 
-        <rect class="n-prop" x="388" y="58" width="168" height="64" rx="4"/>
-        <text class="t-b f-accent" x="402" y="80">approve</text>
-        <text class="t-xs" x="402" y="97">RELEASES A PARKED ROW</text>
-        <text class="t-s" x="402" y="113">answers a gate</text>
+        <rect class="n-box" x="158" y="76" width="116" height="50" rx="4"/>
+        <text class="t-b" x="168" y="95">seed</text>
+        <text class="t-xs" x="168" y="113">ROW + ONE DRAIN</text>
 
-        <rect class="n-prop" x="568" y="58" width="168" height="64" rx="4"/>
-        <text class="t-b f-accent" x="582" y="80">steer</text>
-        <text class="t-xs" x="582" y="97">CLASSIFY &#8594; ROUTE</text>
-        <text class="t-s" x="582" y="113">answers the inbox</text>
+        <rect class="n-box" x="280" y="76" width="116" height="50" rx="4"/>
+        <text class="t-b" x="290" y="95">answer</text>
+        <text class="t-xs" x="290" y="113">RE-QUEUE + DRAIN</text>
 
-        <rect class="n-prop" x="748" y="58" width="168" height="64" rx="4"/>
-        <text class="t-b f-accent" x="762" y="80">status</text>
-        <text class="t-xs" x="762" y="97">READS ROWS</text>
-        <text class="t-s" x="762" y="113">dispatches nothing</text>
+        <rect class="n-prop" x="406" y="56" width="128" height="76" rx="4"/>
+        <text class="t-lbl f-accent" x="414" y="68">internal &middot; LAB</text>
 
-        <path class="ln" d="M112,122 L112,152"/>
-        <path class="ln" d="M292,122 L292,152"/>
-        <path class="ln" d="M472,122 L472,152"/>
-        <path class="ln" d="M652,122 L652,152"/>
-        <path class="ln" d="M112,152 L652,152"/>
+        <rect class="n-box" x="412" y="76" width="116" height="50" rx="4"/>
+        <text class="t-b" x="422" y="95">wake</text>
+        <text class="t-xs" x="422" y="113">ONE DRAIN STEP</text>
+
+        <rect class="n-prop" x="540" y="56" width="368" height="76" rx="4"/>
+        <text class="t-lbl f-accent" x="548" y="68">task &middot; REACHED BY THE BOARD'S SEATS BELOW</text>
+
+        <rect class="n-prop" x="546" y="76" width="116" height="50" rx="4"/>
+        <text class="t-b f-accent" x="556" y="95">spec</text>
+        <text class="t-xs" x="556" y="113">A task ENTRY</text>
+
+        <rect class="n-prop" x="666" y="76" width="116" height="50" rx="4"/>
+        <text class="t-b f-accent" x="676" y="95">implement</text>
+        <text class="t-xs" x="676" y="113">A task ENTRY</text>
+
+        <rect class="n-prop" x="786" y="76" width="116" height="50" rx="4"/>
+        <text class="t-b f-accent" x="796" y="95">review</text>
+        <text class="t-xs" x="796" y="113">A task ENTRY</text>
+
+        <path class="ln" d="M216,126 L216,152"/>
+        <path class="ln" d="M338,126 L338,152"/>
+        <path class="ln" d="M470,126 L470,152"/>
+        <path class="ln" d="M216,152 L470,152"/>
         <path class="ln" d="M470,152 L470,168"/>
-        <path class="ln-soft" d="M832,122 L832,244"/>
-        <text class="t-xs" x="840" y="186">READS</text>
+        <path class="ln-soft" d="M94,126 L94,244"/>
+        <text class="t-xs" x="102" y="186">READS</text>
 
         <rect class="n-box" x="190" y="168" width="560" height="58" rx="4"/>
         <text class="t-b" x="210" y="192">sequencer</text>
@@ -682,11 +693,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <path class="ln" d="M160,476 L780,476"/>
         <path class="ln" d="M470,476 L470,490"/>
 
-        <rect class="n-prop" x="40" y="490" width="860" height="70" rx="4"/>
-        <text class="t-b f-accent" x="60" y="514">harness manager</text>
-        <text class="t-lbl" x="880" y="514" text-anchor="end">ONE SEQUENCER, SHARED BY EVERY PHASE</text>
+        <rect class="n-box" x="40" y="490" width="860" height="70" rx="4"/>
+        <text class="t-b" x="60" y="514">harness manager</text>
+        <text class="t-lbl" x="880" y="514" text-anchor="end">EXISTS &middot; LAB &middot; ONE SEQUENCER; THE LAB RUNS ONE PHASE THROUGH IT</text>
         <text class="t-s" x="60" y="534">provision workspace &#8594; start the run &#8594; let the turn finish &#8594; read the outcome</text>
-        <text class="t-xs" x="60" y="551">&#8594; SETTLE, RETRY, WAIT FOR A STEER, OR POST A ROW TO THE INBOX (SECTION 06)</text>
+        <text class="t-xs" x="60" y="551">&#8594; SETTLE, RETRY, WAIT FOR AN ANSWER, OR POST A ROW TO THE INBOX (SECTION 06)</text>
 
         <path class="ln" d="M470,560 L470,578"/>
 
@@ -702,57 +713,66 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="60" y="715">EXISTS &middot; FENCED &middot; THE RUN SETTLES ITS OWN ROW. THE PARENT RETURNED LONG AGO, WITH terminationReason: "handed-off"</text>
       </svg>
     </div>
-    <figcaption><b>The spine.</b> Everything solid is assembly of parts that already work. Note what is <em>not</em> here: three adapters. There is <b>one</b> harness manager and three small records that differ only in prompt, done-condition, and readable collections &#8212; section 7 shows the work of getting to that answer.</figcaption>
+    <figcaption><b>The spine.</b> Everything solid exists &#8212; in the framework, or in the lab where marked. Note what is <em>not</em> here: three adapters. There is <b>one</b> harness manager and three small records that differ only in prompt, done-condition, and readable collections &#8212; section 7 shows the work of getting to that answer.</figcaption>
   </figure>
 
-  <pre class="code"><i>// PROPOSED &#8212; this flow does not exist. Every API it calls does.</i>
+  <pre class="code"><i>// PROPOSED &#8212; this flow does not exist. Every API it calls does, and the lab</i>
+<i>// ships a one-worker cousin of it: flat actions, no typed groups, one phase.</i>
 const epicBoard = (epicId: string) => <em>taskBoard</em>({
   name: "epic",
-  boardId: `epic:${epicId}`,         <i>// ONE BOARD PER EPIC &#8212; required once any worker is detached</i>
+  boardId: `epic:${epicId}`,         <i>// ONE BOARD PER EPIC &#8212; required once any worker leaves the request</i>
   collection: epicTasks(epicId),     <i>// defineTaskCollection({ id: `tasks:${epicId}`, scope: "user" })</i>
-  dispatcher: "topological",         <i>// deps = the issue graph + phase order</i>
-  concurrency: 2,                    <i>// human attention, not machine capacity</i>
+  dispatcher: "topological",         <i>// the ORDERING STRATEGY &#8212; a string, not the dispatcher() factory below</i>
+  concurrency: 2,                    <i>// human attention, not machine capacity &#8212; and board-wide (section 10)</i>
   onIdle: "complete-or-blocked",
-  workers: {                         <i>// each worker declares uses: [conductorConfig] itself</i>
-    spec:      { worker: <b>harnessPhase</b>(specLogic),      dispatch: { mode: "detached" } },
-    implement: { worker: <b>harnessPhase</b>(implementLogic), dispatch: { mode: "detached" } },
-    review:    { worker: <b>harnessPhase</b>(reviewLogic),    dispatch: { mode: "detached" } },
+  onReview: "exit",                  <i>// a parked row lets the drain return (section 6)</i>
+  workers: {                         <i>// three dispatcher SEATS &#8212; no dispatch: { mode: "detached" } anywhere</i>
+    spec:      <b>dispatcher</b>({ type: "task", target: "spec",      session: "per-task" }),
+    implement: <b>dispatcher</b>({ type: "task", target: "implement", session: "per-task" }),
+    review:    <b>dispatcher</b>({ type: "task", target: "review",    session: "per-task" }),
   },
 });
 
-<i>// One coordinator session holds one epic; how that id reaches a static flow</i>
-<i>// definition is the one piece this partitioning costs, and it is undesigned.</i>
+<i>// One coordinator session holds one epic. The lab reaches the id by building the</i>
+<i>// flow per epic from a factory, and names the limit: a second instance registers,</i>
+<i>// but nothing addresses it by id, so two epics need two hosts. Still open (thread 16).</i>
 const board   = epicBoard(epicId);
 const conduct = <em>sequencer</em>({ id: "conduct" }).step(board.drain);
 
 export const conductor = <em>defineFlow</em>({
   kind: "conductor",
-  resources: { epics, issues, specs, runs, <b>inbox</b>, decisions },
-  request: { concurrency: "queue" },            <i>// a steer queues behind the turn in flight</i>
-  actions: {
-    startEpic: { block: seedEpic },             <i>// objective -&gt; epic + (issue x phase) tasks</i>
-    wake:      { block: conduct },              <i>// an event advances whatever is ready</i>
-    approve:   { block: gate },                 <i>// releases a parked task row</i>
-    <b>steer</b>:     { block: classifyAndRoute },     <i>// a reply -&gt; the workstream that asked</i>
-    status:    { block: readBoard },            <i>// reads rows, dispatches nothing</i>
-  },
+  resources: { epics, issues, specs, runs, <b>inbox</b>, decisions },   <i>// inbox: the question collection</i>
+  request: { concurrency: "queue" },            <i>// the default rung; per-type and per-entry rungs are proposed</i>
+  user: { actions: {                            <i>// a caller &#8212; a person, or the operator board</i>
+    seed:   { block: seedThenDrain },           <i>// an issue-phase -&gt; a row, then one drain</i>
+    status: { block: readBoard },               <i>// reads rows, dispatches nothing</i>
+    <b>answer</b>: { block: answerThenDrain },         <i>// re-queues the parked row it names, then drains</i>
+  } },                                          <i>// a gate and a question are both parked rows: no approve</i>
+  internal: { actions: {                        <i>// a dispatcher block in another request</i>
+    wake:   { block: conduct },                 <i>// an event advances whatever is ready</i>
+  } },
+  task: { actions: {                            <i>// the seats above resolve these; a caller never can</i>
+    spec:      { block: <b>harnessPhase</b>(specLogic) },      <i>// the framework wrapper opens the claim first</i>
+    implement: { block: <b>harnessPhase</b>(implementLogic) },
+    review:    { block: <b>harnessPhase</b>(reviewLogic) },
+  } },
 });</pre>
 
   <div class="tw">
     <table>
       <thead><tr><th>Element</th><th>Status</th><th>Real shape</th></tr></thead>
       <tbody>
-        <tr><td><code>defineFlow(def)</code></td><td><span class="tag t-real">exists</span></td><td>Returns a callable <code>FlowType</code>; <code>flow({ id: "default" })</code> gives a <code>FlowInstance</code>. Options include <code>kind, requireUser, actions, resources, tools, session, request, user, org, tokenCounter, costEstimator, defaultBlockRenderer</code></td></tr>
+        <tr><td><code>defineFlow(def)</code></td><td><span class="tag t-real">exists</span></td><td>Returns a callable <code>FlowType</code>; <code>flow({ id: "default" })</code> gives a <code>FlowInstance</code>. Options include <code>kind, requireUser, actions, resources, tools, session, request, user, org, tokenCounter, costEstimator, defaultBlockRenderer</code>. Under the message-protocol design the <code>user</code> key gains <code>actions</code>, and <code>internal</code>, <code>task</code>, <code>schedule</code> and <code>webhook</code> join it as typed entry groups &#8212; <code>flow.&lt;type&gt;.actions</code> <span class="tag t-prop">proposed</span></td></tr>
         <tr><td>The conductor flow itself</td><td><span class="tag t-real">exists &middot; lab</span></td><td><code>labs/conductor/src/flow.ts</code> declares <code>kind: "conductor"</code> with <code>seed</code>, <code>wake</code>, <code>status</code> and <code>answer</code>, one detached manager worker at <code>concurrency: 1</code>, and <code>onReview: "exit"</code>. One flow per epic, built by a factory, on a user-scoped task collection. The epic-shaped flow above is still assembly: the typed entry groups, a second worker and the roles are unwritten</td></tr>
         <tr><td>Action shape</td><td><span class="tag t-real">exists</span></td><td><code>{ block, inputSchema?, onCompleted?, onErrored?, userMessage?, tokenBudget?, durable?, description?, mcp?, concurrency? }</code>. Input schema <strong>defaults to</strong> <code>block.inputSchema</code>. Real multi-action example: <code>apps/kitchen-sink/flows/chat-agent/flow.ts</code></td></tr>
         <tr><td>Where <code>userId</code> comes from</td><td><span class="tag t-real">exists</span></td><td>Not on the action. The flow carries <code>requireUser?</code> (default true); the caller passes it at dispatch: <code>runAction({ flow, actionName, input, userId, sessionId, stores, runtimeConfig })</code></td></tr>
-        <tr><td><code>request: { concurrency }</code></td><td><span class="tag t-real">exists</span></td><td><code>"allow"</code> (default) | <code>"queue"</code> | <code>"reject"</code>, keyed on <code>session</code> by default. <code>queue</code> serializes same-key requests FIFO &#8212; the property section 6 relies on. <code>debounce</code> and <code>restart</code> parse but are rejected today</td></tr>
-        <tr><td>The five actions</td><td><span class="tag t-prop">proposed</span></td><td><code>startEpic</code>, <code>wake</code>, <code>approve</code>, <code>steer</code>, <code>status</code>. None of them suspends: <code>approve</code> releases a parked task row, the same way <code>steer</code> answers one</td></tr>
+        <tr><td><code>request: { concurrency }</code></td><td><span class="tag t-real">exists</span></td><td><code>"allow"</code> (default) | <code>"queue"</code> | <code>"reject"</code>, keyed on <code>session</code> by default. <code>queue</code> serializes same-key requests FIFO &#8212; the property section 6 relies on. <code>debounce</code> and <code>restart</code> parse but are rejected today. This is the flow default; <code>flow.actions[name].concurrency</code> overrides it for caller actions only, and events and detached dispatches go straight to the default. The message-protocol design makes it one ladder for every type &#8212; default, per-type, per-entry <span class="tag t-prop">proposed</span></td></tr>
+        <tr><td>The entries</td><td><span class="tag t-real">exists &middot; lab</span> <span class="tag t-prop">proposed</span></td><td><code>user: seed, status, answer</code> &middot; <code>internal: wake</code> &middot; <code>task: spec, implement, review</code>. The lab ships <code>seed</code>, <code>wake</code>, <code>status</code> and <code>answer</code> as flat <code>actions</code>; the typed groups and the three <code>task</code> entries are proposed. <code>approve</code> folded into <code>answer</code>: a gate and a question are both parked rows, and one verb re-queues a parked row with an input. None of them suspends</td></tr>
         <tr><td><code>taskBoard(...)</code></td><td><span class="tag t-real">exists</span></td><td>Returns <code>{ drain, collectionId, capability, backing, boardId, detachedWorkers, caps }</code>. <code>drain</code> is a plain <code>SequencerDefinition</code>, used as a step. The capability lands at <code>ctx.cap.&lt;name&gt;.addTask / listTasks / tasks()</code></td></tr>
         <tr><td><code>collection: epicTasks(epicId)</code></td><td><span class="tag t-real">exists</span></td><td><code>defineTaskCollection({ id, scope: "user" })</code>. User scope is deliberate: a parked row is the resume point for a question answered tomorrow morning, so the ledger has to outlive the session that opened it. The <strong>id</strong> is the partition, not the scope. One collection id is one claim pool, the claim predicate tests status and deps only, and nothing narrows a claim to an epic &#8212; so two epics sharing an id can claim and settle each other's rows. Deriving the collection id and the <code>boardId</code> from the epic is what makes &#8220;one board per epic&#8221; true in the code and not only in the prose. <span class="tag t-real">exists &middot; lab</span> The lab locks exactly this: <code>labs/conductor/src/flow.ts</code> derives the collection id and the <code>boardId</code> from the epic and states that a distinct <code>boardId</code> alone is not sufficient, because it never reaches the ledger. The message-protocol design's worked example partitions by session on one static board and does not say what keeps two epic sessions out of one claim pool &#8212; thread 16</td></tr>
         <tr><td>Tasks as (issue &#215; phase)</td><td><span class="tag t-prop">proposed</span></td><td>The shape exists &#8212; <code>TaskInit { id, goal, deps?, assignee?, priority?, maxAttempts? }</code>. This use of it does not. Both the issue graph and the phase order inside an issue are just <code>deps</code></td></tr>
-        <tr><td><code>dispatcher: "topological"</code></td><td><span class="tag t-real">exists</span></td><td>All three dispatchers respect <code>deps</code>: the collection's admission predicate enforces it, not the dispatcher. <code>fifo</code> and <code>topological</code> are byte-identical today, and <code>priority</code> adds only an <code>order</code> comparator. They differ in ordering among eligible tasks, and <code>topological</code> is chosen because it names the intent</td></tr>
-        <tr><td>Routing by <code>assignee</code></td><td><span class="tag t-real">exists</span></td><td>A router. Worker input is <code>{ taskId, goal, title?, context?, input?, attempts, feedback?, metadata?, deps? }</code></td></tr>
+        <tr><td><code>dispatcher: "topological"</code></td><td><span class="tag t-real">exists</span></td><td>All three dispatchers respect <code>deps</code>: the collection's admission predicate enforces it, not the dispatcher. <code>fifo</code> and <code>topological</code> are byte-identical today, and <code>priority</code> adds only an <code>order</code> comparator. They differ in ordering among eligible tasks, and <code>topological</code> is chosen because it names the intent. A strategy string on the board &#8212; not the proposed <code>dispatcher()</code> block factory of section 6</td></tr>
+        <tr><td>Routing by <code>assignee</code></td><td><span class="tag t-real">exists</span></td><td>A router. Worker input is <code>{ taskId, goal, title?, context?, input?, attempts, feedback?, metadata?, deps? }</code>. Under the message-protocol design the branch is a <code>dispatcher</code> seat, and a <code>task</code> dispatch resolves <code>flow.task.actions[row.assignee]</code> through the framework's task-entry wrapper, which opens the claim envelope before the entry runs <span class="tag t-prop">proposed</span></td></tr>
         <tr><td>The harness manager</td><td><span class="tag t-real">exists &middot; lab</span></td><td>The one block of substance this design adds, and the lab ships it: <code>labs/conductor/src/manager.ts</code> &#8212; open the run row, build the prompt and take the checkout, run the harness, read the verdict, settle or fail. One detached worker, constructed from a prompt builder, a done-condition and the collections the phase may read. Not a framework block. Its nearest framework precedent is still <code>packages/orchestration/src/skills/worker-materializer.ts</code>, which adapts non-worker-shaped blocks into board workers by wrapping them compositionally</td></tr>
         <tr><td><code>claudeCodeAgent(options)</code></td><td><span class="tag t-real">exists</span></td><td>A factory returning a handler with <code>inputSchema: z.object({ prompt: z.string() })</code> &#8212; <em>not</em> <code>taskWorkerInputSchema</code>, so it is never a board worker directly. Options include <code>model, systemPrompt, allowedTools, permissionMode, maxTurns, onToolApproval</code></td></tr>
         <tr><td><code>dispatch: { mode: "detached" }</code></td><td><span class="tag t-real">exists &middot; fenced</span></td><td>Needs <code>boardId</code> and a durable collection. Spawns via <code>requireRequestHost(ctx).startDetached({ seed, input, provenance })</code>; the parent returns immediately with the row <code>in_progress</code>. The message-protocol design removes the option from the seat: a <code>dispatcher</code> seat is detached by being a dispatcher, and <code>startDetached</code> takes no new callers <span class="tag t-prop">proposed</span></td></tr>
@@ -767,7 +787,7 @@ export const conductor = <em>defineFlow</em>({
 
   <p>All of that belongs to the <strong>main session</strong>, and it stays exactly as described. It is not the mechanism for anything a spawned run is involved in &#8212; and today nothing stops one reaching for it anyway. A run that calls <code>ctx.suspend</code> gets a suspension: its request parks, the row reads as a job still going, and nobody upstream is told. A fence making the call an error inside a run is decided and filed. <span class="tag t-prop">proposed</span> It is not built.</p>
 
-  <p>Which reaches further than the detached case. Take the three gates of section 3. Two of them &#8212; a spec waiting on approval, a PR waiting on a merge &#8212; are raised <em>after</em> the run that did the work has ended, so there is no request left to suspend by the time anyone is asked. The third could suspend and does not, because running one gate on a different mechanism from the other two buys nothing and costs a second thing to reason about. What waits in all three cases is the task row, parked, and <code>approve</code> releases it. Nothing is given up by dropping the suspension: a parked row is durable state, so it survives a restart the same way a suspension record does, and it survives the run that created it too. The next section is that mechanism.</p>
+  <p>Which reaches further than the detached case. Take the three gates of section 3. Two of them &#8212; a spec waiting on approval, a PR waiting on a merge &#8212; are raised <em>after</em> the run that did the work has ended, so there is no request left to suspend by the time anyone is asked. The third could suspend and does not, because running one gate on a different mechanism from the other two buys nothing and costs a second thing to reason about. What waits in all three cases is the task row, parked, and <code>answer</code> releases it. Nothing is given up by dropping the suspension: a parked row is durable state, so it survives a restart the same way a suspension record does, and it survives the run that created it too. The next section is that mechanism.</p>
 </section>
 
 <section id="start">
@@ -1553,11 +1573,11 @@ type PhaseLogic = {
 
 <section id="many">
   <div class="sec-head"><span class="sec-num">09</span><h2>Many runs, one session</h2></div>
-  <p class="lede">One board, several harness runs at once, and no registry of them anywhere. Concurrency is addressed by topic and read back from durable rows.</p>
+  <p class="lede">One board, several harness runs at once, and no registry of them anywhere. Today a run is addressed by topic; the message-protocol design addresses it by each seat's session policy, <code>per task</code> by default. Either way it is read back from durable rows.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 356" role="img" aria-label="How several concurrent harness runs are addressed inside one session. A parent session holds one epic and one board, with a board id required once any worker is detached. Three task rows sit on it: issue A implement with topic issue A, issue B implement with topic issue B, and issue B review with topic issue B. Each spawns a child whose session id is a hash of tenant, principal, parent session, topic and key. The three children enter with source workstream and resolve the flow's workstream entry, which is terminal. The two rows sharing a topic stay apart because their assignees differ; two rows sharing both would land in the same session. The parent holds no handles and re-reads the rows.">
+      <svg viewBox="0 0 940 364" role="img" aria-label="How several concurrent harness runs are addressed inside one session. A parent session holds one epic and one board, with a board id required once any worker is detached. Three task rows sit on it: issue A implement with topic issue A, issue B implement with topic issue B, and issue B review with topic issue B. Each spawns a child whose session id is a hash of tenant, principal, parent session, lineage, topic and key. The three children enter with source workstream and resolve the flow's workstream entry, which is terminal; that entry is fenced this cycle and its endpoint is the flow's task entries. Today the two rows sharing a topic stay apart because their assignees differ, and two rows sharing both would land in the same session; the proposed session policy on each seat, per task by default, replaces the topic as the discriminator. The parent holds no handles and re-reads the rows.">
         <rect class="n-box" x="16" y="26" width="908" height="56" rx="4"/>
         <text class="t-b" x="36" y="50">parent session</text>
         <text class="t-s" x="36" y="70">one epic &middot; one board &middot; boardId required once any worker is detached</text>
@@ -1586,45 +1606,48 @@ type PhaseLogic = {
         <path class="ln" d="M470,180 L470,192"/>
         <path class="ln" d="M774,180 L774,192"/>
 
-        <text class="t-lbl" x="470" y="208" text-anchor="middle">CHILD SESSION ID = HASH( TENANT &middot; PRINCIPAL &middot; PARENT SESSION &middot; TOPIC &middot; KEY )</text>
+        <text class="t-lbl" x="470" y="208" text-anchor="middle">CHILD SESSION ID = HASH( TENANT &middot; PRINCIPAL &middot; PARENT SESSION &middot; LINEAGE &middot; TOPIC &middot; KEY )</text>
 
         <path class="ln" d="M166,216 L166,228"/>
         <path class="ln" d="M470,216 L470,228"/>
         <path class="ln" d="M774,216 L774,228"/>
 
-        <rect class="n-box" x="40" y="228" width="252" height="76" rx="4"/>
-        <text class="t-s" x="56" y="252">workstream #a41c</text>
-        <text class="t-xs" x="56" y="270">source: "workstream"</text>
-        <text class="t-xs" x="56" y="287">resolves flow.workstream &#8212; terminal</text>
+        <rect class="n-box" x="40" y="228" width="252" height="84" rx="4"/>
+        <text class="t-s" x="56" y="252">run #a41c</text>
+        <text class="t-xs" x="56" y="269">source: "workstream" &middot; FENCED</text>
+        <text class="t-xs" x="56" y="285">resolves flow.workstream &#8212; terminal</text>
+        <text class="t-xs" x="56" y="301">ENDPOINT: flow.task.actions</text>
 
-        <rect class="n-box" x="344" y="228" width="252" height="76" rx="4"/>
-        <text class="t-s" x="360" y="252">workstream #7e02</text>
-        <text class="t-xs" x="360" y="270">source: "workstream"</text>
-        <text class="t-xs" x="360" y="287">resolves flow.workstream &#8212; terminal</text>
+        <rect class="n-box" x="344" y="228" width="252" height="84" rx="4"/>
+        <text class="t-s" x="360" y="252">run #7e02</text>
+        <text class="t-xs" x="360" y="269">source: "workstream" &middot; FENCED</text>
+        <text class="t-xs" x="360" y="285">resolves flow.workstream &#8212; terminal</text>
+        <text class="t-xs" x="360" y="301">ENDPOINT: flow.task.actions</text>
 
-        <rect class="n-box" x="648" y="228" width="252" height="76" rx="4"/>
-        <text class="t-s" x="664" y="252">workstream #b930</text>
-        <text class="t-xs" x="664" y="270">source: "workstream"</text>
-        <text class="t-xs" x="664" y="287">resolves flow.workstream &#8212; terminal</text>
+        <rect class="n-box" x="648" y="228" width="252" height="84" rx="4"/>
+        <text class="t-s" x="664" y="252">run #b930</text>
+        <text class="t-xs" x="664" y="269">source: "workstream" &middot; FENCED</text>
+        <text class="t-xs" x="664" y="285">resolves flow.workstream &#8212; terminal</text>
+        <text class="t-xs" x="664" y="301">ENDPOINT: flow.task.actions</text>
 
-        <text class="t-lbl" x="470" y="326" text-anchor="middle">SAME TOPIC, DIFFERENT ASSIGNEE &#8594; DIFFERENT SESSION. SAME BOTH &#8594; THE SAME SESSION.</text>
-        <text class="t-lbl" x="470" y="344" text-anchor="middle">THE PARENT HOLDS NO HANDLES. IT RE-READS THE ROWS.</text>
+        <text class="t-lbl" x="470" y="334" text-anchor="middle">TODAY: SAME TOPIC + SAME ASSIGNEE &#8594; THE SAME SESSION. PROPOSED: THE SEAT'S SESSION POLICY DECIDES.</text>
+        <text class="t-lbl" x="470" y="352" text-anchor="middle">THE PARENT HOLDS NO HANDLES. IT RE-READS THE ROWS.</text>
       </svg>
     </div>
-    <figcaption><b>Addressing, not bookkeeping.</b> Nothing registers a running child. Identity is derived &#8212; which is what lets a steer find a run without a registry, and equally what makes two runs that should differ collapse into one if they share a topic and an assignee. A per-phase decision, not a default to accept.</figcaption>
+    <figcaption><b>Addressing, not bookkeeping.</b> Nothing registers a running child. Identity is derived &#8212; which is what lets an answer find a run without a registry today, and equally what makes two runs that should differ collapse into one if they share a topic and an assignee. The message-protocol design moves that decision onto the seat: <code>per task</code> (the default), <code>per key</code>, <code>per worker</code>, or an explicit <code>session</code>.</figcaption>
   </figure>
 
-  <p>Each concurrent run is identified by a derived child session id, hashed from tenant, principal, parent session, topic, and key. <code>topic</code> comes from <code>task.metadata.topic</code>, falling back to <code>taskId</code>. The worker coordinate is <code>{kind:"assignee",name} | {kind:"uniform"} | {kind:"floor"}</code>, and the spawn seed is <code>workstreamRoutingSeed({ boardId, coordinate, topic, topicFallback: claim.taskId })</code>. The child enters with <code>source: "workstream"</code> and resolves <code>flow.workstream</code>, which is terminal &#8212; <code>flow.actions</code> is unreachable from inside a workstream. That terminality is what the call-site rule of section 1 rests on. It does not by itself stop a dispatched role writing to the board, which is reachable as a capability from anywhere &#8212; keeping one writer is a choice the design makes, not one the framework makes for it (thread 5).</p>
+  <p>Each concurrent run is identified by a derived child session id, hashed from tenant, principal, parent session, lineage, topic, and key. <code>topic</code> comes from <code>task.metadata.topic</code>, falling back to <code>taskId</code>. The worker coordinate is <code>{kind:"assignee",name} | {kind:"uniform"} | {kind:"floor"}</code>, and the spawn seed is <code>workstreamRoutingSeed({ boardId, coordinate, topic, topicFallback: claim.taskId })</code> <span class="tag t-real">exists &middot; fenced</span> &#8212; at the endpoint the derivation shrinks to &#8220;first spawn for this row&#8221;. The child enters with <code>source: "workstream"</code> and resolves <code>flow.workstream</code>, which is terminal &#8212; <code>flow.actions</code> is unreachable from inside a spawned run <span class="tag t-real">exists &middot; fenced</span>. The endpoint renames the source <code>"task"</code> and the entry <code>flow.task.actions</code>, and generalizes the terminality to every type: a message addressed to a type with no such entry refuses, and nothing falls through to another type's map <span class="tag t-prop">proposed</span>. That terminality is what the call-site rule of section 1 rests on. It does not by itself stop a dispatched role writing to the board, which is reachable as a capability from anywhere &#8212; keeping one writer is a choice the design makes, not one the framework makes for it (thread 5).</p>
 
-  <p><strong>Topic is the discriminator, and section 6 leans on it.</strong> Deriving identity from the topic is exactly what makes a steer routable: the coordinator reads the topic off the inbox row, and the same seed lands in the same child session. It also means two implement runs on one issue that must proceed concurrently need different topics, and two runs that should share a session need the same one. The design has to say which, per phase.</p>
+  <p><strong>Topic is the discriminator today, and the message-protocol design retires it.</strong> Deriving identity from the topic is what lets a second task on the same topic adopt the same child session, and it is the mechanism this document once leaned on to land an answer in the run that asked. The design puts that decision on the seat instead: a <code>dispatcher</code> carries a session policy &#8212; <code>per task</code> (the default when dispatched), <code>per key</code> (one issue across spec, implement and review), <code>per worker</code> (one long-lived session), or an explicit <code>session</code> from its <code>resolve</code> slot <span class="tag t-prop">proposed</span>. Under <code>per task</code> a same-session steer is not automatic: every row mints its own session, so an answer that must land in the run's session takes <code>per key</code> or an explicit <code>session</code>. And <code>per worker</code> does not hold across parents yet: the derivation hashes the parent session before the key, so two sessions draining one user-scoped board get two worker sessions from one seed (thread 18).</p>
 
   <div class="tw">
     <table>
       <thead><tr><th>Question</th><th>Answer</th></tr></thead>
       <tbody>
-        <tr><td>How do two concurrent runs stay apart?</td><td>Different <code>topic</code>, or different <code>assignee</code>. Same both means the same child session</td></tr>
+        <tr><td>How do two concurrent runs stay apart?</td><td>Today: different <code>topic</code>, or different <code>assignee</code>; same both means the same child session <span class="tag t-real">exists &middot; fenced</span>. Proposed: the seat's session policy, <code>per task</code> unless it says otherwise</td></tr>
         <tr><td>How does the parent find them?</td><td>It re-reads the durable task rows. That is the handle</td></tr>
-        <tr><td>Can it enumerate live runs?</td><td>Enumerate, yes &#8212; <code>GET /api/flows/sessions/:sessionId/workstreams</code> lists a session's children, each with a derived status <span class="tag t-real">exists</span>. Live, no &#8212; a derived status is not proof a run is alive; liveness is the next row. The durable rows stay the handle</td></tr>
+        <tr><td>Can it enumerate live runs?</td><td>Enumerate, yes &#8212; <code>GET /api/flows/sessions/:sessionId/workstreams</code> lists a session's children, each with a derived status <span class="tag t-real">exists &middot; fenced</span> &#8212; renamed <code>/children</code> at the endpoint, deferred. Live, no &#8212; a derived status is not proof a run is alive; liveness is the next row. The durable rows stay the handle</td></tr>
         <tr><td>Can it tell whether one is alive?</td><td><code>ctx.requestHost.livenessOf(requestIds)</code> &#8212; an <em>optional</em> method, absent when the liveness gate refuses. Design for it being missing</td></tr>
         <tr><td>What settles a row?</td><td>The run, through the runner's fenced recorders. Never the parent</td></tr>
         <tr><td>What does the operator see?</td><td><code>task-change</code> items plus a transient board-meta component carrying <code>{ status, terminationReason, counts }</code>, both already emitted</td></tr>
@@ -1658,13 +1681,13 @@ type PhaseLogic = {
     <table>
       <thead><tr><th>Setting</th><th>Default</th><th>Note</th></tr></thead>
       <tbody>
-        <tr><td><code>concurrency</code></td><td>4</td><td>We run 2, on a human-attention argument rather than a machine one</td></tr>
+        <tr><td><code>concurrency</code></td><td>4</td><td>We run 2, on a human-attention argument rather than a machine one. Board-wide: it caps every assignee together, and max-N for one entry is not expressible &#8212; the arbiter is a mutex per key, so max-1 falls out of a constant key with <code>queue</code> and max-2 needs a counting semaphore nobody has proposed (thread 20)</td></tr>
         <tr><td><code>maxEnqueuedTasks</code> / <code>maxTotalTasks</code> / <code>maxTotalRetries</code></td><td>100 / 500 / 50</td><td>An epic of 8 issues &#215; 3 phases is 24 tasks. The caps are not the binding constraint</td></tr>
-        <tr><td><code>dispatcher</code></td><td><code>topological</code></td><td>All three respect <code>deps</code>: the admission predicate enforces it, not the dispatcher. They differ in ordering among eligible tasks, and <code>topological</code> names the intent</td></tr>
+        <tr><td><code>dispatcher</code></td><td><code>topological</code></td><td>All three respect <code>deps</code>: the admission predicate enforces it, not the dispatcher. They differ in ordering among eligible tasks, and <code>topological</code> names the intent. The ordering strategy &#8212; not the <code>dispatcher()</code> block factory of section 6, which is a seat</td></tr>
         <tr><td><code>onIdle</code></td><td><code>complete-or-blocked</code></td><td>Decides what a wake returns when everything is waiting. <code>awaiting_review</code> keeps the loop alive in every mode, which is useful for a short wait and deliberately not what the question channel rests on (section 6)</td></tr>
-        <tr><td><code>boardId</code></td><td>&#8212;</td><td>Required, not optional, once any worker is detached. Derived from the epic rather than a literal, so one board is one epic (section 4)</td></tr>
+        <tr><td><code>boardId</code></td><td>&#8212;</td><td>Required, not optional, once any worker leaves the request. Derived from the epic rather than a literal, and so is the collection id, so one board is one epic (section 4) <span class="tag t-real">exists &middot; lab</span></td></tr>
         <tr><td><code>maxIterations</code> / <code>idlePollMs</code> / <code>shouldExit</code></td><td>10000 / 50ms / &#8212;</td><td>Loop safety. <code>shouldExit</code> is where "stop this epic" would live</td></tr>
-        <tr><td><code>request.concurrency</code></td><td><code>allow</code></td><td>Flow-level, not board-level. Set it to <code>queue</code>, or a steer races the turn it is steering</td></tr>
+        <tr><td><code>request.concurrency</code></td><td><code>allow</code></td><td>Flow-level, not board-level. Set it to <code>queue</code>, or a steer races the turn it is steering. Today the per-entry override exists for caller actions only; the message-protocol design makes it a ladder &#8212; default, then per-type, then per-entry &#8212; for every type <span class="tag t-prop">proposed</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -1677,14 +1700,14 @@ export const conductorConfig = <b>createConductorCapability</b>({
     review:    { harness: "claude-code", gate: "auto",  rounds: 12, askPolicy: "decide", reads: [issues, specs] },
   },
   board: { concurrency: 2, dispatcher: "topological", onIdle: "complete-or-blocked" },
-  inbox: { serialize: true },        <i>// the coordinator asks one row at a time</i>
+  inbox: { serialize: true },        <i>// the question collection: one row asked at a time</i>
 });
 
 <i>// the manager declares     uses: [conductorConfig]</i>
 <i>// narrowed per epic with    conductorConfig.with({ &#8230; })</i>
 <i>// open values via           conductorConfig.config(value)</i></pre>
 
-  <p>The primitive is <code>defineCapability({ name, resources?, sessionStateSchema?, requestStateSchema?, userStateSchema?, orgStateSchema?, presets?, config?: { schema?, resolve } })</code>, and it exists. What is proposed is one capability that owns the phase table, so the harness manager asks <code>ctx.cap</code> for its policy instead of having it compiled in. It is declared on a <strong>block</strong>, not on the flow: <code>uses</code> is a slot on blocks and capabilities, and <code>FlowDefinition</code> has none. Inside one request the inheritance is free &#8212; <em>&#8220;accessors provided by an ancestor are inherited untouched&#8230; a block only constructs the caps it adds&#8221;</em> &#8212; so everything nested under the manager sees the table. Across a workstream boundary nothing is inherited at all: a detached dispatch is a separate request in a separate session with a fresh context, and no <code>ctx</code> crosses. What makes the table uniform there is plainer. The worker block declares the capability itself, and the same definition runs on the inline-drain path and the detached one, so a manager inside a workstream reads the phases its dispatcher read because it is the same block. Open thread 13.</p>
+  <p>The primitive is <code>defineCapability({ name, resources?, sessionStateSchema?, requestStateSchema?, userStateSchema?, orgStateSchema?, presets?, config?: { schema?, resolve } })</code>, and it exists. What is proposed is one capability that owns the phase table, so the harness manager asks <code>ctx.cap</code> for its policy instead of having it compiled in. It is declared on a <strong>block</strong>, not on the flow: <code>uses</code> is a slot on blocks and capabilities, and <code>FlowDefinition</code> has none. Inside one request the inheritance is free &#8212; <em>&#8220;accessors provided by an ancestor are inherited untouched&#8230; a block only constructs the caps it adds&#8221;</em> &#8212; so everything nested under the manager sees the table. Across a dispatch boundary nothing is inherited at all: a dispatched task is a separate request in a separate session with a fresh context, and no <code>ctx</code> crosses. What makes the table uniform there is plainer, and the message-protocol design sharpens it: a dispatcher seat is a different block from an inline seat &#8212; the seat holds a <code>dispatcher({ type: "task", target })</code>, and the phase block sits at <code>flow.task.actions.&lt;phase&gt;</code> &#8212; so it is the phase block, not the seat, that declares the capability, and a manager inside a spawned run reads the phases because that block carries them. The lab does none of this yet: its config is read from the environment and refused at startup when it cannot work (<code>labs/conductor/src/config-env.ts</code>) <span class="tag t-real">exists &middot; lab</span>. Open thread 13.</p>
 
   <div class="note">
     <span class="lbl">Workforce &#8212; a harness to drive, and a layer to choose</span>
