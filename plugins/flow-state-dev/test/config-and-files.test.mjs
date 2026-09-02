@@ -5,6 +5,7 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
+import { symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildReport, REPORT_SCHEMA, meetsNodeFloor } from "../skills/install-fsd/detect/report.mjs";
 import { inspectRegistry, resolveLoadedConfig } from "../skills/install-fsd/detect/fsdev-config.mjs";
@@ -375,6 +376,30 @@ describe("detection writes nothing", () => {
       { encoding: "utf-8" },
     );
     expect(snapshotTree(root)).toEqual(before);
+  });
+});
+
+describe("the writes-nothing check ignores git's own bookkeeping", () => {
+  // Why the snapshot skips `.git/` is on `snapshotTree` in helpers.mjs; these pin the two ways the
+  // race showed up before it did.
+
+  it("does not flag a file git created under .git/ between the two snapshots", () => {
+    const root = makeTree({ ...base, ".gitignore": ".env.local\n" });
+    initGit(root);
+    const before = snapshotTree(root);
+    writeFileSync(join(root, ".git/objects/fsd-test-created.lock"), "");
+    buildReport(root);
+    expect(snapshotTree(root)).toEqual(before);
+  });
+
+  it("does not walk .git/, so an entry that vanishes there between listing and stat cannot throw", () => {
+    // A dangling symlink is listed by readdirSync and fails statSync with ENOENT — the same shape
+    // as git deleting its lock between the two calls, without having to win a race to show it.
+    // Planted under a name git never creates, so the setup can't collide with git's own lock.
+    const root = makeTree({ ...base, ".gitignore": ".env.local\n" });
+    initGit(root);
+    symlinkSync(join(root, ".git/objects/gone.lock"), join(root, ".git/objects/fsd-test-vanished.lock"));
+    expect(() => snapshotTree(root)).not.toThrow();
   });
 });
 

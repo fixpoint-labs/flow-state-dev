@@ -43,11 +43,16 @@ export function cleanupTrees() {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 }
 
-/** Every file beneath `root` with its size and mtime — the snapshot a "writes nothing" check compares. */
+/**
+ * Every file beneath `root` with its size and mtime — the snapshot a "writes nothing" check compares.
+ * Skips `.git/`: it is git's bookkeeping, not the project, and background maintenance creates and
+ * removes files there on its own clock, so walking it races git instead of checking the script.
+ */
 export function snapshotTree(root) {
   const seen = {};
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === ".git") continue;
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(path);
