@@ -443,10 +443,11 @@ export type FlowDefinition<
 
   /**
    * The flow's `task` entries — where a task board hands a claimed row off to
-   * run in a session of its own. **Declared as `tasks: board.tasks`**: the
-   * board produces them, each wrapping the seat's worker in the board's claim
-   * gate, and `defineFlow` refuses an entry a board did not produce. Two boards
-   * spread together: `tasks: { ...issues.tasks, ...reviews.tasks }`.
+   * run in a session of its own. Declared like actions, `tasks: { implement:
+   * { block } }`, and reached only by a `task` dispatch from a
+   * `dispatcher({ type: "task", target: "implement" })` seat on a board the
+   * flow reaches. `defineFlow` puts each entry behind that board's claim gate
+   * and refuses an entry no board addresses.
    */
   tasks?: Record<string, TaskEntry>;
 
@@ -570,8 +571,8 @@ export type FlowInstance<
   internal?: Record<string, InternalEntry>;
   /**
    * See {@link FlowDefinition.tasks}. Absent when the flow declares none. Every
-   * entry present here passed `isTaskEntry` at definition, so a `task` dispatch
-   * can only ever reach a worker through its board's claim gate.
+   * entry here is the declared entry rebuilt behind its board's claim gate, so
+   * a `task` dispatch can only ever reach the worker through that gate.
    */
   tasks?: Record<string, TaskEntry>;
   session?: TSession;

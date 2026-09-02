@@ -528,18 +528,20 @@ Every arrival at a flow is a **dispatch** of one **type**, delivered to one **en
 |---|---|---|
 | `public` | `actions` | A caller over HTTP, MCP, voice, or a custom transport |
 | `internal` | `internal` | A `dispatcher()` block in one of the flow's own running requests |
-| `task` | `tasks` | A task board handing a claimed row to a child session (`tasks: board.tasks`) |
+| `task` | `tasks` | A task board handing a claimed row to a child session, from a `dispatcher({ type: "task" })` seat |
 | `chat` | `chat.on` | The chat adapter |
 | `webhook` | `webhooks.<provider>.on` | The webhook adapter |
 | `schedule` | `schedules.static` | The host scheduler |
 
-`internal` and `tasks` are definition-only, like the transport maps: passing either to the instance call (`defineFlow({ ... })({ internal })`) throws. Every entry of every type has the same core shape as an action — `{ block, inputSchema?, concurrency?, durable?, tokenBudget?, onCompleted?, onErrored?, userMessage? }` — and only `actions` adds the caller-facing `description` and `mcp` fields. A `tasks` entry must be one a board produced; `defineFlow` refuses a hand-written `{ block }` there.
+`internal` and `tasks` are definition-only, like the transport maps: passing either to the instance call (`defineFlow({ ... })({ internal })`) throws. Every entry of every type has the same core shape as an action — `{ block, inputSchema?, concurrency?, durable?, tokenBudget?, onCompleted?, onErrored?, userMessage? }` — and only `actions` adds the caller-facing `description` and `mcp` fields.
 
-`resolveEntry(flow, type, name, coordinate?)` is the lookup itself, exported for hosts and adapters, alongside `DispatchType`, `DISPATCH_TYPES`, `BlockDispatchType`, `EntryMaps`, `EntryCoordinate`, `InternalEntry`, `TaskEntry`, `isTaskEntry`, `markTaskEntry`, and `TASK_ENTRY`.
+A `tasks` entry is declared as a plain block, but a `task` dispatch does not run the entry's block as-is. Before the block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError`. The block then receives the worker input the row was claimed with. `defineFlow` throws, naming the block and the entry, for a task entry no reachable board hands off to, a task dispatcher no board holds, and two boards handing off to one entry.
+
+`resolveEntry(flow, type, name, coordinate?)` is the lookup itself, exported for hosts and adapters, alongside `DispatchType`, `DISPATCH_TYPES`, `BlockDispatchType`, `EntryMaps`, `EntryCoordinate`, `InternalEntry`, and `TaskEntry`.
 
 ### `dispatcher(config)`
 
-A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `target`) is fixed on the block; the session and the payload are computed per call from the block's input.
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `target`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes, told apart by `type`: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal[target]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.tasks[target]`.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -596,18 +598,46 @@ export default defineFlow({
 
 | Field | What it does |
 |---|---|
-| `type` | The dispatch type. Authored dispatchers send `"internal"`; `task` dispatches are sent only by a task board. |
-| `target` | The entry name, resolved as `flow.internal[target]`. Checked when the flow is defined. |
-| `inputSchema` | What the block accepts. Defaults to `z.unknown()`. |
-| `session` | `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one. |
-| `payload` | `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
+| `type` | `"internal"` sends this request's own authority; `"task"` sends a claim on a durable row and is meaningful only as a task board seat. |
+| `target` | The entry name, resolved as `flow.internal[target]` or `flow.tasks[target]`. Checked when the flow is defined. |
+| `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
+| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one. `task`: a `TaskSessionPolicy` — `"per-task"` (one child per row), `"per-worker"` (one child per seat), or `{ key: (task, ctx) => string }` read from the row's worker input. |
+| `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
 | `transient` | Hide the block's trace from clients. Default `false`. |
+
+A `task` dispatcher's input is the claim envelope — `taskDispatchInputSchema` / `TaskDispatchInput`, `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }` — which only a task board mints, from the row it claimed. Put the block under a board's `workers` where an inline worker would go:
+
+```ts
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+
+const board = taskBoard({
+  name: "issue-work",
+  boardId: "issue-work",
+  collection: issues,                          // a defineTaskCollection()
+  workers: {
+    triage: triageWorker,                        // runs inline, in the drain
+    implement: dispatcher({                      // hands off
+      name: "hand-off-implement",
+      type: "task",
+      target: "implement",                       // flow.tasks.implement
+      session: "per-task",
+    }),
+  },
+});
+
+export default defineFlow({
+  kind: "issues",
+  actions: { drain: { block: board.drain } },
+  tasks: { implement: { block: implementWorker } },  // what runs in the child session
+})();
+```
 
 The block returns a `DispatchHandle` (`dispatchHandleSchema`): `{ sessionId, requestId, adopted }` — the session the dispatch runs in, the request it became, and whether a `key` landed on a child that already existed. It returns once the runtime has accepted the request and does not wait for the work; read the child's progress from that session's own request history.
 
 A `key` child is derived from the key together with the running request's principal, tenant, parent session, and lineage, so the same key from a different parent is a different child, and nothing a caller supplies can address someone else's. The child's session record carries `parentSessionId`, `topic` (the key), and `coordinate` (`"internal:summarize"`). An `id` target must exist, belong to this flow kind, this principal, and this tenant, and not be bound to a different org.
 
-`defineFlow` walks every block it can reach — sequencer steps, rescue handlers, a generator's `tools`, the `blocks` a `forEach` / `forEachSideChain` factory declares, and the blocks behind `internal` and `tasks` entries — and throws when a dispatcher names an entry the flow does not declare, naming the block and the address. A target chosen from data is a `router` over declared dispatchers, not a dynamic string.
+`defineFlow` checks every block it can reach — sequencer steps, rescue handlers, a generator's `tools`, the `blocks` a `forEach` / `forEachSideChain` factory declares, and the blocks behind `internal` and `tasks` entries — and throws when a dispatcher names an entry the flow does not declare, naming the block and the address. A target chosen from data is a `router` over declared dispatchers, not a dynamic string.
 
 At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-refused"`), carrying `blockName`, `address`, `detail`, and `refused`:
 
@@ -622,7 +652,7 @@ At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-r
 
 Every refusal is decided before anything is dispatched, so a `.rescue()` on the dispatcher can branch on `refused` knowing nothing started. A `key` or `id` function that returns an empty string throws a plain `Error` naming the block. On a context no runtime wired (a hand-built test context), the block throws `NoDispatchSeamError` (`code: "no-dispatch-seam"`); attach a `DispatchSeam` under the `DISPATCH_SEAM` symbol key to test one.
 
-**Substrate exports.** A package that builds its own dispatching block (a task board's hand-off) calls `dispatchThroughSeam(ctx, spec)` and stamps the block with `markDispatcher(block, address)` so the definition-time walk sees it. The types are `DispatchAddress`, `SessionTarget`, `DispatchSpec`, `DispatchOutcome`, `DispatchRefusal`, and `DispatchSeam`.
+**Substrate exports.** A package that builds its own dispatching block (a task board's hand-off) calls `dispatchThroughSeam(ctx, spec)` and stamps the block with `markDispatcher(block, address)` so the definition-time walk sees it. A task board also binds its claim gate onto that block with `bindTaskDispatcher(block, { boardId, gate })` (`TaskBinding`; read back with `taskBindingOf`), which is what `defineFlow` applies to the entry the block addresses, and derives the child-session key with `taskSessionKeyFor(blockName, policy, envelope, ctx)` — the same derivation `dispatcher()` uses. The types are `DispatchAddress`, `SessionTarget`, `DispatchSpec`, `DispatchOutcome`, `DispatchRefusal`, `DispatchSeam`, `TaskSessionPolicy`, and `TaskDispatchInput`.
 
 ## Reaching the runtime from a capability (`ctx.requestHost`)
 

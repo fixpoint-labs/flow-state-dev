@@ -18,7 +18,7 @@
  * `setAssignee` on an inline board is a normal, used operation.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { dispatcher, handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
@@ -196,7 +196,12 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
       boardId: "wired-detached",
       collection: defineTaskCollection({ id: "wired-detached-coll", scope: "user" }),
       workers: {
-        implement: { block: workerBlock("wired-impl"), session: "per-task" },
+        implement: dispatcher({
+          name: "wired-impl-seat",
+          type: "task",
+          target: "implement",
+          session: "per-task",
+        }),
       },
     });
 
@@ -295,7 +300,12 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-a",
       collection: ledger,
       workers: {
-        implement: { block: workerBlock("owner-impl-a"), session: "per-task" },
+        implement: dispatcher({
+          name: "owner-impl-a-seat",
+          type: "task",
+          target: "implement",
+          session: "per-task",
+        }),
       },
     });
 
@@ -332,7 +342,12 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-b",
       collection: ledger,
       workers: {
-        implement: { block: workerBlock("owner-impl-b"), session: "per-task" },
+        implement: dispatcher({
+          name: "owner-impl-b-seat",
+          type: "task",
+          target: "implement",
+          session: "per-task",
+        }),
       },
     });
 
@@ -390,7 +405,12 @@ describe("assignee immutability is a property of the shared ledger", () => {
         // no boardId — refused
         collection: ledger,
         workers: {
-          implement: { block: workerBlock("owner-impl-e"), session: "per-task" },
+          implement: dispatcher({
+          name: "owner-impl-e-seat",
+          type: "task",
+          target: "implement",
+          session: "per-task",
+        }),
         },
       })
     ).toThrow(/no boardId/);
@@ -412,46 +432,6 @@ describe("assignee immutability is a property of the shared ledger", () => {
     });
   });
 
-  it("does not freeze when a detached worker is refused for its session state", async () => {
-    // The second refusal that fires on a durable board, so the deferral cannot
-    // be satisfied by special-casing the missing-boardId check alone.
-    const ledger = defineTaskCollection({ id: "shared-ledger-f", scope: "user" });
-    const statefulWorker = handler({
-      name: "stateful-impl-f",
-      inputSchema: taskWorkerInputSchema,
-      outputSchema: z.null(),
-      sessionStateSchema: z.object({ seen: z.number().nullable().default(null) }),
-      execute: () => null,
-    }) as TaskWorker;
-
-    expect(() =>
-      taskBoard({
-        name: "invalid-detached-f",
-        boardId: "invalid-detached-f",
-        collection: ledger,
-        workers: {
-          implement: { block: statefulWorker, session: "per-task" },
-        },
-      })
-    ).toThrow(/sessionStateSchema/);
-
-    const survivor = taskBoard({
-      name: "survivor-f",
-      collection: ledger,
-      workers: { implement: workerBlock("survivor-impl-f") },
-    });
-
-    const result = await testBlock(reassignThroughCapability(survivor, "survivor-f"), {
-      input: undefined,
-    });
-
-    expect(result.error).toBeNull();
-    expect(result.output).toMatchObject({
-      outcome: { outcome: "recorded" },
-      assignee: "review",
-    });
-  });
-
   it("does not leak the policy to a different ledger", async () => {
     // Identity is the declaration object, not the collection id or the mere fact
     // that some board somewhere is detached. A second ledger must be untouched.
@@ -463,7 +443,12 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-d",
       collection: detachedLedger,
       workers: {
-        implement: { block: workerBlock("owner-impl-d"), session: "per-task" },
+        implement: dispatcher({
+          name: "owner-impl-d-seat",
+          type: "task",
+          target: "implement",
+          session: "per-task",
+        }),
       },
     });
 

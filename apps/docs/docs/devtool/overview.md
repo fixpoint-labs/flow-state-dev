@@ -90,7 +90,7 @@ When a block fails, the detail panel surfaces enough context to diagnose without
 
 Some work leaves the session you are watching. A flow can send work to a **child session** — a session of its own that keeps going after the request which started it has returned — either through a `dispatcher()` block or by handing a task-board seat off with `{ worker, session }`. None of that work shows up in the conversation's own stream or trace.
 
-The Children tab lists it, one row per child session: the topic (the key the child was derived from), the coordinate (`task:<seat>` or `internal:<entry>`, shown as `task / <seat>`), the board tasks it is running, the state its runs reached, when it was last updated, and its session id. The tab's badge counts the rows.
+The Children tab lists it, one row per child session: the topic (the key the child was derived from), the coordinate (`task:<entry>` or `internal:<entry>`, shown as `task / <entry>`), the board tasks it is running, the state its runs reached, when it was last updated, and its session id. The tab's badge counts the rows.
 
 Click a row and the workspace opens that child session. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it, and a child that dispatches work of its own has a Children tab too. A trail above the tabs shows how deep you are; click an earlier session in it to go back.
 
@@ -98,7 +98,7 @@ A few things worth knowing about a row:
 
 - **Status is coarse on purpose.** `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A row with no status reads "not started": nothing has run in it yet.
 - **Labels can be missing.** The topic and coordinate are stamped by whatever started the work. A row without them still renders, its topic marked "unlabelled" — the session id is the address.
-- **The task link is a match, not a foreign key.** A row is linked to a board task when its coordinate is `task:<assignee>` and its topic contains the task's id or equals the task's `metadata.topic`. Where that fits exactly one child and one board, the Tasks tab shows a link on that task's row and the Children tab names the task. Where it fits more than one, or none, no link is shown rather than a guessed one. The exact link is `metadata.dispatch.taskId` on the child's own requests.
+- **The task link is a match, not a foreign key.** A row is linked to a board task when its coordinate is `task:<entry>` (the seat's `target`) and its topic contains the task's id or equals the task's `metadata.topic`. Where that fits exactly one child and one board, the Tasks tab shows a link on that task's row and the Children tab names the task. Where it fits more than one, or none, no link is shown rather than a guessed one. The exact link is `metadata.dispatch.taskId` on the child's own requests.
 
 The list is read when you open a session, when you refresh, and when you come back to the DevTool after switching away; it does not poll while you watch. A session with more children than one page says so at the top of the tab. See [Detached work](/docs/server/background-work).
 

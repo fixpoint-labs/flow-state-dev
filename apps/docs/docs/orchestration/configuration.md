@@ -31,11 +31,10 @@ const board = taskBoard({
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `name` | `string` | required | Outer sequencer name and prefix for internal blocks. Unique inside a flow if you mount more than one board. |
-| `boardId` | `string` | omitted | Stable id. Required when any worker uses detached dispatch. Renaming orphans live work keyed on the old value. |
-| `dispatch` | dispatch object | omitted (inline) | Dispatch mode for a **uniform** worker (a single block). Do not set this on a registry board; declare it per worker instead. |
+| `boardId` | `string` | omitted | Stable id. Required when any seat hands off. Renaming orphans live work keyed on the old value. |
 | `collection` | request spec, sequencer spec, `defineTaskCollection`, or factory | request-backed, `collectionId` = `name` | Where the task list lives. Omit it for the request default. |
-| `workers` | one block, or a name → worker map | required | A single worker runs every claimed task. A registry routes by `task.assignee`. |
-| `defaultWorker` | block or `{ block, session }` | omitted | Registry fallback for an unknown or missing assignee. Omit it and a miss fails the task per `onError`. |
+| `workers` | one block, or a name → block map | required | A single worker runs every claimed task. A registry routes by `task.assignee`; a `dispatcher({ type: "task" })` in a registry seat hands that seat's rows to a child session. See [Task board](./task-board#handing-tasks-off-to-child-sessions). |
+| `defaultWorker` | block | omitted | Registry fallback for an unknown or missing assignee. Omit it and a miss fails the task per `onError`. Runs inline; a dispatcher here is refused. |
 | `concurrency` | `number` | `4` | How many workers run in parallel. |
 | `maxEnqueuedTasks` | `number \| null` | `100` | Cap on tasks added while others are still `pending`. `null` is unbounded. Only when the board builds its own collection. |
 | `maxTotalTasks` | `number \| null` | `500` | Cap including completed and failed tasks. Those still count after they finish. Same supplied-collection rule as `maxEnqueuedTasks`. |

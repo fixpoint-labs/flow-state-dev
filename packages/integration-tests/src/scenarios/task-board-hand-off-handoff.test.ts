@@ -1,8 +1,8 @@
 /**
  * FIX-982 — the launching request must return while its handed-off work runs.
  *
- * A board that declares a worker `{ worker, session: "per-task" }` runs it in
- * a child session instead of inline. Everything about that hand-off already
+ * A board whose seat holds a `dispatcher({ type: "task", session: "per-task" })`
+ * runs that seat's rows in a child session instead of inline. Everything about that hand-off already
  * worked: the drain claims the row, dispatches to the child, clears its own
  * claim, and the row stays `in_progress` for the child session to settle.
  * What did not work was the *exit question*. `boardQuiescence` counted that
@@ -36,7 +36,7 @@
  * runnable work behind rather than an orphaned row.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import {
   createFlowApiRouter,
@@ -112,7 +112,7 @@ function buildFlow(options: {
    * frames the raw task id and never reads `metadata.topic` — only the
    * provenance scenario below needs a policy that does.
    */
-  session?: TaskSessionPolicy;
+  session?: TaskSessionPolicy<TaskWorkerInput>;
 }) {
   const ran: string[] = [];
 
@@ -137,7 +137,12 @@ function buildFlow(options: {
     workers: {
       background:
         options.mode === "hand-off"
-          ? { block: background, session: options.session ?? "per-task" }
+          ? dispatcher<TaskWorkerInput>({
+              name: `${options.kind}-hand-off`,
+              type: "task",
+              target: "background",
+              session: options.session ?? "per-task",
+            })
           : background,
     },
     initialTasks: [
@@ -163,7 +168,9 @@ function buildFlow(options: {
   const flow = defineFlow({
     kind: options.kind,
     actions: { start: { block: board.drain } },
-    tasks: board.tasks,
+    // A task entry no board hands off to is refused at definition, so the
+    // inline shape declares none.
+    ...(options.mode === "hand-off" ? { tasks: { background: { block: background } } } : {}),
   })({ id: options.kind });
 
   return { flow, ran };

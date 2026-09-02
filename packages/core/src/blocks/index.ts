@@ -5,7 +5,13 @@ export { router } from "./router";
 export { dispatcher, dispatchHandleSchema } from "./dispatcher";
 
 export type { HandlerConfig } from "./handler";
-export type { DispatchHandle, DispatcherConfig, DispatcherSession } from "./dispatcher";
+export type {
+  DispatchHandle,
+  DispatcherConfig,
+  DispatcherSession,
+  InternalDispatcherConfig,
+  TaskDispatcherConfig
+} from "./dispatcher";
 export type {
   GeneratorCompletedMeta,
   GeneratorConfig,

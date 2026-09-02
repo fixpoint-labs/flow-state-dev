@@ -31,7 +31,8 @@
  * that must reach the seam directly (the task board's drain) marks its block
  * with `markDispatcher` so the walk stays complete.
  */
-import type { BlockDefinition } from "./block";
+import { z } from "zod";
+import type { BlockContext, BlockDefinition } from "./block";
 import type { ActionCore } from "./flow";
 
 /** The kinds of dispatch a flow can receive. Each resolves one map on the flow. */
@@ -54,23 +55,114 @@ export const DISPATCH_TYPES: readonly DispatchType[] = [
 export type BlockDispatchType = "internal" | "task";
 
 /**
- * Where a dispatcher sends. Static by construction: the pair is what
+ * Which child session a `task` dispatch runs in, decided per row.
+ *
+ * - `"per-task"` — one child per row, keyed on the task id. Rows are
+ *   independent: a checkout per issue.
+ * - `"per-worker"` — one child per seat, shared by every row the seat runs.
+ *   The worker remembers what it already did.
+ * - `{ key }` — keyed on what the function returns, read from the worker
+ *   input the row was packed into. One issue across several phases, or a key
+ *   shared across seats.
+ *
+ * The presets frame the board id into the key, so two boards' children stay
+ * apart even when their task ids coincide; a custom key is used as returned.
+ */
+export type TaskSessionPolicy<TPayload = unknown> =
+  | "per-task"
+  | "per-worker"
+  | { readonly key: (task: TPayload, ctx: BlockContext) => string };
+
+/**
+ * Where a dispatcher sends. Static by construction: `(type, target)` is what
  * `defineFlow` verifies, so a block's reachable set is declared rather than
  * computed at run time. A target chosen from data is a router over declared
  * dispatchers, not a dynamic address.
+ *
+ * A `task` address also carries the seat's session policy — declared once on
+ * the dispatcher and read by the board that holds it, so the roster shows
+ * statically which seats hand off and where their rows land.
  */
-export type DispatchAddress = {
-  readonly type: BlockDispatchType;
-  /** The entry name — `flow.internal[target]` or `flow.tasks[target]`. */
-  readonly target: string;
+export type DispatchAddress =
+  | {
+      readonly type: "internal";
+      /** The entry name — `flow.internal[target]`. */
+      readonly target: string;
+    }
+  | {
+      readonly type: "task";
+      /** The entry name — `flow.tasks[target]`. */
+      readonly target: string;
+      readonly session: TaskSessionPolicy<any>;
+    };
+
+/**
+ * What a `task` dispatch carries: the claim's identity and the worker's input.
+ *
+ * Every field is **server-derived at hand-off** — the board supplies them from
+ * the ticket it minted off the row it claimed. `attempt`, `createdAt` and
+ * `incarnationId` say *which* claim this dispatch believes it is running;
+ * `seat` says which of the board's seats the row was routed to. The entry's
+ * gate decides whether all of that is still true: verified, never trusted.
+ */
+export const taskDispatchInputSchema = z.object({
+  /** Which board's ledger this dispatch settles against. */
+  boardId: z.string().min(1),
+  /** The board seat the row is assigned to — the dispatcher's seat on the roster. */
+  seat: z.string().min(1),
+  /** The claimed row. */
+  taskId: z.string().min(1),
+  /** The attempt this dispatch believes it is running. */
+  attempt: z.number().int().nonnegative(),
+  /** The claimed row's creation stamp. */
+  createdAt: z.number(),
   /**
-   * On a task dispatch made by a board: the board whose entry `target` must
-   * be. `defineFlow` refuses a task entry that belongs to a different board
-   * than the dispatcher naming it, which is how two boards spreading their
-   * entries onto one flow cannot silently shadow each other.
+   * The claimed row's incarnation nonce. Optional so an envelope persisted
+   * before the field shipped still parses; the gate compares it only when both
+   * sides carry one (BP-030).
    */
-  readonly boardId?: string;
-};
+  incarnationId: z.string().optional(),
+  /** The materialized worker input, packed at claim time. */
+  payload: z.unknown()
+});
+
+export type TaskDispatchInput = z.infer<typeof taskDispatchInputSchema>;
+
+/** Length-prefix a field so field boundaries cannot migrate in a composed key. */
+function framed(value: string): string {
+  return `${value.length}:${value}`;
+}
+
+/**
+ * The child-session key a `task` dispatch runs under, for one envelope and one
+ * policy. Shared by `dispatcher()` and the board's hand-off so both derive the
+ * same child for the same row.
+ *
+ * @throws when a `key` policy returns something other than a non-empty string —
+ *   the key names the child session, so an empty one is a computed refusal.
+ */
+export function taskSessionKeyFor(
+  blockName: string,
+  policy: TaskSessionPolicy<any>,
+  envelope: TaskDispatchInput,
+  ctx: BlockContext
+): string {
+  if (policy === "per-task") {
+    return `task|${framed(envelope.boardId)}|${framed(envelope.taskId)}`;
+  }
+  if (policy === "per-worker") {
+    return `worker|${framed(envelope.boardId)}|${framed(envelope.seat)}`;
+  }
+  const key = policy.key(envelope.payload, ctx);
+  if (typeof key !== "string" || key.length === 0) {
+    throw new Error(
+      `[dispatcher] "${blockName}" computed an empty session key for task ` +
+        `"${envelope.taskId}" (${JSON.stringify(key)}). The key names the child session; ` +
+        `return a value that identifies the unit of work.`
+    );
+  }
+  return key;
+}
 
 /**
  * Which session a dispatch runs in.
@@ -229,51 +321,74 @@ export function markDispatcher<TBlock extends { dispatch?: DispatchAddress }>(
  */
 export type InternalEntry = ActionCore;
 
-/** The brand a task board stamps on the entries it produces. */
-export const TASK_ENTRY: unique symbol = Symbol.for("@flow-state-dev/task-entry");
+/**
+ * A `task` entry: the block a board drain hands a claimed row to, in a session
+ * of its own. Declared on the flow like any other entry — `tasks: { implement:
+ * { block } }` — and reached only through a `task` dispatch from a
+ * `dispatcher({ type: "task" })` seat on a board. `defineFlow` wraps the entry
+ * in that board's claim gate (see {@link TaskBinding}), so the block receives
+ * the packed worker input the row was claimed with, never the envelope, and
+ * never runs against a row nothing verified.
+ */
+export type TaskEntry = ActionCore;
 
 /**
- * What the brand records: which board's claim gate wraps the entry, and the
- * gate itself. The block is in the mark so that the brand cannot outlive the
- * gate: an entry spread from `board.tasks` keeps its brand, which is what
- * lets an author override `concurrency` or the hooks — but one that swaps
- * `block` no longer runs the gate, and `defineFlow` refuses it by comparing
- * the two.
+ * What a task board binds onto the hand-off it installs at a `task` dispatcher
+ * seat: which board it is, and the claim gate every entry the seat addresses
+ * must run behind.
+ *
+ * The gate needs the board's ledger, which lives outside `core`, so the board
+ * supplies it and `defineFlow` applies it: for every reachable task dispatcher
+ * the walk finds, the target entry is rebuilt as `gate(entry)`. That is what
+ * lets an author declare a task entry as a plain block — the same shape as an
+ * action — and still never have it reached without the row re-read, the claim
+ * verified, the task scope marked and the ticket re-minted first.
  */
-export type TaskEntryMark = {
+export type TaskBinding = {
   readonly boardId: string;
-  /** The claim gate the board built; must still be the entry's `block`. */
-  readonly block: BlockDefinition<any, any>;
+  /** Wrap an entry in this board's claim gate. `target` is the entry's name on the flow. */
+  readonly gate: (entry: ActionCore, target: string) => ActionCore;
 };
 
 /**
- * A `task` entry: the block a board drain hands a claimed row to, in a session
- * of its own. **Produced only by a task board** — the entry's block is the
- * board's claim gate around the worker, which re-reads the row, verifies the
- * claim, marks the task scope and re-mints the claim ticket before the worker
- * runs. `defineFlow` refuses an unbranded entry, so a worker can never be
- * reached by a task dispatch without that gate in front of it.
+ * Bindings are keyed by the block's ADDRESS object, not the block. Every
+ * rebuild path (`connectInput`, `.rescue()`, `asTool`) forwards
+ * `definition.dispatch` by reference, so a hand-off the drain connects into
+ * its routing table — a rebuilt copy — still resolves the binding its board
+ * put on the original. A block whose address is a different object is unbound.
  */
-export type TaskEntry = ActionCore & { readonly [TASK_ENTRY]: TaskEntryMark };
-
-/** True when `value` is an entry a task board produced. */
-export function isTaskEntry(value: unknown): value is TaskEntry {
-  if (typeof value !== "object" || value === null) return false;
-  const mark = (value as { [TASK_ENTRY]?: unknown })[TASK_ENTRY];
-  return (
-    typeof mark === "object" &&
-    mark !== null &&
-    typeof (mark as TaskEntryMark).boardId === "string" &&
-    typeof (mark as TaskEntryMark).block === "object" &&
-    (mark as TaskEntryMark).block !== null
-  );
-}
+const taskBindings = new WeakMap<object, TaskBinding>();
 
 /**
- * Brand an entry as board-produced. Substrate-facing; called by `taskBoard()`.
- * The mark records the entry's block at branding time — the board's claim
- * gate — so a later `block` override is detectable.
+ * Bind a board's claim gate to the block that dispatches its tasks. Substrate-
+ * facing; called by `taskBoard()` on the hand-off it installs at each
+ * `dispatcher({ type: "task" })` seat, after `markDispatcher` has stamped the
+ * address the binding is keyed by.
+ *
+ * @throws when the block carries no `task` address, or is already bound to a
+ *   different board — one hand-off serves one board, or the walk could not say
+ *   whose gate the entry gets.
  */
-export function markTaskEntry(entry: ActionCore, mark: { readonly boardId: string }): TaskEntry {
-  return { ...entry, [TASK_ENTRY]: { boardId: mark.boardId, block: entry.block } };
+export function bindTaskDispatcher(block: BlockDefinition<any, any>, binding: TaskBinding): void {
+  const address = block.dispatch;
+  if (address === undefined || address.type !== "task") {
+    throw new Error(
+      `Block "${block.name}" carries no task address to bind board "${binding.boardId}" to. ` +
+        `Mark it with a \`{ type: "task" }\` address first.`
+    );
+  }
+  const existing = taskBindings.get(address);
+  if (existing !== undefined && existing.boardId !== binding.boardId) {
+    throw new Error(
+      `Block "${block.name}" is already bound to board "${existing.boardId}" and cannot also ` +
+        `be bound to board "${binding.boardId}". One task dispatcher serves one board.`
+    );
+  }
+  taskBindings.set(address, binding);
+}
+
+/** The board binding on a task dispatcher, or `undefined` when no board holds it. */
+export function taskBindingOf(block: BlockDefinition<any, any>): TaskBinding | undefined {
+  const address = block.dispatch;
+  return address === undefined ? undefined : taskBindings.get(address);
 }

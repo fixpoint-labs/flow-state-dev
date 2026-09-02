@@ -357,7 +357,7 @@ const stores = createFilesystemStores({
 
 ## Child sessions of a session
 
-A `dispatcher()` block with a `key` session policy, or a task board seat that hands off (`{ block, session: "per-task" }` and friends), runs its work in a **child session** of the session that dispatched it. `GET /api/flows/sessions/:sessionId/children` lists them:
+A `dispatcher()` block with a `key` session policy — an `internal` one in a flow's own blocks, or a `task` one in a task board's seat — runs its work in a **child session** of the session that dispatched it. `GET /api/flows/sessions/:sessionId/children` lists them:
 
 ```json
 {

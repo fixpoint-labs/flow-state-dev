@@ -10,7 +10,7 @@
  * check; this file builds the smallest board that exercises the refusal.
  */
 import { describe, expect, it } from "vitest";
-import { sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, sequencer } from "@flow-state-dev/core";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
@@ -43,33 +43,41 @@ function codingRun(options: { detached?: boolean }): TaskWorker {
   return toPrompt as unknown as TaskWorker;
 }
 
-describe("task board × claudeCodeAgent (hand-off)", () => {
-  it("accepts the agent as a handed-off worker when detached is set", () => {
-    expect(() =>
-      taskBoard({
-        name: "coding",
-        boardId: "coding",
-        collection: codingTasks,
-        workers: {
-          implement: { block: codingRun({ detached: true }), session: "per-task" },
-        },
+/**
+ * The smallest flow that hands `implement` off to `block`: the refusal fires
+ * where the entry's block is known — `defineFlow`, which gates the entry
+ * behind the board — not at `taskBoard()`, which never sees the block.
+ */
+function flowHandingOffTo(kind: string, block: TaskWorker) {
+  const board = taskBoard({
+    name: kind,
+    boardId: kind,
+    collection: codingTasks,
+    workers: {
+      implement: dispatcher({
+        name: `${kind}-hand-off`,
+        type: "task",
+        target: "implement",
+        session: "per-task",
       }),
-    ).not.toThrow();
+    },
+  });
+  return defineFlow({
+    kind,
+    actions: { drain: { block: board.drain } },
+    tasks: { implement: { block } },
+  });
+}
+
+describe("task board × claudeCodeAgent (hand-off)", () => {
+  it("accepts the agent as a handed-off entry block when detached is set", () => {
+    expect(() => flowHandingOffTo("coding", codingRun({ detached: true }))).not.toThrow();
   });
 
-  it("still refuses the agent as a handed-off worker with conversation state on", () => {
+  it("still refuses the agent as a handed-off entry block with conversation state on", () => {
     // The contrast that makes the assertion above able to fail. Without it the
     // acceptance test would keep passing if the refusal were removed entirely,
     // proving nothing about the opt-out.
-    expect(() =>
-      taskBoard({
-        name: "coding-default",
-        boardId: "coding-default",
-        collection: codingTasks,
-        workers: {
-          implement: { block: codingRun({}), session: "per-task" },
-        },
-      }),
-    ).toThrow(/sessionStateSchema/);
+    expect(() => flowHandingOffTo("coding-default", codingRun({}))).toThrow(/sessionStateSchema/);
   });
 });

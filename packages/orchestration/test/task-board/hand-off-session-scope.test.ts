@@ -15,7 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { SessionRecord, StoreRegistry } from "@flow-state-dev/engine";
 import { defineTaskCollection } from "../../src/tasks";
@@ -41,7 +41,12 @@ function boardFor(collection: ReturnType<typeof defineTaskCollection>) {
     boardId: BOARD_ID,
     collection,
     workers: {
-      brief: { block: worker as unknown as TaskWorker, session: "per-task" }
+      brief: dispatcher({
+        name: "brief-seat",
+        type: "task",
+        target: "brief",
+        session: "per-task"
+      }) as unknown as TaskWorker
     }
   });
 }

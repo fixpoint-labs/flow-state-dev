@@ -27,7 +27,7 @@
  * to be rejected BY NAME or the gate is decorative.
  */
 import { describe, expect, it, vi } from "vitest";
-import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResource, dispatcher, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -50,6 +50,11 @@ function ledger() {
   return defineTaskCollection({ id: "hand-off-tasks", scope: "user" });
 }
 
+/** A seat that hands off to the task entry `target`. */
+function seat(target: string) {
+  return dispatcher({ name: `seat-${target}`, type: "task", target, session: "per-task" }) as unknown as TaskWorker;
+}
+
 describe("a handed-off seat routes to the dispatch seam, not to the worker", () => {
   it("keeps the worker off the drain's routing table", async () => {
     const implementSpy = vi.fn(() => ({ done: true }));
@@ -63,7 +68,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       name: "issue-work",
       boardId: "issue-work",
       collection: ledger(),
-      workers: { implement: { block: implement, session: "per-task" } },
+      workers: { implement: seat("implement") },
       initialTasks: [{ id: "t1", goal: "implement it", assignee: "implement" }],
     });
 
@@ -71,7 +76,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
     const flow = defineFlow({
       kind: "hand-off-routing-table",
       actions: { run: { block: board.drain } },
-      tasks: board.tasks,
+      tasks: { implement: { block: implement } },
     })({ id: "hand-off-routing-table" });
 
     const result = await runAction({
@@ -105,10 +110,10 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
     expect(implementSpy).not.toHaveBeenCalled();
   });
 
-  it("detaches only the coordinate that asked, when one block sits at two", () => {
-    // A block may legitimately be registered twice with different session
-    // policies. Keying the substitution by SEAT rather than by block identity
-    // is what keeps this from detaching both.
+  it("detaches only the seat that holds the dispatcher, when the same block also runs inline", () => {
+    // The same block may run inline at one seat and be the entry another seat
+    // hands off to. Keying the substitution by SEAT rather than by block
+    // identity is what keeps the inline seat inline.
     const shared = worker("shared");
     const board = taskBoard({
       name: "mixed-board",
@@ -116,20 +121,20 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       collection: ledger(),
       workers: {
         inline: shared,
-        background: { block: shared, session: "per-task" },
+        background: seat("shared-entry"),
       },
     });
 
     expect(board.handedOff).toHaveLength(1);
     expect(board.handedOff[0]!.label).toBe("assignee:background");
-    expect(Object.keys(board.tasks)).toEqual(["background"]);
+    expect(board.handedOff[0]!.dispatch?.target).toBe("shared-entry");
   });
 
-  it("still installs a resource only the handed-off worker declares", () => {
-    // The worker is off the drain's routing table (test above), so a resource
+  it("still installs a resource only the handed-off entry block declares", () => {
+    // The block is off the drain's routing table (test above), so a resource
     // it declares is no longer reachable through `board.drain` — it bubbles
-    // through the task entry instead, which is why `tasks: board.tasks` has
-    // to be on the flow for it to show up at all.
+    // through the gated task entry instead, which is why the entry has to be
+    // on the flow for it to show up at all.
     const auditLog = defineResource({
       name: "hand-off-audit-log",
       scope: "user",
@@ -146,13 +151,13 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       name: "resourceful",
       boardId: "resourceful",
       collection: ledger(),
-      workers: { implement: { block: implement, session: "per-task" } },
+      workers: { implement: seat("implement") },
     });
 
     const flow = defineFlow({
       kind: "board",
       actions: { run: { block: board.drain } },
-      tasks: board.tasks,
+      tasks: { implement: { block: implement } },
     } as never)({ id: "board" });
 
     expect(Object.keys(flow.resources ?? {})).toContain("auditLog");
@@ -169,7 +174,6 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
     });
 
     expect(board.handedOff).toHaveLength(0);
-    expect(board.tasks).toEqual({});
   });
 });
 

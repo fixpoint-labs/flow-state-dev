@@ -36,9 +36,30 @@
  * });
  * ```
  *
- * Only `internal` is dispatchable from authored code. A `task` dispatch carries
- * a verified claim on a durable row, which only a task board holds, so the
- * board builds that dispatcher itself.
+ * A `task` dispatcher is a **seat on a task board**: put it under `workers`
+ * where an inline worker would go, and the board hands each row it routes
+ * there off to `flow.tasks[target]` in the child session the policy names.
+ *
+ * ```ts
+ * const board = taskBoard({
+ *   boardId: "issue-work",
+ *   collection: issues,
+ *   workers: {
+ *     triage: triageWorker,                                   // inline
+ *     implement: dispatcher({                                 // hands off
+ *       name: "hand-off-implement",
+ *       type: "task",
+ *       target: "implement",                                  // flow.tasks.implement
+ *       session: "per-task",
+ *     }),
+ *   },
+ * });
+ * ```
+ *
+ * Its input is the claim envelope the board mints from the row it claimed — a
+ * verified claim on a durable row is the trust a `task` dispatch carries, and
+ * only a board holds one. Run anywhere else it dispatches an envelope no board
+ * minted, and the entry's gate refuses it against the ledger.
  */
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition } from "../types/block";
@@ -46,7 +67,11 @@ import {
   DispatchRefusedError,
   dispatchThroughSeam,
   markDispatcher,
-  type SessionTarget
+  taskDispatchInputSchema,
+  taskSessionKeyFor,
+  type DispatchAddress,
+  type SessionTarget,
+  type TaskSessionPolicy
 } from "../types/dispatch";
 import { handler } from "./handler";
 
@@ -63,7 +88,8 @@ export const dispatchHandleSchema = z.object({
 export type DispatchHandle = z.infer<typeof dispatchHandleSchema>;
 
 /**
- * Which session the dispatch runs in, computed from the dispatcher's input.
+ * Which session an `internal` dispatch runs in, computed from the dispatcher's
+ * input.
  *
  * - `key` — a child of the running session, derived from the returned key.
  *   Minted on first use, adopted after: the same key from the same parent lands
@@ -76,10 +102,10 @@ export type DispatcherSession<TInput> =
   | { readonly key: (input: TInput, ctx: BlockContext) => string }
   | { readonly id: (input: TInput, ctx: BlockContext) => string };
 
-export interface DispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> {
+/** An `internal` dispatcher: sends this request's authority to `flow.internal[target]`. */
+export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> {
   name: string;
   description?: string;
-  /** The dispatch type. Authored dispatchers send `internal` dispatches. */
   type: "internal";
   /** The entry name — resolves `flow.internal[target]`. Verified at `defineFlow`. */
   target: string;
@@ -96,28 +122,93 @@ export interface DispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> 
   transient?: boolean;
 }
 
+/**
+ * A `task` dispatcher: a board seat that hands its rows off to
+ * `flow.tasks[target]`. `TPayload` is the worker input a `key` policy reads —
+ * a task board's `TaskWorkerInput`.
+ */
+export interface TaskDispatcherConfig<TPayload = unknown> {
+  name: string;
+  description?: string;
+  type: "task";
+  /** The entry name — resolves `flow.tasks[target]`. Verified at `defineFlow`. */
+  target: string;
+  /** Which child session each row runs in. See {@link TaskSessionPolicy}. */
+  session: TaskSessionPolicy<TPayload>;
+  /** Hide this block's trace from clients. Default: false. */
+  transient?: boolean;
+}
+
+/** Either dispatcher config; the `type` field discriminates. */
+export type DispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny, TPayload = unknown> =
+  | InternalDispatcherConfig<TInputSchema>
+  | TaskDispatcherConfig<TPayload>;
+
 /** Build a dispatcher block. See the module header. */
 export function dispatcher<TInputSchema extends ZodTypeAny = ZodTypeAny>(
-  config: DispatcherConfig<TInputSchema>
-): BlockDefinition<TInputSchema, typeof dispatchHandleSchema> {
-  const { name, description, type, target, session, payload, transient } = config;
+  config: InternalDispatcherConfig<TInputSchema>
+): BlockDefinition<TInputSchema, typeof dispatchHandleSchema>;
+export function dispatcher<TPayload = unknown>(
+  config: TaskDispatcherConfig<TPayload>
+): BlockDefinition<typeof taskDispatchInputSchema, typeof dispatchHandleSchema>;
+export function dispatcher(
+  config: DispatcherConfig
+): BlockDefinition<any, typeof dispatchHandleSchema> {
+  const { name, description, type, target, transient } = config;
   if (typeof target !== "string" || target.length === 0) {
     throw new Error(`[dispatcher] "${name}" must name a non-empty target entry`);
   }
-  if (type !== "internal") {
+  if (type !== "internal" && type !== "task") {
     throw new Error(
       `[dispatcher] "${name}" dispatches type "${String(type)}", which authored code cannot ` +
-        `supply the trust for. A block may dispatch "internal" (its own request's authority); ` +
-        `a "task" dispatch is built by the task board that holds the claim.`
+        `supply the trust for. A block may dispatch "internal" (its own request's authority) ` +
+        `or "task" (a claim on a durable row, minted by the task board that holds the seat).`
     );
   }
-  const address = { type, target } as const;
-  const inputSchema = (config.inputSchema ?? z.unknown()) as TInputSchema;
 
-  const block = handler({
+  const common = {
     name,
     ...(description !== undefined ? { description } : {}),
-    ...(transient !== undefined ? { transient } : {}),
+    ...(transient !== undefined ? { transient } : {})
+  };
+
+  if (config.type === "task") {
+    const session = config.session;
+    if (!isTaskSessionPolicy(session)) {
+      throw new Error(
+        `[dispatcher] "${name}" must declare a task session policy: "per-task", "per-worker", ` +
+          `or { key: (task) => string }.`
+      );
+    }
+    const address: DispatchAddress = { type: "task", target, session };
+    const block = handler({
+      ...common,
+      inputSchema: taskDispatchInputSchema,
+      outputSchema: dispatchHandleSchema,
+      execute: async (envelope, ctx): Promise<DispatchHandle> => {
+        const key = taskSessionKeyFor(name, session, envelope, ctx);
+        const outcome = await dispatchThroughSeam(ctx, {
+          type: "task",
+          target,
+          session: { key },
+          payload: envelope,
+          from: name,
+          provenance: { taskId: envelope.taskId }
+        });
+        if (!outcome.ok) {
+          throw new DispatchRefusedError(name, address, outcome.refused, outcome.detail);
+        }
+        return handleOf(outcome);
+      }
+    });
+    return markDispatcher(block, address);
+  }
+
+  const { session, payload } = config;
+  const address: DispatchAddress = { type: "internal", target };
+  const inputSchema = config.inputSchema ?? z.unknown();
+  const block = handler({
+    ...common,
     inputSchema,
     outputSchema: dispatchHandleSchema,
     execute: async (input, ctx): Promise<DispatchHandle> => {
@@ -132,18 +223,23 @@ export function dispatcher<TInputSchema extends ZodTypeAny = ZodTypeAny>(
       if (!outcome.ok) {
         throw new DispatchRefusedError(name, address, outcome.refused, outcome.detail);
       }
-      return {
-        sessionId: outcome.sessionId,
-        requestId: outcome.requestId,
-        adopted: outcome.adopted
-      };
+      return handleOf(outcome);
     }
   });
+  return markDispatcher(block, address);
+}
 
-  return markDispatcher(block, address) as unknown as BlockDefinition<
-    TInputSchema,
-    typeof dispatchHandleSchema
-  >;
+function handleOf(outcome: { sessionId: string; requestId: string; adopted: boolean }): DispatchHandle {
+  return { sessionId: outcome.sessionId, requestId: outcome.requestId, adopted: outcome.adopted };
+}
+
+function isTaskSessionPolicy(value: unknown): value is TaskSessionPolicy<any> {
+  if (value === "per-task" || value === "per-worker") return true;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { key?: unknown }).key === "function"
+  );
 }
 
 /**

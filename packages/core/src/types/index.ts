@@ -45,8 +45,10 @@ export type {
   InternalEntry,
   DispatchType,
   SessionTarget,
+  TaskBinding,
+  TaskDispatchInput,
   TaskEntry,
-  TaskEntryMark
+  TaskSessionPolicy
 } from "./dispatch";
 
 export {
@@ -54,11 +56,12 @@ export {
   DispatchRefusedError,
   DISPATCH_TYPES,
   NoDispatchSeamError,
-  TASK_ENTRY,
+  bindTaskDispatcher,
   dispatchThroughSeam,
-  isTaskEntry,
   markDispatcher,
-  markTaskEntry
+  taskBindingOf,
+  taskDispatchInputSchema,
+  taskSessionKeyFor
 } from "./dispatch";
 
 export type {

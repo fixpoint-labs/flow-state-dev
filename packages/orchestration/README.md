@@ -308,14 +308,15 @@ the limit in force. See the
 
 #### Handing tasks off to child sessions
 
-A registry value may be a `{ block, session }` entry instead of a bare block. The
-entry hands that seat's tasks off: the drain claims a row, sends a `task` dispatch to
-the seat's entry on the flow, and moves on, while the worker runs in a **child
-session** of the session that drained — on a request of its own — and settles the
-row itself. A bare block still runs inline in the drain.
+A seat under `workers` is a block. Put a `dispatcher({ type: "task", target, session })`
+in that position and the seat hands its tasks off: the drain claims a row, sends a
+`task` dispatch to the flow's `tasks[target]` entry, and moves on, while the entry's
+block runs in a **child session** of the session that drained — on a request of its
+own — and settles the row itself. Any other block in that position runs inline in
+the drain. The worker is declared once, on the flow, exactly like an action.
 
 ```ts
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
@@ -332,15 +333,20 @@ const board = taskBoard({
   boardId: "issue-work",               // required once any seat hands off
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
-    triage: triageBlock,               // bare value = inline
-    implement: { block: implementBlock, session: "per-task" },
+    triage: triageBlock,               // runs inline
+    implement: dispatcher({            // hands off to flow.tasks.implement
+      name: "hand-off-implement",
+      type: "task",
+      target: "implement",
+      session: "per-task",
+    }),
   },
 });
 
 export default defineFlow({
   kind: "issues",
   actions: { drain: { block: board.drain } },
-  tasks: board.tasks,                  // one entry per handed-off seat
+  tasks: { implement: { block: implementBlock } },   // what runs in the child
 })();
 ```
 
@@ -359,18 +365,16 @@ several rows runs them under its entry's concurrency policy, which defaults to
 `allow`; declare `queue` on that entry or the rows interleave:
 
 ```ts
-tasks: { implement: { ...board.tasks.implement, concurrency: "queue" } },
+tasks: { implement: { block: implementBlock, concurrency: "queue" } },
 ```
 
 Only a named seat hands off: `defaultWorker` and a uniform `workers` block have no
-seat name and so no entry to address.
+seat name and so no assignee to route by.
 
-`board.tasks` is one entry per handed-off seat, keyed by seat name — the board's
-claim gate around the worker. The flow declares them as `tasks: board.tasks` (two
-boards spread together: `tasks: { ...issues.tasks, ...reviews.tasks }`). `defineFlow`
-refuses a hand-written task entry, a hand-off whose entry the flow forgot to
-declare, and two boards whose seats share a name and shadow each other in `tasks`.
-`board.handedOff` lists the seats that hand off, in declaration order.
+`defineFlow` refuses a hand-off whose entry the flow forgot to declare, a task
+entry no board hands off to, a task dispatcher no board holds, and two boards
+handing off to one entry. `board.handedOff` lists the seats that hand off, in
+declaration order.
 
 The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`,
 `createdAt`, `incarnationId`) and the worker input the drain packed at claim time —
@@ -398,20 +402,21 @@ board and the fix:
 - **A session-scoped collection declares `sharedToLineage: true`**, or the child
   would resolve an empty ledger and never find its row. `user` and `org` scope need
   nothing extra; they already span every session the principal touches.
-- **No handed-off worker declares `sessionStateSchema`**, at its root or in a
-  composed child. Keep the worker's state on the task.
+
+`defineFlow` adds one more: **no handed-off entry block declares
+`sessionStateSchema`**, at its root or in a composed child. Keep the block's
+state on the task.
 
 Once a board hands anything off, a task's assignee is fixed at admission:
-`setAssignee` declines with reason `immutable-assignee`. The assignee is the entry a
-row's `task` dispatch is addressed to, so changing it afterwards redirects nothing.
+`setAssignee` declines with reason `immutable-assignee`. The assignee is the seat a
+row's `task` dispatch is sent from, so changing it afterwards redirects nothing.
 File a new task instead of reassigning. The rule belongs to the collection, not to
 the board that declared it: point a second board at the same `defineTaskCollection`
 value and it declines too, even if that board hands nothing off. If a board needs
 freely reassignable tasks, give it its own collection.
 
 Sharing a ledger across the lineage does not serialize: two children writing one
-board is ordinary same-resource contention, fenced by the store's `expectedVersion`
-check and nothing more.
+board is ordinary same-resource contention.
 
 **The claim has to survive the wait before the child starts.** A claim carries a
 lease (two minutes by default), and nothing renews it between the hand-off and the

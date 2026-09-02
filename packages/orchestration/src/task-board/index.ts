@@ -85,7 +85,6 @@ import type {
   MaybePromise,
   StateRef,
 } from "@flow-state-dev/core/types";
-import type { TaskEntry } from "@flow-state-dev/core/types";
 import {
   freezeLedgerAssignee,
   getOrCreateTaskCollection,
@@ -147,11 +146,10 @@ import {
   handedOffTaskPredicate,
   resolveWorkerSlots,
   type ResolvedWorkerSlot,
-  type TaskWorkerSlot,
-  type TaskWorkerSlotRegistry,
+  type TaskSeatRegistry,
 } from "./hand-off";
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
-import { buildTaskEntry } from "./task-entry";
+import { createTaskGate } from "./task-entry";
 import { createHandOff } from "./blocks/hand-off";
 
 // ---------------------------------------------------------------------------
@@ -232,25 +230,27 @@ export {
 export { currentWorkerClaim } from "./flow-policy-wiring";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
 export {
+  assertHandOffBlockSupported,
   assertHandOffBoardSupported,
   handedOffTaskPredicate,
-  isTaskWorkerEntry,
+  isTaskDispatcher,
   resolveWorkerSlot,
   resolveWorkerSlots,
   seatLabel,
 } from "./hand-off";
 export type {
   ResolvedWorkerSlot,
-  TaskSessionPolicy,
-  TaskWorkerEntry,
-  TaskWorkerSlot,
-  TaskWorkerSlotRegistry,
+  TaskDispatcherBlock,
+  TaskSeat,
+  TaskSeatAddress,
+  TaskSeatRegistry,
   WorkerSeat,
 } from "./hand-off";
+export type { TaskSessionPolicy } from "@flow-state-dev/core/types";
 export { assertParkExitSupported } from "./park-exit";
 export type { TaskBoardOnReview } from "./park-exit";
-export { StaleTaskClaimError, buildTaskEntry, taskDispatchInputSchema } from "./task-entry";
-export type { BuildTaskEntryOptions, TaskDispatchInput } from "./task-entry";
+export { StaleTaskClaimError, createTaskGate, taskDispatchInputSchema } from "./task-entry";
+export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
 export { createHandOff } from "./blocks/hand-off";
 export type { HandOffOptions } from "./blocks/hand-off";
 
@@ -316,12 +316,12 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   name: string;
 
   /**
-   * Explicit, stable identifier for this board. **Required when any worker
-   * hands off** (`{ block, session }`), optional otherwise.
+   * Explicit, stable identifier for this board. **Required when any seat
+   * hands off** (holds a `dispatcher({ type: "task" })`), optional otherwise.
    *
-   * A handed-off worker runs in a child session whose id is derived from a key
-   * this value is framed into, and the task entries the board produces are
-   * branded with it, so it lands in persisted keys and in the flow definition.
+   * A handed-off row runs in a child session whose id is derived from a key
+   * this value is framed into, and the claim gate the board binds is scoped to
+   * it, so it lands in persisted keys and in the flow definition.
    * It cannot be derived from `name` (unique per flow, not per session) or from
    * `collectionId` (the literal `"factory-supplied"` for every factory board),
    * which is why it is declared rather than inferred.
@@ -358,13 +358,15 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
    *
-   * A registry **value** may also be a `{ block, session }` entry, which is
-   * how a board hands that worker off to run in a child session of its own
-   * (`session: "per-task" | "per-worker" | { key: (task) => string }`). The
-   * flow then declares the board's entries as `tasks: board.tasks`. A bare
-   * block still means inline, so no existing board needs editing.
+   * A registry **value** may be a `dispatcher({ type: "task", target,
+   * session })`, which is how a board hands that seat's rows off to run in a
+   * child session of their own (`session: "per-task" | "per-worker" | { key:
+   * (task) => string }`). The block that runs there is declared on the flow,
+   * `tasks: { [target]: { block } }`, and `defineFlow` puts it behind this
+   * board's claim gate. Any other block still means inline, so no existing
+   * board needs editing.
    */
-  workers: TaskWorker<TInput, TOutput> | TaskWorkerSlotRegistry;
+  workers: TaskWorker<TInput, TOutput> | TaskSeatRegistry;
 
   /**
    * Optional default worker — the **delegation floor** (FIX-940).
@@ -375,10 +377,10 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * genuine miss). Non-delegation consumers (blackboard, patterns) leave
    * it unset.
    *
-   * The floor runs inline: it has no seat name, so it has no task entry to
-   * hand off to. Declare a named worker to hand off.
+   * The floor runs inline: it has no seat name, so a row it takes has no
+   * assignee to be handed off by. Declare a named seat to hand off.
    */
-  defaultWorker?: TaskWorkerSlot;
+  defaultWorker?: TaskWorker;
 
   /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
@@ -613,17 +615,9 @@ export interface TaskBoardHandle<
    */
   boardId?: string;
   /**
-   * The task entries this board produces — one per handed-off seat, keyed by
-   * the seat name, each the board's claim gate around that seat's worker.
-   * **Declare them on the flow**: `tasks: board.tasks` (or spread several
-   * boards' together). A `task` message addressed to the seat name resolves
-   * the gate, so a worker is never reached without it. Empty on a board that
-   * hands nothing off.
-   */
-  tasks: Record<string, TaskEntry>;
-  /**
-   * The workers that hand off, in declaration order. Empty on a board that
-   * runs everything inline.
+   * The seats that hand off, in declaration order, each with the `dispatch`
+   * address its dispatcher carries. Empty on a board that runs everything
+   * inline.
    */
   handedOff: readonly ResolvedWorkerSlot[];
   /**
@@ -707,17 +701,20 @@ export function taskBoard<
   }
 
   // The removed board-level `dispatch` option, refused by name (BP-030): a
-  // uniform worker has no seat name and therefore no task entry to hand off to.
+  // uniform worker has no seat name and therefore no assignee to hand off by.
   if (Object.hasOwn(config, "dispatch")) {
     throw new Error(
-      `[task-board] "${name}" passes the removed board-level \`dispatch\` option. A worker ` +
-        `hands off by name: \`workers: { <name>: { block, session } }\`.`
+      `[task-board] "${name}" passes the removed board-level \`dispatch\` option. A seat ` +
+        `hands off by holding a dispatcher: \`workers: { <name>: dispatcher({ type: "task", ` +
+        `target, session }) }\`, with the block declared on the flow as ` +
+        `\`tasks: { [target]: { block } }\`.`
     );
   }
-  // Flatten `{ block, session }` entries down to the bare shapes the drain
-  // already composes, and note which hand off. A board with no entries
-  // produces exactly the values it was handed.
+  // Read each seat — an inline block, or a task dispatcher — and note which
+  // hand off. A board with no dispatcher seats produces exactly the values it
+  // was handed.
   const resolvedWorkers = resolveWorkerSlots({
+    name,
     workers: workersConfig,
     ...(defaultWorkerConfig !== undefined
       ? { defaultWorker: defaultWorkerConfig }
@@ -839,21 +836,37 @@ export function taskBoard<
   // table is the one place that already maps a seat to a block. The substitute
   // receives the same packed `TaskWorkerInput` an inline worker would, which
   // is what makes the two paths agree on what the worker sees. Keyed by SEAT,
-  // never by block identity: a block may legitimately sit at two seats with
-  // different policies — `{ inline: shared, background: { block: shared,
-  // session: "per-task" } }` is a valid board — and keying by the block would
-  // substitute the hand-off at BOTH.
+  // never by block identity: one dispatcher may legitimately sit at two seats,
+  // and each seat's hand-off carries its own name so the row's assignee is
+  // what the child's gate checks.
+  //
+  // The hand-off carries the board's BINDING — its id and the claim gate — so
+  // `defineFlow`, reaching it through the drain, can put the entry it addresses
+  // behind this board's gate. The gate is built once for the board: it is the
+  // same ledger and the same failure policy whichever seat hands off.
   const handOffBySeat = new Map<string, TaskWorker>();
-  if (boardId !== undefined) {
+  if (boardId !== undefined && resolvedWorkers.handedOff.length > 0) {
+    const gate = createTaskGate({
+      name,
+      boardId,
+      collection: collectionFactory,
+      // The board's failure policy decides the child's outcome exactly as it
+      // decides the drain's, so it is threaded rather than re-chosen.
+      onError,
+      // The gated entry is reached by a task dispatch, not through the drain,
+      // so it has to declare the board's durable collection itself.
+      ...(drainUses !== undefined ? { uses: drainUses } : {}),
+    });
     for (const slot of resolvedWorkers.handedOff) {
-      if (slot.seat.kind !== "assignee" || slot.session === undefined) continue;
+      if (slot.seat.kind !== "assignee" || slot.dispatch === undefined) continue;
       handOffBySeat.set(
         slot.seat.name,
         createHandOff({
           name: `${name}-hand-off-${slot.seat.name}`,
           boardId,
           seat: slot.seat.name,
-          session: slot.session,
+          address: slot.dispatch,
+          binding: { boardId, gate },
         }) as unknown as TaskWorker
       );
     }
@@ -1139,9 +1152,9 @@ export function taskBoard<
         // makes over the drain would otherwise stop here and never see the
         // hand-off dispatchers sitting in the worker router. The blocks every
         // worker is composed from are static and shared, and declaring them
-        // is what lets a flow that reaches this drain without declaring
-        // `tasks: board.tasks` be refused at definition rather than at the
-        // first hand-off.
+        // is what lets a flow that reaches this drain without declaring the
+        // task entry a seat hands off to be refused at definition rather than
+        // at the first hand-off.
         blocks: [claimTask, workerBody, checkBoard],
       }
     )
@@ -1165,36 +1178,6 @@ export function taskBoard<
     // otherwise misattribute cache hits.
     .tap(teardownFlowState)
     .rescue([{ block: teardownFlowState }]);
-
-  // The task entries — one per handed-off seat, each the board's claim gate
-  // around the seat's worker (`task-entry.ts`). The flow declares them as
-  // `tasks: board.tasks`, which is what makes a `task` message addressed to
-  // the seat name resolve the gate and never the bare worker; `defineFlow`
-  // refuses an entry a board did not produce, and its walk refuses a hand-off
-  // whose entry the flow forgot to declare.
-  //
-  // The `boardId !== undefined` narrowing is a type-level formality, not a
-  // second guard: `assertHandOffBoardSupported` above already refused a board
-  // that hands off without one. A board that hands nothing off produces none.
-  const tasks: Record<string, TaskEntry> = {};
-  if (boardId !== undefined) {
-    for (const slot of resolvedWorkers.handedOff) {
-      if (slot.seat.kind !== "assignee") continue;
-      tasks[slot.seat.name] = buildTaskEntry({
-        name,
-        boardId,
-        seat: slot.seat.name,
-        worker: slot.block,
-        collection: collectionFactory,
-        // The board's failure policy decides the child's outcome exactly as it
-        // decides the drain's, so it is threaded rather than re-chosen here.
-        onError,
-        // The entry is reached by a task message, not through the drain, so it
-        // has to declare the board's durable collection itself.
-        ...(drainUses !== undefined ? { uses: drainUses } : {}),
-      });
-    }
-  }
 
   // FIX-982 decision 10 — a detached board's assignee is fixed at admission,
   // because it is what the routing coordinate derives from. Recorded on the
@@ -1227,7 +1210,6 @@ export function taskBoard<
     capability,
     backing,
     ...(boardId !== undefined ? { boardId } : {}),
-    tasks,
     handedOff: resolvedWorkers.handedOff,
     hasIdlessInitialTasks,
     caps,

@@ -17,7 +17,7 @@
  * pass the `"fail"` case and break the default, which is the more common one.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
@@ -37,23 +37,26 @@ type RecordedDispatch = { sessionId: string; actionName: string; input: unknown 
 
 /** A board whose handed-off worker always throws, under the given failure policy. */
 function buildFlow(kind: string, onError: "skip" | "fail") {
+  const alwaysThrows = handler({
+    name: "always-throws",
+    inputSchema: taskWorkerInputSchema,
+    outputSchema: z.object({ handled: z.string() }),
+    execute: (_input: TaskWorkerInput) => {
+      throw new Error("the worker blew up");
+    },
+  });
   const board = taskBoard({
     name: `${kind}-board`,
     boardId: `${kind}-board`,
     collection: defineTaskCollection({ id: `${kind}-ledger`, scope: "user" }),
     onError,
     workers: {
-      background: {
-        block: handler({
-          name: "always-throws",
-          inputSchema: taskWorkerInputSchema,
-          outputSchema: z.object({ handled: z.string() }),
-          execute: (_input: TaskWorkerInput) => {
-            throw new Error("the worker blew up");
-          },
-        }),
+      background: dispatcher({
+        name: `${kind}-hand-off`,
+        type: "task",
+        target: "background",
         session: "per-task",
-      },
+      }),
     },
     initialTasks: [
       { id: "t1", goal: "work that fails", assignee: "background", input: { note: "x" } },
@@ -63,7 +66,7 @@ function buildFlow(kind: string, onError: "skip" | "fail") {
   return defineFlow({
     kind,
     actions: { start: { block: board.drain } },
-    tasks: board.tasks,
+    tasks: { background: { block: alwaysThrows } },
   })({ id: kind });
 }
 

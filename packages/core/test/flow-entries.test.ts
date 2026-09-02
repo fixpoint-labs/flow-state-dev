@@ -5,7 +5,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, dispatcher, generator, handler, resolveEntry, sequencer } from "../src";
-import { TASK_ENTRY, markDispatcher, markTaskEntry } from "../src/types/dispatch";
+import { bindTaskDispatcher, markDispatcher } from "../src/types/dispatch";
+import type { ActionCore } from "../src/types/flow";
 
 const noop = handler({ name: "noop", inputSchema: z.unknown(), execute: () => null });
 const wake = handler({ name: "wake", inputSchema: z.object({ reason: z.string() }), execute: () => null });
@@ -178,56 +179,67 @@ describe("the address walk", () => {
 });
 
 describe("task entries", () => {
-  const entryFor = (boardId: string) => markTaskEntry({ block: noop }, { boardId });
-  const handOff = (target: string, boardId: string) =>
-    markDispatcher(
-      handler({ name: `hand-off-${target}`, inputSchema: z.unknown(), execute: () => null }),
-      { type: "task", target, boardId }
+  /**
+   * A board's binding, as `taskBoard()` would bind it onto the hand-off it
+   * installs at a dispatcher seat: the board id and a gate that wraps the
+   * entry's block. The gate here just nests the block under a named sequencer,
+   * which is enough to tell a gated entry from the author's.
+   */
+  const bindingFor = (boardId: string) => ({
+    boardId,
+    gate: (entry: ActionCore, target: string): ActionCore => ({
+      ...entry,
+      block: sequencer({ name: `${boardId}-${target}-gate` }).step(entry.block)
+    })
+  });
+  const handOff = (target: string, boardId: string, seat = target) => {
+    const block = markDispatcher(
+      handler({ name: `hand-off-${boardId}-${seat}`, inputSchema: z.unknown(), execute: () => null }),
+      { type: "task", target, session: "per-task" }
     );
+    bindTaskDispatcher(block, bindingFor(boardId));
+    return block;
+  };
 
-  it("refuses a board entry whose block was replaced after branding", () => {
-    // The brand survives a spread on purpose — `{ ...board.tasks.x,
-    // concurrency: "queue" }` is the documented way to override policy — so
-    // the brand alone cannot prove the claim gate is still in front of the
-    // worker. Swapping the block keeps the brand and drops the gate.
-    const gated = entryFor("issues");
-    const ungated = { ...gated, block: wake };
-    expect(() =>
-      defineFlow({
-        kind: "swapped-gate",
-        actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } },
-        tasks: { implement: ungated }
-      })
-    ).toThrow(/task entry "implement" no longer runs its board's claim gate/);
-
-    // The same spread that keeps the block is fine.
-    expect(() =>
-      defineFlow({
-        kind: "kept-gate",
-        actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } },
-        tasks: { implement: { ...gated, concurrency: "queue" } }
-      })
-    ).not.toThrow();
-  });
-
-  it("accepts entries a board produced and mirrors them on the blueprint", () => {
+  it("puts a plain entry behind the gate of the board that hands off to it", () => {
     const flow = defineFlow({
-      kind: "board-entries",
+      kind: "gated",
       actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } },
-      tasks: { implement: entryFor("issues") }
+      tasks: { implement: { block: noop, concurrency: "queue" } }
     });
-    expect(flow.tasks?.implement[TASK_ENTRY]).toEqual({ boardId: "issues", block: noop });
-    expect(flow().tasks?.implement.block).toBe(noop);
+    // The instance carries the gated entry, not the author's: the block is the
+    // board's gate, and the author's policy rides through beside it.
+    expect(flow.tasks?.implement.block.name).toBe("issues-implement-gate");
+    expect(flow.tasks?.implement.block.childBlocks).toContain(noop);
+    expect(flow.tasks?.implement.concurrency).toBe("queue");
+    // The instance is gated the same way — the same gate, not the raw block.
+    expect(flow().tasks?.implement.block.name).toBe("issues-implement-gate");
   });
 
-  it("refuses a hand-written task entry", () => {
+  it("gates an entry once when one board reaches it from two seats", () => {
+    const flow = defineFlow({
+      kind: "two-seats",
+      actions: {
+        run: {
+          block: sequencer({ name: "run" })
+            .step(handOff("implement", "issues", "implement"))
+            .step(handOff("implement", "issues", "rework"))
+        }
+      },
+      tasks: { implement: { block: noop } }
+    });
+    expect(flow.tasks?.implement.block.name).toBe("issues-implement-gate");
+    expect(flow.tasks?.implement.block.childBlocks).toEqual([noop]);
+  });
+
+  it("refuses an entry with no block, by name", () => {
     expect(() =>
       defineFlow({
         kind: "raw-task",
         actions: {},
-        tasks: { implement: { block: noop } as never }
+        tasks: { implement: {} as never }
       })
-    ).toThrow(/task entry "implement" was not produced by a task board/);
+    ).toThrow(/task entry "implement" has no block/);
   });
 
   it("refuses a hand-off to a task entry the flow does not declare", () => {
@@ -239,30 +251,68 @@ describe("task entries", () => {
     ).toThrow(/hands off to task:"implement".*declares no such task entry/);
   });
 
-  it("refuses a hand-off whose entry belongs to another board", () => {
+  it("refuses a task dispatcher no board holds", () => {
+    // An authored `dispatcher({ type: "task" })` that is reachable from an
+    // action without sitting on a board: nothing minted a claim for it, so
+    // the entry it names would run against a row nothing verified.
+    const loose = dispatcher({ name: "loose", type: "task", target: "implement", session: "per-task" });
+    expect(() =>
+      defineFlow({
+        kind: "no-board",
+        actions: { run: { block: sequencer({ name: "run" }).step(loose) } },
+        tasks: { implement: { block: noop } }
+      })
+    ).toThrow(/no task board holds it/);
+  });
+
+  it("refuses a task entry no board hands off to", () => {
+    expect(() =>
+      defineFlow({
+        kind: "unaddressed",
+        actions: {},
+        tasks: { implement: { block: noop } }
+      })
+    ).toThrow(/declares task entry "implement", but no task board reachable from the flow hands off to it/);
+  });
+
+  it("refuses two boards handing off to one entry", () => {
     expect(() =>
       defineFlow({
         kind: "shadowed",
-        actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } },
-        tasks: { implement: entryFor("reviews") }
+        actions: {
+          run: {
+            block: sequencer({ name: "run" })
+              .step(handOff("implement", "issues"))
+              .step(handOff("implement", "reviews"))
+          }
+        },
+        tasks: { implement: { block: noop } }
       })
-    ).toThrow(/belongs to board "reviews"/);
+    ).toThrow(/handed off to by two boards, "(issues|reviews)" and "(issues|reviews)"/);
   });
 
   it("is definition-only: an instance option is refused", () => {
     const flow = defineFlow({ kind: "instance-tasks", actions: {} });
-    expect(() => flow({ tasks: { implement: entryFor("issues") } } as never)).toThrow(
+    expect(() => flow({ tasks: { implement: { block: noop } } } as never)).toThrow(
       /"tasks", which is not an instance option/
     );
   });
 });
 
 describe("resolveEntry — one lookup, no fallback", () => {
+  // A board's hand-off at a dispatcher seat, with an identity gate so the
+  // entry's block stays observable as the one declared.
+  const handOff = markDispatcher(
+    handler({ name: "hand-off-implement", inputSchema: z.unknown(), execute: () => null }),
+    { type: "task", target: "implement", session: "per-task" }
+  );
+  bindTaskDispatcher(handOff, { boardId: "issues", gate: (entry) => entry });
+
   const flow = defineFlow({
     kind: "lookup",
-    actions: { chat: { block: noop }, wake: { block: noop } },
+    actions: { chat: { block: noop }, wake: { block: noop }, handOff: { block: handOff } },
     internal: { wake: { block: wake }, status: { block: noop } },
-    tasks: { implement: markTaskEntry({ block: noop }, { boardId: "issues" }) },
+    tasks: { implement: { block: noop } },
     chat: { on: { mention: { block: noop, input: () => ({}) } } },
     webhooks: { github: { on: { push: { block: noop, input: () => ({}) } } } },
     schedules: { static: { nightly: { block: noop, cron: "0 3 * * *" } } }

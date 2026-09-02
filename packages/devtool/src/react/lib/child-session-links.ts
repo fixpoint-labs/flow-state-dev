@@ -42,14 +42,14 @@
  *
  * ## The match
  *
- * A child belongs to a task when its `coordinate` names that task's assignee
- * (`` `task:${task.assignee}` ``) AND its `topic` either contains the task id
- * (the per-task key embeds it) or equals the task's own declared
- * `metadata.topic` (a custom key policy that chose to mirror it there). An
- * unassigned task never matches by this route: `` `task:${assignee}` `` cannot
- * be built without an assignee to compare against, mirroring the board's own
- * routing — a `uniform` or `floor` seat cannot be disambiguated by worker
- * either.
+ * A child belongs to a task when its `coordinate` is a `task` address AND its
+ * `topic` either contains the task id (the per-task key embeds it) or equals
+ * the task's own declared `metadata.topic` (a custom key policy that chose to
+ * mirror it there). The coordinate's target is the flow's task ENTRY, which a
+ * seat may name differently from itself, so the assignee is not compared —
+ * the topic carries the evidence. An unassigned task never matches by this
+ * route: only a named seat hands off, mirroring the board's own routing — a
+ * `uniform` or `floor` seat cannot be disambiguated by worker either.
  *
  * ## The bound: still a navigation affordance, not proof of provenance
  *
@@ -69,7 +69,7 @@ import type { CollectionView, Task } from "./task-collection-state";
 export type ChildSessionCoordinate = {
   /** `"task"` for a board hand-off, `"internal"` for an internal dispatcher. */
   type: string;
-  /** The assignee (for `"task"`) or dispatcher name (for `"internal"`). */
+  /** The task entry (for `"task"`) or internal entry (for `"internal"`) the child was dispatched to. */
   target: string;
 };
 
@@ -104,16 +104,16 @@ export type LinkedTask = {
 /**
  * Could this child session be running this task?
  *
- * `false` whenever `coordinate` disagrees or is absent — including when the
- * task itself has no assignee, since `` `task:${assignee}` `` cannot be built
- * to compare against. Given a coordinate match, `topic` still has to carry
- * SOME evidence of the task: either the task id as a substring (the default
- * per-task key's shape) or an exact match against the task's own declared
- * topic (a custom key policy that chose to mirror it).
+ * `false` whenever `coordinate` is not a `task` address or is absent — and
+ * when the task itself has no assignee, since only a named seat hands off.
+ * Given a task coordinate, `topic` still has to carry SOME evidence of the
+ * task: either the task id as a substring (the default per-task key's shape)
+ * or an exact match against the task's own declared topic (a custom key policy
+ * that chose to mirror it).
  */
 function couldBeRunningTask(child: ChildSessionSummary, task: Task): boolean {
   if (task.assignee == null) return false;
-  if (child.coordinate !== `task:${task.assignee}`) return false;
+  if (decodeCoordinate(child.coordinate)?.type !== "task") return false;
   if (child.topic == null || child.topic.length === 0) return false;
   if (child.topic.includes(task.id)) return true;
   const declaredTopic = task.metadata?.["topic"];
@@ -127,14 +127,22 @@ function couldBeRunningTask(child: ChildSessionSummary, task: Task): boolean {
  * Requires EXACTLY one candidate. Two children both satisfying
  * {@link couldBeRunningTask} for the same task is the ordinary shape of the
  * ambiguity the file header describes — a wrong link on a debugging surface is
- * worse than no link, so neither is drawn.
+ * worse than no link, so neither is drawn. One tie-break first: when several
+ * fit, a child whose coordinate names the task's own assignee is preferred,
+ * since a seat usually hands off to an entry of the same name and two seats
+ * sharing a topic are told apart by exactly that.
  */
 function resolveChildSession(
   candidates: readonly ChildSessionSummary[],
   task: Task
 ): ChildSessionSummary | undefined {
   const matched = candidates.filter((candidate) => couldBeRunningTask(candidate, task));
-  return matched.length === 1 ? matched[0] : undefined;
+  if (matched.length === 1) return matched[0];
+  if (matched.length === 0) return undefined;
+  const bySeat = matched.filter(
+    (candidate) => decodeCoordinate(candidate.coordinate)?.target === task.assignee
+  );
+  return bySeat.length === 1 ? bySeat[0] : undefined;
 }
 
 /**

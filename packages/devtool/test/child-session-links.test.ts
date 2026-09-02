@@ -181,7 +181,10 @@ describe("linkChildSessionsToTasks", () => {
     expect(byChild.size).toBe(0);
   });
 
-  it("does not match a coordinate for a different assignee", () => {
+  it("matches a task coordinate whose entry is named differently from the assignee", () => {
+    // The coordinate's target is the flow's task ENTRY, and a seat may hand
+    // off to an entry of another name — so the entry name alone cannot rule a
+    // child out. The topic is what carries the evidence.
     const child = childSession({
       id: "dsx_1",
       topic: perTaskTopic("issues", "task-a"),
@@ -191,7 +194,7 @@ describe("linkChildSessionsToTasks", () => {
       [child],
       [board("issues", [task({ id: "task-a", assignee: "implement" })])]
     );
-    expect(byTask.size).toBe(0);
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(child);
   });
 
   it("does not match a non-task coordinate (an internal dispatcher) even when the topic fits", () => {

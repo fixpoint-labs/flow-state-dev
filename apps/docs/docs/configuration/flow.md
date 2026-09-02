@@ -49,7 +49,7 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `kind` | `string` | required | Flow type id. Becomes the URL segment `/api/flows/:kind`. |
 | `actions` | `Record<string, ActionConfig>` | required | Caller-addressed entry points (HTTP and, when enabled, MCP). |
 | `internal` | `Record<string, InternalEntry>` | — | Entries only a `dispatcher()` block in one of this flow's own requests can reach. Definition-only. See [Internal entries](#internal-entries). |
-| `tasks` | `Record<string, TaskEntry>` | — | Entries a task board produces for the seats it hands off, declared as `tasks: board.tasks`. Definition-only. See [Task entries](#task-entries). |
+| `tasks` | `Record<string, TaskEntry>` | — | Entries a task board's seats hand claimed rows to, declared like actions: `tasks: { implement: { block } }`. Definition-only. See [Task entries](#task-entries). |
 | `requireUser` | `boolean` | `true` | Shorthand for `authentication.requireUser`. If both are set, `authentication.requireUser` wins. |
 | `authentication` | `AuthenticationConfig` | — | Per-flow principal resolution. See [Authentication](#authentication). |
 | `session` | `SessionConfig` | — | Session state, client projection, retention, history window. |
@@ -207,19 +207,23 @@ See [Scheduled actions](/docs/server/scheduled).
 
 ## Task entries
 
-`tasks` holds the entries a [task board](/docs/orchestration/task-board#handing-tasks-off-to-child-sessions) produces for each worker seat it hands off to a child session. Declare them as `tasks: board.tasks`, or spread several boards together: `tasks: { ...issues.tasks, ...reviews.tasks }`. Each entry wraps the seat's worker in the board's claim gate, so a `task` dispatch reaches the worker only after the claim it names has been re-read and verified.
+`tasks` maps a name to the block a [task board](/docs/orchestration/task-board#handing-tasks-off-to-child-sessions) hands claimed rows to. A seat on the board holds a `dispatcher({ type: "task", target, session })`, and `target` is the key here. The entry runs in a child session, on a request of its own, and receives the worker input the row was claimed with.
 
-`defineFlow` refuses a task entry written by hand (`{ block }` with no board behind it), a board hand-off whose entry is not declared, and two boards whose seats share a name and shadow each other in `tasks`.
-
-A task entry accepts the same execution policy as an action. Spread to override it. A child session shared by several rows wants `queue`:
+| Field | Type | Default | What it does |
+|-------|------|---------|--------------|
+| `block` | `BlockDefinition` | required | The block that runs in the child session. |
+| `concurrency` | `ConcurrencyConfig` | flow `request.concurrency`, else `"allow"` | Same as on an action. A child session that runs several rows wants `"queue"`. |
+| `durable`, `tokenBudget`, `onCompleted`, `onErrored`, `userMessage` | as on an action | — | The rest of the action core. `description` and `mcp` do not apply. |
 
 ```ts
-tasks: { implement: { ...board.tasks.implement, concurrency: "queue" } },
+tasks: { implement: { block: implementWorker, concurrency: "queue" } },
 ```
+
+Before a task entry's block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError` instead. `defineFlow` throws, naming the block and the entry, on an entry with no `block`, a seat whose `target` names an entry the flow does not declare, a task entry no reachable board hands off to, a `task` dispatcher no board holds, two boards handing off to one entry, and an entry block that declares `sessionStateSchema` at its root or in a composed child.
 
 ## Dispatching to another session
 
-`dispatcher()` builds a block that sends one dispatch to one declared entry instead of doing the work itself. The dispatch runs in a child session derived from a key, or in a session that already exists, and the dispatching request returns as soon as the runtime has accepted it. The block is a handler underneath, so it goes anywhere a handler goes: an action's root block, a sequencer step, a generator's tool.
+`dispatcher()` builds a block that sends one dispatch to one declared entry instead of doing the work itself. The dispatch runs in a child session derived from a key, or in a session that already exists, and the dispatching request returns as soon as the runtime has accepted it. The block is a handler underneath, so an `internal` dispatcher goes anywhere a handler goes: an action's root block, a sequencer step, a generator's tool. A `task` dispatcher is a seat on a task board and goes under the board's `workers`.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -257,11 +261,11 @@ Calling `upload` returns `{ sessionId, requestId, adopted }`: the child session 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `name` | `string` | required | Block name. |
-| `type` | `"internal"` | required | The dispatch type. Only `internal` can be authored; `task` dispatches are sent by a task board. |
-| `target` | `string` | required | The entry name, resolved as `internal[target]`. Checked when the flow is defined. |
-| `inputSchema` | Zod schema | `z.unknown()` | What the block accepts. |
-| `session` | `{ key: (input, ctx) => string }` \| `{ id: (input, ctx) => string }` | required | Which session runs the dispatch. See below. |
-| `payload` | `(input, ctx) => unknown` | the input itself | The entry's input. Validated by the entry's own `inputSchema` on arrival. |
+| `type` | `"internal"` \| `"task"` | required | `"internal"` sends this request's own authority to `internal[target]`. `"task"` hands a task board's rows to `tasks[target]`; it is meaningful only as a seat under a board's `workers`. |
+| `target` | `string` | required | The entry name, resolved as `internal[target]` or `tasks[target]`. Checked when the flow is defined. |
+| `inputSchema` | Zod schema | `z.unknown()` | `internal` only. What the block accepts. A `task` dispatcher's input is the claim envelope the board mints from the row, `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }` (`taskDispatchInputSchema`). |
+| `session` | see below | required | `internal`: `{ key: (input, ctx) => string }` or `{ id: (input, ctx) => string }`. `task`: `"per-task"`, `"per-worker"`, or `{ key: (task, ctx) => string }` read from the row's worker input. |
+| `payload` | `(input, ctx) => unknown` | the input itself | `internal` only. The entry's input. Validated by the entry's own `inputSchema` on arrival. |
 | `transient` | `boolean` | `false` | Hide the block's trace from clients. |
 | `description` | `string` | — | Block description. |
 
@@ -270,6 +274,8 @@ Calling `upload` returns `{ sessionId, requestId, adopted }`: the child session 
 **`{ key }`** derives a child of the running session from the key together with the running request's principal, tenant, and parent session. The child is created on first use and reused after, so a retry re-enters the work it started. Use a value that names the unit of work: a document id, an issue key. The child's record carries `parentSessionId`, `topic` (the key), and `coordinate` (`"internal:summarize"`), and the parent's [children route](/docs/server/setup#api-endpoints) lists it.
 
 **`{ id }`** delivers into a session that already exists. It has to belong to this flow kind and this principal, in this tenant, and not be bound to a different org. An unknown id is refused, never created.
+
+A `task` dispatcher chooses per row instead: `"per-task"` gives every row a child of its own, `"per-worker"` shares one child across every row the seat runs, and `{ key }` groups rows by what the function returns. See [Task board → Which child session](/docs/orchestration/task-board#which-child-session).
 
 ```ts
 const wakeCoordinator = dispatcher({
@@ -284,7 +290,7 @@ const wakeCoordinator = dispatcher({
 
 ### When it is refused
 
-`defineFlow` walks every block it can reach (sequencer steps, rescue handlers, a generator's `tools`, the blocks behind `internal` and `tasks` entries) and throws if a dispatcher names an entry the flow does not declare. The error names the block and the address. Because the address is fixed on the block, a target chosen from data is a [router](/docs/fundamentals/blocks) over declared dispatchers, not a dynamic string.
+`defineFlow` checks every block it can reach (sequencer steps, rescue handlers, a generator's `tools`, the blocks behind `internal` and `tasks` entries) and throws if a dispatcher names an entry the flow does not declare, or if a `task` dispatcher is reachable without sitting on a board seat. The error names the block and the address. Because the address is fixed on the block, a target chosen from data is a [router](/docs/fundamentals/blocks) over declared dispatchers, not a dynamic string.
 
 At run time the block throws `DispatchRefusedError` (`code: "dispatch-refused"`), carrying `blockName`, `address`, `detail`, and `refused`:
 
@@ -302,7 +308,7 @@ Every refusal is decided before anything is dispatched, so a `.rescue()` on the 
 ### What it won't do
 
 - **Wait for the child.** The dispatcher returns once the runtime has accepted the request, and nothing on it reports the child's outcome. Read the child session's own requests, or share a resource marked [`sharedToLineage`](/docs/resources/storage#session-scope-and-background-work).
-- **Send a `public`, `chat`, `webhook`, or `schedule` dispatch.** A block can send `internal` dispatches, and `task` dispatches only through a task board.
+- **Send a `public`, `chat`, `webhook`, or `schedule` dispatch.** A block can send `internal` dispatches, and `task` dispatches only as a seat on a task board.
 - **Reach another flow.** An `id` on a different flow kind is refused as `session-not-addressable`.
 - **Share session state.** The child has its own session scope. Hand values over as `payload`, or through a `sharedToLineage` resource.
 

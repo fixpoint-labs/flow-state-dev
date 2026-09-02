@@ -135,11 +135,12 @@ export {
   DispatchRefusedError,
   DISPATCH_TYPES,
   NoDispatchSeamError,
-  TASK_ENTRY,
+  bindTaskDispatcher,
   dispatchThroughSeam,
-  isTaskEntry,
   markDispatcher,
-  markTaskEntry
+  taskBindingOf,
+  taskDispatchInputSchema,
+  taskSessionKeyFor
 } from "./types/dispatch";
 export type {
   DispatchAddress,
@@ -151,8 +152,10 @@ export type {
   InternalEntry,
   DispatchType,
   SessionTarget,
+  TaskBinding,
+  TaskDispatchInput,
   TaskEntry,
-  TaskEntryMark
+  TaskSessionPolicy
 } from "./types/dispatch";
 export type {
   CapabilityPresetCtx,
@@ -212,7 +215,9 @@ export {
   sequencer,
   type DispatchHandle,
   type DispatcherConfig,
-  type DispatcherSession
+  type DispatcherSession,
+  type InternalDispatcherConfig,
+  type TaskDispatcherConfig
 } from "./blocks";
 // Block-level rescue resolution (FIX-742). Exported so the server's top-level
 // `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow

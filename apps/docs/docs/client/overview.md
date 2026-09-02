@@ -155,7 +155,7 @@ type ChildSessionSummary = {
   createdAt: number;
   updatedAt: number;
   topic?: string;           // the key the child was derived from
-  coordinate?: string;      // "task:<seat>" or "internal:<entry>"
+  coordinate?: string;      // "task:<entry>" or "internal:<entry>"
   status?: "active" | "completed" | "failed" | "incomplete" | "aborted";
 };
 ```
@@ -176,7 +176,7 @@ if (child) {
 
 A child that has never run anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
 
-`topic` and `coordinate` are optional too. `topic` is the key the child was derived from: what a `dispatcher()`'s `key` function returned, or a task board's key for the row or seat. `coordinate` is the entry the work was sent to, `task:<seat>` for a board hand-off or `internal:<entry>` for a dispatcher. Both are labels, and a row can arrive without either. Guard all three with `== null`:
+`topic` and `coordinate` are optional too. `topic` is the key the child was derived from: what a `dispatcher()`'s `key` function returned, or a task board's key for the row or seat. `coordinate` is the entry the work was sent to, `task:<entry>` for a board hand-off (the seat's `target`) or `internal:<entry>` for a dispatcher. Both are labels, and a row can arrive without either. Guard all three with `== null`:
 
 ```tsx
 <li>

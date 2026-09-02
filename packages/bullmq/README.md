@@ -74,8 +74,8 @@ that loses it logs a warning. See [Inbound
 transports](https://flow-state.dev/docs/advanced/inbound-transports#execution-configuration-and-the-queue).
 
 **`worker-only` starts background work in-process, and it is not durable.** That
-mode installs no dispatcher, so a task board seat that hands off (`{ block,
-session: "per-task" }`) or a `dispatcher()` block runs its child session inside
+mode installs no dispatcher, so a task board seat that hands off (a
+`dispatcher({ type: "task" })`) or an `internal` dispatcher block runs its child session inside
 the worker process and enqueues nothing. If the process stops, nothing re-runs it. A
 `worker-only` process is a good place to *consume* durable jobs and a poor place
 to *start* them; start them from `colocated` or `dispatch-only`. See [Work that

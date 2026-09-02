@@ -72,7 +72,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   claudeCodeAgent,
@@ -80,7 +80,11 @@ import {
   OBSERVED_GAPS,
   OBSERVED_PLAN,
 } from "@flow-state-dev/claude-code/sdk";
-import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
+import {
+  defineTaskCollection,
+  type TaskWorker,
+  type TaskWorkerInput,
+} from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
@@ -331,13 +335,15 @@ await runGoal(async () => {
       // One child session per topic: a second job filed under the same topic
       // lands in the child the first one minted, which is what the reuse
       // assertions below read.
-      [ASSIGNEE]: {
-        block: codingRun,
+      [ASSIGNEE]: dispatcher<TaskWorkerInput>({
+        name: `${BOARD_ID}-hand-off`,
+        type: "task",
+        target: ASSIGNEE,
         session: {
           key: (task) =>
             typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,
         },
-      },
+      }),
     },
   });
 
@@ -360,7 +366,7 @@ await runGoal(async () => {
 
   const codingFlow = defineFlow({
     kind: FLOW_KIND,
-    tasks: board.tasks,
+    tasks: { [ASSIGNEE]: { block: codingRun } },
     actions: {
       dispatch: {
         block: sequencer({

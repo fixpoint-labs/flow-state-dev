@@ -10,7 +10,7 @@
  * `ctx.suspend()` keeps `recordSuccess` from stomping the row to `completed` on
  * return (`SuspensionError` bypasses `.rescue()`).
  *
- * What breaks it: the task entry's pre-worker START GATE (`buildTaskEntry`,
+ * What breaks it: the task entry's pre-worker START GATE (`createTaskGate`,
  * `task-board/task-entry.ts`) is a `.tap()`, and a `.tap()` has no committed
  * output for replay-by-injection to reuse — so it re-executes in full on every
  * re-entry, including a `continueRequest` resume of ITS OWN suspended
@@ -40,7 +40,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineCapability, handler } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { TaskClaimTicket, TaskWorkerInput } from "../../src/tasks";
 import {
   defineTaskCollection,
@@ -143,7 +143,12 @@ function buildScenario() {
     boardId: BOARD_NAME,
     collection: ledger,
     workers: {
-      background: { block: parkThenSuspend, session: "per-task" },
+      background: dispatcher({
+        name: `${BOARD_NAME}-background-seat`,
+        type: "task",
+        target: "background",
+        session: "per-task",
+      }),
     },
     initialTasks: [
       {
@@ -208,7 +213,7 @@ function buildScenario() {
       probe: { block: probe },
       bump: { block: bump },
     },
-    tasks: board.tasks,
+    tasks: { background: { block: parkThenSuspend } },
   })({ id: "review-park-suspend-flow" });
 
   return { flow };

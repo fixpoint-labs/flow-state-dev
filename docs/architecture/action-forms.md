@@ -57,7 +57,7 @@ const conductor = defineFlow({
   kind: "conductor",
   actions:  { seed, status, answer },        // public — the caller-facing API
   internal: { wake: { block: wakeBlock } },  // reachable only from a dispatcher inside
-  tasks:    board.tasks,                     // produced by the board; the claim gate per seat
+  tasks:    { implement: { block: implementBlock } }, // reached only from a board's dispatcher seat
   schedules: { static: { nightly: { cron: "0 3 * * *", block: sweep } } },
 });
 ```
@@ -172,11 +172,17 @@ sibling, send a message — is one block with one optional session argument.
 ## Task hand-off: the board is the only thing that mints rows
 
 A `task` dispatch is the one type that carries a claim on a durable row. Rows
-are minted by a task board and by nothing else, so `flow.tasks` is meaningful
-only as `tasks: board.tasks`: the board produces one entry per handed-off
-seat, each wrapping the seat's worker in the board's **claim gate**, and
-brands it. `defineFlow` refuses an unbranded task entry, and refuses a
-hand-off whose entry belongs to a different board than the one that built it.
+are minted by a task board and by nothing else, so a task entry is meaningful
+only when a board reaches it. The flow declares the entry as a plain block,
+like an action; the board hands off to it from a seat that holds a
+`dispatcher({ type: "task", target, session })`. A worker is just a block —
+the dispatcher is what makes a seat run its rows elsewhere. The board binds its
+**claim gate** onto the hand-off it installs at that seat, and `defineFlow`
+rebuilds the entry behind it (`resolveDispatchTargets`): the row re-read, the
+claim verified, the task scope marked, the ticket re-minted, then the block
+runs on the packed worker input. `defineFlow` refuses a task dispatcher no
+board holds, a task entry no reachable board hands off to, and two boards
+handing off to one entry.
 
 ```ts
 const board = taskBoard({

@@ -1,15 +1,19 @@
 /**
- * The block that hands a claimed row off instead of running its worker.
+ * The block that hands a claimed row off instead of running a worker.
  *
- * It substitutes for the worker in the drain's routing table, so the drain's
- * shape is untouched — claim, route, record. What changes is what the route
- * does: it puts a `task` dispatch through the dispatch seam, addressed to the
- * seat's entry on the flow (`flow.tasks[seat]`), and returns while the child
- * session runs the worker.
+ * A board seat holding a `dispatcher({ type: "task" })` declares that its rows
+ * run elsewhere. This block is what the drain installs at that seat: it takes
+ * the dispatcher's address as declared — the entry it names and the session
+ * policy — and adds the bookkeeping only the drain can do, because only the
+ * drain holds the claim: mint the envelope from the ticket, release the claim
+ * before the point of no return, put the dispatch through the seam, hand the
+ * claim back on refusal. The drain's shape is untouched — claim, route,
+ * record. What changes is what the route does.
  *
- * The block carries its address — `{ type: "task", target: seat, boardId }` —
- * so `defineFlow` verifies the flow declares `tasks: board.tasks` and the
- * board's roster shows the hand-off statically.
+ * The block carries the seat's address, so `defineFlow` verifies the flow
+ * declares `tasks: { [target]: { block } }` and the board's roster shows the
+ * hand-off statically; and it carries the board's **binding** — its id and the
+ * claim gate — which `defineFlow` uses to put that entry behind the gate.
  *
  * ## How the task survives this request without being settled by it
  *
@@ -46,14 +50,18 @@
  * renewal from its own async chain.
  */
 import { handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import {
+  bindTaskDispatcher,
+  dispatchThroughSeam,
+  markDispatcher,
+  taskSessionKeyFor,
+} from "@flow-state-dev/core/types";
+import type { BlockDefinition, TaskBinding, TaskDispatchInput } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import type { TaskWorkerInput } from "../../tasks";
-import type { TaskSessionPolicy } from "../hand-off";
+import type { TaskSeatAddress } from "../hand-off";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
-import type { TaskDispatchInput } from "../task-entry";
 import { assertJsonSafe } from "./json-safe";
 
 export interface HandOffOptions {
@@ -61,53 +69,23 @@ export interface HandOffOptions {
   name: string;
   /** The declaring board's stable id — half of the durable address. */
   boardId: string;
-  /** The seat this hand-off stands in for — the task entry's name. */
+  /** The seat this hand-off stands in for — the row's assignee. */
   seat: string;
-  /** Which child session the seat's rows run in. */
-  session: TaskSessionPolicy;
-}
-
-/** Length-prefix a field so field boundaries cannot migrate in a composed key. */
-function framed(value: string): string {
-  return `${value.length}:${value}`;
+  /** The seat's dispatcher address: the entry it hands off to and the session policy. */
+  address: TaskSeatAddress;
+  /** The board's claim gate, bound onto this block for `defineFlow` to apply to the entry. */
+  binding: TaskBinding;
 }
 
 /**
- * The child-session key for one row under the seat's policy.
- *
- * The presets frame the board id in, so two boards' `per-task` children stay
- * apart even when their task ids coincide. An explicit `key` is used verbatim —
- * sharing a child across seats, or across boards, is exactly what an author
- * writes one for.
- */
-function sessionKeyFor(
-  policy: TaskSessionPolicy,
-  boardId: string,
-  seat: string,
-  task: TaskWorkerInput
-): string {
-  if (policy === "per-task") return `task|${framed(boardId)}|${framed(task.taskId)}`;
-  if (policy === "per-worker") return `worker|${framed(boardId)}|${framed(seat)}`;
-  const key = policy.key(task);
-  if (typeof key !== "string" || key.length === 0) {
-    throw new Error(
-      `[task-board] "${boardId}" seat "${seat}" computed an empty session key for task ` +
-        `"${task.taskId}" (${JSON.stringify(key)}). The key names the child session; return a ` +
-        `value that identifies the unit of work.`
-    );
-  }
-  return key;
-}
-
-/**
- * Build the block that stands in for one handed-off worker on the drain.
+ * Build the block the drain installs at one dispatcher seat.
  *
  * Its input is the packed `TaskWorkerInput` the drain already materialized —
  * the same value an inline worker would have received, which is what makes the
  * handed-off and inline paths agree on what the worker sees.
  */
 export function createHandOff(options: HandOffOptions): BlockDefinition<any, any> {
-  const { name, boardId, seat, session } = options;
+  const { name, boardId, seat, address, binding } = options;
 
   const block = handler({
     name,
@@ -147,6 +125,7 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
 
       const envelope: TaskDispatchInput = {
         boardId,
+        seat,
         taskId: claim.taskId,
         // The claim's identity, carried so the child's gate can VERIFY it
         // against the row — not so it can trust it. Every field comes off the
@@ -161,14 +140,14 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
         payload: snapshot,
       };
 
-      const key = sessionKeyFor(session, boardId, seat, snapshot);
+      const key = taskSessionKeyFor(name, address.session, envelope, ctx);
 
       // Release BEFORE the point of no return — see the file header.
       await ctx.sequencer!.patchState({ currentClaim: undefined });
 
       const outcome = await dispatchThroughSeam(ctx, {
         type: "task",
-        target: seat,
+        target: address.target,
         session: { key },
         payload: envelope,
         from: name,
@@ -186,8 +165,8 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
         // was claimed and could not be started.
         await ctx.sequencer!.patchState({ currentClaim: claim });
         throw new Error(
-          `[task-board] "${boardId}" could not hand off task "${claim.taskId}" to seat ` +
-            `"${seat}": ${outcome.refused} — ${outcome.detail}`
+          `[task-board] "${boardId}" could not hand off task "${claim.taskId}" from seat ` +
+            `"${seat}" to task entry "${address.target}": ${outcome.refused} — ${outcome.detail}`
         );
       }
 
@@ -213,5 +192,10 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
     },
   });
 
-  return markDispatcher(block, { type: "task", target: seat, boardId });
+  // A fresh address object: the binding is keyed by it, so the seat's own
+  // dispatcher stays unbound — reached outside this board it is refused as
+  // held by no board, which is what it would be.
+  markDispatcher(block, { ...address });
+  bindTaskDispatcher(block, binding);
+  return block;
 }

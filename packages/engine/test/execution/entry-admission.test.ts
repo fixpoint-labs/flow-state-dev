@@ -23,7 +23,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler, markTaskEntry } from "@flow-state-dev/core";
+import { bindTaskDispatcher, defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
 import { resolveEntry } from "../../src/execution/resolve-entry";
 import {
   CHAT_SOURCE,
@@ -53,6 +53,21 @@ const internalBlock = handler({
   execute: () => undefined
 });
 
+/**
+ * A board's hand-off at a dispatcher seat, as `taskBoard()` installs it: a
+ * block carrying a `task` address and the board's binding. The gate is the
+ * identity here so the entry's block stays observable as the one declared —
+ * this file is about which MAP resolves, not what the gate wraps.
+ */
+function boundHandOff(target: string) {
+  const block = markDispatcher(
+    handler({ name: `hand-off-${target}`, inputSchema: z.unknown(), execute: () => undefined }),
+    { type: "task", target, session: "per-task" }
+  );
+  bindTaskDispatcher(block, { boardId: "b", gate: (entry) => entry });
+  return block;
+}
+
 const otherBlock = handler({
   name: "other",
   inputSchema: z.object({}).passthrough(),
@@ -70,10 +85,11 @@ function flowWithCollidingNames() {
   return defineFlow({
     kind: "board",
     actions: {
-      drain: { block: publicBlock, concurrency: { policy: "reject", key: "session" } }
+      drain: { block: publicBlock, concurrency: { policy: "reject", key: "session" } },
+      handOff: { block: boundHandOff("drain") }
     },
     internal: { drain: { block: internalBlock } },
-    tasks: { drain: markTaskEntry({ block: taskBlock }, { boardId: "b" }) }
+    tasks: { drain: { block: taskBlock } }
   })({ id: "board" });
 }
 
@@ -96,9 +112,9 @@ describe("resolveEntry — task and internal never fall through to flow.actions"
   it("returns undefined when the type's own map lacks the name — even though it has OTHER entries and flow.actions has this one", () => {
     const partial = defineFlow({
       kind: "partial-maps",
-      actions: { drain: { block: publicBlock } },
+      actions: { drain: { block: publicBlock }, handOff: { block: boundHandOff("other") } },
       internal: { other: { block: otherBlock } },
-      tasks: { other: markTaskEntry({ block: otherBlock }, { boardId: "b" }) }
+      tasks: { other: { block: otherBlock } }
     })({ id: "partial-maps" });
 
     expect(resolveEntry(partial, "drain", TASK_SOURCE, undefined)).toBeUndefined();

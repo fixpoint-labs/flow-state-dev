@@ -23,7 +23,7 @@
  * request that still owns it.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { validateConcurrencyConfig } from "@flow-state-dev/core/types";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
@@ -40,20 +40,23 @@ const USER_ID = "u_sharedkey";
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
 function buildFlow(kind: string, concurrency: "allow" | "queue" | "reject") {
+  const background = handler({
+    name: "background-worker",
+    inputSchema: taskWorkerInputSchema,
+    outputSchema: z.object({ handled: z.string() }),
+    execute: (input: TaskWorkerInput) => ({ handled: input.taskId }),
+  });
   const board = taskBoard({
     name: `${kind}-board`,
     boardId: `${kind}-board`,
     collection: defineTaskCollection({ id: `${kind}-ledger`, scope: "user" }),
     workers: {
-      background: {
-        block: handler({
-          name: "background-worker",
-          inputSchema: taskWorkerInputSchema,
-          outputSchema: z.object({ handled: z.string() }),
-          execute: (input: TaskWorkerInput) => ({ handled: input.taskId }),
-        }),
+      background: dispatcher({
+        name: `${kind}-hand-off`,
+        type: "task",
+        target: "background",
         session: "per-task",
-      },
+      }),
     },
     initialTasks: [
       { id: "t1", goal: "work under a shared key", assignee: "background", input: { n: 1 } },
@@ -66,7 +69,7 @@ function buildFlow(kind: string, concurrency: "allow" | "queue" | "reject") {
     // key — the parent is holding it when the child is dispatched.
     request: { concurrency: { policy: concurrency, key: "user" } },
     actions: { start: { block: board.drain } },
-    tasks: board.tasks,
+    tasks: { background: { block: background } },
   })({ id: kind });
 }
 

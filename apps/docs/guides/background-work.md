@@ -127,12 +127,12 @@ The dispatcher returns `{ sessionId, requestId, adopted }` as soon as the runtim
 
 ### With a task board
 
-A board is a list of tasks plus a set of named workers that claim them. Wrap one of those workers in `{ block, session }` and its tasks run in a child session instead of the request that claimed them:
+A board is a list of tasks plus a set of named workers that claim them. Put a `dispatcher({ type: "task" })` in one of those seats instead of a worker, and the seat's tasks run in a child session instead of the request that claimed them. The block that runs there is declared on the flow, under `tasks`, at the name the dispatcher's `target` gives:
 
 ```ts
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import { defineTaskCollection, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 
 const diligenceTasks = defineTaskCollection({ id: "diligence-tasks", scope: "user" });
 
@@ -141,15 +141,22 @@ const board = taskBoard({
   boardId: "diligence",
   collection: diligenceTasks,
   workers: {
-    investigate: {
-      block: investigateBlock,
+    investigate: dispatcher({
+      name: "hand-off-investigate",
+      type: "task",
+      target: "investigate",
       // Rows on the same topic share one child and continue its history.
       session: {
-        key: (task) =>
+        key: (task: TaskWorkerInput) =>
           typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,
       },
-    },
-    verify: { block: verifyBlock, session: "per-task" },
+    }),
+    verify: dispatcher({
+      name: "hand-off-verify",
+      type: "task",
+      target: "verify",
+      session: "per-task",
+    }),
     summarize: summarizeBlock, // a bare block runs inline, in the request that claimed the task
   },
   initialTasks: [
@@ -161,11 +168,14 @@ const board = taskBoard({
 export default defineFlow({
   kind: "diligence",
   actions: { start: { block: board.drain } },
-  tasks: board.tasks, // one entry per handed-off seat
+  tasks: {
+    investigate: { block: investigateBlock }, // what runs in the child session
+    verify: { block: verifyBlock },
+  },
 })();
 ```
 
-`tasks: board.tasks` is what makes the hand-off legal. The board produces one flow entry per handed-off seat, and the flow refuses to build if a hand-off is reachable and its entry isn't declared. `boardId` is required once any seat hands off, and the collection has to be a `defineTaskCollection()`: the child settles its task after the request that claimed it is gone, so the collection it settles against has to outlive that request too. All of it is checked when the board is built, not when the first task arrives. See [Task board > Handing tasks off to child sessions](/docs/orchestration/task-board#handing-tasks-off-to-child-sessions).
+The `tasks` map is what makes the hand-off legal. Each seat's `target` names an entry in it, and the flow refuses to build if a hand-off is reachable and its entry isn't declared, or if an entry is declared that no board hands off to. `boardId` is required once any seat hands off, and the collection has to be a `defineTaskCollection()`: the child settles its task after the request that claimed it is gone, so the collection it settles against has to outlive that request too. The board checks its part when it is built and the flow checks the rest when it is defined, not when the first task arrives. See [Task board > Handing tasks off to child sessions](/docs/orchestration/task-board#handing-tasks-off-to-child-sessions).
 
 Tasks are seeded here to keep the example in one piece. A task added later with `addTask` carries the same `assignee` and `metadata` fields.
 
@@ -183,22 +193,22 @@ That release lasts only while the child is actually holding the task, not for th
 
 ### Which tasks share a child session
 
-The seat's `session` policy decides:
+The seat's dispatcher has a `session` policy, and it decides:
 
 | `session` | Child session |
 |---|---|
 | `"per-task"` | One per row. |
 | `"per-worker"` | One per seat, shared by every row the seat runs. |
-| `{ key: (task) => string }` | Rows whose function returns the same key share one child. The function reads the same task input the worker receives. |
+| `{ key: (task: TaskWorkerInput) => string }` | Rows whose function returns the same key share one child. The function reads the same task input the worker receives. |
 
-The two presets include the board id in the key, so two boards' children stay apart even when their task ids coincide. A custom key is used as returned, so two seats, or two boards, that return the same key share one child. The key is what tells one conversation's children apart, so a dispatcher and a seat that compute the same key from the same conversation land on the same child as well.
+The two presets include the board id in the key, so two boards' children stay apart even when their task ids coincide. A custom key is used as returned, so two seats, or two boards, that return the same key share one child. The key is what tells one conversation's children apart, so an `internal` dispatcher and a seat that compute the same key from the same conversation land on the same child as well.
 
 Above, `filings` and `calls` both carry `topic: "acme"`, so they run in one child session: two runs in the same session, and `listSessionRequests` on that child returns both. A row with no topic falls back to its own task id in that key function, so a task that doesn't ask for continuity gets a child of its own. Set a topic when a worker should pick up where it left off on the same body of work: one research thread, one issue, one document. Leave it off when each task starts cold. A key function that returns an empty string fails the row.
 
 A child that runs several rows runs them under its entry's concurrency policy, which defaults to `allow`. Declare `queue` on that entry or the rows interleave:
 
 ```ts
-tasks: { investigate: { ...board.tasks.investigate, concurrency: "queue" } },
+tasks: { investigate: { block: investigateBlock, concurrency: "queue" } },
 ```
 
 Starting a child session is server-side only. There's no client call for it.

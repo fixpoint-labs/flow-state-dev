@@ -88,7 +88,7 @@ Each row is a `ChildSessionSummary`:
 | `parentSessionId` | `string` | The session this work hangs off. |
 | `createdAt` / `updatedAt` | `number` | |
 | `topic` | `string \| undefined` | The key the child was derived from. |
-| `coordinate` | `string \| undefined` | The entry the work was sent to: `task:<seat>` or `internal:<entry>`. |
+| `coordinate` | `string \| undefined` | The entry the work was sent to: `task:<entry>` (a board seat's `target`) or `internal:<entry>`. |
 | `status` | `ChildSessionStatus \| undefined` | Absent until the child has run something. |
 
 `ChildSessionStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. Guard `topic`, `coordinate`, and `status` with `== null`.

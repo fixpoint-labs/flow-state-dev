@@ -20,7 +20,7 @@
  *   failure rather than a passing test about the wrong thing.
  */
 import { describe, expect, it } from "vitest";
-import { handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineTaskCollection,
@@ -28,7 +28,7 @@ import {
   type TaskWorker,
 } from "../../src/tasks";
 import {
-  isTaskWorkerEntry,
+  isTaskDispatcher,
   taskBoard,
   taskWorkerInputSchema,
 } from "../../src/task-board";
@@ -41,6 +41,18 @@ function worker(name: string, extra?: Record<string, unknown>): TaskWorker {
     execute: () => null,
     ...extra,
   }) as TaskWorker;
+}
+
+let seatCount = 0;
+/** A seat that hands off: the dispatcher a board reads its address from. */
+function seat(target = "implement"): TaskWorker {
+  seatCount += 1;
+  return dispatcher({
+    name: `seat-${target}-${seatCount}`,
+    type: "task",
+    target,
+    session: "per-task",
+  }) as unknown as TaskWorker;
 }
 
 const durable = defineTaskCollection({ id: "hand-off-config-tasks", scope: "user" });
@@ -57,18 +69,16 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
     expect(board.backing).toBe("request");
   });
 
-  it("refuses an entry that declares no session, by name", () => {
-    // An entry with no `session` is not a spelling of "inline" — a bare block
-    // in the same position already means that. `resolveWorkerSlot` refuses it
-    // rather than silently reading it as inline, because that reading would
-    // change what a typo produces from "board never built" to "worker quietly
-    // never hands off".
+  it("refuses the removed `{ block, session }` seat shape, by name", () => {
+    // A seat is a block. The removed wrapper is refused rather than silently
+    // read as inline, because that reading would change what a stale board
+    // produces from "board never built" to "worker quietly never hands off".
     expect(() =>
       taskBoard({
-        name: "no-session",
-        workers: { summarize: { block: worker("summarize-2") } as never },
+        name: "removed-seat",
+        workers: { summarize: { block: worker("summarize-2"), session: "per-task" } as never },
       })
-    ).toThrow(/must declare `session`/);
+    ).toThrow(/removed `\{ block, session \}` seat shape/);
   });
 
   it("refuses the removed `dispatch: { mode }` key, by name", () => {
@@ -76,44 +86,57 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
       taskBoard({
         name: "removed-dispatch",
         workers: {
-          summarize: { block: worker("summarize-2b"), dispatch: { mode: "inline" } } as never,
+          summarize: { worker: worker("summarize-2b"), dispatch: { mode: "inline" } } as never,
         },
       })
     ).toThrow(/removed `dispatch: \{ mode \}` option/);
   });
 
-  it("unwraps entries into the worker blocks the drain composes", () => {
-    // The drain must see the same shape it always did. If an entry leaked
-    // through as a router route, the router would try to run `{worker,
-    // session}` as a block.
+  it("refuses a seat that is not a block at all, naming the seat", () => {
+    expect(() =>
+      taskBoard({
+        name: "not-a-block",
+        workers: { summarize: "summarize" as never },
+      })
+    ).toThrow(/seat "summarize" is not a block/);
+  });
+
+  it("reads a dispatcher seat as handed off, with the address it carries", () => {
+    // The drain must see blocks in every seat. A dispatcher is one, so the
+    // routing table is built from the same shape it always was; what the
+    // board adds is knowing which seats hand off, and where to.
     const board = taskBoard({
       name: "unwrap-board",
       boardId: "unwrap-board",
       collection: durable,
       workers: {
         summarize: worker("summarize-3"),
-        implement: { block: worker("implement-3"), session: "per-task" },
+        implement: seat("implement"),
       },
     });
 
     expect(board.handedOff.map((slot) => slot.label)).toEqual(["assignee:implement"]);
-    expect(board.handedOff[0]?.block.name).toBe("implement-3");
+    expect(board.handedOff[0]?.dispatch).toEqual({
+      type: "task",
+      target: "implement",
+      session: "per-task",
+    });
   });
 });
 
-describe("isTaskWorkerEntry", () => {
-  it("tells an entry from a bare block and from a registry", () => {
+describe("isTaskDispatcher", () => {
+  it("tells a task dispatcher from an inline block and from a registry", () => {
     const block = worker("discriminate");
 
-    expect(isTaskWorkerEntry({ block: block })).toBe(true);
-    expect(isTaskWorkerEntry({ block: block, session: "per-task" })).toBe(true);
-    expect(isTaskWorkerEntry(block)).toBe(false);
-    expect(isTaskWorkerEntry({ summarize: block })).toBe(false);
-    expect(isTaskWorkerEntry(undefined)).toBe(false);
-    // `worker` present but not a block — a registry whose assignee is literally
-    // "worker". Falls through to the registry reading, which is what keeps an
-    // existing board routing the way it always did.
-    expect(isTaskWorkerEntry({ block: { name: "not-a-block" } })).toBe(false);
+    expect(isTaskDispatcher(seat("implement"))).toBe(true);
+    expect(isTaskDispatcher(block)).toBe(false);
+    expect(isTaskDispatcher({ summarize: block })).toBe(false);
+    expect(isTaskDispatcher(undefined)).toBe(false);
+    expect(
+      isTaskDispatcher(
+        dispatcher({ name: "internal", type: "internal", target: "x", session: { key: () => "k" } })
+      )
+    ).toBe(false);
   });
 });
 
@@ -123,7 +146,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       taskBoard({
         name: "no-id",
         collection: durable,
-        workers: { implement: { block: worker("impl-no-id"), session: "per-task" } },
+        workers: { implement: seat("implement") },
       })
     ).toThrow(/no boardId.*assignee:implement|assignee:implement.*no boardId/s);
   });
@@ -136,7 +159,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       taskBoard({
         name: "request-backed",
         boardId: "request-backed",
-        workers: { implement: { block: worker("impl-req"), session: "per-task" } },
+        workers: { implement: seat("implement") },
       })
     ).toThrow(/request-backed collection|must be durable/);
   });
@@ -147,7 +170,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         name: "seq-backed",
         boardId: "seq-backed",
         collection: { backing: "sequencer", collectionId: "seq-backed" },
-        workers: { implement: { block: worker("impl-seq"), session: "per-task" } },
+        workers: { implement: seat("implement") },
       })
     ).toThrow(/sequencer-backed collection|must be durable/);
   });
@@ -160,24 +183,30 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         name: "factory-backed",
         boardId: "factory-backed",
         collection: () => ({}) as unknown as TaskCollectionRef,
-        workers: { implement: { block: worker("impl-fac"), session: "per-task" } },
+        workers: { implement: seat("implement") },
       })
     ).toThrow(/factory-backed collection|must be durable/);
   });
 
-  it("refuses a handed-off worker that declares sessionStateSchema, by name", () => {
-    // Every handed-off worker in a flow may share its child session with
-    // other rows, so two workers picking the same key with different shapes
-    // corrupt each other with no error anywhere. The refusal is the whole fix.
+  it("refuses a handed-off entry block that declares sessionStateSchema, at defineFlow", () => {
+    // Every handed-off block in a flow may share its child session with other
+    // rows, so two blocks picking the same key with different shapes corrupt
+    // each other with no error anywhere. The refusal is the whole fix. It
+    // fires when the flow is defined — the block lives on the flow, so the
+    // board cannot see it any earlier.
+    const board = taskBoard({
+      name: "session-state",
+      boardId: "session-state",
+      collection: durable,
+      workers: { implement: seat("implement") },
+    });
     expect(() =>
-      taskBoard({
-        name: "session-state",
-        boardId: "session-state",
-        collection: durable,
-        workers: {
+      defineFlow({
+        kind: "session-state",
+        actions: { run: { block: board.drain } },
+        tasks: {
           implement: {
             block: worker("impl-session", { sessionStateSchema: z.object({ topic: z.string() }) }),
-            session: "per-task",
           },
         },
       })
@@ -189,15 +218,20 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
     // seat may share with other rows, which an inline worker never joins.
     // Refusing it would be a guard firing on a condition it does not actually
     // test.
+    const board = taskBoard({
+      name: "mixed-board",
+      boardId: "mixed-board",
+      collection: durable,
+      workers: {
+        summarize: worker("sum-session", { sessionStateSchema: z.object({ topic: z.string() }) }),
+        implement: seat("implement"),
+      },
+    });
     expect(() =>
-      taskBoard({
-        name: "mixed-board",
-        boardId: "mixed-board",
-        collection: durable,
-        workers: {
-          summarize: worker("sum-session", { sessionStateSchema: z.object({ topic: z.string() }) }),
-          implement: { block: worker("impl-mixed"), session: "per-task" },
-        },
+      defineFlow({
+        kind: "mixed-board",
+        actions: { run: { block: board.drain } },
+        tasks: { implement: { block: worker("impl-mixed") } },
       })
     ).not.toThrow();
   });
@@ -209,7 +243,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       collection: durable,
       workers: {
         summarize: worker("sum-good"),
-        implement: { block: worker("impl-good"), session: "per-task" },
+        implement: seat("implement"),
       },
     });
 
@@ -221,9 +255,9 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
 
 describe("hand-off dispatch — the uniform and floor coordinates", () => {
   it("refuses the removed board-level `dispatch` option", () => {
-    // The board-level `dispatch` field is gone entirely — a worker hands off
-    // by naming itself under `workers: { <name>: { worker, session } }`, so a
-    // uniform worker (which has no seat name) has no way to hand off at all.
+    // The board-level `dispatch` field is gone entirely — a seat hands off by
+    // holding a `dispatcher({ type: "task" })`, so a uniform worker (which has
+    // no seat name) has no way to hand off at all.
     expect(() =>
       taskBoard({
         name: "uniform-detached",
@@ -247,18 +281,18 @@ describe("hand-off dispatch — the uniform and floor coordinates", () => {
     ).toThrow(/removed board-level `dispatch` option/);
   });
 
-  it("refuses a hand-off through the delegation floor — only a named worker can hand off", () => {
-    // The floor has no seat name — `flow.tasks` is keyed by name — so it has
-    // no task entry to hand off to.
+  it("refuses a hand-off through the delegation floor — only a named seat can hand off", () => {
+    // The floor has no seat name — a row it takes has no assignee — so there
+    // is nothing for the child's gate to check the row against.
     expect(() =>
       taskBoard({
         name: "floor-detached",
         boardId: "floor-detached",
         collection: durable,
         workers: { summarize: worker("sum-floor") },
-        defaultWorker: { block: worker("floor-impl"), session: "per-task" },
+        defaultWorker: seat("floor-impl"),
       })
-    ).toThrow(/only a named worker can hand off/);
+    ).toThrow(/only a named seat can hand off/);
   });
 });
 
@@ -284,9 +318,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         name: "session-detached",
         boardId: "session-detached",
         collection: sessionScoped,
-        workers: {
-          implement: { block: worker("impl-session"), session: "per-task" },
-        },
+        workers: { implement: seat("implement") },
       })
     ).toThrow(/session-scoped collection/);
   });
@@ -297,9 +329,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         name: "session-detached-named",
         boardId: "session-detached-named",
         collection: sessionScoped,
-        workers: {
-          implement: { block: worker("impl-session-2"), session: "per-task" },
-        },
+        workers: { implement: seat("implement") },
       })
     ).toThrow(/assignee:implement/);
   });
@@ -310,9 +340,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         name: "session-detached-fix",
         boardId: "session-detached-fix",
         collection: sessionScoped,
-        workers: {
-          implement: { block: worker("impl-session-3"), session: "per-task" },
-        },
+        workers: { implement: seat("implement") },
       })
     ).toThrow(/sharedToLineage/);
   });
@@ -339,20 +367,33 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         name: "user-detached",
         boardId: "user-detached",
         collection: defineTaskCollection({ id: "user-tasks", scope: "user" }),
-        workers: {
-          implement: { block: worker("impl-user"), session: "per-task" },
-        },
+        workers: { implement: seat("implement") },
       })
     ).not.toThrow();
   });
 });
 
 describe("the session-schema refusal sees composed children", () => {
-  it("refuses a schema declared by a step inside the worker", () => {
-    // A handed-off worker is routinely a sequencer, and the block declaring the
+  /** A flow whose one board hands `implement` off to `block`. */
+  function flowHandingOffTo(kind: string, block: TaskWorker) {
+    const board = taskBoard({
+      name: kind,
+      boardId: kind,
+      collection: durable,
+      workers: { implement: seat("implement") },
+    });
+    return defineFlow({
+      kind,
+      actions: { run: { block: board.drain } },
+      tasks: { implement: { block } },
+    });
+  }
+
+  it("refuses a schema declared by a step inside the entry block", () => {
+    // A handed-off block is routinely a sequencer, and the block declaring the
     // schema is usually a step inside it. It runs in the child session exactly
     // as the root would, and collides with a sibling route's key exactly as
-    // the root would — so inspecting only the root accepted the board and left
+    // the root would — so inspecting only the root accepted the flow and left
     // the declaration to surface as a missing typed key inside the child.
     const nested = sequencer({ name: "outer" }).tap(
       handler({
@@ -362,17 +403,12 @@ describe("the session-schema refusal sees composed children", () => {
       })
     );
 
-    expect(() =>
-      taskBoard({
-        name: "nested-session-state",
-        boardId: "nested-session-state",
-        collection: durable,
-        workers: { implement: { block: nested as never, session: "per-task" } },
-      })
-    ).toThrow(/sessionStateSchema/);
+    expect(() => flowHandingOffTo("nested-session-state", nested as never)).toThrow(
+      /sessionStateSchema/
+    );
   });
 
-  it("names the composed block, not just the worker", () => {
+  it("names the composed block, not just the entry block", () => {
     const nested = sequencer({ name: "outer-2" }).tap(
       handler({
         name: "inner-named",
@@ -381,30 +417,16 @@ describe("the session-schema refusal sees composed children", () => {
       })
     );
 
-    expect(() =>
-      taskBoard({
-        name: "nested-session-named",
-        boardId: "nested-session-named",
-        collection: durable,
-        workers: { implement: { block: nested as never, session: "per-task" } },
-      })
-    ).toThrow(/inner-named/);
+    expect(() => flowHandingOffTo("nested-session-named", nested as never)).toThrow(/inner-named/);
   });
 
-  it("leaves a composed worker that declares none alone", () => {
+  it("leaves a composed block that declares none alone", () => {
     // The control. A walk that flagged any sequencer would refuse most
     // handed-off boards in the codebase.
     const plain = sequencer({ name: "outer-plain" }).tap(
       handler({ name: "inner-plain", execute: () => null })
     );
 
-    expect(() =>
-      taskBoard({
-        name: "nested-session-clean",
-        boardId: "nested-session-clean",
-        collection: durable,
-        workers: { implement: { block: plain as never, session: "per-task" } },
-      })
-    ).not.toThrow();
+    expect(() => flowHandingOffTo("nested-session-clean", plain as never)).not.toThrow();
   });
 });

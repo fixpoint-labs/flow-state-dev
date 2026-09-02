@@ -61,12 +61,13 @@ the same conversation lands on the same child, with `adopted: true`. Every
 option, and the refusals it can throw, are on
 [Flow options > Dispatching to another session](../configuration/flow.md#dispatching-to-another-session).
 
-A task board hands a seat off by wrapping its worker in `{ block, session }`.
-The drain claims a row, sends a `task` dispatch to that seat, and moves on to
-the next row; the worker runs in a child session and settles the row itself.
+A task board hands a seat off when the seat holds a `dispatcher({ type: "task" })`
+instead of a worker. The drain claims a row, sends a `task` dispatch to the
+flow's task entry named by the dispatcher's `target`, and moves on to the next
+row; the entry's block runs in a child session and settles the row itself.
 
 ```ts
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -83,15 +84,20 @@ const board = taskBoard({
   boardId: "issue-work", // required once any seat hands off
   collection: issueLedger,
   workers: {
-    triage: triageWorker, // a bare block runs inline, in the drain
-    implement: { block: implementWorker, session: "per-task" },
+    triage: triageWorker, // runs inline, in the drain
+    implement: dispatcher({
+      name: "hand-off-implement",
+      type: "task",
+      target: "implement", // flow.tasks.implement
+      session: "per-task",
+    }),
   },
 });
 
 export default defineFlow({
   kind: "issues",
   actions: { drain: { block: board.drain } },
-  tasks: board.tasks, // one entry per handed-off seat
+  tasks: { implement: { block: implementWorker } }, // what runs in the child
 })();
 ```
 
@@ -99,7 +105,8 @@ export default defineFlow({
 across every row the seat runs, and `{ key: (task) => string }` groups rows by
 what the function returns. A board that hands off needs a `boardId` and a
 `defineTaskCollection()`, and a session-scoped collection needs
-`sharedToLineage: true`; all of it is checked when the board is built. See
+`sharedToLineage: true`; the board checks that when it is built, and the flow
+checks that every seat's `target` is declared under `tasks` when it is defined. See
 [Task board > Handing tasks off to child sessions](../orchestration/task-board.md#handing-tasks-off-to-child-sessions).
 
 Where the child runs depends on the runtime. With no worker adapter it runs in
@@ -148,8 +155,8 @@ works on it.
   seat on `"per-task"` and `"per-worker"` the key is generated and includes the
   board id and the task id (or seat); on `{ key }` it is what your function
   returned.
-- `coordinate` is the entry the work was sent to: `task:<seat>` for a board
-  hand-off, `internal:<entry>` for a dispatcher.
+- `coordinate` is the entry the work was sent to: `task:<entry>` for a board
+  hand-off (the seat's `target`), `internal:<entry>` for a dispatcher.
 
 Nothing routes or authorizes on either label, and neither is unique on its
 own: two rows sharing a `topic` under different `coordinate`s are two bodies of
@@ -225,8 +232,7 @@ running at runtime start, on a timer while a server is up, and on demand when a
 client asks.
 
 Marking it is where the framework stops. Nothing continues or re-runs the work
-on your behalf: restarting a request nobody asked to restart is how the same
-work runs twice. So the row keeps reading `active` — an `interrupted` run is
+on your behalf. So the row keeps reading `active` — an `interrupted` run is
 unfinished and still continuable — until a client resumes or retries it, or a
 later run supersedes it. The sweep waits until a record's heartbeat has been
 quiet longer than the staleness threshold, so a run that has simply gone quiet
@@ -241,7 +247,7 @@ heartbeat on for any flow whose requests outlive the threshold.
 
 The process that walked away mostly doesn't settle the record on its way out:
 [`dispose()`](../api/server.md#shutdown) cancels child sessions rather than
-marking them finished or failed. One case doesn't follow that yet — work still
+marking them finished or failed. One case is different: work still
 waiting behind a concurrency limit when shutdown reaches it is recorded
 `aborted` without ever having started — so read a terminal status after a
 shutdown as a record of what the process did, not as proof the work ran. And if
@@ -348,7 +354,7 @@ more.
 - [Flow options > Dispatching to another session](../configuration/flow.md#dispatching-to-another-session) —
   the `dispatcher()` block
 - [Task board > Handing tasks off to child sessions](../orchestration/task-board.md#handing-tasks-off-to-child-sessions) —
-  `{ block, session }` seats
+  `dispatcher({ type: "task" })` seats
 - [Client overview](../client/overview.md#background-work) — the same two reads
   from an app
 - [React](../client/react.md#background-work) — `useSession`'s `children`

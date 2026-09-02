@@ -52,12 +52,21 @@ const PAYLOAD: TaskWorkerInput = {
   input: { note: "background" },
 };
 
-const handOff = createHandOff({
-  name: "issue-work-hand-off-implement",
-  boardId: "issue-work",
-  seat: "implement",
-  session: "per-task",
-});
+/** The binding a board puts on its hand-off; the gate is irrelevant to the seam. */
+const BINDING = { boardId: "issue-work", gate: (entry: unknown) => entry as never };
+
+/** A hand-off at seat `implement`, for the dispatcher address a seat would carry. */
+function handOffWith(session: "per-task" | "per-worker" | { key: (task: TaskWorkerInput) => string }) {
+  return createHandOff({
+    name: "issue-work-hand-off-implement",
+    boardId: "issue-work",
+    seat: "implement",
+    address: { type: "task", target: "implement", session },
+    binding: BINDING,
+  });
+}
+
+const handOff = handOffWith("per-task");
 
 /**
  * Drive a hand-off block against a fake worker-body state and a stubbed
@@ -158,6 +167,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
       provenance: { taskId: "t1" },
       payload: {
         boardId: "issue-work",
+        seat: "implement",
         taskId: "t1",
         attempt: 1,
         createdAt: 1_700_000_000_000,
@@ -305,12 +315,7 @@ describe("the child session key", () => {
   });
 
   it("frames a per-worker key on the seat, not the task", async () => {
-    const perWorker = createHandOff({
-      name: "issue-work-hand-off-implement",
-      boardId: "issue-work",
-      seat: "implement",
-      session: "per-worker",
-    });
+    const perWorker = handOffWith("per-worker");
     const harness = drive({ seam: accepted, block: perWorker });
     await harness.run();
 
@@ -318,12 +323,7 @@ describe("the child session key", () => {
   });
 
   it("uses a custom key verbatim, computed from the packed worker input", async () => {
-    const custom = createHandOff({
-      name: "issue-work-hand-off-implement",
-      boardId: "issue-work",
-      seat: "implement",
-      session: { key: (task) => `custom:${task.taskId}:${task.goal}` },
-    });
+    const custom = handOffWith({ key: (task) => `custom:${task.taskId}:${task.goal}` });
     const harness = drive({ seam: accepted, block: custom });
     await harness.run();
 
@@ -331,16 +331,11 @@ describe("the child session key", () => {
   });
 
   it("throws on an empty custom key, naming the seat and the task, before the claim is released", async () => {
-    const blank = createHandOff({
-      name: "issue-work-hand-off-implement",
-      boardId: "issue-work",
-      seat: "implement",
-      session: { key: () => "" },
-    });
+    const blank = handOffWith({ key: () => "" });
     const harness = drive({ seam: accepted, block: blank });
 
     await expect(harness.run()).rejects.toThrow(
-      /"issue-work" seat "implement" computed an empty session key for task "t1"/
+      /"issue-work-hand-off-implement" computed an empty session key for task "t1"/
     );
 
     // The key is computed before the release write — see the block's own

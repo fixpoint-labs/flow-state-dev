@@ -386,14 +386,21 @@ describe("boardQuiescence - work handed to a child session", () => {
  * no seat name to address, so `assertHandOffBoardSupported` refuses either at
  * construction. The predicate mirrors that: it reads every slot's `seat` to
  * know which assignees are declared at all, but only an assignee slot's own
- * `session` can mark a row as handed off.
+ * `dispatch` address can mark a row as handed off.
  */
 describe("handedOffTaskPredicate", () => {
   const slot = (
     seat: { kind: "uniform" } | { kind: "floor" } | { kind: "assignee"; name: string },
     handedOff: boolean
   ) =>
-    ({ seat, session: handedOff ? "per-task" : undefined, label: "", block: {} }) as unknown as Parameters<
+    ({
+      seat,
+      dispatch: handedOff
+        ? { type: "task", target: seat.kind === "assignee" ? seat.name : "floor", session: "per-task" }
+        : undefined,
+      label: "",
+      block: {},
+    }) as unknown as Parameters<
       typeof handedOffTaskPredicate
     >[0][number];
 

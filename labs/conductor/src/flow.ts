@@ -53,7 +53,7 @@
  * reads as a success while the board row is still open. **The board row is the
  * authority on completion; the run record never is.**
  */
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -604,8 +604,14 @@ export function conductorFlow(options: ConductorFlowOptions) {
     workers: {
       // Hands off: each row runs in a child session of its own, keyed on the
       // task id — which IS the issue-phase (`conductorTaskId`), so a retry
-      // re-enters the same child and its run record.
-      [ASSIGNEE]: { block: manager, session: "per-task" },
+      // re-enters the same child and its run record. The block that runs
+      // there is the manager, declared on the flow's `tasks` below.
+      [ASSIGNEE]: dispatcher({
+        name: `${boardId}-hand-off`,
+        type: "task",
+        target: ASSIGNEE,
+        session: "per-task",
+      }),
     },
     // **A run parked on a person is not this drain's to wait on.**
     //
@@ -1032,10 +1038,11 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
 
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
-    // The board's task entries — the claim gate around the manager, reached by
-    // the `task` message the drain hands each claimed row off with. Declared
-    // here so the flow, not the board, owns what a task message can reach.
-    tasks: board.tasks,
+    // The task entry the board's seat hands off to: the manager, reached by
+    // the `task` dispatch the drain sends for each claimed row. `defineFlow`
+    // puts it behind the board's claim gate; the flow, not the board, owns
+    // what a task dispatch can reach.
+    tasks: { [ASSIGNEE]: { block: manager } },
     actions: {
       /** File an issue-phase and start it in one call. */
       seed: {

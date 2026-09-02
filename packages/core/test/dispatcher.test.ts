@@ -70,6 +70,23 @@ describe("dispatcher — the definition", () => {
     ).toThrow(/non-empty target/);
   });
 
+  it("is a task seat when its type is task, carrying the session policy on its address", () => {
+    const seat = dispatcher({
+      name: "hand-off-implement",
+      type: "task",
+      target: "implement",
+      session: "per-task"
+    });
+    expect(seat.kind).toBe("handler");
+    expect(seat.dispatch).toEqual({ type: "task", target: "implement", session: "per-task" });
+  });
+
+  it("refuses a task seat with no session policy, by name", () => {
+    expect(() =>
+      dispatcher({ name: "no-policy", type: "task", target: "implement", session: undefined as never })
+    ).toThrow(/task session policy/);
+  });
+
   it("refuses a type a block cannot supply the trust for", () => {
     expect(() =>
       dispatcher({
@@ -156,6 +173,42 @@ describe("dispatcher — the body", () => {
     await expect(runForTest(block, {}, createMockContext())).rejects.toBeInstanceOf(
       NoDispatchSeamError
     );
+  });
+
+  it("sends a task envelope under the key its policy derives, with the row as provenance", async () => {
+    const { calls, ctx } = seamRecording();
+    const envelope = {
+      boardId: "issue-work",
+      seat: "implement",
+      taskId: "t1",
+      attempt: 1,
+      createdAt: 1_700_000_000_000,
+      payload: { taskId: "t1", goal: "do it", attempts: 1, metadata: { topic: "FIX-1" } }
+    };
+
+    const perTask = dispatcher({ name: "per-task", type: "task", target: "implement", session: "per-task" });
+    await runForTest(perTask, envelope, ctx);
+    expect(calls[0]).toEqual({
+      type: "task",
+      target: "implement",
+      session: { key: "task|10:issue-work|2:t1" },
+      payload: envelope,
+      from: "per-task",
+      provenance: { taskId: "t1" }
+    });
+
+    const perWorker = dispatcher({ name: "per-worker", type: "task", target: "implement", session: "per-worker" });
+    await runForTest(perWorker, envelope, ctx);
+    expect(calls[1]?.session).toEqual({ key: "worker|10:issue-work|9:implement" });
+
+    const byTopic = dispatcher({
+      name: "by-topic",
+      type: "task",
+      target: "implement",
+      session: { key: (task: { metadata?: { topic?: string } }) => task.metadata?.topic ?? "" }
+    });
+    await runForTest(byTopic, envelope, ctx);
+    expect(calls[2]?.session).toEqual({ key: "FIX-1" });
   });
 
   it("refuses an empty computed session key, naming the block", async () => {

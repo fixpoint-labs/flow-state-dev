@@ -19,7 +19,7 @@
  * That is visibility, and it is asserted in `engine`.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
@@ -37,23 +37,26 @@ const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) })
 
 function buildFlow() {
   const ran: string[] = [];
+  const background = handler({
+    name: "background-worker",
+    inputSchema: taskWorkerInputSchema,
+    outputSchema: z.object({ handled: z.string() }),
+    execute: (input: TaskWorkerInput) => {
+      ran.push(input.taskId);
+      return { handled: input.taskId };
+    },
+  });
   const board = taskBoard({
     name: `${KIND}-board`,
     boardId: `${KIND}-board`,
     collection: defineTaskCollection({ id: `${KIND}-ledger`, scope: "user" }),
     workers: {
-      background: {
-        block: handler({
-          name: "background-worker",
-          inputSchema: taskWorkerInputSchema,
-          outputSchema: z.object({ handled: z.string() }),
-          execute: (input: TaskWorkerInput) => {
-            ran.push(input.taskId);
-            return { handled: input.taskId };
-          },
-        }),
+      background: dispatcher({
+        name: `${KIND}-hand-off`,
+        type: "task",
+        target: "background",
         session: "per-task",
-      },
+      }),
     },
     initialTasks: [
       { id: "t1", goal: "work handed to a child that dies", assignee: "background", input: { n: 1 } },
@@ -65,7 +68,7 @@ function buildFlow() {
     flow: defineFlow({
       kind: KIND,
       actions: { start: { block: board.drain } },
-      tasks: board.tasks,
+      tasks: { background: { block: background } },
     })({ id: KIND }),
   };
 }
