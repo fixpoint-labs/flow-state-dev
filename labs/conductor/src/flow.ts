@@ -3,7 +3,7 @@
  * actions.
  *
  * `seed` files an issue-phase as a durable row. `wake` drains the board, which
- * claims a row and hands it to the manager in its own workstream. `status`
+ * claims a row and hands it to the manager in its own child session. `status`
  * reads back what happened.
  *
  * ## The board's own ledger is a deliverable, not a default
@@ -11,22 +11,22 @@
  * A detached board refuses three things at construction, and a flow that leaves
  * any of them implicit throws before `seed` can run: an explicit stable
  * `boardId`, a durable `defineTaskCollection()` backing, and a ledger the
- * workstream can reach.
+ * child session can reach.
  *
- * **`user`-scoped, no `sharedToWorkstream`.** The task row is where a human's
+ * **`user`-scoped, no `sharedToLineage`.** The task row is where a human's
  * later answer lands, through a NEW request, so a parked row has to outlive the
  * coordinator session that created it. `user` rather than `org` because it
  * matches the already-user-scoped inbox where the other half of that round trip
  * arrives, while `org` would share a claim pool across users. At `user` scope
- * the `sharedToWorkstream` refusal never fires — it is conditional on session
+ * the `sharedToLineage` refusal never fires — it is conditional on session
  * scope — and the other two requirements still apply exactly as stated.
  *
  * **Partitioned by epic, and the partition has to reach storage.** One board
  * per epic, and each epic gets its own COLLECTION identity. A distinct
  * `boardId` is not sufficient and is not an alternative: it never reaches the
- * ledger — it is hashed into the derived workstream session id and framed into
- * the coordinate key — so two epic boards under one user sharing a collection
- * id and differing only in `boardId` would operate on the same rows, and one
+ * ledger — it is framed into the child session key and brands the task entry —
+ * so two epic boards under one user sharing a collection id and differing only
+ * in `boardId` would operate on the same rows, and one
  * epic's drain could claim or settle another's. Both ids are needed and neither
  * substitutes for the other: `boardId` names the board within a flow instance,
  * the collection identity partitions storage.
@@ -49,7 +49,7 @@
  * never declare `client.state.read` and its collection-state route answers 403.
  * And nothing else substitutes: `recordSuccess` writes with `ifAllowed: true`,
  * so a `complete()` refused on a lost claim is DROPPED rather than thrown — the
- * worker returns normally, the workstream request completes, and the run record
+ * worker returns normally, the child session request completes, and the run record
  * reads as a success while the board row is still open. **The board row is the
  * authority on completion; the run record never is.**
  */
@@ -377,7 +377,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
 
   // Both ids, per epic, and neither substituting for the other.
   // The tenant is in BOTH ids for the same reason the epic is: `boardId`
-  // partitions routing (it is hashed into the derived workstream session id),
+  // partitions routing (it is hashed into the derived child session session id),
   // the collection identity partitions storage, and neither substitutes for the
   // other.
   // **Every numeric option is validated at THIS door too.**
@@ -602,7 +602,10 @@ export function conductorFlow(options: ConductorFlowOptions) {
     // duration, so this is also what keeps that cost legible.
     concurrency: 1,
     workers: {
-      [ASSIGNEE]: { worker: manager, dispatch: { mode: "detached" } },
+      // Hands off: each row runs in a child session of its own, keyed on the
+      // task id — which IS the issue-phase (`conductorTaskId`), so a retry
+      // re-enters the same child and its run record.
+      [ASSIGNEE]: { worker: manager, session: "per-task" },
     },
     // **A run parked on a person is not this drain's to wait on.**
     //
@@ -721,8 +724,9 @@ export function conductorFlow(options: ConductorFlowOptions) {
           // Without this the substrate is single-attempt and a reported failure
           // costs nothing and delivers nothing — the defect this lab exists to fix.
           maxAttempts,
-          // The workstream routing identity the detached spawn seeds. Routing
-          // only; nothing derives a path or a permission from it.
+          // A readable label for the row. The child session is keyed on the
+          // task id (`session: "per-task"`), so nothing routes on this and
+          // nothing derives a path or a permission from it.
           metadata: { topic: `${input.issue}/${input.phase}` },
         });
         await ctx.sequencer?.patchState({ taskId: task.id });
@@ -1028,6 +1032,10 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
 
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
+    // The board's task entries — the claim gate around the manager, reached by
+    // the `task` message the drain hands each claimed row off with. Declared
+    // here so the flow, not the board, owns what a task message can reach.
+    tasks: board.tasks,
     actions: {
       /** File an issue-phase and start it in one call. */
       seed: {
@@ -1042,7 +1050,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // preventing one.
           .tap(tenantGate)
           .tap(seedTask)
-          // The drain claims the row and hands it to a workstream, then returns
+          // The drain claims the row and hands it to a child session, then returns
           // with the row still open. The seeding request does not wait for the
           // run — which is the point.
           .step(board.drain)

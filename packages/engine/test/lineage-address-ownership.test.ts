@@ -36,7 +36,7 @@ import type { StoreRegistry } from "../src/stores/types";
 /** One session-scoped resource, shared down the lineage. */
 const notes = defineResource({
   scope: "session",
-  sharedToWorkstream: true,
+  sharedToLineage: true,
   ref: "notes",
   stateSchema: z.object({ body: z.string().default("") })
 });
@@ -54,10 +54,10 @@ const flow = defineFlow({
   resources: { notes }
 })();
 
-/** The flow, plus the workstream core `startDetached` admits against. */
+/** The flow, plus the internal entry a dispatch admits against. */
 const spawnableFlow = {
   ...flow,
-  workstream: { block: { name: "noop" } }
+  internal: { core: { block: { name: "noop" } } }
 } as unknown as FlowInstance;
 
 const ROOT_ID = "sess_shared_root";
@@ -104,7 +104,7 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
 
     // 2. It spawns background work. The child is stamped by the real writer, so
     //    its lineage root is genuinely this session's id.
-    const { host } = createRequestHost({
+    const { seam } = createRequestHost({
       stores,
       flow: spawnableFlow,
       identity: {
@@ -114,15 +114,21 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
         sessionId: ROOT_ID,
         lineageId: (await stores.session.get(ROOT_ID))!.lineageId!
       },
-      startOperation: async () => ({ requestId: "req_child" }),
+      dispatchOperation: async () => ({ requestId: "req_child" }),
       liveness: {}
     });
-    const spawned = await host.startDetached({ seed: { topic: "research" }, input: {} });
+    const spawned = await seam({
+      type: "internal",
+      target: "core",
+      session: { key: "research" },
+      payload: {},
+      from: "spawn"
+    });
     if (!spawned.ok) throw new Error(`spawn refused: ${spawned.refused}`);
     const childId = spawned.sessionId;
 
     // 3. Alice's conversation is deleted. The child outlives it — which is the
-    //    whole point of a workstream — and still points at the deleted id.
+    //    whole point of detached work — and still points at the deleted id.
     const deleted = await handleDeleteSession(
       new Request(`http://x/sessions/${ROOT_ID}`, { method: "DELETE" }),
       { kind: "delete_session", flowKind: flow.kind, sessionId: ROOT_ID },
@@ -144,7 +150,7 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
 
     // ...and it must not be able to WRITE over it either. The write below is the
     // more serious half: a read leaks, a write corrupts.
-    await child.resources.notes.patchState({ body: "written by alice's workstream" });
+    await child.resources.notes.patchState({ body: "written by alice's child session" });
     const malloryAgain = await contextFor(stores, ROOT_ID, "u_mallory", "req_4");
     expect(malloryAgain.resources.notes.state.body).toBe("mallory's private notes");
   });
@@ -160,7 +166,7 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
     const parent = await contextFor(stores, ROOT_ID, "u_alice", "req_1");
     await parent.resources.notes.patchState({ body: "from the conversation" });
 
-    const { host } = createRequestHost({
+    const { seam } = createRequestHost({
       stores,
       flow: spawnableFlow,
       identity: {
@@ -170,18 +176,24 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
         sessionId: ROOT_ID,
         lineageId: (await stores.session.get(ROOT_ID))!.lineageId!
       },
-      startOperation: async () => ({ requestId: "req_child" }),
+      dispatchOperation: async () => ({ requestId: "req_child" }),
       liveness: {}
     });
-    const spawned = await host.startDetached({ seed: { topic: "research" }, input: {} });
+    const spawned = await seam({
+      type: "internal",
+      target: "core",
+      session: { key: "research" },
+      payload: {},
+      from: "spawn"
+    });
     if (!spawned.ok) throw new Error(`spawn refused: ${spawned.refused}`);
 
     const child = await contextFor(stores, spawned.sessionId, "u_alice", "req_3");
     expect(child.resources.notes.state.body).toBe("from the conversation");
 
-    await child.resources.notes.patchState({ body: "from the workstream" });
+    await child.resources.notes.patchState({ body: "from the child session" });
     const parentAgain = await contextFor(stores, ROOT_ID, "u_alice", "req_4");
-    expect(parentAgain.resources.notes.state.body).toBe("from the workstream");
+    expect(parentAgain.resources.notes.state.body).toBe("from the child session");
   });
 });
 
@@ -209,7 +221,7 @@ describe("FIX-1068: a recreated session id is a new lineage", () => {
     const first = await contextFor(stores, ROOT_ID, "u_alice", "req_1");
     await first.resources.notes.patchState({ body: "first conversation" });
 
-    const { host } = createRequestHost({
+    const { seam } = createRequestHost({
       stores,
       flow: spawnableFlow,
       identity: {
@@ -219,10 +231,16 @@ describe("FIX-1068: a recreated session id is a new lineage", () => {
         sessionId: ROOT_ID,
         lineageId: (await stores.session.get(ROOT_ID))!.lineageId!
       },
-      startOperation: async () => ({ requestId: "req_child" }),
+      dispatchOperation: async () => ({ requestId: "req_child" }),
       liveness: {}
     });
-    const spawned = await host.startDetached({ seed: { topic: "research" }, input: {} });
+    const spawned = await seam({
+      type: "internal",
+      target: "core",
+      session: { key: "research" },
+      payload: {},
+      from: "spawn"
+    });
     if (!spawned.ok) throw new Error(`spawn refused: ${spawned.refused}`);
     const childId = spawned.sessionId;
 

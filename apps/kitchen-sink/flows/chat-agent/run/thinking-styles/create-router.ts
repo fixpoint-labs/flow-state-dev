@@ -194,5 +194,11 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     eventedActorsPipeline,
     debatePipeline,
     backgroundWorkPipeline,
+    /**
+     * The background-work board's task entries, for the flow to declare as
+     * `tasks`. The board hands each row off to a child session, and the entry
+     * is the claim gate that child's `task` message resolves.
+     */
+    backgroundWorkTasks: backgroundWorkPipeline.tasks,
   };
 }

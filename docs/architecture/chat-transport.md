@@ -47,7 +47,7 @@ a passthrough cast at runtime.
 
 Because the handler lives off `flow.actions`, the runtime resolves it from
 `flow.chat.on[eventKey]` via the `metadata.chat.eventKey` coordinate the
-adapter stamps (see `resolveActionCore` in `engine`). The dispatched request
+adapter stamps (see `resolveEntry` in `engine`). The dispatched request
 records the handler block's `name` as its action, for provenance only.
 
 Each `on` key is matched against `ChatInboundEvent.kind` by exact string
@@ -99,7 +99,7 @@ event with no matching binding is a no-op ack.
 A dispatched request carries `metadata.chat = { eventKey, eventKind,
 platform, threadId, channelId, messageId?, authorId?, isDM }`. The
 `eventKey` is the matched `on` key and doubles as the resolution coordinate
-(`resolveActionCore` reads `metadata.chat.eventKey`), so DevTool can answer
+(`resolveEntry` reads `metadata.chat.eventKey`), so DevTool can answer
 "why did this flow fire on this event?" without reading host source.
 
 `streamToThread` resolves in precedence order: the flow's own
@@ -130,7 +130,7 @@ achieved by separate flows, not duplicate keys.)
 ## Related contracts
 
 - [Action forms](./action-forms.md) — the shared `ActionCore` model and the
-  `resolveActionCore` seam this transport resolves through.
+  `resolveEntry` seam this transport resolves through.
 - [Inbound Transports](./inbound-transports.md) — the adapter contract.
 - [Scheduled Actions](./scheduled-actions.md), [MCP Server](./mcp-server.md)
   — sibling per-flow declarative transports.

@@ -24,7 +24,7 @@
  * record has no need to outlive the session that wrote it. That reasoning was
  * wrong, and the way it was wrong is worth keeping written down.
  *
- * `sharedToWorkstream` gives one identity across *a* session's lineage, and a
+ * `sharedToLineage` gives one identity across *a* session's lineage, and a
  * new coordinator session is a different lineage root. So a `status` call from
  * a new session returned the board row and `run: null` — measured, not
  * theorised — losing the failure reason, the harness session, the cost and the
@@ -138,10 +138,10 @@ export type RunRecordState = z.infer<typeof runRecordStateSchema>;
 export const runRecordCollection = defineResourceCollection({
   pattern: `${RUNS}/**`,
   // Same principal as the board, so a `status` call from any coordinator
-  // session answers with the run row rather than `null`. `sharedToWorkstream`
+  // session answers with the run row rather than `null`. `sharedToLineage`
   // is not passed and would be rejected here — `user` scope already spans every
   // session the principal touches, which is a superset of what lineage sharing
-  // gave and is what the child workstream needs too.
+  // gave and is what the child child session needs too.
   scope: "user",
   prefetchMode: "lazy",
   stateSchema: runRecordStateSchema,

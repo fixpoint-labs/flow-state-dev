@@ -85,7 +85,7 @@ import type {
   MaybePromise,
   StateRef,
 } from "@flow-state-dev/core/types";
-import { declareWorkstreamBindings } from "@flow-state-dev/core/types";
+import type { TaskEntry } from "@flow-state-dev/core/types";
 import {
   freezeLedgerAssignee,
   getOrCreateTaskCollection,
@@ -143,18 +143,16 @@ import {
   type BoardRunFlowState,
 } from "./flow-policy-wiring";
 import {
-  assertDetachedBoardSupported,
-  detachedTaskPredicate,
+  assertHandOffBoardSupported,
+  handedOffTaskPredicate,
   resolveWorkerSlots,
   type ResolvedWorkerSlot,
-  type TaskWorkerDispatch,
   type TaskWorkerSlot,
   type TaskWorkerSlotRegistry,
-} from "./detached";
+} from "./hand-off";
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
-import { buildDetachedRunner } from "./detached-runner";
-import { createSpawnDetached } from "./blocks/spawn-detached";
-import { coordinateKey, type WorkerCoordinate } from "./coordinate";
+import { buildTaskEntry } from "./task-entry";
+import { createHandOff } from "./blocks/hand-off";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -234,23 +232,27 @@ export {
 export { currentWorkerClaim } from "./flow-policy-wiring";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
 export {
-  assertDetachedBoardSupported,
-  detachedTaskPredicate,
+  assertHandOffBoardSupported,
+  handedOffTaskPredicate,
   isTaskWorkerEntry,
   resolveWorkerSlot,
   resolveWorkerSlots,
-} from "./detached";
+  seatLabel,
+} from "./hand-off";
 export type {
   ResolvedWorkerSlot,
-  TaskWorkerDispatch,
+  TaskSessionPolicy,
   TaskWorkerEntry,
   TaskWorkerSlot,
   TaskWorkerSlotRegistry,
-} from "./detached";
+  WorkerSeat,
+} from "./hand-off";
 export { assertParkExitSupported } from "./park-exit";
 export type { TaskBoardOnReview } from "./park-exit";
-export { coordinateKey, coordinateLabel, workstreamRoutingSeed } from "./coordinate";
-export type { WorkerCoordinate } from "./coordinate";
+export { StaleTaskClaimError, buildTaskEntry, taskDispatchInputSchema } from "./task-entry";
+export type { BuildTaskEntryOptions, TaskDispatchInput } from "./task-entry";
+export { createHandOff } from "./blocks/hand-off";
+export type { HandOffOptions } from "./blocks/hand-off";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -315,31 +317,19 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
 
   /**
    * Explicit, stable identifier for this board. **Required when any worker
-   * declares `dispatch: { mode: "detached" }`**, optional otherwise (FIX-982).
+   * hands off** (`{ worker, session }`), optional otherwise.
    *
-   * A detached worker runs in a Workstream whose session id is derived by
-   * hashing `(parentSessionId, boardId, coordinate, topic)`, so this value
-   * lands in a persisted key. It cannot be derived from `name` (unique per
-   * flow, not per session) or from `collectionId` (the literal
-   * `"factory-supplied"` for every factory board), which is why it is
-   * declared rather than inferred.
+   * A handed-off worker runs in a child session whose id is derived from a key
+   * this value is framed into, and the task entries the board produces are
+   * branded with it, so it lands in persisted keys and in the flow definition.
+   * It cannot be derived from `name` (unique per flow, not per session) or from
+   * `collectionId` (the literal `"factory-supplied"` for every factory board),
+   * which is why it is declared rather than inferred.
    *
-   * Renaming it is a **breaking re-key**: live Workstreams keyed on the old
+   * Renaming it is a **breaking re-key**: live child sessions keyed on the old
    * value are orphaned.
    */
   boardId?: string;
-
-  /**
-   * Dispatch mode for a **uniform** worker — a board whose `workers` is a
-   * single block (FIX-982). Omitted means inline, which is what every board
-   * does today.
-   *
-   * Registry boards declare this per worker instead, as
-   * `{ worker, dispatch }` values under `workers`; passing this field
-   * alongside a registry is a construction error, because it would not say
-   * which worker it meant.
-   */
-  dispatch?: TaskWorkerDispatch;
 
   /**
    * Where the collection lives — a once-chosen internal detail. Optional; an
@@ -368,9 +358,11 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
    *
-   * A registry **value** may also be a `{ worker, dispatch }` entry, which is
-   * how a board declares that worker detached (FIX-982). A bare block still
-   * means inline, so no existing board needs editing.
+   * A registry **value** may also be a `{ worker, session }` entry, which is
+   * how a board hands that worker off to run in a child session of its own
+   * (`session: "per-task" | "per-worker" | { key: (task) => string }`). The
+   * flow then declares the board's entries as `tasks: board.tasks`. A bare
+   * block still means inline, so no existing board needs editing.
    */
   workers: TaskWorker<TInput, TOutput> | TaskWorkerSlotRegistry;
 
@@ -383,8 +375,8 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * genuine miss). Non-delegation consumers (blackboard, patterns) leave
    * it unset.
    *
-   * Accepts a `{ worker, dispatch }` entry to detach the floor itself
-   * (FIX-982); a bare block still means inline.
+   * The floor runs inline: it has no seat name, so it has no task entry to
+   * hand off to. Declare a named worker to hand off.
    */
   defaultWorker?: TaskWorkerSlot;
 
@@ -615,20 +607,25 @@ export interface TaskBoardHandle<
    */
   backing: TaskBoardBacking;
   /**
-   * The board's declared `boardId` (FIX-982), or `undefined` when it declared
-   * none. Always present on a board with detached workers — that is what
-   * `assertDetachedBoardSupported` enforces — so P2's routing-coordinate
-   * derivation can read it off the handle without re-deriving from config.
+   * The board's declared `boardId`, or `undefined` when it declared none.
+   * Always present on a board that hands off — that is what
+   * `assertHandOffBoardSupported` enforces.
    */
   boardId?: string;
   /**
-   * The workers that declared `dispatch: { mode: "detached" }`, in declaration
-   * order (FIX-982). Empty on every board that ships today.
-   *
-   * Surfaced so the registry bubble-up (P2) reads one resolved list rather
-   * than re-walking the raw `workers` config and re-deciding what an entry is.
+   * The task entries this board produces — one per handed-off seat, keyed by
+   * the seat name, each the board's claim gate around that seat's worker.
+   * **Declare them on the flow**: `tasks: board.tasks` (or spread several
+   * boards' together). A `task` message addressed to the seat name resolves
+   * the gate, so a worker is never reached without it. Empty on a board that
+   * hands nothing off.
    */
-  detachedWorkers: readonly ResolvedWorkerSlot[];
+  tasks: Record<string, TaskEntry>;
+  /**
+   * The workers that hand off, in declaration order. Empty on a board that
+   * runs everything inline.
+   */
+  handedOff: readonly ResolvedWorkerSlot[];
   /**
    * Whether the board's own `initialTasks` seed carries any task without a
    * stable `id` (FIX-910). An idless initial task is re-added on every drain
@@ -678,7 +675,6 @@ export function taskBoard<
     collection: collectionConfig,
     workers: workersConfig,
     defaultWorker: defaultWorkerConfig,
-    dispatch: uniformDispatch,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
@@ -710,23 +706,22 @@ export function taskBoard<
     );
   }
 
-  // FIX-982: flatten `{ worker, dispatch }` entries down to the bare shapes the
-  // drain already composes, and note which asked to be detached. A board with
-  // no entries produces exactly the values it was handed.
-  const isUniform = typeof (workersConfig as { run?: unknown }).run === "function";
-  if (uniformDispatch !== undefined && !isUniform) {
+  // The removed board-level `dispatch` option, refused by name (BP-030): a
+  // uniform worker has no seat name and therefore no task entry to hand off to.
+  if (Object.hasOwn(config, "dispatch")) {
     throw new Error(
-      `[task-board] "${name}" passes a board-level \`dispatch\` alongside a worker registry — ` +
-        `it would not say which worker it meant. Declare dispatch per worker instead: ` +
-        `\`workers: { <assignee>: { worker, dispatch } }\`.`
+      `[task-board] "${name}" passes the removed board-level \`dispatch\` option. A worker ` +
+        `hands off by name: \`workers: { <name>: { worker, session } }\`.`
     );
   }
+  // Flatten `{ worker, session }` entries down to the bare shapes the drain
+  // already composes, and note which hand off. A board with no entries
+  // produces exactly the values it was handed.
   const resolvedWorkers = resolveWorkerSlots({
     workers: workersConfig,
     ...(defaultWorkerConfig !== undefined
       ? { defaultWorker: defaultWorkerConfig }
       : {}),
-    ...(uniformDispatch !== undefined ? { dispatch: uniformDispatch } : {}),
   });
   const workers = resolvedWorkers.workers;
   const defaultWorker = resolvedWorkers.defaultWorker;
@@ -746,19 +741,16 @@ export function taskBoard<
     drainUses,
   } = binding;
 
-  // FIX-982 decision 11 — a detached board is refused here, loudly and by
-  // name, never degraded with a warning. Runs after the binding so the
-  // once-chosen backing is known. Two of the spec's six refusals are NOT here
-  // because the fact they test does not exist yet at construction; see the
-  // module doc on `./detached`.
-  assertDetachedBoardSupported({
+  // A board that hands off is refused here, loudly and by name, never degraded
+  // with a warning. Runs after the binding so the once-chosen backing is known.
+  assertHandOffBoardSupported({
     name,
     boardId,
     backing,
     ...(collectionDeclaration !== undefined
       ? { collection: collectionDeclaration }
       : {}),
-    detached: resolvedWorkers.detached,
+    handedOff: resolvedWorkers.handedOff,
   });
 
   // Seed-inspectability for construction-time guards (FIX-910): an initial task
@@ -797,7 +789,7 @@ export function taskBoard<
   // before; the completion meta is the third reader (FIX-1074), and it has to
   // agree with the other two — a board that exited because its work is running
   // elsewhere must not then report that exit as a failure.
-  const runsElsewhere = detachedTaskPredicate(resolvedWorkers.slots);
+  const runsElsewhere = handedOffTaskPredicate(resolvedWorkers.slots);
 
   // FIX-1234: the second exclusion, threaded to the exit check and the wake
   // predicate from here — the same discipline `runsElsewhere` follows, and for
@@ -837,50 +829,47 @@ export function taskBoard<
   });
   const teardownFlowState = createTeardownBoardFlowState({ name, runState });
 
-  // FIX-982 P3a — the spawn. A detached slot routes to a block that STARTS the
-  // worker in a Workstream and returns, instead of to the worker itself. The
-  // drain's shape is untouched (claim, route, record); only what the route does
-  // changes, so an inline board composes exactly as it did.
+  // The hand-off. A seat that hands off routes to a block that DISPATCHES the
+  // row to the seat's task entry in a child session and returns, instead of to
+  // the worker itself. The drain's shape is untouched (claim, route, record);
+  // only what the route does changes, so an inline board composes exactly as
+  // it did.
   //
   // Substituted here rather than inside `buildWorkerStep` because the routing
-  // table is the one place that already maps a coordinate to a block. The
-  // substitute receives the same packed `TaskWorkerInput` an inline worker
-  // would, which is what makes the two paths agree on what the worker sees.
-  // Keyed by COORDINATE, never by block identity. A block may legitimately sit
-  // at two coordinates with different dispatch modes — `{ inline: shared,
-  // background: { worker: shared, dispatch: { mode: "detached" } } }` is a valid
-  // board — and keying by the block would substitute the spawn at BOTH, so the
-  // inline assignee would silently detach. It would then fail in the Workstream
-  // rather than here, because the gate routes on the row's assignee and finds no
-  // binding for it. Two detached coordinates sharing one block collapse the same
-  // way, keeping only the last.
-  const spawnByCoordinate = new Map<string, TaskWorker>();
+  // table is the one place that already maps a seat to a block. The substitute
+  // receives the same packed `TaskWorkerInput` an inline worker would, which
+  // is what makes the two paths agree on what the worker sees. Keyed by SEAT,
+  // never by block identity: a block may legitimately sit at two seats with
+  // different policies — `{ inline: shared, background: { worker: shared,
+  // session: "per-task" } }` is a valid board — and keying by the block would
+  // substitute the hand-off at BOTH.
+  const handOffBySeat = new Map<string, TaskWorker>();
   if (boardId !== undefined) {
-    for (const slot of resolvedWorkers.detached) {
-      spawnByCoordinate.set(
-        coordinateKey(slot.coordinate),
-        createSpawnDetached({
-          name: `${name}-spawn-${slot.label}`,
+    for (const slot of resolvedWorkers.handedOff) {
+      if (slot.seat.kind !== "assignee" || slot.session === undefined) continue;
+      handOffBySeat.set(
+        slot.seat.name,
+        createHandOff({
+          name: `${name}-hand-off-${slot.seat.name}`,
           boardId,
-          coordinate: slot.coordinate,
+          seat: slot.seat.name,
+          session: slot.session,
         }) as unknown as TaskWorker
       );
     }
   }
-  const spawnAt = (coordinate: WorkerCoordinate, worker: TaskWorker): TaskWorker =>
-    spawnByCoordinate.get(coordinateKey(coordinate)) ?? worker;
 
   const dispatchWorkers: TaskWorker | TaskWorkerRegistry =
     typeof (workers as { run?: unknown }).run === "function"
-      ? spawnAt({ kind: "uniform" }, workers as TaskWorker)
+      ? (workers as TaskWorker)
       : Object.fromEntries(
           Object.entries(workers as TaskWorkerRegistry).map(([assignee, worker]) => [
             assignee,
-            spawnAt({ kind: "assignee", name: assignee }, worker),
+            handOffBySeat.get(assignee) ?? worker,
           ])
         );
-  const dispatchDefaultWorker =
-    defaultWorker !== undefined ? spawnAt({ kind: "floor" }, defaultWorker) : undefined;
+  // The floor never hands off — it has no seat name to address.
+  const dispatchDefaultWorker = defaultWorker;
 
   const workerStep = buildWorkerStep({
     name,
@@ -1144,7 +1133,17 @@ export function taskBoard<
     .forEach(
       () => Array.from({ length: concurrency }, (_, i) => i),
       (workerId: number) => makeWorker(workerId),
-      { maxConcurrency: concurrency }
+      {
+        maxConcurrency: concurrency,
+        // The per-worker wrapper is built at run time, so the walk `defineFlow`
+        // makes over the drain would otherwise stop here and never see the
+        // hand-off dispatchers sitting in the worker router. The blocks every
+        // worker is composed from are static and shared, and declaring them
+        // is what lets a flow that reaches this drain without declaring
+        // `tasks: board.tasks` be refused at definition rather than at the
+        // first hand-off.
+        blocks: [claimTask, workerBody, checkBoard],
+      }
     )
     // The completion item reads the pool's own exit outputs — the `forEach`
     // result this tap receives — for the one fact it cannot re-derive: whether
@@ -1167,47 +1166,33 @@ export function taskBoard<
     .tap(teardownFlowState)
     .rescue([{ block: teardownFlowState }]);
 
-  // FIX-982 P2 — stamp this board's detached bindings onto the drain so they
-  // bubble to the flow. From here they ride the same rail resource declarations
-  // do: enclosing sequencers merge them as steps are added, and `defineFlow`
-  // reads the union off each action root. Nothing is authored to make that
-  // happen, and nothing downstream has to re-walk the block tree to find a
-  // board.
+  // The task entries — one per handed-off seat, each the board's claim gate
+  // around the seat's worker (`task-entry.ts`). The flow declares them as
+  // `tasks: board.tasks`, which is what makes a `task` message addressed to
+  // the seat name resolve the gate and never the bare worker; `defineFlow`
+  // refuses an entry a board did not produce, and its walk refuses a hand-off
+  // whose entry the flow forgot to declare.
   //
   // The `boardId !== undefined` narrowing is a type-level formality, not a
-  // second guard: `assertDetachedBoardSupported` above already refused a
-  // detached board without one, because the value lands in a persisted routing
-  // key. A board with no detached workers stamps nothing.
-  //
-  // Each binding also carries this board's ONE detached runner (FIX-982 P3a) —
-  // the same object on every binding, because the runner belongs to the board
-  // rather than to a worker. That is what lets the flow-level assembly route a
-  // dispatch to a board and never to a bare worker, so the start gate, the task
-  // scope mark and the claim-ticket re-mint cannot be bypassed by adding a
-  // worker later.
+  // second guard: `assertHandOffBoardSupported` above already refused a board
+  // that hands off without one. A board that hands nothing off produces none.
+  const tasks: Record<string, TaskEntry> = {};
   if (boardId !== undefined) {
-    const runner = buildDetachedRunner({
-      name,
-      boardId,
-      collection: collectionFactory,
-      detached: resolvedWorkers.detached,
-      // The board's failure policy decides the Workstream's outcome exactly as
-      // it decides the drain's, so it is threaded rather than re-chosen here.
-      onError,
-      // The runner is reached by a detached dispatch, not through the drain,
-      // so it has to declare the board's durable collection itself.
-      ...(drainUses !== undefined ? { uses: drainUses } : {}),
-    });
-    if (runner !== undefined) {
-      declareWorkstreamBindings(
-        drain,
-        resolvedWorkers.detached.map((slot) => ({
-          boardId,
-          coordinateKey: coordinateKey(slot.coordinate),
-          worker: slot.worker as unknown as BlockDefinition<never, never>,
-          runner: runner as unknown as BlockDefinition<never, never>,
-        }))
-      );
+    for (const slot of resolvedWorkers.handedOff) {
+      if (slot.seat.kind !== "assignee") continue;
+      tasks[slot.seat.name] = buildTaskEntry({
+        name,
+        boardId,
+        seat: slot.seat.name,
+        worker: slot.worker,
+        collection: collectionFactory,
+        // The board's failure policy decides the child's outcome exactly as it
+        // decides the drain's, so it is threaded rather than re-chosen here.
+        onError,
+        // The entry is reached by a task message, not through the drain, so it
+        // has to declare the board's durable collection itself.
+        ...(drainUses !== undefined ? { uses: drainUses } : {}),
+      });
     }
   }
 
@@ -1227,7 +1212,7 @@ export function taskBoard<
   // `sessionStateSchema`, and a caller that catches either — a config fallback,
   // a hot reload, a test — would otherwise be left with a declaration that
   // declines valid `setAssignee` calls for a board that was never created.
-  if (resolvedWorkers.detached.length > 0 && isDefinedTaskCollection(collectionConfig)) {
+  if (resolvedWorkers.handedOff.length > 0 && isDefinedTaskCollection(collectionConfig)) {
     freezeLedgerAssignee(collectionConfig);
   }
 
@@ -1242,7 +1227,8 @@ export function taskBoard<
     capability,
     backing,
     ...(boardId !== undefined ? { boardId } : {}),
-    detachedWorkers: resolvedWorkers.detached,
+    tasks,
+    handedOff: resolvedWorkers.handedOff,
     hasIdlessInitialTasks,
     caps,
   };

@@ -137,7 +137,7 @@ async function handOff(
   id: string
 ): Promise<RunsElsewhere> {
   await collection.addTask({ id, goal: id, assignee: "background" });
-  await collection.claim("workstream", { eligibility: (t) => t.id === id });
+  await collection.claim("hand-off", { eligibility: (t) => t.id === id });
   return (task: Task) => task.assignee === "background";
 }
 
@@ -337,7 +337,7 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     const { collection, advance } = clockedCollection();
     await park(collection, "ask");
     await collection.addTask({ id: "bg", goal: "bg", assignee: "background" });
-    await collection.claim("workstream", {
+    await collection.claim("hand-off", {
       eligibility: (t) => t.id === "bg",
       leaseDurationMs: 1_000,
     });

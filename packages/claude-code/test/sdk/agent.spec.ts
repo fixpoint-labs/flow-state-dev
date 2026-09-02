@@ -693,10 +693,11 @@ describe("claudeCodeAgent", () => {
  *
  * The task board refuses a detached worker whose block (or any block under it)
  * authors a `sessionStateSchema`, because every detached worker in a flow
- * becomes a route on one shared Workstream flow. A background job is one run in
- * one workstream, so the conversation state this block keeps — a resume handle
- * and a run log — has no reader on that path. Detaching stops it being
- * declared, stops the reads and writes that go with it, and stops the resume.
+ * becomes a route on one shared child-session flow. A background job is one
+ * run in one child session, so the conversation state this block keeps — a
+ * resume handle and a run log — has no reader on that path. Detaching stops it
+ * being declared, stops the reads and writes that go with it, and stops the
+ * resume.
  *
  * The option is three-state — `true`, `false`, omitted — and omitted must keep
  * meaning the default. So each state is asserted EXPLICITLY below rather than
@@ -957,9 +958,9 @@ describe("claudeCodeAgent — recordWork", () => {
   });
 
   it("declares every collection lazily prefetched", () => {
-    // Rows are namespaced per run and a workstream is reused across runs, so an
-    // eager collection would bulk-load every historical run's rows before this
-    // run touched one of its own keys.
+    // Rows are namespaced per run and a child session is reused across runs, so
+    // an eager collection would bulk-load every historical run's rows before
+    // this run touched one of its own keys.
     const block = claudeCodeAgent({
       resolveClaudeAgent: scriptedQuery([RESULT_OK]),
       recordWork: true,

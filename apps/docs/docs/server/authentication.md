@@ -315,10 +315,10 @@ sessions listed to an anonymous caller.
 Every read outside those two flow-spanning endpoints names a session or a
 request in the path, and the framework loads that record and checks its owner
 before your handler runs. `GET
-/api/flows/sessions/:sessionId/workstreams` — a conversation's
-[background jobs](./background-work.md) — is one of these. Its answer is
+/api/flows/sessions/:sessionId/children` — a conversation's
+[child sessions](./background-work.md) — is one of these. Its answer is
 scoped to the addressed conversation's owner, tenant, org and flow, all read
-from the stored record, so a job attached to a conversation inherits that
+from the stored record, so a child session inherits that
 conversation's access rules rather than getting its own.
 
 No endpoint on the flow API enumerates across owners. A caller reaches

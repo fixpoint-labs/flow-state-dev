@@ -18,7 +18,7 @@
  * carries the shared `ActionCore` (the handler block plus execution policy)
  * inline, so the handler needs no entry in `flow.actions` and is reached only
  * through a matching inbound chat event — never the public action endpoint or
- * MCP. The dispatch resolves it through `resolveActionCore` via the
+ * MCP. The dispatch resolves it through `resolveEntry` via the
  * `metadata.chat.eventKey` coordinate, not by a named-action lookup.
  */
 

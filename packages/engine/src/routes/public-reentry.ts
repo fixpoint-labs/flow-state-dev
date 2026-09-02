@@ -10,8 +10,8 @@
  * previously each named `webhook` and refused it — a deny-list, which admits
  * every source nobody thought to name. A new internal source therefore inherits
  * public re-entry for free, silently, at the moment it is introduced. That is
- * how the detached-dispatch source would have become retryable with an attacker-
- * chosen `inputOverride` without anyone editing a route.
+ * how a framework-stamped dispatch source would have become retryable with an
+ * attacker-chosen `inputOverride` without anyone editing a route.
  *
  * Adding a source here is a deliberate act. Forgetting to add one costs a
  * refusal, which is visible; forgetting to add one to a deny-list costs a
@@ -26,7 +26,11 @@
  *
  * FIX-1021 generalizes this predicate; it does not replace it.
  */
-import { WEBHOOK_SOURCE, WORKSTREAM_SOURCE } from "../execution/transport-sources";
+import {
+  INTERNAL_SOURCE,
+  TASK_SOURCE,
+  WEBHOOK_SOURCE
+} from "../execution/transport-sources";
 
 /**
  * Sources that arrived on a caller-facing transport and may be re-entered.
@@ -41,8 +45,11 @@ import { WEBHOOK_SOURCE, WORKSTREAM_SOURCE } from "../execution/transport-source
  * - `webhook` — reachable only through a verified webhook. Re-running one from a
  *   public surface would bypass signature verification, which is why all three
  *   routes already refused it.
- * - `workstream` — a detached dispatch started by the injection seam. It has no
- *   caller-facing entry at all, so it must have no caller-facing re-entry.
+ * - `task` and `internal` — dispatched by the seam from inside a running
+ *   request. Neither has a caller-facing entry at all, so neither may have a
+ *   caller-facing re-entry. A spawned session IS reachable from outside — by
+ *   dispatching a `user` message to it, which is an ordinary caller-addressed
+ *   request — so nothing is lost by refusing here.
  */
 const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   "http",
@@ -54,20 +61,27 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
 /**
  * Sources a host may never declare, whatever it passes.
  *
- * Both are stamped by the framework itself, not by a deployment's transport, so
- * neither is a deployment's to re-open — and the reason each is excluded is a
- * property of the framework rather than of the deployment. `webhook`'s handler
- * is reachable only behind signature verification; `workstream` has no
- * caller-facing entry at all by construction. Re-admitting either hands an HTTP
- * caller `inputOverride` on a handler that was never caller-addressed, which is
- * precisely the bypass the allow-list exists to close.
+ * All three are stamped by the framework itself, not by a deployment's
+ * transport, so none is a deployment's to re-open — and the reason each is
+ * excluded is a property of the framework rather than of the deployment.
+ * `webhook`'s handler is reachable only behind signature verification; `task`
+ * and `internal` have no caller-facing entry at all by construction. Re-admitting
+ * any of them hands an HTTP caller `inputOverride` on a handler that was never
+ * caller-addressed, which is precisely the bypass the allow-list exists to close.
+ *
+ * Three tiers, not two: the allow-list above, this never-set, and the host's own
+ * `publicReentrySources`. A source that is merely *absent* from the allow-list
+ * can be re-opened by one line of deployment config; a source in this set
+ * cannot. A new framework-stamped type belongs here, not merely off the
+ * allow-list.
  *
  * A host that names one is refused at construction by
  * {@link assertPublicReentrySources} rather than having it silently dropped.
  */
 const NEVER_PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   WEBHOOK_SOURCE,
-  WORKSTREAM_SOURCE
+  TASK_SOURCE,
+  INTERNAL_SOURCE
 ]);
 
 /**
@@ -114,7 +128,7 @@ export function assertPublicReentrySources(sources: readonly string[] | undefine
     `publicReentrySources cannot include ${refused.map((s) => `"${s}"`).join(", ")}: ` +
       "these sources are stamped by the framework and have no caller-facing entry " +
       "(a webhook handler is reachable only behind signature verification, and a " +
-      "detached dispatch is not caller-addressed at all), so re-entering one from a " +
-      "public route would run it with caller-supplied input."
+      "task or internal message is dispatched from inside a running request), so " +
+      "re-entering one from a public route would run it with caller-supplied input."
   );
 }

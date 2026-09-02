@@ -136,7 +136,7 @@ Update policy:
 - Scope: Universal — any auth, routing, or trust decision.
 - Rule:
   - Decide *who may do what* and *what kind of request this is* from a source the caller cannot forge — a server-set identity, a verified token, the framework's trusted transport `source` — never from `body`, `metadata`, query params, headers, or any caller-supplied field.
-  - When a branch must read a caller-supplied coordinate, gate it on the trusted value first. (FSD: the inbound seam classifies events vs public actions off the trusted transport `source`, mirroring `resolveActionCore`, not off `body.metadata`.)
+  - When a branch must read a caller-supplied coordinate, gate it on the trusted value first. (FSD: the inbound seam classifies events vs public actions off the trusted transport `source`, mirroring `resolveEntry`, not off `body.metadata`.)
   - Scope dedup / uniqueness / attribution keys to the authenticated identity and the full tenant tuple, never to a bare name an unrelated caller could collide with.
 - Why: Anything the caller can set, the caller can forge — trust must come from the transport, not the payload.
 

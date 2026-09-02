@@ -74,9 +74,9 @@ that loses it logs a warning. See [Inbound
 transports](https://flow-state.dev/docs/advanced/inbound-transports#execution-configuration-and-the-queue).
 
 **`worker-only` starts background work in-process, and it is not durable.** That
-mode installs no dispatcher, so `ctx.requestHost.startDetached` — what a task
-board's `dispatch: { mode: "detached" }` worker uses — runs the child inside the
-worker process and enqueues nothing. If the process stops, nothing re-runs it. A
+mode installs no dispatcher, so a task board seat that hands off (`{ worker,
+session: "per-task" }`) or a `dispatcher()` block runs its child session inside
+the worker process and enqueues nothing. If the process stops, nothing re-runs it. A
 `worker-only` process is a good place to *consume* durable jobs and a poor place
 to *start* them; start them from `colocated` or `dispatch-only`. See [Work that
 outlives the turn](https://flow-state.dev/guides/background-work).
@@ -260,7 +260,7 @@ The kitchen-sink app includes a working integration at `/api/admin/queues` (requ
 ## See also
 
 - [BullMQ background jobs guide](https://flow-state.dev/guides/background-jobs-bullmq) — setup walkthrough with Docker
-- [Work that outlives the turn](https://flow-state.dev/guides/background-work) — how queued action runs relate to side chains and workstreams
+- [Work that outlives the turn](https://flow-state.dev/guides/background-work) — how queued action runs relate to side chains and child sessions
 - [Background work](https://flow-state.dev/docs/server/background-work) — reading what a queued job became
 - [Scheduled actions reference](https://flow-state.dev/docs/server/scheduled) — framework scheduling contract
 - [Inbound transports architecture](https://flow-state.dev/docs/advanced/inbound-transports) — dispatcher and transport adapter contracts

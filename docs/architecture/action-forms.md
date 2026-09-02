@@ -1,16 +1,21 @@
-# Action Forms
+# Action Forms — one message protocol
 
-An action is an executable unit plus its execution policy. The framework
-addresses and authenticates that unit in several ways — a caller naming it
-over HTTP, a webhook delivering an event, a chat mention, a cron tick — but
-runs and records every form identically. This doc is the canonical reference
-for the shared model (FIX-439 introduced it for webhooks; FIX-838 extended it
-to chat and scheduled).
+Every arrival at a flow is a **message** of one **type**, delivered to one
+**entry** addressed by `(type, name)`. A caller over HTTP sends a `user`
+message to `flow.actions[name]`. The host cron sends a `schedule` message to
+`flow.schedules.static[id]`. A task board drain sends a `task` message to
+`flow.tasks[name]`. A running request sends an `internal` message to
+`flow.internal[name]`. Delivery is the same for all of them — one envelope,
+one door (`host.dispatch`), one request record — and so is addressing: one
+keyed lookup with **no fallback**.
 
-## `ActionCore`
+This doc is the canonical reference for that model: the entry, the six
+types, the address, the block that sends, and what must not silently change.
 
-`ActionCore` (`packages/core/src/types/flow.ts`) is the shared shape every
-form builds on:
+## The entry: `ActionCore`
+
+`ActionCore` (`packages/core/src/types/flow.ts`) is the shape every entry
+builds on:
 
 ```ts
 type ActionCore<TBlock extends BlockDefinition = BlockDefinition> = {
@@ -21,230 +26,246 @@ type ActionCore<TBlock extends BlockDefinition = BlockDefinition> = {
   userMessage?: (input) => string;
   tokenBudget?: { maxTotalTokens: number; warnAt?: number; onExceeded?: ... };
   durable?: boolean;
+  concurrency?: ConcurrencyConfig;   // per-entry; every type gets the same ladder
 };
 ```
 
-The core is independent of how the action is addressed or authenticated.
-Generalizing it is what lets a webhook handler, a chat handler, or a scheduled
-handler be a first-class action without living in `flow.actions`.
+The core is independent of how the entry is addressed or authenticated. That
+is what lets a webhook handler, a task worker's gate, or an internal wake be a
+first-class entry without living in `flow.actions`.
 
-## Two address forms
+## The six message types
 
-### Caller-addressed: `ActionConfig` in `flow.actions`
+| Type       | Arrives from                                        | Map on the flow                          | Input schema owned by |
+| ---------- | --------------------------------------------------- | ---------------------------------------- | --------------------- |
+| `user`     | a caller — HTTP, MCP, voice, any custom transport   | `flow.actions[name]`                     | the author            |
+| `chat`     | the chat adapter, on a matched subscription         | `flow.chat.on[eventKey]`                 | the chat protocol     |
+| `webhook`  | a verified external sender                          | `flow.webhooks[provider].on[eventType]`  | the sender            |
+| `schedule` | the host cron                                       | `flow.schedules.static[scheduleId]`      | the framework         |
+| `task`     | a task board drain handing a claimed row off        | `flow.tasks[name]`                       | the framework         |
+| `internal` | a `dispatcher()` block in one of this flow's requests | `flow.internal[name]`                  | the author            |
 
-A caller-addressed action is the `ActionCore` plus exposure metadata for the
-client-facing HTTP and MCP surfaces (`description`, per-action `mcp`). A caller
-names the action and a principal is authorized per request. These live in
-`FlowDefinition.actions`.
-
-```ts
-actions: {
-  reply: { block: replyBlock, description: "..." },
-}
-```
-
-### Event-addressed: transport bindings carrying the core inline
-
-A webhook, chat, or scheduled handler is an action in transport form. It
-extends `ActionCore` with an event mapping and lives on the transport map, not
-in `flow.actions`:
+A message's type is decided by **which door it came through** — the trusted
+`source` an adapter or the dispatch seam stamps on the envelope
+(`messageTypeOf` in `engine/execution/transport-sources.ts`): `webhook`,
+`chat`, `scheduled`, `task`, `internal`, and every other source is `user`.
+Nothing in a request body can pick a type, which is what makes each map a
+boundary a caller cannot cross.
 
 ```ts
-// Webhook — flow.webhooks[provider].on[event]
-interface WebhookEventBinding extends ActionCore { input; sessionId?; when?; }
-
-// Chat — flow.chat.on[eventKey]
-interface ChatEventBinding extends ActionCore { input; sessionId?; when?; }
-
-// Scheduled — flow.schedules.static[id] (or a resolver return)
-type ScheduleConfig = ActionCore & { cron; input?; principal?; timezone?; ... };
+const conductor = defineFlow({
+  kind: "conductor",
+  actions:  { seed, status, answer },        // user — the public API
+  internal: { wake: { block: wakeBlock } },  // reachable only from a dispatcher inside
+  tasks:    board.tasks,                     // produced by the board; the claim gate per seat
+  schedules: { static: { nightly: { cron: "0 3 * * *", block: sweep } } },
+});
 ```
 
-`defineWebhookBinding`, `defineChatBinding`, and `defineScheduleBinding` are
-compile-time conveniences — each is a passthrough that constructs the binding
-with a typed `event`/config. A plain object literal works just as well.
+`internal` and `tasks` are definition-only, like the transport maps: an
+instance option naming them is refused.
 
-Because an event-addressed handler never enters `flow.actions`, it has **no
-HTTP or MCP caller surface**. There is no `internal` or hidden flag — the
-structural fact that it lives off `flow.actions` is the boundary. A block
-wanted on both an HTTP action and an event is declared in both places, using
-the same block reference. The `action` recorded on the dispatched request is
-the handler block's `name`, for provenance only — it is never used to resolve
-the handler.
+## The address: one lookup, no fallback
 
-## The resolution seam: `resolveActionCore`
+`resolveEntry(flow, type, name, coordinate?)` (`packages/core/src/flow/resolve-entry.ts`)
+reads exactly one map and returns the entry or `undefined`. The engine's
+`resolveEntry(flow, actionName, source, metadata)`
+(`engine/execution/resolve-entry.ts`) maps the source to the type and reads
+the protocol coordinate for `chat` / `webhook` / `schedule` out of the
+adapter's namespaced metadata slot. Every branch is terminal:
 
-`resolveActionCore(flow, actionName, source, metadata)` (in
-`@flow-state-dev/engine`, `execution/resolve-action-core.ts`) is the single
-function that finds the core to run:
+- A `task` message named `implement` resolves `flow.tasks.implement` or
+  nothing. It never reaches `flow.actions.implement`, however that action is
+  named.
+- A `webhook` message with no coordinate resolves nothing — it does not fall
+  back to an action named after the handler block.
+- A forged `metadata.chat.eventKey` on an `http` dispatch is ignored: the
+  source says `user`, so the caller's named action resolves and nothing else.
+
+The cost is deliberate: a handler reachable from two types is declared twice,
+under both maps, with one block. A block shared that way cannot assume which
+type it runs under, so anything type-specific — a task's claim, a schedule's
+handle — reaches the entry as **input**, never as an ambient `ctx` member.
+
+### The source gate, restated
+
+The old model had five maps keyed on `source` and one fallback. The fallback
+was the hole: a framework-stamped dispatch whose provenance name collided with
+a public action's key would have been handed the public handler. The
+detached source was made terminal to close it — and the exception was the
+rule. With no fallback for any type, the property the detached branch carried
+alone now holds for all six: a message cannot reach a handler outside its own
+type's map.
+
+## Sending: `dispatcher()`, a block, not a `ctx` method
+
+A **router** picks a block to run *here*. A **dispatcher** names an entry to
+run *elsewhere* — in a child session it derives, or in a session that already
+exists. It is a handler under the hood, and it carries its `(type, target)`
+on the block definition so `defineFlow` can verify the target resolves.
 
 ```ts
-function resolveActionCore(flow, actionName, source, metadata): ActionCore | undefined {
-  if (source === "webhook")   { /* read flow.webhooks[md.webhook.provider].on[md.webhook.eventType] */ }
-  if (source === "chat")      { /* read flow.chat.on[md.chat.eventKey] */ }
-  if (source === "scheduled") { /* read flow.schedules.static[md.schedule.scheduleId] */ }
-  if (source === "workstream") { return flow.workstream; }   // TERMINAL — no fallback
-  return flow.actions[actionName];   // caller-addressed fallback
-}
+const wakeEpic = dispatcher({
+  name: "wake-epic",
+  type: "internal",
+  target: "wake",                                    // flow.internal.wake
+  inputSchema: z.object({ epicSessionId: z.string(), reason: z.string() }),
+  session: { id: (input) => input.epicSessionId },   // deliver into an existing session
+  payload: (input) => ({ reason: input.reason }),
+});
+
+const analyzeInBackground = dispatcher({
+  name: "analyze-in-background",
+  type: "internal",
+  target: "analyze",
+  inputSchema: z.object({ documentId: z.string() }),
+  session: { key: (input) => input.documentId },     // one child per document, adopted on retry
+});
 ```
 
-Each event branch reads a **namespaced** coordinate from metadata —
-`metadata.webhook` / `metadata.chat.eventKey` / `metadata.schedule.scheduleId`
-— and looks the binding up on the matching transport map. When no event
-coordinate resolves, it falls back to the named `flow.actions` entry. This is
-the one seam that lets an event handler be a first-class action without ever
-appearing in `flow.actions`.
+**The address is static so it can be verified; the envelope is dynamic so it
+can be useful.** `type` and `target` never vary — that pair is what
+`defineFlow`'s walk checks. The session and payload are computed per
+invocation. When the address genuinely varies, that is a `router` over
+declared dispatchers: the reachable set stays declared, and a model choosing a
+recipient chooses from an allowlist rather than producing a run-time string.
 
-### The source gate (security)
+A dispatcher returns `{ sessionId, requestId, adopted }`. A refusal throws
+`DispatchRefusedError` with the refusal by name (`no-entry`,
+`session-not-found`, `session-not-addressable`, `key-occupied`,
+`no-dispatch-operation`, `dispatch-rejected`), so a `.rescue()` can branch on
+it. Every refusal is decided before anything is dispatched.
 
-Each event branch is gated on its `source` (`"webhook"`, `"chat"`,
-`"scheduled"`). Those sources are set **only by the adapters**, never from a
-request body. The HTTP action endpoint spreads `body.metadata` onto the
-dispatch, so `metadata` on a caller-addressed dispatch is attacker-controlled.
-Without the gate, a caller could POST `{ metadata: { chat: { eventKey } } }` to
-the public action endpoint and pivot resolution into an event handler — running
-it with forged input and no transport authentication (no signature check, no
-scheduler secret).
+### The two session targets
 
-The gate closes that pivot for every caller-addressed surface at once. A forged
-`metadata.chat` on an `http`-source dispatch is ignored, because the chat
-branch only runs when `source === "chat"`, which only the chat adapter sets.
+| `session`   | The message runs in                                                 | Not found                     |
+| ----------- | ------------------------------------------------------------------- | ----------------------------- |
+| `{ key }`   | a **child** of the running session, derived from the key + tenant + principal + parent session + lineage | minted; the same key from the same parent is **adopted** next time |
+| `{ id }`    | an **existing** session — same flow kind, same principal, same tenant, not bound to another org | **refused**, never created |
 
-## Detached: the workstream core
+Reject on an unknown id is the recoverable branch: an unknown id is a typo, a
+stale reference, or — once a send verb is in a model's hands — a hallucination,
+and auto-creating turns all three into work nobody is watching. A named
+channel session is still a legitimate shape; it is created through the
+session-create route and then addressed by id.
 
-A running request can start another request from inside a block, through the
-runtime seam on `BlockContext`. That dispatch is stamped `source: "workstream"`
-by the seam — not by any caller — and resolves one pre-assembled entry,
-`flow.workstream`.
+### There is deliberately no `ctx.dispatchMessage`
 
-It is `undefined` until something populates it, and that *off* state is a normal
-state rather than a gap: a flow with no workstream core refuses detached dispatch
-by name.
+The runtime attaches its dispatch operation to the block context under the
+`DISPATCH_SEAM` **symbol**, not as a named member. `dispatcher()` reaches it
+through `dispatchThroughSeam`; so does the task board's hand-off block, which
+is marked with `markDispatcher` for the same reason. Nothing a handler body
+names dispatches. That is what makes two things true at once:
 
-**The branch is terminal, and that is the security property.** Note the shape
-difference above: an event branch falls through when its coordinate does not
-match, because an event whose binding is missing should still be able to resolve
-a named action. The detached branch returns unconditionally. A detached dispatch
-carries `actionName` as provenance only, and that name can collide with a public
-`flow.actions` key — so falling through would hand a framework-stamped dispatch a
-caller-addressed handler. Because the seam stamps its own source, that is not a
-caller forging anything; it is the runtime admitting everything through its own
-trusted source. There is no route from the seam to a caller-addressed action.
+- `defineFlow` walks the reachable block graph — composition, rescue handlers,
+  a generator's static `tools` — and refuses an address that resolves nothing,
+  naming the block and the address. The walk is complete because the seam is
+  reachable only from blocks that carry an address. The one place a block is
+  built at run time — a `.forEach()` given a per-item factory — declares what
+  the factory can produce through its `blocks` option, which is how a task
+  board's drain exposes the hand-offs inside its worker pool to the walk.
+- A task board can read which of its seats hand off without running anything.
 
-Two neighbouring paths classify the source with the event forms for the same
-reason:
+A dispatcher that was previously three verbs — start a detached job, spawn a
+sibling, send a message — is one block with one optional session argument.
 
-- **Concurrency.** The arbiter takes the flow default rather than reading
-  `flow.actions[actionName]?.concurrency`, so detached work does not inherit an
-  unrelated action's `queue`/`reject` policy by name collision.
-- **Public re-entry.** `isPublicReentryAllowed(source)` is an allow-list
-  (`http` / `mcp` / `chat` / `scheduled`); retry, continue and resume all route
-  through it. A detached request is not re-enterable from a public surface —
-  retry accepts a caller-supplied `inputOverride`, so re-entry would feed a
-  detached handler caller-chosen input. The allow-list replaced three per-route
-  webhook deny-lists, which admitted every source nobody thought to name.
+## Task hand-off: the board is the only thing that mints rows
 
-  A deployment adds its **own** transports' sources with the
-  `publicReentrySources` host option, since `InboundTransportAdapter.source` is
-  an open string and the framework cannot enumerate them. It cannot add these
-  two: `webhook` and the detached source are stamped by the framework and are
-  refused at router construction, because the reason each is excluded is a
-  property of the framework rather than of the deployment.
+A `task` message is the one type that carries a claim on a durable row. Rows
+are minted by a task board and by nothing else, so `flow.tasks` is meaningful
+only as `tasks: board.tasks`: the board produces one entry per handed-off
+seat, each wrapping the seat's worker in the board's **claim gate**, and
+brands it. `defineFlow` refuses an unbranded task entry, and refuses a
+hand-off whose entry belongs to a different board than the one that built it.
 
-### Where the workstream core comes from: the binding registry
+```ts
+const board = taskBoard({
+  boardId: "issue-work",
+  collection: workBoardCollection,
+  workers: {
+    triage:    triageBlock,                                         // inline, in the drain
+    implement: { worker: implementBlock, session: "per-task" },     // its own child per row
+    review:    { worker: reviewBlock, session: { key: (t) => t.input.issue } }, // one child per issue
+  },
+});
+```
 
-`flow.workstream` is one entry, but the work behind it is heterogeneous — a flow
-may host several task boards, each with several detached workers. The map that
-holds them is `flow.workstreamBindings`, keyed by `(boardId, coordinateKey)`.
+The gate does four things off one durable read before the worker runs:
+re-read the claimed row and verify the claim is still current (`attempt`,
+`createdAt`, `incarnationId`, `status`, an unexpired lease, and that the row
+still routes to this seat); mark the task scope; re-mint the claim ticket from
+the verified row; start lease renewal from the child's own async chain. The
+envelope a `task` message carries is fixed and server-derived:
 
-It is produced **by construction, not by declaration**. A board stamps its
-bindings on its drain sequencer; every block retains the blocks it composes
-(`BlockDefinition.childBlocks`), and derives its own binding set from its stamp
-plus its children's. Each child already carries the union of its subtree, so one
-merge per block carries the whole tree up to the action root, where `defineFlow`
-reads it off. There is no author-facing surface — an app declares a board, and
-the registry follows.
+```ts
+type TaskDispatchInput = {
+  boardId: string;      // which board's ledger — the entry refuses any other
+  taskId: string;
+  attempt: number;      // verified, never trusted
+  createdAt: number;
+  incarnationId?: string;
+  payload: unknown;     // the materialized worker input, packed at claim time
+};
+```
 
-`defineFlow` then walks that same retained graph and **refuses a flow that can
-reach a board it cannot route to**, naming the board, coordinate and worker. The
-walk exists because the two halves can disagree only one way: some composition
-step dropped a child on the way up. Without it that failure is invisible until a
-detached task has been admitted, claimed, dispatched, and then never runs. The
-walk is possible at all only because children are retained — a sequencer step is
-a closure, so before retention the sequencer edge was opaque, and a board's drain
-*is* a sequencer.
+Uniform and floor workers run inline: a task entry is addressed by its seat
+*name*, and a worker with no name has no address.
 
-Two properties are load-bearing:
+## Concurrency: default → per-entry, for every type
 
-- **Addressing is strings only.** A binding is `(boardId, coordinateKey) →
-  block`, so a wake that arrives carrying nothing but a durable task row can
-  still find the block that runs it. This is what makes detached routing survive
-  a restart, and why the coordinate is a tagged `assignee`/`uniform`/`floor`
-  value rather than a bare name — a board may legally name an assignee `uniform`.
-- **The registry is not a dispatch-time lookup table.** Resolution for the
-  detached source is terminal on `flow.workstream` alone; nothing indexes this
-  map by a coordinate carried on an envelope. The coordinate on a dispatch
-  matters only *upstream*, where it feeds the child-session derivation, and the
-  worker a request actually runs is selected from the durable task row instead
-  (BP-031). Routing over the bindings therefore happens at one convergence point
-  inside the assembled core, not once per binding.
+The arbiter resolves `entry.concurrency ?? flow.request.concurrency ?? "allow"`
+through the same keyed lookup a dispatch resolves its handler with. A task
+hand-off whose seat name collides with a public action never inherits that
+action's `queue` / `reject`; a chat or schedule entry can declare its own
+policy where before it could only take the flow default. A child session
+shared across rows (`per-worker`, or a `key` policy) wants `queue` on its
+entry rather than the `allow` default, or two messages interleave.
 
-One coordinate carrying two separate board declarations is refused when the flow
-is defined, whether or not the two name the same worker block. It cannot be
-resolved by picking one: a dispatch names only the coordinate, so the loser's
-tasks would run against the wrong board with no error anywhere, and flow
-definition is the last point where both declarations are visible.
+## What must not silently change
 
-Sharing a worker block between boards is fine — that is ordinary composition, and
-what is refused is the shared coordinate, not the shared block. One board reached
-from several places is a duplicate rather than a conflict, and deduplicates
-silently.
+- **`task` and `internal` are in the never-re-enterable set**
+  (`engine/routes/public-reentry.ts`), not merely absent from the allow-list.
+  Retry, continue and resume refuse them, and a host's `publicReentrySources`
+  cannot re-open them. Both are dispatched from inside a running request and
+  have no caller-facing entry, so they may have no caller-facing re-entry. A
+  spawned session *is* reachable from outside — by a `user` message to its
+  id, an ordinary caller-addressed request.
+- **The source is trusted because a caller cannot set it.** Every
+  authorization branch that reads it depends on that (BP-031).
+- **The seam stays off `ctx`.** Adding a named dispatch verb to the block
+  context would make the reachable set unknowable at definition time.
 
 ## The carried core: dynamic schedules
 
-Three of the four event coordinates point at something declared statically on
-the flow (`flow.webhooks`, `flow.chat.on`, `flow.schedules.static`). One does
-not: a **dynamic** schedule's `ScheduleConfig` is produced by the resolver at
-dispatch time and has no static coordinate.
+Five of the six coordinates point at something declared statically. A
+**dynamic** schedule's `ScheduleConfig` is produced by the resolver at
+dispatch time and has no static coordinate, so the adapter sets
+`resolvedActionCore` on the envelope and `runAction` runs it directly. Before
+it does, it walks the carried core's blocks for dispatch addresses and refuses
+one the flow does not declare — the same check `defineFlow` makes, at the
+one seam a dispatch-time core passes through.
 
-For that one path, the adapter sets `resolvedActionCore?: ActionCore` on the
-dispatch envelope (`InboundRequestEnvelope`). `runAction` prefers it over the
-coordinate lookup. The field is set only by adapters, only for the dynamic
-schedule.
+The carried core is not serialized and not persisted, so a durable dynamic
+schedule mid-run when the process crashes cannot re-resolve its handler and
+is dropped. Make a schedule static if it must survive a crash.
 
-## Recovery semantics per form
-
-The carried core has a deliberate consequence. `resolvedActionCore` is **not
-serialized and not persisted** on the `RequestRecord` — and a block can't be
-serialized anyway. So:
-
-| Form | Reachable on recovery via | Crash-recoverable when durable |
-| --- | --- | --- |
-| Caller-addressed action | `flow.actions[name]` | Yes |
-| Webhook binding | `flow.webhooks[provider].on[event]` | Yes |
-| Chat binding | `flow.chat.on[eventKey]` | Yes |
-| Static schedule | `flow.schedules.static[id]` | Yes |
-| Dynamic schedule | carried `resolvedActionCore` (transient) | **No** |
-
-A durable dynamic schedule mid-run when the process crashes has no persisted
-coordinate to re-resolve its handler from, so the run is dropped. This is the
-honest tradeoff: a dynamic schedule's handler is chosen at dispatch time from
-host-owned data, and the framework can't persist a block. If you need a durable
-scheduled action to survive a crash, make it static — its handler is reachable
-from a stable coordinate.
-
-Persisted dynamic-schedule rows store a `kind` discriminator string (not a
-block, which isn't serializable). The resolver maps `kind → block` through its
-`blocks` map. The discriminator is enough to re-dispatch a fresh run on the
-next tick; it is not enough to resume an in-flight durable run, which needs the
-live core.
+| Form                    | Reachable on recovery via              | Crash-recoverable when durable |
+| ----------------------- | -------------------------------------- | ------------------------------ |
+| `user` entry            | `flow.actions[name]`                   | Yes                            |
+| `chat` entry            | `flow.chat.on[eventKey]`               | Yes                            |
+| `webhook` entry         | `flow.webhooks[provider].on[event]`    | Yes                            |
+| Static `schedule` entry | `flow.schedules.static[id]`            | Yes                            |
+| `task` entry            | `flow.tasks[name]`                     | Yes                            |
+| `internal` entry        | `flow.internal[name]`                  | Yes                            |
+| Dynamic schedule        | carried `resolvedActionCore` (transient) | **No**                       |
 
 ## Related
 
+- [Detached Work](./detached-work.md) — what happens to a dispatched request
+  over its lifetime, per deployment topology.
 - [Inbound Transports](./inbound-transports.md) — the `InboundTransportAdapter`
-  contract and the `InboundRequestEnvelope` these forms travel on.
-- [Webhook Transport](./webhook-transport.md) — the first inline-core binding.
-- [Chat Transport](./chat-transport.md) — chat binding form and mount-time
-  index.
-- [Scheduled Actions](./scheduled-actions.md) — static vs dynamic schedules and
-  the carried-core path in full.
+  contract and the `InboundRequestEnvelope` every message travels on.
+- [State and Scopes](./state-and-scopes.md) → *Child sessions and scope* —
+  what a child session inherits, and `sharedToLineage`.
+- [Webhook Transport](./webhook-transport.md), [Chat Transport](./chat-transport.md),
+  [Scheduled Actions](./scheduled-actions.md) — the three protocol-owned types.

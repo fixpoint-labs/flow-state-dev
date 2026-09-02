@@ -16,7 +16,7 @@ export {
   type GetSessionStateOptions,
   type ListSessionRequestsOptions,
   type ListSessionsOptions,
-  type ListWorkstreamsOptions,
+  type ListChildSessionsOptions,
   type SessionClient,
   type UpdateSessionMetadataOptions
 } from "./session-client/sessions";
@@ -66,6 +66,8 @@ export {
 } from "./recovery-client/recovery";
 
 export type {
+  ChildSessionStatus,
+  ChildSessionSummary,
   ClientFetch,
   ClientTransportOptions,
   CollectionSnapshotEntry,
@@ -106,9 +108,7 @@ export type {
   SessionSummary,
   TypedActionMethods,
   UserSSECallbacks,
-  UserStreamHandle,
-  WorkstreamStatus,
-  WorkstreamSummary
+  UserStreamHandle
 } from "./types";
 
 export { ClientHttpError } from "./types";

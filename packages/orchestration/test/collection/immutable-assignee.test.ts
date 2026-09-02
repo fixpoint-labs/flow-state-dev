@@ -62,7 +62,7 @@ describe("setAssignee on a detached board", () => {
 
   it("declines on a pending task, not only a terminal one", async () => {
     // `terminal` already refused finished tasks before this rule existed. The
-    // new exposure is the LIVE task — the one whose Workstream is keyed and
+    // new exposure is the LIVE task — the one whose child session is keyed and
     // running — so a test that only covered terminal tasks would pass against
     // an implementation that does nothing.
     const tasks = await board({ immutableAssignee: true });
@@ -196,7 +196,7 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
       boardId: "wired-detached",
       collection: defineTaskCollection({ id: "wired-detached-coll", scope: "user" }),
       workers: {
-        implement: { worker: workerBlock("wired-impl"), dispatch: { mode: "detached" } },
+        implement: { worker: workerBlock("wired-impl"), session: "per-task" },
       },
     });
 
@@ -285,7 +285,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
   it("declines through a sibling board that shares the ledger and declares nothing detached", async () => {
     // User-scoped, and every detached fixture below matches: a board with a
     // detached worker is refused at construction on a session-scoped collection,
-    // because a Workstream runs in its own session and would resolve an empty
+    // because a child session runs in its own session and would resolve an empty
     // ledger. Scope is incidental to the freeze policy under test here — what
     // matters is that two boards share one ledger.
     const ledger = defineTaskCollection({ id: "shared-ledger-a", scope: "user" });
@@ -295,7 +295,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-a",
       collection: ledger,
       workers: {
-        implement: { worker: workerBlock("owner-impl-a"), dispatch: { mode: "detached" } },
+        implement: { worker: workerBlock("owner-impl-a"), session: "per-task" },
       },
     });
 
@@ -332,7 +332,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-b",
       collection: ledger,
       workers: {
-        implement: { worker: workerBlock("owner-impl-b"), dispatch: { mode: "detached" } },
+        implement: { worker: workerBlock("owner-impl-b"), session: "per-task" },
       },
     });
 
@@ -390,7 +390,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
         // no boardId — refused
         collection: ledger,
         workers: {
-          implement: { worker: workerBlock("owner-impl-e"), dispatch: { mode: "detached" } },
+          implement: { worker: workerBlock("owner-impl-e"), session: "per-task" },
         },
       })
     ).toThrow(/no boardId/);
@@ -430,7 +430,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
         boardId: "invalid-detached-f",
         collection: ledger,
         workers: {
-          implement: { worker: statefulWorker, dispatch: { mode: "detached" } },
+          implement: { worker: statefulWorker, session: "per-task" },
         },
       })
     ).toThrow(/sessionStateSchema/);
@@ -463,7 +463,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-d",
       collection: detachedLedger,
       workers: {
-        implement: { worker: workerBlock("owner-impl-d"), dispatch: { mode: "detached" } },
+        implement: { worker: workerBlock("owner-impl-d"), session: "per-task" },
       },
     });
 

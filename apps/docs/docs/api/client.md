@@ -53,47 +53,49 @@ import { createSessionClient } from "@flow-state-dev/client";
 
 const sessions = createSessionClient();
 
-const list = await sessions.list();
-const detail = await sessions.get(sessionId);
+const list = await sessions.listSessions();
+const detail = await sessions.getSession(sessionId);
 const snapshot = await sessions.getSessionState(sessionId, {
   includeItems: true,
   clientData: ["session.activePlan"],
 });
-await sessions.delete(sessionId);
+await sessions.deleteSession(sessionId);
 ```
 
-### `sessions.listWorkstreams(parentSessionId, options?)`
+### `sessions.listChildSessions(parentSessionId, options?)`
 
-List the background work running under one session. Background work runs in its own session hanging off the parent, so it doesn't appear in the parent's own requests.
+List the child sessions under one session. Work that outlives the turn that started it runs in a session of its own hanging off the parent, so it doesn't appear in the parent's own requests.
 
 ```ts
-const workstreams = await sessions.listWorkstreams("sess_1", {
-  limit: 25,  // 1–100, defaults to 25
+const children = await sessions.listChildSessions("sess_1", {
+  limit: 25,  // 1 up to the server's ceiling (100 by default); 25 when omitted
   offset: 0,  // 0–10000
 });
 
 // A row's `id` is a session id, so every session read works on it.
-for (const workstream of workstreams) {
-  const requests = await sessions.listSessionRequests(workstream.id);
+for (const child of children) {
+  const requests = await sessions.listSessionRequests(child.id);
 }
 ```
 
-Each row is a `WorkstreamSummary`:
+Calls `GET /api/flows/sessions/:sessionId/children` and returns the `children` array from its `{ children }` response, newest-created first. `ListChildSessionsOptions` is `{ limit?: number; offset?: number }`; a value outside either range is a `400`, not a clamped page. The ceiling on `limit` is the runtime's `maxChildSessionListLimit`.
+
+Each row is a `ChildSessionSummary`:
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `id` | `string` | The workstream's own session id. |
+| `id` | `string` | The child's own session id. |
 | `parentSessionId` | `string` | The session this work hangs off. |
 | `createdAt` / `updatedAt` | `number` | |
-| `topic` | `string \| undefined` | Display label for the body of work. |
-| `coordinate` | `string \| undefined` | Display label for the worker handling it. |
-| `status` | `WorkstreamStatus \| undefined` | Absent until the workstream has run something. |
+| `topic` | `string \| undefined` | The key the child was derived from. |
+| `coordinate` | `string \| undefined` | The entry the work was sent to: `task:<seat>` or `internal:<entry>`. |
+| `status` | `ChildSessionStatus \| undefined` | Absent until the child has run something. |
 
-`WorkstreamStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. Guard `topic`, `coordinate`, and `status` with `== null`.
+`ChildSessionStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. Guard `topic`, `coordinate`, and `status` with `== null`.
 
-A session with no background work returns `[]`. An unknown session, or one the caller isn't allowed to read, throws `ClientHttpError`.
+A session with no children returns `[]`. An unknown session, or one the caller isn't allowed to read, throws `ClientHttpError`. An empty `parentSessionId` throws before any request is made.
 
-There is no client call that starts background work. Whether work detaches is declared by the flow on the server.
+There is no client call that starts a child session. Whether work runs in one is declared by the flow on the server.
 
 Full walkthrough: [Client > Overview](/docs/client/overview#background-work).
 

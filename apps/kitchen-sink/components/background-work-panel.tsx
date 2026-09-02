@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Background work — the conversation's workstreams, shown as their own thing.
+ * Background work — the conversation's child sessions, shown as their own thing.
  *
- * A workstream is a child session: work the conversation started that outlives
- * the turn which started it. Its output never lands in the transcript, so this
- * panel sits outside the conversation rather than inside it, and clicking a row
- * opens that workstream's own history in a dialog.
+ * A child session is a session of its own: work the conversation started that
+ * outlives the turn which started it. Its output never lands in the transcript,
+ * so this panel sits outside the conversation rather than inside it, and
+ * clicking a row opens that child session's own history in a dialog.
  *
  * Three details the hook's contract forces, and they are the reason this is a
  * component rather than a `.map()` at the call site:
@@ -17,7 +17,7 @@
  *   {@link BackgroundWorkRefresh}, mounted once at the page level — re-reads
  *   when a turn stops streaming. It is not in this component on purpose; see
  *   its own doc for why a duplicated responsive tree makes that matter.
- * - **`workstreamsStale` means "this is the last list we could get".** The rows
+ * - **`childrenStale` means "this is the last list we could get".** The rows
  *   stay on screen and get marked, rather than disappearing.
  * - **`status` is absent until something has run**, and `"active"` means only
  *   *not finished*. Neither is rendered as "running".
@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ItemsRenderer, useSession } from "@flow-state-dev/react";
-import type { WorkstreamSummary } from "@flow-state-dev/client";
+import type { ChildSessionSummary } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,9 +37,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { ChevronRight, Hourglass, RotateCw } from "lucide-react";
 
-/** Label for a workstream row. `topic` is display-only and may be absent (BP-030). */
-function rowLabel(workstream: WorkstreamSummary): string {
-  return workstream.topic ?? "Background work";
+/** Label for a child-session row. `topic` is display-only and may be absent (BP-030). */
+function rowLabel(child: ChildSessionSummary): string {
+  return child.topic ?? "Background work";
 }
 
 /**
@@ -50,13 +50,13 @@ function rowLabel(workstream: WorkstreamSummary): string {
  * themselves — the set is open and switching exhaustively over it would break
  * on the next one.
  */
-function statusLabel(status: WorkstreamSummary["status"]): string {
+function statusLabel(status: ChildSessionSummary["status"]): string {
   if (status == null) return "not started";
   if (status === "active") return "not finished";
   return status;
 }
 
-function statusTone(status: WorkstreamSummary["status"]): string {
+function statusTone(status: ChildSessionSummary["status"]): string {
   if (status === "completed") return "text-emerald-600 dark:text-emerald-400";
   if (status === "failed" || status === "aborted") return "text-destructive";
   return "text-muted-foreground";
@@ -66,8 +66,8 @@ interface BackgroundWorkPanelProps {
   session: ReturnType<typeof useSession>;
   /**
    * The conversation's flow kind — passed straight through to the detail view.
-   * Background work runs on its parent flow's worker core, so a workstream is
-   * stamped with the parent's kind rather than one of its own.
+   * Background work runs on its parent flow's worker core, so a child session
+   * is stamped with the parent's kind rather than one of its own.
    */
   flowKind: string;
 }
@@ -90,37 +90,37 @@ interface BackgroundWorkPanelProps {
  * action. Guarded on the actual true → false transition, so a re-render never
  * triggers a second read.
  *
- * **Demo debt — do not copy this into an application.** The Workstream axis has
- * a pinned read budget: ONE `listWorkstreams` read per turn, taken by
+ * **Demo debt — do not copy this into an application.** The children axis has
+ * a pinned read budget: ONE `listChildSessions` read per turn, taken by
  * `useSession` at action start. That budget is a contract
  * (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
  * panel reads one page plus a sentinel instead of walking the index.
  *
  * What this actually costs, stated plainly because it was understated twice:
- * `session.refresh()` is a **full session snapshot plus** the workstream read,
+ * `session.refresh()` is a **full session snapshot plus** the children read,
  * and with `items: true` the snapshot paginates the entire item history. It is
  * not one extra list read. The gate below at least confines that to
  * conversations which use background work at all.
  *
  * The intended fix is a framework opt-in rather than an app-level effect,
  * tracked as **FIX-1109**: `useSession` grows an explicit
- * `workstreams: { refreshOnTerminal: true }`, refreshing from the terminal
+ * `children: { refreshOnTerminal: true }`, refreshing from the terminal
  * branch it already has (`onRequestStatus`), so the pinned budget stays the
  * default and the second read becomes a named choice. When FIX-1109 lands,
  * delete this component and pass that option instead.
  */
 export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPanelProps["session"] }) {
-  const { refresh, isStreaming, items, workstreams } = session;
+  const { refresh, isStreaming, items, children } = session;
 
   // Only conversations that actually use background work pay for this. The
   // gate matters because `session.refresh()` is NOT the cheap read this was
   // originally documented as: it is `Promise.all([refreshSnapshot(),
-  // refreshWorkstreams()])`, and with `items: true` the snapshot paginates the
+  // refreshChildSessions()])`, and with `items: true` the snapshot paginates the
   // session's entire item history. Ungated, every finished turn in every
   // conversation — the overwhelming majority of which never file a job — paid
   // a full history refetch to update a panel with nothing in it.
   //
-  // `useSession` exposes no workstream-only refresh (`refreshWorkstreams` is
+  // `useSession` exposes no children-only refresh (`refreshChildSessions` is
   // internal), which is exactly the gap FIX-1109 closes. Until it lands this
   // gate is the whole of the mitigation available to an app.
   //
@@ -128,7 +128,7 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
   // uses, and NOT from `task-change` — this board declares those invisible to
   // the client on purpose (see `backgroundWorkLedger`).
   const usesBackgroundWork =
-    workstreams.length > 0 ||
+    children.length > 0 ||
     items.some(
       (item) =>
         item.type === "component" &&
@@ -149,7 +149,7 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
 export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const { workstreams, workstreamsStale, refresh } = session;
+  const { children, childrenStale, refresh } = session;
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -160,9 +160,9 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
     }
   }, [refresh]);
 
-  if (workstreams.length === 0 && !workstreamsStale) return null;
+  if (children.length === 0 && !childrenStale) return null;
 
-  const openRow = workstreams.find((workstream) => workstream.id === openId) ?? null;
+  const openRow = children.find((child) => child.id === openId) ?? null;
 
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4" data-testid="background-work-panel">
@@ -170,8 +170,8 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
         <div className="flex items-center gap-2 px-3 py-2">
           <Hourglass className="size-3.5 text-indigo-500 dark:text-indigo-400" />
           <span className="text-xs font-medium">Background work</span>
-          <span className="text-xs text-muted-foreground">{workstreams.length}</span>
-          {workstreamsStale && (
+          <span className="text-xs text-muted-foreground">{children.length}</span>
+          {childrenStale && (
             <span className="text-xs text-amber-600 dark:text-amber-400">
               may be out of date
             </span>
@@ -189,21 +189,21 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
         </div>
 
         <ul className="border-t border-indigo-500/20">
-          {workstreams.map((workstream) => (
-            <li key={workstream.id}>
+          {children.map((child) => (
+            <li key={child.id}>
               <button
                 type="button"
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-indigo-500/10"
-                onClick={() => setOpenId(workstream.id)}
+                onClick={() => setOpenId(child.id)}
                 data-testid="background-work-row"
               >
-                <span className="min-w-0 flex-1 truncate">{rowLabel(workstream)}</span>
-                {workstream.coordinate !== undefined && (
+                <span className="min-w-0 flex-1 truncate">{rowLabel(child)}</span>
+                {child.coordinate !== undefined && (
                   <span className="hidden truncate text-muted-foreground sm:inline">
-                    {workstream.coordinate}
+                    {child.coordinate}
                   </span>
                 )}
-                <span className={statusTone(workstream.status)}>{statusLabel(workstream.status)}</span>
+                <span className={statusTone(child.status)}>{statusLabel(child.status)}</span>
                 <ChevronRight className="size-3 shrink-0 opacity-50" />
               </button>
             </li>
@@ -217,10 +217,10 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
             {openRow === null ? "Background work" : rowLabel(openRow)}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            A workstream of its own — nothing here is part of the conversation.
+            A child session of its own — nothing here is part of the conversation.
           </DialogDescription>
           {openRow !== null && (
-            <BackgroundWorkDetail workstreamId={openRow.id} flowKind={flowKind} />
+            <BackgroundWorkDetail childSessionId={openRow.id} flowKind={flowKind} />
           )}
         </DialogContent>
       </Dialog>
@@ -229,9 +229,9 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
 }
 
 /**
- * One workstream's history.
+ * One child session's history.
  *
- * A workstream IS a session, so the same hook reads it — with the **parent
+ * A child session IS a session, so the same hook reads it — with the **parent
  * conversation's** flow kind, because that is what the child is stamped with.
  * `autoResume` matters: without it this loads one snapshot and never fills in
  * while the work keeps going.
@@ -242,26 +242,26 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
  * Rendered with `ItemsRenderer` rather than the conversation's
  * `RequestGroupRenderer`: that one hides task-attributed items, on the
  * assumption they will reappear under a task plan in the same view. In a
- * Workstream the task-attributed items ARE the content and there is no task
+ * child session the task-attributed items ARE the content and there is no task
  * plan beside them, so hiding them would leave the panel empty.
  */
 function BackgroundWorkDetail({
-  workstreamId,
+  childSessionId,
   flowKind,
 }: {
-  workstreamId: string;
+  childSessionId: string;
   flowKind: string;
 }) {
-  const workstream = useSession(workstreamId, { flowKind, items: true, autoResume: true });
+  const childSession = useSession(childSessionId, { flowKind, items: true, autoResume: true });
 
   return (
     <ScrollArea className="min-h-0 flex-1 pr-3">
-      {workstream.items.length === 0 ? (
+      {childSession.items.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">
-          {workstream.isLoading ? "Loading…" : "Nothing has been recorded yet."}
+          {childSession.isLoading ? "Loading…" : "Nothing has been recorded yet."}
         </p>
       ) : (
-        <ItemsRenderer items={workstream.items} />
+        <ItemsRenderer items={childSession.items} />
       )}
     </ScrollArea>
   );

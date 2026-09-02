@@ -1,7 +1,7 @@
 /**
  * Where a session-scoped resource STORES, for readers outside execution (FIX-1068).
  *
- * A resource declaring `sharedToWorkstream: true` has one identity across a
+ * A resource declaring `sharedToLineage: true` has one identity across a
  * session lineage: it resolves against the lineage ROOT rather than the running
  * session, so a conversation and the background sessions under it address the
  * same rows. `createExecutionContext` applies that rule on the execution path;
@@ -34,7 +34,7 @@ export type LineageSession = {
 };
 
 /** The declaration fields that decide where a session-scoped resource stores. */
-type SharedFlag = { sharedToWorkstream?: boolean };
+type SharedFlag = { sharedToLineage?: boolean };
 
 /**
  * Storage `scopeId` for one session-scoped resource or collection.
@@ -48,7 +48,7 @@ export function sessionResourceScopeId(
   config: SharedFlag | undefined,
   tenantId: string | undefined
 ): string {
-  if (config?.sharedToWorkstream !== true) return session.id;
+  if (config?.sharedToLineage !== true) return session.id;
   return lineageScopeId(session);
 }
 
@@ -175,7 +175,7 @@ function sessionOwnership(flowResources: unknown): {
   );
   const storageKeys = resourceStorageKeys(Object.fromEntries(entries));
   for (const [accessor, def] of entries) {
-    const flag = (def as SharedFlag).sharedToWorkstream === true;
+    const flag = (def as SharedFlag).sharedToLineage === true;
     if (flag) anyShared = true;
     if (isCollectionConfig(def)) {
       const prefix = getPatternPrefix(def.pattern);

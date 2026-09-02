@@ -137,7 +137,7 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 It also forwards `publicReentrySources` — the sources your own inbound transports stamp that `retry` / `continue` / `resume` may re-enter. See [Inbound transports](https://flow-state.dev/docs/advanced/inbound-transports).
 
-`maxWorkstreamListLimit` sets the largest `limit` the workstream listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
+`maxChildSessionListLimit` sets the largest `limit` the child session listing route (`GET /api/flows/sessions/:sessionId/children`) accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raising it has a cost: each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn. A value that is not a positive integer throws at construction.
 
 ### DevTool connection (dev-only)
 
@@ -355,39 +355,35 @@ const stores = createFilesystemStores({
 });
 ```
 
-## Background jobs on a session
+## Child sessions of a session
 
-`GET /api/flows/sessions/:sessionId/workstreams` lists the background jobs
-started by a session — the child sessions attached to it. Each row carries the
-child's id, its parent, `topic` and `coordinate` labels, timestamps, and a
-`status` of `active` (not finished) or a terminal outcome (`completed`,
-`failed`, `aborted`, `incomplete`). A job with no runs has no `status`.
+A `dispatcher()` block with a `key` session policy, or a task board seat that hands off (`{ worker, session: "per-task" }` and friends), runs its work in a **child session** of the session that dispatched it. `GET /api/flows/sessions/:sessionId/children` lists them:
 
-`topic` and `coordinate` are written by `ctx.requestHost.startDetached` when it
-creates the job's session, taken from the routing seed that session's id was
-derived from (`seed.topic` and `seed.key`). The caller's own `record` bag lands
-on the child session record and never becomes a label. Both labels are display
-only — nothing routes, authorizes or adopts on them — and both are optional, so
-guard with `== null`.
+```json
+{
+  "children": [
+    {
+      "id": "dsx_3f9a1c…",
+      "parentSessionId": "sess_abc",
+      "createdAt": 1770000000000,
+      "updatedAt": 1770000042000,
+      "topic": "doc-42",
+      "coordinate": "internal:summarize",
+      "status": "active"
+    }
+  ]
+}
+```
 
-The route is session-addressed: the parent is loaded and ownership-checked
-before the handler runs, and the answer is scoped to the stored parent's owner,
-tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
-0–10000; anything outside returns `400`. Use each row's `id` with the existing
-`/sessions/:id/requests` endpoint to read that job's history.
+Each row is a `ChildSessionSummary` (exported from this package, with `ChildSessionStatus`). `status` is `active` — not finished: queued, running, or suspended waiting on a person — or how the most recent run ended: `completed`, `failed`, `aborted`, or `incomplete`. A child with no runs has no `status`. `topic` is the key the child was derived from and `coordinate` is the entry it was dispatched to, as `"<type>:<target>"`; both are written when the child is created and are display labels only — nothing routes, authorizes, or adopts on them. All three fields are optional, so guard with `== null`. Any session record carrying this `parentSessionId` is listed, whatever created it.
 
-Those runs carry a `metadata.workstream` bag on the request record: `topic` and
-`key` from the routing seed, plus `taskId` naming the task-board row the run was
-started for. Read the bag at all only when the record's `source` is
-`"workstream"` — `metadata` is caller-writable on an ordinary request, `source`
-is not. `topic` and `key` are the seed the child session's id was derived from,
-so they cannot disagree with the run they sit on. `taskId` holds whatever the
-caller of `startDetached` passed and is checked against no board, so treat it as
-a correlation to display rather than one to key on. `key` and `taskId` are
-optional, so guard with `== null`.
+The route is session-addressed: the parent is loaded and ownership-checked before the handler runs, and the answer is scoped to the stored parent's owner, tenant, org, and flow kind. `limit` accepts 1 to `maxChildSessionListLimit` (default page 25, ceiling 100 unless raised) and `offset` 0–10000; a value outside that returns `400` with `{ error }`. An unknown parent returns `404`. Rows are ordered by `createdAt`, so paging stays stable while children start runs. Use each row's `id` with `GET /api/flows/sessions/:id/requests` to read that child's own history.
 
-See [Background work](https://flow-state.dev/docs/server/background-work) for
-the full contract.
+A dispatched request's record carries the message type as its `source` — `"internal"` for a `dispatcher()`, `"task"` for a task-board hand-off — and a `metadata.dispatch` bag: `type`, `target`, `from: { block, sessionId }` (the dispatching block and session), `key` when a child was derived, and `taskId` on a task hand-off. Read the bag only when `source` is one of those two values: `metadata` is caller-writable on an ordinary request, `source` is not. `key` and `taskId` are optional, so guard with `== null`.
+
+`task` and `internal` requests have no caller-facing entry, so the public `retry`, `continue`, and `resume` routes refuse them with the same not-found shape a missing record gets. A child session itself is reachable from outside in the ordinary way — by sending a `user` message to one of its flow's actions.
+
+See [Detached work](https://flow-state.dev/docs/server/background-work) for the full contract.
 
 ## Store list options
 
@@ -843,8 +839,8 @@ createFlowApiRouter({
   // Sources from your own inbound transports that `retry` / `continue` /
   // `resume` may re-enter. The built-ins (`http`, `mcp`, `chat`, `scheduled`)
   // are always admitted; every other source is refused with a not-found unless
-  // named here. `webhook` and the detached-dispatch source are never openable
-  // — naming one throws at construction.
+  // named here. `webhook`, `task`, and `internal` are never openable — naming
+  // one throws at construction.
   publicReentrySources: ["echo"]
 });
 ```

@@ -1,34 +1,63 @@
 /**
- * Transport sources stamped by the runtime, in one place (FIX-999).
+ * Transport sources stamped by the runtime, in one place (FIX-999), and the
+ * rule that turns a source into a message type.
  *
  * Importing these from `transports/*` would create an `execution → transports`
  * cycle, which is why they had been re-declared locally per consumer. This
- * module imports nothing at all, so depending on it cannot create a cycle in
- * either direction, and every runtime-stamped source lives here.
+ * module imports nothing from the engine, so depending on it cannot create a
+ * cycle in either direction, and every runtime-stamped source lives here.
  *
  * A source is trusted precisely because a caller cannot set it: it is stamped by
- * the adapter (or, for the detached source below, by the injection seam itself)
- * and persisted on the request record. Every authorization branch that reads one
- * depends on that (BP-031).
+ * the adapter (or, for the two dispatch sources below, by the dispatch seam
+ * itself) and persisted on the request record. Every authorization branch that
+ * reads one depends on that (BP-031).
  */
+import type { MessageType } from "@flow-state-dev/core/types";
 
-/** Stamped by the webhook adapter. Resolves the flow's webhook event core. */
+/** Stamped by the webhook adapter. Resolves a `webhook` entry. */
 export const WEBHOOK_SOURCE = "webhook";
 
-/** Stamped by the chat adapter. Resolves the flow's chat event core. */
+/** Stamped by the chat adapter. Resolves a `chat` entry. */
 export const CHAT_SOURCE = "chat";
 
-/** Stamped by the scheduled adapter. Resolves the flow's schedule event core. */
+/** Stamped by the scheduled adapter. Resolves a `schedule` entry. */
 export const SCHEDULED_SOURCE = "scheduled";
 
 /**
- * Stamped by the injection seam on a detached dispatch — a request started from
- * inside a running block rather than by a caller.
- *
- * It resolves exactly one pre-assembled entry, the flow's workstream core, and
- * resolution is **terminal** for it: absent core means a named refusal, never a
- * fall-through to `flow.actions`. It is also deliberately absent from the public
- * re-entry allow-list, so a detached request cannot be retried, continued or
- * resumed from a public surface.
+ * Stamped by the dispatch seam on a task hand-off — a board drain handing a
+ * claimed row to `flow.tasks[name]` in a child session. Deliberately absent
+ * from the public re-entry allow-list and present in its never-set: a task
+ * request has no caller-facing entry, so it must have no caller-facing re-entry.
  */
-export const WORKSTREAM_SOURCE = "workstream";
+export const TASK_SOURCE = "task";
+
+/**
+ * Stamped by the dispatch seam on an internal message — a `dispatcher()` block
+ * in a running request sending to `flow.internal[name]`. Same re-entry posture
+ * as {@link TASK_SOURCE}, for the same reason.
+ */
+export const INTERNAL_SOURCE = "internal";
+
+/**
+ * The message type a source delivers. **A message's type is decided by which
+ * door it came through**, never by anything in its body — which is what makes
+ * the entry map a caller cannot pick a boundary. Every caller-facing transport
+ * (`http`, `mcp`, `voice`, a custom adapter's own source) delivers `user`
+ * messages; the four framework-stamped sources each deliver their own type.
+ */
+export function messageTypeOf(source: string | undefined): MessageType {
+  switch (source) {
+    case WEBHOOK_SOURCE:
+      return "webhook";
+    case CHAT_SOURCE:
+      return "chat";
+    case SCHEDULED_SOURCE:
+      return "schedule";
+    case TASK_SOURCE:
+      return "task";
+    case INTERNAL_SOURCE:
+      return "internal";
+    default:
+      return "user";
+  }
+}

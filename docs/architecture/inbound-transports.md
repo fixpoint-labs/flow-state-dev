@@ -82,7 +82,9 @@ across crashes. See [Action forms](./action-forms.md).
 `source` is provenance — first-class on `RequestRecord` and
 `ActiveRequestEntry`, propagated through to DevTool's request list. It is
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
-`scheduled`, `notification`, `chat`. Custom transports pick their own.
+`scheduled`, `notification`, `chat`, `task`, `internal`. Custom transports
+pick their own. `source` also decides the message type (`messageTypeOf`),
+which is why a caller can never set it.
 
 ### Execution configuration is per-host, with one per-envelope exception
 
@@ -95,7 +97,7 @@ It exists for one invariant: **a detached child inherits the launching request's
 effective config, not the host's construction-time one.** A host is built once,
 but any given request may be running under a config its caller derived. `fsdev
 run` is the shipped case: it builds `{ ...appConfig, modelResolver, logger }` so
-`--model` takes effect, and a Workstream that request spawns is that request's
+`--model` takes effect, and a child session that request spawns is that request's
 own work continued in the background. Without the field the child would silently
 resolve the app's default model while the flag claimed otherwise.
 
@@ -126,7 +128,7 @@ scheduled — carries the core inline on its transport binding and never enters
 `flow.actions`, so it has no caller surface. The runtime dispatches, runs, and
 records all forms identically; it only differs in how it finds the core.
 
-`resolveActionCore` is that seam. For an event dispatch it reads a
+`resolveEntry` is that seam. For an event dispatch it reads a
 **namespaced** coordinate out of metadata — `metadata.webhook`,
 `metadata.chat.eventKey`, or `metadata.schedule.scheduleId` — gated on the
 `source` the adapter set, and looks the binding up on the matching transport
@@ -291,6 +293,9 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 | `webhook` | Webhook receivers |
 | `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`, FIX-440) |
 | `notification` | Cross-flow event subscribers |
+| `chat` | Chat adapter (`@flow-state-dev/chat-sdk`) |
+| `task` | A task board hand-off — the drain sending a claimed row to its seat's entry in `flow.tasks` |
+| `internal` | A `dispatcher()` block sending to `flow.internal` |
 
 Custom transports pick their own string. DevTool renders known sources
 with affordances (icon, label) and falls back to the raw value for
@@ -333,7 +338,7 @@ and the trace channel can distinguish scheduled work: `source =
 "scheduled"` plus the namespaced `metadata.schedule = { scheduleId,
 origin, cron, nominalFireTime, dispatchedAt, timezone }`. Each transport
 namespaces its provenance the same way — `metadata.webhook`,
-`metadata.chat`, `metadata.schedule` — and `resolveActionCore` reads the
+`metadata.chat`, `metadata.schedule` — and `resolveEntry` reads the
 event coordinate from that slot. See
 [`scheduled-actions.md`](./scheduled-actions.md) for the full design
 notes.
@@ -393,7 +398,7 @@ notification adapters plug into the same harness.
 ## Related
 
 - [Action forms](./action-forms.md) — the shared `ActionCore` model, the
-  `resolveActionCore` seam and its source gate, and the carried-core
+  `resolveEntry` seam and its source gate, and the carried-core
   mechanism for dynamic schedules.
 - `docs/architecture/authentication.md` — `resolvePrincipal` contract,
   per-flow auth config, `requireUser` semantics, convenience verifiers.

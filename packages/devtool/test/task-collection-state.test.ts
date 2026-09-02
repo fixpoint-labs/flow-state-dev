@@ -3,7 +3,7 @@
  *
  * The fold's whole contract is that each task ends up at its LATEST state, and
  * everything downstream trusts that: the Tasks panel renders the row from it,
- * and the Workstreams panel matches links against its `topic` and `assignee`.
+ * and the Children panel matches links against its `topic` and `assignee`.
  * A fold that lands on a stale snapshot is silent — every row still renders,
  * with the wrong values in it.
  */

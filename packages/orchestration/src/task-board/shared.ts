@@ -52,11 +52,11 @@ export function resolveDispatcher(
 }
 
 /**
- * Would this row's work be *routed* to a Workstream rather than run in the
+ * Would this row's work be *routed* to a child session rather than run in the
  * drain that is asking (FIX-982)?
  *
- * A board that declares a worker `dispatch: { mode: "detached" }` hands its
- * claimed rows to a Workstream, which settles them from its own session. The
+ * A board that declares a worker `session` hands its
+ * claimed rows to a child session, which settles them from its own session. The
  * launching request must not wait on those — waiting on them is precisely the
  * thing detachment exists to stop.
  *
@@ -73,7 +73,7 @@ export function resolveDispatcher(
 export type RunsElsewhere = (task: Task) => boolean;
 
 /**
- * Is this row **handed off** — routed to a Workstream, and still held by one?
+ * Is this row **handed off** — routed to a child session, and still held by one?
  *
  * The conjunction is the whole definition and neither half stands alone:
  * routing says the work belongs elsewhere, the live lease says somebody is
@@ -237,7 +237,7 @@ export interface WaitableCount {
  * `awaiting_review` are all in-flight — `awaiting_review` per FIX-443
  * §10.1, the others by definition. Terminal statuses don't count.
  *
- * `runsElsewhere` (FIX-982) drops the rows a Workstream is running;
+ * `runsElsewhere` (FIX-982) drops the rows a child session is running;
  * `excuseParked` (FIX-1234) drops the rows parked for a human. See
  * {@link countWaitable} for which statuses each reaches and why they are two
  * predicates rather than one.

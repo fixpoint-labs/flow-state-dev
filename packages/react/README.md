@@ -180,30 +180,30 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 `ReadonlyArray<ResourceChangeNotice>` of mid-stream resource_change notices in arrival order. Each notice carries `{ resourcePath, changeType, seq }`. Surfaced independently of the items filter, so subscribers can react to in-flight resource mutations without setting `includeTransient: true` on `useSession`. Reset on session change.
 
-### `SessionView.workstreams`
+### `SessionView.children`
 
-`ReadonlyArray<WorkstreamSummary>` of the background work running under this session — one entry per body of work, carrying `{ id, parentSessionId, createdAt, updatedAt, topic?, coordinate?, status? }`. Empty for a session that never started any. Separate from `items`: background work is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
+`ReadonlyArray<ChildSessionSummary>` of the background work running under this session — one entry per body of work, carrying `{ id, parentSessionId, createdAt, updatedAt, topic?, coordinate?, status? }`. Empty for a session that never started any. Separate from `items`: background work is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
 Carries one page of the most recent entries, newest first. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than one page keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
 
-The page size is the server's, so the hook works against any deployment without being told what that is. Ask for a specific one with `workstreams: { limit }`:
+The page size is the server's, so the hook works against any deployment without being told what that is. Ask for a specific one with `children: { limit }`:
 
 ```tsx
 const session = useSession(sessionId, {
   flowKind: "research",
-  workstreams: { limit: 500 }
+  children: { limit: 500 }
 });
 ```
 
-The server caps that value and rejects a larger one with a 400, which the hook surfaces as `workstreamsStale` rather than rows. The cap defaults to 100 and is raised with `maxWorkstreamListLimit` on the server — so asking for more than the deployment permits is a misconfiguration you hear about, not a silent truncation.
+The server caps that value and rejects a larger one with a 400, which the hook surfaces as `childrenStale` rather than rows. The cap defaults to 100 and is raised with `maxChildSessionListLimit` on the server — so asking for more than the deployment permits is a misconfiguration you hear about, not a silent truncation.
 
 Current as of the reader's last interaction. It is re-read on mount, at the start of each action, and on `refresh()` — nothing keeps it current while the user waits, so a job started elsewhere appears on the next action or refresh.
 
 `status` is absent until the work has run something. `"active"` means only *not finished*: it does not separate working from queued from waiting on a person, and it reports the last state recorded rather than checking a worker is alive — so work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. Treat unrecognised values as displayable; the set grows.
 
-`SessionView.workstreamsStale` is `true` when the most recent re-read failed. The rows already read are kept, so this distinguishes "this is current" from "this is the last list we could fetch". Cleared by the next successful read.
+`SessionView.childrenStale` is `true` when the most recent re-read failed. The rows already read are kept, so this distinguishes "this is current" from "this is the last list we could fetch". Cleared by the next successful read.
 
-To open one, read it as the session it is, passing the **same flow kind as the conversation it belongs to**. Background work runs on its parent flow's worker core and is stamped with that flow's kind rather than a kind of its own, so the value is one you already have. A different name reads as a different flow: an active job's stream 404s and the view stays on its first snapshot.
+To open one, read it as the session it is, passing the **same flow kind as the conversation it belongs to**. A child session is stamped with its parent's flow kind rather than a kind of its own, so the value is one you already have. A different name reads as a different flow: an active child's stream 404s and the view stays on its first snapshot.
 
 ```tsx
 function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {

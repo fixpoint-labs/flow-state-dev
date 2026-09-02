@@ -52,7 +52,7 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  * A board running detached workers passes `runsElsewhere` (FIX-982), and it
  * reaches the verdict half only. The claimable disjunct needs no adjustment for
  * it: `hasClaimableTask` judges rows by the substrate's lease, and a row a
- * Workstream holds has a live lease renewed from the child, so it is already
+ * child session holds has a live lease renewed from the child, so it is already
  * not claimable here. Once that lease does lapse the row is genuinely
  * recoverable and waking on it is correct.
  *
@@ -70,7 +70,7 @@ export function whenBoardClaimable(
     onIdle: "wait" | "complete" | "complete-or-blocked";
     shouldExit?: (collection: TaskCollectionRef) => boolean;
     /**
-     * Rows a Workstream is running (FIX-982). Forwarded verbatim to
+     * Rows a child session is running (FIX-982). Forwarded verbatim to
      * `boardQuiescence`; this predicate adds no reading of its own, so the
      * wake test and the exit check keep answering out of one definition.
      */

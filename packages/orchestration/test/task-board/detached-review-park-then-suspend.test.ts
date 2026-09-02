@@ -1,5 +1,5 @@
 /**
- * A detached worker that parks its TASK (`collection.awaitReview`) and THEN
+ * A handed-off worker that parks its TASK (`collection.awaitReview`) and THEN
  * parks its REQUEST (`ctx.suspend`) cannot be resumed — its own start gate
  * refuses the resumed re-entry, and the row is stranded permanently.
  *
@@ -10,22 +10,23 @@
  * `ctx.suspend()` keeps `recordSuccess` from stomping the row to `completed` on
  * return (`SuspensionError` bypasses `.rescue()`).
  *
- * What breaks it: `buildDetachedRunner`'s pre-worker START GATE is a `.tap()`,
- * and a `.tap()` has no committed output for replay-by-injection to reuse — so
- * it re-executes in full on every re-entry, including a `continueRequest`
- * resume of ITS OWN suspended dispatch, not just a genuinely fresh dispatch.
- * The gate's identity check requires `row.status === "in_progress"`
- * unconditionally; `awaitReview` already moved it to `awaiting_review`, so the
- * gate throws `StaleDetachedClaimError` before the worker (and therefore
- * `recordSuccess`) is ever reached again. `recordError`'s `fail()` write is
- * itself declined (`awaiting_review → failed` is not a legal transition), so
- * the row is left at `awaiting_review` — silently, since the outer request
- * still resolves as `error: undefined`. See the resumed-write-back test below
- * for the exact error text and the ANTI-GAME test for a real ABA the fence
- * DOES catch, pinning that the harness can produce a genuine decline.
+ * What breaks it: the task entry's pre-worker START GATE (`buildTaskEntry`,
+ * `task-board/task-entry.ts`) is a `.tap()`, and a `.tap()` has no committed
+ * output for replay-by-injection to reuse — so it re-executes in full on every
+ * re-entry, including a `continueRequest` resume of ITS OWN suspended
+ * dispatch, not just a genuinely fresh dispatch. The gate's identity check
+ * requires `row.status === "in_progress"` unconditionally; `awaitReview`
+ * already moved it to `awaiting_review`, so the gate throws
+ * `StaleTaskClaimError` before the worker (and therefore `recordSuccess`) is
+ * ever reached again. `recordError`'s `fail()` write is itself declined
+ * (`awaiting_review → failed` is not a legal transition), so the row is left
+ * at `awaiting_review` — silently, since the outer request still resolves as
+ * `error: undefined`. See the resumed-write-back test below for the exact
+ * error text and the ANTI-GAME test for a real ABA the fence DOES catch,
+ * pinning that the harness can produce a genuine decline.
  *
- * The two other combinations a detached worker might reach for both fail too,
- * for different reasons:
+ * The two other combinations a handed-off worker might reach for both fail
+ * too, for different reasons:
  *   - `awaitReview` then RETURN (no suspend): `recordSuccess` still runs after
  *     a normal return and stomps the row straight to `completed` in the same
  *     request — the review park is erased before anyone sees it.
@@ -34,8 +35,8 @@
  *     outlasts the lease and the row is reclaimed and re-run out from under the
  *     parked worker.
  *
- * Net: today, a detached worker has NO shipped way to hold both a review park
- * and its own request across an unbounded human wait.
+ * Net: today, a handed-off worker has NO shipped way to hold both a review
+ * park and its own request across an unbounded human wait.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -59,10 +60,9 @@ import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 
-// Internal to `engine`, spelled literally as the detached-handoff integration
-// tests do (`task-board-detached-handoff.test.ts`) — a wire value, not a
-// shortcut.
-const WORKSTREAM_SOURCE = "workstream";
+// Internal to `engine`, spelled literally as the hand-off integration tests
+// do (`task-board-hand-off-handoff.test.ts`) — a wire value, not a shortcut.
+const TASK_SOURCE = "task";
 
 const USER_ID = "u_review_park_suspend";
 const RESOURCE_KEY = "review-park-suspend-ledger";
@@ -143,7 +143,7 @@ function buildScenario() {
     boardId: BOARD_NAME,
     collection: ledger,
     workers: {
-      background: { worker: parkThenSuspend, dispatch: { mode: "detached" } },
+      background: { worker: parkThenSuspend, session: "per-task" },
     },
     initialTasks: [
       {
@@ -208,6 +208,7 @@ function buildScenario() {
       probe: { block: probe },
       bump: { block: bump },
     },
+    tasks: board.tasks,
   })({ id: "review-park-suspend-flow" });
 
   return { flow };
@@ -218,7 +219,7 @@ async function durableRow(stores: StoreRegistry, taskId: string) {
   return row?.state as { status: string; leaseUntil?: number; claimedBy?: unknown } | undefined;
 }
 
-describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => {
+describe("a handed-off worker that awaitReview()s and then ctx.suspend()s", () => {
   it(
     "survives the lease window (task park), but its resume is refused by its own start gate",
     async () => {
@@ -226,7 +227,7 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
       const { stores, provider } = createDurableStores();
       const dispatched: { sessionId: string; actionName: string; input: unknown }[] = [];
 
-      // --- Request 1: the parent claims t1 and hands it to the Workstream ---
+      // --- Request 1: the parent claims t1 and hands it to the child session ---
       const parent = await runAction({
         flow,
         actionName: "start",
@@ -239,11 +240,11 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
           durabilityProvider: provider,
           requestHost: {
             // Records and returns — nothing runs until we replay it as request 2,
-            // exactly as `task-board-detached-handoff.test.ts` does.
-            startOperation: async (spec) => {
+            // exactly as `task-board-hand-off-handoff.test.ts` does.
+            dispatchOperation: async (spec) => {
               dispatched.push({
                 sessionId: spec.sessionId,
-                actionName: spec.actionName,
+                actionName: spec.target,
                 input: spec.input,
               });
               return { requestId: `child_req_${dispatched.length}` };
@@ -256,14 +257,14 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
       const afterParent = await durableRow(stores, "t1");
       expect(afterParent?.status).toBe("in_progress");
 
-      // --- Request 2: the Workstream — awaitReview, then ctx.suspend ---
+      // --- Request 2: the child session — awaitReview, then ctx.suspend ---
       const child = await runAction({
         flow,
-        actionName: dispatched[0]!.actionName as "start",
+        actionName: dispatched[0]!.actionName as never,
         input: dispatched[0]!.input,
         userId: USER_ID,
         sessionId: dispatched[0]!.sessionId,
-        source: WORKSTREAM_SOURCE,
+        source: TASK_SOURCE,
         stores,
         runtimeConfig: { ...baseRuntimeConfig(), durabilityProvider: provider },
       });
@@ -372,10 +373,10 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
           ...baseRuntimeConfig(),
           durabilityProvider: provider,
           requestHost: {
-            startOperation: async (spec) => {
+            dispatchOperation: async (spec) => {
               dispatched.push({
                 sessionId: spec.sessionId,
-                actionName: spec.actionName,
+                actionName: spec.target,
                 input: spec.input,
               });
               return { requestId: `child_req_${dispatched.length}` };
@@ -387,11 +388,11 @@ describe("a detached worker that awaitReview()s and then ctx.suspend()s", () => 
 
       const child = await runAction({
         flow,
-        actionName: dispatched[0]!.actionName as "start",
+        actionName: dispatched[0]!.actionName as never,
         input: dispatched[0]!.input,
         userId: USER_ID,
         sessionId: dispatched[0]!.sessionId,
-        source: WORKSTREAM_SOURCE,
+        source: TASK_SOURCE,
         stores,
         runtimeConfig: { ...baseRuntimeConfig(), durabilityProvider: provider },
       });

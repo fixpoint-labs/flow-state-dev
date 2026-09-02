@@ -8,7 +8,7 @@
  *
  * ## What is real here, and what the goal would prove nothing without
  *
- * - **A real `createFlowState` runtime.** The detached start operation is
+ * - **A real `createFlowState` runtime.** The dispatch operation is
  *   installed by `createFlowState`; a script that only calls `runAction` has no
  *   request host and the first dispatch throws by name.
  * - **A real Claude Code run**, through the real Agent SDK, in a real git
@@ -22,7 +22,7 @@
  *
  * `recordSuccess` writes with `ifAllowed: true`, so a `complete()` refused on a
  * lost claim is DROPPED rather than thrown: the worker returns normally, the
- * workstream request completes, and the run record reads as a success while the
+ * child session request completes, and the run record reads as a success while the
  * row is still open. Inferring completion from either is the same silent-success
  * defect this issue exists to remove, relocated into the thing that verifies it.
  *

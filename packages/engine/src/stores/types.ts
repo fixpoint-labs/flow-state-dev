@@ -50,7 +50,7 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   parentSessionId?: string;
   /**
    * The lineage this session belongs to (FIX-1068) — the address every resource
-   * it declares `sharedToWorkstream` stores under.
+   * it declares `sharedToLineage` stores under.
    *
    * **Minted, not derived.** A root session mints one when its record is
    * created; every descendant inherits that same literal value at spawn. The
@@ -887,7 +887,7 @@ export type ContentScopeType = "session" | "user" | "org";
  *
  * Wider than {@link ContentScopeType}, which is the scope a resource is
  * DECLARED at. The two differ for exactly one case: a session-scoped resource
- * marked `sharedToWorkstream` stores in the `lineage` space, addressed by the
+ * marked `sharedToLineage` stores in the `lineage` space, addressed by the
  * lineage rather than by a session.
  *
  * They are separate types rather than one widened type because they answer

@@ -147,7 +147,7 @@ export interface ClaudeCodeAgentOptions {
   ) => ToolApprovalDecision | Promise<ToolApprovalDecision>;
   /**
    * Run the agent as **detached background work** — a task board worker
-   * dispatched into a Workstream. Default `false`: an in-session agent that
+   * dispatched into a child session. Default `false`: an in-session agent that
    * keeps conversation state — the `sdkSessionId` resume handle and the
    * `sdkAgentRuns` log — which is the behaviour every existing caller has.
    *
@@ -155,12 +155,12 @@ export interface ClaudeCodeAgentOptions {
    *
    * The board refuses a detached worker whose block authors a
    * `sessionStateSchema`, because every detached worker in a flow becomes a
-   * route on one shared Workstream flow, where two routes choosing the same key
-   * with different shapes corrupt each other silently.
+   * route on one shared child-session flow, where two routes choosing the same
+   * key with different shapes corrupt each other silently.
    *
-   * A background job is one run in one workstream, so nothing on that path
-   * reads the resume handle back and the run log's job belongs to the
-   * workstream's own item stream. `true` therefore suppresses three things
+   * A background job is one run in one child session, so nothing on that path
+   * reads the resume handle back and the run log's job belongs to the child
+   * session's own item stream. `true` therefore suppresses three things
    * together, and they are one decision rather than three: the **declaration**,
    * the **reads and writes** that go with it (a value written under an
    * undeclared key is not a smaller version of the same behaviour), and the
@@ -170,8 +170,8 @@ export interface ClaudeCodeAgentOptions {
    *
    * Everything else is identical: the items the run emits, the handle it
    * returns, and how failures surface. The one deliberate consequence is that a
-   * second task addressed to the same workstream starts the agent fresh, while
-   * the workstream's own item history continues as normal.
+   * second task addressed to the same child session starts the agent fresh,
+   * while the child session's own item history continues as normal.
    */
   detached?: boolean;
   /**
@@ -196,8 +196,9 @@ export interface ClaudeCodeAgentOptions {
    *   never happened.
    *
    * All three are readable over the resource route that already ships, keyed
-   * under the run's own request id so a workstream reused across runs answers
-   * "what did this run do" rather than "what has this workstream ever done".
+   * under the run's own request id so a child session reused across runs
+   * answers "what did this run do" rather than "what has this child session
+   * ever done".
    *
    * **What the file record is, precisely.** It is a log of the file operations
    * the run's file TOOLS performed, not an index of everything that changed on
@@ -463,7 +464,7 @@ export function forwardSignalToController(
  * without them there is nothing to record into.
  *
  * Every entry is keyed under {@link runNamespace}, which is what keeps a reused
- * workstream's runs apart.
+ * child session's runs apart.
  */
 /**
  * Percent-escape the characters that stop a value being ONE resource-path

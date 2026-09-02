@@ -54,8 +54,8 @@ Narrative: [Engine setup](/docs/server/setup), [App configuration](/docs/cli/con
 | `staleSweepIntervalMs` | `number` | `30000` | Stale-request sweeper cadence. `0` disables. |
 | `staleSweepThresholdMs` | `number` | `60000` | Heartbeat age after which a running request is stale. |
 | `queuedGraceMs` | `number` | `600000` | How long an unclaimed queued request may sit before a sweep treats it as lost. Must be finite. |
-| `publicReentrySources` | `string[]` | built-in caller-addressed sources | Extra inbound `source` values allowed on retry / continue / resume. `webhook` and the detached-dispatch source cannot be added. |
-| `maxWorkstreamListLimit` | `number` | `100` | Largest `limit` the workstream list route accepts. |
+| `publicReentrySources` | `string[]` | built-in caller-addressed sources | Extra inbound `source` values allowed on retry / continue / resume. `webhook`, `task`, and `internal` cannot be added. |
+| `maxChildSessionListLimit` | `number` | `100` | Largest `limit` the `GET /api/flows/sessions/:sessionId/children` route accepts. Must be a positive integer. |
 | `durable` | `boolean` | `false` | Install the default checkpoint provider so actions with `durable: true` can recover and `ctx.suspend()`. Needs a persistent store to survive a process restart. |
 | `durabilityRetention` | retention object | — | Sweeper for expired suspensions, leases, and orphaned checkpoints. Only with durability on. |
 | `worker` | `WorkerAdapter` | — | Execution backend (for example `bullmqWorker(...)`). Mutually exclusive with `dispatcher`. |

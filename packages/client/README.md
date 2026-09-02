@@ -108,30 +108,32 @@ const requests = await sessions.listSessionRequests("sess_1", {
 
 ### Background work
 
-`listWorkstreams` lists the background work running under a session. Work that
+`listChildSessions` lists the background work running under a session. Work that
 outlives the turn that started it runs in its own session hanging off the parent, so
 it never appears in the parent's requests.
 
 ```ts
-// Paging only: `limit` is 1–100 (25 by default), `offset` is 0–10000.
-const workstreams = await sessions.listWorkstreams("sess_1", { limit: 25 });
+// Paging only: `limit` is 1 to the host's ceiling (100 by default), 25 when omitted;
+// `offset` is 0–10000.
+const children = await sessions.listChildSessions("sess_1", { limit: 25 });
 
-for (const workstream of workstreams) {
+for (const child of children) {
   // A row's `id` is a session id, so the reads you already use work on it.
-  const requests = await sessions.listSessionRequests(workstream.id);
+  const requests = await sessions.listSessionRequests(child.id);
 }
 ```
 
-Each row is a `WorkstreamSummary`: `id`, `parentSessionId`, `createdAt`,
-`updatedAt`, and the optional `topic`, `coordinate`, and `status`. `topic` names the
-body of work and `coordinate` names the worker handling it; both are display labels,
-and a row can arrive without either. Guard all three with `== null`.
+Each row is a `ChildSessionSummary`: `id`, `parentSessionId`, `createdAt`,
+`updatedAt`, and the optional `topic`, `coordinate`, and `status`. `topic` is the key
+the child was derived from and `coordinate` is the entry the work was sent to
+(`task:<seat>` or `internal:<entry>`); both are display labels, and a row can arrive
+without either. Guard all three with `== null`.
 
 `status` is the last state the server recorded for the work, not a check on what is
 happening right now. `"active"` asserts only that the work hasn't finished: queued,
 mid-run, and paused waiting for a person all read `"active"`, and so does a job whose
 worker died, until the server records otherwise. The terminal values are
-`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A workstream that has
+`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A child session that has
 never run anything carries no `status` at all. Don't fold that absence into one of
 the five values. Your own label for it, like `"Not started"`, is fine; mapping it to
 `"active"` claims work is under way before it started.

@@ -9,7 +9,7 @@ import {
   testBlock,
   testRouter
 } from "@flow-state-dev/testing";
-import { thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
+import { backgroundWorkTasks, thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
 import { artifactsCollection } from "../flows/chat-agent/shared/artifacts";
 import { userStateSchema } from "../flows/chat-agent/shared/schemas";
 
@@ -45,6 +45,9 @@ const emptyMemorySystem = {
 // Minimal flow instance with artifacts collection for testBlock.
 const testFlow = defineFlow({
   kind: "chat-agent-test",
+  // The router reaches the background-work board, whose hand-off seat
+  // addresses a task entry; a flow that reaches it must declare the entries.
+  tasks: backgroundWorkTasks,
   actions: {
     run: {
       inputSchema: z.object({

@@ -137,8 +137,8 @@ export type QuestionState = z.infer<typeof questionStateSchema>;
 export const inboxCollection = defineResourceCollection({
   pattern: `${INBOX}/**`,
   // Same principal as the board and the run record, so a question written
-  // inside the detached workstream is read by the coordinator session that
-  // answers it — with no `sharedToWorkstream` anywhere.
+  // inside the detached child session is read by the coordinator session that
+  // answers it — with no `sharedToLineage` anywhere.
   scope: "user",
   // BP-027: a user-scoped collection defaults to shared across flows.
   flowIsolation: false,

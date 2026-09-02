@@ -186,9 +186,9 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   flowIsolation?: boolean;
   /**
    * Give this session-scoped resource ONE identity across the whole session
-   * lineage (FIX-1068), so a session and every background child session it
-   * spawns — a Workstream, and a Workstream's own Workstreams — read and write
-   * the same resource through the ordinary resource API.
+   * lineage (FIX-1068), so a session and every child session it spawns — and
+   * every child of those — read and write the same resource through the
+   * ordinary resource API.
    *
    * Default `false`: a session-scoped resource resolves against the running
    * session, so a child session hydrates its own empty copy. Set `true` and it
@@ -206,7 +206,7 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    *
    * Session **state** is never shared — this flag reaches resources only.
    */
-  sharedToWorkstream?: boolean;
+  sharedToLineage?: boolean;
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   content?: string;
@@ -542,9 +542,9 @@ export function defineResource<
     );
   }
 
-  if (config.sharedToWorkstream === true && config.scope !== "session") {
+  if (config.sharedToLineage === true && config.scope !== "session") {
     throw new Error(
-      `defineResource() rejects sharedToWorkstream:true on ${config.scope}-scoped resources — ` +
+      `defineResource() rejects sharedToLineage:true on ${config.scope}-scoped resources — ` +
         `${config.scope} scope already spans every session in a lineage`
     );
   }

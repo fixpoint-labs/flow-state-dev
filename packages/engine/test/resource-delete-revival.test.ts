@@ -83,21 +83,21 @@ async function readStored(
   return row?.state;
 }
 
-/** Only `kind` and `workstream` are read by the detached-spawn verb. */
+/** Only `kind` and `internal` are read by the dispatch verb. */
 const SPAWN_FLOW = {
   kind: "fix1258-spawn",
-  workstream: { block: { name: "core" } }
+  internal: { core: { block: { name: "core" } } }
 } as unknown as FlowInstance;
 
 /**
- * Spawn a detached child from one fixed seed, and return its session key.
+ * Dispatch a detached child from one fixed key, and return its session id.
  *
- * The seed is constant on purpose: the key is derived from it, so every call
- * targets the same child id — which is what makes the delete/re-spawn case
- * below reachable at all.
+ * The key is constant on purpose: the child id is derived from it, so every
+ * call targets the same child id — which is what makes the delete/re-spawn
+ * case below reachable at all.
  */
 async function spawnChild(stores: StoreRegistry): Promise<string> {
-  const { host } = createRequestHost({
+  const { seam } = createRequestHost({
     stores,
     flow: SPAWN_FLOW,
     identity: {
@@ -107,11 +107,17 @@ async function spawnChild(stores: StoreRegistry): Promise<string> {
       sessionId: "sess_parent",
       lineageId: "lin_1"
     },
-    startOperation: async () => ({ requestId: "req_child" }),
+    dispatchOperation: async () => ({ requestId: "req_child" }),
     liveness: {}
   });
 
-  const result = await host.startDetached({ seed: { topic: "review" }, input: {} });
+  const result = await seam({
+    type: "internal",
+    target: "core",
+    session: { key: "review" },
+    payload: {},
+    from: "spawn"
+  });
   if (!result.ok) throw new Error(`spawn refused: ${result.refused}`);
   return result.sessionId;
 }

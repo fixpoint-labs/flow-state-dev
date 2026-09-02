@@ -98,7 +98,7 @@ export type ScheduleInputFn = (ctx: ScheduleInputContext) => unknown | Promise<u
  * endpoint, never the public action surface or MCP.
  *
  * Static entries live in `SchedulesConfig.static` and are validated at
- * registration time; the dispatch resolves them through `resolveActionCore`
+ * registration time; the dispatch resolves them through `resolveEntry`
  * via the `metadata.schedule.scheduleId` coordinate. Dynamic entries are
  * produced by the resolver hook and validated at dispatch time (failures map
  * to `400 invalid_schedule`); their core is carried inline on the dispatch

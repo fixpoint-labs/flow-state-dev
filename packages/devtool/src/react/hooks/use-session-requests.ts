@@ -17,9 +17,10 @@ export function useSessionRequests(sessionId: string | null) {
   // target out of this list, so a stale in-progress row makes the panel attach
   // to a request in the session the user just left and render its items under
   // the new one. Reachable from the navigator, and reliably so when descending
-  // into a Workstream while the conversation that started it is still running.
+  // into a child session while the conversation that started it is still
+  // running.
   //
-  // Shared with `use-workstreams` rather than restated: this hook previously
+  // Shared with `use-child-sessions` rather than restated: this hook previously
   // ASSIGNED its own ref inside the read, so a callback the panel handed to a
   // view that has since unmounted rewrote the guard for every reader.
   // The identity these rows were read under, stamped with them. What this hook

@@ -16,7 +16,7 @@ export {
 export {
   useSession,
   type SessionItemsOptions,
-  type SessionWorkstreamsOptions,
+  type SessionChildrenOptions,
   type SessionView,
   type UseSessionHookOptions
 } from "./hooks/useSession";

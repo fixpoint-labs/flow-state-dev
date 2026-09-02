@@ -134,7 +134,7 @@ export interface InboundRequestEnvelope {
    * has no static coordinate to recover from — today, the dynamic schedule
    * whose handler block is produced at dispatch time by a resolver. When
    * present, the runtime runs this core directly instead of resolving from
-   * `flow` via `resolveActionCore`. Like `source`, it is set internally and
+   * `flow` via `resolveEntry`. Like `source`, it is set internally and
    * never read from a request body, so it adds no attack surface on the
    * caller-addressed path. Not serializable and not persisted: on recovery the
    * field is absent, which is why durable dynamic schedules do not recover

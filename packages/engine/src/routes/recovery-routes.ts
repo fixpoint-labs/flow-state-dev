@@ -203,7 +203,7 @@ export async function handleContinueRequest(
   // A dynamic schedule's action core is produced at dispatch time by a
   // resolver and carried only on that original dispatch envelope — unlike a
   // static schedule, it cannot be re-resolved from `flow.schedules.static`
-  // (see `resolve-action-core.ts`), so `continueRequest` has no core to
+  // (see `resolve-entry.ts`), so `continueRequest` has no core to
   // re-enter with. The DevTool already hides Continue for these records
   // (`request-separator.tsx`); reject here too so a direct API client can't
   // reach the same dead end.

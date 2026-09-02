@@ -16,7 +16,7 @@ import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
 import type { JsonObject } from "../../schema/common";
 import type { CapabilityRef } from "../../capability/types";
-import { mergeWorkstreamBindings, type WorkstreamBindings } from "../../types/workstream";
+import type { DispatchAddress } from "../../types/dispatch";
 import { getBaseCapability } from "../../capability/merge";
 import { matchesRescueHandler, toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
@@ -122,21 +122,16 @@ export type BuildBlockOptions<
    * automatically and must NOT be passed again.
    *
    * Retained on the definition so the graph is walkable at flow-definition
-   * time, and used here as the single source the `workstreamBindings` rail is
-   * derived from.
+   * time — `defineFlow` walks it to find every dispatcher the flow can reach.
    */
   childBlocks?: readonly BlockDefinition<any, any>[];
   /**
-   * This block's OWN detached worker bindings (FIX-982) — what it contributes
-   * before any child's. Leaves and freshly-built composites omit it; a board
-   * stamps its own onto the built drain afterwards via
-   * `declareWorkstreamBindings`, and every rebuild path forwards
-   * `definition.ownWorkstreamBindings` so the stamp survives.
-   *
-   * The bubble-up set on the definition is derived from this plus
-   * `childBlocks` — callers never pre-merge it.
+   * The address this block dispatches to, when it is a dispatcher. Stamped on
+   * the built definition by `markDispatcher`; every rebuild path forwards
+   * `definition.dispatch` so a `connectInput` or `.rescue()` on a dispatcher
+   * hands back a dispatcher.
    */
-  ownWorkstreamBindings?: WorkstreamBindings;
+  dispatch?: DispatchAddress;
   /**
    * Mapper installed via `BlockDefinition.mapModelOutput`. Carried on the
    * runtime view; the generator tool bridge reads it via `asRuntime(tool)`
@@ -224,17 +219,6 @@ export function buildBlock<
     ...(config.rescue ?? []).map((handler) => handler.block)
   ];
 
-  // The one place the bindings rail is computed. Callers hand over children and
-  // their own stamp; the union is derived, never threaded. Each child already
-  // carries the union of its own subtree, so a single pass here reaches the
-  // whole tree — and a composition site that forgets to pass a child drops it
-  // from every rail at once, which `defineFlow`'s reachability assertion then
-  // refuses at definition time rather than at a detached wake weeks later.
-  let workstreamBindings = options.ownWorkstreamBindings;
-  for (const child of childBlocks) {
-    workstreamBindings = mergeWorkstreamBindings(workstreamBindings, child.workstreamBindings);
-  }
-
   const definition: BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
@@ -247,8 +231,7 @@ export function buildBlock<
     ownDeclaredResources: options.ownDeclaredResources,
     requiresOrg,
     childBlocks,
-    workstreamBindings,
-    ownWorkstreamBindings: options.ownWorkstreamBindings,
+    ...(options.dispatch !== undefined ? { dispatch: options.dispatch } : {}),
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
@@ -397,16 +380,13 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
-        // Structure and own-stamp ride every rebuild; the bindings rail itself
-        // is re-derived from them (FIX-982). The stamp is read off `definition`,
-        // never `options`: a task board stamps its bindings onto the finished
-        // block via `declareWorkstreamBindings`, so the construction-time
-        // `options` value predates the stamp and rebuilding from it hands back a
-        // block that has silently forgotten the board it contains. Nothing
-        // throws — the symptom is a detached task that is admitted, claimed,
-        // dispatched and then never runs.
+        // Structure and the dispatch address ride every rebuild. The address is
+        // read off `definition`, never `options`: `markDispatcher` stamps the
+        // finished block, so the construction-time `options` value predates
+        // the stamp and rebuilding from it would hand back a block that has
+        // silently stopped being a dispatcher.
         childBlocks: options.childBlocks,
-        ownWorkstreamBindings: definition.ownWorkstreamBindings,
+        dispatch: definition.dispatch,
         // `connectInput` preserves `TOutputSchema`, so any installed
         // `mapModelOutput` mapper is still valid against the rebuilt block's
         // output. Forward it through.
@@ -425,7 +405,7 @@ export function buildBlock<
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
         childBlocks: options.childBlocks,
-        ownWorkstreamBindings: definition.ownWorkstreamBindings,
+        dispatch: definition.dispatch,
         modelOutputMapper: mapper,
       });
     },
@@ -441,14 +421,9 @@ export function buildBlock<
           mergedRequiresOrg = true;
         }
       }
-      // Bindings are deliberately absent from that loop. `handlers` REPLACES the
-      // installed set, so the rail cannot be accumulated here: seeding from the
-      // post-fold `definition.workstreamBindings` kept a replaced handler's
-      // boards, and `.rescue([a]).rescue([b])` then advertised a worker nothing
-      // could reach — or threw a duplicate-coordinate error between `a` and `b`
-      // when both bound the same coordinate. Passing the own stamp and the new
-      // handlers lets `buildBlock` re-derive the union from what is actually
-      // installed, so `a` drops out because it is no longer a child.
+      // `handlers` REPLACES the installed set, and `buildBlock` re-derives
+      // `childBlocks` from the config it is handed, so a replaced handler
+      // drops out of the walkable graph by not being passed.
       return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
         kind,
         config: { ...runtimeConfig, rescue: handlers },
@@ -458,7 +433,7 @@ export function buildBlock<
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: mergedRequiresOrg,
         childBlocks: options.childBlocks,
-        ownWorkstreamBindings: definition.ownWorkstreamBindings,
+        dispatch: definition.dispatch,
         modelOutputMapper: options.modelOutputMapper,
       });
     },
@@ -562,7 +537,7 @@ export function buildBlock<
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
         childBlocks: options.childBlocks,
-        ownWorkstreamBindings: definition.ownWorkstreamBindings,
+        dispatch: definition.dispatch,
       });
     }
   };

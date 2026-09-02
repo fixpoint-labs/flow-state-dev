@@ -138,7 +138,7 @@ export interface ChatAdapterOptions {
  * `metadata.chat` to explain why a flow fired.
  *
  * `eventKey` is the resolution coordinate: the matched `chat.on` subscription
- * key. `resolveActionCore` reads it (gated on `source === "chat"`) to find the
+ * key. `resolveEntry` reads it (gated on `source === "chat"`) to find the
  * inline handler on `flow.chat.on`, so it is always present — every chat
  * dispatch now flows through a declared subscription.
  */

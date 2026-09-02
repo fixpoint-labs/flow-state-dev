@@ -39,7 +39,7 @@ import {
   handleListSessions,
   handlePatchSessionMetadata
 } from "./session-routes";
-import { handleListSessionWorkstreams } from "./workstream-routes";
+import { handleListSessionChildren } from "./child-session-routes";
 import { handleGetSessionState } from "./state-routes";
 import {
   handleGetResourceContent,
@@ -64,7 +64,7 @@ import {
 } from "./debug-routes";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
-import { createDetachedStartOperation } from "../context/detached-start-operation";
+import { createDispatchOperation } from "../context/dispatch-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
@@ -259,8 +259,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // that spread is a fork — so anything stamped here lands on a copy nobody
   // else holds. The object `createFlowState` gives `worker.startWorker` never
   // saw it, so a colocated queue worker running a detached board met
-  // `no-start-operation`; and because this operation carries no child tracking,
-  // an HTTP-started Workstream was invisible to the shutdown drain.
+  // `no-dispatch-operation`; and because this operation carries no child tracking,
+  // an HTTP-started child session was invisible to the shutdown drain.
   //
   // `createFlowState` now installs on the shared config before any fork exists,
   // so in every deployment it owns, the operation is already present here and
@@ -283,9 +283,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // drives `createFlowApiRouter` directly, is the thing that will tell you.
   if (
     runtimeConfig.requestHost !== undefined &&
-    runtimeConfig.requestHost.startOperation === undefined
+    runtimeConfig.requestHost.dispatchOperation === undefined
   ) {
-    runtimeConfig.requestHost.startOperation = createDetachedStartOperation({ host });
+    runtimeConfig.requestHost.dispatchOperation = createDispatchOperation({ host });
   }
 
   // Detect interrupted requests from previous runs on startup
@@ -433,12 +433,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         });
       }
 
-      if (route.kind === "list_session_workstreams") {
-        return await handleListSessionWorkstreams(request, route, {
+      if (route.kind === "list_session_children") {
+        return await handleListSessionChildren(request, route, {
           registry: options.registry,
           stores,
           tenantId,
-          maxListLimit: runtimeConfig.maxWorkstreamListLimit
+          maxListLimit: runtimeConfig.maxChildSessionListLimit
         });
       }
 

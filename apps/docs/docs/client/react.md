@@ -102,56 +102,68 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 ### Background work
 
-Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on somewhere else. `session.workstreams` is how you show it.
+Some flows hand a long job off to run on its own, in a **child session**: a session of its own, hanging off the conversation. The conversation returns straight away and the work carries on there. `session.children` is how you show it.
 
-Each entry is one body of background work, with enough on it to render a row:
+Each entry is one child session, with enough on it to render a row:
 
 ```tsx
 const session = useSession(sessionId, { flowKind: "assistant" });
 
 return (
   <aside>
-    {session.workstreams.map((work) => (
-      <button key={work.id} onClick={() => setOpenJobId(work.id)}>
-        {work.topic ?? "Background work"} — {work.status ?? "not started"}
+    {session.children.map((child) => (
+      <button key={child.id} onClick={() => setOpenChildId(child.id)}>
+        {child.topic ?? "Background work"} — {child.status ?? "not started"}
       </button>
     ))}
   </aside>
 );
 ```
 
-This list sits beside the conversation rather than inside it. Nothing a background job produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
+This list sits beside the conversation rather than inside it. Nothing a child session produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
 
 #### When the list changes
 
-The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. It does not update on its own while someone sits and watches, so a job started in another tab shows up on their next action — or immediately, if you give them a refresh control.
+The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. It does not update on its own while someone sits and watches, so work started in another tab shows up on their next action — or immediately, if you give them a refresh control.
 
-`session.workstreamsStale` turns `true` when a re-read fails. The rows already fetched stay on screen, so use this to mark them as possibly out of date rather than showing an empty panel.
+`session.childrenStale` turns `true` when a re-read fails. The rows already fetched stay on screen, so use this to mark them as possibly out of date rather than showing an empty panel.
+
+#### How many rows
+
+Each read fetches one page of the newest children. The server decides the page size (25 by default) unless you name one:
+
+```tsx
+const session = useSession(sessionId, { flowKind: "assistant", children: { limit: 100 } });
+```
+
+The list is all-time history, not just what is running, so a conversation that has started more children than one page holds keeps showing the newest, and the oldest finished ones fall off the end. The server caps `limit` at 100 unless the host raises `maxChildSessionListLimit`; a value past the cap fails the read, which shows as `childrenStale` rather than as rows.
 
 #### What a row's status tells you
 
 `status` is missing until the work has actually run something. Otherwise it is either how the work ended, or `"active"`.
 
-`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the job is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up.
+`"active"` means *not finished* and nothing else. It does not tell you whether the work is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the work is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up.
 
 New status values can appear over time. Render one you don't recognise instead of switching exhaustively over the set.
 
 #### Opening one
 
-A body of background work is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
+A child session is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
 
 ```tsx
-function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {
+import { ItemsRenderer, useSession } from "@flow-state-dev/react";
+
+function ChildSessionDetail({ childId, flowKind }: { childId: string; flowKind: string }) {
   // `autoResume` matters here: without it you load one snapshot and it never
-  // fills in while the job keeps going.
-  const job = useSession(jobId, { flowKind, autoResume: true });
-  return <ItemsRenderer items={job.items} />;
+  // fills in while the work keeps going.
+  const child = useSession(childId, { flowKind, autoResume: true });
+  return <ItemsRenderer items={child.items} />;
 }
 ```
 
-Pass the **same flow kind as the conversation the job belongs to**. Background work runs on its parent flow's worker core, so the job is stamped with that flow's kind rather than a kind of its own — you already have the value, and it needs no lookup. Passing a different name reads as a different flow, and an active job's stream comes back 404 with the view stuck on its first snapshot.
+Pass the **same flow kind as the conversation the child belongs to**. A child session is stamped with its parent's flow kind rather than a kind of its own, so you already have the value. Passing a different name reads as a different flow, and an active child's stream comes back 404 with the view stuck on its first snapshot.
 
-Steps show up as the job finishes them. You won't see text being typed out as it is generated — background work surfaces completed steps only.
+Steps show up as the child finishes them. You won't see text being typed out as it is generated — a child session surfaces completed steps only.
 
 ### `useClientData` — Client Data
 

@@ -119,17 +119,41 @@ export { defineCapability, getBaseCapability } from "./capability";
  */
 export { NoRequestHostError, requireRequestHost } from "./types/request-host";
 export type {
-  DetachedProvenance,
-  DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedRefusal,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./types/request-host";
+
+/**
+ * One message protocol — typed entries addressed `(type, name)`, the
+ * `dispatcher()` block that sends to one, and the seam the runtime attaches.
+ */
+export {
+  DISPATCH_SEAM,
+  DispatchRefusedError,
+  MESSAGE_TYPES,
+  NoDispatchSeamError,
+  TASK_ENTRY,
+  dispatchThroughSeam,
+  isTaskEntry,
+  markDispatcher,
+  markTaskEntry
+} from "./types/dispatch";
+export type {
+  DispatchAddress,
+  DispatchableMessageType,
+  DispatchOutcome,
+  DispatchRefusal,
+  DispatchSeam,
+  DispatchSpec,
+  InternalEntry,
+  MessageType,
+  SessionTarget,
+  TaskEntry,
+  TaskEntryMark
+} from "./types/dispatch";
 export type {
   CapabilityPresetCtx,
   CapabilityRef,
@@ -179,11 +203,16 @@ export type { ReplayLog } from "./blocks/internal/replay-log";
 // re-emissions for the read paths (GET history, useSession, SSE replay seed).
 export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
+  dispatcher,
+  dispatchHandleSchema,
   generator,
   handler,
   providerTool,
   router,
-  sequencer
+  sequencer,
+  type DispatchHandle,
+  type DispatcherConfig,
+  type DispatcherSession
 } from "./blocks";
 // Block-level rescue resolution (FIX-742). Exported so the server's top-level
 // `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
@@ -194,12 +223,7 @@ export { runRescue } from "./blocks/sequencer";
 // it composes a subtree's background signal by the same rule the kernel uses
 // rather than a second copy of it.
 export { composeSideChainSignal } from "./blocks/sequencer";
-export {
-  defineFlow,
-  buildWorkstreamCore,
-  workstreamDispatchInputSchema,
-  type WorkstreamDispatchInput,
-} from "./flow";
+export { defineFlow, resolveEntry, type EntryCoordinate, type EntryMaps } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";

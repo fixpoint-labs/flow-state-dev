@@ -69,8 +69,12 @@ describe("createInboundTransportHost", () => {
   it("dispatch propagates source onto the RequestRecord", async () => {
     const { host, stores } = buildHost();
 
+    // A caller-addressed custom transport source — not one of the framework's
+    // reserved event sources (`webhook`/`chat`/`scheduled`), which resolution
+    // now reads by coordinate rather than falling back to `flow.actions[name]`
+    // when the caller supplies none.
     const handle = host.dispatch({
-      source: "webhook",
+      source: "custom-transport",
       flowKind: "host-test",
       action: "run",
       input: { value: "hello" },
@@ -81,7 +85,7 @@ describe("createInboundTransportHost", () => {
     await handle.finished;
 
     const record = await stores.request.get(handle.requestId);
-    expect(record?.source).toBe("webhook");
+    expect(record?.source).toBe("custom-transport");
     expect(record?.userId).toBe("u_host");
   });
 
@@ -169,7 +173,7 @@ describe("createInboundTransportHost", () => {
     // run is under way — Next's `after()` and `waitUntil` both throw
     // synchronously when called outside a request scope. Letting that escape
     // would make a synchronous throw from `dispatch` ambiguous, and
-    // `createDetachedStartOperation` reads it unambiguously as "nothing was
+    // `createDispatchOperation` reads it unambiguously as "nothing was
     // dispatched" before its caller settles the row it handed over (FIX-982).
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
@@ -234,8 +238,11 @@ describe("createInboundTransportHost", () => {
 
   it("dispatch with responseEmitter:null skips the live stream", async () => {
     const { host } = buildHost();
+    // A caller-addressed custom scheduler source — not the framework's
+    // reserved `scheduled` event source, which needs a `metadata.schedule`
+    // coordinate to resolve at all now that there is no name fallback.
     const handle = host.dispatch({
-      source: "scheduled",
+      source: "custom-scheduler",
       flowKind: "host-test",
       action: "run",
       input: { value: "fire-and-forget" },

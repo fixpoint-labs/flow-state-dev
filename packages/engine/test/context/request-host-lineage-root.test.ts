@@ -1,12 +1,12 @@
 /**
- * FIX-1068: a detached spawn passes the lineage id on, unchanged.
+ * FIX-1068: a `key`-targeted dispatch passes the lineage id on, unchanged.
  *
  * The address a shared resource stores under is a value the root minted, not
- * something each session works out for itself. So the only thing a spawn has to
- * do is copy it — there is no root to locate, no parent chain to walk, and
+ * something each session works out for itself. So the only thing a dispatch has
+ * to do is copy it — there is no root to locate, no parent chain to walk, and
  * nothing for two sessions to disagree about. Depth is the case that shows it:
- * a workstream spawned from inside a workstream carries the same id as the
- * conversation at the top, because it was handed the same value twice.
+ * a child dispatched from inside a child carries the same id as the conversation
+ * at the top, because it was handed the same value twice.
  */
 import { describe, expect, it } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core";
@@ -14,15 +14,16 @@ import { createRequestHost } from "../../src/context/create-request-host";
 import { createInMemoryStores } from "../../src";
 import type { StoreRegistry } from "../../src/stores/types";
 
-/** Only `kind` and `workstream` are read by the verb under test. */
+/** Only `kind` and `internal` are read by the verb under test. */
 const FLOW = {
   kind: "lineage-seam",
-  workstream: { block: { name: "core" } }
+  actions: {},
+  internal: { core: { block: { name: "core" } } }
 } as unknown as FlowInstance;
 
-/** Spawn a child from `sessionId`, which belongs to lineage `lineageId`. */
+/** Dispatch a child from `sessionId`, which belongs to lineage `lineageId`. */
 async function spawnChild(stores: StoreRegistry, sessionId: string, lineageId: string) {
-  const { host } = createRequestHost({
+  const { seam } = createRequestHost({
     stores,
     flow: FLOW,
     identity: {
@@ -32,19 +33,25 @@ async function spawnChild(stores: StoreRegistry, sessionId: string, lineageId: s
       sessionId,
       lineageId
     },
-    startOperation: async () => ({ requestId: "req_child" }),
+    dispatchOperation: async () => ({ requestId: "req_child" }),
     liveness: {}
   });
 
-  const result = await host.startDetached({ seed: { topic: "review" }, input: {} });
-  if (!result.ok) throw new Error(`spawn refused: ${result.refused}`);
+  const result = await seam({
+    type: "internal",
+    target: "core",
+    session: { key: "review" },
+    payload: {},
+    from: "spawn"
+  });
+  if (!result.ok) throw new Error(`dispatch refused: ${result.refused}`);
   const record = await stores.session.get(result.sessionId);
   if (record === undefined) throw new Error("child record was not written");
   return record;
 }
 
-describe("FIX-1068: the lineage id is inherited at detached spawn", () => {
-  it("copies the spawning session's lineage onto the child", async () => {
+describe("FIX-1068: the lineage id is inherited at dispatch", () => {
+  it("copies the dispatching session's lineage onto the child", async () => {
     const stores = createInMemoryStores();
     const child = await spawnChild(stores, "s_root", "lin_alpha");
 
@@ -56,7 +63,7 @@ describe("FIX-1068: the lineage id is inherited at detached spawn", () => {
     const stores = createInMemoryStores();
     const child = await spawnChild(stores, "s_root", "lin_alpha");
 
-    // The child now spawns its own workstream, passing on what it holds.
+    // The child now dispatches its own child, passing on what it holds.
     const grandchild = await spawnChild(stores, child.id, child.lineageId!);
 
     expect(grandchild.parentSessionId).toBe(child.id);

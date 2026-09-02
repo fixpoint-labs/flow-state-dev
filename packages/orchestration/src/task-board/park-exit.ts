@@ -19,7 +19,7 @@
  * ## What lives here
  *
  * The option type and the construction-time refusals — the same split
- * `./detached.ts` uses, and for the same reason: what a declaration *means* and
+ * `./hand-off.ts` uses, and for the same reason: what a declaration *means* and
  * which declarations cannot work are decided once, away from the drain that
  * composes them. The exclusion itself is a status test inside `shared.ts`'s
  * waitable count, where the board's one exit question already lives.

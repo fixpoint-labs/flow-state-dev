@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { requireRequestHost } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "../../src";
 import type { StoreRegistry } from "../../src/stores/types";
@@ -191,23 +191,25 @@ describe("request-host seam, end to end", () => {
     expect(message).not.toMatch(/undefined is not a function/i);
   });
 
-  it("start-or-adopt refuses BY NAME when the flow declares no workstream core", async () => {
-    let refusal: unknown;
-
-    const probe = handler({
+  it("a dispatcher block throws DispatchRefusedError with `no-dispatch-operation` when the process cannot dispatch", async () => {
+    // The flow must declare the `internal` entry the dispatcher targets — that
+    // is `defineFlow`'s own address walk, checked at definition time and
+    // unrelated to this test. What THIS test pins is the runtime side: a
+    // `requestHost` given with no `dispatchOperation` (the shape a process that
+    // executes requests but was never wired to dispatch one has) refuses the
+    // dispatch by name rather than falling through to anything caller-addressed.
+    const core = handler({ name: "core", execute: () => null });
+    const spawn = dispatcher({
       name: "probe-spawn",
-      inputSchema: z.object({}),
-      outputSchema: z.boolean(),
-      execute: async (_input, ctx) => {
-        const host = requireRequestHost(ctx);
-        refusal = await host.startDetached({ seed: { topic: "review" }, input: {} });
-        return true;
-      }
+      type: "internal",
+      target: "core",
+      session: { key: () => "review" }
     });
 
     const flow = defineFlow({
       kind: "seam-e2e-spawn",
-      actions: { run: { block: probe } }
+      actions: { run: { block: spawn } },
+      internal: { core: { block: core } }
     })();
 
     const result = await runAction({
@@ -217,12 +219,14 @@ describe("request-host seam, end to end", () => {
       userId: "u_alice",
       sessionId: "s_spawn",
       stores: createInMemoryStores(),
+      // Liveness is wired; a dispatch operation deliberately is not.
       runtimeConfig: { requestHost: HEALTHY_LIVENESS }
     });
 
-    expect(result.error).toBeUndefined();
-    // The *off* state of admission: no core, so a named refusal — and crucially
-    // NOT a dispatch that fell through to the flow's own `run` action.
-    expect(refusal).toMatchObject({ ok: false, refused: "no-workstream-core" });
+    // The *off* state of admission: a named refusal, thrown by the dispatcher
+    // block — and crucially NOT a dispatch that fell through to the flow's own
+    // `run` action.
+    expect(result.error).toBeDefined();
+    expect(result.error?.message).toMatch(/no-dispatch-operation/);
   });
 });

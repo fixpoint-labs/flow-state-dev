@@ -1,17 +1,18 @@
 /**
- * What `startDetached` stamps onto the detached REQUEST record (FIX-982).
+ * What the dispatch seam stamps onto the dispatched REQUEST (FIX-982) and the
+ * created child SESSION record (FIX-999 → the message-protocol port).
  *
- * The integration suite proves the field survives to a real record on the
- * shipped router path (`task-board-detached-handoff.test.ts`). What it cannot
- * show is the branch no shipped caller takes: the task board is the only caller
- * of this seam today, and it always has a claimed row, so it always supplies
- * `provenance`. The absent case is reachable only here — and it is the case a
- * legacy reader depends on, because a record written before the field existed
- * looks exactly like one written by a caller that omitted it.
+ * The integration suite proves the fields survive to a real record on the
+ * shipped path. What it cannot show is the boundary case: `provenance` is the
+ * one channel a sender may put server-derived facts through, and everything
+ * else the caller passes — the payload, the `from` name — must never leak
+ * into `metadata.dispatch`, or a reader could no longer treat that key as
+ * server truth.
  *
- * The boundary case matters as much: `record` is the caller's own bag and must
- * never reach the request record, whatever it is named. That is what lets a
- * reader treat everything under `metadata.workstream` as server-assembled.
+ * The absent-provenance case matters as much: it is the shape a reader
+ * written before task hand-offs carried a `taskId` still sees, and one
+ * written after gets `undefined` from a plain property read rather than a
+ * present key holding nothing (BP-030).
  */
 import { describe, it, expect } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core";
@@ -22,14 +23,22 @@ const IDENTITY = {
   userId: "u_alice",
   tenantId: undefined,
   orgId: undefined,
-  sessionId: "s_parent"
+  sessionId: "s_parent",
+  lineageId: "lin_parent"
 };
 
-/** Only `kind` and `workstream` are read by the verb under test. */
+/** Only `kind` and `internal` are read by the verb under test. */
 const FLOW = {
   kind: "seam-provenance",
-  workstream: { block: { name: "core" } }
+  actions: {},
+  internal: { core: { block: { name: "core" } } }
 } as unknown as FlowInstance;
+
+const HEALTHY_LIVENESS = {
+  heartbeatIntervalMs: 10_000,
+  staleThresholdMs: 60_000,
+  staleSweepIntervalMs: 30_000
+};
 
 /** An empty key that accepts the create — the ordinary first-spawn path. */
 function emptyStores() {
@@ -46,75 +55,126 @@ function emptyStores() {
   } as never;
 }
 
-/** Run one `startDetached` and hand back the envelope the seam assembled. */
-async function envelopeFor(
-  args: Parameters<
-    ReturnType<typeof createRequestHost>["host"]["startDetached"]
-  >[0]
+/** Dispatch once through a fresh host and hand back the metadata it captured. */
+async function metadataFor(
+  args: Parameters<ReturnType<typeof createRequestHost>["seam"]>[0]
 ): Promise<Record<string, unknown> | undefined> {
   let metadata: Record<string, unknown> | undefined;
-  const { host } = createRequestHost({
+  const { seam } = createRequestHost({
     stores: emptyStores(),
     flow: FLOW,
     identity: IDENTITY,
-    startOperation: async (spec) => {
+    dispatchOperation: async (spec) => {
       metadata = spec.metadata;
       return { requestId: "req_child" };
     },
-    liveness: {
-      heartbeatIntervalMs: 10_000,
-      staleThresholdMs: 60_000,
-      staleSweepIntervalMs: 30_000
-    }
+    liveness: HEALTHY_LIVENESS
   });
 
-  const result = await host.startDetached(args);
-  expect(result).toMatchObject({ ok: true });
+  const outcome = await seam(args);
+  expect(outcome).toMatchObject({ ok: true });
   return metadata;
 }
 
-describe("the provenance a detached start stamps on the request record", () => {
-  it("carries the caller's server-derived task id beside the routing labels", async () => {
-    const metadata = await envelopeFor({
-      seed: { topic: "review", key: "board|worker" },
-      input: {},
+describe("the metadata the seam stamps on the dispatched request", () => {
+  it("carries the address, the sending block and session, the key, and the caller's provenance", async () => {
+    const metadata = await metadataFor({
+      type: "internal",
+      target: "core",
+      session: { key: "review|board|worker" },
+      payload: {},
+      from: "spawn",
       provenance: { taskId: "task_7f3" }
     });
 
     expect(metadata).toEqual({
-      workstream: { topic: "review", key: "board|worker", taskId: "task_7f3" }
+      dispatch: {
+        type: "internal",
+        target: "core",
+        from: { block: "spawn", sessionId: "s_parent" },
+        key: "review|board|worker",
+        taskId: "task_7f3"
+      }
     });
   });
 
-  it("OMITS the key entirely when the caller has no row behind it", async () => {
-    // The pre-field shape, byte for byte. A reader written against records that
-    // predate `taskId` sees exactly what it always saw, and one written after it
-    // gets `undefined` from a plain property read rather than a present key
-    // holding nothing (BP-030).
-    const metadata = await envelopeFor({
-      seed: { topic: "review", key: "board|worker" },
-      input: {}
+  it("omits taskId entirely when the caller supplies no provenance", async () => {
+    const metadata = await metadataFor({
+      type: "internal",
+      target: "core",
+      session: { key: "review|board|worker" },
+      payload: {},
+      from: "spawn"
     });
 
-    expect(metadata).toEqual({
-      workstream: { topic: "review", key: "board|worker" }
+    const dispatch = metadata!.dispatch as Record<string, unknown>;
+    expect(dispatch).toEqual({
+      type: "internal",
+      target: "core",
+      from: { block: "spawn", sessionId: "s_parent" },
+      key: "review|board|worker"
     });
-    expect((metadata!.workstream as Record<string, unknown>).taskId).toBeUndefined();
-    expect("taskId" in (metadata!.workstream as object)).toBe(false);
+    expect(dispatch.taskId).toBeUndefined();
+    expect("taskId" in dispatch).toBe(false);
   });
 
-  it("does NOT let the caller's own bag reach the request record", async () => {
-    // `record` is documented as the caller's bookkeeping and lands on the child
-    // SESSION record. If it ever leaked here, `metadata.workstream` would stop
-    // being server truth and a reader could not tell the two apart — which is
-    // the whole reason `provenance` is a separate channel rather than a wider
-    // `record`. A caller naming its keys after the server's must change nothing.
-    const metadata = await envelopeFor({
-      seed: { topic: "review" },
-      input: {},
-      record: { taskId: "task_forged", workstream: { taskId: "task_forged" } }
+  it("carries nothing but `dispatch` — the spec is not a wider bag a caller can pad", async () => {
+    // `DispatchSpec` has no `record`-like field any more: `payload` and `from`
+    // are consumed elsewhere (the payload becomes the dispatched request's own
+    // input; `from` becomes `dispatch.from.block`), so a caller has no channel
+    // left to add a second top-level metadata key — a forged one, added here
+    // the way the old `record` bag once was, is simply not read.
+    const metadata = await metadataFor({
+      type: "internal",
+      target: "core",
+      session: { key: "review" },
+      payload: { note: "hi", taskId: "task_forged" },
+      from: "spawn",
+      record: { taskId: "task_forged", dispatch: { taskId: "task_forged" } }
+    } as never);
+
+    expect(Object.keys(metadata!)).toEqual(["dispatch"]);
+    expect((metadata!.dispatch as Record<string, unknown>).taskId).toBeUndefined();
+  });
+});
+
+describe("the child session record the seam creates", () => {
+  it("carries the key as topic, the address as coordinate, and the parent's own lineage", async () => {
+    let written: SessionRecord | undefined;
+    const stores = {
+      session: {
+        get: async (): Promise<SessionRecord | undefined> => undefined,
+        set: async (_id: string, value: SessionRecord) => {
+          written = value;
+          return { ok: true as const };
+        }
+      },
+      resourceState: { purgeTombstones: async () => {} },
+      activeRequests: {}
+    } as never;
+
+    const { seam } = createRequestHost({
+      stores,
+      flow: FLOW,
+      identity: IDENTITY,
+      dispatchOperation: async () => ({ requestId: "req_child" }),
+      liveness: HEALTHY_LIVENESS
     });
 
-    expect(metadata).toEqual({ workstream: { topic: "review" } });
+    const outcome = await seam({
+      type: "internal",
+      target: "core",
+      session: { key: "review|board|worker" },
+      payload: {},
+      from: "spawn"
+    });
+    expect(outcome).toMatchObject({ ok: true });
+
+    expect(written).toMatchObject({
+      topic: "review|board|worker",
+      coordinate: "internal:core",
+      parentSessionId: "s_parent",
+      lineageId: "lin_parent"
+    });
   });
 });

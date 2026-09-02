@@ -106,9 +106,31 @@ pipeline.forEach(
 );
 ```
 
+The block argument can also be a factory, `(item, index, ctx) => block`, called once per element when the iteration runs. A block built that way doesn't exist yet when `defineFlow` walks the flow, so a `dispatcher()` the factory composes escapes the [address check](/docs/configuration/flow#when-it-is-refused), and the block's `resources` and `requireOrg` don't reach the flow. Declare what the factory can produce with `blocks`:
+
+```ts
+const summarizeInBackground = dispatcher({
+  name: "summarize-in-background",
+  type: "internal",
+  target: "summarize",
+  inputSchema: z.object({ documentId: z.string() }),
+  session: { key: (input) => input.documentId },
+});
+
+pipeline.forEach(
+  (input) => input.documents,
+  (doc) => sequencer({ name: `summarize-${doc.documentId}` }).step(summarizeInBackground),
+  { maxConcurrency: 4, blocks: [summarizeInBackground] }
+);
+```
+
+Declared blocks are the step's children, the same as a block passed directly: `defineFlow` refuses the flow if `summarizeInBackground` names an entry it doesn't declare, and the blocks' resources and `requireOrg` merge into the flow. Without `blocks`, the same flow defines cleanly and the missing entry surfaces only when the dispatcher runs.
+
+`blocks` does nothing on a call that passes a block directly, which already knows its element.
+
 ### `forEachSideChain(connector?, block, options?)`
 
-Like `forEach`, but the chain doesn't wait. Each item is dispatched as a `.sideChain()` task.
+Like `forEach`, but the chain doesn't wait. Each item is dispatched as a `.sideChain()` task. The factory form and `blocks` work the same way, with `concurrency` in place of `maxConcurrency`.
 
 **When to reach for this**: per-item side effects (per-row analytics, per-document indexing) that shouldn't block. See [Side Chains](/docs/advanced/sequencer-side-chains) for the broader picture on background work.
 

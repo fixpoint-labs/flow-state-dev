@@ -20,6 +20,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler, requireRequestHost } from "@flow-state-dev/core";
+import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,
@@ -55,7 +56,6 @@ type Seen = {
   hasHost?: boolean;
   hasLiveness?: boolean;
   answers?: Record<string, boolean>;
-  startRefusal?: unknown;
   error?: string;
 };
 
@@ -74,7 +74,6 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
         // Optional-call syntax is the shape a real capability wants: absence is
         // a supported deployment state, not a wiring bug, so no `!` here.
         seen.answers = await host.livenessOf?.(ask);
-        seen.startRefusal = await host.startDetached({ seed: { topic: "t" }, input: {} });
       } catch (err) {
         seen.error = err instanceof Error ? err.message : String(err);
       }
@@ -87,27 +86,6 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
     actions: { run: { inputSchema: z.object({}), block: probe } },
     request: { heartbeatIntervalMs: 10_000 }
   });
-}
-
-/**
- * Assemble a workstream core onto a flow instance.
- *
- * `workstream` is not an app-author surface — the framework builds it from a
- * board's drain bindings, which nothing populates yet. Detached dispatch
- * refuses `no-workstream-core` without it, so a test that needs to reach the
- * child-session write has to stand it up the way the framework will. This is
- * the precondition, not the thing under test.
- */
-function withWorkstreamCore<T>(flow: T): T {
-  (flow as { workstream?: unknown }).workstream = {
-    block: handler({
-      name: "core",
-      inputSchema: z.object({}).passthrough(),
-      outputSchema: z.object({}),
-      execute: async () => ({})
-    })
-  };
-  return flow;
 }
 
 /**
@@ -220,22 +198,60 @@ describe("request-host seam on the shipped router path", () => {
     expect(seen.hasLiveness).toBe(false);
   });
 
-  it("the start verb refuses BY NAME on the shipped path — no host start operation is wired yet", async () => {
+  it("a dispatcher's message to an entry the flow does not declare is refused `no-entry` on the shipped router path", async () => {
+    // Every shipped path through `createFlowApiRouter` ends up with a working
+    // dispatch operation — `createFlowState` installs one on the shared config
+    // before any fork exists, and `http-handlers.ts` installs one on a direct
+    // `createFlowApiRouter` caller's own config as a fallback, precisely so
+    // that case is never left without one. So `no-dispatch-operation` has no
+    // reachable shipped-router-path case to pin here (see
+    // `request-host-e2e.test.ts` for the one caller that CAN omit it: a hand-
+    // built `runtimeConfig.requestHost`). What IS reachable on this path, and
+    // worth pinning, is the seam's other named refusal: admission resolves the
+    // entry FIRST, before it ever asks whether it can dispatch, so a message
+    // to an entry this flow does not declare is refused `no-entry` rather than
+    // silently doing nothing or reaching a caller-addressed handler.
     const seen: Seen = {};
+    const probe = handler({
+      name: "probe-no-entry",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: async (_input, ctx) => {
+        // `dispatchThroughSeam` calls the seam function directly — it only
+        // THROWS when no seam is wired at all (`NoDispatchSeamError`). A wired
+        // seam that refuses returns `{ ok: false, refused, detail }` as a
+        // value; only the `dispatcher()` block wrapper turns that into a
+        // thrown `DispatchRefusedError`.
+        const outcome = await dispatchThroughSeam(ctx, {
+          type: "internal",
+          target: "missing",
+          session: { key: "t" },
+          payload: {},
+          from: "probe-no-entry"
+        });
+        if (!outcome.ok) seen.error = `${outcome.refused}: ${outcome.detail}`;
+        return {};
+      }
+    });
+
+    // Declares no `internal` entry at all — the point of the test.
+    const flow = defineFlow({
+      kind: "shipped-no-entry",
+      actions: { run: { inputSchema: z.object({}), block: probe } },
+      request: { heartbeatIntervalMs: 10_000 }
+    });
+
     const registry = createFlowRegistry();
-    registry.register(probeFlow("shipped-start", seen, []));
+    registry.register(flow);
 
     const router = createFlowApiRouter({
       registry,
       stores: withSharedRegistry(createInMemoryStores())
     });
 
-    await post(router, "shipped-start", "s_start");
+    await post(router, "shipped-no-entry", "s_no_entry");
 
-    // Deferred, and honest about it: the flow declares no workstream core, so
-    // admission refuses before the missing start operation is even reached.
-    // Either way a capability meets a named refusal, never a broken verb.
-    expect(seen.startRefusal).toMatchObject({ ok: false });
+    expect(seen.error).toMatch(/no-entry/);
   });
 
   it("an OMITTED sessionId still gets the seam — the ephemeral session is a real session", async () => {
@@ -259,9 +275,42 @@ describe("request-host seam on the shipped router path", () => {
   });
 
   it("the seam binds the session's RESOLVED org, not the dispatch's omitted one", async () => {
-    const seen: Seen = {};
+    const seen: Seen & { dispatchOutcome?: unknown } = {};
+    const core = handler({
+      name: "core",
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.object({}),
+      execute: async () => ({})
+    });
+    const probe = handler({
+      name: "probe-org",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: async (_input, ctx) => {
+        try {
+          seen.dispatchOutcome = await dispatchThroughSeam(ctx, {
+            type: "internal",
+            target: "core",
+            session: { key: "t" },
+            payload: {},
+            from: "probe-org"
+          });
+        } catch (err) {
+          seen.error = err instanceof Error ? err.message : String(err);
+        }
+        return {};
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "shipped-org",
+      actions: { run: { inputSchema: z.object({}), block: probe } },
+      internal: { core: { block: core } },
+      request: { heartbeatIntervalMs: 10_000 }
+    })();
+
     const registry = createFlowRegistry();
-    registry.register(withWorkstreamCore(probeFlow("shipped-org", seen, [])()));
+    registry.register(flow);
 
     const stores = withSharedRegistry(createInMemoryStores());
     const started: string[] = [];
@@ -269,12 +318,12 @@ describe("request-host seam on the shipped router path", () => {
     const router = createFlowApiRouter({
       registry,
       stores,
-      // A wired host start operation, as an orchestration deployment has. The
-      // router carries `startOperation` through untouched, so `startDetached`
+      // A wired host dispatch operation, as an orchestration deployment has.
+      // The router carries `requestHost` through untouched, so the dispatch
       // reaches the point where it writes the child session record.
       runtimeConfig: {
         requestHost: {
-          startOperation: async (spec: { sessionId: string }) => {
+          dispatchOperation: async (spec: { sessionId: string }) => {
             started.push(spec.sessionId);
             return { requestId: "req_child" };
           }
@@ -308,13 +357,13 @@ describe("request-host seam on the shipped router path", () => {
     expect(seen.error).toBeUndefined();
     // Dispatch was admitted — otherwise the org assertion below would pass
     // vacuously on a refusal that never wrote a child.
-    expect(seen.startRefusal).toMatchObject({ ok: true });
+    expect(seen.dispatchOutcome).toMatchObject({ ok: true });
     expect(started).toHaveLength(1);
 
     // The observable: the child the seam created carries the parent's org.
-    // Reading `options.orgId` here left it undefined, so `startDetached`
-    // produced a child outside the parent's org — org-scoped child work then
-    // runs without the org context its inheritance contract promises.
+    // Reading `options.orgId` here left it undefined, so the dispatch would
+    // have produced a child outside the parent's org — org-scoped child work
+    // then runs without the org context its inheritance contract promises.
     const child = await stores.session.get(started[0]!);
     expect(child?.orgId).toBe("org_acme");
   });

@@ -1,8 +1,9 @@
 # Detached Work
 
 Detached work is a unit of work that outlives the request that started it. It
-runs in a **Workstream** — a child session hanging off the conversation that
-started it — dispatched through `ctx.requestHost.startDetached`.
+runs in a **child session** hanging off the conversation that started it, sent
+there by a `dispatcher()` block or a task board's hand-off through the dispatch
+seam.
 
 This document owns one question the other docs each answer a slice of: **what
 happens to detached work over its lifetime**, per deployment topology. What
@@ -12,10 +13,12 @@ what brings an abandoned run back.
 
 Related, and deliberately not restated here:
 
-- [State and Scopes](./state-and-scopes.md) → *Workstreams and Scope* — what a
-  child session inherits, and where a `sharedToWorkstream` resource stores.
-- [Inbound Transports](./inbound-transports.md) — the dispatch seam and the
-  request host's four verbs.
+- [State and Scopes](./state-and-scopes.md) → *Child sessions and scope* — what a
+  child session inherits, and where a `sharedToLineage` resource stores.
+- [Action Forms](./action-forms.md) — the message protocol, the `dispatcher()`
+  block, and the dispatch seam it sends through.
+- [Inbound Transports](./inbound-transports.md) — the envelope every message
+  travels on, and the request host's verbs.
 - `packages/orchestration/README.md` → *Declaring detached work* — the task-board
   surface that is the ordinary way to start one.
 
@@ -75,7 +78,7 @@ platform's kill timeout for the longest job, not for `detachedDrainTimeoutMs`.
 
 **`worker-only` is the trap.** It is the natural place to start durable jobs and
 the one place they silently are not durable. The mode consumes the queue and
-dispatches nothing, so `startDetached` there runs the child in the worker
+dispatches nothing, so a dispatch there runs the child in the worker
 process itself and enqueues nothing. A crash or a redeploy loses the run
 outright rather than costing a retry. For the queue to own the work, start it
 from a process that has a dispatcher — `colocated` or `dispatch-only`.
@@ -84,17 +87,20 @@ That the feature works at all in `worker-only` is deliberate: a topology that
 claims support while refusing detached work is not supporting it. Running it
 in-process is the honest interim answer, not a durability guarantee.
 
-**No request host is a different failure from no start operation.** A context
-with no `requestHost` at all throws `NoRequestHostError` (`code:
-"no-request-host"`) — the CLI running on directory discovery or `--no-config`.
-A host that exists but was wired without a start operation *refuses* with
-`no-start-operation`, a named return rather than a throw. A `createFlowState`
+**No dispatch seam is a different failure from no dispatch operation.** A
+context with no seam at all throws `NoDispatchSeamError` (`code:
+"no-dispatch-seam"`) — the CLI running on directory discovery or `--no-config`;
+`parentTask()` and `settleParentTask()` fail the same way with
+`NoRequestHostError`. A seam that exists but was wired without a dispatch
+operation *refuses* with `no-dispatch-operation`, a named refusal the
+`dispatcher()` block surfaces as `DispatchRefusedError` rather than a throw
+from the seam. A `createFlowState`
 deployment wires one in every topology, and so does the shipped HTTP router, so
 the refusal is reachable only on a runtime config assembled without either.
 
 ## What acceptance means
 
-`startDetached` returns once the child is *accepted*, and what that guarantees
+A dispatch returns once the child is *accepted*, and what that guarantees
 differs by row above.
 
 **In-process.** The child is discoverable in this process, and what that rests
@@ -112,7 +118,7 @@ Accepted-and-still-waiting is the state shutdown handles worst: a child cancelle
 in that window is written `aborted` without ever having run (FIX-1121).
 
 **Queued.** The request record has been written and the queue has accepted the
-job. Both are confirmed before `startDetached` returns: a failed store write or
+job. Both are confirmed before the dispatch returns: a failed store write or
 a rejected enqueue fails the dispatch rather than reporting a start, so an
 unreachable queue surfaces as an error instead of as silence. Because the
 request is registered at enqueue time, an SSE client can attach to
@@ -121,7 +127,7 @@ request is registered at enqueue time, an SSE client can attach to
 Acceptance is not execution. A queue with nothing draining it is an ordinary
 state — the job sits there, and the caller finishes exactly as it would if a
 worker were pulling. Whether the work ever ran is a question for the
-Workstream's own request list.
+child session's own request list.
 
 ## What cannot cross the queue
 
@@ -155,7 +161,7 @@ does not control, indefinitely when the workers live elsewhere.
 Admission closes before the drain looks. Once `dispose()` begins, the start
 operation refuses new detached work outright (`notStarted`, with a reason), which
 is what makes the drain's snapshot complete rather than merely early. A
-`startDetached` already in flight arrives afterwards and is refused: the child
+dispatch already in flight arrives afterwards and is refused: the child
 session record exists with no run, which is the adoptable state a retry already
 handles.
 
@@ -322,8 +328,9 @@ and the row stays as it is.
 | Concern | Module |
 |---|---|
 | Locality test | `engine/src/transports/host/in-process-dispatcher.ts` → `isInProcessDispatcher` |
-| Start operation install, drain, disposal gate | `engine/src/flowstate/createFlowState.ts` → `#installDetachedStart`, `#drainDetachedChildren` |
-| Child session derivation and adoption | `engine/src/context/detached-child.ts`, `engine/src/context/create-request-host.ts` |
+| Dispatch operation install, drain, disposal gate | `engine/src/flowstate/createFlowState.ts` → `#installDispatchOperation`, `#drainDetachedChildren` |
+| Child session derivation and adoption | `engine/src/context/child-session.ts`, `engine/src/context/create-request-host.ts` |
+| The dispatch operation behind the seam | `engine/src/context/dispatch-operation.ts` |
 | Per-dispatch runtime config and the override warning | `engine/src/transports/host/createInboundTransportHost.ts` |
 | Interrupted-request detection | `engine/src/execution/request-recovery.ts`, `engine/src/execution/stale-request-sweeper.ts` |
 | Lease and abandonment | `packages/orchestration` → task substrate |

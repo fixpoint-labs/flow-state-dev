@@ -76,8 +76,8 @@ describe("useSessionRequests — interrupted-sweep gating", () => {
  * target out of them. Carrying the previous session's rows across a switch
  * therefore makes the panel attach to a request in the session the user just
  * left, and render that request's items under the newly opened one. Descending
- * into a Workstream while the conversation that started it is still running is
- * the reliable way to hit it.
+ * into a child session while the conversation that started it is still running
+ * is the reliable way to hit it.
  */
 describe("useSessionRequests — switching sessions", () => {
   beforeEach(() => {
@@ -173,7 +173,7 @@ describe("useSessionRequests — switching sessions", () => {
     // unmounted view invokes the callback it captured, and that callback names
     // the OLD session.
     //
-    // Worse than the same bug in `use-workstreams`: there a stale closure
+    // Worse than the same bug in `use-child-sessions`: there a stale closure
     // BORROWED the current identity, here it REDEFINES it — `requestedRef` is
     // assigned inside `refresh`, so a stale call rewrites the shared cell and
     // corrupts the guard for every read, not just its own.

@@ -52,6 +52,18 @@ describe("isConcurrencyOptions", () => {
     expect(isConcurrencyOptions({ concurrency: 3 })).toBe(true);
   });
 
+  it("accepts a `blocks` declaration on its own", () => {
+    // `forEach(factory, { blocks })` has no connector and no concurrency knob;
+    // if the object is not read as options here it becomes the per-item block
+    // and the declaration is dropped silently.
+    expect(isConcurrencyOptions({ blocks: [block] })).toBe(true);
+    expect(resolveCallShape([() => block, { blocks: [block] }], "iterating")).toEqual({
+      blockOrFactory: expect.any(Function),
+      connector: undefined,
+      options: { blocks: [block] }
+    });
+  });
+
   it("treats an empty object as options (preserved current behavior)", () => {
     expect(isConcurrencyOptions({})).toBe(true);
   });

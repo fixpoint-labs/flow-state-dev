@@ -69,7 +69,7 @@ interface WebhookEventBinding extends ActionCore {
 
 Because a webhook handler lives off `flow.actions`, the runtime resolves it from
 `flow.webhooks[provider].on[event]` via the `(provider, eventType)` coordinate
-the adapter stamps onto `metadata.webhook` (see `resolveActionCore` in
+the adapter stamps onto `metadata.webhook` (see `resolveEntry` in
 `engine`). The dispatched request records the handler block's `name` as its
 `actionName` for provenance.
 

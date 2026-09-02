@@ -14,7 +14,7 @@ import { mem } from "../cognition";
 import { featuresCapability } from "../../shared/capabilities/features";
 import { coalesceKitchenSinkModel } from "../../../../lib/models";
 
-export const { thinkingStyleRouter } = createThinkingStyleRouter({
+export const { thinkingStyleRouter, backgroundWorkTasks } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: (_input: any, ctx: any) =>
     coalesceKitchenSinkModel(ctx.user?.state.selectedModel),

@@ -107,19 +107,19 @@ resource (an open connection, for example).
 
 ### Turning it off for background work
 
-A **workstream** is a child session dedicated to one background job, running
-outside the request that started it. If you dispatch the agent into one, set
-`detached: true`:
+A **child session** is a session of its own that runs work outside the request
+that started it, which is where a task-board seat handed off with
+`{ worker, session }` runs. If the agent runs in one, set `detached: true`:
 
 ```ts
 const agent = claudeCodeAgent({ detached: true });
 ```
 
-Each job is then one run. Nothing is written to session state, and no prior SDK
-conversation is resumed — a second job addressed to the same workstream begins a
-new agent run. What the run did is still recorded: the workstream's own item
-stream holds its messages, reasoning, and tool calls in order, which is what you
-read the run back from.
+Each task is then one run. Nothing is written to session state, and no prior SDK
+conversation is resumed — a second task addressed to the same child session
+begins a new agent run. What the run did is still recorded: the child session's
+own item stream holds its messages, reasoning, and tool calls in order, which is
+what you read the run back from.
 
 **The session id does not disappear.** The option governs session state and
 automatic resume, not the run's own result: the handle the block returns still
@@ -143,8 +143,8 @@ this agent as a capability, pass the option there too — it takes the same one:
 createClaudeCodeAgentCapability({ detached: true });
 ```
 
-See [Background work](../server/background-work.md) for how a workstream is set
-up and read back.
+See [Detached work](../server/background-work.md) for how a child session is
+started and read back.
 
 ## Where the run works
 
@@ -472,7 +472,7 @@ framework stores and serves for you — and writes into them as the run goes:
 | `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
 | `observed-gaps` | thing the recorder understood and could not record, with the reason and which record it stands in for |
 
-Entries are keyed as `<requestId>/<invocation>`. A workstream can host several
+Entries are keyed as `<requestId>/<invocation>`. A child session can host several
 runs over its life, and a single request can itself run the agent more than once
 — a generator holding it as a tool can call it repeatedly — so both halves are
 needed to keep one run's answer from becoming somebody else's.
@@ -483,7 +483,7 @@ Both records come back over the resource route, one page at a time. Scope the
 read with `topicPrefix`, and follow `nextCursor` while one is returned:
 
 ```
-GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
+GET /sessions/<childSessionId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
 
 { "items": [
   { "topic": "<requestId>/<invocation>/work/repo/src/checkout.ts",

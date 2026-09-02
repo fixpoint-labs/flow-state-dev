@@ -1,0 +1,276 @@
+{
+  "runs": [
+    {
+      "runId": "req_cal_1",
+      "did": [
+        {
+          "topic": "req_cal_1/inv_a/work/repo/alpha.txt",
+          "path": "/work/repo/alpha.txt",
+          "kind": "edited",
+          "outcome": "applied",
+          "firstAt": 1,
+          "namedBy": 2
+        },
+        {
+          "topic": "req_cal_1/inv_a/work/repo/beta.txt",
+          "path": "/work/repo/beta.txt",
+          "kind": "edited",
+          "outcome": "applied",
+          "firstAt": 4,
+          "namedBy": 1
+        },
+        {
+          "topic": "req_cal_1/inv_a/work/repo/gamma.txt",
+          "path": "/work/repo/gamma.txt",
+          "kind": "created",
+          "outcome": "failed",
+          "firstAt": 4,
+          "namedBy": 1
+        },
+        {
+          "topic": "req_cal_1/inv_a/work/repo/my-alpha.txt",
+          "path": "/work/repo/my-alpha.txt",
+          "kind": "created",
+          "outcome": "applied",
+          "firstAt": 4,
+          "namedBy": 1
+        },
+        {
+          "topic": "req_cal_1/inv_a/work/repo/delta.txt",
+          "path": "/work/repo/delta.txt",
+          "kind": "created",
+          "outcome": "applied",
+          "firstAt": 6,
+          "namedBy": 1
+        }
+      ],
+      "gaps": [
+        {
+          "kind": "file",
+          "reason": "a file mutation arrived with no path to record it under",
+          "rawPath": null
+        },
+        {
+          "kind": "file",
+          "reason": "a file operation could not be keyed: the path is not addressable",
+          "rawPath": "/work/repo/epsilon.txt"
+        }
+      ],
+      "streamMutations": [
+        {
+          "path": "/work/repo/alpha.txt",
+          "tool": "Write",
+          "at": 1,
+          "status": "completed",
+          "kind": null,
+          "outcome": "applied"
+        },
+        {
+          "path": "/work/repo/epsilon.txt",
+          "tool": "Write",
+          "at": 3,
+          "status": "completed",
+          "kind": null,
+          "outcome": "applied"
+        },
+        {
+          "path": "/work/repo/beta.txt",
+          "tool": "Edit",
+          "at": 4,
+          "status": "completed",
+          "kind": "edited",
+          "outcome": "applied"
+        },
+        {
+          "path": "/work/repo/gamma.txt",
+          "tool": "Write",
+          "at": 4,
+          "status": "failed",
+          "kind": null,
+          "outcome": "failed"
+        },
+        {
+          "path": "/work/repo/my-alpha.txt",
+          "tool": "Write",
+          "at": 4,
+          "status": "completed",
+          "kind": null,
+          "outcome": "applied"
+        },
+        {
+          "path": "/work/repo/delta.txt",
+          "tool": "Write",
+          "at": 6,
+          "status": "completed",
+          "kind": null,
+          "outcome": "applied"
+        },
+        {
+          "path": "/work/repo/alpha.txt",
+          "tool": "Edit",
+          "at": 6,
+          "status": "completed",
+          "kind": "edited",
+          "outcome": "applied"
+        }
+      ],
+      "said": [
+        {
+          "at": 0,
+          "text": "Starting on the three files."
+        },
+        {
+          "at": 8,
+          "text": "Wrote the files and checked the directory."
+        }
+      ],
+      "plan": {
+        "rows": [],
+        "toolCalls": 0
+      },
+      "order": {
+        "indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          4,
+          4,
+          5,
+          6,
+          6,
+          7,
+          8
+        ],
+        "unreadable": 0,
+        "firstMutationAt": 1,
+        "lastMutationAt": 7,
+        "lastMessageAt": 8,
+        "unreadableMutationPositions": 0
+      },
+      "shell": {
+        "called": true,
+        "calls": 1,
+        "succeeded": 1
+      },
+      "mutationsWithNoPath": 1,
+      "messagesWithoutText": 0,
+      "toolNamesSeen": [
+        "Bash",
+        "Edit",
+        "TaskCreate",
+        "Write"
+      ],
+      "counts": {
+        "items": 12,
+        "topLevel": 11,
+        "messages": 2,
+        "toolOutputs": 9
+      },
+      "reads": {
+        "observed-file-ops": {
+          "pages": 2,
+          "rows": 5,
+          "truncated": false
+        },
+        "observed-gaps": {
+          "pages": 1,
+          "rows": 2,
+          "truncated": false
+        },
+        "observed-plan": {
+          "pages": 1,
+          "rows": 0,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "runId": "req_cal_2",
+      "did": [
+        {
+          "topic": "req_cal_2/inv_b/work/repo/theta.txt",
+          "path": "/work/repo/theta.txt",
+          "kind": "created",
+          "outcome": "applied",
+          "firstAt": 1,
+          "namedBy": 1
+        }
+      ],
+      "gaps": [],
+      "streamMutations": [
+        {
+          "path": "/work/repo/theta.txt",
+          "tool": "Write",
+          "at": 1,
+          "status": "completed",
+          "kind": null,
+          "outcome": "applied"
+        }
+      ],
+      "said": [
+        {
+          "at": 0,
+          "text": "A second run in the same child session."
+        },
+        {
+          "at": 2,
+          "text": "Wrote theta."
+        }
+      ],
+      "plan": {
+        "rows": [],
+        "toolCalls": 0
+      },
+      "order": {
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "unreadable": 0,
+        "firstMutationAt": 1,
+        "lastMutationAt": 1,
+        "lastMessageAt": 2,
+        "unreadableMutationPositions": 0
+      },
+      "shell": {
+        "called": false,
+        "calls": 0,
+        "succeeded": 0
+      },
+      "mutationsWithNoPath": 0,
+      "messagesWithoutText": 0,
+      "toolNamesSeen": [
+        "Write"
+      ],
+      "counts": {
+        "items": 3,
+        "topLevel": 3,
+        "messages": 2,
+        "toolOutputs": 1
+      },
+      "reads": {
+        "observed-file-ops": {
+          "pages": 1,
+          "rows": 1,
+          "truncated": false
+        },
+        "observed-gaps": {
+          "pages": 1,
+          "rows": 0,
+          "truncated": false
+        },
+        "observed-plan": {
+          "pages": 1,
+          "rows": 0,
+          "truncated": false
+        }
+      }
+    }
+  ],
+  "counts": {
+    "requests": 2
+  }
+}

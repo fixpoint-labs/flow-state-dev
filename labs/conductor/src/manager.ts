@@ -277,7 +277,7 @@ export const conductorTaskInputSchema = z.object({
  *
  * Sequencer state, not session state: a detached board refuses a worker that
  * declares session state, because every detached worker in a flow becomes a
- * route on one shared workstream flow where two routes choosing one key with
+ * route on one shared child session flow where two routes choosing one key with
  * different shapes corrupt each other silently.
  */
 const managerStateSchema = z.object({
@@ -737,7 +737,7 @@ export function harnessManager(options: ManagerOptions) {
     [RUNS]: runRecordCollection,
     // Where a question is posted, withdrawn, and read back as an answer. The
     // `answer` and `status` actions declare the same definition object, so the
-    // question a detached workstream writes is the one the coordinator session
+    // question a detached child session writes is the one the coordinator session
     // reads — one registration, not two storage slots that look alike.
     [INBOX]: inboxCollection,
     // Declared so the fence can read the LIVE claim off the board row. The
@@ -1052,7 +1052,7 @@ export function harnessManager(options: ManagerOptions) {
    *
    * 1. **The verdict did NOT fail AND this attempt's marker holds a question →
    *    park.** `awaitReview`, announce, then return normally. The recorders
-   *    refuse a parked row, so the workstream request ends with the row still
+   *    refuse a parked row, so the child session request ends with the row still
    *    `awaiting_review` and the run costs nothing while a person thinks.
    * 2. **The verdict succeeded AND the done-condition holds → return.**
    * 3. **Anything else → throw**, withdrawing this attempt's question first: the
@@ -1193,7 +1193,7 @@ export function harnessManager(options: ManagerOptions) {
         // park on the question it just tried to answer.
         await announce({ question: questionTopicKey });
 
-        // Returning normally is the point: the workstream request ends and the
+        // Returning normally is the point: the child session request ends and the
         // row stays parked, because both recorders decline a row the worker
         // parked for review.
         return {

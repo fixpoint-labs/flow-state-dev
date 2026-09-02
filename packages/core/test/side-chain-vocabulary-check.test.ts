@@ -140,7 +140,7 @@ describe("E2 reaches a literal behind a conditional", () => {
  * the next person to rename working code to get a green build.
  */
 describe("the deliberate non-renames report nothing", () => {
-  it("spares `Workstream*` — tier 3, and the word it should keep", () => {
+  it("spares `Workstream*` — a `Work`-prefixed name that is not the tier", () => {
     expect(
       scan(`
         export type WorkstreamSummary = { id: string };

@@ -78,7 +78,7 @@ Session is the only scope you can seed.
 
 ## Background work
 
-A flow can hand a unit of work to a *workstream*, a background child session that keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
+A flow can hand a unit of work to a *child session*, a session of its own that keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
 
 | Your setup | What the command does |
 |---|---|
@@ -87,11 +87,11 @@ A flow can hand a unit of work to a *workstream*, a background child session tha
 | No config (directory discovery or `--no-config`) | Can't start background work; the call fails by name |
 | A `worker-only` process | Runs the work in this process rather than putting it on the queue. Not durable: if the process stops, nothing re-runs it |
 
-For what a workstream is and how tasks group into one, see [Work that outlives the turn](/guides/background-work).
+For what a child session is and how a flow starts one, see [Work that outlives the turn](/guides/background-work).
 
 ### Waiting for in-process work
 
-Without a queue, the workstream runs inside the same process as the command. The action that launched it returns straight away, which is what detaching means, so `flow_complete` lands on stdout while the background work is still going. The command holds the process open until that work finishes, and says so on stderr:
+Without a queue, the child session runs inside the same process as the command. The action that launched it returns straight away, which is what detaching means, so `flow_complete` lands on stdout while the background work is still going. The command holds the process open until that work finishes, and says so on stderr:
 
 ```
 [flowstate] waiting for 1 detached request(s) to finish before shutdown {"pending":1}
@@ -111,17 +111,17 @@ When the config hands `createFlowState` a worker adapter that dispatches, meanin
 
 By the time the command returns, the request has been recorded and the queue has accepted the job. A failed store write or a rejected enqueue fails the dispatch rather than reporting a start, so a queue you can't reach surfaces as an error instead of as silence.
 
-None of that says the job survives, or that it ever runs. Whatever consumes the queue decides that, and a queue with nothing draining it is an ordinary state: the job sits in it, and the command finishes the same way it would if a worker were pulling from it. Read the workstream's own requests to find out what became of it. See [Background work](/docs/server/background-work).
+None of that says the job survives, or that it ever runs. Whatever consumes the queue decides that, and a queue with nothing draining it is an ordinary state: the job sits in it, and the command finishes the same way it would if a worker were pulling from it. Read the child session's own requests to find out what became of it. See [Detached work](/docs/server/background-work).
 
 ### Without a config, background work can't start
 
-Directory discovery and `--no-config` give the CLI flows and stores, and no runtime host for a workstream to start through. A block that reaches for one throws:
+Directory discovery and `--no-config` give the CLI flows and stores, and nothing for a child session to start through. A block that dispatches throws:
 
 ```
-NoRequestHostError: This capability needs a runtime host, and none is wired on this context.
+NoDispatchSeamError: Block "summarize-in-background" dispatches a message, but no dispatch seam is wired on this context. A host built through the shipped entry points supplies one; a hand-built test context must attach one under DISPATCH_SEAM.
 ```
 
-The error carries `code: "no-request-host"`, and on a task board the row the work was claimed for is recorded failed.
+The error carries `code: "no-dispatch-seam"`. From a `dispatcher()` block it fails the run. A task board's hand-off throws the same error inside the drain, where the board's `onError` decides what you see: on the default `"skip"` the drain moves on and finishes, and the row it claimed is left `in_progress` and unsettled until its lease lapses and a later drain reclaims it; on `"fail"` the run fails with the error. Neither settles the row.
 
 Run against an `fsdev.config.*` to exercise a flow's background work from the terminal.
 

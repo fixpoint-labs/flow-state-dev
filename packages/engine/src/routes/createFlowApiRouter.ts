@@ -16,7 +16,7 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import {
-  assertMaxWorkstreamListLimit,
+  assertMaxChildSessionListLimit,
   createRuntimeConfig,
   resolveStaleSweep,
   type RuntimeConfig
@@ -185,15 +185,15 @@ export type CreateFlowApiRouterOptions = {
   publicReentrySources?: readonly string[];
 
   /**
-   * Largest `limit` the workstream listing route accepts. Default 100.
+   * Largest `limit` the child session listing route accepts. Default 100.
    *
-   * Raise it for deployments whose conversations start more workstreams
+   * Raise it for deployments whose conversations start more children
    * than that: the list a client reads is all-time history, so any fixed
    * ceiling eventually hides the oldest finished work. Raise it deliberately —
    * each row resolves its status from the request store and clients re-read
    * the list on every interaction, so a larger ceiling costs more per turn.
    */
-  maxWorkstreamListLimit?: number;
+  maxChildSessionListLimit?: number;
 
   /**
    * Enable the privileged read-only debug endpoint surface under
@@ -427,7 +427,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // `resolveStaleSweep` on the same forwarded options. The stamp stays because
   // the router is a public entry point in its own right, and the facts must
   // describe the sweeper constructed below rather than whatever a caller
-  // happened to hold. `startOperation` and `parentTask` are carried through
+  // happened to hold. `dispatchOperation` and `parentTask` are carried through
   // untouched — a host that wired them (a worker, a test) keeps them, and one
   // that did not gets a bundle whose start verb refuses by name. That is the
   // designed degraded-but-present state: the gate makes a real fail-closed
@@ -458,7 +458,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   assertPublicReentrySources(runtimeConfig.publicReentrySources);
   // Same reasoning one option over: a cap that cannot bound anything reads as
   // configured and behaves as absent.
-  assertMaxWorkstreamListLimit(runtimeConfig.maxWorkstreamListLimit);
+  assertMaxChildSessionListLimit(runtimeConfig.maxChildSessionListLimit);
 
   const handlers = createFlowRouteHandlers({
     ...options,

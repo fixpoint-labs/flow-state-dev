@@ -1,19 +1,19 @@
 /**
- * The Tasks tab's Workstream column (FIX-1071).
+ * The Tasks tab's child-session column (FIX-1071).
  *
- * The column answers "is a Workstream running this task", and its absence is
- * only a FACT when the whole Workstream listing was read. The panel reads one
- * page, so past that page — or when the check for more failed — an unmatched
- * task is unverified rather than unmatched. A bare dash makes the stronger
- * claim, which is the same completeness assertion the truncation union exists
- * to prevent, arriving on the other tab.
+ * The column answers "is a child session running this task", and its absence
+ * is only a FACT when the whole child-session listing was read. The panel
+ * reads one page, so past that page — or when the check for more failed — an
+ * unmatched task is unverified rather than unmatched. A bare dash makes the
+ * stronger claim, which is the same completeness assertion the truncation
+ * union exists to prevent, arriving on the other tab.
  */
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import React from "react";
 import { TaskCollectionsView } from "../src/react/components/workspace/task-collections-view";
 import type { TaskStreamItem } from "../src/react/lib/task-collection-state";
-import type { Truncation } from "../src/react/hooks/use-workstreams";
+import type { Truncation } from "../src/react/hooks/use-child-sessions";
 
 /** One `task-change` item, so the fold produces a board with one task on it. */
 const taskItem = {
@@ -41,26 +41,26 @@ const taskItem = {
 
 function renderTasks(
   truncation: Truncation,
-  workstreams: Parameters<typeof TaskCollectionsView>[0]["workstreams"] = []
+  children: Parameters<typeof TaskCollectionsView>[0]["children"] = []
 ) {
   render(
     <TaskCollectionsView
       items={[taskItem]}
-      workstreams={workstreams}
+      children={children}
       truncation={truncation}
-      onOpenWorkstream={vi.fn()}
+      onOpenChildSession={vi.fn()}
     />
   );
 }
 
-/** A Workstream that matches `task-a` by topic and worker. */
+/** A child session that matches `task-a` by topic and assignee. */
 const matching = {
   id: "dsx_1",
   parentSessionId: "sess_parent",
   createdAt: 1,
   updatedAt: 2,
   topic: "FIX-1",
-  coordinate: "10:issue-work|20:assignee|9:implement",
+  coordinate: "task:implement",
 } as never;
 
 describe("TaskCollectionsView — an unmatched task", () => {
@@ -71,7 +71,7 @@ describe("TaskCollectionsView — an unmatched task", () => {
     expect(screen.queryByText("—?")).not.toBeInTheDocument();
   });
 
-  it("marks it unverified when Workstreams were left unread", () => {
+  it("marks it unverified when child sessions were left unread", () => {
     // `more`: the match may be on a page this panel does not read, so the
     // absence is not evidence — and refreshing will not change it.
     renderTasks("more");
@@ -102,9 +102,9 @@ describe("TaskCollectionsView — a matched task", () => {
   });
 
   it("marks the link unverified when part of the listing was not read", () => {
-    // The match is page-local: `resolveWorkstream` found exactly one candidate
-    // among the rows LOADED. An older unlisted Workstream sharing the topic and
-    // a compatible worker would fit too, and would belong to another board.
+    // The match is page-local: the resolver found exactly one candidate among
+    // the rows LOADED. An older unlisted child session sharing the topic and a
+    // compatible worker would fit too, and would belong to another board.
     //
     // Marked, not withheld — the link is a best-effort navigation affordance,
     // and withholding it would delete the feature on any session big enough to

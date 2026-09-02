@@ -44,7 +44,7 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 - `flows/rich-text-component/` — flow-specific code (flow.ts, generators, schemas, prompts, memory). Exports `richTextComponentFlow` (`kind: "rich-text-component"`). Non-agentic: 8 discrete text-transform actions. The `personalize` action reads user-scoped episodic + semantic memories captured by chat-agent. It only consumes memory, so it wires in `createMemoryCapability` (read-side) configured with the same tiers — not `system()` (no flow-isolation, so storage is shared by `userId`).
 - `flows/weekly-digest/` — reference wiring for scheduled actions. One static schedule (`monday-summary`) plus a dynamic resource-collection resolver backed by `defineScheduleCollection` + `createPostgresScheduleIndex`. The `scheduleDigest` action lets a caller add per-user dynamic schedules at runtime.
 - `components/flow-state/` — shared item-renderer UI (installed from `@flow-state-dev/ui`).
-- `components/background-work-panel.tsx` — the workstream panel (see "Background work" below).
+- `components/background-work-panel.tsx` — the child-sessions panel (see "Background work" below).
 - `components/chat-agent/` — chat-agent-specific renderers (e.g. `ChatAgentMessage`).
 - `components/` (top level) — shared app UI (sidebar, mode selector, etc.).
 - `app/page.tsx` — landing page that mounts chat-agent for now. When a second flow lands, this becomes a flow index.
@@ -81,31 +81,34 @@ Reusable shape helpers (`normalizeDeps`) live alongside the builders so other
 pattern workers compose the same registry. Add a rendered value by adding a
 field to the view + a line in the template.
 
-## Background work (workstreams) demo
+## Background work (child sessions) demo
 
-The **Background Work** thinking style is the app's workstream reference. A turn
-files the message as a durable task, hands it to a Workstream — a child session
+The **Background Work** thinking style is the app's child-session reference. A
+turn files the message as a durable task, hands it to a child session — one
 that outlives the request — and replies without waiting. A later turn reports
 what came back.
 
 - Flow: `flows/chat-agent/run/thinking-styles/pipelines/background-work.ts`.
-  Durable ledger (`defineTaskCollection`, session-scoped, `sharedToWorkstream:
-  true`), an explicit `boardId`, and one worker declared
-  `dispatch: { mode: "detached" }`.
+  Durable ledger (`defineTaskCollection`, session-scoped, `sharedToLineage:
+  true`), an explicit `boardId`, and one seat declared
+  `{ worker, session: { key } }` so tasks that share a topic share one child.
+  The board's entries are exported as `backgroundWorkTasks` and declared on
+  the flow as `tasks: backgroundWorkTasks` (`flows/chat-agent/flow.ts`) —
+  `defineFlow` refuses the flow without them.
 - UI: `components/background-work-panel.tsx`, mounted above the prompt input.
-  Reads `session.workstreams` / `session.workstreamsStale` and opens one
-  workstream with `useSession(workstreamId, { flowKind: "chat-agent" })` — the
-  **parent's** flow kind, because that is what a workstream is stamped with.
+  Reads `session.children` / `session.childrenStale` and opens one child with
+  `useSession(childId, { flowKind: "chat-agent" })` — the **parent's** flow
+  kind, because that is what a child session is stamped with.
 - E2E: `e2e/background-work.spec.ts`, with `background-brief` mocked in
   `lib/e2e-mock-script.ts`.
 
 Two behaviours to know before changing it:
 
 - **The turn cannot observe its own hand-off settling.** The board view a request
-  hydrates never sees the Workstream's write, so polling for completion inside
-  the turn would wait forever. Results surface on a later turn.
-- **A detached generator streams no in-flight text.** The workstream's history
-  fills in with completed items only.
+  hydrates never sees the child session's write, so polling for completion
+  inside the turn would wait forever. Results surface on a later turn.
+- **A handed-off generator streams no in-flight text.** The child session's
+  history fills in with completed items only.
 
 ## Scheduled actions demo
 

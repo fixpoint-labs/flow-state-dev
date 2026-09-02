@@ -28,7 +28,7 @@ import {
 } from "../../src/tasks";
 import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quiescence";
 import { whenBoardClaimable } from "../../src/task-board/predicates";
-import { detachedTaskPredicate } from "../../src/task-board/detached";
+import { handedOffTaskPredicate } from "../../src/task-board/hand-off";
 import { createFakeSequencerState } from "../helpers";
 
 type OnIdle = "wait" | "complete" | "complete-or-blocked";
@@ -229,7 +229,7 @@ async function boardWithRows(
 const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
 
 /**
- * A row handed to a Workstream must not hold its launching request open
+ * A row handed to a child session must not hold its launching request open
  * (FIX-982).
  *
  * The bug these pin is a *non-event*: the drain claims the task, spawns the
@@ -247,7 +247,7 @@ const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
  * row must still hold the drain open — get that wrong and every existing board
  * exits mid-flight.
  */
-describe("boardQuiescence - work handed to a Workstream", () => {
+describe("boardQuiescence - work handed to a child session", () => {
   const onIdles: OnIdle[] = ["complete", "complete-or-blocked"];
   /** Stands in for a board whose only worker is detached. */
   const allDetached = () => true;
@@ -364,7 +364,7 @@ describe("boardQuiescence - work handed to a Workstream", () => {
 
   it("does not report a handed-off board as blocked", async () => {
     // `blocked` means "nothing is producing state changes and nothing can be
-    // claimed". A board whose only remaining row is running in a Workstream is
+    // claimed". A board whose only remaining row is running in a child session is
     // drained from this drain's side, and `drained` dominates — reporting
     // `blocked` would send `blocked-by-failures` for healthy background work.
     const collection = await boardWithRows([{ id: "a", drive: "claim" }]);
@@ -379,35 +379,32 @@ describe("boardQuiescence - work handed to a Workstream", () => {
 });
 
 /**
- * How a board decides which of its rows a Workstream is running (FIX-982).
+ * How a board decides which of its rows are running in a child session
+ * (FIX-982).
  *
- * Resolution has to mirror the detached runner's own `coordinateForTask` —
- * uniform, then a declared assignee, then the floor — or the drain and the
- * Workstream disagree about which worker a row belongs to.
+ * Only a named (assignee) seat can hand off — a uniform or floor worker has
+ * no seat name to address, so `assertHandOffBoardSupported` refuses either at
+ * construction. The predicate mirrors that: it reads every slot's `seat` to
+ * know which assignees are declared at all, but only an assignee slot's own
+ * `session` can mark a row as handed off.
  */
-describe("detachedTaskPredicate", () => {
+describe("handedOffTaskPredicate", () => {
   const slot = (
-    coordinate: { kind: "uniform" } | { kind: "floor" } | { kind: "assignee"; name: string },
-    detached: boolean
+    seat: { kind: "uniform" } | { kind: "floor" } | { kind: "assignee"; name: string },
+    handedOff: boolean
   ) =>
-    ({ coordinate, detached, label: "", worker: {} }) as unknown as Parameters<
-      typeof detachedTaskPredicate
+    ({ seat, session: handedOff ? "per-task" : undefined, label: "", worker: {} }) as unknown as Parameters<
+      typeof handedOffTaskPredicate
     >[0][number];
 
-  it("is absent for a board that declares nothing detached", () => {
+  it("is absent for a board that hands nothing off", () => {
     // Absence is what keeps every existing board on the `count()` path — the
     // classifier's answer for them is bit-for-bit unchanged.
-    expect(detachedTaskPredicate([slot({ kind: "uniform" }, false)])).toBeUndefined();
+    expect(handedOffTaskPredicate([slot({ kind: "uniform" }, false)])).toBeUndefined();
   });
 
-  it("covers every row on a detached uniform board", () => {
-    const predicate = detachedTaskPredicate([slot({ kind: "uniform" }, true)])!;
-    expect(predicate({ assignee: "anything" } as never)).toBe(true);
-    expect(predicate({} as never)).toBe(true);
-  });
-
-  it("separates a detached assignee from an inline one", () => {
-    const predicate = detachedTaskPredicate([
+  it("separates a handed-off assignee from an inline one", () => {
+    const predicate = handedOffTaskPredicate([
       slot({ kind: "assignee", name: "background" }, true),
       slot({ kind: "assignee", name: "inline" }, false),
     ])!;
@@ -415,29 +412,13 @@ describe("detachedTaskPredicate", () => {
     expect(predicate({ assignee: "inline" } as never)).toBe(false);
   });
 
-  it("sends an undeclared assignee to the floor, and reads the floor's own mode", () => {
-    const detachedFloor = detachedTaskPredicate([
-      slot({ kind: "assignee", name: "inline" }, false),
-      slot({ kind: "floor" }, true),
-    ])!;
-    expect(detachedFloor({ assignee: "unknown" } as never)).toBe(true);
-    expect(detachedFloor({ assignee: "inline" } as never)).toBe(false);
-
-    // The floor is defined by the assignees it is NOT, so the predicate has to
-    // see the inline registry entries too. Built from the detached slots alone,
-    // "inline" would read as unrouted and fall to a detached floor.
-    const inlineFloor = detachedTaskPredicate([
-      slot({ kind: "assignee", name: "background" }, true),
-      slot({ kind: "floor" }, false),
-    ])!;
-    expect(inlineFloor({ assignee: "unknown" } as never)).toBe(false);
-    expect(inlineFloor({ assignee: "background" } as never)).toBe(true);
-  });
-
   it("does not resolve an inherited Object.prototype member as a worker", () => {
     // `assignee` reaches the board from a model-facing tool, so a bare index
     // would route `"constructor"` at a declared worker that does not exist.
-    const predicate = detachedTaskPredicate([
+    // Also proves an undeclared assignee reads as not-handed-off: "constructor"
+    // is not a value in the `declared` Set, floor slot or no floor slot — only
+    // a named seat can ever hand off (see the describe block's own header).
+    const predicate = handedOffTaskPredicate([
       slot({ kind: "assignee", name: "background" }, true),
       slot({ kind: "floor" }, false),
     ])!;

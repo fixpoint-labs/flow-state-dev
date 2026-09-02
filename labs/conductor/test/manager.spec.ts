@@ -100,7 +100,7 @@ async function readStatus(h: ConductorHarness): Promise<StatusRow> {
 /**
  * Wait for the claimed attempt to stop running.
  *
- * The drain hands the row to a workstream and returns with it still open —
+ * The drain hands the row to a child session and returns with it still open —
  * the seeding request deliberately does not wait for the run. So the assertion
  * point is when the row leaves `in_progress`, which is where the board's own
  * fenced settlement has landed.
@@ -485,7 +485,7 @@ describe("the manager — a declined settlement is silent", () => {
   it("status reports the board row as not completed when the claim was lost", async () => {
     // `recordSuccess` writes with `ifAllowed: true`, so a `complete()` refused
     // on a lost claim is DROPPED rather than thrown: the worker returns
-    // normally and the workstream request completes. Inferring completion from
+    // normally and the child session request completes. Inferring completion from
     // the run record or from request status would therefore be the same
     // silent-success defect this lab exists to remove, relocated into the thing
     // that verifies it.
@@ -1241,7 +1241,7 @@ describe("the run record — readable from any coordinator session", () => {
   it("answers a status call from a session that never saw the run", async () => {
     // The shape that reproduced the bug, now asserting the fix.
     //
-    // `sharedToWorkstream` gave one identity across A session's lineage, and a
+    // `sharedToLineage` gave one identity across A session's lineage, and a
     // new coordinator session is a different lineage root — so `status` from a
     // fresh session returned the board row with `run: null`, losing the failure
     // reason, the harness session, the cost and the checkout. The board said the
@@ -1300,7 +1300,7 @@ describe("the ledger is partitioned by tenant", () => {
 
     // Storage — the half that decides who can claim whose row.
     expect(acme.collectionId).not.toBe(globex.collectionId);
-    // Routing — hashed into the derived workstream session id.
+    // Routing — hashed into the derived child session session id.
     expect(acme.boardId).not.toBe(globex.boardId);
   });
 
@@ -1330,7 +1330,7 @@ describe("the ledger is partitioned by tenant", () => {
 
     // Storage — who can claim whose row.
     expect(left.collectionId).not.toBe(right.collectionId);
-    // Routing — hashed into the derived workstream session id.
+    // Routing — hashed into the derived child session session id.
     expect(left.boardId).not.toBe(right.boardId);
     // The run record, which leads with the collection identity.
     expect(runTopic(left.collectionId, ISSUE, PHASE)).not.toBe(

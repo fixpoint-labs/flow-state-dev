@@ -224,15 +224,15 @@ export interface CreateFlowStateOptions<
   publicReentrySources?: readonly string[];
 
   /**
-   * Largest `limit` the workstream listing route accepts. Default 100.
+   * Largest `limit` the child session listing route accepts. Default 100.
    *
-   * Raise it for deployments whose conversations start more workstreams
+   * Raise it for deployments whose conversations start more children
    * than that: the list a client reads is all-time history, so any fixed
    * ceiling eventually hides the oldest finished work. Raise it deliberately —
    * each row resolves its status from the request store and clients re-read
    * the list on every interaction, so a larger ceiling costs more per turn.
    */
-  maxWorkstreamListLimit?: number;
+  maxChildSessionListLimit?: number;
 
   /**
    * Enable durable execution. When `true`, `createFlowState` builds the

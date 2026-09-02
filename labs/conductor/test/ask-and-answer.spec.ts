@@ -821,9 +821,9 @@ describe("reconciliation — an unanswerable row is never left displayed as answ
 // ───────────────────────────────────────────────────────────────────────────
 
 describe("the inbox crosses the session boundary, and `status` is what reads it", () => {
-  it("reports a question written inside the workstream to a DIFFERENT coordinator session", async () => {
-    // Behaviour 6. The row was written inside the detached workstream request,
-    // with no `sharedToWorkstream` declared anywhere — `user` scope is what
+  it("reports a question written inside the child session to a DIFFERENT coordinator session", async () => {
+    // Behaviour 6. The row was written inside the detached child session request,
+    // with no `sharedToLineage` declared anywhere — `user` scope is what
     // spans them. **Second arm:** the read is the `status` ACTION, which is the
     // whole of how an operator sees a question with no UI built and with Relay
     // absent. A suite that read the collection directly would prove the

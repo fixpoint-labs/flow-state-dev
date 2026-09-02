@@ -11,7 +11,8 @@ import type { ExternalResourceCollectionRef } from "./external-resource-collecti
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { RequestHost } from "./request-host";
-import type { WorkstreamBindings } from "./workstream";
+import type { DispatchAddress, DispatchSeam } from "./dispatch";
+import { DISPATCH_SEAM } from "./dispatch";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -468,6 +469,14 @@ export interface BlockContext<
    * TypeScript said it did not have.
    */
   requestHost?: RequestHost;
+
+  /**
+   * @internal The runtime's dispatch operation, attached under a symbol key so
+   * it is not a named member any handler body reaches. Read only by
+   * `dispatchThroughSeam`, which `dispatcher()` and the task board's hand-off
+   * call — the blocks that carry a `DispatchAddress`. See `types/dispatch.ts`.
+   */
+  [DISPATCH_SEAM]?: DispatchSeam;
 
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
@@ -952,35 +961,15 @@ export interface BlockDefinition<
    */
   childBlocks?: readonly BlockDefinition<any, any>[];
   /**
-   * Detached worker bindings this block and its descendants declare (FIX-982).
+   * The address this block dispatches a message to, when it is a dispatcher.
    *
-   * Derived, never threaded: `buildBlock` computes it as this block's OWN
-   * bindings ({@link ownWorkstreamBindings}) merged with every child's already-
-   * merged set ({@link childBlocks}, which includes rescue handlers). Because a
-   * child's set is itself the union of its subtree, one merge at build time
-   * carries the whole tree, and `defineFlow` reads the union off each action
-   * root into `flow.workstreamBindings`.
-   *
-   * `undefined` on every block that declares no detached work, which is every
-   * block that ships today. Not an app-author surface: nothing is declared to
-   * get one.
+   * Stamped by `dispatcher()` (and by the task board on its hand-off block)
+   * and carried across every rebuild path, so `defineFlow` can walk the graph
+   * and refuse an address that resolves no entry, and a board can read which
+   * of its seats hand off without running anything. `undefined` on every block
+   * that dispatches nothing, which is every block that computes.
    */
-  workstreamBindings?: WorkstreamBindings;
-  /**
-   * The detached worker bindings this block itself carries, excluding every
-   * binding that arrives by way of a child (FIX-982). Where
-   * {@link workstreamBindings} is the bubble-up, this is the strict subset the
-   * block contributes on its own — the same split {@link ownDeclaredResources}
-   * draws, and for the same reason: a rebuild has to be able to tell what to
-   * carry over from what to recompute.
-   *
-   * Written only by `declareWorkstreamBindings`, which a task board calls on the
-   * drain sequencer it just built. Rebuild paths (`connectInput`, `.rescue`,
-   * `asTool`, a sequencer chaining another step) forward THIS and re-derive the
-   * rest, so replacing a block's rescue handlers forgets the old handlers'
-   * boards instead of advertising workers nothing can reach.
-   */
-  ownWorkstreamBindings?: WorkstreamBindings;
+  dispatch?: DispatchAddress;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;
   connectOutput<TTo>(

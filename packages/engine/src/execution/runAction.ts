@@ -9,8 +9,9 @@ import type {
   FlowInstance,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import { resolveActionCore } from "./resolve-action-core";
-import { RESUME_ACTION_STATUS, workstreamBindingKey } from "@flow-state-dev/core/types";
+import { resolveEntry } from "./resolve-entry";
+import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import { resolveEntry as resolveTypedEntry } from "@flow-state-dev/core";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -141,74 +142,56 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
 }
 
 /**
- * Refuse a dispatch-time core whose detached boards this flow cannot route
- * (FIX-982).
+ * Refuse a dispatch-time core containing a dispatcher whose address this flow
+ * does not declare.
  *
  * A carried core is produced after `defineFlow` ran — today by a dynamic
- * schedule's `resolve` — so its blocks were never walked and its declarations
- * never reached `flow.workstreamBindings`. A task board with a detached worker
- * inside one is therefore admitted with no route: the drain claims a row, the
- * spawn refuses `no-workstream-core` (or the workstream core has no route for
- * that `boardId`), and the row fails or cycles through lease recovery. Work that
- * stalls without erroring, which is the failure class this whole change exists
- * to remove.
+ * schedule's `resolve` — so its blocks were never walked by the definition-time
+ * address check. A dispatcher inside one would otherwise be admitted with no
+ * entry to reach: a board drain claims a row, hands it off, and the seam refuses
+ * `no-entry` after the claim — a row that then waits out its lease. Work that
+ * stalls without erroring, which is the failure class the walk exists to remove.
  *
  * Checked HERE because this is the one seam every carried core passes through,
  * whatever transport produced it, and because it is upstream of everything: the
  * request is not yet registered and the board has not yet claimed anything, so a
  * refusal costs a failed dispatch rather than a stranded task.
  *
- * **Why this is a refusal and not a build-time one.** A resolver's return value
- * does not exist at definition time, and the only predicate available there —
- * "this flow has a `schedules.resolve`" — would refuse flows whose resolvers
- * never touch a board. This predicate is exact: it fires when a core actually
- * carries a detached binding this flow cannot route, and never otherwise.
- *
- * **Bound worth knowing.** It reads the union already accumulated on the core's
- * root block, which is what composition bubbles up. A board reachable from the
- * carried core only through a generator's static `tools` array is not in that
- * union (a generator carries none of its tools' rails), so it is not caught
- * here and keeps the late failure it has today. Closing that would mean walking
- * the tool edge from `engine`, duplicating a traversal `core` owns.
+ * The same traversal `defineFlow` makes — composition through `childBlocks`,
+ * plus a generator's static `tools` array — so a dispatcher handed to a model
+ * as a tool inside a carried core is caught on the same terms as one at the
+ * top level.
  */
 function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
   // Every block an `ActionCore` can execute, which is the root plus the two
   // lifecycle observers — the same three `defineFlow`'s `actionCoreBlocks`
   // collects, and for the same reason: `runAction` runs the observers as real
-  // blocks, so a board under one claims work exactly as a board under the root
-  // does. The core's other fields declare no block (`inputSchema` and
-  // `userMessage` are a schema and a pure function; `tokenBudget` and `durable`
-  // are settings), so this list is the whole executable surface.
-  const carriers = [core.block, core.onCompleted, core.onErrored];
+  // blocks, so a dispatcher under one dispatches exactly as one under the root.
+  const seen = new Set<BlockDefinition>();
+  const queue: BlockDefinition[] = [core.block, core.onCompleted, core.onErrored].filter(
+    (block): block is BlockDefinition => block !== undefined
+  );
 
-  for (const carrier of carriers) {
-    const declared = carrier?.workstreamBindings;
-    if (declared === undefined) continue;
-    assertBindingsRoutable(flow, declared);
-  }
-}
+  while (queue.length > 0) {
+    const block = queue.pop()!;
+    if (seen.has(block)) continue;
+    seen.add(block);
 
-/** Refuse any binding in `declared` the flow has no route for. */
-function assertBindingsRoutable(
-  flow: FlowInstance,
-  declared: NonNullable<BlockDefinition["workstreamBindings"]>
-): void {
-  for (const binding of declared.values()) {
-    const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
-    // Identity, not key equality — the same test `defineFlow`'s reachability
-    // assertion makes. A binding present under a DIFFERENT object is a second
-    // declaration that happens to collide on the coordinate, not this one
-    // arriving by another route, and routing it would run someone else's board.
-    if (flow.workstreamBindings?.get(key) === binding) continue;
-    throw new ValidationError(
-      `Flow "${flow.kind}" cannot route the detached work in this dispatch's action core: ` +
-        `board "${binding.boardId}" coordinate "${binding.coordinateKey}" (worker ` +
-        `"${binding.worker.name}") is not among the flow's declared bindings. The core was ` +
-        `produced at dispatch time — a dynamic schedule's resolver — so its board never reached ` +
-        `the flow definition and no workstream route exists for it. Declare the board on a ` +
-        `statically-reachable action, or drop the detached dispatch from it.`,
-      { scope: "request" }
-    );
+    const address = block.dispatch;
+    if (address !== undefined && resolveTypedEntry(flow, address.type, address.target) === undefined) {
+      throw new ValidationError(
+        `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
+          `dispatches to ${address.type}:"${address.target}", which the flow does not declare. ` +
+          `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
+          `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
+          `drop the dispatch from the resolver's block.`,
+        { scope: "request" }
+      );
+    }
+
+    for (const child of block.childBlocks ?? []) queue.push(child);
+    const tools = (block.config as { tools?: unknown }).tools;
+    if (Array.isArray(tools)) queue.push(...(tools as BlockDefinition[]));
   }
 }
 
@@ -222,7 +205,7 @@ function assertBindingsRoutable(
  * is resolved from the flow: a genuine event dispatch (`source === "webhook" |
  * "chat" | "scheduled"`) carries its coordinate in `metadata.<transport>`, so
  * the handler is found on the matching transport map rather than `flow.actions`.
- * See `resolveActionCore` — the source gate is what stops a caller-addressed
+ * See `resolveEntry` — the source gate is what stops a caller-addressed
  * request from pivoting into an event handler via injected metadata.
  */
 function resolveAction(
@@ -237,7 +220,7 @@ function resolveAction(
     return carriedCore;
   }
 
-  const action = resolveActionCore(flow, actionName, source, metadata);
+  const action = resolveEntry(flow, actionName, source, metadata);
   if (action === undefined) {
     throw new ValidationError(
       `Flow "${flow.kind}" does not define action "${actionName}"`

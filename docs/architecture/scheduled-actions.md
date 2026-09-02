@@ -178,7 +178,7 @@ const envelope: InboundRequestEnvelope = {
 ```
 
 `action` is never used to resolve the handler. Static schedules
-resolve through `resolveActionCore` via
+resolve through `resolveEntry` via
 `metadata.schedule.scheduleId` gated on `source === "scheduled"`
 (see [Action forms](./action-forms.md)). Dynamic schedules carry
 `resolvedActionCore` on the envelope; that field is not persisted.
@@ -242,7 +242,7 @@ and respects `requireUser`.
 
 ## Related
 
-- [Action forms](./action-forms.md) — `ActionCore`, `resolveActionCore`,
+- [Action forms](./action-forms.md) — `ActionCore`, `resolveEntry`,
   carried-core for dynamic schedules.
 - [Inbound Transports](./inbound-transports.md) —
   `InboundTransportAdapter`.
