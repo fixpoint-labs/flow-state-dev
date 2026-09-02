@@ -14,7 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler } from "@flow-state-dev/core";
+import { handler, isAbortLike } from "@flow-state-dev/core";
 import type { AnyResourceRef, BlockContext } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -596,6 +596,34 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
 }
 
 /**
+ * Rejects the instant `signal` fires, with its abort reason — an
+ * AbortError-shaped value `@flow-state-dev/core`'s `isAbortLike` recognizes —
+ * so racing it (via `Promise.race`) against other work settles on THIS
+ * signal firing rather than on whatever that other work eventually does
+ * (FIX-1301: a fired deadline bounds the harness step, not the commands the
+ * vendor ran). Already-aborted fires synchronously.
+ *
+ * Always carries a permanent no-op `.catch`, and `stop()` removes the
+ * listener: a signal that fires AFTER the race has already settled on the
+ * other side must never surface as an unhandled rejection, and must not fire
+ * at all once the caller is done racing against it.
+ */
+function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: () => void } {
+  let onAbort = () => {};
+  const promise = new Promise<never>((_, reject) => {
+    onAbort = () =>
+      reject(signal.reason ?? new DOMException("This operation was aborted.", "AbortError"));
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+  promise.catch(() => {});
+  return { promise, stop: () => signal.removeEventListener("abort", onAbort) };
+}
+
+/**
  * Create the in-process Agent SDK handler block.
  *
  * On success it appends an {@link SdkAgentHandle} to
@@ -605,6 +633,15 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
  * `status:"errored"` + an error item), not a throw; an SDK throw mid-stream is
  * wrapped in {@link ClaudeAgentRunError}, surfaced as an error item, and
  * rethrown.
+ *
+ * **A fired `ctx.signal` ends the run the instant it fires** (FIX-1301) —
+ * `query()`'s loop is raced against the signal rather than awaited outright,
+ * so the block stops WAITING the moment its own deadline fires rather than
+ * whenever the SDK's stream happens to settle. The already-wired
+ * `abortController` (below) still tells the SDK to stop; this block simply no
+ * longer waits to find out whether it did. A subprocess the vendor spawned
+ * can therefore outlive the abort — the working directory's sandbox is the
+ * fence for that, not this block's deadline.
  *
  * See {@link ClaudeCodeAgentOptions.detached} for the background-work mode.
  */
@@ -780,57 +817,118 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // because there isn't one.
       try {
         try {
-          for await (const message of resolved.query({
-            prompt: promptText,
-            options: queryOptions,
-          })) {
-            // Capture the SDK session id from any message that carries it (the
-            // `system` init message does, well before the terminal result), so an
-            // aborted or failed run is still resumable.
-            const sid = (message as { session_id?: string }).session_id;
-            if (typeof sid === "string" && sid !== "") newSessionId = sid;
+          // The loop runs as its own promise so it can be RACED against the
+          // block's own signal (FIX-1301) rather than awaited outright — the
+          // vendor's stream may not close promptly on abort (LAB-153's POC
+          // found the same shape in the Codex CLI), so waiting on it directly
+          // would bound the deadline by the vendor instead of by the caller.
+          //
+          // `raced` flips true the instant the signal wins the race — BEFORE
+          // the `catch` block below runs `finalizeOpenItems`/`recorder.stop()`,
+          // guaranteed by attaching this flip to `abortRace.promise` ahead of
+          // `Promise.race`'s own subscription. Every iteration checks it before
+          // touching `emitState`/`translateState`/`recorder`: those are state
+          // the abort branch is about to finalize and tear down, and a vendor
+          // stream that keeps yielding buffered messages after the kill would
+          // otherwise write into it concurrently — orphaned items with no
+          // terminal `item.done`, or a recorder observation landing after
+          // `stop()` and never flushed.
+          let raced = false;
+          const loop = (async () => {
+            for await (const message of resolved.query({
+              prompt: promptText,
+              options: queryOptions,
+            })) {
+              if (raced) return;
 
-            const events = translateSdkMessage(message, translateState);
-            // DELIVERY IS STRUCTURAL, like shutdown. Translation consumed this
-            // whole message and cleared its correlation maps for every call in
-            // it, so the events are now the only remaining record of what those
-            // calls did. Interleaving delivery with the emission `await` below
-            // made every event after the first one conditional on item
-            // persistence succeeding: one rejection and the rest were lost with
-            // nothing left to reconstruct them from — a settled `TaskCreate`
-            // would vanish from `observed-plan` AND `observed-gaps`, because the
-            // end-of-run drain finds no open create either.
-            //
-            // `observe` is synchronous and never throws, so handing it the whole
-            // batch first closes the window rather than guarding it.
-            for (const event of events) recorder?.observe(event);
-            for (const event of events) {
-              await emitTranslatedEvent(event, ctx, emitState, name);
-              if (event.kind === "result") {
-                resultSubtype = event.subtype;
-                if (event.sessionId !== null) newSessionId = event.sessionId;
-                if (event.finalMessage !== null)
-                  finalMessage = event.finalMessage;
-                if (event.usage !== null) usage = event.usage;
-                if (event.costUsd !== null) costUsd = event.costUsd;
+              // Capture the SDK session id from any message that carries it (the
+              // `system` init message does, well before the terminal result), so an
+              // aborted or failed run is still resumable.
+              const sid = (message as { session_id?: string }).session_id;
+              if (typeof sid === "string" && sid !== "") newSessionId = sid;
+
+              const events = translateSdkMessage(message, translateState);
+              // DELIVERY IS STRUCTURAL, like shutdown. Translation consumed this
+              // whole message and cleared its correlation maps for every call in
+              // it, so the events are now the only remaining record of what those
+              // calls did. Interleaving delivery with the emission `await` below
+              // made every event after the first one conditional on item
+              // persistence succeeding: one rejection and the rest were lost with
+              // nothing left to reconstruct them from — a settled `TaskCreate`
+              // would vanish from `observed-plan` AND `observed-gaps`, because the
+              // end-of-run drain finds no open create either.
+              //
+              // `observe` is synchronous and never throws, so handing it the whole
+              // batch first closes the window rather than guarding it. No `await`
+              // separates the `raced` check above from this line, so nothing can
+              // flip the flag in between.
+              for (const event of events) recorder?.observe(event);
+              for (const event of events) {
+                if (raced) return;
+                await emitTranslatedEvent(event, ctx, emitState, name);
+                if (event.kind === "result") {
+                  resultSubtype = event.subtype;
+                  if (event.sessionId !== null) newSessionId = event.sessionId;
+                  if (event.finalMessage !== null)
+                    finalMessage = event.finalMessage;
+                  if (event.usage !== null) usage = event.usage;
+                  if (event.costUsd !== null) costUsd = event.costUsd;
+                }
+              }
+              if (raced) return;
+              // Partials path: the whole `assistant` message is the turn's close
+              // boundary. translate skips its text/thinking (already streamed), so
+              // close the open streaming items here before the next turn's deltas.
+              if (includePartialMessages && message.type === "assistant") {
+                await closeStreamingItems(ctx, emitState, name);
               }
             }
-            // Partials path: the whole `assistant` message is the turn's close
-            // boundary. translate skips its text/thinking (already streamed), so
-            // close the open streaming items here before the next turn's deltas.
-            if (includePartialMessages && message.type === "assistant") {
-              await closeStreamingItems(ctx, emitState, name);
-            }
+          })();
+          // If the signal below wins the race, `loop` is abandoned rather than
+          // cancelled — it may still be running against the vendor's stream
+          // (see the docblock above). A rejection from it after that point has
+          // nobody left racing it, so it must never become an unhandled
+          // rejection: we told the vendor to stop (`abortController`); we do
+          // not wait to find out whether it did.
+          loop.catch(() => {});
+          const abortRace = rejectOnAbort(ctx.signal);
+          // Attached BEFORE `Promise.race` subscribes below, so this reaction
+          // runs first: `raced` is guaranteed true by the time the `catch`
+          // block's cleanup runs, not merely likely to be.
+          abortRace.promise.catch(() => {
+            raced = true;
+          });
+          try {
+            await Promise.race([loop, abortRace.promise]);
+          } finally {
+            abortRace.stop();
           }
         } catch (err) {
           await finalizeOpenItems(ctx, emitState, name);
           // Persist the session id even on failure so the next request can resume
-          // the conversation the SDK actually created.
+          // the conversation the SDK actually created. This is what keeps a
+          // session id observed just before an abort (FIX-1301) resumable.
           if (!detached && newSessionId !== null) {
             await ctx.session.patchState(
               SDK_SESSION_ID_KEY,
               () => newSessionId,
             );
+          }
+          // The block's OWN signal firing is surfaced unwrapped — rather than
+          // as a `ClaudeAgentRunError` — so it stays recognizable to
+          // `isAbortLike`, the same distinction `generator.ts`'s
+          // `surfaceModelCallError` draws between an abort and a genuine model
+          // failure. `ctx.signal.aborted` (not just the error's shape) confirms
+          // this abort is OURS: an abort-shaped error the SDK threw on its own
+          // for an unrelated reason must still wrap below.
+          if (isAbortLike(err) && ctx.signal.aborted) {
+            await emitTranslatedEvent(
+              { kind: "error", message: (err as Error).message, code: "ABORT_ERR" },
+              ctx,
+              emitState,
+              name,
+            );
+            throw err;
           }
           const wrapped = new ClaudeAgentRunError(
             `Claude Code agent run failed: ${(err as Error).message}`,
