@@ -2710,7 +2710,9 @@ if (!epicApproved) {
       `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.` +
       // The carry-case line above says "timeline unreadable" only when a recorded approval rode it; with
       // nothing recorded the gate simply holds, and the label sitting on the PR would go unmentioned.
-      `${labelUnattributable ? ` The \`epic approved\` label is on #${epic.prNumber} but its applier could not be read (timeline unreadable), and no earlier approval was recorded to hold, so it releases nothing.` : ''}`,
+      // Keyed on `!epic.approved`, not on `labelUnattributable` alone: a carried approval held for
+      // another reason (a change request, an unusable head) is not "nothing recorded".
+      `${labelUnattributable && !epic.approved ? ` The \`epic approved\` label is on #${epic.prNumber} but its applier could not be read (timeline unreadable), and no earlier approval was recorded to hold, so it releases nothing.` : ''}`,
   )
 }
 for (const row of plan.blocked) {

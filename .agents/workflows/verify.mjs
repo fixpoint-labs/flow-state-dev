@@ -1175,6 +1175,19 @@ check('an unattributable label on a never-approved epic is said out loud when th
   })
   assert.equal(result.epicApproved, false, 'nothing recorded, nothing released')
   assert.match(logs.join('\n'), /Epic objective not signed off.*applier could not be read \(timeline unreadable\)/, 'the hold names the unreadable label')
+
+  // A CARRIED approval held for another reason — here a human change request — is not "nothing
+  // recorded". Keyed on the label alone the sentence fired here too, and said so falsely.
+  const carriedButHeld = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: true, labelProvenanceUnreadable: true, gateChangesRequested: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(carriedButHeld.result.epicApproved, false, 'the change request still holds the gate')
+  assert.match(carriedButHeld.logs.join('\n'), /Epic objective not signed off/, 'the hold is still logged')
+  assert.doesNotMatch(carriedButHeld.logs.join('\n'), /no earlier approval was recorded/, 'but it does not claim nothing was recorded when a carried approval exists')
 })
 
 check('an owner-applied label still passes both gates', async () => {
