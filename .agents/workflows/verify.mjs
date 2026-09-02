@@ -1055,6 +1055,40 @@ check('a present Linear row clears a resolved blocker', async () => {
   assert.deepEqual(workerLabels(calls), ['spec:FIX-2'])
 })
 
+check('a Linear scout that answers with UUIDs is discarded per entry, not believed', async () => {
+  // The scout is asked for identifiers (`FIX-2`), and Linear has two ids per issue. Seen in production
+  // both ways: `id` came back as issue UUIDs (nothing matched — every child read as newly discovered and
+  // every carried row as unobserved), and `blockedBy` came back as RELATION UUIDs (a blocker nothing can
+  // resolve, stranding the row for the rest of the epic). A malformed entry is dropped whole — its row
+  // reads as unobserved, exactly as if the scout had died for it — and the drop is logged.
+  const uuid = '9f6ea5fc-31bd-44dd-a4b6-de9c54f56861'
+  const relation = 'f4830b06-a106-4f98-852e-3f7e881e4fe5'
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-9'], linearState: 'Todo' }), row('FIX-3')] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') {
+        return {
+          issues: [
+            { id: uuid, state: 'Backlog', blockedBy: [] },
+            { id: 'FIX-2', state: 'In Development', blockedBy: [relation] },
+            { id: 'FIX-3', state: 'Todo', blockedBy: [] },
+          ],
+        }
+      }
+      if (label === 'refresh:issues') return prScan(prompt)
+      return { issueId: label.split(':')[1], ...workerRes() }
+    },
+  })
+  assert.ok(!result.issues.some((r) => r.id === uuid), 'a UUID id must not be discovered as a new sub-issue')
+  const fix2 = result.issues.find((r) => r.id === 'FIX-2')
+  assert.deepEqual(fix2.blockedBy, ['FIX-9'], 'a relation UUID in blockedBy voids the entry, so the carried blocker stands rather than clearing to []')
+  assert.equal(fix2.linearState, 'Todo', 'the voided entry refreshes nothing else on the row either')
+  assert.deepEqual(workerLabels(calls), ['spec:FIX-3'], 'the well-formed sibling still runs')
+  assert.match(logs.join('\n'), /UUID where an issue identifier/)
+})
+
 check("the issue scout is told a human's CHANGES_REQUESTED beats another's approval", async () => {
   // The epic gate prompt has carried this rule from the start; the issue scout asked only for a current-head
   // approved review, so a spec could read approved while a human's latest state was CHANGES_REQUESTED — or

@@ -2050,7 +2050,8 @@ const [gate, linear, prScan] = await parallel([
     ),
   () =>
     agent(
-      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's id, current state name, its CATEGORY label, and the ids of any open blocked-by relations. Do not fetch them individually.\n` +
+      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's human identifier, current state name, its CATEGORY label, and the identifiers of the issues that block it. Do not fetch them individually.\n` +
+        `IDENTIFIERS, NEVER UUIDs — Linear has two ids per issue and only one is usable here. \`id\` is the human identifier (\`LAB-152\`, \`FIX-150\` — Linear's \`identifier\` field), never the UUID \`id\` field: the wake matches your entries against the tracked ids above by identifier, so a UUID matches nothing and every issue reads as unobserved. \`blockedBy\` is the list of the BLOCKING ISSUES' identifiers — for each open \`blocks\` relation where this issue is the blocked side, the blocking issue's \`identifier\` — never the relation's own id, which nothing can resolve. \`category\` is the label from the category label group, verbatim. A correct entry: {"id":"LAB-150","state":"Backlog","blockedBy":["LAB-141"],"category":"Bug"}.\n` +
         `The category is what ROUTES the issue: "Bug" sends it straight to implementation with no spec. Report the label verbatim; report null if the issue genuinely carries no category label, and never infer one from the title — an unread category safely keeps the issue on the spec route, an invented one can send a feature to implementation ungated.\n` +
         `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
@@ -2213,9 +2214,33 @@ if (!scanned && epic.approved) {
 // them to the objective as it stood before the fold that made it approvable.
 const epicHead = (gate && gate.headSha) || epic.headSha || null
 
+// The scout is asked for HUMAN identifiers, and Linear has two ids per issue. Every reader below keys
+// on the identifier — `linearById`, the discovery filter, `openBlockers` — so a UUID in `id` matches
+// no row (every child reads as newly discovered, every carried row as unobserved), and a UUID in
+// `blockedBy` (the RELATION's id, reported instead of the blocking issue's identifier) names a
+// blocker nothing can resolve, which strands the row for the rest of the epic. Both were observed in
+// production. Neither is corrected here, because inventing an identifier is fabricating an
+// observation: a malformed entry is dropped WHOLE, so its issue reads exactly as if the scout had
+// died for it (invariant 1), and the drop is logged so a bad scan is loud rather than silent.
+// Dropping only the bad `blockedBy` ids would be worse than dropping the entry — `[]` means "no
+// blockers" and would admit the issue alongside the very prerequisite it named.
+const ISSUE_IDENTIFIER = /^[A-Z]+-\d+$/
+const reportedLinear = (linear && linear.issues) || []
+const linearIssues = reportedLinear.filter(
+  (li) => ISSUE_IDENTIFIER.test(li.id) && (li.blockedBy || []).every((b) => ISSUE_IDENTIFIER.test(b)),
+)
+if (linearIssues.length !== reportedLinear.length) {
+  const dropped = reportedLinear.filter((li) => !linearIssues.includes(li))
+  log(
+    `The Linear refresh reported ${dropped.length} entr${dropped.length === 1 ? 'y' : 'ies'} with a UUID where an issue identifier (LAB-152) was asked for — ` +
+      `${dropped.map((li) => `${li.id} blockedBy [${(li.blockedBy || []).join(', ')}]`).join('; ')}. ` +
+      `Discarded rather than guessed at: each such issue reads as unobserved this wake (carried state stands, no blocker clears, nothing is discovered), and the next wake retries.`,
+  )
+}
+
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
-const linearById = new Map((linear && linear.issues ? linear.issues : []).map((i) => [i.id, i]))
+const linearById = new Map(linearIssues.map((i) => [i.id, i]))
 // The batch, unpacked into the same per-row map the per-issue scouts used to produce — so every
 // reader downstream is unchanged, and the batching is invisible past this line.
 //
@@ -2264,8 +2289,8 @@ const TERMINAL_LINEAR = /^(done|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)
 // The subset where the WORK IS GONE, as opposed to finished. A verdict can still be folded into completed
 // work (the spec is there, the thread is there); there is nothing to fold it into on cancelled work.
 const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
-const discovered = (linear && linear.issues ? linear.issues : [])
-  .filter((li) => li.id && li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
+const discovered = linearIssues
+  .filter((li) => li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
   // A child the human already closed or dropped is not new work. Entering it at NEEDS_SPEC would
   // dispatch a spec for a removed issue AND keep the epic from ever satisfying its wrap condition.
   .filter((li) => !TERMINAL_LINEAR.test((li.state || '').trim()))
