@@ -112,9 +112,11 @@ Agent tool (superpowers:code-reviewer, model: sonnet):
       order; concurrent / duplicate (409) calls; cancel / error paths (ctx.signal, cleanup
       on synchronous throw); second-tenant key scoping (BP-031); cost / observability of any
       new model or tool call; React derived-state / no-op render (BP-010).
-  Verify conventions (AGENTS.md, best-practices.md). Check the changeset (BP-022): one
-  user-facing sentence per affected package, patch/minor only pre-1.0; internal-only →
-  `pnpm changeset --empty`.
+  Verify conventions (AGENTS.md, best-practices.md). Changesets (BP-022) are NOT required by
+  default — do not flag a missing one. Flag only a fragment that is present and wrong: it
+  describes something no consumer of a published package can observe, it names a private
+  package (`labs/*`, `examples/*`, `apps/*`, `plugins/*`, `goals`), it omits its Linear issue,
+  it reads like a PR description, or it picks `major` pre-1.0.
 ```
 
 ## Completeness lens (prompt — change with a spec only)

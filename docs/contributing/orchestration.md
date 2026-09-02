@@ -1361,7 +1361,7 @@ Four things, and none of them is tokens-as-expense:
    worktree. A file changed here sits on whatever branch the session is on, tracked by no issue,
    colliding with the worktrees that *are* doing the work — and `.orchestration/` is gitignored
    precisely so nothing real ever lives here.
-3. **It bypasses every gate.** No issue, no spec, no review, no changeset, no PR. Asking for
+3. **It bypasses every gate.** No issue, no spec, no review, no PR. Asking for
    something in chat is not the same act as approving it at a gate, and work done this way is
    invisible to the process that exists to check it. This is the expensive one: it is how
    unreviewed code reaches a branch under a system whose whole design is that it can't.
