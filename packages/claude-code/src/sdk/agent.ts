@@ -802,6 +802,15 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       let newSessionId: string | null = session.sdkSessionId;
       let usage: SdkAgentHandle["usage"] = null;
       let costUsd: number | null = null;
+      // The loop's currently-awaited item write, if any — tracked so the
+      // abort branch can wait for OUR OWN write to settle (never the vendor
+      // stream) before it finalizes `emitState`. See the abort branch below.
+      // A ref object rather than a bare `let`: TS over-narrows a `let`
+      // reassigned inside the `loop` closure to `null` at the sibling
+      // `catch` read site (treating the IIFE's last assignment as settled
+      // there, even on the rejection path that skips it) — `.current` on an
+      // object isn't tracked that way.
+      const inFlightRef: { current: Promise<unknown> | null } = { current: null };
 
       // Recorder shutdown is STRUCTURAL, not per-path. It used to be written out
       // on the success path and again on the throw path, which made it one more
@@ -865,7 +874,13 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               for (const event of events) recorder?.observe(event);
               for (const event of events) {
                 if (raced) return;
-                await emitTranslatedEvent(event, ctx, emitState, name);
+                inFlightRef.current = emitTranslatedEvent(event, ctx, emitState, name);
+                try {
+                  await inFlightRef.current;
+                } finally {
+                  inFlightRef.current = null;
+                }
+                if (raced) return;
                 if (event.kind === "result") {
                   resultSubtype = event.subtype;
                   if (event.sessionId !== null) newSessionId = event.sessionId;
@@ -880,7 +895,13 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               // boundary. translate skips its text/thinking (already streamed), so
               // close the open streaming items here before the next turn's deltas.
               if (includePartialMessages && message.type === "assistant") {
-                await closeStreamingItems(ctx, emitState, name);
+                inFlightRef.current = closeStreamingItems(ctx, emitState, name);
+                try {
+                  await inFlightRef.current;
+                } finally {
+                  inFlightRef.current = null;
+                }
+                if (raced) return;
               }
             }
           })();
@@ -904,6 +925,23 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             abortRace.stop();
           }
         } catch (err) {
+          // The block's OWN signal firing is surfaced unwrapped — rather than
+          // as a `ClaudeAgentRunError` — so it stays recognizable to
+          // `isAbortLike`, the same distinction `generator.ts`'s
+          // `surfaceModelCallError` draws between an abort and a genuine model
+          // failure. `ctx.signal.aborted` (not just the error's shape) confirms
+          // this abort is OURS: an abort-shaped error the SDK threw on its own
+          // for an unrelated reason must still wrap below.
+          const abortedByOurSignal = isAbortLike(err) && ctx.signal.aborted;
+          if (abortedByOurSignal && inFlightRef.current) {
+            // The abandoned loop can still be mid-`await` on its own
+            // `emitTranslatedEvent`/`closeStreamingItems` call when the race
+            // above is lost. Waiting for THAT write — never the vendor
+            // stream itself — keeps FIX-1301's deadline bound intact while
+            // still letting `finalizeOpenItems` below run only once nothing
+            // is left writing into `emitState` concurrently with it.
+            await inFlightRef.current.catch(() => {});
+          }
           await finalizeOpenItems(ctx, emitState, name);
           // Persist the session id even on failure so the next request can resume
           // the conversation the SDK actually created. This is what keeps a
@@ -914,14 +952,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               () => newSessionId,
             );
           }
-          // The block's OWN signal firing is surfaced unwrapped — rather than
-          // as a `ClaudeAgentRunError` — so it stays recognizable to
-          // `isAbortLike`, the same distinction `generator.ts`'s
-          // `surfaceModelCallError` draws between an abort and a genuine model
-          // failure. `ctx.signal.aborted` (not just the error's shape) confirms
-          // this abort is OURS: an abort-shaped error the SDK threw on its own
-          // for an unrelated reason must still wrap below.
-          if (isAbortLike(err) && ctx.signal.aborted) {
+          if (abortedByOurSignal) {
             await emitTranslatedEvent(
               { kind: "error", message: (err as Error).message, code: "ABORT_ERR" },
               ctx,
