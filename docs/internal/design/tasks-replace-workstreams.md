@@ -1,4 +1,4 @@
-# Design — one message protocol replaces Workstreams and reshapes Relay
+# Design — one dispatch protocol replaces Workstreams and reshapes Relay
 
 **Date:** 2026-08-29 · substantially revised 2026-08-31
 **Status:** Proposal — not approved, nothing implemented.
@@ -28,7 +28,7 @@ not mistake the endpoint for the scope.
 **In this cycle**
 
 - **One inbox per flow, addressed `(type, name)`, same-flow only** — the address,
-  the five message types, the no-fallback rule, and the typed entry.
+  the five dispatch types, the no-fallback rule, and the typed entry.
 - **`dispatcher` as a handler built around a typed envelope** — not a fifth
   block kind. The handler builds the envelope, puts it through a factory-only
   seam, and returns the handle; it does not return the envelope for a brand
@@ -116,7 +116,7 @@ one declared block. A spawned session becomes an ordinary session. The word
 approved and in flight, and it was scoped against the same premise this document
 removes — that a workstream is a session you can start but cannot reach. Relay
 exists to add the reaching. Delete the premise and relay is not a subsystem beside
-the transports: it is the `internal` row of one message-type table, and its send
+the transports: it is the `internal` row of one dispatch-type table, and its send
 verb is the same verb a spawn already uses with the session argument filled in.
 So this is not only a deletion. **It is a smaller Relay**, and §"Reconciliation
 with the Relay epic" walks its six issues one at a time.
@@ -164,10 +164,19 @@ alone.
 
 ---
 
-## The message protocol
+## The dispatch protocol
 
 This section is the frame the rest of the document sits in: what the change is an
 instance of, before the shape it takes.
+
+**One word first.** An arrival at a flow is a *dispatch*, not a *message*.
+`message` already names the primary content item — `ctx.emit.message()`,
+`MessageItem`, the thing that enters LLM history — and the two would meet at
+Relay's send, where an `internal` dispatch's payload lands as a message item in
+the target session. The codebase already uses *dispatch* for the arrival:
+`host.dispatch`, `DispatchEnvelope`, `DispatchHandle`, "detached dispatch", and
+the `dispatcher` block. *Inbox* and *mailroom* stay as the metaphor; they collide
+with nothing. (The dropped name is recorded in §"Considered and not taken".)
 
 ### The inbox already exists
 
@@ -186,7 +195,7 @@ Two consequences are easy to miss:
   default with a per-entry override, keyed on session, offering `allow` /
   `queue` / `reject`. That is how the inbox drains. It reads as request config
   only because nothing named the inbox.
-- **Cron is already a message.** The scheduled adapter builds an envelope at fire
+- **Cron is already a dispatch.** The scheduled adapter builds an envelope at fire
   time and puts it through the same door. The relay epic's issue 4 ("cron as
   scheduled message") is therefore a naming change, not a mechanism.
 
@@ -249,15 +258,15 @@ third roster seat beside `actions` and `workstream`. It is an inbox entry whose
 input schema the framework owns.** `on.webhook` is the same kind of thing. The
 seats collapse to one.
 
-### The message types
+### The dispatch types
 
 Every type is addressed the same way — `(type, name)`, plus a session when the
-message targets an existing one. What differs is who owns the input schema and
-who may put a message through the door.
+dispatch targets an existing one. What differs is who owns the input schema and
+who may put a dispatch through the door.
 
 | Type | Arrives from | Schema owner |
 |---|---|---|
-| user | a caller — HTTP, MCP, voice, or a matched chat subscription | the author |
+| public | a caller — HTTP, MCP, voice, or a matched chat subscription | the author |
 | webhook | an external sender; named `provider/event` | the sender |
 | schedule | the host cron for a static entry; the outbox sweep for a row a block wrote | the framework |
 | task | a board drain | the framework |
@@ -272,7 +281,7 @@ directly. Both cases are handled below under
 An adapter is already `{ source, createBindings(host) }` — an immutable factory
 that produces routes and puts envelopes through the door
 (`transports/types.ts:339`). Formalizing the protocol means an adapter stops
-*also* inventing its own addressing convention: it declares a message type, and
+*also* inventing its own addressing convention: it declares a dispatch type, and
 the inbox resolves it the same way for every type. The payoff is on the extension
 path — adding a transport becomes implementing a contract, rather than writing an
 adapter *and* a routing map to go with it.
@@ -285,8 +294,8 @@ buys is that the next transport cannot quietly add a sixth map.
 `DispatchHandle` already splits them, and that comment is visibly scar tissue
 (`transports/types.ts:179`):
 
-- **Delivery ack** (`accepted`) — the message is discoverable and will not
-  silently not exist. Synchronous, every message has it, costs nothing.
+- **Delivery ack** (`accepted`) — the dispatch is discoverable and will not
+  silently not exist. Synchronous, every dispatch has it, costs nothing.
 - **Outcome ack** (`finished`, or a durable row) — the work settled with a
   result, possibly many requests later.
 
@@ -328,11 +337,11 @@ Shapes that lost are in §"Considered and not taken".
 ### The address is `(type, name)`, not a bare name
 
 The third guard above rules out a second namespace. An earlier draft stated that
-as *"a message's kind is the action name"* — aimed at the right target, a parallel
+as *"a dispatch's kind is the action name"* — aimed at the right target, a parallel
 `relay.on[kind]` table, but too narrow. **The address is a pair.**
 
 ```ts
-flow.user.actions.chat
+flow.public.actions.chat
 flow.internal.actions.status
 flow.schedule.actions.dream
 flow.webhook.actions.github
@@ -348,7 +357,7 @@ parallel concept.
 
 **Nesting: `flow.<type>.actions`, not `flow.actions.<type>`.** The deciding
 factor is per-type config, which the second shape has nowhere to put.
-`flow.task.retries` and `flow.user.concurrency` want a home, and one already
+`flow.task.retries` and `flow.public.concurrency` want a home, and one already
 exists a level up: `flow.request.concurrency` is the all-types default today
 (`ConcurrencyFlowView`, `transports/concurrency/arbiter.ts:44`). So the ladder
 is **default → per-type → per-action**.
@@ -361,14 +370,23 @@ entry has no per-entry policy at all. Typed entries give every type the same
 three rungs, and the arbiter's `isEvent` / `isDetached` special case goes with
 the maps it was written for.
 
+**The nested shape had a collision this document missed.** `flow.user` and
+`flow.org` are already the user- and org-scope configs (`types/flow.ts:428`,
+`flow-registry.ts:410`), so `flow.user.actions` would have sat inside the user
+scope's config or displaced it. The POC on #1543 hit exactly that and went to
+flat maps. Renaming the caller-facing type to `public` removes the collision —
+`flow.public` has no prior meaning, and neither do `internal`, `task`, `schedule`
+or `webhook` as singulars — which puts nested-versus-flat back on its merits (a
+home for per-type config) rather than on an accident of naming.
+
 ### Who may address an entry
 
 Guard 1 above says addressability becomes an explicit declaration. Under a
 two-part key that declaration is the map itself: an entry in
-`flow.internal.actions` is reachable by an `internal` message and by nothing
+`flow.internal.actions` is reachable by an `internal` dispatch and by nothing
 else, because the lookup is keyed on the type and there is no fallback. An
 earlier revision put a per-entry `from` list on top of that. It was either
-redundant with the map or a way to resolve one type's message in another type's
+redundant with the map or a way to resolve one type's dispatch in another type's
 map — which is the fallback the previous section deletes. **There is no
 `from`.** What remains to declare is the other half — which types a *block* may
 put through the door — and that is a rule rather than a per-entry list.
@@ -380,7 +398,7 @@ which a block has every reason to do.
 | Type | Where its trust comes from | A block may dispatch it |
 |---|---|---|
 | `webhook` | a signature over raw bytes | **No** — the block does not hold the bytes |
-| `user` | a principal resolved at the edge | **No** — manufacturing one is BP-031 |
+| `public` | a caller's principal resolved at the edge | **No** — manufacturing one is BP-031 |
 | `internal` | the running request's own authority | Yes |
 | `task` | the same, plus a verified claim | Yes |
 | `schedule` | time passing | **Yes** — see §"Scheduled delivery" |
@@ -398,7 +416,7 @@ That split ships today.
 
 ### Protocol-owned types carry a compound name
 
-`(type, name)` is enough for `user`, `internal` and `task`, where the author owns
+`(type, name)` is enough for `public`, `internal` and `task`, where the author owns
 both halves. It is **not** enough for types whose coordinate belongs to a
 protocol.
 
@@ -422,7 +440,7 @@ containing it are rejected at definition time rather than silently re-parsed.
 
 ### Subscription is not routing
 
-Chat is the other protocol-owned case, and folding it into `user` as "just another
+Chat is the other protocol-owned case, and folding it into `public` as "just another
 arrival" was wrong. `flow.chat` is *"per-flow chat-transport subscriptions"* whose
 adapter *"discovers these declarations at mount and dispatches matching inbound
 chat events to the named actions"* (`flow.ts:450`). It evaluates `when`
@@ -453,7 +471,7 @@ key, differing only in who owns the input schema and who may address it.
 
 ### No fallbacks — and this is a generalization, not an invention
 
-A message addressed to a type that declares no such entry is refused. It does
+A dispatch addressed to a type that declares no such entry is refused. It does
 not fall through to another type's map.
 
 One type already works this way: `WORKSTREAM_SOURCE` resolution is terminal, and
@@ -462,7 +480,7 @@ The change generalizes that rule to all five and deletes the implicit fallback
 where any non-special source lands in `flow.actions`.
 
 **The cost is deliberate: a handler reachable from two types is declared twice.**
-That is not an edge case — a chat bot serving `user.chat` and `webhook.mention`
+That is not an edge case — a chat bot serving `public.chat` and `webhook.mention`
 is the ordinary case (see the atlas's third stress test). Two entries, one block,
 and the block cannot assume which type it runs under. Which decides the next
 question.
@@ -490,7 +508,7 @@ on the entry's input for `internal` and `task` alike, not `ctx.sender`.
 
 ### `task`, not `worker`
 
-Every other type names **what arrives** — a webhook, a schedule, a user message.
+Every other type names **what arrives** — a webhook, a schedule, a public call.
 `worker` names who handles it. One transport named after its receiver breaks the
 set.
 
@@ -610,7 +628,7 @@ already supports, not as new Layer 1 behavior.
 user**, so a slug is tenant-global while the record's `userId` is merely whoever
 created it first. Harmless under the same-user invariant; sharp the moment two
 people address one channel, which is what channels are for. And a channel wants
-`queue` concurrency rather than the `allow` default, or two messages to
+`queue` concurrency rather than the `allow` default, or two dispatches to
 `status-updates` interleave.
 
 ---
@@ -701,7 +719,7 @@ all:
 ```mermaid
 flowchart TB
   subgraph R1["REQUEST 1 · SESSION A · FLOW A"]
-    entry["user.analyze<br/>entry — type known statically"] --> seq["sequencer"]
+    entry["public.analyze<br/>entry — type known statically"] --> seq["sequencer"]
     seq --> bg["dispatcher<br/>type: internal"]
     seq --> drain["board.drain"]
     drain --> inline["inline worker · block<br/>never leaves request 1"]
@@ -713,14 +731,14 @@ flowchart TB
   ho --> S3["SESSION C · REQUEST 3 · FLOW B<br/>task.work<br/>the row is the outcome ack"]
 ```
 
-The background branch and the handed-off task differ only in message type, and the
+The background branch and the handed-off task differ only in dispatch type, and the
 type is what decides whether a durable row is minted. The inline worker is the
 reminder that not every task becomes a request: it runs inside the drain that
 claimed it, so the row settles with nothing dispatched.
 
 ### The board is the only thing that mints rows
 
-A `task` message is the one type that carries a claim. Rows are minted by a task
+A `task` dispatch is the one type that carries a claim. Rows are minted by a task
 board and by nothing else, so `flow.task.actions` is meaningless without one and
 `defineFlow` refuses the combination.
 
@@ -1009,7 +1027,7 @@ board rows. This makes that separation the rule rather than an accident.
 ```ts
 const conductor = defineFlow({
   kind: "conductor",
-  user:     { actions: { seed, status, answer } },
+  public:   { actions: { seed, status, answer } },
   internal: { actions: { wake } },
   task:     { actions: { spec, implement, review } },
 });
@@ -1054,15 +1072,15 @@ add an entry, but it can write a row.
 **It moves scheduling ownership — at the endpoint.** Today the host owns every
 schedule: each cron entry is its own host job, and the scheduled adapter builds
 the envelope when that job fires (`scheduled/src/routes.ts`), with no row
-anywhere. Rows are what the outbox adds, and v1 adds them for the messages a
+anywhere. Rows are what the outbox adds, and v1 adds them for the dispatches a
 *block* writes; static entries keep the path they have. Folding static
 schedules into the outbox — materializing them as rows at mount, re-arming them,
 doing so once across instances — is its own change, and "the **host owns one
 heartbeat**" is where that change ends, not where this one starts. The framework
 still cannot wake itself, so the single external tick stays either way.
 
-Both paths deliver a `schedule` message to the same entry. The arrival transport
-is a different axis from the message type: the cron route and the sweep are two
+Both paths deliver a `schedule` dispatch to the same entry. The arrival transport
+is a different axis from the dispatch type: the cron route and the sweep are two
 *sources* for one *type*, and re-entry keys on the source
 (§"What must not silently change").
 
@@ -1076,7 +1094,7 @@ through a board would mean **every flow wanting a timer needs a board** — whic
 ### Four cases, not two
 
 §"An ack is two things" had two. Deferred delivery adds a second axis, because a
-row can exist to hold a *message* rather than to record an *answer*.
+row can exist to hold a *dispatch* rather than to record an *answer*.
 
 | | needs no outcome | needs an outcome |
 |---|---|---|
@@ -1137,7 +1155,7 @@ action already cancelled, so cancel writes to the row and the row's status gates
 re-arming. Otherwise a redelivery resurrects a schedule someone killed.
 
 **Cancelling from outside is a different surface.** A coordinator ending a schedule
-it created is not inside that message's action and cannot use `ctx.schedule`. That
+it created is not inside that dispatch's entry and cannot use `ctx.schedule`. That
 is a capability method — `ctx.cap.schedule.cancel(id)` — the same shape as
 `addTask`. Both surfaces exist, or the second is discovered late.
 
@@ -1250,10 +1268,10 @@ entries cannot serve.*
 
 ### 6. Declaring twice is now ordinary
 
-No-fallbacks means a handler reachable from two message types is declared twice.
+No-fallbacks means a handler reachable from two dispatch types is declared twice.
 That is the intended cost — it makes addressability explicit per type — but it is
 a cost, and it lands on the common case rather than an edge one: a bot serving
-`user.chat` and `webhook.mention` is exactly this. It also forces every shared
+`public.chat` and `webhook.mention` is exactly this. It also forces every shared
 block to be written type-agnostically, which is why the typed envelope sits at the
 entry rather than on `ctx`.
 
@@ -1275,17 +1293,17 @@ set. A source that is only *absent* from the allow-list can be re-opened by one
 line of deployment config. `workstream` sits in the `never` set for the reason
 the file gives — it has no caller-facing entry — and both new framework-stamped
 types inherit the reason, so they inherit the set. The goal of "spawned sessions
-are callable" is served by dispatching a `user` message to the spawned session
-id — an ordinary caller-addressed request, already supported.
+are callable" is served by a `public` dispatch to the spawned session id — an
+ordinary caller-addressed request, already supported.
 
-**A block-originated `schedule` message is not re-enterable either.** The
+**A block-originated `schedule` dispatch is not re-enterable either.** The
 `scheduled` source is on the allow-list because retry and continue on a
 cron-fired request are *"existing, relied-upon behaviour"*. That covers a
 request whose input a host cron produced. It does not cover an outbox row a
 block wrote, whose payload is that block's computed value; re-entering one with
 a caller-supplied `inputOverride` is the bypass the allow-list exists to close.
 The outbox sweep is its own transport source, and that source goes in the
-`never` set; the cron route keeps `scheduled` and its behaviour. One message
+`never` set; the cron route keeps `scheduled` and its behaviour. One dispatch
 type, two sources, two re-entry answers — which is why type and source stay
 separate axes (§"Scheduled delivery").
 
@@ -1378,7 +1396,7 @@ already in the codebase. Every other rename here is cosmetic and can wait.
   test asserting `retry` / `continue` / `resume` refuse a request on each of the
   three sources, and that `assertPublicReentrySources` throws on a host that
   names any of them. Pass: nine refusals and three construction errors.
-- **No fallbacks.** A message addressed to a type declaring no such entry is
+- **No fallbacks.** A dispatch addressed to a type declaring no such entry is
   refused by name. Pass: the refusal names `(type, name)` and no other type's map
   is consulted — assert on the refusal reason, not merely on non-execution, since
   a fall-through that happens to miss also fails to execute.
@@ -1403,7 +1421,7 @@ already in the codebase. Every other rename here is cosmetic and can wait.
   one event name across two providers. Pass: four distinct handlers, none
   shadowed.
 - **A chat subscription still selects an entry.** One inbound chat event matching
-  a `when` predicate. Pass: it reaches the named entry as a `user` message, and
+  a `when` predicate. Pass: it reaches the named entry as a `public` dispatch, and
   `flow.chat` remains a subscription rather than a resolution map.
 - **The task envelope names its ledger.** Two boards in one flow with colliding
   task ids. Pass: each wrapper re-reads its own collection; neither settles the
@@ -1465,7 +1483,7 @@ already in the codebase. Every other rename here is cosmetic and can wait.
 ## Conductor ships as A; B is the endpoint
 
 A flow is a set of entries, so the test for "flow or session?" is whether two
-roles accept different messages. A coordinator takes chat and seeds; an epic
+roles accept different dispatches. A coordinator takes chat and seeds; an epic
 takes wakes, task work, and a person's answer to a parked question. Different
 sets — so on the test they are different flows, and **B (a coordinator flow plus
 an epic flow) is the endpoint.** It is also what a workstream always was: a
@@ -1510,7 +1528,7 @@ per-child authorization, B is close to free for Conductor: the other blocker
 never applied. Until then A holds, with one honest weakness.
 
 **A's weakness, stated rather than glossed.** Entries belong to the flow, not the
-session, so an epic session on the shared flow *does* accept `user.seed` — and
+session, so an epic session on the shared flow *does* accept `public.seed` — and
 under no-fallbacks that is not a routing accident to be caught, it is a real
 entry on that flow. The guard has to be a check inside the entry reading the
 session's role. That is convention enforced by vigilance, which is the class of
@@ -1519,7 +1537,11 @@ of A, and it disappears in B, where the split is structural.
 
 ---
 
-## Why this reads as message-driven rather than as an event system
+## Why this reads as message-passing rather than as an event system
+
+*Message* in this section is the analogy's word, not the framework's. The
+framework's noun is *dispatch* — `message` names a content item — so read every
+*message* below as *dispatch* on our side of the comparison.
 
 The earlier framing for this work was an eventing system bolted onto the
 framework. What it became is closer to a message-passing runtime, and the
@@ -1594,8 +1616,8 @@ routed once inside."* A parallel `relay.on` binding table is the one thing that
 does not follow from that premise — a private action is the same entry behind the
 same routing.
 
-**The message protocol section above generalizes this.** The epic reached the
-mailroom premise for relay specifically; it holds for every message type, and an
+**The dispatch protocol section above generalizes this.** The epic reached the
+mailroom premise for relay specifically; it holds for every dispatch type, and an
 internal send is one of five. Relay is not a subsystem next to the transports —
 it is the `internal` row of the same table.
 
@@ -1644,7 +1666,7 @@ noting it *"gates steer-with-continuity, not the ask direction."*
 
 Steering needs a checkpoint the running block reads — between sequencer steps, or
 between agent turns. That is a shared-scope collection plus a convention, not a
-message layer, and it must live at a scope both parties can address (lineage,
+dispatch layer, and it must live at a scope both parties can address (lineage,
 user or topic), because cross-session state writes do not exist by design. The
 mailbox holds pending mail; session history holds the record, so rows can be
 deleted on read.
@@ -1684,7 +1706,7 @@ map that required one. The split was a genuine improvement on `startDetached`,
 which fused both and therefore had to sniff its caller's payload to tell them
 apart.
 
-**Dropped because the message type already carries the distinction.** Once an
+**Dropped because the dispatch type already carries the distinction.** Once an
 address is `(type, name)`, "does this mint a durable row" is answered by the type
 rather than by which verb was called. Two verbs became one with a typed argument,
 and the question the split existed to answer stopped being asked.
@@ -1728,16 +1750,16 @@ envelope it has to open.
 
 **Dropped on its own objection:** one flow may host several workers of different
 kinds, and preset global names give it exactly one of each. The lifecycle belongs
-per entry. It then shrank further — `park` is not an inbound message at all
+per entry. It then shrank further — `park` is not an inbound dispatch at all
 (nobody sends you a park; the worker decides), and `cancel` is largely substrate,
 since `abort-registry.ts` already cancels a running request by id and a task's run
 is a request. What survives is: the entry *is* start, with an optional cancel hook
 where a flow genuinely must do something.
 
-### `worker` as the message type name
+### `worker` as the dispatch type name
 
 **Dropped for consistency.** Every other type names what arrives — a webhook, a
-schedule, a user message. `worker` names who handles it, and one transport named
+schedule, a public call. `worker` names who handles it, and one transport named
 after its receiver breaks the set.
 
 ### `ctx.task` as ambient context
@@ -1756,12 +1778,12 @@ module. The accurate name was in the codebase before the rename was proposed.
 
 ### A separate relay binding table
 
-Relay was designed as `relay.on[kind]` — its own map of message kinds to handlers.
+Relay was designed as `relay.on[kind]` — its own map of dispatch kinds to handlers.
 
 **Dropped because it regrows the shadow system one layer up.** Deleting
 `flow.workstream` and adding `relay.on` trades one parallel routing table for
-another. A message's kind is the first segment of the one address, not a separate
-concept, and relay is the `internal` row of the message-type table rather than a
+another. A dispatch's kind is the first segment of the one address, not a separate
+concept, and relay is the `internal` row of the dispatch-type table rather than a
 subsystem beside it.
 
 ### An Issue flow under Conductor
@@ -1831,6 +1853,33 @@ exactly what `defineFlow`'s walk verifies — the replacement for
 `assertWorkstreamBindingsReachable`. A varying address is a router over declared
 dispatchers, which keeps the reachable set declared and reads better besides. The
 *envelope* is dynamic; only the address is fixed.
+
+### `message` as the concept's name
+
+Every draft up to 2026-09-02 called an arrival a *message* — message types, a
+message protocol, a user message.
+
+**Dropped because `message` already names a content item.** It is the primary
+item type (`docs/architecture/items.md`, `ctx.emit.message()`, `MessageItem`),
+the thing that enters LLM history — and the two meanings meet at Relay's send,
+where an `internal` dispatch's payload lands as a message item in the target
+session. One word for both is ambiguous in exactly that case. *Dispatch* is
+what the codebase already calls this thing — `host.dispatch`, `DispatchEnvelope`,
+`DispatchHandle`, "detached dispatch", the `dispatcher` block — so the rename
+adds no vocabulary. *Mailroom* and *inbox* survive as the metaphor; they collide
+with nothing.
+
+### `user` as the caller-facing type name
+
+**Dropped for the same collision one level down, and for one this document
+missed.** A `user` dispatch type beside a `user`-role message item repeats the
+ambiguity; and `flow.user` is already the user scope's config
+(`types/flow.ts:428`), so `flow.user.actions` never had a home — the POC on
+#1543 found that and went to flat maps. `public` is the codebase's existing word
+for caller-addressable (`PUBLIC_REENTRY_SOURCES`, "the public action endpoint",
+the Relay epic's `private: true`), it pairs with `internal`, and it says what
+the type actually distinguishes: every dispatch runs as a user principal, so
+`user` never distinguished anything.
 
 ### Auto-creating a session on an unknown id
 
