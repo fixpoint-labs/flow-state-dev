@@ -184,8 +184,8 @@ const board = taskBoard({
   collection: workBoardCollection,
   workers: {
     triage:    triageBlock,                                         // inline, in the drain
-    implement: { worker: implementBlock, session: "per-task" },     // its own child per row
-    review:    { worker: reviewBlock, session: { key: (t) => t.input.issue } }, // one child per issue
+    implement: { block: implementBlock, session: "per-task" },     // its own child per row
+    review:    { block: reviewBlock, session: { key: (t) => t.input.issue } }, // one child per issue
   },
 });
 ```

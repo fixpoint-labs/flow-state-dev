@@ -605,7 +605,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
       // Hands off: each row runs in a child session of its own, keyed on the
       // task id — which IS the issue-phase (`conductorTaskId`), so a retry
       // re-enters the same child and its run record.
-      [ASSIGNEE]: { worker: manager, session: "per-task" },
+      [ASSIGNEE]: { block: manager, session: "per-task" },
     },
     // **A run parked on a person is not this drain's to wait on.**
     //

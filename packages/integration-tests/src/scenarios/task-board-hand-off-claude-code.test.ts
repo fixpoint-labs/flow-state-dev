@@ -51,7 +51,7 @@ describe("task board × claudeCodeAgent (hand-off)", () => {
         boardId: "coding",
         collection: codingTasks,
         workers: {
-          implement: { worker: codingRun({ detached: true }), session: "per-task" },
+          implement: { block: codingRun({ detached: true }), session: "per-task" },
         },
       }),
     ).not.toThrow();
@@ -67,7 +67,7 @@ describe("task board × claudeCodeAgent (hand-off)", () => {
         boardId: "coding-default",
         collection: codingTasks,
         workers: {
-          implement: { worker: codingRun({}), session: "per-task" },
+          implement: { block: codingRun({}), session: "per-task" },
         },
       }),
     ).toThrow(/sessionStateSchema/);

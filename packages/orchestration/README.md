@@ -308,7 +308,7 @@ the limit in force. See the
 
 #### Handing tasks off to child sessions
 
-A registry value may be a `{ worker, session }` entry instead of a bare block. The
+A registry value may be a `{ block, session }` entry instead of a bare block. The
 entry hands that seat's tasks off: the drain claims a row, sends a `task` dispatch to
 the seat's entry on the flow, and moves on, while the worker runs in a **child
 session** of the session that drained — on a request of its own — and settles the
@@ -333,7 +333,7 @@ const board = taskBoard({
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
     triage: triageBlock,               // bare value = inline
-    implement: { worker: implementBlock, session: "per-task" },
+    implement: { block: implementBlock, session: "per-task" },
   },
 });
 

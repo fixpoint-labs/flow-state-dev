@@ -44,7 +44,7 @@ function buildFlow(kind: string, onError: "skip" | "fail") {
     onError,
     workers: {
       background: {
-        worker: handler({
+        block: handler({
           name: "always-throws",
           inputSchema: taskWorkerInputSchema,
           outputSchema: z.object({ handled: z.string() }),

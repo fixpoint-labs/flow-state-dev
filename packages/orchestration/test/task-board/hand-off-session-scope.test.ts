@@ -41,7 +41,7 @@ function boardFor(collection: ReturnType<typeof defineTaskCollection>) {
     boardId: BOARD_ID,
     collection,
     workers: {
-      brief: { worker: worker as unknown as TaskWorker, session: "per-task" }
+      brief: { block: worker as unknown as TaskWorker, session: "per-task" }
     }
   });
 }

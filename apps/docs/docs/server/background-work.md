@@ -61,7 +61,7 @@ the same conversation lands on the same child, with `adopted: true`. Every
 option, and the refusals it can throw, are on
 [Flow options > Dispatching to another session](../configuration/flow.md#dispatching-to-another-session).
 
-A task board hands a seat off by wrapping its worker in `{ worker, session }`.
+A task board hands a seat off by wrapping its worker in `{ block, session }`.
 The drain claims a row, sends a `task` dispatch to that seat, and moves on to
 the next row; the worker runs in a child session and settles the row itself.
 
@@ -84,7 +84,7 @@ const board = taskBoard({
   collection: issueLedger,
   workers: {
     triage: triageWorker, // a bare block runs inline, in the drain
-    implement: { worker: implementWorker, session: "per-task" },
+    implement: { block: implementWorker, session: "per-task" },
   },
 });
 
@@ -348,7 +348,7 @@ more.
 - [Flow options > Dispatching to another session](../configuration/flow.md#dispatching-to-another-session) —
   the `dispatcher()` block
 - [Task board > Handing tasks off to child sessions](../orchestration/task-board.md#handing-tasks-off-to-child-sessions) —
-  `{ worker, session }` seats
+  `{ block, session }` seats
 - [Client overview](../client/overview.md#background-work) — the same two reads
   from an app
 - [React](../client/react.md#background-work) — `useSession`'s `children`

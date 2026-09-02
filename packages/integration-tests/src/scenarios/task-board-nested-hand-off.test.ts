@@ -66,7 +66,7 @@ function buildNestedFlow() {
     name: "inner-board",
     boardId: "inner-board",
     collection: defineTaskCollection({ id: "inner-ledger", scope: "user" }),
-    workers: { deep: { worker: innerWorker, session: "per-task" } },
+    workers: { deep: { block: innerWorker, session: "per-task" } },
     initialTasks: [
       { id: "i1", goal: "the nested unit of work", assignee: "deep", input: { note: "inner" } },
     ],
@@ -95,7 +95,7 @@ function buildNestedFlow() {
     name: "outer-board",
     boardId: "outer-board",
     collection: defineTaskCollection({ id: "outer-ledger", scope: "user" }),
-    workers: { top: { worker: outerWorker, session: "per-task" } },
+    workers: { top: { block: outerWorker, session: "per-task" } },
     initialTasks: [
       { id: "o1", goal: "the outer unit of work", assignee: "top", input: { note: "outer" } },
     ],

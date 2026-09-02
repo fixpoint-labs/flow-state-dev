@@ -3,7 +3,7 @@
  *
  * A board declares that a worker runs **in a session of its own** — outside the
  * request that claimed its task — by wrapping the worker in a
- * `{ worker, session }` seat. This module owns three things and nothing else:
+ * `{ block, session }` seat. This module owns three things and nothing else:
  *
  * 1. the seat shape and its runtime narrowing, so a bare worker value keeps
  *    meaning "inline" and no existing board needs editing;
@@ -56,7 +56,7 @@ export type TaskSessionPolicy =
  * inline in the claiming drain's request.
  */
 export interface TaskWorkerEntry<TIn = unknown, TOut = unknown> {
-  worker: TaskWorker<TIn, TOut>;
+  block: TaskWorker<TIn, TOut>;
   /** Present on every entry: an entry that does not name a session runs inline as a bare worker. */
   session: TaskSessionPolicy;
 }
@@ -67,7 +67,7 @@ export type TaskWorkerSlot<TIn = unknown, TOut = unknown> =
   | TaskWorkerEntry<TIn, TOut>;
 
 /**
- * A worker registry that also accepts `{ worker, session }` values.
+ * A worker registry that also accepts `{ block, session }` values.
  *
  * Deliberately **not** parameterized by the board's `TInput`/`TOutput`:
  * `TaskWorkerRegistry` is not either, because registry workers are
@@ -77,26 +77,26 @@ export type TaskWorkerSlot<TIn = unknown, TOut = unknown> =
 export type TaskWorkerSlotRegistry = Record<string, TaskWorkerSlot>;
 
 /**
- * True when `slot` is a `{ worker, session }` entry rather than a bare block.
+ * True when `slot` is a `{ block, session }` entry rather than a bare block.
  *
- * Discriminates on the substrate `run` dispatch entry — an entry's `worker`
+ * Discriminates on the substrate `run` dispatch entry — an entry's `block`
  * must itself carry `run`, and the entry object itself must not — so a
- * *registry* whose keys happen to be `"worker"` and `"session"` cannot be
+ * *registry* whose keys happen to be `"block"` and `"session"` cannot be
  * mistaken for an entry: a registry *value* is never a registry.
  */
 export function isTaskWorkerEntry(slot: unknown): slot is TaskWorkerEntry {
   if (typeof slot !== "object" || slot === null) return false;
-  const candidate = slot as { run?: unknown; worker?: { run?: unknown } };
+  const candidate = slot as { run?: unknown; block?: { run?: unknown } };
   if (typeof candidate.run === "function") return false;
-  return typeof candidate.worker?.run === "function";
+  return typeof candidate.block?.run === "function";
 }
 
 /** Unwrap a worker slot into its block and, when it hands off, its session policy. */
 export function resolveWorkerSlot(slot: TaskWorkerSlot): {
-  worker: TaskWorker;
+  block: TaskWorker;
   session?: TaskSessionPolicy;
 } {
-  if (!isTaskWorkerEntry(slot)) return { worker: slot as TaskWorker };
+  if (!isTaskWorkerEntry(slot)) return { block: slot as TaskWorker };
 
   // The removed shape, refused by name rather than silently read as inline
   // (BP-030): a board that still says `dispatch: { mode: "detached" }` would
@@ -105,7 +105,7 @@ export function resolveWorkerSlot(slot: TaskWorkerSlot): {
     throw new Error(
       `[task-board] a worker entry uses the removed \`dispatch: { mode }\` option. ` +
         `A worker hands off by naming the session it runs in: ` +
-        `\`{ worker, session: "per-task" | "per-worker" | { key: (task) => string } }\`.`
+        `\`{ block, session: "per-task" | "per-worker" | { key: (task) => string } }\`.`
     );
   }
   const session = (slot as { session?: unknown }).session;
@@ -115,7 +115,7 @@ export function resolveWorkerSlot(slot: TaskWorkerSlot): {
         `{ key: (task) => string }). A bare block runs inline; wrap it only to hand it off.`
     );
   }
-  return { worker: slot.worker, session };
+  return { block: slot.block, session };
 }
 
 function isSessionPolicy(value: unknown): value is TaskSessionPolicy {
@@ -141,7 +141,7 @@ export interface ResolvedWorkerSlot {
   seat: WorkerSeat;
   /** `assignee:<name>`, `uniform`, or `floor` — the readable form, for refusals. */
   label: string;
-  worker: TaskWorker;
+  block: TaskWorker;
   /** Present exactly when the seat hands off. */
   session?: TaskSessionPolicy;
 }
@@ -170,7 +170,7 @@ export function resolveWorkerSlots(config: {
   handedOff: ResolvedWorkerSlot[];
 } {
   const slots: ResolvedWorkerSlot[] = [];
-  const push = (seat: WorkerSeat, resolved: { worker: TaskWorker; session?: TaskSessionPolicy }) => {
+  const push = (seat: WorkerSeat, resolved: { block: TaskWorker; session?: TaskSessionPolicy }) => {
     slots.push({ seat, label: seatLabel(seat), ...resolved });
   };
 
@@ -178,14 +178,14 @@ export function resolveWorkerSlots(config: {
   if (typeof (config.workers as { run?: unknown }).run === "function") {
     const worker = config.workers as TaskWorker;
     workers = worker;
-    push({ kind: "uniform" }, { worker });
+    push({ kind: "uniform" }, { block: worker });
   } else {
     const registry: TaskWorkerRegistry = {};
     for (const [assignee, slot] of Object.entries(
       config.workers as Record<string, TaskWorkerSlot>
     )) {
       const resolved = resolveWorkerSlot(slot);
-      registry[assignee] = resolved.worker;
+      registry[assignee] = resolved.block;
       push({ kind: "assignee", name: assignee }, resolved);
     }
     workers = registry;
@@ -194,7 +194,7 @@ export function resolveWorkerSlots(config: {
   let defaultWorker: TaskWorker | undefined;
   if (config.defaultWorker !== undefined) {
     const resolved = resolveWorkerSlot(config.defaultWorker);
-    defaultWorker = resolved.worker;
+    defaultWorker = resolved.block;
     push({ kind: "floor" }, resolved);
   }
 
@@ -323,7 +323,7 @@ export function assertHandOffBoardSupported(options: {
     throw new Error(
       `[task-board] "${name}" hands off ${unnamed.map((s) => s.label).join(", ")}, but only a ` +
         `named worker can hand off — its name is the task entry the flow declares ` +
-        `(\`flow.tasks.<name>\`). Declare it under \`workers: { <name>: { worker, session } }\`.`
+        `(\`flow.tasks.<name>\`). Declare it under \`workers: { <name>: { block, session } }\`.`
     );
   }
 
@@ -378,12 +378,12 @@ export function assertHandOffBoardSupported(options: {
   // — `createScopeStateOps` performs no parse. Keep the worker's state on the
   // task instead.
   for (const slot of handedOff) {
-    const authored = nestedSessionStateSchema(slot.worker);
+    const authored = nestedSessionStateSchema(slot.block);
     if (authored !== undefined) {
       const where =
-        authored.block.name === slot.worker.name
-          ? `("${slot.worker.name}")`
-          : `("${slot.worker.name}", via composed block "${authored.block.name}")`;
+        authored.block.name === slot.block.name
+          ? `("${slot.block.name}")`
+          : `("${slot.block.name}", via composed block "${authored.block.name}")`;
       throw new Error(
         `[task-board] "${name}" handed-off worker ${slot.label} ${where} declares ` +
           `sessionStateSchema — a handed-off worker runs in a child session it may share with ` +

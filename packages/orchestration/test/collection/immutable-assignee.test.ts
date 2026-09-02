@@ -196,7 +196,7 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
       boardId: "wired-detached",
       collection: defineTaskCollection({ id: "wired-detached-coll", scope: "user" }),
       workers: {
-        implement: { worker: workerBlock("wired-impl"), session: "per-task" },
+        implement: { block: workerBlock("wired-impl"), session: "per-task" },
       },
     });
 
@@ -295,7 +295,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-a",
       collection: ledger,
       workers: {
-        implement: { worker: workerBlock("owner-impl-a"), session: "per-task" },
+        implement: { block: workerBlock("owner-impl-a"), session: "per-task" },
       },
     });
 
@@ -332,7 +332,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-b",
       collection: ledger,
       workers: {
-        implement: { worker: workerBlock("owner-impl-b"), session: "per-task" },
+        implement: { block: workerBlock("owner-impl-b"), session: "per-task" },
       },
     });
 
@@ -390,7 +390,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
         // no boardId — refused
         collection: ledger,
         workers: {
-          implement: { worker: workerBlock("owner-impl-e"), session: "per-task" },
+          implement: { block: workerBlock("owner-impl-e"), session: "per-task" },
         },
       })
     ).toThrow(/no boardId/);
@@ -430,7 +430,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
         boardId: "invalid-detached-f",
         collection: ledger,
         workers: {
-          implement: { worker: statefulWorker, session: "per-task" },
+          implement: { block: statefulWorker, session: "per-task" },
         },
       })
     ).toThrow(/sessionStateSchema/);
@@ -463,7 +463,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       boardId: "detached-owner-d",
       collection: detachedLedger,
       workers: {
-        implement: { worker: workerBlock("owner-impl-d"), session: "per-task" },
+        implement: { block: workerBlock("owner-impl-d"), session: "per-task" },
       },
     });
 

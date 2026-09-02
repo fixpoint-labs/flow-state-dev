@@ -317,7 +317,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
 
   /**
    * Explicit, stable identifier for this board. **Required when any worker
-   * hands off** (`{ worker, session }`), optional otherwise.
+   * hands off** (`{ block, session }`), optional otherwise.
    *
    * A handed-off worker runs in a child session whose id is derived from a key
    * this value is framed into, and the task entries the board produces are
@@ -358,7 +358,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
    *
-   * A registry **value** may also be a `{ worker, session }` entry, which is
+   * A registry **value** may also be a `{ block, session }` entry, which is
    * how a board hands that worker off to run in a child session of its own
    * (`session: "per-task" | "per-worker" | { key: (task) => string }`). The
    * flow then declares the board's entries as `tasks: board.tasks`. A bare
@@ -711,10 +711,10 @@ export function taskBoard<
   if (Object.hasOwn(config, "dispatch")) {
     throw new Error(
       `[task-board] "${name}" passes the removed board-level \`dispatch\` option. A worker ` +
-        `hands off by name: \`workers: { <name>: { worker, session } }\`.`
+        `hands off by name: \`workers: { <name>: { block, session } }\`.`
     );
   }
-  // Flatten `{ worker, session }` entries down to the bare shapes the drain
+  // Flatten `{ block, session }` entries down to the bare shapes the drain
   // already composes, and note which hand off. A board with no entries
   // produces exactly the values it was handed.
   const resolvedWorkers = resolveWorkerSlots({
@@ -840,7 +840,7 @@ export function taskBoard<
   // receives the same packed `TaskWorkerInput` an inline worker would, which
   // is what makes the two paths agree on what the worker sees. Keyed by SEAT,
   // never by block identity: a block may legitimately sit at two seats with
-  // different policies — `{ inline: shared, background: { worker: shared,
+  // different policies — `{ inline: shared, background: { block: shared,
   // session: "per-task" } }` is a valid board — and keying by the block would
   // substitute the hand-off at BOTH.
   const handOffBySeat = new Map<string, TaskWorker>();
@@ -1184,7 +1184,7 @@ export function taskBoard<
         name,
         boardId,
         seat: slot.seat.name,
-        worker: slot.worker,
+        worker: slot.block,
         collection: collectionFactory,
         // The board's failure policy decides the child's outcome exactly as it
         // decides the drain's, so it is threaded rather than re-chosen here.

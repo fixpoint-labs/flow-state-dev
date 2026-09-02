@@ -66,7 +66,7 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
     expect(() =>
       taskBoard({
         name: "no-session",
-        workers: { summarize: { worker: worker("summarize-2") } as never },
+        workers: { summarize: { block: worker("summarize-2") } as never },
       })
     ).toThrow(/must declare `session`/);
   });
@@ -76,7 +76,7 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
       taskBoard({
         name: "removed-dispatch",
         workers: {
-          summarize: { worker: worker("summarize-2b"), dispatch: { mode: "inline" } } as never,
+          summarize: { block: worker("summarize-2b"), dispatch: { mode: "inline" } } as never,
         },
       })
     ).toThrow(/removed `dispatch: \{ mode \}` option/);
@@ -92,12 +92,12 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
       collection: durable,
       workers: {
         summarize: worker("summarize-3"),
-        implement: { worker: worker("implement-3"), session: "per-task" },
+        implement: { block: worker("implement-3"), session: "per-task" },
       },
     });
 
     expect(board.handedOff.map((slot) => slot.label)).toEqual(["assignee:implement"]);
-    expect(board.handedOff[0]?.worker.name).toBe("implement-3");
+    expect(board.handedOff[0]?.block.name).toBe("implement-3");
   });
 });
 
@@ -105,15 +105,15 @@ describe("isTaskWorkerEntry", () => {
   it("tells an entry from a bare block and from a registry", () => {
     const block = worker("discriminate");
 
-    expect(isTaskWorkerEntry({ worker: block })).toBe(true);
-    expect(isTaskWorkerEntry({ worker: block, session: "per-task" })).toBe(true);
+    expect(isTaskWorkerEntry({ block: block })).toBe(true);
+    expect(isTaskWorkerEntry({ block: block, session: "per-task" })).toBe(true);
     expect(isTaskWorkerEntry(block)).toBe(false);
     expect(isTaskWorkerEntry({ summarize: block })).toBe(false);
     expect(isTaskWorkerEntry(undefined)).toBe(false);
     // `worker` present but not a block — a registry whose assignee is literally
     // "worker". Falls through to the registry reading, which is what keeps an
     // existing board routing the way it always did.
-    expect(isTaskWorkerEntry({ worker: { name: "not-a-block" } })).toBe(false);
+    expect(isTaskWorkerEntry({ block: { name: "not-a-block" } })).toBe(false);
   });
 });
 
@@ -123,7 +123,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       taskBoard({
         name: "no-id",
         collection: durable,
-        workers: { implement: { worker: worker("impl-no-id"), session: "per-task" } },
+        workers: { implement: { block: worker("impl-no-id"), session: "per-task" } },
       })
     ).toThrow(/no boardId.*assignee:implement|assignee:implement.*no boardId/s);
   });
@@ -136,7 +136,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       taskBoard({
         name: "request-backed",
         boardId: "request-backed",
-        workers: { implement: { worker: worker("impl-req"), session: "per-task" } },
+        workers: { implement: { block: worker("impl-req"), session: "per-task" } },
       })
     ).toThrow(/request-backed collection|must be durable/);
   });
@@ -147,7 +147,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         name: "seq-backed",
         boardId: "seq-backed",
         collection: { backing: "sequencer", collectionId: "seq-backed" },
-        workers: { implement: { worker: worker("impl-seq"), session: "per-task" } },
+        workers: { implement: { block: worker("impl-seq"), session: "per-task" } },
       })
     ).toThrow(/sequencer-backed collection|must be durable/);
   });
@@ -160,7 +160,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         name: "factory-backed",
         boardId: "factory-backed",
         collection: () => ({}) as unknown as TaskCollectionRef,
-        workers: { implement: { worker: worker("impl-fac"), session: "per-task" } },
+        workers: { implement: { block: worker("impl-fac"), session: "per-task" } },
       })
     ).toThrow(/factory-backed collection|must be durable/);
   });
@@ -176,7 +176,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         collection: durable,
         workers: {
           implement: {
-            worker: worker("impl-session", { sessionStateSchema: z.object({ topic: z.string() }) }),
+            block: worker("impl-session", { sessionStateSchema: z.object({ topic: z.string() }) }),
             session: "per-task",
           },
         },
@@ -196,7 +196,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         collection: durable,
         workers: {
           summarize: worker("sum-session", { sessionStateSchema: z.object({ topic: z.string() }) }),
-          implement: { worker: worker("impl-mixed"), session: "per-task" },
+          implement: { block: worker("impl-mixed"), session: "per-task" },
         },
       })
     ).not.toThrow();
@@ -209,7 +209,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
       collection: durable,
       workers: {
         summarize: worker("sum-good"),
-        implement: { worker: worker("impl-good"), session: "per-task" },
+        implement: { block: worker("impl-good"), session: "per-task" },
       },
     });
 
@@ -256,7 +256,7 @@ describe("hand-off dispatch — the uniform and floor coordinates", () => {
         boardId: "floor-detached",
         collection: durable,
         workers: { summarize: worker("sum-floor") },
-        defaultWorker: { worker: worker("floor-impl"), session: "per-task" },
+        defaultWorker: { block: worker("floor-impl"), session: "per-task" },
       })
     ).toThrow(/only a named worker can hand off/);
   });
@@ -285,7 +285,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         boardId: "session-detached",
         collection: sessionScoped,
         workers: {
-          implement: { worker: worker("impl-session"), session: "per-task" },
+          implement: { block: worker("impl-session"), session: "per-task" },
         },
       })
     ).toThrow(/session-scoped collection/);
@@ -298,7 +298,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         boardId: "session-detached-named",
         collection: sessionScoped,
         workers: {
-          implement: { worker: worker("impl-session-2"), session: "per-task" },
+          implement: { block: worker("impl-session-2"), session: "per-task" },
         },
       })
     ).toThrow(/assignee:implement/);
@@ -311,7 +311,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         boardId: "session-detached-fix",
         collection: sessionScoped,
         workers: {
-          implement: { worker: worker("impl-session-3"), session: "per-task" },
+          implement: { block: worker("impl-session-3"), session: "per-task" },
         },
       })
     ).toThrow(/sharedToLineage/);
@@ -340,7 +340,7 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
         boardId: "user-detached",
         collection: defineTaskCollection({ id: "user-tasks", scope: "user" }),
         workers: {
-          implement: { worker: worker("impl-user"), session: "per-task" },
+          implement: { block: worker("impl-user"), session: "per-task" },
         },
       })
     ).not.toThrow();
@@ -367,7 +367,7 @@ describe("the session-schema refusal sees composed children", () => {
         name: "nested-session-state",
         boardId: "nested-session-state",
         collection: durable,
-        workers: { implement: { worker: nested as never, session: "per-task" } },
+        workers: { implement: { block: nested as never, session: "per-task" } },
       })
     ).toThrow(/sessionStateSchema/);
   });
@@ -386,7 +386,7 @@ describe("the session-schema refusal sees composed children", () => {
         name: "nested-session-named",
         boardId: "nested-session-named",
         collection: durable,
-        workers: { implement: { worker: nested as never, session: "per-task" } },
+        workers: { implement: { block: nested as never, session: "per-task" } },
       })
     ).toThrow(/inner-named/);
   });
@@ -403,7 +403,7 @@ describe("the session-schema refusal sees composed children", () => {
         name: "nested-session-clean",
         boardId: "nested-session-clean",
         collection: durable,
-        workers: { implement: { worker: plain as never, session: "per-task" } },
+        workers: { implement: { block: plain as never, session: "per-task" } },
       })
     ).not.toThrow();
   });

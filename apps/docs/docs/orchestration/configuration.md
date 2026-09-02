@@ -35,7 +35,7 @@ const board = taskBoard({
 | `dispatch` | dispatch object | omitted (inline) | Dispatch mode for a **uniform** worker (a single block). Do not set this on a registry board; declare it per worker instead. |
 | `collection` | request spec, sequencer spec, `defineTaskCollection`, or factory | request-backed, `collectionId` = `name` | Where the task list lives. Omit it for the request default. |
 | `workers` | one block, or a name → worker map | required | A single worker runs every claimed task. A registry routes by `task.assignee`. |
-| `defaultWorker` | block or `{ worker, dispatch }` | omitted | Registry fallback for an unknown or missing assignee. Omit it and a miss fails the task per `onError`. |
+| `defaultWorker` | block or `{ block, session }` | omitted | Registry fallback for an unknown or missing assignee. Omit it and a miss fails the task per `onError`. |
 | `concurrency` | `number` | `4` | How many workers run in parallel. |
 | `maxEnqueuedTasks` | `number \| null` | `100` | Cap on tasks added while others are still `pending`. `null` is unbounded. Only when the board builds its own collection. |
 | `maxTotalTasks` | `number \| null` | `500` | Cap including completed and failed tasks. Those still count after they finish. Same supplied-collection rule as `maxEnqueuedTasks`. |

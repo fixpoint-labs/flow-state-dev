@@ -43,7 +43,7 @@ function buildFlow() {
     collection: defineTaskCollection({ id: `${KIND}-ledger`, scope: "user" }),
     workers: {
       background: {
-        worker: handler({
+        block: handler({
           name: "background-worker",
           inputSchema: taskWorkerInputSchema,
           outputSchema: z.object({ handled: z.string() }),

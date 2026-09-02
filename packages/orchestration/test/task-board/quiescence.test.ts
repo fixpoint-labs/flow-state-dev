@@ -393,7 +393,7 @@ describe("handedOffTaskPredicate", () => {
     seat: { kind: "uniform" } | { kind: "floor" } | { kind: "assignee"; name: string },
     handedOff: boolean
   ) =>
-    ({ seat, session: handedOff ? "per-task" : undefined, label: "", worker: {} }) as unknown as Parameters<
+    ({ seat, session: handedOff ? "per-task" : undefined, label: "", block: {} }) as unknown as Parameters<
       typeof handedOffTaskPredicate
     >[0][number];
 

@@ -2020,7 +2020,7 @@ await runGoal(async () => {
     collection: codingTasks,
     workers: {
       [ASSIGNEE]: {
-        worker: codingRun,
+        block: codingRun,
         session: {
           key: (task) =>
             typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,

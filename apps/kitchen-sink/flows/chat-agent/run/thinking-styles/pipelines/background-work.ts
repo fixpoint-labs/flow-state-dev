@@ -232,7 +232,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       // reads `task.output` as `unknown`, so the runtime contract holds — the
       // same narrowing `task-queue-demo` takes on its registry.
       [ASSIGNEE]: {
-        worker: briefWorker as unknown as TaskWorker,
+        block: briefWorker as unknown as TaskWorker,
         // Hands off, keyed on the task's `metadata.topic`: two requests on one
         // topic land in the same child session and continue its history, which
         // is the point of the topic (see `routingTopicFor`). A row with no

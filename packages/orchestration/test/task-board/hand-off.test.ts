@@ -63,7 +63,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       name: "issue-work",
       boardId: "issue-work",
       collection: ledger(),
-      workers: { implement: { worker: implement, session: "per-task" } },
+      workers: { implement: { block: implement, session: "per-task" } },
       initialTasks: [{ id: "t1", goal: "implement it", assignee: "implement" }],
     });
 
@@ -116,7 +116,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       collection: ledger(),
       workers: {
         inline: shared,
-        background: { worker: shared, session: "per-task" },
+        background: { block: shared, session: "per-task" },
       },
     });
 
@@ -146,7 +146,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       name: "resourceful",
       boardId: "resourceful",
       collection: ledger(),
-      workers: { implement: { worker: implement, session: "per-task" } },
+      workers: { implement: { block: implement, session: "per-task" } },
     });
 
     const flow = defineFlow({

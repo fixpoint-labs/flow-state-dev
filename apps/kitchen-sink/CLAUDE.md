@@ -91,7 +91,7 @@ what came back.
 - Flow: `flows/chat-agent/run/thinking-styles/pipelines/background-work.ts`.
   Durable ledger (`defineTaskCollection`, session-scoped, `sharedToLineage:
   true`), an explicit `boardId`, and one seat declared
-  `{ worker, session: { key } }` so tasks that share a topic share one child.
+  `{ block, session: { key } }` so tasks that share a topic share one child.
   The board's entries are exported as `backgroundWorkTasks` and declared on
   the flow as `tasks: backgroundWorkTasks` (`flows/chat-agent/flow.ts`) —
   `defineFlow` refuses the flow without them.

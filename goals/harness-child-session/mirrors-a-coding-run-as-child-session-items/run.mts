@@ -332,7 +332,7 @@ await runGoal(async () => {
       // lands in the child the first one minted, which is what the reuse
       // assertions below read.
       [ASSIGNEE]: {
-        worker: codingRun,
+        block: codingRun,
         session: {
           key: (task) =>
             typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,

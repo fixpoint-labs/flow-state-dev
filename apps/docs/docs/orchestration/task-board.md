@@ -98,7 +98,7 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
-- `"handed-off"` — every task still outstanding is running in a child session. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a seat declared `{ worker, session }` reports it (see [Handing tasks off to child sessions](#handing-tasks-off-to-child-sessions)), and `counts.in_progress` is how many are still running.
+- `"handed-off"` — every task still outstanding is running in a child session. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a seat declared `{ block, session }` reports it (see [Handing tasks off to child sessions](#handing-tasks-off-to-child-sessions)), and `counts.in_progress` is how many are still running.
 - `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.awaiting_review` is how many tasks are parked.
 
 Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. A refused retry outranks all of them.
@@ -290,7 +290,7 @@ const board = taskBoard({
 
 Assignee resolution: a matched assignee runs on its own worker; an unmatched or omitted assignee falls to `defaultWorker` if one is configured; with no `defaultWorker`, the task fails per `onError`.
 
-A registry value can also be `{ worker, session }`, which runs that seat's tasks in a child session instead of the drain. See [Handing tasks off to child sessions](#handing-tasks-off-to-child-sessions).
+A registry value can also be `{ block, session }`, which runs that seat's tasks in a child session instead of the drain. See [Handing tasks off to child sessions](#handing-tasks-off-to-child-sessions).
 
 ```ts
 const board = taskBoard({
@@ -544,7 +544,7 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 ## Handing tasks off to child sessions
 
-A worker seat can run its tasks somewhere other than the request that drained the board. Wrap the worker in `{ worker, session }` and the drain claims a row, sends a `task` dispatch addressed to that seat, and moves on to the next claimable row. The worker runs in a **child session** of the session that drained, on a request of its own, and settles the row itself. The turn that started the drain returns while the work is still going.
+A worker seat can run its tasks somewhere other than the request that drained the board. Wrap the worker in `{ block, session }` and the drain claims a row, sends a `task` dispatch addressed to that seat, and moves on to the next claimable row. The worker runs in a **child session** of the session that drained, on a request of its own, and settles the row itself. The turn that started the drain returns while the work is still going.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -565,7 +565,7 @@ const board = taskBoard({
   collection: issueLedger,        // must be a defineTaskCollection()
   workers: {
     triage: triageWorker,         // a bare block runs inline in the drain
-    implement: { worker: implementWorker, session: "per-task" },
+    implement: { block: implementWorker, session: "per-task" },
   },
 });
 

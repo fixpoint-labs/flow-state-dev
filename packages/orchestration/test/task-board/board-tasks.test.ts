@@ -61,7 +61,7 @@ function handOffBoard(options: {
     collection: durable,
     workers: {
       [seat]: {
-        worker: options.workerBlock ?? worker(`${options.name}-${seat}`),
+        block: options.workerBlock ?? worker(`${options.name}-${seat}`),
         session: "per-task",
       },
     },

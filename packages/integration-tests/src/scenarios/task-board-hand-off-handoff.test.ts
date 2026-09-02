@@ -137,7 +137,7 @@ function buildFlow(options: {
     workers: {
       background:
         options.mode === "hand-off"
-          ? { worker: background, session: options.session ?? "per-task" }
+          ? { block: background, session: options.session ?? "per-task" }
           : background,
     },
     initialTasks: [

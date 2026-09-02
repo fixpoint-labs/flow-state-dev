@@ -143,7 +143,7 @@ function buildScenario() {
     boardId: BOARD_NAME,
     collection: ledger,
     workers: {
-      background: { worker: parkThenSuspend, session: "per-task" },
+      background: { block: parkThenSuspend, session: "per-task" },
     },
     initialTasks: [
       {

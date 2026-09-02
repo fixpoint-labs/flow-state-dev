@@ -73,7 +73,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 ## Child sessions (detached work)
 
 - A dispatched request runs in a **child session** — a session with `parentSessionId` and an inherited `lineageId`, labelled `topic` (the dispatch key) and `coordinate` (`<type>:<target>`) — not a new scope level. Listed at `GET /sessions/:id/children` (`ChildSessionSummary`; `maxChildSessionListLimit` caps the page). A session-scoped resource declared `sharedToLineage` stores at the lineage root, so parent and children address one cell
-- A task board hands a seat off with `{ worker, session }`; the flow declares `tasks: board.tasks`; the child's entry is the board's claim gate (re-read the row, verify attempt / createdAt / incarnationId / status / lease / seat, mark the task scope, re-mint the ticket, renew the lease). Uniform and floor workers run inline
+- A task board hands a seat off with `{ block, session }`; the flow declares `tasks: board.tasks`; the child's entry is the board's claim gate (re-read the row, verify attempt / createdAt / incarnationId / status / lease / seat, mark the task scope, re-mint the ticket, renew the lease). Uniform and floor workers run inline
 - Locality is decided by the effective dispatcher (`isInProcessDispatcher`), **not** by `worker.mode`
 - `worker-only` constructs no dispatcher → detached work runs **in-process and is not durable**
 - `dispose()`'s **drain** covers in-process detached children only, bounded by `detachedDrainTimeoutMs`; a queued job is not drained — but closing the worker afterwards waits, unbounded, for any job this process has claimed (`colocated` and `worker-only` both consume)

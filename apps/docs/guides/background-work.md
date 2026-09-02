@@ -127,7 +127,7 @@ The dispatcher returns `{ sessionId, requestId, adopted }` as soon as the runtim
 
 ### With a task board
 
-A board is a list of tasks plus a set of named workers that claim them. Wrap one of those workers in `{ worker, session }` and its tasks run in a child session instead of the request that claimed them:
+A board is a list of tasks plus a set of named workers that claim them. Wrap one of those workers in `{ block, session }` and its tasks run in a child session instead of the request that claimed them:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -142,14 +142,14 @@ const board = taskBoard({
   collection: diligenceTasks,
   workers: {
     investigate: {
-      worker: investigateBlock,
+      block: investigateBlock,
       // Rows on the same topic share one child and continue its history.
       session: {
         key: (task) =>
           typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,
       },
     },
-    verify: { worker: verifyBlock, session: "per-task" },
+    verify: { block: verifyBlock, session: "per-task" },
     summarize: summarizeBlock, // a bare block runs inline, in the request that claimed the task
   },
   initialTasks: [
