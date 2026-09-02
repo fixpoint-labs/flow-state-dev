@@ -118,7 +118,7 @@ None of that says the job survives, or that it ever runs. Whatever consumes the 
 Directory discovery and `--no-config` give the CLI flows and stores, and nothing for a child session to start through. A block that dispatches throws:
 
 ```
-NoDispatchSeamError: Block "summarize-in-background" dispatches a message, but no dispatch seam is wired on this context. A host built through the shipped entry points supplies one; a hand-built test context must attach one under DISPATCH_SEAM.
+NoDispatchSeamError: Block "summarize-in-background" sends a dispatch, but no dispatch seam is wired on this context. A host built through the shipped entry points supplies one; a hand-built test context must attach one under DISPATCH_SEAM.
 ```
 
 The error carries `code: "no-dispatch-seam"`. From a `dispatcher()` block it fails the run. A task board's hand-off throws the same error inside the drain, where the board's `onError` decides what you see: on the default `"skip"` the drain moves on and finishes, and the row it claimed is left `in_progress` and unsettled until its lease lapses and a later drain reclaims it; on `"fail"` the run fails with the error. Neither settles the row.

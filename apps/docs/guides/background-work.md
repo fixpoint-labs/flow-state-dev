@@ -93,7 +93,7 @@ A child session is started from the flow, by a `dispatcher()` block or by a task
 
 ### With a `dispatcher()` block
 
-A dispatcher sends a message to one of the flow's `internal` entries, which are reachable this way and never from a caller. `session: { key }` runs the message in a child derived from the key; `session: { id }` delivers it into a session that already exists.
+A dispatcher sends a dispatch to one of the flow's `internal` entries, which are reachable this way and never from a caller. `session: { key }` runs the dispatch in a child derived from the key; `session: { id }` delivers it into a session that already exists.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";

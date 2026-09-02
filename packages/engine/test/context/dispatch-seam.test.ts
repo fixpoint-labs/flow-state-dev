@@ -146,7 +146,7 @@ describe("a dispatcher spawning a child session (the `key` policy)", () => {
         coordinate: "internal:work"
       });
 
-      // The request record carries the message type as its source and the
+      // The request record carries the dispatch type as its source and the
       // server-assembled provenance — never the sender's input.
       const record = await runtime.stores.request.get(handle.requestId);
       expect(record).toMatchObject({

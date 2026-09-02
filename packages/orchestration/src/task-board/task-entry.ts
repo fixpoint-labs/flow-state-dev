@@ -1,9 +1,9 @@
 /**
  * The task entry a board produces for each handed-off seat — the block a
- * `task` message enters in the child session.
+ * `task` dispatch enters in the child session.
  *
  * `taskBoard()` builds one of these per handed-off seat and the flow declares
- * them as `tasks: board.tasks`, so a `task` message resolves a *board-built
+ * them as `tasks: board.tasks`, so a `task` dispatch resolves a *board-built
  * gate around the worker* and never the bare worker. `defineFlow` refuses an
  * unbranded task entry, so there is no path from a `task` dispatch to a worker
  * that skips the sequence below.
@@ -75,7 +75,7 @@ import {
 } from "../tasks";
 
 /**
- * What a `task` message carries: the claim's identity and the worker's input.
+ * What a `task` dispatch carries: the claim's identity and the worker's input.
  *
  * Every field is **server-derived at hand-off** — the board supplies them from
  * the ticket it minted off the row it claimed, and the runtime supplies the
@@ -149,7 +149,7 @@ export interface BuildTaskEntryOptions {
   /**
    * The board's own resource declarations — the same `uses` the drain carries.
    * The entry is a second action root, not a step under the drain: a `task`
-   * message enters here directly, so nothing the drain installed is in scope.
+   * dispatch enters here directly, so nothing the drain installed is in scope.
    */
   uses?: readonly DefinedCapability[];
   /**

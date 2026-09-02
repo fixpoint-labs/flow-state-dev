@@ -22,8 +22,8 @@ what the fields on those records mean. An app reads the same two things through
 Only a flow can start a child session. There is no endpoint for it and no
 client call.
 
-A `dispatcher()` block sends an `internal` message to one of the flow's
-`internal` entries. With `session: { key }` the message runs in a child of the
+A `dispatcher()` block sends an `internal` dispatch to one of the flow's
+`internal` entries. With `session: { key }` the dispatch runs in a child of the
 running session, derived from the key; with `session: { id }` it is delivered
 into a session that already exists.
 
@@ -62,7 +62,7 @@ option, and the refusals it can throw, are on
 [Flow options > Dispatching to another session](../configuration/flow.md#dispatching-to-another-session).
 
 A task board hands a seat off by wrapping its worker in `{ worker, session }`.
-The drain claims a row, sends a `task` message to that seat, and moves on to
+The drain claims a row, sends a `task` dispatch to that seat, and moves on to
 the next row; the worker runs in a child session and settles the row itself.
 
 ```ts
@@ -265,7 +265,7 @@ GET /api/flows/sessions/dsx_9f2c1a5e7b3d4c8a0f1e2d3c4b5a6978/requests
 That returns the child's runs, with the item log for each when you ask for it
 (`?include_items=true`).
 
-Each run's record carries the message type in `source` and a `metadata.dispatch`
+Each run's record carries the dispatch type in `source` and a `metadata.dispatch`
 bag:
 
 ```json
@@ -288,19 +288,19 @@ runtime stamps it and a request body cannot set it, so read the bag only when
 `source` is one of those two: an application can put a key named `dispatch` in
 `metadata` on its own requests.
 
-- `type` and `target` are the address the message was sent to, the same pair
+- `type` and `target` are the address the dispatch was sent to, the same pair
   the listing shows as `coordinate`.
-- `from` names the block that sent the message and the session it was sent
+- `from` names the block that sent the dispatch and the session it was sent
   from.
 - `key` is the key the child was derived from, the same value the listing shows
-  as `topic`. Absent when the message was delivered into an existing session by
+  as `topic`. Absent when the dispatch was delivered into an existing session by
   id.
-- `taskId` is present on a `task` message and names the board row the run was
+- `taskId` is present on a `task` dispatch and names the board row the run was
   started for, taken from the claim the board held on that row. Use it to
   stitch a run to a row in a view; don't key an authorization or a settlement
   on it.
 
-A message delivered by `id` into an existing session doesn't create a child. It
+A dispatch delivered by `id` into an existing session doesn't create a child. It
 lands in that session's own request list, with the same bag minus `key`.
 
 Children can nest. A child that dispatches work of its own has children, and

@@ -541,7 +541,7 @@ function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
  * Two refusals, both by name. An entry with no block cannot be dispatched to,
  * and the failure would otherwise surface as a property read on `undefined`
  * inside the runtime. And a `task` entry a board did not produce is a worker
- * with no claim gate in front of it: a `task` message would run it against a
+ * with no claim gate in front of it: a `task` dispatch would run it against a
  * row nothing verified. `tasks: board.tasks` is the shape; the brand is how the
  * flow knows it was followed.
  */
@@ -616,7 +616,7 @@ function assertDispatchTargetsResolve(
       throw new Error(
         `Flow "${kind}" reaches block "${block.name}", which dispatches to ${label}, but the ` +
           `flow declares no such entry. Add \`internal: { ${address.target}: { block } }\` to ` +
-          `the flow, or point the dispatcher at an entry it declares. A message never resolves ` +
+          `the flow, or point the dispatcher at an entry it declares. A dispatch never resolves ` +
           `another type's map, so this dispatch could not run.`
       );
     }

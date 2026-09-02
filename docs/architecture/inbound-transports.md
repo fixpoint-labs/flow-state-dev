@@ -83,7 +83,7 @@ across crashes. See [Action forms](./action-forms.md).
 `ActiveRequestEntry`, propagated through to DevTool's request list. It is
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
 `scheduled`, `notification`, `chat`, `task`, `internal`. Custom transports
-pick their own. `source` also decides the message type (`messageTypeOf`),
+pick their own. `source` also decides the dispatch type (`dispatchTypeOf`),
 which is why a caller can never set it.
 
 ### Execution configuration is per-host, with one per-envelope exception

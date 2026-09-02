@@ -70,7 +70,7 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 
 `mcp`, `chat`, `webhooks`, `schedules`, `internal`, and `tasks` belong on the definition. Passing any of them to the factory call (`defineFlow({ ... })({ mcp: ... })`) is rejected.
 
-Each map holds entries of one message type: `actions` for `user` messages, `internal` for `internal`, `tasks` for `task`, and the transport maps for `chat`, `webhook`, and `schedule`. A message resolves only its own type's map. An `internal` message named `wake` resolves `internal.wake` or is refused; `actions.wake` never stands in for it.
+Each map holds entries of one dispatch type: `actions` for `public` dispatches (a caller over HTTP, MCP, voice, or a custom transport), `internal` for `internal`, `tasks` for `task`, and the transport maps for `chat`, `webhook`, and `schedule`. A dispatch resolves only its own type's map. An `internal` dispatch named `wake` resolves `internal.wake` or is refused; `actions.wake` never stands in for it.
 
 ## Actions
 
@@ -194,20 +194,20 @@ See [Scheduled actions](/docs/server/scheduled).
 
 ## Internal entries
 
-`internal` maps a name to an entry only the flow itself can reach. A `dispatcher()` block running in one of the flow's own requests sends it an `internal` message; no HTTP, MCP, chat, webhook, or schedule caller can name it. Use it for work a request starts for itself or for a sibling session: a background job in a child session, a wake sent to a coordinator, a follow-up delivered into a session that already exists.
+`internal` maps a name to an entry only the flow itself can reach. A `dispatcher()` block running in one of the flow's own requests sends it an `internal` dispatch; no HTTP, MCP, chat, webhook, or schedule caller can name it. Use it for work a request starts for itself or for a sibling session: a background job in a child session, a wake sent to a coordinator, a follow-up delivered into a session that already exists.
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `block` | `BlockDefinition` | required | The block that runs. |
 | `inputSchema` | Zod schema | the block's schema | Validates the dispatched payload on arrival. |
-| `concurrency` | `ConcurrencyConfig` | flow `request.concurrency`, else `"allow"` | Same as on an action. A child session that receives several messages wants `"queue"`. |
+| `concurrency` | `ConcurrencyConfig` | flow `request.concurrency`, else `"allow"` | Same as on an action. A child session that receives several dispatches wants `"queue"`. |
 | `durable`, `tokenBudget`, `onCompleted`, `onErrored`, `userMessage` | as on an action | — | The rest of the action core. `description` and `mcp` do not apply. |
 
 `defineFlow` throws on an entry with no `block`, and on a `concurrency` value it would refuse on an action.
 
 ## Task entries
 
-`tasks` holds the entries a [task board](/docs/orchestration/task-board#handing-tasks-off-to-child-sessions) produces for each worker seat it hands off to a child session. Declare them as `tasks: board.tasks`, or spread several boards together: `tasks: { ...issues.tasks, ...reviews.tasks }`. Each entry wraps the seat's worker in the board's claim gate, so a `task` message reaches the worker only after the claim it names has been re-read and verified.
+`tasks` holds the entries a [task board](/docs/orchestration/task-board#handing-tasks-off-to-child-sessions) produces for each worker seat it hands off to a child session. Declare them as `tasks: board.tasks`, or spread several boards together: `tasks: { ...issues.tasks, ...reviews.tasks }`. Each entry wraps the seat's worker in the board's claim gate, so a `task` dispatch reaches the worker only after the claim it names has been re-read and verified.
 
 `defineFlow` refuses a task entry written by hand (`{ block }` with no board behind it), a board hand-off whose entry is not declared, and two boards whose seats share a name and shadow each other in `tasks`.
 
@@ -219,7 +219,7 @@ tasks: { implement: { ...board.tasks.implement, concurrency: "queue" } },
 
 ## Dispatching to another session
 
-`dispatcher()` builds a block that sends one message to one declared entry instead of doing the work itself. The message runs in a child session derived from a key, or in a session that already exists, and the dispatching request returns as soon as the runtime has accepted it. The block is a handler underneath, so it goes anywhere a handler goes: an action's root block, a sequencer step, a generator's tool.
+`dispatcher()` builds a block that sends one dispatch to one declared entry instead of doing the work itself. The dispatch runs in a child session derived from a key, or in a session that already exists, and the dispatching request returns as soon as the runtime has accepted it. The block is a handler underneath, so it goes anywhere a handler goes: an action's root block, a sequencer step, a generator's tool.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -252,15 +252,15 @@ export default defineFlow({
 })();
 ```
 
-Calling `upload` returns `{ sessionId, requestId, adopted }`: the child session the message runs in, the request it became, and whether that child already existed. The same `documentId` from the same parent session lands on the same child with `adopted: true`; a different parent gets a different child.
+Calling `upload` returns `{ sessionId, requestId, adopted }`: the child session the dispatch runs in, the request it became, and whether that child already existed. The same `documentId` from the same parent session lands on the same child with `adopted: true`; a different parent gets a different child.
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `name` | `string` | required | Block name. |
-| `type` | `"internal"` | required | The message type. Only `internal` can be authored; `task` messages are sent by a task board. |
+| `type` | `"internal"` | required | The dispatch type. Only `internal` can be authored; `task` dispatches are sent by a task board. |
 | `target` | `string` | required | The entry name, resolved as `internal[target]`. Checked when the flow is defined. |
 | `inputSchema` | Zod schema | `z.unknown()` | What the block accepts. |
-| `session` | `{ key: (input, ctx) => string }` \| `{ id: (input, ctx) => string }` | required | Which session runs the message. See below. |
+| `session` | `{ key: (input, ctx) => string }` \| `{ id: (input, ctx) => string }` | required | Which session runs the dispatch. See below. |
 | `payload` | `(input, ctx) => unknown` | the input itself | The entry's input. Validated by the entry's own `inputSchema` on arrival. |
 | `transient` | `boolean` | `false` | Hide the block's trace from clients. |
 | `description` | `string` | — | Block description. |
@@ -302,7 +302,7 @@ Every refusal is decided before anything is dispatched, so a `.rescue()` on the 
 ### What it won't do
 
 - **Wait for the child.** The dispatcher returns once the runtime has accepted the request, and nothing on it reports the child's outcome. Read the child session's own requests, or share a resource marked [`sharedToLineage`](/docs/resources/storage#session-scope-and-background-work).
-- **Send a `user`, `chat`, `webhook`, or `schedule` message.** A block can send `internal` messages, and `task` messages only through a task board.
+- **Send a `public`, `chat`, `webhook`, or `schedule` dispatch.** A block can send `internal` dispatches, and `task` dispatches only through a task board.
 - **Reach another flow.** An `id` on a different flow kind is refused as `session-not-addressable`.
 - **Share session state.** The child has its own session scope. Hand values over as `payload`, or through a `sharedToLineage` resource.
 

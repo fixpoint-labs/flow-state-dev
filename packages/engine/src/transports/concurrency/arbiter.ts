@@ -45,7 +45,7 @@ type EntryPolicyView = { concurrency?: ConcurrencyConfig } | undefined;
 
 /**
  * Minimal view of a flow the arbiter reads to resolve a policy: the six entry
- * maps, narrowed to `concurrency`, plus the flow-level default. Every message
+ * maps, narrowed to `concurrency`, plus the flow-level default. Every dispatch
  * type gets the same ladder — default → per-entry — because the entry is found
  * through the same keyed lookup a dispatch resolves its handler with.
  */
@@ -145,7 +145,7 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       // The entry's own policy, found by the same keyed lookup the dispatch
       // resolves its handler with: the trusted `source` (set by the adapter or
       // the dispatch seam, never the caller) decides the type, and the type's
-      // own map is read — `flow.actions` by name for a `user` message, the
+      // own map is read — `flow.actions` by name for a `public` dispatch, the
       // adapter's namespaced coordinate for chat / webhook / schedule, the entry
       // name for task / internal. A forged `metadata.webhook` on an HTTP dispatch
       // therefore still resolves the named action's policy, and a task hand-off

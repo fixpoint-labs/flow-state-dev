@@ -84,7 +84,7 @@ describe("the address walk", () => {
   });
 
   it("does not let an action with the same name stand in for the missing entry", () => {
-    // No fallback: `actions.wake` is a `user` entry and cannot satisfy an
+    // No fallback: `actions.wake` is a `public` entry and cannot satisfy an
     // `internal` address.
     expect(() =>
       defineFlow({
@@ -269,7 +269,7 @@ describe("resolveEntry — one lookup, no fallback", () => {
   })();
 
   it("reads each type's own map", () => {
-    expect(resolveEntry(flow, "user", "chat")?.block).toBe(noop);
+    expect(resolveEntry(flow, "public", "chat")?.block).toBe(noop);
     expect(resolveEntry(flow, "internal", "wake")?.block).toBe(wake);
     expect(resolveEntry(flow, "task", "implement")?.block).toBe(noop);
     expect(resolveEntry(flow, "chat", "any", { chat: { eventKey: "mention" } })?.block).toBe(noop);
@@ -284,12 +284,12 @@ describe("resolveEntry — one lookup, no fallback", () => {
 
   it("never resolves another type's map", () => {
     // `wake` exists as a user action AND an internal entry; each type sees only its own.
-    expect(resolveEntry(flow, "user", "wake")?.block).toBe(noop);
+    expect(resolveEntry(flow, "public", "wake")?.block).toBe(noop);
     expect(resolveEntry(flow, "internal", "wake")?.block).toBe(wake);
     // `status` is internal only; `chat` is user only; `implement` is task only.
-    expect(resolveEntry(flow, "user", "status")).toBeUndefined();
+    expect(resolveEntry(flow, "public", "status")).toBeUndefined();
     expect(resolveEntry(flow, "internal", "chat")).toBeUndefined();
-    expect(resolveEntry(flow, "user", "implement")).toBeUndefined();
+    expect(resolveEntry(flow, "public", "implement")).toBeUndefined();
     expect(resolveEntry(flow, "task", "wake")).toBeUndefined();
   });
 
@@ -301,7 +301,7 @@ describe("resolveEntry — one lookup, no fallback", () => {
   });
 
   it("resolves nothing for a name that spells an inherited member", () => {
-    expect(resolveEntry(flow, "user", "constructor")).toBeUndefined();
+    expect(resolveEntry(flow, "public", "constructor")).toBeUndefined();
     expect(resolveEntry(flow, "internal", "__proto__")).toBeUndefined();
     expect(resolveEntry(flow, "task", "toString")).toBeUndefined();
   });

@@ -232,11 +232,11 @@ export type ActionCore<
    */
   durable?: boolean;
   /**
-   * What happens when a message arrives on this entry while another request
+   * What happens when a dispatch arrives on this entry while another request
    * on the same key (default: session) is already in flight. Overrides the
    * flow-level default on `request.concurrency`. Resolution is per-entry-wins:
    * `entry.concurrency ?? flow.request?.concurrency ?? "allow"`, and every
-   * message type gets the same ladder — a task or internal entry declares its
+   * dispatch type gets the same ladder — a task or internal entry declares its
    * policy exactly as a caller action does. Default when unset everywhere:
    * `"allow"`.
    */
@@ -247,7 +247,7 @@ export type ActionCore<
  * A caller-addressed action: the shared `ActionCore` plus the exposure
  * metadata for the client-facing HTTP and MCP surfaces, where a caller names
  * the action and a principal is authorized per request. Lives in
- * `FlowDefinition.actions` — the flow's `user` entries. Every other entry
+ * `FlowDefinition.actions` — the flow's `public` entries. Every other entry
  * type (`internal`, `tasks`, and the chat / webhook / schedule bindings)
  * carries the same core on its own map and never enters this one.
  */
@@ -424,13 +424,13 @@ export type FlowDefinition<
   authentication?: AuthenticationConfig;
 
   /**
-   * The flow's `user` entries — what a caller may name over HTTP, MCP or
+   * The flow's `public` entries — what a caller may name over HTTP, MCP or
    * voice, each authorized per request. The public API of the flow.
    */
   actions: TActions;
 
   /**
-   * The flow's `internal` entries — reachable only by an `internal` message
+   * The flow's `internal` entries — reachable only by an `internal` dispatch
    * from a `dispatcher()` block running in one of this flow's own requests.
    * Nothing a caller can name resolves here: the map is the boundary, and a
    * message addressed to a type never falls through to another type's map.
@@ -570,7 +570,7 @@ export type FlowInstance<
   internal?: Record<string, InternalEntry>;
   /**
    * See {@link FlowDefinition.tasks}. Absent when the flow declares none. Every
-   * entry present here passed `isTaskEntry` at definition, so a `task` message
+   * entry present here passed `isTaskEntry` at definition, so a `task` dispatch
    * can only ever reach a worker through its board's claim gate.
    */
   tasks?: Record<string, TaskEntry>;

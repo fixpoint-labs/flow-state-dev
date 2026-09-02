@@ -22,7 +22,7 @@
  *    and mints or adopts it; an `id` names a session that must exist and be this
  *    principal's on this flow — `session-not-found` / `session-not-addressable`
  *    otherwise, never created.
- * 3. **Build the envelope**, from values the seam derived: the message type as
+ * 3. **Build the envelope**, from values the seam derived: the dispatch type as
  *    the source, the sender's principal, tenant and org, and server-assembled
  *    provenance under `metadata.dispatch`.
  * 4. **Start it through the host operation**, resolving only once the host has
@@ -266,7 +266,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
 
   const seam: DispatchSeam = async (spec: DispatchSpec): Promise<DispatchOutcome> => {
     // Admission first: the address must resolve on its own type's map. Never
-    // falls through to another type — a `task` message cannot reach an action.
+    // falls through to another type — a `task` dispatch cannot reach an action.
     if (resolveEntry(flow, spec.type, spec.target) === undefined) {
       return refuse(
         "no-entry",

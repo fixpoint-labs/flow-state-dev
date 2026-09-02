@@ -1,5 +1,5 @@
 /**
- * `dispatcher()` — a block that sends one message to one declared entry.
+ * `dispatcher()` — a block that sends one dispatch to one declared entry.
  *
  * A **router** picks a block to run *here*. A **dispatcher** names an entry to
  * run *elsewhere*: in a child session it derives, or in a session that already
@@ -52,9 +52,9 @@ import { handler } from "./handler";
 
 /** What a dispatcher returns: enough to find the work it started. */
 export const dispatchHandleSchema = z.object({
-  /** The session the message runs in — derived child or the named existing one. */
+  /** The session the dispatch runs in — derived child or the named existing one. */
   sessionId: z.string(),
-  /** The request the message became. */
+  /** The request the dispatch became. */
   requestId: z.string(),
   /** True when the child session already existed and was adopted. */
   adopted: z.boolean()
@@ -63,7 +63,7 @@ export const dispatchHandleSchema = z.object({
 export type DispatchHandle = z.infer<typeof dispatchHandleSchema>;
 
 /**
- * Which session the message runs in, computed from the dispatcher's input.
+ * Which session the dispatch runs in, computed from the dispatcher's input.
  *
  * - `key` — a child of the running session, derived from the returned key.
  *   Minted on first use, adopted after: the same key from the same parent lands
@@ -79,13 +79,13 @@ export type DispatcherSession<TInput> =
 export interface DispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> {
   name: string;
   description?: string;
-  /** The message type. Authored dispatchers send `internal` messages. */
+  /** The dispatch type. Authored dispatchers send `internal` dispatches. */
   type: "internal";
   /** The entry name — resolves `flow.internal[target]`. Verified at `defineFlow`. */
   target: string;
   /** What this block accepts. Defaults to `z.unknown()`. */
   inputSchema?: TInputSchema;
-  /** Which session the message runs in. */
+  /** Which session the dispatch runs in. */
   session: DispatcherSession<z.infer<TInputSchema>>;
   /**
    * The entry's input, computed from this block's input. Defaults to the input

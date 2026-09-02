@@ -1,22 +1,22 @@
 /**
- * One message protocol: typed entries, addresses, and the dispatch seam.
+ * One dispatch protocol: typed entries, addresses, and the dispatch seam.
  *
- * Every arrival at a flow is a **message** of one **type**, delivered to one
- * **entry** addressed by `(type, name)`. A caller over HTTP sends a `user`
- * message to `flow.actions[name]`; the host cron sends a `schedule` message to
- * `flow.schedules.static[id]`; a task board drain sends a `task` message to
- * `flow.tasks[name]`; a running request sends an `internal` message to
+ * Every arrival at a flow is a **dispatch** of one **type**, delivered to one
+ * **entry** addressed by `(type, name)`. A caller over HTTP sends a `public`
+ * dispatch to `flow.actions[name]`; the host cron sends a `schedule` dispatch to
+ * `flow.schedules.static[id]`; a task board drain sends a `task` dispatch to
+ * `flow.tasks[name]`; a running request sends an `internal` dispatch to
  * `flow.internal[name]`. Delivery is the same for all of them — one envelope,
  * one door (`host.dispatch`), one request record — and so is addressing: one
- * keyed lookup with **no fallback**. A message addressed to a type that
+ * keyed lookup with **no fallback**. A dispatch addressed to a type that
  * declares no such entry is refused by name; it never resolves another type's
  * map.
  *
  * What differs per type is who owns the entry's input schema and who may put a
- * message through the door. A block may dispatch a type only when it can
+ * dispatch through the door. A block may dispatch a type only when it can
  * itself supply that type's trust: it holds its own request's authority
  * (`internal`), or that plus a verified claim on a durable row (`task`). It
- * cannot manufacture a principal (`user`) or a signature over raw bytes
+ * cannot manufacture a principal (`public`) or a signature over raw bytes
  * (`webhook`), so those types are not dispatchable from a block.
  *
  * ## The seam is reached through a factory, not a `ctx` method
@@ -34,12 +34,12 @@
 import type { BlockDefinition } from "./block";
 import type { ActionCore } from "./flow";
 
-/** The kinds of message a flow can receive. Each resolves one map on the flow. */
-export type MessageType = "user" | "chat" | "webhook" | "schedule" | "task" | "internal";
+/** The kinds of dispatch a flow can receive. Each resolves one map on the flow. */
+export type DispatchType = "public" | "chat" | "webhook" | "schedule" | "task" | "internal";
 
-/** Every message type, for validation and iteration. */
-export const MESSAGE_TYPES: readonly MessageType[] = [
-  "user",
+/** Every dispatch type, for validation and iteration. */
+export const DISPATCH_TYPES: readonly DispatchType[] = [
+  "public",
   "chat",
   "webhook",
   "schedule",
@@ -51,7 +51,7 @@ export const MESSAGE_TYPES: readonly MessageType[] = [
  * The types a block may dispatch — the ones whose trust a running request can
  * supply itself. See the module header for why the others are excluded.
  */
-export type DispatchableMessageType = "internal" | "task";
+export type BlockDispatchType = "internal" | "task";
 
 /**
  * Where a dispatcher sends. Static by construction: the pair is what
@@ -60,7 +60,7 @@ export type DispatchableMessageType = "internal" | "task";
  * dispatchers, not a dynamic address.
  */
 export type DispatchAddress = {
-  readonly type: DispatchableMessageType;
+  readonly type: BlockDispatchType;
   /** The entry name — `flow.internal[target]` or `flow.tasks[target]`. */
   readonly target: string;
   /**
@@ -73,7 +73,7 @@ export type DispatchAddress = {
 };
 
 /**
- * Which session a dispatched message runs in.
+ * Which session a dispatch runs in.
  *
  * - `key` — a **child** of the running session, derived from this key together
  *   with the running request's tenant, principal, session and lineage. Minted
@@ -88,7 +88,7 @@ export type SessionTarget = { readonly key: string } | { readonly id: string };
 
 /** What a dispatcher hands the seam. Every field is computed by the block that dispatches. */
 export type DispatchSpec = {
-  readonly type: DispatchableMessageType;
+  readonly type: BlockDispatchType;
   readonly target: string;
   readonly session: SessionTarget;
   /** The entry's input. Validated by the entry's own schema on arrival. */
@@ -161,7 +161,7 @@ export class NoDispatchSeamError extends Error {
 
   constructor(blockName: string) {
     super(
-      `Block "${blockName}" dispatches a message, but no dispatch seam is wired on this context. ` +
+      `Block "${blockName}" sends a dispatch, but no dispatch seam is wired on this context. ` +
         "A host built through the shipped entry points supplies one; a hand-built test context " +
         "must attach one under DISPATCH_SEAM."
     );
@@ -191,7 +191,7 @@ export class DispatchRefusedError extends Error {
 }
 
 /**
- * Put a message through the runtime's dispatch seam.
+ * Put a dispatch through the runtime's dispatch seam.
  *
  * Substrate-facing. Authored flows reach this through `dispatcher()`; a
  * substrate block that calls it directly (the task board's hand-off) must also
@@ -224,7 +224,7 @@ export function markDispatcher<TBlock extends { dispatch?: DispatchAddress }>(
 
 /**
  * An `internal` entry: a block plus execution policy, reachable only by an
- * `internal` message from a `dispatcher()` in a running request of this flow.
+ * `internal` dispatch from a `dispatcher()` in a running request of this flow.
  * No HTTP or MCP caller can name it — the map it lives in is the boundary.
  */
 export type InternalEntry = ActionCore;
@@ -252,7 +252,7 @@ export type TaskEntryMark = {
  * board's claim gate around the worker, which re-reads the row, verifies the
  * claim, marks the task scope and re-mints the claim ticket before the worker
  * runs. `defineFlow` refuses an unbranded entry, so a worker can never be
- * reached by a task message without that gate in front of it.
+ * reached by a task dispatch without that gate in front of it.
  */
 export type TaskEntry = ActionCore & { readonly [TASK_ENTRY]: TaskEntryMark };
 

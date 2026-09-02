@@ -544,7 +544,7 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 ## Handing tasks off to child sessions
 
-A worker seat can run its tasks somewhere other than the request that drained the board. Wrap the worker in `{ worker, session }` and the drain claims a row, sends a `task` message addressed to that seat, and moves on to the next claimable row. The worker runs in a **child session** of the session that drained, on a request of its own, and settles the row itself. The turn that started the drain returns while the work is still going.
+A worker seat can run its tasks somewhere other than the request that drained the board. Wrap the worker in `{ worker, session }` and the drain claims a row, sends a `task` dispatch addressed to that seat, and moves on to the next claimable row. The worker runs in a **child session** of the session that drained, on a request of its own, and settles the row itself. The turn that started the drain returns while the work is still going.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -604,7 +604,7 @@ Only a named seat can hand off. `defaultWorker` and a single uniform `workers` b
 
 `taskBoard()` throws when a board hands off and any of these is missing, naming the board and the fix:
 
-- **`boardId`.** Every `task` message names it, so renaming it orphans children already in flight.
+- **`boardId`.** Every `task` dispatch names it, so renaming it orphans children already in flight.
 - **A durable collection** — one built with `defineTaskCollection`. The request, sequencer, and factory backings are refused: a handed-off row outlives the request that claimed it.
 - **`sharedToLineage: true` on a session-scoped collection.** A child session is a different session, so without it the ledger would hydrate empty inside the child. `user` and `org` scope need nothing extra; they already span every session the principal touches.
 - **No `sessionStateSchema` on a handed-off worker**, at its root or in a composed child. Keep the worker's state on the task.
@@ -617,7 +617,7 @@ Before the worker runs, the entry re-reads the row and checks the claim is still
 
 The child settles its own row, and the board's `onError` reaches it: `"skip"` records the error on the task and lets the child's request complete; `"fail"` also fails that request. See [What `status` tells you](../server/background-work#what-status-tells-you).
 
-Once a board hands anything off, a task's assignee is fixed at admission. The assignee is the entry its `task` message is addressed to, so `setAssignee` declines with reason `immutable-assignee` whatever the task's status. File a new task instead. The rule sits on the collection, not the board: a second board on the same `defineTaskCollection` value declines too, even if it hands nothing off.
+Once a board hands anything off, a task's assignee is fixed at admission. The assignee is the entry its `task` dispatch is addressed to, so `setAssignee` declines with reason `immutable-assignee` whatever the task's status. File a new task instead. The rule sits on the collection, not the board: a second board on the same `defineTaskCollection` value declines too, even if it hands nothing off.
 
 ### How the drain reports it
 

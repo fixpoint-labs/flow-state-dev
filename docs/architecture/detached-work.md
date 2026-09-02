@@ -15,9 +15,9 @@ Related, and deliberately not restated here:
 
 - [State and Scopes](./state-and-scopes.md) → *Child sessions and scope* — what a
   child session inherits, and where a `sharedToLineage` resource stores.
-- [Action Forms](./action-forms.md) — the message protocol, the `dispatcher()`
+- [Action Forms](./action-forms.md) — the dispatch protocol, the `dispatcher()`
   block, and the dispatch seam it sends through.
-- [Inbound Transports](./inbound-transports.md) — the envelope every message
+- [Inbound Transports](./inbound-transports.md) — the envelope every dispatch
   travels on, and the request host's verbs.
 - `packages/orchestration/README.md` → *Declaring detached work* — the task-board
   surface that is the ordinary way to start one.

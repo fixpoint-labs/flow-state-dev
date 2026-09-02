@@ -309,7 +309,7 @@ the limit in force. See the
 #### Handing tasks off to child sessions
 
 A registry value may be a `{ worker, session }` entry instead of a bare block. The
-entry hands that seat's tasks off: the drain claims a row, sends a `task` message to
+entry hands that seat's tasks off: the drain claims a row, sends a `task` dispatch to
 the seat's entry on the flow, and moves on, while the worker runs in a **child
 session** of the session that drained — on a request of its own — and settles the
 row itself. A bare block still runs inline in the drain.
@@ -372,10 +372,10 @@ refuses a hand-written task entry, a hand-off whose entry the flow forgot to
 declare, and two boards whose seats share a name and shadow each other in `tasks`.
 `board.handedOff` lists the seats that hand off, in declaration order.
 
-The `task` message carries the claim's identity (`boardId`, `taskId`, `attempt`,
+The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`,
 `createdAt`, `incarnationId`) and the worker input the drain packed at claim time —
 `taskDispatchInputSchema` / `TaskDispatchInput`. That input has to be
-JSON-serializable; a payload that is not fails the row in the drain. When the message
+JSON-serializable; a payload that is not fails the row in the drain. When the dispatch
 arrives, the entry re-reads the row and runs the worker only if the claim is still
 current: same attempt, same row (not deleted and recreated under the same id), still
 `in_progress`, lease not lapsed, still routed to this seat. Otherwise it throws
@@ -390,7 +390,7 @@ that request.
 `taskBoard()` refuses a board that hands off unless all of these hold, naming the
 board and the fix:
 
-- **`boardId`** is declared. Every `task` message names it, so renaming it orphans
+- **`boardId`** is declared. Every `task` dispatch names it, so renaming it orphans
   children already in flight.
 - **The collection is durable** — a `defineTaskCollection()` resource backing. The
   request, sequencer, and factory backings are refused: a handed-off row outlives the
@@ -403,7 +403,7 @@ board and the fix:
 
 Once a board hands anything off, a task's assignee is fixed at admission:
 `setAssignee` declines with reason `immutable-assignee`. The assignee is the entry a
-row's `task` message is addressed to, so changing it afterwards redirects nothing.
+row's `task` dispatch is addressed to, so changing it afterwards redirects nothing.
 File a new task instead of reassigning. The rule belongs to the collection, not to
 the board that declared it: point a second board at the same `defineTaskCollection`
 value and it declines too, even if that board hands nothing off. If a board needs

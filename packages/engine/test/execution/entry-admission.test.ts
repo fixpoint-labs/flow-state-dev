@@ -1,8 +1,8 @@
 /**
- * Admission for the `task` and `internal` message types (FIX-999 → the
+ * Admission for the `task` and `internal` dispatch types (FIX-999 → the
  * message-protocol port).
  *
- * `resolveEntry` reads exactly one map per message type — `flow.actions` for
+ * `resolveEntry` reads exactly one map per dispatch type — `flow.actions` for
  * `user`, `flow.internal` for `internal`, `flow.tasks` for `task`, and the
  * adapter's namespaced coordinate for `chat` / `webhook` / `schedule` — and
  * NEVER falls through to another type's map. The failure this file exists to

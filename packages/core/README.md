@@ -132,7 +132,7 @@ export default defineFlow({
 - `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `sideChain`, `sideChainIf`, `waitForSideChain`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
   - `.forEach()` / `.forEachSideChain()` take a per-item factory `(item, index, ctx) => block` in place of a block. A block built that way does not exist when `defineFlow` walks the graph, so declare what the factory can produce with `blocks: [...]` in the trailing options (`IterationOptions` / `SideChainIterationOptions`); declared blocks count as the step's children for the dispatcher address check, resource merging, and `requireOrg`. Redundant on a call that passes a block directly.
 - `router(config)` — Runtime block selection from declared routes. Route names must be unique per router (validated at build). The selected branch dispatches through the same replay seam as sequencer children, so on a durable resume the branch decision stays stable — the framework validates the re-run selection against the recorded decision and throws `RouteUnavailableError` on a mismatch — and completed work inside the branch replays instead of re-executing. A router whose branch can suspend needs a pure `execute` selector (no side effects, no ambient state reads); see [Control-flow determinism](https://flow-state.dev/docs/advanced/block-memoization-and-replay#control-flow-determinism)
-- `dispatcher(config)` — Send one message to one entry the flow declares, in a child session derived from a key or in an existing session named by id. Returns `{ sessionId, requestId, adopted }`. See [Messages, entries, and `dispatcher()`](#messages-entries-and-dispatcher)
+- `dispatcher(config)` — Send one dispatch to one entry the flow declares, in a child session derived from a key or in an existing session named by id. Returns `{ sessionId, requestId, adopted }`. See [Messages, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)
 
 **Block methods** (available on every `BlockDefinition`):
 - `.connectInput(mapper)` — adapt input shape at the call boundary
@@ -145,11 +145,11 @@ export default defineFlow({
 **Event-driven waits:** `.waitForCondition(predicate, { timeoutMs, wakeOn? })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, an external actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch. The optional `wakeOn` filter lets high-fanout patterns skip predicate re-evaluation on irrelevant item types; `@flow-state-dev/orchestration` ships `onTaskChangeFor(collectionId)` for collection-bound waiters.
 
 **Flow:**
-- `defineFlow(definition)` — Create a flow type with actions, `internal` and `tasks` entries, scopes, resources, and per-scope `client` blocks. See [Messages, entries, and `dispatcher()`](#messages-entries-and-dispatcher)
+- `defineFlow(definition)` — Create a flow type with actions, `internal` and `tasks` entries, scopes, resources, and per-scope `client` blocks. See [Messages, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)
 
 **Concurrency policy:**
 
-Any entry can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it on the entry — an action, an `internal` entry, a task-board entry, or a chat / webhook / schedule binding — or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `entry.concurrency ?? flow.request.concurrency ?? "allow"`, the same ladder for every message type.
+Any entry can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it on the entry — an action, an `internal` entry, a task-board entry, or a chat / webhook / schedule binding — or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `entry.concurrency ?? flow.request.concurrency ?? "allow"`, the same ladder for every dispatch type.
 
 `ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
 
@@ -520,13 +520,13 @@ const counter = sequencer({
 
 Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.default()`, etc. — so the marker sits on the outermost schema instance referenced by the parent `z.object` shape.
 
-## Messages, entries, and `dispatcher()`
+## Dispatches, entries, and `dispatcher()`
 
-Every arrival at a flow is a **message** of one **type**, delivered to one **entry** addressed by `(type, name)`. Each type has its own map on the flow definition, and a message resolves only that map. There is no fallback: an `internal` message named `wake` resolves `flow.internal.wake` or is refused, whatever `flow.actions.wake` is.
+Every arrival at a flow is a **dispatch** of one **type**, delivered to one **entry** addressed by `(type, name)`. Each type has its own map on the flow definition, and a dispatch resolves only that map. There is no fallback: an `internal` dispatch named `wake` resolves `flow.internal.wake` or is refused, whatever `flow.actions.wake` is.
 
 | Type | Map on the definition | Sent by |
 |---|---|---|
-| `user` | `actions` | A caller over HTTP, MCP, or voice |
+| `public` | `actions` | A caller over HTTP, MCP, voice, or a custom transport |
 | `internal` | `internal` | A `dispatcher()` block in one of the flow's own running requests |
 | `task` | `tasks` | A task board handing a claimed row to a child session (`tasks: board.tasks`) |
 | `chat` | `chat.on` | The chat adapter |
@@ -535,11 +535,11 @@ Every arrival at a flow is a **message** of one **type**, delivered to one **ent
 
 `internal` and `tasks` are definition-only, like the transport maps: passing either to the instance call (`defineFlow({ ... })({ internal })`) throws. Every entry of every type has the same core shape as an action — `{ block, inputSchema?, concurrency?, durable?, tokenBudget?, onCompleted?, onErrored?, userMessage? }` — and only `actions` adds the caller-facing `description` and `mcp` fields. A `tasks` entry must be one a board produced; `defineFlow` refuses a hand-written `{ block }` there.
 
-`resolveEntry(flow, type, name, coordinate?)` is the lookup itself, exported for hosts and adapters, alongside `MessageType`, `MESSAGE_TYPES`, `EntryMaps`, `EntryCoordinate`, `InternalEntry`, `TaskEntry`, `isTaskEntry`, `markTaskEntry`, and `TASK_ENTRY`.
+`resolveEntry(flow, type, name, coordinate?)` is the lookup itself, exported for hosts and adapters, alongside `DispatchType`, `DISPATCH_TYPES`, `BlockDispatchType`, `EntryMaps`, `EntryCoordinate`, `InternalEntry`, `TaskEntry`, `isTaskEntry`, `markTaskEntry`, and `TASK_ENTRY`.
 
 ### `dispatcher(config)`
 
-A dispatcher is a handler that sends one message to one declared entry instead of doing the work itself. Its address (`type` and `target`) is fixed on the block; the session and the payload are computed per call from the block's input.
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `target`) is fixed on the block; the session and the payload are computed per call from the block's input.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -596,14 +596,14 @@ export default defineFlow({
 
 | Field | What it does |
 |---|---|
-| `type` | The message type. Authored dispatchers send `"internal"`; `task` messages are sent only by a task board. |
+| `type` | The dispatch type. Authored dispatchers send `"internal"`; `task` dispatches are sent only by a task board. |
 | `target` | The entry name, resolved as `flow.internal[target]`. Checked when the flow is defined. |
 | `inputSchema` | What the block accepts. Defaults to `z.unknown()`. |
 | `session` | `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one. |
 | `payload` | `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
 | `transient` | Hide the block's trace from clients. Default `false`. |
 
-The block returns a `DispatchHandle` (`dispatchHandleSchema`): `{ sessionId, requestId, adopted }` — the session the message runs in, the request it became, and whether a `key` landed on a child that already existed. It returns once the runtime has accepted the request and does not wait for the work; read the child's progress from that session's own request history.
+The block returns a `DispatchHandle` (`dispatchHandleSchema`): `{ sessionId, requestId, adopted }` — the session the dispatch runs in, the request it became, and whether a `key` landed on a child that already existed. It returns once the runtime has accepted the request and does not wait for the work; read the child's progress from that session's own request history.
 
 A `key` child is derived from the key together with the running request's principal, tenant, parent session, and lineage, so the same key from a different parent is a different child, and nothing a caller supplies can address someone else's. The child's session record carries `parentSessionId`, `topic` (the key), and `coordinate` (`"internal:summarize"`). An `id` target must exist, belong to this flow kind, this principal, and this tenant, and not be bound to a different org.
 
@@ -644,7 +644,7 @@ Which of the host's verbs answer depends on the deployment:
 - `settleParentTask({ outcome: "complete" | "fail", output?, error? })` — settle that row. Resolves `{ ok: true }`, or `{ ok: false, refused: "no-parent-task" | "fence-rejected", detail }`. `fence-rejected` means this request's claim on the row was superseded, so nothing was written.
 - `livenessOf(requestIds)` — per-id `boolean` answers for requests this request dispatched. **Absent** unless the deployment can support a trustworthy answer: a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. `false` means no live registration was found, never "definitely dead".
 
-The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, and `LivenessAnswers`. Nothing on the interface names a store, a flow, a session record, or a task row, and no verb takes an identity or a session id: each closes over the running request's own. To start work in another session, use a [`dispatcher()`](#messages-entries-and-dispatcher) block; the flow checks its address when it is defined.
+The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, and `LivenessAnswers`. Nothing on the interface names a store, a flow, a session record, or a task row, and no verb takes an identity or a session id: each closes over the running request's own. To start work in another session, use a [`dispatcher()`](#dispatches-entries-and-dispatcher) block; the flow checks its address when it is defined.
 
 ## Key design decisions
 

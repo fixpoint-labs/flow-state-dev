@@ -4,7 +4,7 @@
  * The dispatch seam (`create-request-host.ts`) resolves the entry and the
  * session — derives and adopts a child, or verifies an existing session — and
  * then hands off to *this* to start the run. It is the one place a dispatched
- * message becomes an `InboundRequestEnvelope`.
+ * dispatch becomes an `InboundRequestEnvelope`.
  *
  * ## Why the start goes through the transport host rather than a dispatcher
  *
@@ -20,8 +20,8 @@
  * The envelope is assembled here, from values the seam derived, and two fields
  * carry the whole security posture:
  *
- * - **`source`** is the message type — `task` or `internal` — and it is what
- *   resolution keys on. A caller cannot set a source, so a dispatched message
+ * - **`source`** is the dispatch type — `task` or `internal` — and it is what
+ *   resolution keys on. A caller cannot set a source, so a dispatch
  *   cannot be forged from a transport, and `action` below resolves one entry
  *   map with no fallback into `flow.actions`.
  * - **The principal.** Taken from the identity the seam closed over, which is
@@ -48,7 +48,7 @@
  * change which failures cost one lease of latency, at the price of coupling the
  * dispatching request to the child's startup.
  */
-import type { DispatchableMessageType } from "@flow-state-dev/core/types";
+import type { BlockDispatchType } from "@flow-state-dev/core/types";
 import type { InboundTransportHost } from "../transports/types";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -58,8 +58,8 @@ import type { RuntimeConfig } from "../runtime-config";
  * enqueue-time materialization rather than straight to a dispatcher.
  */
 export type DispatchOperation = (spec: {
-  /** The message type, stamped as the envelope's `source`. */
-  source: DispatchableMessageType;
+  /** The dispatch type, stamped as the envelope's `source`. */
+  source: BlockDispatchType;
   /** The entry name — the envelope's `action`, resolved on the type's own map. */
   target: string;
   sessionId: string;

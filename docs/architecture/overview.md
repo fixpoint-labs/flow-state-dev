@@ -119,9 +119,9 @@ request → session → user → org
 
 Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more. **They do not all take the version check** — some writes are guarded by compare-and-swap and can be refused, while the commutative ones persist unconditionally, and which is which depends on the shape of the call, the adapter and the scope. Before you rely on either behaviour, read [Atomicity Guarantees](./state-and-scopes.md#atomicity-guarantees), which is where that split is stated. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md) for the routing.
 
-### Messages — one protocol for every arrival
+### Dispatches — one protocol for every arrival
 
-Every arrival at a flow is a message of one type — `user`, `chat`, `webhook`, `schedule`, `task`, `internal` — delivered to one entry addressed `(type, name)`, with no fallback between types. A flow declares its entries per type: `actions` (callers), `internal` (reachable only from inside), `tasks` (a task board's claim-gated workers), and the transport maps. A `dispatcher()` block sends a message to a declared entry, into a child session it derives or an existing session it names. See [Action Forms](./action-forms.md).
+Every arrival at a flow is a dispatch of one type — `public`, `chat`, `webhook`, `schedule`, `task`, `internal` — delivered to one entry addressed `(type, name)`, with no fallback between types. A flow declares its entries per type: `actions` (callers), `internal` (reachable only from inside), `tasks` (a task board's claim-gated workers), and the transport maps. A `dispatcher()` block sends a dispatch to a declared entry, into a child session it derives or an existing session it names. See [Action Forms](./action-forms.md).
 
 ### Detached work — outliving the request
 

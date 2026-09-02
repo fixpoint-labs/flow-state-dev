@@ -48,7 +48,7 @@ import {
  * - `task` and `internal` — dispatched by the seam from inside a running
  *   request. Neither has a caller-facing entry at all, so neither may have a
  *   caller-facing re-entry. A spawned session IS reachable from outside — by
- *   dispatching a `user` message to it, which is an ordinary caller-addressed
+ *   dispatching a `public` dispatch to it, which is an ordinary caller-addressed
  *   request — so nothing is lost by refusing here.
  */
 const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
@@ -128,7 +128,7 @@ export function assertPublicReentrySources(sources: readonly string[] | undefine
     `publicReentrySources cannot include ${refused.map((s) => `"${s}"`).join(", ")}: ` +
       "these sources are stamped by the framework and have no caller-facing entry " +
       "(a webhook handler is reachable only behind signature verification, and a " +
-      "task or internal message is dispatched from inside a running request), so " +
+      "task or internal dispatch is dispatched from inside a running request), so " +
       "re-entering one from a public route would run it with caller-supplied input."
   );
 }

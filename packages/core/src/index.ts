@@ -133,7 +133,7 @@ export type {
 export {
   DISPATCH_SEAM,
   DispatchRefusedError,
-  MESSAGE_TYPES,
+  DISPATCH_TYPES,
   NoDispatchSeamError,
   TASK_ENTRY,
   dispatchThroughSeam,
@@ -143,13 +143,13 @@ export {
 } from "./types/dispatch";
 export type {
   DispatchAddress,
-  DispatchableMessageType,
+  BlockDispatchType,
   DispatchOutcome,
   DispatchRefusal,
   DispatchSeam,
   DispatchSpec,
   InternalEntry,
-  MessageType,
+  DispatchType,
   SessionTarget,
   TaskEntry,
   TaskEntryMark

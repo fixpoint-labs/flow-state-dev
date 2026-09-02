@@ -3,7 +3,7 @@
  *
  * It substitutes for the worker in the drain's routing table, so the drain's
  * shape is untouched — claim, route, record. What changes is what the route
- * does: it puts a `task` message through the dispatch seam, addressed to the
+ * does: it puts a `task` dispatch through the dispatch seam, addressed to the
  * seat's entry on the flow (`flow.tasks[seat]`), and returns while the child
  * session runs the worker.
  *

@@ -1,6 +1,6 @@
 /**
  * Transport sources stamped by the runtime, in one place (FIX-999), and the
- * rule that turns a source into a message type.
+ * rule that turns a source into a dispatch type.
  *
  * Importing these from `transports/*` would create an `execution → transports`
  * cycle, which is why they had been re-declared locally per consumer. This
@@ -12,7 +12,7 @@
  * itself) and persisted on the request record. Every authorization branch that
  * reads one depends on that (BP-031).
  */
-import type { MessageType } from "@flow-state-dev/core/types";
+import type { DispatchType } from "@flow-state-dev/core/types";
 
 /** Stamped by the webhook adapter. Resolves a `webhook` entry. */
 export const WEBHOOK_SOURCE = "webhook";
@@ -32,20 +32,20 @@ export const SCHEDULED_SOURCE = "scheduled";
 export const TASK_SOURCE = "task";
 
 /**
- * Stamped by the dispatch seam on an internal message — a `dispatcher()` block
+ * Stamped by the dispatch seam on an internal dispatch — a `dispatcher()` block
  * in a running request sending to `flow.internal[name]`. Same re-entry posture
  * as {@link TASK_SOURCE}, for the same reason.
  */
 export const INTERNAL_SOURCE = "internal";
 
 /**
- * The message type a source delivers. **A message's type is decided by which
+ * The dispatch type a source delivers. **A dispatch's type is decided by which
  * door it came through**, never by anything in its body — which is what makes
  * the entry map a caller cannot pick a boundary. Every caller-facing transport
- * (`http`, `mcp`, `voice`, a custom adapter's own source) delivers `user`
- * messages; the four framework-stamped sources each deliver their own type.
+ * (`http`, `mcp`, `voice`, a custom adapter's own source) delivers `public`
+ * dispatches; the four framework-stamped sources each deliver their own type.
  */
-export function messageTypeOf(source: string | undefined): MessageType {
+export function dispatchTypeOf(source: string | undefined): DispatchType {
   switch (source) {
     case WEBHOOK_SOURCE:
       return "webhook";
@@ -58,6 +58,6 @@ export function messageTypeOf(source: string | undefined): MessageType {
     case INTERNAL_SOURCE:
       return "internal";
     default:
-      return "user";
+      return "public";
   }
 }

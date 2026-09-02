@@ -1,10 +1,10 @@
-# Action Forms — one message protocol
+# Action Forms — one dispatch protocol
 
-Every arrival at a flow is a **message** of one **type**, delivered to one
-**entry** addressed by `(type, name)`. A caller over HTTP sends a `user`
-message to `flow.actions[name]`. The host cron sends a `schedule` message to
-`flow.schedules.static[id]`. A task board drain sends a `task` message to
-`flow.tasks[name]`. A running request sends an `internal` message to
+Every arrival at a flow is a **dispatch** of one **type**, delivered to one
+**entry** addressed by `(type, name)`. A caller over HTTP sends a `public`
+dispatch to `flow.actions[name]`. The host cron sends a `schedule` dispatch to
+`flow.schedules.static[id]`. A task board drain sends a `task` dispatch to
+`flow.tasks[name]`. A running request sends an `internal` dispatch to
 `flow.internal[name]`. Delivery is the same for all of them — one envelope,
 one door (`host.dispatch`), one request record — and so is addressing: one
 keyed lookup with **no fallback**.
@@ -34,28 +34,28 @@ The core is independent of how the entry is addressed or authenticated. That
 is what lets a webhook handler, a task worker's gate, or an internal wake be a
 first-class entry without living in `flow.actions`.
 
-## The six message types
+## The six dispatch types
 
 | Type       | Arrives from                                        | Map on the flow                          | Input schema owned by |
 | ---------- | --------------------------------------------------- | ---------------------------------------- | --------------------- |
-| `user`     | a caller — HTTP, MCP, voice, any custom transport   | `flow.actions[name]`                     | the author            |
+| `public`   | a caller — HTTP, MCP, voice, any custom transport   | `flow.actions[name]`                     | the author            |
 | `chat`     | the chat adapter, on a matched subscription         | `flow.chat.on[eventKey]`                 | the chat protocol     |
 | `webhook`  | a verified external sender                          | `flow.webhooks[provider].on[eventType]`  | the sender            |
 | `schedule` | the host cron                                       | `flow.schedules.static[scheduleId]`      | the framework         |
 | `task`     | a task board drain handing a claimed row off        | `flow.tasks[name]`                       | the framework         |
 | `internal` | a `dispatcher()` block in one of this flow's requests | `flow.internal[name]`                  | the author            |
 
-A message's type is decided by **which door it came through** — the trusted
+A dispatch's type is decided by **which door it came through** — the trusted
 `source` an adapter or the dispatch seam stamps on the envelope
-(`messageTypeOf` in `engine/execution/transport-sources.ts`): `webhook`,
-`chat`, `scheduled`, `task`, `internal`, and every other source is `user`.
+(`dispatchTypeOf` in `engine/execution/transport-sources.ts`): `webhook`,
+`chat`, `scheduled`, `task`, `internal`, and every other source is `public`.
 Nothing in a request body can pick a type, which is what makes each map a
 boundary a caller cannot cross.
 
 ```ts
 const conductor = defineFlow({
   kind: "conductor",
-  actions:  { seed, status, answer },        // user — the public API
+  actions:  { seed, status, answer },        // public — the caller-facing API
   internal: { wake: { block: wakeBlock } },  // reachable only from a dispatcher inside
   tasks:    board.tasks,                     // produced by the board; the claim gate per seat
   schedules: { static: { nightly: { cron: "0 3 * * *", block: sweep } } },
@@ -74,13 +74,13 @@ reads exactly one map and returns the entry or `undefined`. The engine's
 the protocol coordinate for `chat` / `webhook` / `schedule` out of the
 adapter's namespaced metadata slot. Every branch is terminal:
 
-- A `task` message named `implement` resolves `flow.tasks.implement` or
+- A `task` dispatch named `implement` resolves `flow.tasks.implement` or
   nothing. It never reaches `flow.actions.implement`, however that action is
   named.
-- A `webhook` message with no coordinate resolves nothing — it does not fall
+- A `webhook` dispatch with no coordinate resolves nothing — it does not fall
   back to an action named after the handler block.
 - A forged `metadata.chat.eventKey` on an `http` dispatch is ignored: the
-  source says `user`, so the caller's named action resolves and nothing else.
+  source says `public`, so the caller's named action resolves and nothing else.
 
 The cost is deliberate: a handler reachable from two types is declared twice,
 under both maps, with one block. A block shared that way cannot assume which
@@ -94,7 +94,7 @@ was the hole: a framework-stamped dispatch whose provenance name collided with
 a public action's key would have been handed the public handler. The
 detached source was made terminal to close it — and the exception was the
 rule. With no fallback for any type, the property the detached branch carried
-alone now holds for all six: a message cannot reach a handler outside its own
+alone now holds for all six: a dispatch cannot reach a handler outside its own
 type's map.
 
 ## Sending: `dispatcher()`, a block, not a `ctx` method
@@ -138,7 +138,7 @@ it. Every refusal is decided before anything is dispatched.
 
 ### The two session targets
 
-| `session`   | The message runs in                                                 | Not found                     |
+| `session`   | The dispatch runs in                                                 | Not found                     |
 | ----------- | ------------------------------------------------------------------- | ----------------------------- |
 | `{ key }`   | a **child** of the running session, derived from the key + tenant + principal + parent session + lineage | minted; the same key from the same parent is **adopted** next time |
 | `{ id }`    | an **existing** session — same flow kind, same principal, same tenant, not bound to another org | **refused**, never created |
@@ -171,7 +171,7 @@ sibling, send a message — is one block with one optional session argument.
 
 ## Task hand-off: the board is the only thing that mints rows
 
-A `task` message is the one type that carries a claim on a durable row. Rows
+A `task` dispatch is the one type that carries a claim on a durable row. Rows
 are minted by a task board and by nothing else, so `flow.tasks` is meaningful
 only as `tasks: board.tasks`: the board produces one entry per handed-off
 seat, each wrapping the seat's worker in the board's **claim gate**, and
@@ -195,7 +195,7 @@ re-read the claimed row and verify the claim is still current (`attempt`,
 `createdAt`, `incarnationId`, `status`, an unexpired lease, and that the row
 still routes to this seat); mark the task scope; re-mint the claim ticket from
 the verified row; start lease renewal from the child's own async chain. The
-envelope a `task` message carries is fixed and server-derived:
+envelope a `task` dispatch carries is fixed and server-derived:
 
 ```ts
 type TaskDispatchInput = {
@@ -219,7 +219,7 @@ hand-off whose seat name collides with a public action never inherits that
 action's `queue` / `reject`; a chat or schedule entry can declare its own
 policy where before it could only take the flow default. A child session
 shared across rows (`per-worker`, or a `key` policy) wants `queue` on its
-entry rather than the `allow` default, or two messages interleave.
+entry rather than the `allow` default, or two dispatches interleave.
 
 ## What must not silently change
 
@@ -228,7 +228,7 @@ entry rather than the `allow` default, or two messages interleave.
   Retry, continue and resume refuse them, and a host's `publicReentrySources`
   cannot re-open them. Both are dispatched from inside a running request and
   have no caller-facing entry, so they may have no caller-facing re-entry. A
-  spawned session *is* reachable from outside — by a `user` message to its
+  spawned session *is* reachable from outside — by a `public` dispatch to its
   id, an ordinary caller-addressed request.
 - **The source is trusted because a caller cannot set it.** Every
   authorization branch that reads it depends on that (BP-031).
@@ -251,7 +251,7 @@ is dropped. Make a schedule static if it must survive a crash.
 
 | Form                    | Reachable on recovery via              | Crash-recoverable when durable |
 | ----------------------- | -------------------------------------- | ------------------------------ |
-| `user` entry            | `flow.actions[name]`                   | Yes                            |
+| `public` entry            | `flow.actions[name]`                   | Yes                            |
 | `chat` entry            | `flow.chat.on[eventKey]`               | Yes                            |
 | `webhook` entry         | `flow.webhooks[provider].on[event]`    | Yes                            |
 | Static `schedule` entry | `flow.schedules.static[id]`            | Yes                            |
@@ -264,7 +264,7 @@ is dropped. Make a schedule static if it must survive a crash.
 - [Detached Work](./detached-work.md) — what happens to a dispatched request
   over its lifetime, per deployment topology.
 - [Inbound Transports](./inbound-transports.md) — the `InboundTransportAdapter`
-  contract and the `InboundRequestEnvelope` every message travels on.
+  contract and the `InboundRequestEnvelope` every dispatch travels on.
 - [State and Scopes](./state-and-scopes.md) → *Child sessions and scope* —
   what a child session inherits, and `sharedToLineage`.
 - [Webhook Transport](./webhook-transport.md), [Chat Transport](./chat-transport.md),
