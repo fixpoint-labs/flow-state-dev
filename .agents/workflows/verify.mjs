@@ -1139,6 +1139,44 @@ check('both scouts must attribute an approval label to a human before it passes 
   }
 })
 
+check("both scouts count the owner's own approval even though the owner is every PR's author", async () => {
+  // Every PR in this repo is opened under the owner's login, so "not the PR author" excluded the owner by
+  // construction: the owner's "Approved. Lets proceed." on their own spec PR read as a self-approval and
+  // released nothing. The exclusion exists so a WORKER cannot approve its own PR; the owner is not a
+  // worker. Every other login keeps the exclusion, and with no owner configured nobody is exempted.
+  const withOwner = await run('epic-wake.js', {
+    args: { ...epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }), owner: 'the-owner' },
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  for (const label of ['gate:epic', 'refresh:issues']) {
+    const scout = withOwner.calls.find((c) => c.label === label)
+    assert.ok(scout, `${label} scout ran`)
+    assert.match(scout.prompt, /not the PR author — EXCEPT `the-owner`/, `${label} exempts the owner from the author exclusion`)
+    assert.match(scout.prompt, /counts even when that login is also the PR's author/, `${label} says the owner counts as author`)
+    assert.match(scout.prompt, /Every other login is still excluded when it authored the PR/, `${label} keeps the exclusion for workers`)
+  }
+  const noOwner = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  for (const label of ['gate:epic', 'refresh:issues']) {
+    const scout = noOwner.calls.find((c) => c.label === label)
+    assert.match(scout.prompt, /not the PR author\./, `${label} keeps the plain rule with no owner`)
+    assert.doesNotMatch(scout.prompt, /EXCEPT/, `${label} exempts nobody when no owner is configured`)
+  }
+})
+
+check('an unattributable label on a never-approved epic is said out loud when the gate holds', async () => {
+  // The carry-case line ("timeline unreadable") fires only when a recorded approval rode the gap. With
+  // nothing recorded the gate simply held, and the label sitting on the PR went unmentioned.
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2')] }),
+    respond: epicResponder({ approved: false, approvedByLabel: false, labelPresent: true, labelProvenanceUnreadable: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(result.epicApproved, false, 'nothing recorded, nothing released')
+  assert.match(logs.join('\n'), /Epic objective not signed off.*applier could not be read \(timeline unreadable\)/, 'the hold names the unreadable label')
+})
+
 check('an owner-applied label still passes both gates', async () => {
   // The provenance check must not break the channel it guards — the whole point of reading the label
   // is that an epic sitting behind an unread `epic approved` is an epic stalled on bookkeeping.
