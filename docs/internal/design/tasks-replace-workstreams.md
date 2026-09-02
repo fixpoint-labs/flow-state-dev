@@ -30,9 +30,10 @@ not mistake the endpoint for the scope.
 - **One inbox per flow, addressed `(type, name)`, same-flow only** — the address,
   the five message types, the no-fallback rule, and the typed entry.
 - **`dispatcher` as a handler built around a typed envelope** — not a fifth
-  block kind. D-8 says the handler *returns* the envelope; the execution model
-  settles where the envelope actually goes, and it is down into the seam rather
-  than up to a caller — see §"`dispatcher` — a handler this cycle, a kind later".
+  block kind. The handler builds the envelope, puts it through a factory-only
+  seam, and returns the handle; it does not return the envelope for a brand
+  check (D-8 as amended, 2026-09-01). See §"`dispatcher` — a handler this
+  cycle, a kind later".
 - No `relay.on`. No `sessionKind`.
 
 **Out this cycle.** Deferred is not rejected; each of these stays live for a
