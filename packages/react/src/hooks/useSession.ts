@@ -69,7 +69,7 @@ const IN_PROGRESS_LOOKUP_LIMIT = 10;
  * outright by any deployment that set a smaller ceiling — turning an ordinary
  * mount into a 400 and an empty axis. Sending nothing lets the route apply its
  * own default, which is always within its own bounds. An app that wants a
- * specific page says so with `children: { limit }` and owns the result.
+ * specific page says so with `childSessions: { limit }` and owns the result.
  */
 
 /**
@@ -85,7 +85,7 @@ export type SessionItemsOptions =
 /**
  * Background-work list configuration for useSession.
  */
-export type SessionChildrenOptions = {
+export type SessionChildSessionsOptions = {
   /**
    * Rows each read asks for, newest first. Omitted by default, which lets the
    * server apply its own page size.
@@ -96,7 +96,7 @@ export type SessionChildrenOptions = {
    * one page is not reachable from the hook.
    *
    * The server caps this and rejects a larger value with a 400, which surfaces
-   * as `childrenStale` rather than rows. The cap defaults to 100 and is
+   * as `childSessionsStale` rather than rows. The cap defaults to 100 and is
    * raised with `maxChildSessionListLimit` on the server, so a value above what
    * the deployment permits is a misconfiguration on the app's side, not a
    * silent truncation.
@@ -119,7 +119,7 @@ export type UseSessionHookOptions = {
   orgId?: string;
   baseUrl?: string;
   items?: SessionItemsOptions;
-  children?: SessionChildrenOptions;
+  childSessions?: SessionChildSessionsOptions;
   /**
    * When true, on mount the hook checks if the session has an in-progress
    * request and re-attaches to its stream using cursor-based continuation.
@@ -213,7 +213,7 @@ export type SessionView = {
    * the start of every action, and whenever the app calls `refresh()`.
    *
    * One page of the most recent entries, newest first, sized by the server
-   * unless the app names a page with `children: { limit }`. This is
+   * unless the app names a page with `childSessions: { limit }`. This is
    * all-time history rather than only what is running now, so it grows with
    * everything the conversation has ever started; past one page the oldest
    * finished work falls off the end and is not reachable from here.
@@ -222,15 +222,15 @@ export type SessionView = {
    * means only *not finished* — never render it as "running", "working" or
    * "thinking", and never treat it as proof a worker is alive.
    */
-  readonly children: ReadonlyArray<ChildSessionSummary>;
+  readonly childSessions: ReadonlyArray<ChildSessionSummary>;
   /**
-   * True when the most recent attempt to re-read `children` failed. The
+   * True when the most recent attempt to re-read `childSessions` failed. The
    * rows already read are kept rather than cleared, so this is the difference
    * between "this is the current list" and "this is the last list we could
    * get" — without it a job that has since failed renders as still running.
    * Cleared by the next successful read.
    */
-  readonly childrenStale: boolean;
+  readonly childSessionsStale: boolean;
   /** Returns items owned by a container scope (items where `ownedBy === blockInstanceId`). */
   getOwnedItems: (ownedBy: string) => OutputItem[];
   /** Returns items stamped with the given `agentName`. Useful for rendering per-agent panels. */
@@ -403,11 +403,11 @@ export function useSession(
   );
 
   // Read off as a primitive rather than memoizing the options object: callers
-  // pass `children` as an inline literal, so a new object identity every
+  // pass `childSessions` as an inline literal, so a new object identity every
   // render would re-create `refreshChildSessions` and re-fire the mount read on
   // every render. `undefined` when the app named no page — see the note on the
   // read below for why nothing is substituted here.
-  const childrenLimit = options?.children?.limit;
+  const childrenLimit = options?.childSessions?.limit;
 
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
@@ -424,8 +424,8 @@ export function useSession(
   // Background work running under this session. Read from the server, never
   // derived from the conversation's own items — a child session is a separate
   // session, not a message.
-  const [children, setChildren] = useState<ChildSessionSummary[]>([]);
-  const [childrenStale, setChildrenStale] = useState(false);
+  const [childSessions, setChildSessions] = useState<ChildSessionSummary[]>([]);
+  const [childSessionsStale, setChildSessionsStale] = useState(false);
   // Two guards, and they answer different questions. The generation asks
   // "is this response still about the thing we are reading?" and advances
   // whenever the read identity changes (session id, or the client itself,
@@ -590,13 +590,13 @@ export function useSession(
    * One read per call — there is no digest and no coalescing, because the
    * panel is current as of the caller's last interaction and nothing else
    * triggers this. A failed read keeps the rows already on screen and raises
-   * `childrenStale`; it never clears the list, because showing nothing
+   * `childSessionsStale`; it never clears the list, because showing nothing
    * would claim the work went away.
    */
   const refreshChildSessions = useCallback(async () => {
     if (sessionId === undefined) {
-      setChildren([]);
-      setChildrenStale(false);
+      setChildSessions([]);
+      setChildSessionsStale(false);
       return;
     }
 
@@ -620,8 +620,8 @@ export function useSession(
       if (sequence <= childSessionAppliedSequenceRef.current) return;
 
       childSessionAppliedSequenceRef.current = sequence;
-      setChildren(rows);
-      setChildrenStale(false);
+      setChildSessions(rows);
+      setChildSessionsStale(false);
     } catch {
       if (generation !== childSessionGenerationRef.current) return;
       // A failure is an outcome, so it is ordered like one. Without this a
@@ -633,7 +633,7 @@ export function useSession(
 
       childSessionAppliedSequenceRef.current = sequence;
       // Keep the last known rows, but stop presenting them as current.
-      setChildrenStale(true);
+      setChildSessionsStale(true);
     }
   }, [sessionId, sessionClient, childrenLimit]);
 
@@ -1077,8 +1077,8 @@ export function useSession(
   useEffect(() => {
     childSessionGenerationRef.current += 1;
     childSessionAppliedSequenceRef.current = 0;
-    setChildren([]);
-    setChildrenStale(false);
+    setChildSessions([]);
+    setChildSessionsStale(false);
   }, [sessionId, sessionClient]);
 
   // The mount read. This is the only read that is not tied to a user
@@ -1728,8 +1728,8 @@ export function useSession(
     latestRequest,
     items,
     resourceChanges,
-    children,
-    childrenStale,
+    childSessions,
+    childSessionsStale,
     getOwnedItems,
     getItemsByAgent,
     getItemsByVisibility,

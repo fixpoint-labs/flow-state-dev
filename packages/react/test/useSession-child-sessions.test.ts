@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * Behavioral tests for `useSession`'s `children` axis (FIX-1012).
+ * Behavioral tests for `useSession`'s `childSessions` axis (FIX-1012).
  *
  * The design is interaction-only: the panel is current as of the last thing
  * the user did. It is read on mount, at the START of every action, and on
@@ -100,7 +100,7 @@ async function mountSession(options?: Record<string, unknown>) {
   return view;
 }
 
-describe("useSession children axis (FIX-1012)", () => {
+describe("useSession childSessions axis (FIX-1012)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     sessionClientMock.getSession.mockResolvedValue({
@@ -132,8 +132,8 @@ describe("useSession children axis (FIX-1012)", () => {
       "sess1",
       undefined
     );
-    expect(result.current.children).toEqual([]);
-    expect(result.current.childrenStale).toBe(false);
+    expect(result.current.childSessions).toEqual([]);
+    expect(result.current.childSessionsStale).toBe(false);
     // The second path (BP-035): the conversation is untouched by this feature.
     expect(result.current.items).toEqual([]);
   });
@@ -147,11 +147,11 @@ describe("useSession children axis (FIX-1012)", () => {
     const { result } = await mountSession();
 
     await waitFor(() => {
-      expect(result.current.children).toHaveLength(2);
+      expect(result.current.childSessions).toHaveLength(2);
     });
-    expect(result.current.children.map((w) => w.id)).toEqual(["ws1", "ws2"]);
+    expect(result.current.childSessions.map((w) => w.id)).toEqual(["ws1", "ws2"]);
     // Failed work stays listed rather than disappearing (decision 3).
-    expect(result.current.children[1]?.status).toBe("failed");
+    expect(result.current.childSessions[1]?.status).toBe("failed");
   });
 
   it("reads EXACTLY ONCE per turn — at the start of the action, not twice", async () => {
@@ -206,7 +206,7 @@ describe("useSession children axis (FIX-1012)", () => {
     const { result } = await mountSession();
 
     await waitFor(() => {
-      expect(result.current.children).toEqual([]);
+      expect(result.current.childSessions).toEqual([]);
     });
 
     sessionClientMock.listChildSessions.mockResolvedValue([row("ws_new", "active")]);
@@ -217,7 +217,7 @@ describe("useSession children axis (FIX-1012)", () => {
 
     // Under interaction-only this is the app's only way to surface a
     // just-launched job without sending another action.
-    expect(result.current.children.map((w) => w.id)).toEqual(["ws_new"]);
+    expect(result.current.childSessions.map((w) => w.id)).toEqual(["ws_new"]);
   });
 
   it("an older read cannot overwrite a newer one within the same session", async () => {
@@ -239,7 +239,7 @@ describe("useSession children axis (FIX-1012)", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.children[0]?.status).toBe("completed");
+      expect(result.current.childSessions[0]?.status).toBe("completed");
     });
 
     // Now let the stale mount read land last.
@@ -250,7 +250,7 @@ describe("useSession children axis (FIX-1012)", () => {
 
     // The newer rows survive: a terminal row must never be regressed to
     // active by a response that was simply slower.
-    expect(result.current.children[0]?.status).toBe("completed");
+    expect(result.current.childSessions[0]?.status).toBe("completed");
   });
 
   it("discards a read in flight when baseUrl changes under a constant session id", async () => {
@@ -272,7 +272,7 @@ describe("useSession children axis (FIX-1012)", () => {
     rerender({ baseUrl: "https://new.example" });
 
     await waitFor(() => {
-      expect(result.current.children.map((w) => w.id)).toEqual([
+      expect(result.current.childSessions.map((w) => w.id)).toEqual([
         "ws_new_backend"
       ]);
     });
@@ -284,7 +284,7 @@ describe("useSession children axis (FIX-1012)", () => {
 
     // A guard keyed to the session id alone would let the old backend's rows
     // land here, because the session id never changed.
-    expect(result.current.children.map((w) => w.id)).toEqual([
+    expect(result.current.childSessions.map((w) => w.id)).toEqual([
       "ws_new_backend"
     ]);
   });
@@ -294,7 +294,7 @@ describe("useSession children axis (FIX-1012)", () => {
     const { result } = await mountSession();
 
     await waitFor(() => {
-      expect(result.current.children).toHaveLength(1);
+      expect(result.current.childSessions).toHaveLength(1);
     });
 
     sessionClientMock.listChildSessions.mockRejectedValue(new Error("network"));
@@ -303,16 +303,16 @@ describe("useSession children axis (FIX-1012)", () => {
     });
 
     // Retained, not cleared — dropping them would claim the work vanished.
-    expect(result.current.children.map((w) => w.id)).toEqual(["ws1"]);
-    expect(result.current.childrenStale).toBe(true);
+    expect(result.current.childSessions.map((w) => w.id)).toEqual(["ws1"]);
+    expect(result.current.childSessionsStale).toBe(true);
 
     sessionClientMock.listChildSessions.mockResolvedValue([row("ws1", "completed")]);
     await act(async () => {
       await result.current.refresh();
     });
 
-    expect(result.current.childrenStale).toBe(false);
-    expect(result.current.children[0]?.status).toBe("completed");
+    expect(result.current.childSessionsStale).toBe(false);
+    expect(result.current.childSessions[0]?.status).toBe("completed");
   });
 
   it("names no page size of its own, so a deployment's smaller ceiling cannot reject the read", async () => {
@@ -330,7 +330,7 @@ describe("useSession children axis (FIX-1012)", () => {
     // The list is all-time history, not just what is running, so a long-lived
     // conversation outgrows any fixed number. An app that knows it runs more
     // background work than the default has to be able to say so.
-    await mountSession({ children: { limit: 500 } });
+    await mountSession({ childSessions: { limit: 500 } });
 
     expect(sessionClientMock.listChildSessions).toHaveBeenCalledWith(
       "sess1",
@@ -343,7 +343,7 @@ describe("useSession children axis (FIX-1012)", () => {
       // A fresh object identity every render — the ordinary way an app writes
       // this. Keying the read on the object rather than the number inside it
       // turns each render into another read.
-      useSession("sess1", { flowKind: "demo", children: { limit: 250 } })
+      useSession("sess1", { flowKind: "demo", childSessions: { limit: 250 } })
     );
 
     await waitFor(() => {
@@ -375,7 +375,7 @@ describe("useSession children axis (FIX-1012)", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.children[0]?.status).toBe("completed");
+      expect(result.current.childSessions[0]?.status).toBe("completed");
     });
 
     await act(async () => {
@@ -386,8 +386,8 @@ describe("useSession children axis (FIX-1012)", () => {
     // The rows on screen came from the newer read and are current. A failure
     // from a read that was already superseded says nothing about them, so
     // presenting them as possibly out of date would be a lie the user acts on.
-    expect(result.current.children[0]?.status).toBe("completed");
-    expect(result.current.childrenStale).toBe(false);
+    expect(result.current.childSessions[0]?.status).toBe("completed");
+    expect(result.current.childSessionsStale).toBe(false);
   });
 
   it("a read that succeeds after a newer one failed does not clear the stale mark", async () => {
@@ -409,7 +409,7 @@ describe("useSession children axis (FIX-1012)", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.childrenStale).toBe(true);
+      expect(result.current.childSessionsStale).toBe(true);
     });
 
     await act(async () => {
@@ -420,8 +420,8 @@ describe("useSession children axis (FIX-1012)", () => {
     // The newest thing known about this list is that reading it failed. An
     // older response arriving afterwards is not evidence it is current again,
     // and applying it would also regress the rows.
-    expect(result.current.childrenStale).toBe(true);
-    expect(result.current.children).toHaveLength(0);
+    expect(result.current.childSessionsStale).toBe(true);
+    expect(result.current.childSessions).toHaveLength(0);
   });
 
   it("clears the axis when the session changes", async () => {
@@ -433,16 +433,16 @@ describe("useSession children axis (FIX-1012)", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.children).toHaveLength(1);
+      expect(result.current.childSessions).toHaveLength(1);
     });
 
     sessionClientMock.listChildSessions.mockResolvedValue([]);
     rerender({ id: "sess2" });
 
     await waitFor(() => {
-      expect(result.current.children).toEqual([]);
+      expect(result.current.childSessions).toEqual([]);
     });
-    expect(result.current.childrenStale).toBe(false);
+    expect(result.current.childSessionsStale).toBe(false);
   });
 
   it("renders a status it has never seen, and a row that has no status at all", async () => {
@@ -457,14 +457,14 @@ describe("useSession children axis (FIX-1012)", () => {
     const { result } = await mountSession();
 
     await waitFor(() => {
-      expect(result.current.children).toHaveLength(2);
+      expect(result.current.childSessions).toHaveLength(2);
     });
-    expect(result.current.children[0]?.status).toBe("escalated");
-    expect(result.current.children[1]?.status).toBeUndefined();
+    expect(result.current.childSessions[0]?.status).toBe("escalated");
+    expect(result.current.childSessions[1]?.status).toBeUndefined();
   });
 });
 
-describe("useSession children — every interaction path is classified (FIX-1012)", () => {
+describe("useSession childSessions — every interaction path is classified (FIX-1012)", () => {
   /**
    * The list of work-starting methods has been wrong three times, so this is
    * an exhaustiveness test rather than a list: it enumerates the callable

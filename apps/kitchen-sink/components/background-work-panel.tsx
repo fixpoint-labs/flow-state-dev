@@ -17,7 +17,7 @@
  *   {@link BackgroundWorkRefresh}, mounted once at the page level — re-reads
  *   when a turn stops streaming. It is not in this component on purpose; see
  *   its own doc for why a duplicated responsive tree makes that matter.
- * - **`childrenStale` means "this is the last list we could get".** The rows
+ * - **`childSessionsStale` means "this is the last list we could get".** The rows
  *   stay on screen and get marked, rather than disappearing.
  * - **`status` is absent until something has run**, and `"active"` means only
  *   *not finished*. Neither is rendered as "running".
@@ -90,27 +90,27 @@ interface BackgroundWorkPanelProps {
  * action. Guarded on the actual true → false transition, so a re-render never
  * triggers a second read.
  *
- * **Demo debt — do not copy this into an application.** The children axis has
+ * **Demo debt — do not copy this into an application.** The child-session axis has
  * a pinned read budget: ONE `listChildSessions` read per turn, taken by
  * `useSession` at action start. That budget is a contract
  * (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
  * panel reads one page plus a sentinel instead of walking the index.
  *
  * What this actually costs, stated plainly because it was understated twice:
- * `session.refresh()` is a **full session snapshot plus** the children read,
+ * `session.refresh()` is a **full session snapshot plus** the child-session read,
  * and with `items: true` the snapshot paginates the entire item history. It is
  * not one extra list read. The gate below at least confines that to
  * conversations which use background work at all.
  *
  * The intended fix is a framework opt-in rather than an app-level effect,
  * tracked as **FIX-1109**: `useSession` grows an explicit
- * `children: { refreshOnTerminal: true }`, refreshing from the terminal
+ * `childSessions: { refreshOnTerminal: true }`, refreshing from the terminal
  * branch it already has (`onRequestStatus`), so the pinned budget stays the
  * default and the second read becomes a named choice. When FIX-1109 lands,
  * delete this component and pass that option instead.
  */
 export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPanelProps["session"] }) {
-  const { refresh, isStreaming, items, children } = session;
+  const { refresh, isStreaming, items, childSessions } = session;
 
   // Only conversations that actually use background work pay for this. The
   // gate matters because `session.refresh()` is NOT the cheap read this was
@@ -120,7 +120,7 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
   // conversation — the overwhelming majority of which never file a job — paid
   // a full history refetch to update a panel with nothing in it.
   //
-  // `useSession` exposes no children-only refresh (`refreshChildSessions` is
+  // `useSession` exposes no child-session-only refresh (`refreshChildSessions` is
   // internal), which is exactly the gap FIX-1109 closes. Until it lands this
   // gate is the whole of the mitigation available to an app.
   //
@@ -128,7 +128,7 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
   // uses, and NOT from `task-change` — this board declares those invisible to
   // the client on purpose (see `backgroundWorkLedger`).
   const usesBackgroundWork =
-    children.length > 0 ||
+    childSessions.length > 0 ||
     items.some(
       (item) =>
         item.type === "component" &&
@@ -149,7 +149,7 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
 export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const { children, childrenStale, refresh } = session;
+  const { childSessions, childSessionsStale, refresh } = session;
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -160,9 +160,9 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
     }
   }, [refresh]);
 
-  if (children.length === 0 && !childrenStale) return null;
+  if (childSessions.length === 0 && !childSessionsStale) return null;
 
-  const openRow = children.find((child) => child.id === openId) ?? null;
+  const openRow = childSessions.find((child) => child.id === openId) ?? null;
 
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4" data-testid="background-work-panel">
@@ -170,8 +170,8 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
         <div className="flex items-center gap-2 px-3 py-2">
           <Hourglass className="size-3.5 text-indigo-500 dark:text-indigo-400" />
           <span className="text-xs font-medium">Background work</span>
-          <span className="text-xs text-muted-foreground">{children.length}</span>
-          {childrenStale && (
+          <span className="text-xs text-muted-foreground">{childSessions.length}</span>
+          {childSessionsStale && (
             <span className="text-xs text-amber-600 dark:text-amber-400">
               may be out of date
             </span>
@@ -189,7 +189,7 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
         </div>
 
         <ul className="border-t border-indigo-500/20">
-          {children.map((child) => (
+          {childSessions.map((child) => (
             <li key={child.id}>
               <button
                 type="button"

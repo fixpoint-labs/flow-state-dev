@@ -96,7 +96,7 @@ what came back.
   the flow as `tasks: backgroundWorkTasks` (`flows/chat-agent/flow.ts`) —
   `defineFlow` refuses the flow without them.
 - UI: `components/background-work-panel.tsx`, mounted above the prompt input.
-  Reads `session.children` / `session.childrenStale` and opens one child with
+  Reads `session.childSessions` / `session.childSessionsStale` and opens one child with
   `useSession(childId, { flowKind: "chat-agent" })` — the **parent's** flow
   kind, because that is what a child session is stamped with.
 - E2E: `e2e/background-work.spec.ts`, with `background-brief` mocked in
