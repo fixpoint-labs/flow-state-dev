@@ -34,8 +34,10 @@
  * | `"per-worker"`    | this seat, one child per claiming session  | the worker should remember what it already did |
  * | `{ key: fn }`     | a value the function reads off the task    | one issue across spec, implement and review |
  *
- * A shared session wants `queue` concurrency on its entry rather than the
- * `allow` default, or two tasks dispatched into it interleave their writes.
+ * A shared session serialises its rows: `defineFlow` defaults the entry a
+ * `per-worker` or `key` seat hands off to `queue` concurrency (an explicit
+ * policy on the entry wins), so two rows dispatched into one child do not
+ * interleave their writes.
  */
 import type { DispatchHandle } from "@flow-state-dev/core";
 import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-state-dev/core/types";

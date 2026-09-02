@@ -216,6 +216,40 @@ describe("task entries", () => {
     expect(flow().tasks?.implement.block.name).toBe("issues-implement-gate");
   });
 
+  it("defaults an entry a shared-child seat hands off to `queue`, and leaves a per-task one alone", () => {
+    // `per-worker` and `key` seats send several rows into one child session,
+    // where the `allow` default interleaves their writes. `per-task` gives
+    // every row its own session, so nothing there needs serialising.
+    const shared = markDispatcher(
+      handler({ name: "hand-off-shared", inputSchema: z.unknown(), execute: () => null }),
+      { type: "task", target: "implement", session: "per-worker" }
+    );
+    bindTaskDispatcher(shared, bindingFor("issues"));
+    const flow = defineFlow({
+      kind: "shared-child",
+      actions: {
+        run: { block: sequencer({ name: "run" }).step(shared).step(handOff("review", "issues")) }
+      },
+      tasks: { implement: { block: noop }, review: { block: noop } }
+    });
+    expect(flow.tasks?.implement.concurrency).toBe("queue");
+    expect(flow.tasks?.review.concurrency).toBeUndefined();
+  });
+
+  it("keeps an author's explicit concurrency on a shared-child entry", () => {
+    const keyed = markDispatcher(
+      handler({ name: "hand-off-keyed", inputSchema: z.unknown(), execute: () => null }),
+      { type: "task", target: "implement", session: { key: () => "k" } }
+    );
+    bindTaskDispatcher(keyed, bindingFor("issues"));
+    const flow = defineFlow({
+      kind: "explicit-policy",
+      actions: { run: { block: sequencer({ name: "run" }).step(keyed) } },
+      tasks: { implement: { block: noop, concurrency: "allow" } }
+    });
+    expect(flow.tasks?.implement.concurrency).toBe("allow");
+  });
+
   it("gates an entry once when one board reaches it from two seats", () => {
     const flow = defineFlow({
       kind: "two-seats",

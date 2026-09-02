@@ -603,6 +603,12 @@ function resolveDispatchTargets(
 ): Record<string, TaskEntry> | undefined {
   const gated: Record<string, TaskEntry> = {};
   const gatedBy = new Map<string, string>();
+  // Entries some seat hands off to under a policy that shares one child across
+  // rows (`per-worker`, or a `key`). Two rows dispatched into one session
+  // interleave their writes under the `allow` default, so these default to
+  // `queue` unless the author chose a policy. A `per-task` seat lands every row
+  // in a session of its own and keeps the flow default.
+  const sharedChild = new Set<string>();
 
   for (const block of reachable) {
     const address = block.dispatch;
@@ -650,6 +656,7 @@ function resolveDispatchTargets(
         gatedBy.set(address.target, binding.boardId);
         gated[address.target] = binding.gate(entry, address.target);
       }
+      if (address.session !== "per-task") sharedChild.add(address.target);
       continue;
     }
 
@@ -661,6 +668,12 @@ function resolveDispatchTargets(
   }
 
   if (tasks === undefined) return undefined;
+  for (const target of sharedChild) {
+    const entry = gated[target];
+    if (entry !== undefined && entry.concurrency === undefined) {
+      gated[target] = { ...entry, concurrency: "queue" };
+    }
+  }
   for (const name of Object.keys(tasks)) {
     if (gatedBy.has(name)) continue;
     throw new Error(

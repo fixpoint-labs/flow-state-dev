@@ -205,10 +205,10 @@ The two presets include the board id in the key, so two boards' children stay ap
 
 Above, `filings` and `calls` both carry `topic: "acme"`, so they run in one child session: two runs in the same session, and `listSessionRequests` on that child returns both. A row with no topic falls back to its own task id in that key function, so a task that doesn't ask for continuity gets a child of its own. Set a topic when a worker should pick up where it left off on the same body of work: one research thread, one issue, one document. Leave it off when each task starts cold. A key function that returns an empty string fails the row.
 
-A child that runs several rows runs them under its entry's concurrency policy, which defaults to `allow`. Declare `queue` on that entry or the rows interleave:
+A child that runs several rows runs them under its entry's concurrency policy. An entry a `per-worker` or `key` seat hands off to defaults to `queue`, so the rows run one at a time. A `per-task` seat's entry keeps the ordinary default (the flow's `request.concurrency`, else `allow`). An explicit `concurrency` on the entry wins:
 
 ```ts
-tasks: { investigate: { block: investigateBlock, concurrency: "queue" } },
+tasks: { investigate: { block: investigateBlock, concurrency: "allow" } },  // let rows in one child interleave
 ```
 
 Starting a child session is server-side only. There's no client call for it.

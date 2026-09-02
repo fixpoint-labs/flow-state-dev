@@ -212,11 +212,11 @@ See [Scheduled actions](/docs/server/scheduled).
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `block` | `BlockDefinition` | required | The block that runs in the child session. |
-| `concurrency` | `ConcurrencyConfig` | flow `request.concurrency`, else `"allow"` | Same as on an action. A child session that runs several rows wants `"queue"`. |
+| `concurrency` | `ConcurrencyConfig` | flow `request.concurrency`, else `"allow"`; `"queue"` when a `per-worker` or `key` seat hands off to it | Same as on an action. An explicit value wins over either default. |
 | `durable`, `tokenBudget`, `onCompleted`, `onErrored`, `userMessage` | as on an action | — | The rest of the action core. `description` and `mcp` do not apply. |
 
 ```ts
-tasks: { implement: { block: implementWorker, concurrency: "queue" } },
+tasks: { implement: { block: implementWorker, concurrency: "allow" } },  // override the shared-child default
 ```
 
 Before a task entry's block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError` instead. `defineFlow` throws, naming the block and the entry, on an entry with no `block`, a seat whose `target` names an entry the flow does not declare, a task entry no reachable board hands off to, a `task` dispatcher no board holds, two boards handing off to one entry, and an entry block that declares `sessionStateSchema` at its root or in a composed child.

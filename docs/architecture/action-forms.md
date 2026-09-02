@@ -224,8 +224,10 @@ through the same keyed lookup a dispatch resolves its handler with. A task
 hand-off whose seat name collides with a public action never inherits that
 action's `queue` / `reject`; a chat or schedule entry can declare its own
 policy where before it could only take the flow default. A child session
-shared across rows (`per-worker`, or a `key` policy) wants `queue` on its
-entry rather than the `allow` default, or two dispatches interleave.
+shared across rows (`per-worker`, or a `key` policy) would interleave two
+dispatches under `allow`, so `defineFlow` defaults the entry such a seat
+hands off to `queue`; an explicit policy on the entry wins, and a `per-task`
+seat keeps the flow default.
 
 ## What must not silently change
 

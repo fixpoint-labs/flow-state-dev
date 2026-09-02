@@ -361,11 +361,13 @@ export default defineFlow({
 The presets include the board id in the key, so two boards' `per-task` children stay
 apart even when their task ids coincide. A custom `key` is used as returned, so two
 seats (or two boards) that return the same key share one child. A child that runs
-several rows runs them under its entry's concurrency policy, which defaults to
-`allow`; declare `queue` on that entry or the rows interleave:
+several rows runs them under its entry's concurrency policy. An entry a `per-worker`
+or `key` seat hands off to defaults to `queue`, so the rows run one at a time; a
+`per-task` seat's entry keeps the ordinary default (the flow's `request.concurrency`,
+else `allow`). An explicit `concurrency` on the entry wins:
 
 ```ts
-tasks: { implement: { block: implementBlock, concurrency: "queue" } },
+tasks: { implement: { block: implementBlock, concurrency: "allow" } },  // let rows in one child interleave
 ```
 
 Only a named seat hands off: `defaultWorker` and a uniform `workers` block have no

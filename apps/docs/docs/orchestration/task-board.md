@@ -597,10 +597,10 @@ The block that runs in the child is declared on the flow under `tasks`, the same
 | `"per-worker"` | One per seat, shared by every row the seat runs. | The worker should remember what it already did. |
 | `{ key: (task: TaskWorkerInput) => string }` | Keyed on what the function returns, read from the same `TaskWorkerInput` the worker receives. Type the parameter; `TaskWorkerInput` comes from `@flow-state-dev/orchestration/tasks`. | One issue across several phases, or a key shared across seats. |
 
-The presets include the board id in the key, so two boards' `per-task` children stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same key share one child. A child that runs several rows runs them under its entry's concurrency policy, which defaults to `allow`. Declare `queue` on that entry or the rows interleave:
+The presets include the board id in the key, so two boards' `per-task` children stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same key share one child. A child that runs several rows runs them under its entry's concurrency policy. When a `per-worker` or `key` seat hands off to an entry, that entry defaults to `queue`, so the rows run one at a time; a `per-task` seat's entry keeps the ordinary default (the flow's `request.concurrency`, else `allow`). An explicit `concurrency` on the entry wins either way:
 
 ```ts
-tasks: { implement: { block: implementWorker, concurrency: "queue" } },
+tasks: { implement: { block: implementWorker, concurrency: "allow" } },  // let rows in one child interleave
 ```
 
 A key function that returns an empty string fails the row.
