@@ -21,7 +21,7 @@
  * top level.
  */
 import { describe, it, expect } from "vitest";
-import { defineFlow, dispatcher, generator, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, generator, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createInMemoryStores, runAction } from "../../src";
 import { createMockModelResolver } from "@flow-state-dev/testing";

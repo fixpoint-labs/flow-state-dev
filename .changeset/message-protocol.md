@@ -7,7 +7,7 @@
 "@flow-state-dev/devtool": minor
 ---
 
-One message protocol replaces Workstreams. Every arrival at a flow — a caller's action, a chat event, a webhook, a schedule, a task hand-off, an internal dispatch — is a message of one type delivered to one entry addressed by `(type, name)`, with no fallback between types.
+One message protocol replaces Workstreams (FIX-1302). Every arrival at a flow — a caller's action, a chat event, a webhook, a schedule, a task hand-off, an internal dispatch — is a message of one type delivered to one entry addressed by `(type, name)`, with no fallback between types.
 
 - **`defineFlow` gains `internal` and `tasks` entry maps.** `internal` entries are reachable only from a `dispatcher()` inside the flow; `tasks` entries are produced by a task board (`tasks: board.tasks`) and wrap each handed-off seat's worker in the board's claim gate. Both are definition-only, like the transport maps. Every entry, of every type, accepts its own `concurrency`.
 - **`dispatcher()` is the block that sends.** `dispatcher({ name, type: "internal", target, session: { key } | { id }, payload? })` returns a handler carrying its static address, and `defineFlow` refuses an address the flow does not declare — through composition, rescue handlers, and a generator's static `tools`. `{ key }` derives a child session of the running one (minted, then adopted on the same key); `{ id }` delivers into an existing session of the same flow and principal and refuses an unknown id rather than creating one. A refusal throws `DispatchRefusedError` naming the refusal (`no-entry`, `session-not-found`, `session-not-addressable`, `key-occupied`, `no-dispatch-operation`, `dispatch-rejected`).
