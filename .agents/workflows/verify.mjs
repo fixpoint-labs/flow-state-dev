@@ -2347,6 +2347,23 @@ check('spec at budget with no spec-level finding converges instead of dispatchin
   assert.match(logs.join('\n'), /FIX-2: spec converged \(2 rounds spent\)/)
 })
 
+check('spec-review activity with no timestamp is withheld, not converged', async () => {
+  // The scan reported activity but no cursor to advance to — the same unusable-batch case
+  // `cursorUsable` refuses everywhere else. Before FIX-1303 the planner had no way to tell that
+  // apart from a genuinely converged review (`atReviewBudget`), so it logged "converged" and the
+  // fold, which never ran, was never retried by name.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specReviewRounds: 0, specLevelFound: false })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: false, newSpecReviewEvents: true, specPr: 7, latestActivityAt: null } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'an unusable cursor is not a pending action either')
+  assert.ok(!result.converged.includes('FIX-2'), 'it must not be reported as converged — nothing was ever compared to the review budget')
+  assert.equal(result.issues[0].specReviewRounds, 0, 'no round is spent on a batch that was never handed to a worker')
+  assert.match(logs.join('\n'), /FIX-2: spec-review activity reported with no timestamp.*fold withheld, not converged/, 'the withheld fold is logged by name, in the same style as the FIX-1299 malformed-id guard')
+})
+
 check('the conditional third round IS dispatched, and says so', async () => {
   const { calls, logs } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specReviewRounds: 2, specLevelFound: true })] }),
@@ -8162,7 +8179,12 @@ check('INVARIANT: every gating field is schema-required', async () => {
       // liveness signal a null result used to be: optional, an entry that omitted it would be read as
       // a live observation, and a scan that ran out of room after six of ten issues would report the
       // other four as quiet — four cursors advanced past feedback nobody read.
-      PR_STATE_SCHEMA: ['specApproved', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha'],
+      // `latestActivityAt` joined once optional was shown to defeat its own description ("REQUIRED to
+      // be non-null whenever newSpecReviewEvents or newPrEvents is true"): a scout could satisfy the
+      // schema while omitting it, `cursorUsable` correctly refused the batch, and the planner — with
+      // no way to tell that refusal apart from a genuinely converged review — logged "converged" for a
+      // fold that never ran. FIX-1303.
+      PR_STATE_SCHEMA: ['specApproved', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha', 'latestActivityAt'],
       // `multiPrPending` earns its place here for a reason the others don't share: it was optional AND
       // had no clearing path, because the prompt asked only for the true case. So an omission had to
       // preserve the carried value (coercing it to false strands cap-deferred slices no event will
