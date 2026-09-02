@@ -9,13 +9,16 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 ### BP-002: Spec-driven execution
 
 - Status: Active
-- Date: 2026-02-15 (updated 2026-06-28: spec-driven)
-- Scope: Process — scoping and tracking a change.
+- Date: 2026-02-15 (updated 2026-06-28: spec-driven; 2026-09-02: a decided surface survives constraints)
+- Scope: Process — scoping and tracking a change, and holding the build to what the unit of intent decided.
 - Rule:
   - Every implementation change maps to a tracked unit of intent. Which unit depends on the route ([`../orchestration.md`](../orchestration.md) → "Which issues get a spec"): a **feature / enhancement** gets a full `spec/*` spec per BP-037; a **bug** gets none — the Linear issue is the contract and the fix is reviewed on its implementation PR.
   - Each spec carries explicit deliverables and verification steps.
   - Between the two: small, local work can use a one-screen agent brief on the issue (`agent-brief-template.md`) instead of a full spec doc. A bug returns to the spec route on the three overrides in [`../orchestration.md`](../orchestration.md) → "Which issues get a spec" — don't re-enumerate them here, since a count that drifts from the router's reads as a contradiction.
-- Why: Ties every change to a reviewable unit of intent with its own acceptance criteria, so execution stays accountable to a tracked requirement.
+  - **A surface the unit of intent decided survives an implementation constraint.** When a spec'd shape cannot be built as written — a package boundary, a dependency direction, a type that will not line up — re-read that section of the spec first, then move the *mechanism* under the surface until the shape holds. The shape is what was reviewed; the mechanism was not.
+  - **If the shape genuinely cannot hold, that is a conflict with the spec, not a decision to offer.** Say it where it is read first — above the fold, as *"the spec says X; this does Y because Z"* — with the way back to X. It is never one of the asks in *What's asked of you*: an ask reads as a choice between two acceptable shapes, and a reviewer who trusts the artifact has no reason to know one of them contradicts what they already approved.
+  - **The second time a reviewer questions a shape, re-read the source before replying.** A repeated "why is it like this" on one surface is a model question, not a naming one; answer it from the spec or design doc, not from the cut you have.
+- Why: Ties every change to a reviewable unit of intent with its own acceptance criteria, so execution stays accountable to a tracked requirement — and keeps the shape that was reviewed from being rewritten by whatever constraint the build meets first.
 
 ### BP-004: Public boundary first
 

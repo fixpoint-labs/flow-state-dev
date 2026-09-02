@@ -434,6 +434,8 @@ For each comment, pick exactly one bucket:
 
 When in doubt between "non-actionable code feedback" and "non-code conversation", treat it as the former. The bar for skipping a response is high — **never leave a code-related comment unresponded to.**
 
+**A second "why is it shaped like this" on one surface is a model question, not a wording one.** Before classifying it, re-read the spec (or design doc) section that decided that shape. If the code deviates from it, the reply is the conflict per BP-002 — *the spec says X; this does Y because Z* — and the fix is the way back to X, not a defence of the cut you have.
+
 #### 10.4: Take action and reply
 
 Process each comment in its bucket:

@@ -189,6 +189,10 @@ Two more cases the filters don't catch:
   made. Cite it and proceed.
 - **You'd take their answer either way but haven't formed a view.** Form one first. An ask with
   no recommendation is usually an ask that isn't ready.
+- **It contradicts a decision they already made.** A build constraint that forces a spec'd shape
+  to change is not a fork between two acceptable shapes; it is a conflict with the spec. Name it
+  as one — *the spec says X; this does Y because Z; here is the way back to X* — above the fold,
+  never as one of the three asks ([BP-002](best-practices/process.md#bp-002-spec-driven-execution)).
 
 The failure runs both directions. Under-asking hides a call that shapes the product; over-asking
 trains them to skim, which costs you the one they needed to read.
