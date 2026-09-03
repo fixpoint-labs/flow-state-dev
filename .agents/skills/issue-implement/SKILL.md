@@ -434,7 +434,7 @@ For each comment, pick exactly one bucket:
 
 When in doubt between "non-actionable code feedback" and "non-code conversation", treat it as the former. The bar for skipping a response is high — **never leave a code-related comment unresponded to.**
 
-**A second "why is it shaped like this" on one surface is a model question, not a wording one.** Before classifying it, re-read the section of the unit of intent that decided that shape — the spec or design doc, or the issue itself for a bug. If the code deviates from it, the reply is the conflict per BP-002 — *the spec (or issue) says X; this does Y because Z* — and the fix is the way back to X, not a defence of the cut you have.
+**A second "why is it shaped like this" on one surface is a model question, not a wording one.** Before classifying it, re-read the section of the unit of intent that decided that shape (the spec or design doc, or the issue itself for a bug). If the code deviates from it, reply per [BP-002](../../../docs/contributing/best-practices/process.md#bp-002-spec-driven-execution): the conflict from the source, the fix toward it — not a defence of the cut you have.
 
 #### 10.4: Take action and reply
 

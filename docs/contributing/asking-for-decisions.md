@@ -180,7 +180,7 @@ the artifact carries more product surface than one artifact should.
 
 ## When not to ask at all
 
-Two more cases the filters don't catch:
+More cases the filters don't catch:
 
 - **It's the implementer's call.** Names, layout, which helper, local structure. That's the
   spec-review bar in [`orchestration.md`](orchestration.md) → "Spec review", and it applies to
@@ -191,8 +191,9 @@ Two more cases the filters don't catch:
   no recommendation is usually an ask that isn't ready.
 - **It contradicts a decision they already made.** A build constraint that forces a decided shape
   to change is not a fork between two acceptable shapes; it is a conflict with the unit of intent
-  (the spec, or the issue itself for a bug). Name it as one — *the spec says X; this does Y
-  because Z; here is the way back to X* — above the fold, never as one of the three asks ([BP-002](best-practices/process.md#bp-002-spec-driven-execution)).
+  (the spec, or the issue itself for a bug). Name it as one, above the fold, and raise it as a
+  blocker to re-gate — never as one of the three asks
+  ([BP-002](best-practices/process.md#bp-002-spec-driven-execution)).
 
 The failure runs both directions. Under-asking hides a call that shapes the product; over-asking
 trains them to skim, which costs you the one they needed to read.
