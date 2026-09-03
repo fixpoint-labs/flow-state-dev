@@ -191,7 +191,7 @@ Full text lives in the category files. Open the file when working in that area.
 
 | BP | Rule |
 | --- | --- |
-| BP-002 | Spec-driven execution — every change maps to a Linear-linked spec with deliverables + verification; a surface the spec decided survives a build constraint (move the mechanism, or raise a conflict — never an ask) |
+| BP-002 | Spec-driven execution — every change maps to a Linear-linked spec with deliverables + verification; a surface the unit of intent decided (spec, or issue for a bug) survives a build constraint (move the mechanism, or raise a conflict — never an ask) |
 | BP-004 | Public boundary first — lock import/export shape before behavior depth |
 | BP-005 | *(Superseded by BP-022)* dual changelog requirement |
 | BP-006 | Keep planning/tracking labels (spec IDs, Linear refs) out of code and tests |
