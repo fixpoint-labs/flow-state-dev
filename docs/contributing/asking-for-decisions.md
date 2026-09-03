@@ -191,8 +191,9 @@ More cases the filters don't catch:
   no recommendation is usually an ask that isn't ready.
 - **It contradicts a decision they already made.** A build constraint that forces a decided shape
   to change is not a fork between two acceptable shapes; it is a conflict with the unit of intent
-  (the spec, or the issue itself for a bug). Name it as one, above the fold, and raise it as a
-  blocker to re-gate — never as one of the three asks
+  (the spec, or the issue itself for a bug). Unlike a derivable answer, the decided shape can no
+  longer be executed as is. Name it as one, above the fold, and raise it as a blocker to
+  re-gate — never as one of the three asks
   ([BP-002](best-practices/process.md#bp-002-spec-driven-execution)).
 
 The failure runs both directions. Under-asking hides a call that shapes the product; over-asking
