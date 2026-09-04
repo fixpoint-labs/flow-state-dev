@@ -598,6 +598,41 @@ export function leaseLapsed(task: Task, now: number): boolean {
 }
 
 /**
+ * The lease duration the claim **committed to** — how long the claimant may be
+ * gone, as the claim wrote it, not how much of it is left.
+ *
+ * The one number two mechanisms both rest on, which is why it is a function
+ * rather than a line in each of them: the renewal driver derives its cadence
+ * from it ({@link startLeaseRenewal}), and a claimant taking a lapsed row back
+ * renews for it, so the two would disagree the moment either copy was edited.
+ * Not the lease that is *left* — that is `leaseUntil - now`, a different
+ * number, and conflating them shrinks a late-starting driver's cadence to a
+ * write storm.
+ *
+ * **Read from `leaseDurationMs`, with `leaseUntil - updatedAt` as the fallback
+ * for a row claimed before that field existed (BP-030).** The subtraction is
+ * exact only at the instant of the claim, which is what made storing the
+ * number necessary: `setPriority`, `addLabel`, `removeLabel` and
+ * `patchMetadata` are supported on an `in_progress` row and all move
+ * `updatedAt` while leaving `leaseUntil` alone, so on a legacy row a
+ * coordinator's relabel shortens what this reports — and past the deadline
+ * drives it non-positive. Both consumers treat that as "cannot reason about
+ * this row" rather than as a short lease, which is the same conservative
+ * answer those rows got before this field existed.
+ *
+ * `undefined` when the row holds no lease deadline — nothing is claiming to be
+ * alive on it, so there is no committed span to report even if the duration a
+ * past claim wrote is still on the row. A non-positive result is returned
+ * as-is; what to do about it is the caller's: the driver goes inert, the
+ * takeover refuses.
+ */
+export function committedLeaseSpan(task: Task): number | undefined {
+  if (task.leaseUntil == null) return undefined;
+  if (task.leaseDurationMs != null) return task.leaseDurationMs;
+  return task.leaseUntil - task.updatedAt;
+}
+
+/**
  * True when `task` is ready to be claimed: status is `pending` and
  * deps are satisfied.
  *
@@ -826,6 +861,11 @@ export function applyClaimToTask<TInput, TOutput>(
     ...(recovering ? { abandonments: readAbandonments(task as Task) + 1 } : {}),
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
+    // The duration this claim committed to, kept beside the deadline it
+    // produced (FIX-1305). Every other write to a running row moves
+    // `updatedAt`, so the subtraction that used to stand in for this number
+    // stops being it the moment a coordinator relabels the task.
+    leaseDurationMs,
     claimedBy,
     updatedAt: now,
   };

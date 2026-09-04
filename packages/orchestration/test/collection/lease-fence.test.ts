@@ -21,9 +21,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  committedLeaseSpan,
   createResourceBackedTaskCollection,
   createSequencerBackedTaskCollection,
   ticketForClaim,
+  type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -175,6 +177,46 @@ describe.each([
     expect(await collection.complete("t", "done", { ifAllowed: true, claim })).toEqual({
       outcome: "recorded",
     });
+  });
+
+  it("still takes back a row a coordinator patched while it was running", async () => {
+    // The lease a claim committed to has to survive every other write to the
+    // row, and `leaseUntil - updatedAt` does not: `setPriority`, the label
+    // verbs and `patchMetadata` are all supported on an `in_progress` task and
+    // all move `updatedAt` while leaving the deadline alone. A patch after the
+    // deadline drives that subtraction negative, so a takeover reading it would
+    // refuse a claim nothing had touched — the failure this whole change exists
+    // to remove, reintroduced through the patch surface. Hence the duration is
+    // stored at claim time and read back through `committedLeaseSpan`.
+    const { collection, setNow, claim } = await claimed();
+    setNow(1000 + 12_000);
+    // A coordinator re-prioritizing a running task, past its deadline.
+    expect(await collection.setPriority("t", 3)).toEqual({ outcome: "recorded" });
+    const patched = collection.get("t") as Task;
+    expect(patched.updatedAt).toBeGreaterThan(patched.leaseUntil!);
+
+    // The claim's own duration, not what the two stamps now subtract to.
+    expect(committedLeaseSpan(patched)).toBe(10_000);
+
+    expect(
+      await collection.renewLease("t", collection.now() + 10_000, {
+        claim,
+        adoptLapsedLease: true,
+      })
+    ).toEqual({ outcome: "recorded" });
+    expect(collection.get("t")?.leaseUntil).toBe(1000 + 22_000);
+  });
+
+  it("reads a row claimed before the duration was stored from its two stamps", async () => {
+    // BP-030. A task persisted before the field existed carries no
+    // `leaseDurationMs`, and the subtraction is exactly what it committed as
+    // long as nothing has written to the row since — so the fallback is the
+    // old answer, not a refusal.
+    const { collection } = await claimed();
+    const legacy = { ...(collection.get("t") as Task), leaseDurationMs: undefined };
+
+    expect(committedLeaseSpan(legacy)).toBe(10_000);
+    expect(committedLeaseSpan({ ...legacy, leaseUntil: undefined })).toBeUndefined();
   });
 
   it("refuses the takeover when a reclaim actually won the row", async () => {

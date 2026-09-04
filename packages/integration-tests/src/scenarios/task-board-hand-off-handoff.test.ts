@@ -47,6 +47,7 @@ import {
 } from "@flow-state-dev/engine";
 import type { RequestRecord, StoreRegistry } from "@flow-state-dev/engine";
 import {
+  committedLeaseSpan,
   defineTaskCollection,
   type Task,
   type TaskWorkerInput,
@@ -226,6 +227,41 @@ async function rewriteRow(
     { ...(current!.state as object), ...patch } as never,
     "any"
   );
+}
+
+/**
+ * Age one claimed row until its lease has just run out, and answer the instant
+ * it ran out on.
+ *
+ * The board's default lease is two minutes and no board-level knob shortens it,
+ * so the lapse is written onto the durable row rather than waited out — the same
+ * technique, and the same reason, as the reincarnation case above.
+ *
+ * **The whole claim moves, not just the deadline.** `leaseUntil - updatedAt` is
+ * the span the claim committed (`committedLeaseSpan`), and it is what the
+ * substrate's renewal cadence and the gate's takeover both read; moving only
+ * the deadline would leave a row with a zero-length lease, which no real claim
+ * can produce since the substrate floors a lease at one second. Shared by both
+ * lapse cases below so neither is testing against a state the substrate cannot
+ * reach.
+ *
+ * Every number comes off the row rather than from a wall-clock read: they were
+ * written by the claim on the collection's clock, which is the clock the gate
+ * and the fence both compare against, and `updatedAt` is strictly in the past
+ * by the time the child runs.
+ */
+async function lapseTheLease(
+  stores: StoreRegistry,
+  kind: string,
+  claimed: Task
+): Promise<number> {
+  const span = committedLeaseSpan(claimed);
+  const lapsedAt = claimed.updatedAt;
+  await rewriteRow(stores, kind, claimed.id, {
+    updatedAt: lapsedAt - span!,
+    leaseUntil: lapsedAt,
+  });
+  return lapsedAt;
 }
 
 /**
@@ -472,22 +508,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // The claim wrote a lease, or there is nothing here to lapse.
     expect(claimed?.leaseUntil).toBeDefined();
 
-    // The whole claim moves back by its own lease span, so the deadline sits on
-    // the instant the claim was committed and has therefore just passed. Both
-    // stamps move: `leaseUntil - updatedAt` is the span the claim committed and
-    // the takeover renews for it, so a rewrite that moved only the deadline
-    // would leave a row with a zero-length lease — something no real claim can
-    // produce, since the substrate floors a lease at one second.
-    //
-    // Both numbers come off the row rather than from a wall-clock read: they
-    // were written by the claim on the collection's clock, which is the clock
-    // the gate and the fence both compare against.
-    const lapsedAt = claimed!.updatedAt;
-    const span = claimed!.leaseUntil! - claimed!.updatedAt;
-    await rewriteRow(stores, "handoff-lapsed", "t1", {
-      updatedAt: lapsedAt - span,
-      leaseUntil: lapsedAt,
-    });
+    await lapseTheLease(stores, "handoff-lapsed", claimed!);
 
     const child = await runAction({
       flow,
@@ -516,6 +537,79 @@ describe("a hand-off board's launching request returns while the work is outstan
     // On the SAME attempt. Recovery by re-claim gets the work done too, and
     // spends an attempt and a second dispatch to do it — which is how a queue
     // deeper than the lease can exhaust `maxAttempts` on backlog alone.
+    expect(afterChild?.attempts).toBe(1);
+  });
+
+  it("takes the row back after a coordinator patched it while the child queued", async () => {
+    // A running row is not frozen: `setPriority`, the label verbs and
+    // `patchMetadata` are supported on an `in_progress` task, and each moves
+    // `updatedAt` while leaving `leaseUntil` alone. So a coordinator
+    // re-prioritizing a handed-off task leaves a row where the two stamps no
+    // longer subtract to the lease the claim committed — and once the patch
+    // lands after the deadline, they subtract to a negative number.
+    //
+    // A takeover deriving the lease from those two stamps refuses that row, so
+    // an ordinary coordinator action would intermittently reintroduce the exact
+    // failure this scenario's first case removes. The claim's duration is
+    // stored on the row instead, and this is the case that says so.
+    const stores = createInMemoryStores();
+    const { flow, ran } = buildFlow({ kind: "handoff-patched", mode: "hand-off" });
+
+    const dispatched: RecordedDispatch[] = [];
+    const parent = await runAction({
+      flow,
+      actionName: "start",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_parent",
+      stores,
+      runtimeConfig: {
+        ...baseRuntimeConfig(),
+        requestHost: {
+          dispatchOperation: async (spec) => {
+            dispatched.push({
+              sessionId: spec.sessionId,
+              actionName: spec.target,
+              input: spec.input,
+            });
+            return { requestId: "child_req_1" };
+          },
+        },
+      },
+    });
+    expect(parent.error).toBeUndefined();
+
+    const claimed = await durableRow(stores, "handoff-patched", "t1");
+    const lapsedAt = await lapseTheLease(stores, "handoff-patched", claimed!);
+    // The row a patch leaves behind: `updatedAt` past the deadline, everything
+    // the claim's identity rests on untouched. Written directly for the same
+    // reason the lapse is — a running board is the only thing that can call
+    // `setPriority` on this ledger, and it has already returned. The mutators
+    // are driven for real, against a live collection, in
+    // `orchestration`'s `lease-fence.test.ts`.
+    await rewriteRow(stores, "handoff-patched", "t1", {
+      priority: 7,
+      updatedAt: lapsedAt + 1_000,
+    });
+    const patched = await durableRow(stores, "handoff-patched", "t1");
+    expect(patched!.updatedAt).toBeGreaterThan(patched!.leaseUntil!);
+    expect(committedLeaseSpan(patched!)).toBeGreaterThan(0);
+
+    const child = await runAction({
+      flow,
+      actionName: dispatched[0]!.actionName as never,
+      input: dispatched[0]!.input,
+      userId: USER_ID,
+      sessionId: dispatched[0]!.sessionId,
+      source: TASK_SOURCE,
+      stores,
+      runtimeConfig: baseRuntimeConfig(),
+    });
+
+    expect(child.error).toBeUndefined();
+    expect(ran).toEqual(["t1"]);
+    const afterChild = await durableRow(stores, "handoff-patched", "t1");
+    expect(afterChild?.status).toBe("completed");
     expect(afterChild?.attempts).toBe(1);
   });
 
@@ -556,7 +650,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     expect(first.error).toBeUndefined();
 
     const claimed = await durableRow(stores, "handoff-reclaimed", "t1");
-    await rewriteRow(stores, "handoff-reclaimed", "t1", { leaseUntil: claimed!.updatedAt });
+    await lapseTheLease(stores, "handoff-reclaimed", claimed!);
 
     const second = await runAction({
       flow,

@@ -236,6 +236,15 @@ substrate cannot tell that caller apart from a stalled worker whose renewal fire
 late, and only the first should take the row back. The flag applies to renewals
 only; a settlement on a lapsed lease is still declined.
 
+Renew it for `committedLeaseSpan(task)` — the duration that claim committed to,
+which the claim writes onto the row (`leaseDurationMs`) rather than leaving to be
+inferred from `leaseUntil - updatedAt`. Those two stamps stop agreeing as soon as
+anything else writes to the row: `setPriority`, the label verbs and
+`patchMetadata` all move `updatedAt` and leave the deadline alone. The renewal
+driver reads the same function, so a task's cadence and its takeover cannot
+disagree about one lease. A row claimed before that field existed falls back to
+the subtraction.
+
 A worker composed as several steps reaches its driver through
 `currentLeaseRenewal()`. Wrap the block that claims the task in
 `withLeaseRenewalScope(async () => { … })` — **as its first statement, before
@@ -408,10 +417,12 @@ and nothing more.
 
 **The claim has to survive the wait before the child starts.** A claim carries a
 lease (two minutes by default), and nothing extends it until the worker is
-actually running. A Workstream that starts after its lease has run out does
-nothing at all — the task is already back in the queue, and the next drain picks
-it up. A deep queue backlog in front of the child is where this shows up, and the
-board's lease is not configurable today.
+actually running. A Workstream that starts after its lease has run out takes the
+task back first — it renews the lease against the claim it was dispatched with,
+on the same attempt — and stops only if that renewal is declined, which means
+another drain reclaimed the task and is running it elsewhere. A deep queue
+backlog in front of the child is where this shows up; the board's lease is not
+configurable today.
 
 **Serverless without a queue adapter** is the last bound. Detached work runs
 inside the invocation that started it and is bounded by that function's maximum
