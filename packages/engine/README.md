@@ -381,10 +381,9 @@ Those runs carry a `metadata.dispatch` bag on the request record: `type` and
 `key` for the derived session key, and `taskId` naming the task-board row on a
 task hand-off. Read the bag at all only when the record's `source` is
 `"internal"` or `"task"` — `metadata` is caller-writable on an ordinary request,
-`source` is not. The runtime assembles the bag from values it derived itself, so
-it is trustworthy to display; it is still a correlation rather than authority, so
-do not key a settlement on `taskId`. `key` and `taskId` are optional, so guard
-with `== null`.
+`source` is not. The runtime assembles the bag from values it derived itself, and
+it is a correlation rather than an authority: display `taskId`, don't key a
+settlement on it. `key` and `taskId` are optional, so guard with `== null`.
 
 See [Dispatched work](https://flow-state.dev/docs/server/background-work) for
 the full contract.

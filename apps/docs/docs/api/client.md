@@ -78,18 +78,20 @@ for (const child of children) {
 }
 ```
 
-Each row is a `ChildSessionSummary`, and these seven fields are all of it:
+Each row is a `ChildSessionSummary`:
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | `string` | The child's own session id. |
 | `parentSessionId` | `string` | The session this work hangs off. |
 | `createdAt` / `updatedAt` | `number` | |
-| `topic` | `string \| undefined` | Display label for the body of work. |
+| `topic` | `string \| undefined` | Display label: the key the child was derived from. |
 | `coordinate` | `string \| undefined` | Display label for the entry running it. |
 | `status` | `ChildSessionStatus \| undefined` | Absent until the child has run something. |
 
-`ChildSessionStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. `topic` and `coordinate` are labels to display and nothing else — don't route or identify from them. Guard all three with `== null`.
+The table is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
+
+`ChildSessionStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. `topic` and `coordinate` are labels to display and nothing else — don't route or identify from them, and fall back to `id` rather than to a made-up name. Guard all three with `== null`.
 
 A session that started nothing returns `[]`. An unknown session, or one the caller isn't allowed to read, throws `ClientHttpError`.
 

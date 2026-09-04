@@ -176,7 +176,7 @@ Some bounds are worth knowing before you reach for this.
 
 **On serverless, the work is bounded by the function unless something else consumes the queue.** A dispatched child runs inside the invocation that started it, so the function's maximum duration is the ceiling. A queue adapter alone does not lift it: in `colocated` mode the same process both enqueues *and* consumes, so the job is picked up by the invocation that is already running out of time. What lifts the ceiling is a consumer with its own lifetime — run the function in `dispatch-only` mode and host the worker separately, as a container or a long-lived process in `worker-only` mode. `colocated` is the right answer on a server you keep running, not on a function.
 
-**A `worker-only` process dispatches children that aren't durable.** That mode installs no dispatcher, so the child runs in the worker process and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
+**A child started from a `worker-only` process isn't durable.** That mode installs no dispatcher, so the child runs in the worker process instead of going to the queue, and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
 
 **A row released to a child stops holding up the drain.** A row a child has in hand is not counted by the board that filed it, so the request that filed it finishes without waiting.
 

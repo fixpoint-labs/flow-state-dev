@@ -261,6 +261,6 @@ The kitchen-sink app includes a working integration at `/api/admin/queues` (requ
 
 - [BullMQ background jobs guide](https://flow-state.dev/guides/background-jobs-bullmq) — setup walkthrough with Docker
 - [Work that outlives the turn](https://flow-state.dev/guides/background-work) — how queued action runs relate to side chains and dispatched child sessions
-- [Background work](https://flow-state.dev/docs/server/background-work) — reading what a queued job became
+- [Dispatched work](https://flow-state.dev/docs/server/background-work) — reading what a queued job became
 - [Scheduled actions reference](https://flow-state.dev/docs/server/scheduled) — framework scheduling contract
 - [Inbound transports architecture](https://flow-state.dev/docs/advanced/inbound-transports) — dispatcher and transport adapter contracts

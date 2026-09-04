@@ -127,10 +127,10 @@ worker, that handle is the worker's output, and the board writes the output onto
 the task when it settles — so the id is persisted there. Worth knowing if you are
 reasoning about data retention, or if you plan to resume a run by hand later.
 
-The option is also required rather than optional there. A worker that runs in a
-child session may share that session with other rows, so two blocks declaring the
-same session-state key would overwrite each other. The task board refuses to
-build a hand-off whose block declares session state.
+You have to pass it there. A worker that runs in a child session may share that
+session with other rows, so two blocks declaring the same session-state key would
+overwrite each other. The task board refuses to build a hand-off whose block
+declares session state.
 
 That refusal reads the worker block, the blocks composed inside it, and the
 session state a capability the block `uses` declares for itself. What it cannot

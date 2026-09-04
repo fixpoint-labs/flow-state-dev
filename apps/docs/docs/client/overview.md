@@ -140,7 +140,7 @@ const children = await sessions.listChildSessions("sess_1");
 for (const child of children) {
   console.log(
     child.id,
-    child.topic ?? "untitled",
+    child.topic ?? child.id,
     child.status ?? "not started",
   );
 }
@@ -178,11 +178,11 @@ if (child) {
 
 A child that has never run anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
 
-`topic` and `coordinate` are optional too. `topic` names the body of work, `coordinate` names the entry running it. Both are display labels — nothing identifies or authorizes from them — and a row can arrive without either. Guard all three with `== null`:
+`topic` and `coordinate` are optional too. `topic` is the key the child session was derived from, `coordinate` the entry it was dispatched to. Both are display labels — nothing identifies or authorizes from them. Whether `topic` reads well depends on what the flow keyed on: a document id or an issue key is legible, a task-board seat's composed key is not. The session id is the one field always there, so fall back to it rather than to a made-up name:
 
 ```tsx
 <li>
-  <span>{child.topic ?? "Untitled work"}</span>
+  <span>{child.topic ?? child.id}</span>
   <span>{child.status == null ? "Not started" : child.status}</span>
 </li>
 ```

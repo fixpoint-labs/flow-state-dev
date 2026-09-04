@@ -201,7 +201,7 @@ Current as of the reader's last interaction. It is re-read on mount, at the star
 
 `status` is absent until the work has run something. `"active"` means only *not finished*: it does not separate working from queued from waiting on a person, and it reports the last state recorded rather than checking a worker is alive — so work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. Treat unrecognised values as displayable; the set grows.
 
-`SessionView.childSessionsStale` is `true` when the most recent re-read failed, and when there are more children than the list holds. The rows already read are kept either way — the hook never clears the list — so read it as "there may be more than you can see" rather than "these rows are wrong". Cleared by the next successful read.
+`SessionView.childSessionsStale` is `true` in two cases with different remedies: the most recent re-read failed, which the next successful read clears; or the requested `limit` is above the server's cap, which only a smaller `limit` clears. The rows already read are kept either way — the hook never empties the list.
 
 To open one, read it as the session it is, passing the **same flow kind as the conversation it belongs to**. A child runs on its parent's flow and is stamped with that flow's kind rather than a kind of its own, so the value is one you already have. A different name reads as a different flow: an active child's stream 404s and the view stays on its first snapshot.
 

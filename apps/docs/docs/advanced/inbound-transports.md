@@ -140,9 +140,10 @@ const router = createFlowApiRouter({
 
 `createFlowState` takes the same option. Three sources are refused: `webhook`,
 `internal` and `task`. A webhook handler is reachable only behind signature
-verification, and a dispatch has no caller-facing entry at all — re-entering
-either from a public route would run it with input a caller chose. Naming one
-throws when the router is built, rather than quietly doing nothing.
+verification, and `internal` and `task` have no caller-facing entry at all, so
+re-entering any of them from a public route would run it with input a caller
+chose. Naming one throws when the router is built, rather than quietly doing
+nothing.
 
 ### Scheduled adapter shape
 

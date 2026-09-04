@@ -115,9 +115,9 @@ The returned handle still carries the SDK `sessionId`, and as a worker's output
 it is persisted with the task — the option governs session state and resume, not
 the result.
 
-`createClaudeCodeAgentCapability({ detached: true })` takes the same option, and
-passing it is required rather than tidy: the board refuses a block whose capability
-declares the schema, and cannot see one a capability's preset adds at all.
+`createClaudeCodeAgentCapability({ detached: true })` takes the same option, and you
+have to pass it: the board refuses a block whose capability declares the schema, and
+cannot see one a capability's preset adds at all.
 
 ### Giving a run its own working directory (`/sdk`)
 

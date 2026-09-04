@@ -113,12 +113,14 @@ return (
   <aside>
     {session.childSessions.map((child) => (
       <button key={child.id} onClick={() => setOpenJobId(child.id)}>
-        {child.topic ?? "Background work"} — {child.status ?? "not started"}
+        {child.topic ?? child.id} — {child.status ?? "not started"}
       </button>
     ))}
   </aside>
 );
 ```
+
+`topic` is the key the flow derived the child from, so it reads well only when the flow keyed on something legible. Falling back to the session id keeps the row honest when it didn't.
 
 This list sits beside the conversation rather than inside it. Nothing a child session produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
 
@@ -126,9 +128,9 @@ This list sits beside the conversation rather than inside it. Nothing a child se
 
 The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. It does not update on its own while someone sits and watches, so work started in another tab shows up on their next action — or immediately, if you give them a refresh control.
 
-`session.childSessionsStale` turns `true` when a re-read fails, and when there are more children than the list can hold. The rows already fetched stay on screen either way — the hook never clears the list — so read it as "there may be more than you can see", not "what you're seeing is wrong", and mark the panel as possibly incomplete rather than emptying it.
+`session.childSessionsStale` turns `true` for two different reasons, and they call for different responses. A re-read failed, and the next successful read clears the flag — a retry banner is the right treatment. Or you asked for a page the server won't serve, and nothing but a smaller `limit` clears it. Either way the rows already fetched stay on screen; the hook never empties the list. Mark the panel as possibly out of date rather than showing nothing.
 
-The list holds 100 rows by default, newest first. Ask for a different page size with `childSessions: { limit }`; the server rejects one larger than it allows, which arrives as `childSessionsStale` rather than as rows.
+The list holds 100 rows by default, newest first. Ask for a different page size with `childSessions: { limit }`. The server caps that value and answers a larger one with a 400, which is the second cause above:
 
 ```tsx
 const session = useSession(sessionId, {

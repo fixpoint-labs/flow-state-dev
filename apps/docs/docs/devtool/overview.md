@@ -86,7 +86,7 @@ For generator blocks, the panel also shows what the model actually saw on that t
 
 When a block fails, the detail panel surfaces enough context to diagnose without re-running. The error message renders at the top with the `code` as a small mono-text label. When the runtime captures `details` on the failure — generator output-validation errors carry the raw model text and the Zod issues, author-thrown `FlowError`s carry whatever was attached — the panel renders them as dedicated sections: a "Raw output" pane for the model's text, a typed "Validation issues" list for Zod issues, and a "Details" JSON panel for the rest. For tool-invoked blocks that fail, the panel also surfaces the originating tool call's arguments and the block's resolved input, so the failure stops requiring a hunt through sibling rows for the missing context. See [Error handling](/docs/advanced/error-handling).
 
-## Children
+## Child sessions
 
 Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs work in a child session — a session of its own that keeps going after the request which started it has returned — and none of that work shows up in the conversation's own stream or trace.
 

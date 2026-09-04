@@ -125,9 +125,10 @@ for (const child of children) {
 Each row is a `ChildSessionSummary`: `id`, `parentSessionId`, `createdAt`,
 `updatedAt`, and the optional `topic`, `coordinate`, and `status`. That is the whole
 row — the server sends this named field set rather than a session record. `topic`
-names the body of work and `coordinate` names the entry running it; both are display
-labels, nothing identifies or authorizes from them, and a row can arrive without
-either. Guard all three with `== null`.
+is the key the child was derived from and `coordinate` the entry it was dispatched
+to; both are display labels, nothing identifies or authorizes from them, and a row
+can arrive without either. How legible `topic` is depends on what the flow keyed on,
+so fall back to `id` rather than to a made-up name. Guard all three with `== null`.
 
 `status` is the last state the server recorded for the work, not a check on what is
 happening right now. `"active"` asserts only that the work hasn't finished: queued,
