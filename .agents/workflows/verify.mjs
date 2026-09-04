@@ -1089,6 +1089,38 @@ check('a Linear scout that answers with UUIDs is discarded per entry, not believ
   assert.match(logs.join('\n'), /UUID where an issue identifier/)
 })
 
+check('a dropped Linear entry for a NEW child holds the epic wrap, not just a carried row', async () => {
+  // Codex review on #1537: the UUID drop above only leaves a trace when the malformed entry belongs
+  // to a CARRIED row — the row itself sits unrefreshed and non-terminal. A malformed entry for a
+  // child the carried table has never seen never enters `discovered` at all, so it is invisible to
+  // `mayWrap`. Here every carried row is already terminal, so before the fix `mayWrap` saw only
+  // finished work and returned true — the coordinator could close the epic, and the dropped child's
+  // promised next-wake retry would never come; it would be omitted permanently.
+  const uuid = '9f6ea5fc-31bd-44dd-a4b6-de9c54f56861'
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true })] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, labelPresent: false, labelProvenanceUnreadable: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') {
+        return {
+          issues: [
+            { id: 'FIX-2', state: 'Done', blockedBy: [] },
+            // The scout reporting a new child under the epic, but with the RELATION/issue UUID
+            // instead of its identifier — nothing to key a row on, so it must be dropped whole.
+            { id: uuid, state: 'Backlog', blockedBy: [] },
+          ],
+        }
+      }
+      if (label === 'refresh:issues') return prScan(prompt)
+      return { issueId: label.split(':')[1], ...workerRes() }
+    },
+  })
+  assert.ok(!result.issues.some((r) => r.id === uuid), 'a UUID id must not be invented as a new sub-issue row')
+  assert.equal(result.mayWrap, false, 'a dropped entry must hold the wrap even when every carried row already reads terminal')
+  assert.match(logs.join('\n'), /Holding the epic's wrap this wake: 1 Linear refresh entry was dropped/)
+})
+
 check("the issue scout is told a human's CHANGES_REQUESTED beats another's approval", async () => {
   // The epic gate prompt has carried this rule from the start; the issue scout asked only for a current-head
   // approved review, so a spec could read approved while a human's latest state was CHANGES_REQUESTED — or

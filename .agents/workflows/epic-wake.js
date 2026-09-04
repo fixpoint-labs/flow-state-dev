@@ -2224,16 +2224,26 @@ const epicHead = (gate && gate.headSha) || epic.headSha || null
 // died for it (invariant 1), and the drop is logged so a bad scan is loud rather than silent.
 // Dropping only the bad `blockedBy` ids would be worse than dropping the entry — `[]` means "no
 // blockers" and would admit the issue alongside the very prerequisite it named.
+//
+// A dropped entry that is a CARRIED row leaves a trace `mayWrap` already reads — the row itself,
+// unrefreshed, sitting non-terminal in `issues`. A dropped entry for a NEW child (one `rows` has
+// never seen) leaves no such trace: it never enters `discovered`, so it is invisible to every
+// wrap-adjacent reader, and if every carried row happens to be terminal the epic reads as fully
+// done and wraps — permanently omitting a child nobody ever invented a row for. Inventing one from
+// a UUID would violate invariant 1 (never guess at a malformed observation), so instead
+// `droppedLinearEntries` holds `mayWrap` false for every wake where anything was dropped, whether
+// or not it can be tied to a carried row — the safe direction, since the alternative is silently
+// closing over an issue that never got a chance to be discovered.
 const ISSUE_IDENTIFIER = /^[A-Z]+-\d+$/
 const reportedLinear = (linear && linear.issues) || []
 const linearIssues = reportedLinear.filter(
   (li) => ISSUE_IDENTIFIER.test(li.id) && (li.blockedBy || []).every((b) => ISSUE_IDENTIFIER.test(b)),
 )
-if (linearIssues.length !== reportedLinear.length) {
-  const dropped = reportedLinear.filter((li) => !linearIssues.includes(li))
+const droppedLinearEntries = reportedLinear.filter((li) => !linearIssues.includes(li))
+if (droppedLinearEntries.length) {
   log(
-    `The Linear refresh reported ${dropped.length} entr${dropped.length === 1 ? 'y' : 'ies'} with a UUID where an issue identifier (LAB-152) was asked for — ` +
-      `${dropped.map((li) => `${li.id} blockedBy [${(li.blockedBy || []).join(', ')}]`).join('; ')}. ` +
+    `The Linear refresh reported ${droppedLinearEntries.length} entr${droppedLinearEntries.length === 1 ? 'y' : 'ies'} with a UUID where an issue identifier (LAB-152) was asked for — ` +
+      `${droppedLinearEntries.map((li) => `${li.id} blockedBy [${(li.blockedBy || []).join(', ')}]`).join('; ')}. ` +
       `Discarded rather than guessed at: each such issue reads as unobserved this wake (carried state stands, no blocker clears, nothing is discovered), and the next wake retries.`,
   )
 }
@@ -3349,6 +3359,22 @@ const epicBlockers = [
     ...epicOpenQuestions.map((q) => ({ issueId: epic.issueId, blocker: `Epic-spec open question — needs a human: ${q}` })),
 ]
 
+// Every `mayWrap` term except the drop guard, so the log below can say the drop is the ONLY thing
+// still holding the wrap rather than a generic reminder that fires even when other work is open.
+const wrapReadyButForDrops =
+  issues.every((r) => r.linearTerminal || r.merged || r.phase === 'DONE') &&
+  !issues.some((r) => pendingAction(r) !== null) &&
+  !issues.some((r) => (r.unsettled || []).length && !CANCELLED_LINEAR.test((r.linearState || '').trim())) &&
+  epicBlockers.length === 0 &&
+  (epicOut.verdicts || []).length === 0 &&
+  (epicOut.answers || []).length === 0 &&
+  plan.queuedClaims.length + unsettled.length + newRequests.length === 0
+if (wrapReadyButForDrops && droppedLinearEntries.length) {
+  log(
+    `Holding the epic's wrap this wake: ${droppedLinearEntries.length} Linear refresh entr${droppedLinearEntries.length === 1 ? 'y was' : 'ies were'} dropped for a UUID identifier, so the carried table cannot confirm nothing was omitted — the epic would otherwise read as fully done. The next wake retries the Linear refresh.`,
+  )
+}
+
 return {
   epicApproved,
   epic: epicOut,
@@ -3431,16 +3457,12 @@ return {
   // so "nothing left to show the human" and "safe to close the surface" cannot disagree. Cancelled rows
   // need no exception here: they are dispatchable-null and carry no blocker, so their leftover verdict
   // state, which nothing can apply, stops holding the epic open.
-  mayWrap:
-    issues.every((r) => r.linearTerminal || r.merged || r.phase === 'DONE') &&
-    !issues.some((r) => pendingAction(r) !== null) &&
-    // Row-level unsettled evidence is a question owed to the human even where the blocker text has been
-    // cleared, and `pendingAction` is null for a terminal row carrying it. Scoped to LIVE rows: on
-    // cancelled work there is nothing left to apply a decision to, so counting it there is what stranded
-    // the epic short of wrap with no action able to release it.
-    !issues.some((r) => (r.unsettled || []).length && !CANCELLED_LINEAR.test((r.linearState || '').trim())) &&
-    epicBlockers.length === 0 &&
-    (epicOut.verdicts || []).length === 0 &&
-    (epicOut.answers || []).length === 0 &&
-    plan.queuedClaims.length + unsettled.length + newRequests.length === 0,
+  //
+  // `droppedLinearEntries.length === 0` (folded into `wrapReadyButForDrops` above, then ANDed
+  // here) is the final term rather than folded into the others' predicates because it is the one
+  // condition none of `issues`/`epicBlockers` can ever encode: a dropped entry for a newly
+  // discovered child leaves no row at all (see the comment at `droppedLinearEntries`), so "every
+  // row is terminal" is true precisely in the failure case this guards. Every wake with a drop
+  // holds the wrap, whether or not the drop was ultimately tied to a carried row.
+  mayWrap: wrapReadyButForDrops && droppedLinearEntries.length === 0,
 }
