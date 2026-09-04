@@ -89,7 +89,45 @@ Having its own session is also what it costs you. A workstream keeps its own sta
 
 For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToWorkstream` and the conversation and every workstream under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
 
-A task board is the usual way to start one. A board is a list of tasks plus a set of named workers that claim them. Wrap one of those workers in `{ worker, dispatch }` and its tasks go to a workstream instead of running in the request that claimed them:
+A `dispatcher()` block sends a single piece of work to a workstream. A task board seat sends every task it claims to one. Both live inside the flow.
+
+### From a block: `dispatcher()`
+
+A flow declares the work a workstream can run under `internal.actions`, beside `actions`. An internal entry has an action's shape, but no client can call it. A `dispatcher()` block in the same flow is the only way in:
+
+```ts
+import { defineFlow, dispatcher, generator } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const investigate = generator({
+  name: "investigate",
+  model: "openai/gpt-5.4-mini",
+  inputSchema: z.object({ company: z.string() }),
+  prompt: "Research the company and write up what you find.",
+});
+
+const investigateInBackground = dispatcher({
+  name: "investigate-in-background",
+  type: "internal",
+  target: "investigate",
+  inputSchema: z.object({ company: z.string() }),
+  session: { key: (input) => input.company },
+});
+
+export default defineFlow({
+  kind: "diligence",
+  actions: { start: { block: investigateInBackground } },
+  internal: { actions: { investigate: { block: investigate } } },
+})();
+```
+
+Run the dispatcher and it sends one request to the `investigate` entry and returns `{ sessionId, requestId, adopted }` as soon as the runtime accepts it, without waiting for the work. With `session: { key }` the work runs in a child of the running session, created on first use; the same key from the same conversation lands on the same child again, with `adopted: true`. With `session: { id }` it is delivered into a session that already exists, and refused if it doesn't. `defineFlow` throws at definition time when `target` names an entry the flow doesn't declare.
+
+Read next: **[Starting a job from a flow](/docs/server/background-work#starting-a-job-from-a-flow)** for the `session` policies, the return shape, and every refusal by name.
+
+### From a task board seat
+
+A board is a list of tasks plus a set of named workers that claim them. A seat in that set can run its tasks in a workstream instead of in the request that claimed them. Wrap the worker in `{ worker, dispatch }`:
 
 ```ts
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
@@ -117,6 +155,41 @@ const board = taskBoard({
 
 Tasks are seeded here to keep the example in one piece. A task added later with `addTask` carries the same `assignee` and `metadata` fields.
 
+Or put a `dispatcher({ type: "task" })` in the seat and declare the worker on the flow, under `task.actions`:
+
+```ts
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const diligenceTasks = defineTaskCollection({ id: "diligence-tasks", scope: "user" });
+
+const board = taskBoard({
+  name: "diligence",
+  boardId: "diligence",
+  collection: diligenceTasks,
+  workers: {
+    investigate: dispatcher({
+      name: "hand-off-investigate",
+      type: "task",
+      target: "investigate",      // flow.task.actions.investigate
+      session: "per-task",        // one workstream per task
+    }),
+    summarize: summarizeBlock,    // still inline
+  },
+});
+
+export default defineFlow({
+  kind: "diligence",
+  actions: { run: { block: board.drain } },
+  task: { actions: { investigate: { block: investigateBlock } } },
+})();
+```
+
+The drain claims a task, sends it to the `investigate` entry, and moves on; the workstream runs `investigateBlock` with the same worker input an inline seat would get, and settles the task itself. Which workstream a task lands in is the seat's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`. The `boardId` and durable-collection requirements above apply to this shape too.
+
+Read next: **[Seats that hand off](/docs/orchestration/task-board#seats-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
+
 Some bounds are worth knowing before you reach for this.
 
 **The board has to be reachable from the child session.** The workstream settles its own task, and resource scope resolves against whichever session is running — so a session-scoped board hydrates empty inside a workstream and has nothing to settle. Give the collection `sharedToWorkstream: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
@@ -136,6 +209,8 @@ A workstream is one `boardId`, one worker, one topic. A task matching an earlier
 `filings` and `calls` above match on all three, so they run in one workstream: two runs in the same session, and `listSessionRequests` on that workstream returns both. Change `calls` to `assignee: "verify"` and the two split into a workstream each. Two boards with different `boardId`s split the same way, even on the same topic.
 
 A task with no topic, or a blank one, falls back to its own task id. So a task that doesn't ask for continuity always gets a workstream to itself, and two tasks that both left the topic off never share one by accident. Set a topic when a worker should pick up where it left off on the same body of work: one research thread, one issue, one document. Leave it off when each task starts cold.
+
+A dispatcher seat ignores the topic. Its `session` policy decides: `"per-task"` is a workstream per task, `"per-worker"` is one per seat, and `{ key }` shares a workstream between every task, on any seat or board, whose key comes out the same. A `dispatcher()` block outside a board works the same way with its own `key`: same key from the same conversation, same workstream.
 
 Starting a workstream is server-side only. There's no client call for it.
 

@@ -4,8 +4,12 @@
  * binding is reachable ONLY for a genuine webhook dispatch (`source ===
  * "webhook"`, set internally by the webhook adapter). For every other source
  * the caller-controlled `metadata.webhook` is inert, so a caller cannot pivot
- * the public action endpoint into a webhook handler (FIX-439). Also covers the
- * ordinary edge cases: missing binding, null event type, no webhooks config.
+ * the public action endpoint into a webhook handler (FIX-439).
+ *
+ * And the rule runs the other way too: **no fallback, for any type.** An event
+ * dispatch whose coordinate matches nothing resolves nothing — it never reads
+ * `flow.actions`, whatever name it carries — and the fenced `workstream`
+ * source resolves the flow's workstream core or nothing.
  */
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
@@ -65,23 +69,25 @@ describe("resolveActionCore", () => {
     expect(resolveActionCore(flow, "record-payment", undefined, WEBHOOK_META)).toBeUndefined();
   });
 
-  it("falls back to the named action when the binding does not exist", () => {
+  // No fallback: a webhook dispatch whose coordinate matches no binding resolves
+  // nothing, even when its provenance name collides with a public action's key.
+  it("never falls back to the named action when the binding does not exist", () => {
     const flow = flowWithWebhook();
     const unknownProvider = { webhook: { provider: "paypal", eventType: "invoice.paid" } };
-    expect(resolveActionCore(flow, "run", "webhook", unknownProvider)).toBe(flow.actions.run);
+    expect(resolveActionCore(flow, "run", "webhook", unknownProvider)).toBeUndefined();
     const unknownEvent = { webhook: { provider: "stripe", eventType: "charge.created" } };
-    expect(resolveActionCore(flow, "run", "webhook", unknownEvent)).toBe(flow.actions.run);
+    expect(resolveActionCore(flow, "run", "webhook", unknownEvent)).toBeUndefined();
   });
 
-  it("falls back when eventType is null", () => {
+  it("resolves nothing when eventType is null", () => {
     const flow = flowWithWebhook();
     const nullEvent = { webhook: { provider: "stripe", eventType: null } };
-    expect(resolveActionCore(flow, "run", "webhook", nullEvent)).toBe(flow.actions.run);
+    expect(resolveActionCore(flow, "run", "webhook", nullEvent)).toBeUndefined();
   });
 
-  it("falls back for a webhook dispatch with no webhook metadata", () => {
+  it("resolves nothing for a webhook dispatch with no webhook metadata", () => {
     const flow = flowWithWebhook();
-    expect(resolveActionCore(flow, "run", "webhook", undefined)).toBe(flow.actions.run);
+    expect(resolveActionCore(flow, "run", "webhook", undefined)).toBeUndefined();
   });
 
   it("returns undefined when nothing matches", () => {
@@ -89,12 +95,22 @@ describe("resolveActionCore", () => {
     expect(resolveActionCore(flow, "missing", "http", undefined)).toBeUndefined();
   });
 
-  it("tolerates a flow with no webhooks config", () => {
+  it("tolerates a flow with no webhooks config, resolving nothing for a webhook dispatch", () => {
     const plain = defineFlow({
       kind: "plain",
       actions: { run: { block: namedActionBlock } }
     })({ id: "plain" });
-    expect(resolveActionCore(plain, "run", "webhook", WEBHOOK_META)).toBe(plain.actions.run);
+    expect(resolveActionCore(plain, "run", "webhook", WEBHOOK_META)).toBeUndefined();
+    expect(resolveActionCore(plain, "run", "http", WEBHOOK_META)).toBe(plain.actions.run);
+  });
+
+  // The fenced detached source: terminal on the workstream core, and never a
+  // typed entry — whatever name it carries.
+  it("resolves the workstream core, or nothing, for the workstream source", () => {
+    const flow = flowWithWebhook();
+    expect(flow.workstream).toBeUndefined();
+    expect(resolveActionCore(flow, "run", "workstream", undefined)).toBeUndefined();
+    expect(resolveActionCore(flow, "record-payment", "workstream", WEBHOOK_META)).toBeUndefined();
   });
 });
 
@@ -144,15 +160,15 @@ describe("resolveActionCore — chat branch", () => {
     expect(resolveActionCore(flow, "run", "http", CHAT_META)).toBe(flow.actions.run);
   });
 
-  it("falls back when the chat event key does not match a binding", () => {
+  it("never falls back when the chat event key does not match a binding", () => {
     const flow = flowWithEvents();
     const unknownKey = { chat: { eventKey: "reaction" } };
-    expect(resolveActionCore(flow, "run", "chat", unknownKey)).toBe(flow.actions.run);
+    expect(resolveActionCore(flow, "run", "chat", unknownKey)).toBeUndefined();
   });
 
-  it("falls back for a chat dispatch with no chat metadata", () => {
+  it("resolves nothing for a chat dispatch with no chat metadata", () => {
     const flow = flowWithEvents();
-    expect(resolveActionCore(flow, "run", "chat", undefined)).toBe(flow.actions.run);
+    expect(resolveActionCore(flow, "run", "chat", undefined)).toBeUndefined();
   });
 });
 
@@ -172,16 +188,17 @@ describe("resolveActionCore — scheduled branch", () => {
     expect(resolveActionCore(flow, "run", "http", SCHEDULE_META)).toBe(flow.actions.run);
   });
 
-  it("falls back when the schedule id does not match a static binding", () => {
+  it("never falls back when the schedule id does not match a static binding", () => {
     const flow = flowWithEvents();
     const unknownId = { schedule: { scheduleId: "hourly" } };
-    expect(resolveActionCore(flow, "run", "scheduled", unknownId)).toBe(flow.actions.run);
+    expect(resolveActionCore(flow, "run", "scheduled", unknownId)).toBeUndefined();
   });
 
-  it("falls back for a scheduled dispatch with no schedule metadata (dynamic path)", () => {
+  it("resolves nothing for a scheduled dispatch with no schedule metadata (dynamic path)", () => {
     const flow = flowWithEvents();
     // A dynamic schedule has no static coordinate; the carried core handles it
-    // upstream, and coordinate resolution here correctly finds nothing.
-    expect(resolveActionCore(flow, "run", "scheduled", undefined)).toBe(flow.actions.run);
+    // upstream, and coordinate resolution here correctly finds nothing — it
+    // must not read `flow.actions` under a scheduled source.
+    expect(resolveActionCore(flow, "run", "scheduled", undefined)).toBeUndefined();
   });
 });

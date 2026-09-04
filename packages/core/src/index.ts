@@ -130,6 +130,38 @@ export type {
   StartDetachedRefusal,
   StartDetachedResult
 } from "./types/request-host";
+
+/**
+ * One dispatch protocol — typed entries addressed `(type, name)`, the
+ * `dispatcher()` block that sends to one, and the seam the runtime attaches.
+ */
+export {
+  DISPATCH_SEAM,
+  DISPATCH_TYPES,
+  DispatchRefusedError,
+  NoDispatchSeamError,
+  bindTaskDispatcher,
+  dispatchThroughSeam,
+  markDispatcher,
+  taskBindingOf,
+  taskDispatchInputSchema,
+  taskSessionKeyFor
+} from "./types/dispatch";
+export type {
+  BlockDispatchType,
+  DispatchAddress,
+  DispatchOutcome,
+  DispatchRefusal,
+  DispatchSeam,
+  DispatchSpec,
+  DispatchType,
+  InternalEntry,
+  SessionTarget,
+  TaskBinding,
+  TaskDispatchInput,
+  TaskEntry,
+  TaskSessionPolicy
+} from "./types/dispatch";
 export type {
   CapabilityPresetCtx,
   CapabilityRef,
@@ -179,11 +211,18 @@ export type { ReplayLog } from "./blocks/internal/replay-log";
 // re-emissions for the read paths (GET history, useSession, SSE replay seed).
 export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
+  dispatcher,
+  dispatchHandleSchema,
   generator,
   handler,
   providerTool,
   router,
-  sequencer
+  sequencer,
+  type DispatchHandle,
+  type DispatcherConfig,
+  type DispatcherSession,
+  type InternalDispatcherConfig,
+  type TaskDispatcherConfig
 } from "./blocks";
 // Block-level rescue resolution (FIX-742). Exported so the server's top-level
 // `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
@@ -197,7 +236,10 @@ export { composeSideChainSignal } from "./blocks/sequencer";
 export {
   defineFlow,
   buildWorkstreamCore,
+  resolveEntry,
   workstreamDispatchInputSchema,
+  type EntryCoordinate,
+  type EntryMaps,
   type WorkstreamDispatchInput,
 } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";

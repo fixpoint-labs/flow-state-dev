@@ -10,14 +10,15 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
+import { readDispatchStamp } from "./dispatch-metadata";
 import { RESUME_ACTION_STATUS, workstreamBindingKey } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import { resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -164,12 +165,19 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
  * never touch a board. This predicate is exact: it fires when a core actually
  * carries a detached binding this flow cannot route, and never otherwise.
  *
- * **Bound worth knowing.** It reads the union already accumulated on the core's
- * root block, which is what composition bubbles up. A board reachable from the
- * carried core only through a generator's static `tools` array is not in that
- * union (a generator carries none of its tools' rails), so it is not caught
- * here and keeps the late failure it has today. Closing that would mean walking
- * the tool edge from `engine`, duplicating a traversal `core` owns.
+ * **Bound worth knowing.** The bindings check reads the union already
+ * accumulated on the core's root block, which is what composition bubbles up. A
+ * board reachable from the carried core only through a generator's static
+ * `tools` array is not in that union (a generator carries none of its tools'
+ * rails), so it is not caught here and keeps the late failure it has today.
+ *
+ * The same seam refuses a **dispatcher** inside a carried core whose address
+ * the flow does not declare. The definition-time address check never walked
+ * these blocks, and a dispatcher admitted here would otherwise reach the seam's
+ * `no-entry` refusal only after a board had claimed a row — a row that then
+ * waits out its lease. This walk does take the tool edge, on the same terms as
+ * `defineFlow`'s: composition through `childBlocks`, plus a generator's static
+ * `tools`.
  */
 function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
   // Every block an `ActionCore` can execute, which is the root plus the two
@@ -185,6 +193,75 @@ function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
     const declared = carrier?.workstreamBindings;
     if (declared === undefined) continue;
     assertBindingsRoutable(flow, declared);
+  }
+
+  assertDispatchersRoutable(flow, carriers);
+}
+
+/**
+ * Undo the acceptance-time writes of a delivery that must not run.
+ *
+ * The request record and the `activeRequests` entry are written when the host
+ * *accepts* a delivery, while the original recipient session is still alive
+ * and valid — so a mismatch check placed before them would pass and prove
+ * nothing. They are therefore reconciled here rather than prevented, and the
+ * writes that have not happened yet are simply not made.
+ *
+ * **Deleted, not marked terminal.** A failed row is a row: session deletion
+ * removes no request records, so listing the replacement session's requests
+ * would return the dropped delivery and its input would appear in that
+ * session's reconstructed history. The promise is that the replacement sees
+ * nothing of it, and a tombstoned row does not deliver that.
+ *
+ * Best-effort: this runs while a delivery is already being abandoned, and a
+ * store failure here must not replace the drop with a different error.
+ */
+async function reconcileDroppedDelivery(
+  stores: Pick<StoreRegistry, "request" | "activeRequests">,
+  requestId: string
+): Promise<void> {
+  try {
+    await stores.request.delete(requestId);
+  } catch {
+    // Best-effort; the drop is what propagates.
+  }
+  try {
+    await stores.activeRequests.deregister(requestId);
+  } catch {
+    // Best-effort; the sweeper reaps anything left behind.
+  }
+}
+
+/** Refuse any dispatcher reachable from `roots` whose address the flow does not declare. */
+function assertDispatchersRoutable(
+  flow: FlowInstance,
+  roots: readonly (BlockDefinition | undefined)[]
+): void {
+  const seen = new Set<BlockDefinition>();
+  const queue: BlockDefinition[] = roots.filter(
+    (block): block is BlockDefinition => block !== undefined
+  );
+
+  while (queue.length > 0) {
+    const block = queue.pop()!;
+    if (seen.has(block)) continue;
+    seen.add(block);
+
+    const address = block.dispatch;
+    if (address !== undefined && resolveTypedEntry(flow, address.type, address.target) === undefined) {
+      throw new ValidationError(
+        `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
+          `dispatches to ${address.type}:"${address.target}", which the flow does not declare. ` +
+          `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
+          `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
+          `drop the dispatch from the resolver's block.`,
+        { scope: "request" }
+      );
+    }
+
+    for (const child of block.childBlocks ?? []) queue.push(child);
+    const tools = (block.config as { tools?: unknown }).tools;
+    if (Array.isArray(tools)) queue.push(...(tools as BlockDefinition[]));
   }
 }
 
@@ -811,11 +888,70 @@ export async function runActionInternal<
       // execution context reads/writes; a bare key would miss a tenant session.
       const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
       const session = await options.stores.session.get(sessionKey);
+
+      // INCARNATION GUARD for a delivery into an existing session, and it sits
+      // here for the reason the tenant guard below makes plain.
+      //
+      // The seam's checks — owner, tenant, org, flow boundary — all read the
+      // recipient's record BEFORE this dispatch. Acceptance and execution are
+      // not the same moment: a delivery can be accepted, sit behind a held
+      // concurrency key, and run later, in a plain single-process deployment. A
+      // recipient session deleted and recreated under the same id in that
+      // window gets a NEW lineage, and nothing downstream re-checks —
+      // `createExecutionContext` validates user, tenant and org bindings and
+      // not parentage. The seam's approval would then execute against a
+      // *replacement* session.
+      //
+      // Placed immediately after the load and before the write, beside the
+      // tenant-binding guard, because the two are the same shape for the same
+      // reason: both compare a property of the just-loaded session against the
+      // request before letting that `latestRequestId` write land. It cannot be
+      // moved earlier: the acceptance-time writes — the `activeRequests` entry
+      // and the `in_progress` stub — happen while the original session is still
+      // alive, so a check placed before them would pass and prove nothing.
+      // Those two are therefore RECONCILED here rather than prevented.
+      //
+      // What this does and does not promise: a mismatch visible here drops the
+      // delivery and reconciles the acceptance-time writes. A recreate landing
+      // AFTER this check is narrower and is not promised against — closing that
+      // needs a predicate CAS the scope store does not have.
+      const stamp = readDispatchStamp(options.source, options.metadata);
+      if (stamp?.recipientLineageId !== undefined) {
+        const actualLineage = resolveLineageId({ id: sessionKey, lineageId: session?.lineageId });
+        if (session === undefined || actualLineage !== stamp.recipientLineageId) {
+          logRuntimeEvent(
+            logger,
+            "warn",
+            "[flow-state] dropping a delivery: the recipient session was replaced between " +
+              "the dispatch and this run",
+            { requestId, sessionId: options.sessionId, flowKind: options.flow.kind }
+          );
+          stopHeartbeatTimer();
+          await reconcileDroppedDelivery(options.stores, requestId);
+          throw new Error(
+            `Delivery "${requestId}" was dropped: session "${options.sessionId}" was deleted ` +
+              "and recreated between the dispatch and this run"
+          );
+        }
+      }
+
       // Tenant-binding guard (FIX-682): this write runs before
       // createExecutionContext's binding check, so without it a no-tenant caller
       // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
       // latestRequestId (an auto-resume hijack) even though the run then fails.
-      if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
+      //
+      // A delivery into an EXISTING session does not stamp `latestRequestId` at
+      // all. That field serves auto-resume discovery — a client attaching to a
+      // session finds the newest request and attaches its stream — and a
+      // delivery is not caller-addressed, so no client is waiting to resume it;
+      // the recipient's own conversation should not have its auto-resume target
+      // replaced by an inbound dispatch. A derived child is its own session and
+      // keeps the write.
+      if (
+        stamp?.recipientLineageId === undefined &&
+        session !== undefined &&
+        tenantMatches(session.tenantId, options.tenantId)
+      ) {
         await options.stores.session.set(
           sessionKey,
           { ...session, latestRequestId: requestId, updatedAt: Date.now() },

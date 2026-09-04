@@ -18,6 +18,16 @@ Related, and deliberately not restated here:
   request host's four verbs.
 - `packages/orchestration/README.md` → *Declaring detached work* — the task-board
   surface that is the ordinary way to start one.
+- [Action Forms](./action-forms.md) → *Dispatched: `internal` and `task`
+  entries* — the sibling path. A `dispatcher()` block and a task-board seat
+  that holds one start a child through the dispatch seam rather than
+  `startDetached`. Everything on this page about locality, acceptance,
+  shutdown and recovery applies to that child unchanged: it is derived and
+  adopted by the same `context/detached-child.ts` (under its own `dispatch`
+  namespace), started by the same request host, and listed by the same
+  workstreams route. The one difference is `{ id }` delivery into an existing
+  session, which is refused outright under an external dispatcher
+  (`usesExternalDispatcher`) instead of being deferred.
 
 ## The rule that decides everything
 

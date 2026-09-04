@@ -78,6 +78,39 @@ export function deriveChildSessionId(
   return `${CHILD_ID_PREFIX}${digest.slice(0, 32)}`;
 }
 
+/**
+ * The namespace a dispatched child's key is framed under, so a `{ key }`
+ * dispatch and a detached start from the same parent can never derive the
+ * same child by choosing the same string: the two seams mint separately.
+ */
+const DISPATCH_NAMESPACE = "dispatch";
+
+/**
+ * Derive the child session id for a `{ key }`-targeted dispatch.
+ *
+ * Same identity material as {@link deriveChildSessionId} — tenant, principal,
+ * parent session and lineage, none of them caller-supplied — with the key
+ * framed under its own namespace. Deterministic by design: the same key from
+ * the same parent lands on the same child, which is what makes "adopt if it
+ * already exists" the ordinary retry path rather than a conflict. The key alone
+ * discriminates among a parent's dispatched children, so two dispatchers in one
+ * flow that compute the same key share one child — a board that wants its
+ * per-task children apart from another board's frames its own id into the key.
+ */
+export function deriveDispatchChildSessionId(identity: DerivationIdentity, key: string): string {
+  const material = [
+    framed(identity.tenantId),
+    framed(identity.userId),
+    framed(identity.parentSessionId),
+    framed(identity.lineageId),
+    framed(DISPATCH_NAMESPACE),
+    framed(key)
+  ].join("|");
+
+  const digest = createHash("sha256").update(material, "utf8").digest("hex");
+  return `${CHILD_ID_PREFIX}${digest.slice(0, 32)}`;
+}
+
 /** The identity a genuine child of this request must carry. */
 export type ExpectedChildIdentity = {
   flowKind: string;
@@ -85,6 +118,13 @@ export type ExpectedChildIdentity = {
   tenantId: string | undefined;
   orgId: string | undefined;
   parentSessionId: string;
+  /**
+   * The parent's lineage, when the caller requires the child to share it — a
+   * `{ key }` dispatch does, since `sharedToWorkstream` resources in the child
+   * resolve against that root. Absent → not compared, which is the detached
+   * start's contract as shipped.
+   */
+  lineageId?: string;
 };
 
 /** The subset of a stored session record adoption inspects. */
@@ -94,6 +134,7 @@ export type AdoptionCandidate = {
   tenantId?: string;
   orgId?: string;
   parentSessionId?: string;
+  lineageId?: string;
 };
 
 /** Which field disagreed. Reported for diagnostics; the caller refuses by name. */
@@ -102,7 +143,8 @@ export type AdoptionMismatch =
   | "userId"
   | "tenantId"
   | "orgId"
-  | "parentSessionId";
+  | "parentSessionId"
+  | "lineageId";
 
 export type AdoptionVerdict =
   | { adoptable: true }
@@ -154,6 +196,14 @@ export function evaluateAdoption(
   }
   if (!sameOptional(record.parentSessionId, expected.parentSessionId)) {
     return { adoptable: false, mismatch: "parentSessionId" };
+  }
+  // The lineage is in the derivation, so a record the seam minted carries the
+  // parent's lineage by construction. A pre-created record does not: it was
+  // minted with whatever lineage the session route gave it, and adopting it
+  // would put every lineage-shared resource in the child on a different root
+  // than the parent's — the ledger a hand-off must settle against.
+  if (expected.lineageId !== undefined && !sameOptional(record.lineageId, expected.lineageId)) {
+    return { adoptable: false, mismatch: "lineageId" };
   }
   return { adoptable: true };
 }
