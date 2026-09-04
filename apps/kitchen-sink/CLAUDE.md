@@ -90,8 +90,12 @@ what came back.
 
 - Flow: `flows/chat-agent/run/thinking-styles/pipelines/background-work.ts`.
   Durable ledger (`defineTaskCollection`, session-scoped, `sharedToWorkstream:
-  true`), an explicit `boardId`, and one worker declared
-  `dispatch: { mode: "detached" }`.
+  true`), an explicit `boardId`, and one seat holding a
+  `dispatcher({ type: "task", session: { key } })` so tasks that share a topic
+  share one Workstream. The block that runs there (`briefWorker`) is exported
+  as the task entry `backgroundWorkTasks` and declared on the flow as
+  `task: { actions: backgroundWorkTasks }` (`flows/chat-agent/flow.ts`) —
+  `defineFlow` gates it behind the board and refuses the flow without it.
 - UI: `components/background-work-panel.tsx`, mounted above the prompt input.
   Reads `session.workstreams` / `session.workstreamsStale` and opens one
   workstream with `useSession(workstreamId, { flowKind: "chat-agent" })` — the

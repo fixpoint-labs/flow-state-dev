@@ -8,7 +8,7 @@
  *
  * ## What is real here, and what the goal would prove nothing without
  *
- * - **A real `createFlowState` runtime.** The detached start operation is
+ * - **A real `createFlowState` runtime.** The dispatch operation is
  *   installed by `createFlowState`; a script that only calls `runAction` has no
  *   request host and the first dispatch throws by name.
  * - **A real Claude Code run**, through the real Agent SDK, in a real git

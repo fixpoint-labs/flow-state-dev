@@ -53,7 +53,7 @@
  * reads as a success while the board row is still open. **The board row is the
  * authority on completion; the run record never is.**
  */
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -602,7 +602,16 @@ export function conductorFlow(options: ConductorFlowOptions) {
     // duration, so this is also what keeps that cost legible.
     concurrency: 1,
     workers: {
-      [ASSIGNEE]: { worker: manager, dispatch: { mode: "detached" } },
+      // Hands off: each row runs in a child session of its own, keyed on the
+      // task id — which IS the issue-phase (`conductorTaskId`), so a retry
+      // re-enters the same child and its run record. The block that runs
+      // there is the manager, declared on the flow's `task.actions` below.
+      [ASSIGNEE]: dispatcher({
+        name: `${boardId}-hand-off`,
+        type: "task",
+        target: ASSIGNEE,
+        session: "per-task",
+      }),
     },
     // **A run parked on a person is not this drain's to wait on.**
     //
@@ -721,8 +730,9 @@ export function conductorFlow(options: ConductorFlowOptions) {
           // Without this the substrate is single-attempt and a reported failure
           // costs nothing and delivers nothing — the defect this lab exists to fix.
           maxAttempts,
-          // The workstream routing identity the detached spawn seeds. Routing
-          // only; nothing derives a path or a permission from it.
+          // A readable label for the row. The child session is keyed on the
+          // task id (`session: "per-task"`), so nothing routes on this and
+          // nothing derives a path or a permission from it.
           metadata: { topic: `${input.issue}/${input.phase}` },
         });
         await ctx.sequencer?.patchState({ taskId: task.id });
@@ -1028,6 +1038,11 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
 
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
+    // The task entry the board's seat hands off to: the manager, reached by
+    // the `task` dispatch the drain sends for each claimed row. `defineFlow`
+    // puts it behind the board's claim gate; the flow, not the board, owns
+    // what a task dispatch can reach.
+    task: { actions: { [ASSIGNEE]: { block: manager } } },
     actions: {
       /** File an issue-phase and start it in one call. */
       seed: {
