@@ -1,10 +1,10 @@
 /**
- * Reading a Workstream's two server-stamped labels, and matching a Workstream
+ * Reading a ChildSession's two server-stamped labels, and matching a ChildSession
  * to the board tasks it is doing (FIX-1071).
  *
- * A Workstream is a session first. It carries a `topic` and a `coordinate`, both
+ * A ChildSession is a session first. It carries a `topic` and a `coordinate`, both
  * display-only, both optional, and neither of them a task reference — a
- * Workstream started by anything other than a task board has no task at all, and
+ * ChildSession started by anything other than a task board has no task at all, and
  * a legacy record has no labels either. Everything here therefore *derives* an
  * association where one is visible and returns nothing where it is not; nothing
  * in the panel is gated on a match existing.
@@ -16,7 +16,7 @@
  *
  * - `topic` is the claimed task's own `metadata.topic`, falling back to the
  *   **task id** when the task declared none. That fallback is the whole of the
- *   association: an unlabelled task's Workstream is named after it.
+ *   association: an unlabelled task's ChildSession is named after it.
  * - `coordinate` is `framed(boardId)|framed(coordinateKey)`, where `framed(v)`
  *   is `` `${v.length}:${v}` `` and `coordinateKey` is `assignee|framed(name)`,
  *   `uniform`, or `floor`.
@@ -33,10 +33,10 @@
  * leaves the topic as the only value both sides can be INDEXED on. The worker is
  * comparable once a candidate is in hand, but it cannot key the lookup.
  *
- * ## A Workstream's identity has three parts, so the match checks three
+ * ## A ChildSession's identity has three parts, so the match checks three
  *
  * `deriveChildSessionId` hashes the topic together with the routing seed's
- * `key`, and `workstreamRoutingSeed` builds that key as
+ * `key`, and `childSessionRoutingSeed` builds that key as
  * `framed(boardId)|framed(coordinateKey)`. So a child session is identified by
  * **(board, worker coordinate, topic)** — and a match that indexes on one part
  * and checks another leaves the third as a defect waiting to be reported. This
@@ -51,12 +51,12 @@
  *   carries `boardId`, but nothing on the task side does: `task-change` and
  *   `task-board-meta` emit `collectionId`, which `taskBoard` documents as a
  *   deliberately different string. Its disagreement is therefore detected
- *   rather than checked — see `linkWorkstreamsToTasks`'s second pass.
+ *   rather than checked — see `linkChildSessionsToTasks`'s second pass.
  *
  * One rule spans all three: a part that DECODES AND DISAGREES disqualifies a
  * candidate; a part that cannot be read at all is "cannot tell" and leaves the
  * candidate eligible. Those are deliberately not the same. Collapsing them
- * would drop the ordinary lone unlabelled Workstream, which carries no
+ * would drop the ordinary lone unlabelled ChildSession, which carries no
  * coordinate and still pairs correctly with its task.
  *
  * The two sides are not symmetric about what counts as unreadable, and that is
@@ -69,10 +69,10 @@
  * A link is drawn only when exactly one candidate survives, and only when no
  * second board is contending for it.
  *
- * That uniqueness is PAGE-LOCAL. The panel reads one page of the Workstream
+ * That uniqueness is PAGE-LOCAL. The panel reads one page of the ChildSession
  * listing (a budget fixed in `docs/architecture/server-and-client.md`), so
  * "exactly one candidate" means exactly one among the rows loaded — an older
- * unlisted Workstream sharing the topic and a compatible worker would fit too.
+ * unlisted ChildSession sharing the topic and a compatible worker would fit too.
  * Nothing here can see that, and nothing here tries to: the caller knows how
  * much of the index it holds, and the Tasks tab marks both a match and an
  * absence as unverified whenever that is less than all of it. Withholding
@@ -115,19 +115,19 @@
  *
  * Two consequences, both real and both correct to show:
  *
- * - **Several tasks can share one Workstream.** That is the substrate's own
+ * - **Several tasks can share one ChildSession.** That is the substrate's own
  *   behaviour — a second task on the same board, worker and topic lands in the
  *   same child session and continues its history — not an artifact of matching
  *   this way.
  * - **A `uniform` or `floor` board cannot be disambiguated by worker.** Its
- *   coordinate names no assignee, so a topic with two such Workstreams links to
+ *   coordinate names no assignee, so a topic with two such ChildSessions links to
  *   neither. Tightening it needs the routing key itself on the wire.
  */
-import type { WorkstreamSummary } from "@flow-state-dev/client";
+import type { ChildSessionSummary } from "@flow-state-dev/client";
 import type { CollectionView, Task } from "./task-collection-state";
 
-/** A Workstream's `coordinate` label, decoded into the two strings it frames. */
-export type WorkstreamCoordinate = {
+/** A ChildSession's `coordinate` label, decoded into the two strings it frames. */
+export type ChildSessionCoordinate = {
   /** The declaring board's stable id. */
   boardId: string;
   /** Which worker on that board, as `assignee:<name>` / `uniform` / `floor`. */
@@ -160,12 +160,12 @@ function readFramed(
  * Decode a `coordinate` label into its board and worker.
  *
  * `null` for an absent label, and for any value that is not the task board's
- * encoding — a Workstream started by another writer may put anything here, and
+ * encoding — a ChildSession started by another writer may put anything here, and
  * guessing at a half-parsed value would name a board that does not exist.
  */
-export function decodeWorkstreamCoordinate(
+export function decodeChildSessionCoordinate(
   coordinate: string | undefined | null
-): WorkstreamCoordinate | null {
+): ChildSessionCoordinate | null {
   // `== null` rather than a truthiness check: a store that nulls absent keys
   // hands back `null`, an older record `undefined`, and both mean unlabelled
   // (BP-030).
@@ -199,7 +199,7 @@ function describeCoordinateKey(key: string): string {
   return key;
 }
 
-/** The topic a task would be addressed by, if a Workstream ran it. */
+/** The topic a task would be addressed by, if a ChildSession ran it. */
 function topicOf(task: Task): string {
   const declared = task.metadata?.["topic"];
   if (typeof declared === "string") {
@@ -219,7 +219,7 @@ export type LinkedTask = {
 };
 
 /**
- * Could this Workstream be running this task?
+ * Could this ChildSession be running this task?
  *
  * `false` on a positive contradiction. The subtlety is which absences count as
  * one, and the two sides are not symmetric:
@@ -227,7 +227,7 @@ export type LinkedTask = {
  * - **An unreadable coordinate is ignorance.** No coordinate at all, a label the
  *   decoder cannot parse, or a `uniform`/`floor` key names no worker, so there
  *   is nothing to compare and the candidate stays eligible. This is what lets a
- *   lone unlabelled Workstream pair with its task.
+ *   lone unlabelled ChildSession pair with its task.
  * - **An absent assignee is not.** When the coordinate DOES name an assignee,
  *   a task without one could not have produced it: `coordinateForTask`
  *   (`task-board/detached-runner.ts`) reaches its `assignee` branch only via
@@ -240,8 +240,8 @@ export type LinkedTask = {
  * task's silence is informative, because only one of them is governed by a
  * routing rule that forbids the pairing.
  */
-function couldRun(workstream: WorkstreamSummary, task: Task): boolean {
-  const worker = decodeWorkstreamCoordinate(workstream.coordinate)?.worker;
+function couldRun(childSession: ChildSessionSummary, task: Task): boolean {
+  const worker = decodeChildSessionCoordinate(childSession.coordinate)?.worker;
   if (worker === undefined || !worker.startsWith("assignee:")) return true;
   const assignee = task.assignee;
   // `== null` and nothing more. The absence that routes a row away from an
@@ -261,7 +261,7 @@ function couldRun(workstream: WorkstreamSummary, task: Task): boolean {
 }
 
 /**
- * The one Workstream a task is addressed by, or `undefined` when that cannot be
+ * The one ChildSession a task is addressed by, or `undefined` when that cannot be
  * decided.
  *
  * A topic alone does not identify a child session. The routing seed carries a
@@ -269,14 +269,14 @@ function couldRun(workstream: WorkstreamSummary, task: Task): boolean {
  * seam hashes BOTH into the child's id, so one topic routed to two different
  * workers is two different sessions rather than one. Matching on topic alone
  * pointed every such task at whichever arrived first and left the other
- * Workstream looking taskless.
+ * ChildSession looking taskless.
  *
  * The coordinate is the half of that key which reaches the client, and a task's
  * `assignee` is what the board turns into it, so the two are compared —
  * **always, not only when the topic is contested**. A single candidate is the
  * ordinary shape of the same defect: two tasks share a topic but target
  * different workers and only one has spawned (the other is inline, or has not
- * started), so the lone Workstream is the only candidate for BOTH and a
+ * started), so the lone ChildSession is the only candidate for BOTH and a
  * count-gated check waves the wrong one through.
  *
  * Where the comparison still does not name exactly one — a `uniform` or `floor`
@@ -285,87 +285,87 @@ function couldRun(workstream: WorkstreamSummary, task: Task): boolean {
  * worse than no link, which is the call the decoder already makes for a label
  * it cannot parse.
  */
-function resolveWorkstream(
-  candidates: readonly WorkstreamSummary[],
+function resolveChildSession(
+  candidates: readonly ChildSessionSummary[],
   task: Task
-): WorkstreamSummary | undefined {
+): ChildSessionSummary | undefined {
   const matched = candidates.filter((candidate) => couldRun(candidate, task));
   return matched.length === 1 ? matched[0] : undefined;
 }
 
 /**
- * Pair the session's Workstreams with the board tasks they are addressed by.
+ * Pair the session's ChildSessions with the board tasks they are addressed by.
  *
  * Both directions come out of one pass because both panels need one of them and
  * neither should re-derive the other's.
  */
-export function linkWorkstreamsToTasks(
-  workstreams: readonly WorkstreamSummary[],
+export function linkChildSessionsToTasks(
+  childSessions: readonly ChildSessionSummary[],
   collections: readonly CollectionView[]
 ): {
-  /** Workstream for a task, keyed `${collectionId}<NUL>${taskId}`. */
-  byTask: Map<string, WorkstreamSummary>;
-  /** Every task one Workstream covers, keyed by workstream id. */
-  byWorkstream: Map<string, LinkedTask[]>;
+  /** ChildSession for a task, keyed `${collectionId}<NUL>${taskId}`. */
+  byTask: Map<string, ChildSessionSummary>;
+  /** Every task one ChildSession covers, keyed by childSession id. */
+  byChildSession: Map<string, LinkedTask[]>;
 } {
-  // Every Workstream on a topic, not just the first — which of them a given
-  // task belongs to is decided per task, by `resolveWorkstream`.
-  const byTopic = new Map<string, WorkstreamSummary[]>();
-  for (const workstream of workstreams) {
-    if (workstream.topic == null || workstream.topic.length === 0) continue;
-    const bucket = byTopic.get(workstream.topic);
-    if (bucket === undefined) byTopic.set(workstream.topic, [workstream]);
-    else bucket.push(workstream);
+  // Every ChildSession on a topic, not just the first — which of them a given
+  // task belongs to is decided per task, by `resolveChildSession`.
+  const byTopic = new Map<string, ChildSessionSummary[]>();
+  for (const childSession of childSessions) {
+    if (childSession.topic == null || childSession.topic.length === 0) continue;
+    const bucket = byTopic.get(childSession.topic);
+    if (bucket === undefined) byTopic.set(childSession.topic, [childSession]);
+    else bucket.push(childSession);
   }
 
   // Pass 1 — resolve the two identity parts that CAN be compared: the topic
   // (the index key) and the worker (assignee against the decoded coordinate).
-  const claims: Array<{ collectionId: string; task: Task; workstream: WorkstreamSummary }> = [];
+  const claims: Array<{ collectionId: string; task: Task; childSession: ChildSessionSummary }> = [];
   for (const collection of collections) {
     for (const entry of collection.tasks) {
-      const workstream = resolveWorkstream(
+      const childSession = resolveChildSession(
         byTopic.get(topicOf(entry.task)) ?? [],
         entry.task
       );
-      if (workstream === undefined) continue;
-      claims.push({ collectionId: collection.id, task: entry.task, workstream });
+      if (childSession === undefined) continue;
+      claims.push({ collectionId: collection.id, task: entry.task, childSession });
     }
   }
 
   // Pass 2 — the BOARD leg, which cannot be compared and so is detected instead.
   //
-  // A Workstream belongs to exactly one board: `deriveChildSessionId` hashes the
+  // A ChildSession belongs to exactly one board: `deriveChildSessionId` hashes the
   // topic together with a key built from `boardId|coordinateKey`. The board id
-  // is on the Workstream's coordinate, but NOTHING on the task side carries one
+  // is on the ChildSession's coordinate, but NOTHING on the task side carries one
   // — `task-change` and `task-board-meta` emit `collectionId`, and `taskBoard`
   // documents that as a deliberately different string from `boardId`. So board
   // equality can never be verified the way the worker can.
   //
   // What is observable is CONTENTION. If tasks in more than one collection each
-  // resolve to the same Workstream, at most one of those boards owns it and
+  // resolve to the same ChildSession, at most one of those boards owns it and
   // nothing on the wire says which — so none of them gets a link. That is the
   // same rule the other two legs follow (a part that cannot decide is ambiguous,
   // and ambiguity draws nothing), applied to the only part whose disagreement is
   // invisible.
   const claimants = new Map<string, Set<string>>();
   for (const claim of claims) {
-    const owners = claimants.get(claim.workstream.id);
-    if (owners === undefined) claimants.set(claim.workstream.id, new Set([claim.collectionId]));
+    const owners = claimants.get(claim.childSession.id);
+    if (owners === undefined) claimants.set(claim.childSession.id, new Set([claim.collectionId]));
     else owners.add(claim.collectionId);
   }
 
-  const byTask = new Map<string, WorkstreamSummary>();
-  const byWorkstream = new Map<string, LinkedTask[]>();
+  const byTask = new Map<string, ChildSessionSummary>();
+  const byChildSession = new Map<string, LinkedTask[]>();
   for (const claim of claims) {
-    if ((claimants.get(claim.workstream.id)?.size ?? 0) > 1) continue;
-    byTask.set(taskLinkKey(claim.collectionId, claim.task.id), claim.workstream);
-    const linked = byWorkstream.get(claim.workstream.id);
+    if ((claimants.get(claim.childSession.id)?.size ?? 0) > 1) continue;
+    byTask.set(taskLinkKey(claim.collectionId, claim.task.id), claim.childSession);
+    const linked = byChildSession.get(claim.childSession.id);
     const value: LinkedTask = { collectionId: claim.collectionId, task: claim.task };
-    if (linked === undefined) byWorkstream.set(claim.workstream.id, [value]);
+    if (linked === undefined) byChildSession.set(claim.childSession.id, [value]);
     else linked.push(value);
   }
 
-  return { byTask, byWorkstream };
+  return { byTask, byChildSession };
 }
 
 /**

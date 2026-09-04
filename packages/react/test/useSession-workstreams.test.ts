@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * Behavioral tests for `useSession`'s `workstreams` axis (FIX-1012).
+ * Behavioral tests for `useSession`'s `childSessions` axis (FIX-1012).
  *
  * The design is interaction-only: the panel is current as of the last thing
  * the user did. It is read on mount, at the START of every action, and on
@@ -20,7 +20,7 @@ const { sessionClientMock, clientMock, recoveryClientMock } = vi.hoisted(() => (
     getSession: vi.fn(),
     getSessionState: vi.fn(),
     listSessionRequests: vi.fn(),
-    listWorkstreams: vi.fn()
+    listChildSessions: vi.fn()
   },
   clientMock: {
     sendActionStream: vi.fn(),
@@ -95,12 +95,12 @@ async function mountSession(options?: Record<string, unknown>) {
     useSession("sess1", { flowKind: "demo", ...options })
   );
   await waitFor(() => {
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalled();
+    expect(sessionClientMock.listChildSessions).toHaveBeenCalled();
   });
   return view;
 }
 
-describe("useSession workstreams axis (FIX-1012)", () => {
+describe("useSession childSessions axis (FIX-1012)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     sessionClientMock.getSession.mockResolvedValue({
@@ -112,7 +112,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     });
     sessionClientMock.getSessionState.mockResolvedValue(snapshot());
     sessionClientMock.listSessionRequests.mockResolvedValue([]);
-    sessionClientMock.listWorkstreams.mockResolvedValue([]);
+    sessionClientMock.listChildSessions.mockResolvedValue([]);
     clientMock.sendActionStream.mockResolvedValue(sseResponse());
   });
 
@@ -127,19 +127,19 @@ describe("useSession workstreams axis (FIX-1012)", () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith(
+    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
+    expect(sessionClientMock.listChildSessions).toHaveBeenCalledWith(
       "sess1",
       undefined
     );
-    expect(result.current.workstreams).toEqual([]);
-    expect(result.current.workstreamsStale).toBe(false);
+    expect(result.current.childSessions).toEqual([]);
+    expect(result.current.childSessionsStale).toBe(false);
     // The second path (BP-035): the conversation is untouched by this feature.
     expect(result.current.items).toEqual([]);
   });
 
   it("exposes one row per body of work, carrying the state the row renders", async () => {
-    sessionClientMock.listWorkstreams.mockResolvedValue([
+    sessionClientMock.listChildSessions.mockResolvedValue([
       row("ws1", "active"),
       row("ws2", "failed")
     ]);
@@ -147,16 +147,16 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     const { result } = await mountSession();
 
     await waitFor(() => {
-      expect(result.current.workstreams).toHaveLength(2);
+      expect(result.current.childSessions).toHaveLength(2);
     });
-    expect(result.current.workstreams.map((w) => w.id)).toEqual(["ws1", "ws2"]);
+    expect(result.current.childSessions.map((w) => w.id)).toEqual(["ws1", "ws2"]);
     // Failed work stays listed rather than disappearing (decision 3).
-    expect(result.current.workstreams[1]?.status).toBe("failed");
+    expect(result.current.childSessions[1]?.status).toBe("failed");
   });
 
   it("reads EXACTLY ONCE per turn — at the start of the action, not twice", async () => {
     const { result } = await mountSession();
-    sessionClientMock.listWorkstreams.mockClear();
+    sessionClientMock.listChildSessions.mockClear();
 
     await act(async () => {
       await result.current.sendAction("go", {});
@@ -164,12 +164,12 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
     // The pinned number for interaction-only. Two would mean the terminal
     // read crept back in; zero would mean a launched job is never discovered.
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
+    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
   });
 
   it("still reads exactly once per turn with items disabled", async () => {
     const { result } = await mountSession({ items: false });
-    sessionClientMock.listWorkstreams.mockClear();
+    sessionClientMock.listChildSessions.mockClear();
 
     await act(async () => {
       await result.current.sendAction("go", {});
@@ -177,7 +177,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
     // The read is a local fact about the interaction, not a stream signal, so
     // turning streaming off cannot remove it.
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
+    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
   });
 
   it("does not read again while the user simply waits — nothing polls", async () => {
@@ -185,9 +185,9 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     try {
       const view = renderHook(() => useSession("sess1", { flowKind: "demo" }));
       await vi.waitFor(() => {
-        expect(sessionClientMock.listWorkstreams).toHaveBeenCalled();
+        expect(sessionClientMock.listChildSessions).toHaveBeenCalled();
       });
-      sessionClientMock.listWorkstreams.mockClear();
+      sessionClientMock.listChildSessions.mockClear();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(120_000);
@@ -195,7 +195,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
       // Interaction-only: two minutes of sitting still costs nothing. This is
       // the assertion that fails if a poll is ever reintroduced.
-      expect(sessionClientMock.listWorkstreams).not.toHaveBeenCalled();
+      expect(sessionClientMock.listChildSessions).not.toHaveBeenCalled();
       view.unmount();
     } finally {
       vi.useRealTimers();
@@ -206,10 +206,10 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     const { result } = await mountSession();
 
     await waitFor(() => {
-      expect(result.current.workstreams).toEqual([]);
+      expect(result.current.childSessions).toEqual([]);
     });
 
-    sessionClientMock.listWorkstreams.mockResolvedValue([row("ws_new", "active")]);
+    sessionClientMock.listChildSessions.mockResolvedValue([row("ws_new", "active")]);
 
     await act(async () => {
       await result.current.refresh();
@@ -217,7 +217,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
     // Under interaction-only this is the app's only way to surface a
     // just-launched job without sending another action.
-    expect(result.current.workstreams.map((w) => w.id)).toEqual(["ws_new"]);
+    expect(result.current.childSessions.map((w) => w.id)).toEqual(["ws_new"]);
   });
 
   it("an older read cannot overwrite a newer one within the same session", async () => {
@@ -226,7 +226,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
       releaseFirst = resolve;
     });
 
-    sessionClientMock.listWorkstreams
+    sessionClientMock.listChildSessions
       // The mount read: slow, and carries a row that is still running.
       .mockImplementationOnce(() => firstRead)
       // A later read: fast, and sees that same work already finished.
@@ -239,7 +239,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.workstreams[0]?.status).toBe("completed");
+      expect(result.current.childSessions[0]?.status).toBe("completed");
     });
 
     // Now let the stale mount read land last.
@@ -250,7 +250,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
     // The newer rows survive: a terminal row must never be regressed to
     // active by a response that was simply slower.
-    expect(result.current.workstreams[0]?.status).toBe("completed");
+    expect(result.current.childSessions[0]?.status).toBe("completed");
   });
 
   it("discards a read in flight when baseUrl changes under a constant session id", async () => {
@@ -259,7 +259,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
       releaseOldBackend = resolve;
     });
 
-    sessionClientMock.listWorkstreams
+    sessionClientMock.listChildSessions
       .mockImplementationOnce(() => oldBackendRead)
       .mockResolvedValue([row("ws_new_backend", "active")]);
 
@@ -272,7 +272,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     rerender({ baseUrl: "https://new.example" });
 
     await waitFor(() => {
-      expect(result.current.workstreams.map((w) => w.id)).toEqual([
+      expect(result.current.childSessions.map((w) => w.id)).toEqual([
         "ws_new_backend"
       ]);
     });
@@ -284,35 +284,35 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
     // A guard keyed to the session id alone would let the old backend's rows
     // land here, because the session id never changed.
-    expect(result.current.workstreams.map((w) => w.id)).toEqual([
+    expect(result.current.childSessions.map((w) => w.id)).toEqual([
       "ws_new_backend"
     ]);
   });
 
   it("keeps the last known rows and marks them stale when a read fails, then clears the mark on success", async () => {
-    sessionClientMock.listWorkstreams.mockResolvedValue([row("ws1", "active")]);
+    sessionClientMock.listChildSessions.mockResolvedValue([row("ws1", "active")]);
     const { result } = await mountSession();
 
     await waitFor(() => {
-      expect(result.current.workstreams).toHaveLength(1);
+      expect(result.current.childSessions).toHaveLength(1);
     });
 
-    sessionClientMock.listWorkstreams.mockRejectedValue(new Error("network"));
+    sessionClientMock.listChildSessions.mockRejectedValue(new Error("network"));
     await act(async () => {
       await result.current.refresh();
     });
 
     // Retained, not cleared — dropping them would claim the work vanished.
-    expect(result.current.workstreams.map((w) => w.id)).toEqual(["ws1"]);
-    expect(result.current.workstreamsStale).toBe(true);
+    expect(result.current.childSessions.map((w) => w.id)).toEqual(["ws1"]);
+    expect(result.current.childSessionsStale).toBe(true);
 
-    sessionClientMock.listWorkstreams.mockResolvedValue([row("ws1", "completed")]);
+    sessionClientMock.listChildSessions.mockResolvedValue([row("ws1", "completed")]);
     await act(async () => {
       await result.current.refresh();
     });
 
-    expect(result.current.workstreamsStale).toBe(false);
-    expect(result.current.workstreams[0]?.status).toBe("completed");
+    expect(result.current.childSessionsStale).toBe(false);
+    expect(result.current.childSessions[0]?.status).toBe("completed");
   });
 
   it("names no page size of its own, so a deployment's smaller ceiling cannot reject the read", async () => {
@@ -322,7 +322,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     // number hardcoded here is one a deployment can set its ceiling below, and
     // the route answers an over-limit `limit` with a 400 rather than clamping
     // — so an ordinary mount would return no rows at all on that deployment.
-    const [, listOptions] = sessionClientMock.listWorkstreams.mock.calls[0] ?? [];
+    const [, listOptions] = sessionClientMock.listChildSessions.mock.calls[0] ?? [];
     expect(listOptions?.limit).toBeUndefined();
   });
 
@@ -330,9 +330,9 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     // The list is all-time history, not just what is running, so a long-lived
     // conversation outgrows any fixed number. An app that knows it runs more
     // background work than the default has to be able to say so.
-    await mountSession({ workstreams: { limit: 500 } });
+    await mountSession({ childSessions: { limit: 500 } });
 
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith(
+    expect(sessionClientMock.listChildSessions).toHaveBeenCalledWith(
       "sess1",
       expect.objectContaining({ limit: 500 })
     );
@@ -343,17 +343,17 @@ describe("useSession workstreams axis (FIX-1012)", () => {
       // A fresh object identity every render — the ordinary way an app writes
       // this. Keying the read on the object rather than the number inside it
       // turns each render into another read.
-      useSession("sess1", { flowKind: "demo", workstreams: { limit: 250 } })
+      useSession("sess1", { flowKind: "demo", childSessions: { limit: 250 } })
     );
 
     await waitFor(() => {
-      expect(sessionClientMock.listWorkstreams).toHaveBeenCalled();
+      expect(sessionClientMock.listChildSessions).toHaveBeenCalled();
     });
 
     rerender();
     rerender();
 
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
+    expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
   });
 
   it("a read that fails after a newer one succeeded does not mark fresh rows stale", async () => {
@@ -362,7 +362,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
       rejectFirst = reject;
     });
 
-    sessionClientMock.listWorkstreams
+    sessionClientMock.listChildSessions
       // The mount read: slow, and destined to fail.
       .mockImplementationOnce(() => firstRead)
       // A later read that succeeds while the first is still outstanding.
@@ -375,7 +375,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.workstreams[0]?.status).toBe("completed");
+      expect(result.current.childSessions[0]?.status).toBe("completed");
     });
 
     await act(async () => {
@@ -386,8 +386,8 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     // The rows on screen came from the newer read and are current. A failure
     // from a read that was already superseded says nothing about them, so
     // presenting them as possibly out of date would be a lie the user acts on.
-    expect(result.current.workstreams[0]?.status).toBe("completed");
-    expect(result.current.workstreamsStale).toBe(false);
+    expect(result.current.childSessions[0]?.status).toBe("completed");
+    expect(result.current.childSessionsStale).toBe(false);
   });
 
   it("a read that succeeds after a newer one failed does not clear the stale mark", async () => {
@@ -396,7 +396,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
       releaseFirst = resolve;
     });
 
-    sessionClientMock.listWorkstreams
+    sessionClientMock.listChildSessions
       // The mount read: slow, carrying rows that are already out of date.
       .mockImplementationOnce(() => firstRead)
       // A later read that fails while the first is still outstanding.
@@ -409,7 +409,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.workstreamsStale).toBe(true);
+      expect(result.current.childSessionsStale).toBe(true);
     });
 
     await act(async () => {
@@ -420,12 +420,12 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     // The newest thing known about this list is that reading it failed. An
     // older response arriving afterwards is not evidence it is current again,
     // and applying it would also regress the rows.
-    expect(result.current.workstreamsStale).toBe(true);
-    expect(result.current.workstreams).toHaveLength(0);
+    expect(result.current.childSessionsStale).toBe(true);
+    expect(result.current.childSessions).toHaveLength(0);
   });
 
   it("clears the axis when the session changes", async () => {
-    sessionClientMock.listWorkstreams.mockResolvedValue([row("ws1", "active")]);
+    sessionClientMock.listChildSessions.mockResolvedValue([row("ws1", "active")]);
 
     const { result, rerender } = renderHook(
       ({ id }: { id: string }) => useSession(id, { flowKind: "demo" }),
@@ -433,20 +433,20 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.workstreams).toHaveLength(1);
+      expect(result.current.childSessions).toHaveLength(1);
     });
 
-    sessionClientMock.listWorkstreams.mockResolvedValue([]);
+    sessionClientMock.listChildSessions.mockResolvedValue([]);
     rerender({ id: "sess2" });
 
     await waitFor(() => {
-      expect(result.current.workstreams).toEqual([]);
+      expect(result.current.childSessions).toEqual([]);
     });
-    expect(result.current.workstreamsStale).toBe(false);
+    expect(result.current.childSessionsStale).toBe(false);
   });
 
   it("renders a status it has never seen, and a row that has no status at all", async () => {
-    sessionClientMock.listWorkstreams.mockResolvedValue([
+    sessionClientMock.listChildSessions.mockResolvedValue([
       // A value from a future server. This package must not enumerate the
       // status vocabulary, so an unknown value renders rather than throwing.
       row("ws_future", "escalated"),
@@ -457,14 +457,14 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     const { result } = await mountSession();
 
     await waitFor(() => {
-      expect(result.current.workstreams).toHaveLength(2);
+      expect(result.current.childSessions).toHaveLength(2);
     });
-    expect(result.current.workstreams[0]?.status).toBe("escalated");
-    expect(result.current.workstreams[1]?.status).toBeUndefined();
+    expect(result.current.childSessions[0]?.status).toBe("escalated");
+    expect(result.current.childSessions[1]?.status).toBeUndefined();
   });
 });
 
-describe("useSession workstreams — every interaction path is classified (FIX-1012)", () => {
+describe("useSession childSessions — every interaction path is classified (FIX-1012)", () => {
   /**
    * The list of work-starting methods has been wrong three times, so this is
    * an exhaustiveness test rather than a list: it enumerates the callable
@@ -501,7 +501,7 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
     });
     sessionClientMock.getSessionState.mockResolvedValue(snapshot());
     sessionClientMock.listSessionRequests.mockResolvedValue([]);
-    sessionClientMock.listWorkstreams.mockResolvedValue([]);
+    sessionClientMock.listChildSessions.mockResolvedValue([]);
     clientMock.sendActionStream.mockResolvedValue(sseResponse());
     recoveryClientMock.continueStream.mockResolvedValue(sseResponse());
     recoveryClientMock.resumeSuspensionStream.mockResolvedValue(sseResponse());
@@ -549,7 +549,7 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
     };
 
     for (const name of SIDE_CHAIN_STARTING) {
-      sessionClientMock.listWorkstreams.mockClear();
+      sessionClientMock.listChildSessions.mockClear();
       await act(async () => {
         await drive[name]!().catch(() => {
           // A path that bails for its own reasons still counts: the read is
@@ -557,7 +557,7 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
         });
       });
       expect(
-        sessionClientMock.listWorkstreams,
+        sessionClientMock.listChildSessions,
         `${name} must perform the discovery read`
       ).toHaveBeenCalledTimes(1);
     }

@@ -11,7 +11,7 @@
  * `packages/patterns/src/task-board/blocks/board-meta.ts`.
  *
  * {@link groupCollections} lived in `components/workspace/task-collections-view`
- * until the Workstreams panel needed the same boards (FIX-1071). It is a pure
+ * until the ChildSessions panel needed the same boards (FIX-1071). It is a pure
  * fold over items with no rendering in it, so it belongs beside the wire shapes
  * it produces rather than inside one of its two consumers.
  */

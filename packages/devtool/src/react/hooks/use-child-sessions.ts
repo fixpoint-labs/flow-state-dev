@@ -1,14 +1,14 @@
 /**
- * Lists the Workstreams hanging off one session (FIX-1071).
+ * Lists the ChildSessions hanging off one session (FIX-1071).
  *
- * Wraps `sessionClient.listWorkstreams`, the same client-method idiom the other
+ * Wraps `sessionClient.listChildSessions`, the same client-method idiom the other
  * listing hooks use — transport lives in the client, never here.
  *
  * Deliberately **not** polled. The listing is a read of all-time history whose
  * per-row cost is a request-store lookup, so it refetches on mount, when the
  * session changes, and when something asks it to: the panel's own Refresh
  * button, and the panel-wide focus revalidation. That matches what
- * `useSession`'s `workstreams` does in `@flow-state-dev/react`, so the DevTool
+ * `useSession`'s `childSessions` does in `@flow-state-dev/react`, so the DevTool
  * shows a developer the same freshness their own app would get rather than a
  * livelier view no product surface has.
  *
@@ -20,10 +20,10 @@
  * One page — the newest background work, since the listing is ordered
  * `created_at DESC` — plus a sentinel read when that page comes back full, so
  * the panel can say whether there is more without walking the whole history.
- * See `fetchWorkstreamPage` for why the budget is one read per turn.
+ * See `fetchChildSessionPage` for why the budget is one read per turn.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { SessionClient, WorkstreamSummary } from "@flow-state-dev/client";
+import type { SessionClient, ChildSessionSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { useReadFence } from "./use-read-fence";
 
@@ -39,7 +39,7 @@ import { useReadFence } from "./use-read-fence";
  * cover only the first, with a failed read leaving this untouched at
  * `"complete"` and raising `error` instead. That made trustworthiness two
  * independent channels, and only a consumer holding BOTH could combine them
- * correctly: the Workstreams tab did, the Tasks tab held one and reported a
+ * correctly: the ChildSessions tab did, the Tasks tab held one and reported a
  * list it never received as verified whole. Three rounds of review each fixed
  * the consumer in front of us while the split kept producing another.
  *
@@ -49,18 +49,18 @@ import { useReadFence } from "./use-read-fence";
 export type Truncation = "complete" | "more" | "unknown";
 
 /** Stable empty list, so a stale hold does not hand back a new array each render. */
-const EMPTY_ROWS: WorkstreamSummary[] = [];
+const EMPTY_ROWS: ChildSessionSummary[] = [];
 
 /**
- * Read the Workstream axis for one session.
+ * Read the ChildSession axis for one session.
  *
  * ## One page, not the whole history
  *
  * `docs/architecture/server-and-client.md` fixes the budget for this axis:
- * "The cost is one Workstream read per turn, independent of task-board
+ * "The cost is one ChildSession read per turn, independent of task-board
  * activity." That is a contract, not a tuning preference — it is what makes an
  * axis read on every interaction affordable — and `useSession` in
- * `@flow-state-dev/react` honours it with a single `listWorkstreams` call.
+ * `@flow-state-dev/react` honours it with a single `listChildSessions` call.
  *
  * The listing is ordered `created_at DESC`, so that one page IS the newest
  * background work. An earlier version of this hook walked every page to the
@@ -89,16 +89,16 @@ const EMPTY_ROWS: WorkstreamSummary[] = [];
  * the read was abandoned rather than completed — it has no honest `truncated`
  * to report, so it returns no page at all rather than a misleading one.
  */
-async function fetchWorkstreamPage(
+async function fetchChildSessionPage(
   sessionClient: SessionClient,
   sessionId: string,
   stillWanted: () => boolean
-): Promise<{ rows: WorkstreamSummary[]; truncation: Truncation } | undefined> {
-  // No `limit`: a host may configure `maxWorkstreamListLimit` below any page
+): Promise<{ rows: ChildSessionSummary[]; truncation: Truncation } | undefined> {
+  // No `limit`: a host may configure `maxChildSessionListLimit` below any page
   // size this side would pick, and the route REJECTS an out-of-range limit with
   // a 400 rather than clamping it. Omitting it takes the deployment's own
   // default.
-  const rows = await sessionClient.listWorkstreams(sessionId);
+  const rows = await sessionClient.listChildSessions(sessionId);
   if (rows.length === 0) return { rows, truncation: "complete" };
 
   if (!stillWanted()) return undefined;
@@ -113,7 +113,7 @@ async function fetchWorkstreamPage(
   // the reader to ignore it; one shown after a network blip tells them
   // something true.
   try {
-    const beyond = await sessionClient.listWorkstreams(sessionId, {
+    const beyond = await sessionClient.listChildSessions(sessionId, {
       offset: rows.length,
     });
     return { rows, truncation: beyond.length > 0 ? "more" : "complete" };
@@ -122,8 +122,8 @@ async function fetchWorkstreamPage(
   }
 }
 
-export type UseWorkstreamsResult = {
-  workstreams: WorkstreamSummary[];
+export type UseChildSessionsResult = {
+  childSessions: ChildSessionSummary[];
   isLoading: boolean;
   error: string | null;
   /**
@@ -134,9 +134,9 @@ export type UseWorkstreamsResult = {
   refresh: () => Promise<void>;
 };
 
-export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
+export function useChildSessions(sessionId: string | null): UseChildSessionsResult {
   const { sessionClient } = useDevTool();
-  const [workstreams, setWorkstreams] = useState<WorkstreamSummary[]>([]);
+  const [childSessions, setChildSessions] = useState<ChildSessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncation, setTruncation] = useState<Truncation>("unknown");
@@ -171,7 +171,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   // holds it, and correctness no longer waits on it.
   const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
   const fence = useReadFence([sessionId, sessionClient], () => {
-    setWorkstreams([]);
+    setChildSessions([]);
     setError(null);
     setTruncation("unknown");
     setIsLoading(false);
@@ -194,7 +194,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
 
     if (!sessionId) {
       if (!stillCurrent()) return;
-      setWorkstreams([]);
+      setChildSessions([]);
       setError(null);
       setTruncation("complete");
       setHeldIdentity(mine);
@@ -205,13 +205,13 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     setError(null);
     setHeldIdentity(mine);
     try {
-      const page = await fetchWorkstreamPage(sessionClient, sessionId, stillCurrent);
+      const page = await fetchChildSessionPage(sessionClient, sessionId, stillCurrent);
       // `undefined` is a walk that stopped because it was retired, not a page.
       // It holds a partial list and no meaningful `truncated`, so there is
       // nothing here to write — and the fence below would refuse it anyway.
       if (page === undefined) return;
       if (!stillCurrent()) return;
-      setWorkstreams(page.rows);
+      setChildSessions(page.rows);
       setTruncation(page.truncation);
       // Cleared on the way OUT as well as on the way in. The clear at the start
       // of this read cannot retire an error a slower, older read raises after it.
@@ -222,7 +222,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
       // be stale, and blanking it would claim the session has no background work
       // — which is a different, and wrong, statement.
       setError(
-        err instanceof Error ? err.message : "Failed to fetch workstreams"
+        err instanceof Error ? err.message : "Failed to fetch childSessions"
       );
       // The read did not land, so nothing about this list is established. Left
       // alone, `truncation` kept whatever it said before — `"complete"` on a
@@ -248,7 +248,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   // data yet for this one", which is what it is — and `isLoading` says so, so
   // nothing renders an empty list as "there is no background work".
   return {
-    workstreams: holdsCurrent ? workstreams : EMPTY_ROWS,
+    childSessions: holdsCurrent ? childSessions : EMPTY_ROWS,
     isLoading: holdsCurrent ? isLoading : sessionId !== null,
     error: holdsCurrent ? error : null,
     truncation: holdsCurrent ? truncation : "unknown",

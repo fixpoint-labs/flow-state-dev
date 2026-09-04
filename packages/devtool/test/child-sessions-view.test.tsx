@@ -1,8 +1,8 @@
 /**
- * The Workstreams panel (FIX-1071).
+ * The ChildSessions panel (FIX-1071).
  *
  * What is pinned here is that a row renders from the *session* record alone. A
- * Workstream can arrive with no topic, no coordinate, no status and no task
+ * ChildSession can arrive with no topic, no coordinate, no status and no task
  * behind it, and each of those is an ordinary state rather than a reason to drop
  * the row — a panel that only rendered fully-labelled, board-backed rows would
  * look correct on the happy path and hide exactly the work a developer went
@@ -12,12 +12,12 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import type { WorkstreamSummary } from "@flow-state-dev/client";
-import { WorkstreamsView } from "../src/react/components/workspace/workstreams-view";
+import type { ChildSessionSummary } from "@flow-state-dev/client";
+import { ChildSessionsView } from "../src/react/components/workspace/child-sessions-view";
 
-function workstream(
-  overrides: Partial<WorkstreamSummary> & { id: string }
-): WorkstreamSummary {
+function childSession(
+  overrides: Partial<ChildSessionSummary> & { id: string }
+): ChildSessionSummary {
   return {
     parentSessionId: "sess_parent",
     createdAt: 1_700_000_000_000,
@@ -26,13 +26,13 @@ function workstream(
   };
 }
 
-function renderView(props: Partial<React.ComponentProps<typeof WorkstreamsView>> = {}) {
+function renderView(props: Partial<React.ComponentProps<typeof ChildSessionsView>> = {}) {
   const onOpen = vi.fn();
   const onRefresh = vi.fn();
   render(
-    <WorkstreamsView
+    <ChildSessionsView
       sessionId="sess_parent"
-      workstreams={[]}
+      childSessions={[]}
       isLoading={false}
       error={null}
       truncation="complete"
@@ -45,17 +45,17 @@ function renderView(props: Partial<React.ComponentProps<typeof WorkstreamsView>>
   return { onOpen, onRefresh };
 }
 
-describe("WorkstreamsView", () => {
+describe("ChildSessionsView", () => {
   it("says a session has no background work rather than showing a bare table", () => {
     renderView();
     expect(screen.getByText(/No background work in this session/i)).toBeInTheDocument();
   });
 
-  it("renders a row for a Workstream with no task, no labels and no status", () => {
-    // The case the whole panel exists for: a Workstream reachable from no board.
+  it("renders a row for a ChildSession with no task, no labels and no status", () => {
+    // The case the whole panel exists for: a ChildSession reachable from no board.
     // Every derived column is absent, and the row still has to be clickable.
     const { onOpen } = renderView({
-      workstreams: [workstream({ id: "dsx_bare" })],
+      childSessions: [childSession({ id: "dsx_bare" })],
     });
 
     expect(screen.getByText("unlabelled")).toBeInTheDocument();
@@ -70,8 +70,8 @@ describe("WorkstreamsView", () => {
     // The raw label is `10:issue-work|20:assignee|9:implement`. Rendering that
     // verbatim beside a hashed id tells a developer nothing.
     renderView({
-      workstreams: [
-        workstream({
+      childSessions: [
+        childSession({
           id: "dsx_1",
           topic: "FIX-1",
           coordinate: "10:issue-work|20:assignee|9:implement",
@@ -89,14 +89,14 @@ describe("WorkstreamsView", () => {
     // Some other writer's label is still the most specific thing known about
     // that worker.
     renderView({
-      workstreams: [workstream({ id: "dsx_1", topic: "t", coordinate: "opaque" })],
+      childSessions: [childSession({ id: "dsx_1", topic: "t", coordinate: "opaque" })],
     });
     expect(screen.getByText("opaque")).toBeInTheDocument();
   });
 
-  it("names the board tasks a Workstream is running", () => {
+  it("names the board tasks a ChildSession is running", () => {
     renderView({
-      workstreams: [workstream({ id: "dsx_1", topic: "task-a" })],
+      childSessions: [childSession({ id: "dsx_1", topic: "task-a" })],
       items: [
         {
           id: "item-1",
@@ -121,7 +121,7 @@ describe("WorkstreamsView", () => {
     // Keeping the rows matters: an empty list is the panel's way of saying "no
     // background work", so blanking on error would state something false.
     renderView({
-      workstreams: [workstream({ id: "dsx_1", topic: "FIX-1" })],
+      childSessions: [childSession({ id: "dsx_1", topic: "FIX-1" })],
       error: "network down",
     });
 
@@ -134,8 +134,8 @@ describe("WorkstreamsView", () => {
     // has `undefined`. A strict `undefined` check renders the badge with no
     // text in it, which looks like a status nobody can name (BP-030).
     renderView({
-      workstreams: [
-        workstream({ id: "dsx_1", topic: "FIX-1", status: null as never }),
+      childSessions: [
+        childSession({ id: "dsx_1", topic: "FIX-1", status: null as never }),
       ],
     });
 
@@ -149,16 +149,16 @@ describe("WorkstreamsView", () => {
     // "No background work in this session" — and a count of zero — directly
     // under the error. The list is UNKNOWN there, and on a debugging surface a
     // confident zero is worse than an obvious gap.
-    renderView({ workstreams: [], error: "network down", isLoading: false });
+    renderView({ childSessions: [], error: "network down", isLoading: false });
 
     expect(screen.getByText("network down")).toBeInTheDocument();
     expect(
       screen.queryByText(/No background work in this session/i)
     ).not.toBeInTheDocument();
-    expect(screen.queryByText(/^0 workstreams/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^0 childSessions/i)).not.toBeInTheDocument();
   });
 
-  it("opens a Workstream from the keyboard, not only by pointer", async () => {
+  it("opens a ChildSession from the keyboard, not only by pointer", async () => {
     // The row's onClick is a pointer convenience. A clickable `<tr>` takes no
     // focus, no Enter and announces nothing, so the tab's primary action has to
     // be a real control or it does not exist for a keyboard user.
@@ -169,14 +169,14 @@ describe("WorkstreamsView", () => {
     // assertion cannot tell the two apart.
     const user = userEvent.setup();
     const { onOpen } = renderView({
-      workstreams: [workstream({ id: "dsx_1", topic: "FIX-1" })],
+      childSessions: [childSession({ id: "dsx_1", topic: "FIX-1" })],
     });
 
     // Reachable by tabbing at all — the panel's Refresh button comes first in
     // document order, the row's control second.
     await user.tab();
     await user.tab();
-    const open = screen.getByRole("button", { name: /Open workstream dsx_1/i });
+    const open = screen.getByRole("button", { name: /Open childSession dsx_1/i });
     expect(open).toHaveFocus();
 
     await user.keyboard("{Enter}");
@@ -191,7 +191,7 @@ describe("WorkstreamsView", () => {
     // The count beside a truncated list is the failure that matters: it reads
     // as complete, so the newest background work looks like it does not exist.
     renderView({
-      workstreams: [workstream({ id: "dsx_1", topic: "FIX-1" })],
+      childSessions: [childSession({ id: "dsx_1", topic: "FIX-1" })],
       truncation: "more" as const,
     });
 
