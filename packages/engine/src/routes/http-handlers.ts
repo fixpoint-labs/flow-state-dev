@@ -64,7 +64,6 @@ import {
 } from "./debug-routes";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
-import { createDetachedStartOperation } from "../context/detached-start-operation";
 import { createDispatchOperation } from "../context/dispatch-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowDispatcher } from "../transports/dispatcher";
@@ -282,15 +281,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // router in their own server without a `FlowState` — a supported embedding —
   // and `integration-tests`' `task-board-detached-handoff` scenario, which
   // drives `createFlowApiRouter` directly, is the thing that will tell you.
-  if (
-    runtimeConfig.requestHost !== undefined &&
-    runtimeConfig.requestHost.startOperation === undefined
-  ) {
-    runtimeConfig.requestHost.startOperation = createDetachedStartOperation({ host });
-  }
   // The dispatch seam's operation, installed on the same last-resort terms and
-  // over the same host, so a direct router caller can dispatch as well as start
-  // detached work.
+  // over the same host, so a direct router caller can dispatch too.
   if (
     runtimeConfig.requestHost !== undefined &&
     runtimeConfig.requestHost.dispatchOperation === undefined

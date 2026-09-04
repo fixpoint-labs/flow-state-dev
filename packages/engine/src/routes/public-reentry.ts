@@ -30,7 +30,6 @@ import {
   INTERNAL_SOURCE,
   TASK_SOURCE,
   WEBHOOK_SOURCE,
-  WORKSTREAM_SOURCE
 } from "../execution/transport-sources";
 
 /**
@@ -84,7 +83,6 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
  */
 const NEVER_PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   WEBHOOK_SOURCE,
-  WORKSTREAM_SOURCE,
   TASK_SOURCE,
   INTERNAL_SOURCE
 ]);
