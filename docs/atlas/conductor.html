@@ -195,7 +195,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <div class="shell">
 <aside class="rail">
   <div class="rail-mark">The Conductor Atlas</div>
-  <div class="rail-sub">living design &middot; aug 2026</div>
+  <div class="rail-sub">living design &middot; sep 2026</div>
   <p class="sib">sibling &middot; <a href="workforce.html">Workforce atlas</a><br>sibling &middot; <a href="roadmap.html">Roadmap atlas</a></p>
   <nav>
     <a class="grp">Orientation</a>
@@ -1741,68 +1741,68 @@ export const conductorConfig = <b>createConductorCapability</b>({
   </div>
 
   <div class="note">
-    <span class="lbl">Checked against the tracker, not remembered &#8212; 24 August 2026</span>
-    <p><strong>Which epic is in flight, first, because it is the thing most often misread.</strong> LAB-68 delivered L0 and is not the epic in flight &#8212; it is the one this document was written under. The work moving now is <strong>LAB-140</strong>, the harness manager, with <strong>LAB-138</strong> and <strong>LAB-139</strong> under it. The join is decided on issue <strong>#1429</strong>, and the epic's objective is approved on PR <strong>#1362</strong>. Read the sequence below as that set.</p>
-    <p>Three other things had moved since they were last written down. <strong>Watch is filed</strong> &#8212; an issue of the Relay epic, not the unfiled gap section 6 leaves it as. <strong>Half of the parked-task problem has shipped, and reading it as all of it is the mistake to avoid.</strong> It is <strong>two issues</strong>, not one, both under the honest-task-substrate epic <strong>FIX-980</strong> &#8212; <em>related</em> to Relay rather than filed inside it. <strong>FIX-1234</strong>, the exit predicate on the <code>awaiting_review</code> the board already has, is merged. <strong>FIX-1244</strong>, the verb that unblocks a parked row with an input so an answer starts a new request, is <strong>backlog</strong>, and it is the half a workstream needs to be woken at all. The rename that closes the three-names gap, <code>awaiting_review</code> to <code>parked</code>, is <strong>FIX-1245</strong> under the same epic and is also backlog. And <strong>the harness-manager proof is an epic with three issues under it</strong>, one of which &#8212; workspaces &#8212; already has an approved direction.</p>
+    <span class="lbl">Checked against the tracker, not remembered &#8212; 2 September 2026</span>
+    <p><strong>Which epic is in flight, first, because it is the thing most often misread.</strong> LAB-68 delivered L0 and is not the epic in flight &#8212; it is the one this document was written under. <strong>LAB-140</strong> is, and it is no longer the proof this page was drafted around. Its first generation is <strong>done</strong>: <strong>LAB-138</strong> and <strong>LAB-139</strong> merged, and so did LAB-146, LAB-147 and LAB-148. The epic was retitled &#8212; <em>the harness manager: production-ready, a second harness (Codex), one block-oriented system</em> &#8212; so read the sequence below as a <strong>second generation over a lab that runs</strong>, not as a plan for a first. Its set: <strong>LAB-152</strong> moves the harness contract into a neutral home and <strong>LAB-153</strong> adds <code>@flow-state-dev/codex</code>, both in progress (#1534, #1535); <strong>LAB-154</strong> takes the manager out of <code>labs/</code>; <strong>LAB-141</strong> picks the harness per task and carries the Proof; <strong>LAB-150</strong> sits in backlog beside them; and <strong>LAB-151</strong>, the <code>fsdev conductor</code> operator board, is in review (#1496).</p>
+    <p>Four things moved on the substrate side. <strong>Workspaces is done</strong> &#8212; <strong>FIX-150</strong> merged across PRs #1497 to #1511, so the throwaway provisioning stub has a real replacement. <strong>The parked-task problem is still two issues</strong>, both under the honest-task-substrate epic <strong>FIX-980</strong> and <em>related</em> to Relay rather than filed inside it &#8212; and the second has moved: <strong>FIX-1234</strong>, the exit predicate on the <code>awaiting_review</code> the board already has, is merged, and <strong>FIX-1244</strong>, the verb that unblocks a parked row with an input, is <strong>in spec review</strong> (#1461), not backlog. This page said backlog in four places. The rename that closes the three-names gap, <code>awaiting_review</code> to <code>parked</code>, is <strong>FIX-1245</strong> and is <strong>todo</strong> (#1513). And <strong>FIX-1230</strong> is in development: its spec closed approved on 24 August, and its implementation PR #1527 &#8212; a draft at roughly 4,900 added lines &#8212; is <strong>held as written</strong> by the decision of record rather than revised, because the dispatch-protocol design would rewrite it.</p>
+    <p>One discrepancy is left standing rather than resolved, because it is a placement question the trackers disagree on. This page files the park under <strong>FIX-980</strong> and calls it <em>related</em> to Relay; the dispatch-protocol design counts it as Relay's own <em>issue 5</em>. Nothing turns on which is right &#8212; the work is the same verb either way &#8212; so it is recorded, not forked.</p>
   </div>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 500" role="img" aria-label="The dependency shape of the build. On the left, the unblocked set: four pieces of work that start now because nothing blocks them, one of which is two issues with only the first merged. Relay core, issue FIX-1230, in development, whose this-cycle floor is an address and fire-and-forget only, with wait-for-response deferred to a later PR, and which is marked the critical path; the harness-manager proof, epic LAB-140, made of LAB-138 then LAB-139, which drives one real issue end to end and whose provisioning is deliberately throwaway; workspaces, FIX-150, spec approved with four sub-PRs, one file projection serving both callers; and the board's park mode, which is two issues under the honest-task-substrate epic FIX-980 rather than inside Relay: FIX-1234, the exit predicate, already merged, and FIX-1244, unblocking a parked row with an input, still in backlog. In the centre, five pieces unlocked by the left. Four of them hang off Relay core: watch, FIX-1235; cron as a sender, FIX-1233, which also needs a session address on the schedule row; sibling-session spawn, FIX-1232; and the durable question path, which is what the first real run ships on rather than a later upgrade to it, and which the board's exit and park mode also feeds. The fifth, real provisioning, hangs off workspaces, where sub-PR c replaces the throwaway stub. On the right, two pieces the Proof consumes but does not own. First, resuming the coding session, FIX-1246 under FIX-1179, in backlog, on the Proof's critical path because a restart does not count as the Proof passing. Below it, under a second heading for work that is additive and gates nothing, strands, epic FIX-1169, where FIX-1170 comes first and FIX-1171 and FIX-996 follow, parked by its author. Along the bottom, a dashed band lists what is not filed anywhere and is proposed in this document only: the classify-and-route step, the manager and architect roles, the sessions collection, the config capability, more than one issue on the board, and any user interface. The closing line reads: the proof does not wait on workspaces, but it does wait on four pieces of substrate it does not own.">
+      <svg viewBox="0 0 940 500" role="img" aria-label="The dependency shape of the build. On the left, the set that starts now: four pieces of work with nothing blocking them. The dispatch slice, which is the decision of record D-8 -- one inbox addressed by type and name, plus the dispatcher handler -- and which is marked the critical path; issue FIX-1230 merges into it and is in development, with its implementation on PR 1527 held as written rather than revised. The harness manager, epic LAB-140, whose first generation is done and whose second is in flight on LAB-152 and LAB-153. Workspaces, FIX-150, done across PRs 1497 to 1511. And the board's park mode, two issues under the honest-task-substrate epic FIX-980 rather than inside Relay: FIX-1234, the exit predicate, merged, and FIX-1244, unblocking a parked row with an input, in spec review. In the centre, five pieces the slice reshapes. Watch, FIX-1235, still open and still needing the dispatcher. Cron as a sender, FIX-1233, unchanged in intent, its mechanism now an outbox row that carries the session. Sibling-session spawn, FIX-1232, promoted into the slice itself and so drawn with no arrow into it. The durable question path, which LAB-139 shipped on the lab's own answer and park exit before any relay existed. And real provisioning, which workspaces has now delivered. On the right, two pieces the Proof consumes but does not own. First, resuming the coding session, FIX-1246 under FIX-1179, in backlog, on the Proof's critical path because a restart does not count as the Proof passing. Below it, under a second heading for work that is additive and gates nothing, strands, epic FIX-1169, where FIX-1170 comes first and FIX-1171 and FIX-996 follow, parked by its author. Along the bottom, a dashed band lists what is not filed anywhere and is proposed in this document only: the classify-and-route step, the manager and architect roles, the sessions collection, the config capability, and more than one issue on the board. The closing line reads: the critical path is the slice, not a Relay subsystem, and the Proof still owns none of what it waits on.">
         <text class="t-lbl" x="20" y="28">UNBLOCKED &#8212; NOTHING BLOCKS THESE</text>
-        <text class="t-lbl" x="352" y="28">UNLOCKED BY THE LEFT</text>
+        <text class="t-lbl" x="352" y="28">RESHAPED BY THE SLICE</text>
         <text class="t-lbl" x="650" y="28">CONSUMED BY THE PROOF, NOT OWNED</text>
 
         <rect class="n-box2" x="20" y="40" width="272" height="80" rx="4"/>
-        <text class="t-b" x="36" y="64">Relay core</text>
-        <text class="t-xs" x="36" y="81">FIX-1230 &middot; IN SPEC REVIEW &middot; PR #1420</text>
-        <text class="t-s" x="36" y="98">the send verb and addressing</text>
+        <text class="t-b" x="36" y="64">The dispatch slice</text>
+        <text class="t-xs" x="36" y="81">D-8 &middot; FIX-1230 IN DEVELOPMENT &middot; #1527 HELD</text>
+        <text class="t-s" x="36" y="98">one inbox (type, name) + dispatcher</text>
         <text class="t-xs f-accent" x="36" y="113">THE CRITICAL PATH</text>
 
         <rect class="n-box2" x="20" y="126" width="272" height="86" rx="4"/>
-        <text class="t-b" x="36" y="150">The harness-manager proof</text>
-        <text class="t-xs" x="36" y="167">LAB-140 &middot; LAB-138 THEN LAB-139</text>
-        <text class="t-s" x="36" y="184">one real issue, end to end</text>
-        <text class="t-xs" x="36" y="201">PROVISIONING IS DELIBERATELY THROWAWAY</text>
+        <text class="t-b" x="36" y="150">The harness manager</text>
+        <text class="t-xs" x="36" y="167">LAB-140 &middot; GEN 1 DONE &middot; GEN 2 IN FLIGHT</text>
+        <text class="t-s" x="36" y="184">production-ready, a second harness</text>
+        <text class="t-xs" x="36" y="201">LAB-152 &middot; LAB-153 IN PROGRESS</text>
 
         <rect class="n-box2" x="20" y="224" width="272" height="62" rx="4"/>
         <text class="t-b" x="36" y="248">Workspaces</text>
-        <text class="t-xs" x="36" y="265">FIX-150 &middot; SPEC APPROVED &middot; FOUR SUB-PRs</text>
+        <text class="t-xs" x="36" y="265">FIX-150 &middot; DONE &middot; PRs #1497-#1511</text>
         <text class="t-s" x="36" y="281">one projection, both callers</text>
 
         <rect class="n-box2" x="20" y="302" width="272" height="62" rx="4"/>
         <text class="t-b" x="36" y="326">The board&#8217;s park mode</text>
-        <text class="t-xs" x="36" y="343">FIX-1234 MERGED &middot; FIX-1244 BACKLOG</text>
-        <text class="t-s" x="36" y="359">park exits; the wake is not built</text>
+        <text class="t-xs" x="36" y="343">FIX-1234 MERGED &middot; FIX-1244 IN SPEC REVIEW</text>
+        <text class="t-s" x="36" y="359">park exits; the wake is specced</text>
 
         <path class="ln" d="M292,77 L322,77"/>
         <path class="ln" d="M322,71 L322,275"/>
         <path class="ln" d="M322,71 L352,71"/>
         <path class="ln" d="M322,139 L352,139"/>
-        <path class="ln" d="M322,207 L352,207"/>
         <path class="ln" d="M322,275 L352,275"/>
         <path class="ln" d="M292,333 L336,333 L336,302"/>
         <path class="ln" d="M292,255 L306,255 L306,343 L352,343"/>
 
         <rect class="n-box" x="352" y="44" width="250" height="54" rx="4"/>
         <text class="t-b" x="368" y="70">Watch</text>
-        <text class="t-xs" x="368" y="88">FIX-1235 &middot; NEEDS THE SEND VERB</text>
+        <text class="t-xs" x="368" y="88">FIX-1235 &middot; OPEN &middot; NEEDS THE DISPATCHER</text>
 
         <rect class="n-box" x="352" y="112" width="250" height="54" rx="4"/>
         <text class="t-b" x="368" y="138">Cron as a sender</text>
-        <text class="t-xs" x="368" y="156">FIX-1233 &middot; + A SESSION ON THE ROW</text>
+        <text class="t-xs" x="368" y="156">FIX-1233 &middot; AN OUTBOX ROW CARRIES IT</text>
 
         <rect class="n-box" x="352" y="180" width="250" height="54" rx="4"/>
         <text class="t-b" x="368" y="206">Sibling-session spawn</text>
-        <text class="t-xs" x="368" y="224">FIX-1232 &middot; THE SAME MISSING LAYER</text>
+        <text class="t-xs" x="368" y="224">FIX-1232 &middot; PROMOTED INTO THE SLICE</text>
 
         <rect class="n-box" x="352" y="248" width="250" height="54" rx="4"/>
         <text class="t-b" x="368" y="274">The durable question path</text>
-        <text class="t-xs" x="368" y="292">LAB-139 SHIPS ON IT, NOT AFTER</text>
+        <text class="t-xs" x="368" y="292">LAB-139 SHIPPED BEFORE ANY RELAY</text>
 
         <rect class="n-box" x="352" y="316" width="250" height="54" rx="4"/>
         <text class="t-b" x="368" y="342">Real provisioning</text>
-        <text class="t-xs" x="368" y="360">FIX-150 SUB-PR c REPLACES THE STUB</text>
+        <text class="t-xs" x="368" y="360">FIX-150 IS DONE &middot; THE STUB IS REPLACED</text>
 
         <path class="ln" d="M602,275 L626,275 L626,158 L650,158"/>
 
@@ -1821,12 +1821,12 @@ export const conductorConfig = <b>createConductorCapability</b>({
         <rect class="n-prop" x="20" y="400" width="904" height="58" rx="4"/>
         <text class="t-b f-accent" x="38" y="424">Not filed at all</text>
         <text class="t-lbl" x="906" y="424" text-anchor="end">PROPOSED IN THIS DOCUMENT, NOWHERE ELSE</text>
-        <text class="t-xs" x="38" y="443">CLASSIFY-AND-ROUTE &middot; THE MANAGER AND ARCHITECT ROLES &middot; sessions/* &middot; THE CONFIG CAPABILITY &middot; TWO ISSUES ON ONE BOARD &middot; ANY UI</text>
+        <text class="t-xs" x="38" y="443">CLASSIFY-AND-ROUTE &middot; THE MANAGER AND ARCHITECT ROLES &middot; sessions/* &middot; THE CONFIG CAPABILITY &middot; TWO ISSUES ON ONE BOARD</text>
 
-        <text class="t-lbl" x="470" y="486" text-anchor="middle">THE PROOF DOES NOT WAIT ON WORKSPACES. IT DOES WAIT ON FOUR PIECES OF SUBSTRATE IT DOES NOT OWN.</text>
+        <text class="t-lbl" x="470" y="486" text-anchor="middle">THE CRITICAL PATH IS THE SLICE, NOT A RELAY SUBSYSTEM. THE PROOF STILL OWNS NONE OF WHAT IT WAITS ON.</text>
       </svg>
     </div>
-    <figcaption><b>One layer with four consumers, and a Proof that consumes four things it does not own.</b> Everything drawn here is filed except the dashed band, which is this document proposing work nobody is tracking. The spine out of Relay core is the only hard sequencing constraint on <em>starting</em> work &#8212; the left column is genuinely parallel. Finishing is a different picture: the Proof needs the send verb, the park, the wake and the resume, and owns none of them. Only the bottom right gates nothing.</figcaption>
+    <figcaption><b>One slice with four consumers, and a Proof that consumes four things it does not own.</b> Everything drawn here is filed except the dashed band, which is this document proposing work nobody is tracking. The spine out of the slice is the only hard sequencing constraint on <em>starting</em> work &#8212; the left column is genuinely parallel. Sibling spawn hangs off nothing because it is no longer downstream of the send verb: the dispatcher <em>is</em> the spawn primitive. Finishing is still a different picture &#8212; the Proof needs the dispatcher, the park, the wake and the resume, and owns none of them.</figcaption>
   </figure>
 
   <h3>Relay is the critical path</h3>
@@ -1835,23 +1835,24 @@ export const conductorConfig = <b>createConductorCapability</b>({
 
   <p>It is also the piece furthest along. The epic is approved on PR #1357, and its first issue, FIX-1230, is in development against the spec on PR #1420.</p>
 
-  <p><strong>What FIX-1230 ships this cycle is narrower than its title.</strong> The decided floor is <strong>an address and fire-and-forget, and nothing else</strong>; wait-for-response stays in the spec as a later PR. That matters for reading the rest of this page: the Proof needs a way back into a live session, which fire-and-forget gives it, and it does not need a sender that blocks on a reply. Approving the spec was approving that floor, not both halves at once. The conditional cross-worker wake channel, FIX-1231, is the piece that only exists if a blocking send has to work on a queue-backed dispatcher &#8212; separately decided as not this cycle, which is what that condition resolving to <em>later</em> looks like.</p>
+  <p><strong>There is no wait-for-response mode, in this cycle or after it.</strong> That is stronger than the floor this page used to record, and it comes from the shape rather than from scheduling. Every dispatch carries a synchronous <strong>delivery ack</strong>; an <strong>outcome</strong> is a task row somebody watches; and a parent that waits for its child is a block call, not a dispatch. So the blocking mode has nothing left to be. FIX-1230's tracker title still says wait-for-response, and lags the decision by exactly that much. Two things follow. The self-addressed deadlock the mode created is <strong>unrepresentable</strong> rather than refused (section 6). And the conditional cross-worker wake channel, <strong>FIX-1231</strong>, existed only to serve a blocking send on a queue-backed dispatcher, so it is <strong>not built</strong> &#8212; the epic's own alternative outcome, reached rather than overridden.</p>
 
-  <h3>Four things start now, and one of them is half done</h3>
+  <h3>What is unblocked, and what has landed since</h3>
 
-  <p>Everything in the left column of the figure is unblocked today. Three are the obvious ones &#8212; the substrate, the proof, and the file layer. The fourth is two issues rather than one, and only the first of the two has merged.</p>
+  <p>Everything in the left column of the figure is unblocked. Two have since landed &#8212; the file layer outright, and the manager's first generation &#8212; which is why the sequence below reads as a second pass rather than a start.</p>
 
   <ol>
-    <li><strong>Relay's first issue</strong> (FIX-1230). The substrate everything else in the messaging story rides on.</li>
-    <li><strong>The harness-manager proof</strong> (LAB-140). Drive one real issue end to end through the join &#8212; board claim, provision, start the run, read the outcome, decide. LAB-138 is the run; LAB-139 is the question and the answer coming back.</li>
-    <li><strong>Workspaces</strong> (FIX-150). Independent of Relay entirely, direction already approved, and split into four sub-PRs: the package, then the shell tool and the coding-agent path in parallel, then the overlap check across both.</li>
-    <li><strong>The board's park mode</strong> (FIX-1234, then FIX-1244). Two issues, not one, both under the honest-task-substrate epic (FIX-980) and <em>related</em> to Relay rather than inside it. <strong>FIX-1234 has merged</strong>: a task parked in <code>awaiting_review</code> now releases its launching request. <strong>FIX-1244 has not</strong> &#8212; unblocking that row with an input, so the answer arrives as a new request, is backlog, and without it a parked row has nothing that wakes it. Neither ever depended on the send verb.</li>
+    <li><strong>The dispatch slice</strong> (FIX-1230 merges into it). One inbox addressed <code>(type, name)</code> and the <code>dispatcher</code> handler &#8212; the substrate everything else rides on.</li>
+    <li><strong>The harness manager</strong> (LAB-140). Its first generation drove one real issue end to end through the join &#8212; board claim, provision, start the run, read the outcome, decide &#8212; and is done. The second generation is the production shape: LAB-152 puts the harness contract in a neutral home, LAB-153 adds a second harness, LAB-154 takes the manager out of <code>labs/</code>, and LAB-141 chooses the harness per task and carries the Proof.</li>
+    <li><strong>Workspaces</strong> (FIX-150). <strong>Done</strong>, across PRs #1497 to #1511 &#8212; the package, the shell tool and the coding-agent path, and the overlap check across both. The lab's own <code>workspace.ts</code> has not moved onto it yet.</li>
+    <li><strong>The board's park mode</strong> (FIX-1234, then FIX-1244). Two issues, not one, both under the honest-task-substrate epic (FIX-980) and <em>related</em> to Relay rather than inside it &#8212; where the dispatch-protocol design counts the park as Relay's own issue 5. <strong>FIX-1234 has merged</strong>: a task parked in <code>awaiting_review</code> now releases its launching request. <strong>FIX-1244 is in spec review</strong> (#1461) &#8212; unblocking that row with an input, so the answer arrives as a new request &#8212; and without it a parked row outside the lab has nothing that wakes it. The rename to <code>parked</code> is FIX-1245, todo (#1513). Neither ever depended on the send verb.</li>
+    <li><strong>The fence on <code>ctx.suspend</code> inside a run</strong> (FIX-1247). Backlog. Nothing refuses the call today, so a run that suspends parks its own request while the row still reads as work in progress and nobody upstream is told (section 6). The fence makes it an error.</li>
   </ol>
 
   <div class="note">
     <span class="lbl">The one thing that makes this sequence work</span>
-    <p><strong>The harness proof does not wait on the workspace layer</strong> &#8212; which is a narrower claim than it used to make here, and the narrowing matters. It does wait on four pieces of substrate it does not own: the send verb, the park, the wake, and the resume. Every issue in the set can finish and the Proof still will not run until those land. What it does not wait on is <em>files</em>. Its value is exposing surprises while they are still cheap, and the surprises live in the join &#8212; a run that asks something on its first turn, a done-condition that has to be re-evaluated rather than computed once, a liveness answer that is a hint rather than a fact. None of that needs a real workspace layer to show itself. It needs <code>git worktree add</code> plus a <code>cwd</code> pointed at the result &#8212; ordinary shell work, and the half that could have failed is measured: a probe on the workspaces spec branch confirmed that pointing a run at a directory relocates its filesystem, with the server&#8217;s own directory untouched.</p>
-    <p>So the provisioning that proof uses is <strong>explicitly throwaway</strong>, and saying so out loud is what stops it quietly becoming a second implementation. LAB-138 names the seam in its own scope: a deliberately small placeholder that workspaces' sub-PR <code>c</code> subsumes. Run the proof beside Relay rather than behind it, and the two meet in the middle.</p>
+    <p><strong>The harness proof does not wait on the workspace layer</strong> &#8212; which is a narrower claim than it used to make here, and the narrowing matters. It waits on three pieces of substrate it does not own: the dispatcher, the wake, and the resume. The park has landed; workspaces has landed too, so the throwaway stub now has a real replacement to move onto. Every issue in the set can finish and the Proof still will not run until those land. What it does not wait on is <em>files</em>. Its value is exposing surprises while they are still cheap, and the surprises live in the join &#8212; a run that asks something on its first turn, a done-condition that has to be re-evaluated rather than computed once, a liveness answer that is a hint rather than a fact. None of that needs a real workspace layer to show itself. It needs <code>git worktree add</code> plus a <code>cwd</code> pointed at the result &#8212; ordinary shell work, and the half that could have failed is measured: a probe on the workspaces spec branch confirmed that pointing a run at a directory relocates its filesystem, with the server&#8217;s own directory untouched.</p>
+    <p>So the provisioning that proof uses is <strong>explicitly throwaway</strong>, and saying so out loud is what stops it quietly becoming a second implementation. LAB-138 named the seam in its own scope, a deliberately small placeholder that workspaces subsumes; workspaces has since shipped, and moving the lab's <code>workspace.ts</code> onto it is what closes the seam. Run the manager beside the slice rather than behind it, and the two meet in the middle.</p>
   </div>
 
   <div class="tw">
@@ -1860,52 +1861,59 @@ export const conductorConfig = <b>createConductorCapability</b>({
       <tbody>
         <tr>
           <td><strong>Relay</strong><br><code>FIX-1197</code></td>
-          <td><span class="tag t-real">epic approved</span> <span class="tag t-prose">issue 1 in development</span></td>
-          <td>Addressing and a send verb (<code>FIX-1230</code>), a conditional cross-worker wake channel (<code>1231</code>), sibling spawn (<code>1232</code>), addressed cron (<code>1233</code>), watch (<code>1235</code>). <strong><code>FIX-1230</code>'s floor this cycle is an address and fire-and-forget only</strong> &#8212; wait-for-response is a later PR, and <code>1231</code> exists only to serve a blocking send, so it is not this cycle either</td>
-          <td>Watch, cron-as-sender, sibling spawn, and the way back into a live session the Proof needs. Fire-and-forget is enough for that; the Proof does not need a sender that blocks</td>
-          <td>Nothing. <code>FIX-1230</code> is unblocked and in development; the other four wait on it</td>
+          <td><span class="tag t-real">epic approved</span> <span class="tag t-prose">issue 1 in development</span> <span class="tag t-prop">reshaped</span></td>
+          <td><strong>Six issues, and the slice disposes of each one.</strong> <code>FIX-1230</code> (address + send verb) <strong>merges</strong> into the <code>dispatcher</code>. <code>1231</code> (conditional cross-worker wake channel) is <strong>not built</strong> &#8212; it existed only if blocking waits do, and park-and-end means the drain never blocks. <code>1232</code> (sibling spawn) is <strong>promoted</strong>: not address supply but the spawn primitive itself, and no longer downstream of <code>1230</code>. <code>1233</code> (addressed cron) is <strong>unchanged</strong>, its mechanism now an outbox row. <code>1234</code> / the park is <strong>unchanged</strong> and already approved &#8212; this page files it under <code>FIX-980</code>, the design counts it as Relay's issue 5. <code>1235</code> (watch) stays <strong>open</strong>. <strong>This removes work from the epic; it adds none.</strong></td>
+          <td>Watch, cron-as-sender, and the way back into a live session the Proof needs. A delivery ack is enough for that; there is no sender that blocks on a reply, so nothing here waits on one</td>
+          <td>Nothing. <code>FIX-1230</code> is unblocked and in development, with PR #1527 held as written; watch and cron are what still wait on it</td>
         </tr>
         <tr>
           <td><strong>The harness-manager proof</strong><br><code>LAB-140</code></td>
-          <td><span class="tag t-real">objective approved</span> <span class="tag t-prose">on PR #1362</span></td>
-          <td><code>LAB-138</code> turns a task row into a watched, settled coding run and records it as <code>runs/**</code>. <code>LAB-139</code> gives that run a way to ask and be answered &#8212; the inbox collection and the <code>steer</code> action. <code>FIX-150</code> sits under the same epic</td>
+          <td><span class="tag t-real">gen 1 done</span> <span class="tag t-prose">gen 2 in progress</span></td>
+          <td>Generation one is merged: <code>LAB-138</code> turned a task row into a watched, settled coding run recorded as <code>runs/**</code>, and <code>LAB-139</code> gave that run a way to ask and be answered &#8212; the inbox collection and <code>answer</code> &#8212; on the lab's own park exit, <strong>before any relay existed</strong>. Generation two is the production shape: <code>LAB-152</code> (harness contract, neutral home), <code>LAB-153</code> (<code>@flow-state-dev/codex</code>), <code>LAB-154</code> (out of <code>labs/</code>), <code>LAB-141</code> (harness per task, carries the Proof), <code>LAB-150</code>, and <code>LAB-151</code>, the <code>fsdev conductor</code> operator board</td>
           <td>Everything above the seam &#8212; the phase machine, context assembly, filing. None of them can be built on a dispatch that returns and forgets</td>
-          <td>Nothing to start, and four things to finish. <code>LAB-139</code> needs <code>LAB-138</code>. The <em>Proof</em> needs the send verb (<code>FIX-1230</code>), the park (<code>FIX-1234</code>, merged), the wake (<code>FIX-1244</code>), and the resume (<code>FIX-1246</code>) &#8212; it owns none of the four, and every issue here can finish before the Proof can run</td>
+          <td>Nothing to start, and three things to finish. The <em>Proof</em> needs the dispatcher, the wake (<code>FIX-1244</code>, in spec review) and the resume (<code>FIX-1246</code>) &#8212; it owns none of them, and every issue here can finish before the Proof can run. The park (<code>FIX-1234</code>) has landed</td>
         </tr>
         <tr>
           <td><strong>Workspaces</strong><br><code>FIX-150</code></td>
-          <td><span class="tag t-real">spec approved</span></td>
+          <td><span class="tag t-real">done</span></td>
           <td>One file projection with a remembered baseline, both existing callers moved onto it, containment defaults for the coding path, and a per-run isolation scope. Subsumes the concurrent-flush data-loss bug</td>
-          <td>The harness manager's real provisioning, via sub-PR <code>c</code></td>
-          <td>Nothing. Sub-PRs run <code>a</code>, then <code>b</code> and <code>c</code> in parallel, then <code>d</code></td>
+          <td>The harness manager's real provisioning. Shipped; the lab's <code>workspace.ts</code> has not moved onto it yet</td>
+          <td>Nothing. Merged across PRs #1497 to #1511</td>
         </tr>
         <tr>
           <td><strong>The board's park mode</strong><br><code>FIX-1234</code> &middot; <code>FIX-1244</code> &middot; <code>FIX-1245</code></td>
-          <td><span class="tag t-real">1234 shipped</span> <span class="tag t-prop">1244 &middot; 1245 filed</span></td>
-          <td>Two halves and a rename, all under the honest-task-substrate epic <code>FIX-980</code>, <em>related</em> to Relay rather than inside it. <strong><code>FIX-1234</code> is merged</strong>: an exit predicate, so a task parked in <code>awaiting_review</code> releases its launching request and the board reports the exit as neither success nor failure. <strong><code>FIX-1244</code> is not</strong>: unblocking that row with an input, so an answer arrives as a new request. <code>FIX-1245</code> renames <code>awaiting_review</code> to <code>parked</code></td>
+          <td><span class="tag t-real">1234 shipped</span> <span class="tag t-prose">1244 in spec review</span> <span class="tag t-prop">1245 todo</span></td>
+          <td>Two halves and a rename, all under the honest-task-substrate epic <code>FIX-980</code>, <em>related</em> to Relay rather than inside it. <strong><code>FIX-1234</code> is merged</strong>: an exit predicate, so a task parked in <code>awaiting_review</code> releases its launching request and the board reports the exit as neither success nor failure. <strong><code>FIX-1244</code> is in spec review</strong> (#1461): unblocking that row with an input, so an answer arrives as a new request. <code>FIX-1245</code> renames <code>awaiting_review</code> to <code>parked</code></td>
           <td>The parked half of the Proof &#8212; a workstream that asks a question and <em>ends</em>. The exit alone does not get there: a row that nothing can wake is a dead letter, which is <code>FIX-1244</code>'s whole subject</td>
-          <td>Nothing, and specifically not the send verb. <code>FIX-1244</code> waits on <code>FIX-1234</code>, which has landed</td>
+          <td>Nothing, and specifically not the send verb. <code>FIX-1244</code> waited on <code>FIX-1234</code>, which has landed</td>
+        </tr>
+        <tr>
+          <td><strong>The <code>ctx.suspend</code> fence</strong><br><code>FIX-1247</code></td>
+          <td><span class="tag t-prop">filed</span></td>
+          <td>Making <code>ctx.suspend</code> an error inside a spawned run. Nothing refuses the call today: the run parks, its row still reads <code>in_progress</code>, and nobody upstream is told (section 6)</td>
+          <td>Nothing. It closes a wrong path rather than opening a right one &#8212; the parked row is already the mechanism</td>
+          <td>Nothing</td>
         </tr>
         <tr>
           <td><strong>Watch</strong><br><code>FIX-1235</code></td>
           <td><span class="tag t-prop">filed</span></td>
           <td>A registry, an out-of-turn matcher, addressed delivery, and a required expiry sweep. The event sources already emit; this is the half that listens from outside the emitting session</td>
           <td>The coordinator's wake, hot and cold. Today <code>LAB-138</code> hand-rolls it &#8212; a done-condition predicate re-evaluated on each wake &#8212; and this is where that stops</td>
-          <td><code>FIX-1230</code></td>
+          <td>The <code>dispatcher</code>, which is where <code>FIX-1230</code> lands</td>
         </tr>
         <tr>
           <td><strong>Cron as a sender</strong><br><code>FIX-1233</code></td>
           <td><span class="tag t-prop">filed</span></td>
-          <td>An optional session address on the schedule row. Present, a fire becomes an addressed send; absent, behaviour is exactly today's</td>
+          <td>Unchanged in intent; the mechanism moved. A block writes an <strong>outbox row</strong> carrying the whole envelope, session included, and a host sweep dispatches the rows that are due. Static cron entries keep today's path. Deferred, not this cycle</td>
           <td>A recurring job that steers or informs a live session instead of cold-starting one</td>
-          <td><code>FIX-1230</code>, plus the address field the schedule row has no way to carry today</td>
+          <td>The <code>dispatcher</code>, plus the outbox row and the sweep, neither of which exists</td>
         </tr>
         <tr>
           <td><strong>Sibling-session spawn</strong><br><code>FIX-1232</code></td>
-          <td><span class="tag t-prop">filed</span></td>
-          <td>A spawn verb that mints a new peer session and hands its address back. Explicitly not discovery &#8212; reaching a session you did not spawn is the send verb's caller-supplied path</td>
+          <td><span class="tag t-prop">filed &middot; promoted</span></td>
+          <td>Promoted from address supply to <strong>the spawn primitive</strong>. It is the same <code>dispatcher</code> with the session absent: absent mints a session, present delivers into one. Same-flow this cycle &#8212; it resolves <code>flow.internal.actions</code> &#8212; and explicitly not discovery</td>
           <td>Two top-level sessions collaborating without a person carrying context between two windows</td>
-          <td><code>FIX-1230</code></td>
+          <td>Nothing beyond the slice. It is no longer downstream of <code>FIX-1230</code> &#8212; the dispatcher <em>is</em> the verb</td>
         </tr>
         <tr>
           <td><strong>Resume the coding session</strong><br><code>FIX-1246</code> under <code>FIX-1179</code></td>
@@ -1935,8 +1943,8 @@ export const conductorConfig = <b>createConductorCapability</b>({
       <tbody>
         <tr>
           <td><strong>Inbox capability</strong><br><code>FIX-1075</code></td>
-          <td><span class="tag t-prop">filed</span> Overlaps Relay heavily, and doubts itself in its own text: it asks first <em>&#8220;what does an inbox capability add that a shared resource collection does not already give you?&#8221;</em></td>
-          <td><strong>Unresolved.</strong> Fold into Relay, or keep as the general primitive sitting above it. <code>LAB-139</code> does not wait on the answer &#8212; it builds the conductor's own <code>inbox/**</code> collection directly</td>
+          <td><span class="tag t-prop">filed &middot; reshaped</span> Overlaps the slice rather than Relay, and doubts itself in its own text: it asks first <em>&#8220;what does an inbox capability add that a shared resource collection does not already give you?&#8221;</em>. The slice answers most of it &#8212; the flow's typed entry set <em>is</em> the inbox &#8212; which leaves a smaller question rather than none</td>
+          <td><strong>Unresolved</strong>, and the name is now doing damage. Two different things are called an inbox: this page's <code>inbox/**</code> is the <strong>question collection</strong> a person answers from, and the slice's is the flow's <strong>typed entry set</strong>. Whatever <code>FIX-1075</code> becomes has to pick one. <code>LAB-139</code> did not wait on the answer &#8212; it shipped the conductor's own <code>inbox/**</code> collection directly</td>
         </tr>
         <tr>
           <td><strong>No channel to steer a workstream</strong><br><code>FIX-1056</code></td>
@@ -1946,7 +1954,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
         <tr>
           <td><strong>Background work has no way back</strong><br><code>FIX-1171</code></td>
           <td><span class="tag t-prop">filed</span> Already a child of the Strands epic, and already blocked on strand identity by its own text. It is Relay's mechanism seen from the worker's end</td>
-          <td><strong>Unresolved</strong>, but narrower than it looks: the narrowing to attribution has already happened by placement. What is left is whether its delivery half is Relay's or its own</td>
+          <td><strong>Narrower still.</strong> The narrowing to attribution happened by placement; the slice answers the rest. Its delivery half is an <code>internal</code> dispatch &#8212; not its own mechanism and not Relay's either, since Relay is that same row. What is left is attribution, which is strand identity's problem</td>
         </tr>
         <tr>
           <td><strong>Concurrent-flush data loss</strong><br><code>FIX-998</code></td>
@@ -1966,41 +1974,42 @@ export const conductorConfig = <b>createConductorCapability</b>({
     <li>The <strong>manager and architect roles</strong>, and the call-site and scope decisions behind them (section 1).</li>
     <li>The <strong><code>sessions/*</code> rows</strong> &#8212; what the other coordinators are working on (section 8).</li>
     <li>The <strong>config capability</strong> that holds the phase table (section 10).</li>
-    <li><strong>More than one issue on one board</strong>, and any operator UI beyond the rows themselves. Both are explicitly out of the proof's scope.</li>
+    <li><strong>More than one issue on one board</strong>. Explicitly out of the proof's scope.</li>
+    <li><strong>An operator UI</strong> is the one entry here that has moved. A Conductor TUI exists as a POC on <code>LAB-151</code>'s PR #1496, and it <strong>will not merge</strong> &#8212; the TUI is to be extracted later. So the surface is no longer unimagined; it is unfiled, which is a different gap and a smaller one.</li>
   </ul>
 
-  <p>That is not an argument for filing them now. The proof exists to make several of these cheaper to specify &#8212; a role's call site, in particular, is a question the first real role block answers better than any amount of design does (thread 11). It is an argument for not reading the sections above as a plan.</p>
+  <p>That is not an argument for filing them now. The manager's first generation made several of these cheaper to specify &#8212; a role's call site, in particular, is a question the first real role block answers better than any amount of design does (thread 11). It is an argument for not reading the sections above as a plan.</p>
 </section>
 
 <section id="open">
   <div class="sec-head"><span class="sec-num">12</span><h2>Open threads</h2></div>
-  <p class="lede">Fourteen threads this design cannot close on its own. Five now have answers, settled by the work section 11 puts on the roadmap; they are kept here with their reasoning rather than deleted, because a decision without its reasoning cannot be re-checked. The other nine are still live.</p>
+  <p class="lede">Twenty-three threads this design cannot close on its own. Five have answers now, and two of those answers <em>contradict</em> what this page argued &#8212; which is why an answered thread is kept with its reasoning rather than deleted: a decision without its reasoning cannot be re-checked, and a contradicted one cannot be learned from. The other eighteen are live, and nine of them arrived with the decision of record.</p>
 
   <div class="tension">
     <h5>1 &middot; Nothing has driven one real issue end to end through this seam</h5>
     <p>Every diagram here routes through the harness manager, and it does not exist. The parts do: the board claims and routes, <code>claudeCodeAgent</code> runs, <code>startDetached</code> spawns, and the runner's fenced recorders close the row. What is unproven is the join &#8212; and the join is where the surprises live, particularly around a run that asks something on its first turn.</p>
-    <span class="ask">Answered &#8212; yes, and it is filed as an epic of its own: the manager, then one real issue driven end to end, question and all, on throwaway provisioning (section 11). What is still outstanding is the objective gate on it, not the approach.</span>
+    <span class="ask">Answered, and since answered by running it. The manager shipped, and with it one real issue driven end to end &#8212; question and all &#8212; on throwaway provisioning. The join held. What the run changed is recorded through this page rather than left here: the lab abandoned lineage sharing, the question path landed on a parked row and an <code>answer</code> before any relay existed, and the harness conversation does not continue unless something hands the handle back in. What is open now is the second generation, not the join (section 11).</span>
   </div>
 
   <div class="tension">
     <h5>2 &middot; Mail, and the cron changes that ride on it</h5>
     <p>The cold path has a named answer: a workstream sends mail to the coordinator&#8217;s session, and the flow handles it as a request like any other input (section 6). The <em>build</em> is no longer open &#8212; it is an approved epic with five issues under it, and this document still deliberately does not specify it. Its shape is what section 6 argued for: <strong>an address on the envelope, a send verb for a running request, and per-adapter delivery</strong>, plus the cron half, a schedule that can name a session so a tick stops being a session-less dispatch and becomes a sender like everything else. The sibling-spawn verb is scoped with that layer rather than after it &#8212; same addressing, same per-adapter delivery. One addition sits on the <em>board</em> rather than the bus, it never depended on the send verb, and it has already shipped: the parked-task exit mode section 6 records, filed under the honest-task-substrate epic rather than inside Relay. The <strong>watch</strong> stays in Relay &#8212; a keyed row per (watcher, task) plus a best-effort send inside the settle, which borrows the send verb and needs nothing else.</p>
     <p>The question the existing seam raises deliberately has an answer too, and it is a subtraction. <code>RequestHost</code> never takes a session id as a parameter &#8212; a caller supplies only a seed, and identity is closed over &#8212; precisely so nobody can name a session they do not own. <strong>What a sender may legally address</strong> is settled by ruling <em>discovery</em> out of the layer entirely: a sender addresses a session it already holds, or one it spawned itself. There is no lookup, and there is not going to be one.</p>
-    <span class="ask">Answered &#8212; the Proof is relay plus a parked task row, and it waits for both. The earlier plan was to start on the hot path, hold the question in <code>awaiting_review</code> while the operator answered, and adopt relay afterwards. That is not what gets built. A worker slot held open for as long as an answer takes is the thing section 6 says not to depend on, and starting on it is how a stopgap quietly becomes the design. The first real run parks its task, ends its request, and is woken by a relayed message.</span>
+    <span class="ask">Answered, and then reshaped. <strong>The address and the send verb are settled</strong>: an address is <code>(type, name)</code>, the verb is a <code>dispatcher</code> block, and there is no separate relay layer for either to live in. The sibling-spawn half is <strong>promoted</strong> &#8212; the same block with the session absent mints one, so it is the spawn primitive rather than address supply for a later verb. The cron half is unchanged in intent and now rides an outbox row. What is <strong>still open</strong> is per-adapter delivery, which the design does not address (thread 23). The first real run did park its task and end its request &#8212; and it was woken without any relay at all, which is thread 2's answer arriving from a direction it did not predict.</span>
   </div>
 
   <div class="tension">
     <h5>3 &middot; What this is called</h5>
     <p>This document says <strong>mail</strong>, and that name is not settled. The competing shape is not a synonym, it is a different decomposition. <strong>Message</strong> is already uniform in this system &#8212; a user message, a session message &#8212; so instead of standing up a parallel noun, extend messages with a <strong>sender</strong> and a <strong>recipient</strong>. Cron then falls out as a <em>scheduled message</em> rather than a second concept: one noun, several origins.</p>
     <p>If the flow-config group still wants a qualifier, <code>relay</code> is the accurate one &#8212; it names routing, which is what this does, rather than storage. <code>exchange</code> is rejected: AMQP-loaded, and an exchange is a <em>fan-out</em> primitive, the one thing this design rules out. <code>intake</code> is rejected too &#8212; it implies inbound-only, and this is bidirectional. Mail's virtue is that it reads as internal; its risk is that a mailbox implies polling, which is exactly the model the design rejects.</p>
-    <span class="ask">Answered &#8212; <strong><code>relay</code></strong>. It is the name the filed epic carries, so it is what the config surface inherits and what every later doc repeats. This document keeps saying <em>mail</em> in the prose above because renaming it here would cost more than it clarifies; read the two as the same thing.</span>
+    <span class="ask">Contradicted, and the contradiction is instructive. <strong>There is no <code>relay</code> config group to name</strong> &#8212; the decision of record deletes the parallel binding table, so what would have been relay's config is one row of the flow's typed entry set, at <code>flow.internal.actions</code>. <code>relay</code> survives as <strong>the epic's name only</strong>. The competing decomposition in the paragraph above also lost, and for a reason worth keeping: <em>message</em> was rejected as the concept's name precisely because it already names the content item that enters an LLM's history, and the two meanings meet at an internal send. The noun is <strong>dispatch</strong>. Read <em>mail</em> above as the metaphor, which survives; <em>mailroom</em> and <em>inbox</em> do too.</span>
   </div>
 
   <div class="tension">
     <h5>4 &middot; How many send modes</h5>
     <p>Fire-and-forget and wait-for-response are genuinely different intents, and both are wanted: a workstream posting a question does not wait, a planner checking an assumption against a neighbouring epic does. A third mode, <strong>delivery receipt</strong>, is questionable. It answers <em>did it arrive</em>, which only matters if you cannot otherwise tell &#8212; and a durable row already tells you.</p>
     <p>The related design move is <em>not</em> open, and belongs on the same page as the modes. <strong>Self-addressed plus wait-for-response should be refused</strong> at definition or dispatch time. Under <code>queue</code> a sender that awaits its own message never lets it start, so the deadlock should be unrepresentable rather than merely documented.</p>
-    <span class="ask">Answered &#8212; two modes in the spec, one of them this cycle. The floor is addressing plus fire-and-forget; wait-for-response stays specified and lands in a later PR, and nothing on the Proof's path needs it, because a workstream posting a question does not wait for a reply (section 11). The refusal came with the design and is wider than the deadlock: a blocking send is rejected outright whenever the effective dispatcher cannot serve it, which is what made the cross-worker wake channel <em>conditional</em> &#8212; and that condition has since resolved to <em>later</em>, with the mode it served. A receipt is still out, and what would change that is unchanged: a delivery path where a message can be accepted and then silently dropped.</span>
+    <span class="ask">Contradicted. <strong>There is one mode, not two</strong>, and wait-for-response is not deferred &#8212; it does not exist. Every dispatch carries a synchronous delivery ack; an outcome is a task row somebody watches; a parent that waits for its child is a block call rather than a dispatch. So the question &#8220;how many send modes&#8221; has no second answer to give. The delivery-receipt mode this thread already doubted is subsumed by the ack. And the self-addressed deadlock is better than refused: with nothing to await, it is <strong>unrepresentable</strong>. The tracker title still says wait-for-response and lags the decision (section 11).</span>
   </div>
 
   <div class="tension">
@@ -2019,7 +2028,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
   <div class="tension">
     <h5>7 &middot; A reply the classifier cannot place</h5>
     <p>The coordinator's whole economy rests on classification being reliable over a small set. Two open rows about the same file and one reply that fits both is not a contrived case &#8212; it is Tuesday. The design says ask back below a confidence threshold, which is safe and mildly annoying. It does not yet say what the threshold is, or whether repeated ask-backs are worse than an occasional misroute.</p>
-    <span class="ask">Does a misrouted answer cost more than a re-ask? If a steer into the wrong worktree is cheap to undo, bias toward guessing; if it silently changes the wrong file, bias toward asking. This is a product call about tone as much as correctness.</span>
+    <span class="ask">Does a misrouted answer cost more than a re-ask? If a steer into the wrong worktree is cheap to undo, bias toward guessing; if it silently changes the wrong file, bias toward asking. This is a product call about tone as much as correctness. The default in thread 15 narrows what the classifier is up against &#8212; one epic session, one inbox, serialized, so the candidate set is that epic's open rows and not every run in flight &#8212; but it does not decide this, because two rows about the same file sit in one inbox just as easily.</span>
   </div>
 
   <div class="tension">
@@ -2060,11 +2069,11 @@ export const conductorConfig = <b>createConductorCapability</b>({
   <div class="tension">
     <h5>13 &middot; A workstream shares its parent&#8217;s whole flow</h5>
     <p>There is no separate Workstream flow. A detached child runs the <strong>parent&#8217;s own <code>FlowInstance</code></strong>, under the parent&#8217;s <code>flow.kind</code>, and the kind is not a construction input at all &#8212; <code>packages/engine/src/context/detached-start-operation.ts</code> says it <em>&#8220;arrives per call, from the seam, as the parent request&#8217;s own kind. A child always belongs to its parent&#8217;s flow.&#8221;</em> The binding is one line, <code>flowKind: flow.kind</code> in <code>packages/engine/src/context/create-request-host.ts</code>. The identifier <code>WorkstreamFlow</code> appears exactly once in the repository, inside a comment, and names nothing; what is shared is <code>flow.workstream</code>, one <code>ActionCore</code> assembled onto that same flow beside <code>flow.actions</code> (<code>packages/core/src/flow/workstream-core.ts</code>) &#8212; the comment is what makes people picture a second flow object.</p>
-    <p>So everything declared on the flow definition is shared by construction: <code>actions</code>, the <code>resources</code> map, <code>session.stateSchema</code>, <code>webhooks?</code>, <code>schedules?</code>. If the Relay spec&#8217;s placement holds, <code>relay?</code> joins them &#8212; <code>spec/_epics/relay.md</code> declares it as <em>&#8220;a <code>relay?</code> group, a sibling of <code>webhooks?</code> / <code>schedules?</code>&#8221;</em>, and both of those are per-flow fields on <code>FlowDefinition</code> (<code>packages/core/src/types/flow.ts</code>).</p>
-    <p>Two doors lead into a workstream, and only one is narrowed. The <strong>seam</strong> door, a framework-stamped detached dispatch, routes terminally to <code>flow.workstream</code> and can never reach <code>flow.actions</code> (<code>packages/engine/src/execution/resolve-action-core.ts</code>). The <strong>caller</strong> door is not. A child session is an ordinary session of the same <code>flowKind</code> owned by the same principal, and no route-level guard excludes it, so the parent&#8217;s full action surface is present inside the workstream to anything that can address that session. The narrow inside-world surface is a routing choice, not a boundary.</p>
+    <p>So everything declared on the flow definition is shared by construction: <code>actions</code>, the <code>resources</code> map, <code>session.stateSchema</code>, <code>webhooks?</code>, <code>schedules?</code>. The Relay spec's placement did <strong>not</strong> hold. It declared <em>&#8220;a <code>relay?</code> group, a sibling of <code>webhooks?</code> / <code>schedules?</code>&#8221;</em>; the decision of record drops that group entirely and folds it into the flow's typed entry set, where <code>webhooks?</code> and <code>schedules?</code> are heading too. There is no separate group to place.</p>
+    <p>Two doors lead into a workstream, and only one is narrowed. The <strong>seam</strong> door, a framework-stamped detached dispatch, routes terminally to <code>flow.workstream</code> and can never reach <code>flow.actions</code> (<code>packages/engine/src/execution/resolve-action-core.ts</code>). The <strong>caller</strong> door is not. A child session is an ordinary session of the same <code>flowKind</code> owned by the same principal, and no route-level guard excludes it, so the parent&#8217;s full action surface is present inside the workstream to anything that can address that session. <strong>That inference is answered.</strong> Terminality stops being one type's special case and becomes the rule: every type resolves one keyed lookup on <code>(type, name)</code> with no fallback, so the boundary is the map itself rather than a routing choice made for one door. What that does not fix is a session on a shared flow accepting an entry meant for a different role &#8212; which is thread 18.</p>
     <p>The shared-flow model already costs something, and the code says so out loud. <code>packages/orchestration/src/task-board/detached.ts</code> refuses a detached worker whose descendants declare <code>sessionStateSchema</code>, because <em>&#8220;detached workers share one Workstream flow, where two routes choosing the same key with different shapes corrupt each other with no error.&#8221;</em> The refusal is defensible; its stated reason names the wrong mechanism. Two detached workers land in two <em>different</em> child sessions with two different state blobs &#8212; board, coordinate and topic must all three match before two tasks share a workstream &#8212; so there is no shared cell to corrupt. What they share is the flow-level key <strong>namespace</strong>: one <code>flow.session.stateSchema</code> for the parent and every descendant, with a block&#8217;s <code>sessionStateSchema</code> a pure typing overlay that gets no runtime parse. A comment to correct, not a behaviour to fix.</p>
     <p>The fork is narrower than the fact makes it look. Per-<em>role</em> divergence costs nothing and is already the shape: &#8220;all workstreams get surface X, all top-level sessions get surface Y&#8221; fits inside one flat <code>relay?</code> group today, which is the asymmetric door the Relay spec already draws: a sibling resolves <code>flow.actions</code> because it is a caller, a workstream gets <em>&#8220;a narrow, author-declared inside-world surface&#8221;</em> and never reaches <code>flow.actions</code> at all. Per-<em>instance</em> divergence is what nothing reserves room for: this workstream addressable at A and that one at B, or a child narrower than its parent. That needs the declared surface to gain a <strong>keyed or resolver form</strong> rather than a flat group, plus a resolution step that does not exist. It needs almost no new persisted rows &#8212; <code>SessionRecord</code> already carries <code>parentSessionId</code>, <code>topic</code> and <code>coordinate</code> alongside <code>flowKind</code> (<code>packages/engine/src/stores/types.ts</code>) &#8212; but the recipient lookup reads only <code>flowKind</code>, and nothing else reads that row for relay resolution.</p>
-    <span class="ask">Leaning: per-role is enough, so do not build the keyed form. Conductor&#8217;s workstreams are all one kind of thing, a phase run, and the differences it wants per phase (<code>askPolicy</code>, <code>model</code>, <code>gate</code>) already live in the phase table the manager reads at dispatch, not in the relay door. Say it rather than leave it silent, though: Relay&#8217;s first issue is where the seam gets reserved or consciously closed, and its spec is silent on parent-versus-child divergence, which closes it by default. A seam closed by decision and one closed by silence cost the same today and very different amounts later. What being wrong costs: widening a flat <code>relay?</code> group to a keyed or resolver form, pre-1.0, no persisted-row migration implied. Cheap, which is what makes the restrained call a default rather than a gamble.</span>
+    <span class="ask">Reshaped rather than answered, and it has a new name: per-<em>role</em> divergence is shape A, per-<em>instance</em> is shape B, and the migration between them is thread 18. Leaning here is unchanged: per-role is enough, so do not build the keyed form. Conductor&#8217;s workstreams are all one kind of thing, a phase run, and the differences it wants per phase (<code>askPolicy</code>, <code>model</code>, <code>gate</code>) already live in the phase table the manager reads at dispatch, not in the relay door. Say it rather than leave it silent, though: Relay&#8217;s first issue is where the seam gets reserved or consciously closed, and its spec is silent on parent-versus-child divergence, which closes it by default. A seam closed by decision and one closed by silence cost the same today and very different amounts later. What being wrong costs: widening a flat <code>relay?</code> group to a keyed or resolver form, pre-1.0, no persisted-row migration implied. Cheap, which is what makes the restrained call a default rather than a gamble.</span>
   </div>
 
   <div class="tension">
@@ -2072,6 +2081,69 @@ export const conductorConfig = <b>createConductorCapability</b>({
     <p>The Proof needs resume rather than restart (thread 6), so the work that proves it sits on the critical path rather than beside it. What that work <em>leaves behind</em> is not decided. It could land as <strong>a path later work can call</strong> &#8212; a real seam, carried forward, at the cost of having to get its shape right before anything has resumed once. Or it could land as <strong>a throwaway harness</strong> that establishes the behaviour and is then deleted, with the seam built afterwards against a known answer.</p>
     <p>Not colour to bury at the end of a section. The two produce different plans: one puts the seam's design inside the Proof, the other puts it after &#8212; and the typed handle field on the task (section 6) is undesigned either way. It belongs to the parent resume issue, which is where the shape of the resume input is being settled in any case.</p>
     <span class="ask">Which does the Proof need &#8212; a callable path, or a proof and a delete? Both ways of being wrong are the expensive kind. A throwaway that quietly becomes the path is the one this document keeps naming; a permanent seam designed before anything has resumed once is the other. Answered inside the resume issue it costs a paragraph. Answered after the Proof ships it costs a rewrite.</span>
+  </div>
+
+
+  <div class="tension">
+    <h5>15 &middot; Who a person actually addresses</h5>
+    <p>Two shapes, and the design does not pick between them. The <strong>coordinator</strong> holds a serialized inbox and a person talks only to it, so there is one place to look and one queue to drain. Or a person addresses <strong>the epic session directly</strong>, and the coordinator seeds and reports without ever standing between you and the work.</p>
+    <p>The second has independent support, which is what makes this a real fork rather than a preference. Building the operator UI produced the same finding from the opposite direction: every flow is top-level, you communicate to it and you spawn it, and the old model hid everything behind one session &#8212; a run you can start and then cannot point at, which a UI either invents a second navigation concept for or leaves invisible. That is an argument against routing a person's attention through a proxy.</p>
+    <span class="ask">The working default is on the page: <strong>the epic session is the unit a person addresses</strong>, one inbox inside it, serialized; runs stay top-level and addressable rather than hidden; the coordinator seeds and reports and does not proxy answers (section 6). <span class="tag t-prop">proposed</span> <strong>This is pending the owner's sign-off</strong>, because it is a product call about where attention goes and not an implementation detail. What would change it: an epic whose runs ask often enough that one serialized inbox becomes the bottleneck.</span>
+  </div>
+
+  <div class="tension">
+    <h5>16 &middot; What keeps two epic sessions out of one claim pool</h5>
+    <p>The design's worked example says epics partition <strong>by session</strong>, on one static board. It does not say what enforces that. The lab locks the opposite: each epic gets its own collection identity, derived from the epic, and states in as many words that a distinct <code>boardId</code> alone is <em>not</em> sufficient because it never reaches the ledger (<code>labs/conductor/src/flow.ts</code>). One collection id is one claim pool; the claim predicate tests status and deps and nothing else. Two epic sessions on one static board can therefore claim and settle each other's rows.</p>
+    <p>Folded in here because it is the same shape: <strong>topic or project scope</strong> for the collections a set of epics shares. Try it as an org-scoped parameterized collection before adding a storage scope type; whole-scope read cost decides whether that holds.</p>
+    <span class="ask">Does the partition live in the collection id, as the lab has it, or in something the board can enforce on a shared collection? The lab's answer works today and costs a collection per epic. What would change it: a case where epics must share a ledger &#8212; a cross-epic dependency, or a person wanting one list across all of them.</span>
+  </div>
+
+  <div class="tension">
+    <h5>17 &middot; Handle reuse on a board that spans sessions</h5>
+    <p>Board rows are not same-parent by construction. A task collection takes <code>session</code>, <code>user</code> or <code>org</code> scope, and at user or org scope the ledger already spans every session the principal touches &#8212; which is exactly the scope Conductor's board runs at. So a row's stored session handle can point at a child of a <em>different</em> session, and reusing it grafts work onto a sibling conversation's lineage, where that conversation's shared resources then get written.</p>
+    <span class="ask">Check the lineage before reusing a handle, or restrict reuse to session-scoped boards? The check is one comparison and does not restrict a board shape people already use, which is the recommendation on the design side. The restriction is simpler and takes away the scope Conductor picked deliberately, because a parked row has to outlive the session that opened it.</span>
+  </div>
+
+  <div class="tension">
+    <h5>18 &middot; What triggers the move from A to B</h5>
+    <p>Shape <strong>A</strong> is one flow with sessions differing by role; shape <strong>B</strong> is a coordinator flow and an epic flow. B is the endpoint on the design's own test &#8212; two roles that accept different dispatches are two flows &#8212; and A ships first. The trigger is a single item: the child listing conjoins the <em>parent's</em> flow kind into its query as an authentication boundary, so under B a coordinator asking for its epic sessions gets an empty answer and the devtool breadcrumb goes dark. When that route gains <strong>per-child authorization</strong>, B is close to free here, because the other blocker &#8212; lineage-bucket collisions &#8212; never applied: the lab uses no lineage sharing at all.</p>
+    <p>A's weakness, stated rather than glossed: entries belong to the flow, not the session, so <strong>an epic session on the shared flow does accept the caller's <code>seed</code></strong>. Under no-fallbacks that is not a routing accident to catch &#8212; it is a real entry on that flow. The guard has to be a check inside the entry reading the session's role, which is convention enforced by vigilance, the class of thing this whole design is trying to reduce. It disappears in B, where the split is structural.</p>
+    <p>Folded in: the <code>per worker</code> session policy does not hold across parents. The derivation hashes the parent session before the key, so two sessions draining one user-scoped board get two worker sessions from one seed. Narrow the contract to one session per parent, which is what the derivation already gives, or build a derivation that omits the parent &#8212; which needs its own owner, adoption rule and authorization check.</p>
+    <span class="ask">Not a decision to make now, and not one to lose either. What to watch for is the listing route gaining per-child authorization, because that is the whole gate. Until then A holds with a guard written by hand in one entry &#8212; and the cost of forgetting to write it is a seed accepted on a session that should not take one.</span>
+  </div>
+
+  <div class="tension">
+    <h5>19 &middot; Does a parked row hold its lease or release it</h5>
+    <p>Parking covers two different waits. A row waiting on <strong>a person</strong> may wait overnight, and holding a lease across that is holding a claim nothing is working on. A row waiting on <strong>a child run</strong> is different: the work is in flight, and releasing the lease invites a second claimant onto it.</p>
+    <p>One thing is unverified and decides most of it: whether the substrate can release a lease <em>without settling</em> the row. If it cannot, hold is the only shape available and the question is moot until that changes.</p>
+    <span class="ask">Check the substrate first, then decide &#8212; this is a question with a cheap experiment in front of it, and answering it by argument is how a wrong assumption gets built on. If release is possible, the split is probably per-park-reason rather than global.</span>
+  </div>
+
+  <div class="tension">
+    <h5>20 &middot; Max-N of one phase at a time is not expressible</h5>
+    <p>Three limits bound how much runs at once and they are easy to conflate: the board's <code>concurrency</code> is a worker pool <strong>across the whole board</strong>, <code>maxPending</code> bounds rows added while others are pending, and entry arbitration bounds competing dispatches <strong>on one key</strong>. None of them says &#8220;at most two <code>implement</code> runs&#8221;. Setting the board pool to two caps every assignee together; arbitration is a mutex per key, so max-1 falls out of a constant key with <code>queue</code> and max-2 needs a counting semaphore nothing has.</p>
+    <p>Folded in: <code>notBefore</code> on a task row. Without it, &#8220;wake me later and confirm it happened&#8221; has nowhere to live &#8212; the deferred half is an outbox row, and the confirmed half is a board row, and nothing joins them.</p>
+    <span class="ask">Worth knowing before anything leans on it: a spec that assumes per-phase max-N is proposing a counting semaphore, not using one. Whether that is worth building depends on whether the board pool is a good enough approximation, and for one epic at a time it probably is.</span>
+  </div>
+
+  <div class="tension">
+    <h5>21 &middot; The fifth block kind is deferred, not rejected</h5>
+    <p><code>dispatcher</code> ships as a handler factory this cycle, so the locked four kinds stand and no unstated exception is left behind. The three arguments for a fifth kind are not withdrawn: no shape-sniffing at the dispatch seam, a roster that shows statically which workers hand off, and a definition-time walk replacing the derived binding check. Two of the three survive the handler form intact, because the seam is reachable from the factory and from nothing an author writes.</p>
+    <p>The one that does not survive is legibility. <strong>The graph no longer says what the block does</strong> &#8212; devtool, traces and anything else rendering the block graph see <code>handler</code>, so inline-versus-handed-off is legible to the board through metadata and invisible to a reader. That is a real cost paid every time somebody reads a trace, in exchange for not amending a locked contract in a first cut.</p>
+    <span class="ask">Nothing forecloses the promotion: the factory is the same author-facing surface either way, so making it a kind later changes the engine and the graph, not the flows people wrote. What would trigger it: reading enough traces where <code>handler</code> is the wrong word to make the amendment cheaper than the confusion.</span>
+  </div>
+
+  <div class="tension">
+    <h5>22 &middot; Does the action route already deliver send semantics</h5>
+    <p>Executing an action against an existing session id is a route that exists. Whether it already delivers what an internal send needs is not established: the input arriving as an item, arbitration on the session key, and the incarnation check that stops a stale request writing into a session that has moved on. If it does all three, the send verb is thinner than this page assumes &#8212; closer to a name for something already reachable.</p>
+    <span class="ask">A short experiment settles it, and it costs less than the argument does: dispatch one action at a live session and read back what happened to the item, the arbiter and the incarnation. Worth doing before the dispatcher's internal path is specified, because the answer changes what that spec has to build rather than how it is written.</span>
+  </div>
+
+  <div class="tension">
+    <h5>23 &middot; Per-adapter delivery</h5>
+    <p>Where a dispatch physically travels is unresolved. In a Node host it is in-process &#8212; attached to the process rather than the originating web request, so a sender that has already returned does not take its dispatch with it. Under a queue-backed runtime it is a job, which is where surviving a restart comes from, and the two have different failure modes and different latencies.</p>
+    <p>The design does not address it. That is a deliberate omission rather than an oversight &#8212; addressing, arbitration and the entry lookup are all the same whichever way delivery goes &#8212; but it means the first real deployment picks the answer by default rather than by decision.</p>
+    <span class="ask">Which path does the first real deployment take, and is the in-process one allowed to be the only one that exists for a while? In-process is enough for a single host and loses everything in flight on a restart. The queue-backed path survives restarts and adds a runtime dependency to a thing the design otherwise keeps inside the framework.</span>
   </div>
 
   <div class="note" style="margin-top:26px">
