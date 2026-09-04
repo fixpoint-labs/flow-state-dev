@@ -1,0 +1,1090 @@
+# Epic: Honest task substrate
+
+**Epic issue:** [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980) · **Epic PR:** [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) · **Project:** Orchestration Primitives · **Branch:** `epic/honest-task-substrate`
+
+> **What this document is.** A coordination artifact for a set of related issues, not an
+> implementing spec. Issues under this epic do **not** derive from it — they reference and
+> align to it. It exists so the decisions that cut across the set aren't made six times in
+> six specs, each in a vacuum. Reviewed at the same altitude as a spec: fold what changes
+> the objective or a cross-cutting decision, route everything else to the issue it belongs
+> to. See [`orchestration.md`](../../contributing/orchestration.md).
+
+---
+
+## Status — 2026-08-24
+
+**Two tracks, one name.** The epic was widened by owner call on 2026-08-24 from *"every
+write path reports what it actually did"* to **Honest task substrate**. That original
+sentence is still a true description of the first track; it is no longer the whole epic.
+**Decision 1 is not reopened by the widening**, and no second epic is created.
+
+**This document is the source of truth for epic status.** Where the FIX-980 Linear issue
+body disagrees — it still reads as though Decision 1 were open — the issue body is stale.
+
+### Track 1 — the original honesty set (write path / drain report)
+
+Decision 1 **DECIDED, Option A** (2026-07-29) and **shipped**: `TaskWriteOutcome` and the
+per-operation `setAssignee` guard are on `main`.
+
+| Issue | State | Where it stands |
+|---|---|---|
+| FIX-951 | **Done** | The completed anchor. *OQ-A is closed — it asked whether FIX-951 was still in flight.* |
+| FIX-976 | **Done** | Decision 1's one bound issue. Shipped in [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004). |
+| FIX-948 | **Done** | Shipped as `maxTotalRetries` in [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031). *OQ-C is closed by shipment.* |
+| FIX-963 | Backlog | **Still live — re-verified in code 2026-08-24.** Now unblocked: FIX-989 shipped the detection primitive it was waiting on. |
+| FIX-964 | ~~Backlog~~ | **DESCOPED 2026-08-24, owner call.** FIX-976's shipped widening closed most of it; the residue is narrow. Unparented, not closed — see §3.5. |
+| FIX-978 | ~~Backlog~~ | **CLOSED 2026-08-25 — subsumed by FIX-1005.** OQ-E settled against `main`; all three claims closed. Its one residue is FIX-1250's. |
+
+Three further issues joined this track after the epic opened and have **shipped**:
+FIX-989 (durable write provenance, [#1128](https://github.com/fixpoint-labs/flow-state-dev/pull/1128)),
+FIX-992 (`ResourceStateStore` compare-and-swap) and FIX-995 (`updateState` callback outcome).
+FIX-989 in particular is the objective landing squarely — a caller can now ask whether its
+own write committed after a call that threw.
+
+**All three stale spec PRs are now resolved, and none of them by review.** #990 (FIX-978) is
+closed with its issue; #994 (FIX-964) is on hold with its issue descoped; only
+[#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) (FIX-963) is still live work.
+Two of three specs died of staleness rather than of a review finding — which is the
+counter-argument to letting an epic sit: **the review budget spent on them in July bought
+nothing, because the codebase answered both questions first.**
+
+### Track 2 — the human-wait board pair (owner widening, 2026-08-24)
+
+| Issue | State | Where it stands |
+|---|---|---|
+| FIX-1234 | **Done** | Park/exit mode. Impl PR [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) **merged** 2026-08-25. The first Track-2 deliverable to land. |
+| FIX-1238 | Backlog | The park-exit verdict's carrier depends on step adjacency, and a break is silent. |
+| FIX-1244 | Backlog | Unblock-with-input. **Blocked by FIX-1234.** A *new* request carrying a payload — not `continueRequest`, not `ctx.suspend`. D-1: FIX-1241 / [#1429](https://github.com/fixpoint-labs/flow-state-dev/pull/1429). |
+| FIX-1245 | Backlog · **P2 High** | Rename the shipped status `awaiting_review` → **`parked`**. **Gates the close of Track 2.** *Retargeted 2026-08-24 from `needs_input`, which the widening comment and this doc's first revision both named.* |
+| FIX-1250 | Backlog | `TaskWorkerInput` carries no claim ticket or incarnation id, so an **out-of-process** worker cannot fence a stale settle. Filed 2026-08-25 out of Conductor (LAB-138 / PR #1442), which had to re-derive the fence in userland. |
+
+**Related to Relay ([FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197)), not parented
+under it or LAB-140.**
+
+**FIX-1245 is the objective applied to the epic's own vocabulary.** The board writes
+`awaiting_review` for a row that is parked on a human — a status that names the wrong thing is
+the same defect this epic exists to remove, one level up. **The target is `parked`, not
+`needs_input`** (retargeted 2026-08-24). It was not the vehicle for park-exit, and did not need
+to be: #1422 merged against the old name, so this is a clean follow-on rename rather than a
+blocker on it.
+
+**FIX-1250 is Track 2's honesty gap at the process boundary.** Park-exit made a drain able to
+leave a row parked; FIX-1250 is about the worker that comes back to settle it being able to
+prove the claim it holds is still live. It also carries the one residue OQ-E left behind when
+it closed FIX-978 — see §4.
+
+**Explicitly out of this epic:** coordinator UX · Conductor-specific flow (LAB-139 consumes
+it) · FIX-1231 · FIX-765 (a second pause model).
+
+---
+
+## 1. Purpose & objective
+
+### The objective (the gated statement)
+
+**A caller of the task substrate can act on what it reports.** Every write path either did
+what it reported, or reported that it didn't — and where the substrate deliberately stays
+quiet, that silence is a **named contract with a stated audience**, not a side effect of an
+optional parameter or a swallowed rejection.
+
+The second clause is the whole difficulty, and it is deliberately not "make everything
+loud." Silence is sometimes the correct behavior here: FIX-951 shipped a containment guard
+whose entire value is that a late worker outcome lands on a settled task *without* throwing
+and taking down every sibling on the board. Reverting that is not an option, and an epic
+framed as "no more silent failures" would walk straight into it. What this epic is actually
+after is that a caller can tell which kind of quiet it is looking at.
+
+**One clause added by the 2026-08-24 widening, at the same altitude.** A drain that left
+because **a human is owed something** must say so — not success, not `blocked-by-failures`,
+not an abandoned wait — and there is a framework primitive to unblock that row **with an
+input**, as a new request. Same honesty shape, new verb: the first track is about a write
+reporting what it did, this is about an *exit* reporting why it happened and being
+answerable. It is **not** folded into Decision 1 and does not reopen it — Decision 1 is
+about the return type of a write, and a park exit is neither a write nor a decline.
+
+### Membership — the sets this document counts by
+
+Defined once here; every count elsewhere in this doc uses these labels rather than a raw
+number. **Refreshed 2026-08-24** against live Linear state.
+
+| Set | Size | Members |
+|---|---|---|
+| **Track 1 — original honesty set** | 4 | FIX-951 ✅, FIX-976 ✅, FIX-948 ✅, FIX-963 *(FIX-964 descoped, FIX-978 closed)* |
+| ├ **Shipped** | 3 | FIX-951 (anchor), FIX-976, FIX-948 |
+| └ **Open** | **1** | FIX-963 |
+| **Track 1 — joined and shipped after the epic opened** | 3 | FIX-989 ✅, FIX-992 ✅, FIX-995 ✅ |
+| **Track 2 — human-wait board work** *(added 2026-08-24)* | 5 | FIX-1234 ✅, FIX-1238, FIX-1244, FIX-1245, FIX-1250 |
+| **Decision-1-bound** | **1** | FIX-976 *(shipped — the decision is spent)* |
+| **Project siblings** — off-objective, direct-fix, *not* parented | 2 | FIX-972 (PR #984), FIX-962 (PR #985) |
+| **Discovered work** — same defect family, filed separately, *not* parented | 1 | FIX-985 |
+| **Removed 2026-08-24** — off-objective, detached from FIX-980; see §3.5 | 9 | FIX-1000, FIX-1002, FIX-1030, FIX-1034, FIX-1035, FIX-1036, FIX-1037, FIX-1038, FIX-1156 |
+
+**Track 2's members are not in the Decision-1-bound set and the arithmetic is not
+recounted.** Decision 1 was decided, spent and shipped on FIX-976 before the widening;
+nothing added on 2026-08-24 changes what it cost or what it bought.
+
+**Decision 4 (a guarantee is observable at a persisted surface) and Decision 5 (FIX-951's
+containment is a non-negotiable regression bar) apply to Track 2 as written.** Stated once,
+here. Decision 2's `cross-spec-review` scoping covers the **original** set only; Track 2 does
+not wait on FIX-948 or on anything in Track 1.
+
+**The bound set shrank twice and is now spent.** It was three (FIX-976, FIX-963, FIX-964),
+then two when round 2 moved FIX-963 out, then **one** when round 3 moved FIX-964 out on the
+argument its own spec (PR #994) makes — and that one has shipped. §2 keeps the cost
+arithmetic on record; it is history now, not a live cost.
+
+### Why this is one body of work
+
+The **sub-issues** were filed independently, over five months, by different investigations.
+They read as a grab-bag of orchestration bugs. They are not — every one of them is the same
+shape:
+
+> **The substrate's report of what happened diverges from what happened, and the caller
+> has no way to detect the divergence.**
+
+The divergence comes in two flavours, which is worth separating because they need different
+fixes:
+
+**(a) It reports success for something that didn't happen.**
+
+| | The report | The reality |
+|---|---|---|
+| **FIX-976** | `assignTask` → `{ ok: true }` | assignee rewritten on a `completed` task, status untouched; the work will never run |
+| **FIX-976** | `cancelTask` → `{ ok: true }` | the transition was declined inside the CAS section; nothing changed |
+| **FIX-963** | drain returns normally | the recorder rejected *after* the task durably committed; the error survives only on two `transient: true` trace items |
+
+**(b) It reports nothing at all, where a report was the point.**
+
+| | The silence | What it costs |
+|---|---|---|
+| **FIX-964** | a custom `TaskCollectionRef` with the pre-FIX-951 two-arg `complete`/`fail` structurally satisfies the interface | the board silently gets none of FIX-951's containment, with no compile-time and no runtime signal |
+| **FIX-948** | `maxTotalTasks` / `maxEnqueuedTasks` are enforced at task *creation*; a retry creates no task | a guardrail whose entire purpose is bounding unsanctioned spend sits at "under the cap" while a `maxAttempts` storm runs |
+| **FIX-978** | a stranded `in_progress` lease | `reclaim()` is the only thing that reads `leaseUntil` for expiry and **has zero callers** in `packages/orchestration/src/` (verified — every other hit in the tree is a comment or the interface declaration). A later drain rides out `timeoutMs 5000 × (maxIterations 10000 + 1)` — roughly 14 hours at production defaults — and then reports `blocked`, which names the wrong cause |
+
+FIX-978 is the one that most repays reading twice. It is not a false success; it is a report
+that arrives fourteen hours late and blames the wrong thing. The root cause is an honesty
+gap all the same: **the substrate has no way to distinguish a claim whose owner is provably
+gone from one whose owner is merely slow**, so it cannot truthfully say either. Nothing
+renews a lease during execution (`grep -rni "renew|heartbeat|extendLease"` returns nothing),
+and `DEFAULT_LEASE_DURATION_MS` is 30s while a generator's model call routinely exceeds
+that — so an expired lease is the *normal* state of a healthy worker. Any fix that infers
+abandonment from expiry alone trades a hang for silent duplicate execution, which is worse.
+
+> **⚠ This paragraph and FIX-978's row above are the July diagnosis, preserved as written.**
+> Every factual claim in them was true then and is false now: FIX-1005 shipped lease renewal,
+> raised `DEFAULT_LEASE_DURATION_MS` to 120 s, gave `reclaim` real callers via `isClaimable`,
+> and closed the issue. Kept rather than rewritten because the *reasoning* is what OQ-E had to
+> falsify — see §4. Do not cite this paragraph as current behavior.
+
+### FIX-951 is the completed anchor — and that changes what Decision 1 is
+
+**FIX-951 is `Done`.** Its implementation merged to `main` (PR #953, merge commit
+`41a5655`) and `docs/specs/FIX-951.md` is on `main` alongside it. It stays parented under
+FIX-980 because it genuinely belongs to this objective — it shipped the containment half and
+established the contract the rest of the epic has to decide about — but it is **out of the
+active set** and gets no issue-lifecycle. It appears in §3 as a completed anchor row, not as
+work.
+
+That contract, verbatim from `packages/orchestration/src/tasks/collection/types.ts:32-53`:
+
+> Both guards are evaluated **inside** the same atomic write that performs the transition,
+> so there is no window between checking and writing. Both are advisory: when a guard
+> rejects the write, the call is a silent no-op and returns normally. Nothing reports which
+> guard fired.
+
+**This is live behavior on `main` today, not a proposal under review — and that is the single
+most important thing to hold while reading §2.** Decision 1 was not "how do we coordinate with
+work that is still in flight." It was **"do we revise a shipped public contract, and what does
+that cost"** — and the answer is yes (§2, Decision 1, **DECIDED**). **One** of the five active
+issues now sits directly on that sentence: **FIX-976**, which wants failure to be loud on the paths
+that route through it. Two others were counted here in earlier drafts and have since left: FIX-963
+(round 2 — it needs its own error channel regardless of the return value) and FIX-964 (round 3 — its
+spec's mechanism does not depend on the widening at all). See Decision 1's "What this decision does
+not reach."
+
+Two consequences the decision in §2 had to price, which the earlier draft of this document
+did not:
+
+- **Every option that changes `TaskCollectionRef`'s method signatures is a breaking change to
+  a published interface** with an unenumerable population of custom-ref implementers. That is
+  FIX-964's own complaint seen from the other side: the extension point is real, which is
+  exactly why changing it is not free.
+- **The do-nothing baseline is not neutral.** Today's behavior is shipped behavior that this
+  epic's objective calls dishonest. "Leave it" costs nothing to build and costs the objective
+  entirely.
+
+### Holistic necessity check
+
+The `issue-spec` Step 3.5 lens at epic altitude: each issue can earn its place while the
+whole set overbuilds. Applied honestly:
+
+- **FIX-948 is the weakest member of the active set.** It is a guardrail gap fitting
+  flavour (b) — a cap that reports "under the limit" while spend runs away. But its own
+  description flags that **FIX-933** (a cost/budget ceiling) would catch a retry storm by
+  its cost rather than its attempt count, and may subsume it. **FIX-933 is now `Done`**
+  (under epic FIX-930), so the subsumption question is answerable against shipped behavior
+  rather than a pending design. **Do not start FIX-948's spec without first checking what
+  FIX-933 actually bounds** — that check is a precondition, not a nicety. See OQ-C.
+- **FIX-972 and FIX-962 are project siblings, not epic members — settled.** Both are
+  off-objective for this epic and neither is parented under FIX-980:
+  - **FIX-972** — a skill named `constructor` resolving `Object.prototype.constructor`
+    through an unguarded map lookup is a *crash*: loud, not silent, and in the skills
+    runtime rather than the task substrate. It is the fourth instance of a defect class
+    already fixed twice (FIX-943 PR #957, FIX-965 PR #969) against a canonical guard shape
+    at `packages/core/src/utility/keyed-router.ts:81`. Shipped as PR #984.
+  - **FIX-962** — a goal check whose criterion E accepts *any* salted completion rather than
+    one bound to `fx.openRequests` will pass a run that did the work exactly backwards. That
+    is this epic's shape one level up, and it is worth knowing about, because a set about
+    honest reporting that verifies itself with a dishonest check has a problem. It is an
+    analogy, not a membership claim. Shipped as PR #985.
+
+  They are carried in §3's index for audit continuity, marked *off-objective · direct-fix*.
+  **Neither shapes any cross-cutting decision here, Decision 1 included.**
+
+Nothing in the active set is redundant with anything else in it. The five issues touch five
+distinct paths (tool boundary, drain result, extension point, retry accounting, lease
+recovery) and none subsumes another.
+
+### What "done" looks like
+
+Not "no silent failures." Specifically:
+
+1. A model or caller reading a task-tool result alone can tell a terminal-task mutation
+   failed, without re-fetching and inspecting task state.
+2. A drain's result distinguishes "the work completed" from "the work completed and then
+   the recorder fell over" — at a surface that is persisted and branchable, not a
+   `transient: true` trace item.
+3. A board built on a custom `TaskCollectionRef` either gets containment or gets a signal
+   that it doesn't. Documentation telling implementers to remember is not a signal.
+4. FIX-951's containment property does not regress anywhere: a worker outcome landing on a
+   settled task still leaves its siblings running, proven at integration level.
+5. Nothing this epic ships makes a *legitimate* terminal-task write fail. Labelling a settled
+   task is a real use (post-drain failure-category audit); the new honesty applies to
+   assignment, not to the whole patch surface. See Decision 1 → A1.
+6. A drain that exited because a task is parked waiting on a human **reports that** — not
+   success, not `blocked-by-failures`, and not an abandoned wait that looks like either.
+7. Unblocking a parked task with an input either **resumed the row on a new request**, or
+   **reported that it didn't**. The same standard as (1), on a verb the substrate did not
+   have when this epic opened.
+
+---
+
+## 2. Themes & cross-cutting decisions
+
+### Decision 1 — The substrate's shipped write contract gains a return value **(DECIDED — Option A)**
+
+**Decided by the repo owner, 2026-07-29, at epic-spec head `1126cd1`.** The shipped write
+contract gains a return value: the terminal guard **and the outcome reporting it** are
+produced inside the atomic mutation, and the relevant methods return a discriminated outcome
+instead of `void`. The stated costs are accepted — **a breaking change to a contract already
+on `main`**, and **a genuinely new guard on the `patchRef` / `patchOne` path**. (Round 2
+scoped that second cost: the guard sits on the *assignment* write, which routes through those
+helpers, and is not installed helper-wide — see A1.)
+
+The rejected options stay recorded below with the reasoning that rejected them. That record
+is the point: without it the next reader re-opens a settled fork.
+
+Read this as a decision about **revising something already shipped** (§1), not a greenfield
+choice.
+
+**First, the sharpening that made it tractable.** There are *four* different silences being
+argued about. FIX-951's contract collapses the first two, and round 2 established that the
+fourth is a different animal from the rest:
+
+| | The silence | Who objects |
+|---|---|---|
+| **S1** | the guard fires and the write does not happen | nobody — this is the containment property, and it is correct |
+| **S2** | the decline is not *reported back to the caller* ("Nothing reports which guard fired") | FIX-976 |
+| **S3** | the guard was never installed at all | FIX-964 |
+| **S4** | the write **committed** and then something *after* it rejected | FIX-963 — **not addressed by this decision**, see below |
+
+S1 and S2 are not the same thing and do not have to travel together. A decline can be
+**taken** (the write is skipped, no throw, siblings unaffected — containment fully intact)
+and still be **reported** (the return value says so), as long as the substrate's own
+recorders ignore the report. FIX-976's own second listed direction arrives at this
+independently: *"surface the declined-transition signal that `ifAllowed` currently swallows
+... a change here needs to keep those silent while making the tool boundary talk."*
+
+S4 was folded into S2 in the previous draft, and that was a mistake — a return value is a
+channel for a *decline*, and S4 is a *throw*. Decision 1 resolves S2 and S3; S4 needs its own
+design and is not gated on this one.
+
+#### Constraint on every option — the guard and its outcome come from the atomic mutation, never from a pre-check
+
+Folded from review (Codex, PR #983), and verified against the code rather than taken on
+faith. This constrains the option space before the options are compared, so it is stated
+here rather than inside any one of them.
+
+FIX-951's property is that the decision is made *inside* the write: both
+`resource-backed.ts`'s `transitionRef` and `sequencer-backed.ts`'s `transitionTo` evaluate
+`shouldDeclineTransition` within `ref.updateState` / `casWrite`. A terminal check placed in
+the tool handler runs **outside** that write, and the window it opens is not hypothetical:
+
+- **The cancel half.** If a task settles between a handler-side `isTerminalStatus` check and
+  the write, `cancel` correctly declines — and the caller is told nothing anyway.
+  `resource-backed.ts` absorbs `TransitionDeclined` with a bare `return`, and
+  `task-tools-capability.ts`'s `withTask` returns `{ ok: true }` whenever the mutator does
+  not throw. The decline is structurally unavailable to the boundary.
+- **The assignment half, which is worse.** `setAssignee` does not route through the
+  transition path at all. It calls `patchRef` / `patchOne`, which take **no `guards`
+  parameter and perform no terminal check of any kind**. The patch simply lands on the
+  now-terminal task. There is nothing to decline, so there is nothing a boundary could
+  learn about.
+
+**Conclusion this epic adopts:** the terminal decision *and the outcome reporting it* must be
+produced by the atomic mutation. A boundary pre-check reintroduces exactly the
+check-then-write window FIX-951 closed, and cannot be the mechanism here.
+
+#### Option A — separate the decline from its reporting, at the methods the tools actually call **(CHOSEN)**
+
+Widen the substrate's mutation methods from `Promise<void>` to a discriminated outcome. The
+substrate's own write-backs ignore the outcome, preserving FIX-951's containment exactly; the
+tool boundary maps `declined` to `{ ok: false }`.
+
+*(An earlier draft added "and the drain maps a post-commit recorder rejection to something a
+caller can branch on." Round 2 refuted that clause — see "What this decision does not
+reach.")*
+
+**Correction folded from review, verified in code.** The earlier statement of this option
+widened only `complete` / `fail` (and `transitionTo`). **That set cannot satisfy FIX-976,
+because FIX-976's two tools call neither of them.** In
+`packages/orchestration/src/skills/task-tools-capability.ts`:
+
+- `assignTask` → `withTask(ctx, id, (c) => c.setAssignee(input.taskId, input.assignee))`
+- `cancelTask` → `withTask(ctx, id, (c) => c.cancel(input.taskId, input.reason))`
+- `updateTask`'s assignee arm → `c.setAssignee(...)` as well
+
+So widening `complete` / `fail` alone leaves both of FIX-976's tools returning `{ ok: true }`
+exactly as they do today. Option A is only a fix for FIX-976 if it covers all three rows:
+
+| Method | Today | What Option A has to do to it |
+|---|---|---|
+| `complete` / `fail` | `Promise<void>`; guard already evaluated inside the write | widen the return type — the guard exists |
+| `cancel` | `Promise<void>`; passes `{ ifAllowed: true }`, and the backing absorbs `TransitionDeclined` with a bare `return` | widen the return **and** propagate a decline the backing currently discards |
+| `setAssignee` (and the rest of the `patchRef` / `patchOne` surface) | `Promise<void>`; no guard parameter, no terminal check at all | **add a guard inside the patch write**, then return its outcome |
+
+The third row is the honest cost this document previously understated: it is not a type
+widening, it is **a new guard on a write path that has never had one** — a behavior change
+to shipped semantics, not just a signature change. Whether a terminal task should reject an
+assignee patch is itself a judgement call ("may this field be written on a terminal task").
+**It has been made: yes for assignment, and only for assignment** — see constraint A1.
+
+##### A1 (constraint) — the new guard is scoped to assignment, never applied to the shared patch helper
+
+Folded from round 2 (Codex, PR #983), verified in code rather than taken on faith, and it
+sharpens the decision rather than reopening it.
+
+Both backings funnel **five** methods through one shared helper — `setAssignee`,
+`setPriority`, `addLabel`, `removeLabel`, `patchMetadata` all call `patchRef`
+(`resource-backed.ts:452-486`) / `patchOne` (`sequencer-backed.ts:470-504`). So "add a guard
+inside the patch write" applied to the helper would decline **all five** on a terminal task.
+
+That breaks a live production path. `packages/patterns/src/supervisor/blocks/label-failed-reviews.ts`
+is a post-drain audit block that selects `collection.list({ status: "errored" })` — `errored`
+is terminal (`TERMINAL_STATUSES = {completed, errored, cancelled}`,
+`schema/task-status.ts:24`) — and calls `collection.addLabel(task.id, label)` on each, to tag
+it `failed-review` / `reviewer-error` / `worker-error`. It is wired into the supervisor
+pipeline as `.tap(labelFailedReviews)` (`packages/patterns/src/supervisor/index.ts:413`), not
+dead code. **Labelling a terminal task is the entire point of the block** — a blanket terminal
+guard would silently erase the failure-category audit, which is this epic's own defect shape
+inflicted by this epic's own fix.
+
+**Therefore:** the guard is **per-operation, not per-helper.** `setAssignee` declines on a
+terminal task; `addLabel` / `removeLabel` / `setPriority` / `patchMetadata` keep today's
+behavior. Implementations may express this as a guard parameter threaded through
+`patchRef`/`patchOne` and passed only by `setAssignee`, or as a policy table keyed by
+operation — that is an implementation choice for FIX-976, not an epic-level one. What is
+epic-level: **no issue in this set may install a terminal guard on the shared patch helper
+unconditionally**, and any issue that touches this surface states which operations its guard
+covers.
+
+##### A-i (open sub-question) — what does `updateTask` report when it mutates several fields and settles mid-sequence?
+
+Folded from round 2, verified in code, and **genuinely open** — recorded rather than answered,
+because inventing the answer here would be picking for FIX-976 by fiat.
+
+`updateTask` (`packages/orchestration/src/skills/task-tools-capability.ts:472-487`) performs up
+to **five sequential awaited writes** inside one `withTask` mutator: `setPriority`,
+`setAssignee`, `patchMetadata`, `addLabel`, `removeLabel`. There is no batching. Under A1, only
+the `setAssignee` write is guarded. So if a task settles after `setPriority` commits but before
+`setAssignee` runs, the priority change is durable and the assignment is declined — and a
+single `ok` boolean is a lie in both directions: `ok: false` hides the fields that did land,
+`ok: true` hides the one that didn't.
+
+Two shapes resolve it, and this document does not choose between them:
+
+- **One atomic batch patch** — `updateTask` becomes a single guarded write over all requested
+  fields, so the whole patch commits or the whole patch declines.
+- **An explicit partial outcome** — the return value reports per-field disposition rather than
+  one boolean.
+
+Whoever specs FIX-976 picks one and says why. Note this is *not* a reason to reopen Decision 1:
+both shapes sit inside Option A. It is a reason the decision is not yet a design.
+
+##### Net — what Option A buys and what it costs
+
+- Satisfies FIX-976 with one mechanism.
+- Keeps every guard inside the atomic write, satisfying the constraint above and FIX-951's
+  stated invariant.
+- **No longer a bonus FIX-964 depends on — round 3.** The compile-time signal the widening
+  produces is real (§5, evidence stands), but FIX-964's spec no longer uses it: PR #994 rejected
+  the whole "certify the store" family on a code-derived argument and picked a behavioral
+  mechanism instead. **The widening is a bonus in one direction and a dependency in neither.**
+  See §5 → "Is FIX-964's fix reachable by certifying the store?"
+- Cost, **accepted by the repo owner** — and **re-measured in round 3, roughly 4× the earlier
+  figure**: a breaking change to a shipped public interface, across more methods than first
+  stated, plus one new guard on the assignment write path. The earlier "6 sites in 3 files"
+  counted only `complete` / `fail`; all four widened methods (`complete`, `fail`, `cancel`,
+  `setAssignee`) give:
+
+  | Bucket | Sites / files | Where |
+  |---|---|---|
+  | **Backings** — must change to compile | **17 / 3** | `types.ts` (4 signatures + the new `TaskWriteOutcome` type); `resource-backed.ts` (`transitionRef`, `patchRef`, `complete`, `fail` ×2 return points, `cancel`, `setAssignee`); `sequencer-backed.ts` (the same six) |
+  | **Tool wrappers** — must change to compile | **5–6 / 1** | `task-tools-capability.ts:411,423,433,453`, plus `withTask`'s `mutator: (collection) => Promise<void>` at `:306` |
+  | **Discard-only** — typecheck-clean, semantically owed | **8 / 6** | `record-result.ts:59,105`; `dispatch-and-execute.ts:184,191`; `routedSpecialists/index.ts:443,472`; `task-tools-capability.ts:479` |
+
+  **Totals: ~22 sites / 4 files to compile clean; ~30 sites / 10 files to be semantically
+  complete.** Baseline measurement: 67 errors confirmed, 71 across the full widening — and **an
+  error count undercounts the work**, because a file you correctly fix stops erroring.
+
+  Three things the old figure missed, each verified in code:
+
+  - **The `withTask` trap.** Widening `mutator` to `Promise<unknown>` silences all four tool-wrapper
+    errors in one line — *by discarding the outcome*. Doing it honestly also requires `okOrError`
+    (`task-tools-capability.ts:284`) to gain a **`declined`** arm; today it is a two-arm
+    `{ok:true}` / `{ok:false,error}` union with nowhere to put "the write was declined."
+  - **A second shared helper ripples.** `setAssignee` routes through **`patchRef` / `patchOne`**,
+    which also serve `setPriority` / `addLabel` / `removeLabel` / `patchMetadata` — **8 further
+    call sites** (4 per backing) that stay `Promise<void>` and would silently drop an outcome.
+    This is the same helper A1 forbids guarding wholesale, now also a return-type boundary.
+  - **The test suite gives zero signal.** ~50 test call sites (51 measured) await these methods and
+    discard the result, so **nothing in CI would catch a backing returning the wrong outcome.** Any
+    issue implementing this owes new assertions, not just green existing ones.
+- Does **not** reach FIX-963 — see below.
+
+##### What Option A actually buys, once all three settled results are in
+
+Worth stating plainly, because the decided option is easy to over-read. **All three** of the issues
+it was framed to serve turned out to need their own work regardless:
+
+| | Does Option A resolve it? |
+|---|---|
+| **FIX-976** | **Yes** — this is the one Option A squarely fixes. `assignTask` / `cancelTask` / `updateTask` stop reporting `{ ok: true }` on writes that didn't happen. |
+| **FIX-964** | **No — changed in round 3.** The compile-time signal is real (§5) but FIX-964's spec (PR #994) does not use it: it rejected the certify-the-store family outright and chose a behavioral mechanism at the advisory write-back seam. Not a dependency, not needed as a bonus. |
+| **FIX-963** | **No** — a return value is a channel for a decline, and FIX-963's failure is a throw after commit. Needs its own error channel (below). |
+
+**So Decision 1 rests entirely on FIX-976.** It was framed to serve three issues; it serves one.
+
+The arithmetic, stated without a recommendation attached, because the reader should draw their own
+conclusion from it:
+
+> Option A's accepted cost is **~22 sites across 4 files to compile, ~30 across 10 to be
+> semantically complete, plus a breaking change to a contract already shipped on `main`** with an
+> unenumerable population of custom-ref implementers — **in service of one issue, FIX-976.**
+
+**This remains DECIDED, with the cost restated — not reopened.** The re-measurement and FIX-964's
+departure both landed after the repo owner chose Option A, so the decision was made against smaller
+numbers and a wider payoff than the ones now on record. That has been surfaced to the repo owner;
+**Option A stands as the answer to Decision 1 unless they say otherwise.** Nothing in this set waits
+on that, and no issue should re-litigate the fork on its own initiative — Options B and C stay
+rejected for the reasons recorded below, which the new numbers do not touch.
+
+What the numbers do *not* undercut is the objective: FIX-976 is the path where a model reads the
+substrate's report directly and acts on it, which is the objective's central case rather than an
+incidental one. A cheap fix serving one issue and an expensive fix serving one issue differ in price,
+not in whether the issue is worth fixing.
+
+##### What this decision does not reach — FIX-963 is not Decision-1-bound
+
+Folded from round 2 (Codex, PR #983), verified in both backings. This is a **scope
+correction**, and the most consequential change in this round.
+
+The previous draft claimed Option A would let "the drain map a post-commit recorder rejection
+to something a caller can branch on." It cannot, because there is no return value in the path:
+
+- **The write commits before the emit, in both backings.** `resource-backed.ts`'s
+  `transitionRef` does `await ref.updateState(...)` and *then* `emit(kind, nextTask, prevStatus)`
+  (`:192-212`); `sequencer-backed.ts`'s `transitionTo` does `await casWrite(...)` and *then*
+  `emit(...)` (`:203-219`). `emit` is the tail call. So a failing `onChange` makes `complete()`
+  **reject** after the task is durably committed — and a rejected promise carries no outcome
+  value. Widening the return type changes nothing about a throw.
+- **The cleanup failure lands after the outcome is already gone.** `recordSuccess`
+  (`task-board/blocks/record-result.ts:56-67`) does `await collection.complete(...)` and
+  discards the result, then `await ctx.sequencer!.patchState(...)`. It is a `.tap()`-shaped,
+  `transient: true` handler with **no `outputSchema`** (BP-012), so it has no channel to carry
+  an outcome outward even if it captured one.
+- **`recordError` only ever sees the thrown error.** Its `execute(error, ctx)` input is the
+  value `.rescue()` caught (`:101-118`). Nothing hands it the substrate's outcome.
+
+**Consequence:** FIX-963 needs its own **recorder-state / error-channel** design — a place for
+"the task committed and then the recorder fell over" to be recorded and read — and that design
+is required whether or not the write contract returns a value. So:
+
+- **FIX-963 leaves the Decision-1-bound set** (round 2). It is not gated on Decision 1 and its spec
+  may finalize without it. FIX-964 left for its own reasons in round 3, so the bound set is now
+  **FIX-976 alone** — see §1's membership table.
+- **The residual link is an input, not a dependency.** Once `fail()` returns an outcome,
+  `recordError` *could* learn that its own failure write was declined because the task had
+  already settled — which is one useful ingredient for FIX-963's design. An ingredient is not
+  a gate. FIX-963 does not wait.
+- Decision 4 still binds it: whatever surface FIX-963 chooses must be persisted and
+  branchable, not another `transient: true` trace item.
+
+#### Option B — keep the substrate silent; fix each caller at its own boundary **(REJECTED)**
+
+FIX-976 pre-checks `isTerminalStatus` in the tool handlers; FIX-963 has `recordSuccess`
+record in worker-body state that it already committed, so `recordError` knows it is looking
+at a post-settlement recorder failure.
+
+**Rejected because it does not survive the atomic-mutation constraint.** The pre-check is not
+atomic; the cancel half still reports `{ ok: true }` on a lost race, and the assignment half
+writes to a terminal task with no guard to stop it. Its appeal was "no public-interface
+change," and review established there is no known mechanism that delivers that appeal *and*
+an honest result. Anything preserving `void` returns would still have to move the guard inside
+the write and then invent some other channel for the outcome — strictly more design for a
+strictly worse result.
+
+- Leaves FIX-964 with nothing regardless: S3 is untouched by anything in Option B.
+- **One piece of Option B survives its rejection, and it is now FIX-963's:** the
+  worker-body-state half ("`recordSuccess` records that it committed") was never about
+  Decision 1 at all. It is a candidate mechanism for the recorder-state design FIX-963 now
+  owns outright. Rejecting Option B as a Decision-1 answer does not reject that idea.
+
+#### Option C — split by shape **(REJECTED — collapses into A)**
+
+Option B for `assignTask` and the rest of `updateTask`'s non-status patch surface, Option A
+for the transition-shaped calls. **Rejected because it inherits Option B's assignment half,
+which is the half the constraint refutes** — `setAssignee`'s path has no guard, so a boundary
+check there is precisely the racy pre-check. Upgrading that half to an in-write guard is the
+only repair, and at that point Option C *is* Option A with a narrower return type. There was
+no third position to choose.
+
+### Decision 2 — with Decision 1 answered, nothing in the active set is gated; the whole set may spec in parallel
+
+This decision used to say "the Decision-1-bound three wait." Three things retired that:
+**Decision 1 is now answered** (Option A), **round 2 moved FIX-963 out of the bound set**, and
+**round 3 moved FIX-964 out too**. What remains is a grouping, not a gate.
+
+- **Decision-1-bound: FIX-976** — one, not three. It builds *on* Option A rather than waiting for
+  it: it implements the widened contract at the tool boundary and owns open sub-question A-i.
+- **Decision-1-independent: FIX-978, FIX-948, FIX-963, FIX-964.** FIX-978 has no dependency at all.
+  FIX-948 has its own precondition (OQ-C), which is not Decision 1. **FIX-963 is here as of
+  round 2** — it needs its own recorder-state/error-channel design regardless of the return
+  value. **FIX-964 is here as of round 3** — its mechanism is behavioral and does not consume the
+  widening's compile-time signal at all.
+- **`cross-spec-review` runs over the FULL active spec set** — FIX-978, FIX-963, FIX-976, FIX-964,
+  **plus FIX-948 if it specs** — not over a file-colliding subset. **Corrected in round 3; the
+  earlier scoping was wrong and would have skipped a gate.** Verified against `epic-lifecycle` →
+  "Cross-spec coherence": the gate is *"every spec the epic planned to open is open and has cleared
+  its own spec-approval gate"*, and `crossSpecCleared: false` holds **every** approved spec short of
+  implementation. Scoping the pass to the three file-colliding issues would have let **FIX-978 and
+  FIX-948 be released to implementation with no conformance check** against the epic or their
+  siblings. **File collision is one *kind* of conflict the pass looks for, never the rule for
+  selecting the set** — scope overlap, contradictory decisions, and one spec assuming what another
+  removes are all invisible to a file-overlap filter.
+- **A1 is a shared constraint across the file-colliding subset** (FIX-976, FIX-963, FIX-964 — all
+  three touch `sequencer-backed.ts`, `resource-backed.ts`, `task-tools-capability.ts`): only
+  FIX-976's `setAssignee` may guard the patch surface. Whichever lands first must not leave a
+  helper-level guard behind for the others to inherit. That subset is a *constraint-sharing* group,
+  and naming it here is **not** a scoping rule for `cross-spec-review` — see the bullet above.
+
+> **Note, 2026-08-25 — this decision has no set left to scope.** FIX-976 and FIX-948 **shipped**,
+> FIX-964 was **descoped**, and FIX-978 is **closed as subsumed** (OQ-E). The A1 constraint the
+> file-colliding subset shared is settled in merged code rather than pending between specs.
+> `cross-spec-review` would run over **FIX-963 alone**, and **a coherence pass over a set of one
+> is not a pass — skip it** and review FIX-963's spec on its own merits. The decision's *rule*
+> (the set is every open spec, never a file-colliding subset) stands unchanged and is what a
+> future epic should reuse; only its membership went to zero.
+
+### Decision 3 — an expired lease is not evidence of abandonment; no issue in this set may assume otherwise
+
+> **Note, 2026-08-25 — this decision was vindicated and is now discharged.** It held that a real
+> recovery path needs either a run identity on the claim or **lease renewal during execution**.
+> FIX-1005 shipped renewal, which is what let it close FIX-978 without ever inferring abandonment
+> from expiry — see OQ-E in §4. **It is still binding on FIX-1250**, which is the run-identity
+> half of the same sentence, at the process boundary.
+
+> **Note, 2026-08-24 — two stale pointers, folded late.** These were flagged on the epic PR on
+> 2026-07-29 and never folded before the epic went dormant.
+>
+> 1. The parenthetical claiming FIX-957 has no spec document is **wrong** — `docs/specs/FIX-957.md`
+>    exists on `origin/spec/FIX-957` (PR [#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954)).
+>    It is not on `main` because spec PRs never merge.
+> 2. **FIX-957 is no longer the adjacent work to check.** It factored the durable board out to
+>    FIX-939, taking lease reclamation with it, and now covers `block` and `request` lifetimes
+>    only. The owner of the recovery half was FIX-939 milestone 2 — **and FIX-939 is now `Done`**,
+>    which is exactly what OQ-E in §4 is about.
+>
+> **The decision itself held up and needs no change.** It is the constraint that ruled out the two
+> obvious fixes, and nothing in this epic infers abandonment from an expired lease. Only the
+> pointers were stale.
+
+Recorded here rather than left in FIX-978 because it is the kind of thing that gets
+independently re-derived and independently got wrong. Nothing renews a lease during
+execution, and the 30s default is routinely exceeded by a healthy model call. So:
+
+- **No fix in this epic may infer "abandoned" from lease expiry alone.** That trades a hang
+  for silent duplicate execution of a model call and its side effects — a strictly worse
+  failure, and directly counter to the objective.
+- A real recovery path needs either an execution/run identifier stamped on the claim, or
+  lease renewal during execution. Both are substrate changes with their own design
+  questions and neither is mandated here.
+- **Adjacent work to check first:** FIX-957 (*Backlog*, under epic FIX-939 "Durable jobs &
+  detached-task substrate") scopes "a way out for a task parked mid-run" and leaves open,
+  for the repo owner, whether to guard the `in_progress` / `awaiting_review` → `pending`
+  transition. That is the same transition surface FIX-978's recovery path would touch, and a
+  decision made in one place without the other would be re-litigated. Whoever picks up
+  FIX-978 checks FIX-957's current state first. This is overlap, not a blocking dependency.
+  *(FIX-957 has no spec document; check the Linear issue, not `docs/specs/`.)*
+
+### Decision 4 — a guarantee this set delivers must be observable at a persisted surface
+
+Applies to every issue here, and it is the standing lesson from FIX-963: the error was not
+*completely* gone — it survived on two `block_trace` items — but both were `transient: true`.
+Devtool diagnostics, not persisted, not in the action result, not branchable by a caller.
+
+**A breadcrumb is not observability.** "The caller can find out" means the action result or
+a persisted item, not a trace a human might read in the devtool. Any issue in this set
+claiming it made a failure visible states which persisted surface carries it.
+
+### Decision 5 — containment is a non-negotiable regression bar for the whole set
+
+FIX-951's property — a worker outcome landing on a settled task leaves every sibling
+running — must hold after each of these issues lands. Two constraints follow:
+
+- Per-backing unit tests are not sufficient. The escape only emerges from full `runAction`
+  composition, so the containment regression check runs at **integration** level (FIX-963's
+  scope says this explicitly; it is hereby the bar for the set).
+- "Loud" and "contained" are not automatically compatible. Reverting to
+  loud-for-everything reinstates the sibling-abandonment bug. Any proposal that makes a
+  path loud states how containment survives it.
+
+---
+
+## 3. Running index
+
+Durable audit log of every PR under this epic. **Refreshed 2026-08-25** against live Linear
+state. Empty columns mean not yet reached.
+
+**Epic PR:** [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) · never merged, open for the life of the epic. *(Closed 2026-08-16 while the epic was dormant; reopened 2026-08-24 on revival.)*
+
+**Track 1 — shipped:**
+
+| Issue | Title (short) | Linear | Spec PR | Impl PR |
+|---|---|---|---|---|
+| **FIX-951** | Drain containment breaks when a worker fails after its task settled | **Done** | [#941](https://github.com/fixpoint-labs/flow-state-dev/pull/941) | [#953](https://github.com/fixpoint-labs/flow-state-dev/pull/953) **merged** `41a5655` |
+| **FIX-976** | `assignTask` rewrites a terminal task; `cancelTask` no-ops; both `ok: true` | **Done** | [#995](https://github.com/fixpoint-labs/flow-state-dev/pull/995) | [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004) **merged** |
+| **FIX-948** | `maxAttempts` retry storms invisible to the task caps | **Done** | [#1011](https://github.com/fixpoint-labs/flow-state-dev/pull/1011) | [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031) **merged** |
+| **FIX-989** | Durable write provenance — tell a committed write from one that never landed | **Done** | [#1005](https://github.com/fixpoint-labs/flow-state-dev/pull/1005) | [#1128](https://github.com/fixpoint-labs/flow-state-dev/pull/1128) **merged** |
+| **FIX-992** | `ResourceStateStore.set` had no `expectedVersion` | **Done** | [#1010](https://github.com/fixpoint-labs/flow-state-dev/pull/1010) | [#1035](https://github.com/fixpoint-labs/flow-state-dev/pull/1035), [#1036](https://github.com/fixpoint-labs/flow-state-dev/pull/1036), [#1039](https://github.com/fixpoint-labs/flow-state-dev/pull/1039) **merged** |
+| **FIX-995** | `updateState` callbacks report work that never committed | **Done** | [#1022](https://github.com/fixpoint-labs/flow-state-dev/pull/1022) | [#1023](https://github.com/fixpoint-labs/flow-state-dev/pull/1023) **merged** |
+
+**Track 1 — one open issue.** The staleness sweep is finished; both of its other candidates
+were resolved without being built.
+
+| Issue | Title (short) | Linear | Spec PR | Verdict |
+|---|---|---|---|---|
+| **FIX-963** | Recorder failure after a task commits is swallowed | Backlog · P3 | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · *spec review* | **Still live**, re-verified in `record-result.ts`. Now *implementable* — FIX-989 shipped `didWriteLand`, the primitive it lacked. **The last Track-1 defect.** |
+| ~~FIX-978~~ | Stranded `in_progress` lease hangs a later drain ~14h | **Canceled** 2026-08-25 | [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) **closed** | **Subsumed by FIX-1005** — OQ-E settled against `main`. Residue owned by FIX-1250. |
+
+**Track 2 — the human-wait board pair** *(added by owner call 2026-08-24)*:
+
+| Issue | Title (short) | Linear | Spec PR | Impl PR |
+|---|---|---|---|---|
+| **FIX-1234** | Exit/park mode so `awaiting_review` doesn't hold the launching request open | **Done** | [#1419](https://github.com/fixpoint-labs/flow-state-dev/pull/1419) *approved* | [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) **merged** 2026-08-25 |
+| **FIX-1238** | The park-exit verdict's carrier depends on step adjacency; a break is silent | Backlog | — | — |
+| **FIX-1244** | Unblock a parked task with an input, starting a new request | Backlog · *blocked by FIX-1234* | — | — |
+| **FIX-1245** | Rename the shipped status `awaiting_review` → **`parked`** | Backlog · **P2 High** · *gates Track 2's close* | — | — |
+| **FIX-1250** | Workers get no claim identity, so an out-of-process worker can't fence a stale settle | Backlog | — | — |
+
+**Project siblings** — *off-objective · direct-fix*, **not** parented under FIX-980, listed
+for audit continuity only. Neither shapes any cross-cutting decision here:
+
+| Issue | Title (short) | Linear state | PR |
+|---|---|---|---|
+| **FIX-972** | Skill named `constructor` crashes `unionAllowedTools` | Done | [#984](https://github.com/fixpoint-labs/flow-state-dev/pull/984) **merged** |
+| **FIX-962** | Goal criterion E's salt guard isn't bound to the open request | Done | [#985](https://github.com/fixpoint-labs/flow-state-dev/pull/985) **merged** |
+
+**Discovered work** — surfaced *by* this epic's investigation, **same defect family**, filed
+separately and **not** parented under FIX-980:
+
+| Issue | Title (short) | Linear state | PR |
+|---|---|---|---|
+| **FIX-985** | `cascade-skip-dependents.ts:73` treats a declined `cancel()` as success | Todo | — |
+
+FIX-985 is flavour (a) exactly — `await collection.cancel(task.id, ...)` is followed unconditionally
+by `addLabel(task.id, "skipped")` and `cascading.add(task.id)`, so a declined cancel is recorded as a
+completed skip and cascades further. **It is deliberately not in the epic:** it is a caller-side
+misread of today's silent contract, fixable on its own, and adding it would grow the set without
+changing any cross-cutting decision. It is also **evidence for Decision 1** — an independent
+first-party caller that the current `void` return already misled. *(Now that Decision 1 has shipped,
+FIX-985 is also the first caller that should adopt `TaskWriteOutcome`.)*
+
+## 3.5 Removed from the epic, 2026-08-24 — off-objective
+
+While the epic was dormant, **nine issues were parented under FIX-980 that this epic's
+objective does not cover.** They are honesty-shaped, which is presumably how they got here,
+but they are honest-*request-record* problems in `@flow-state-dev/engine`, not
+honest-*task-substrate* problems in `@flow-state-dev/orchestration`. Different package,
+different caller, different lifecycle. Keeping them made the epic unfinishable and hid its
+actual remaining surface.
+
+**Detached on 2026-08-24 — unparented, not closed.** Every one keeps its project, priority,
+labels and relations; only the epic link is gone. Re-parenting any of them is one field
+change if this call was wrong. Listed here so the epic's audit trail shows where they went.
+
+**FIX-964 joins them by a different route** — it was genuinely on-objective, and left because
+the objective caught up with it rather than because it never belonged. Its row says why.
+
+| Issue | Linear | Why it isn't this epic |
+|---|---|---|
+| **FIX-1002** | Todo · **P1 Urgent** | Execution context reads resource state before its `in_progress` request record persists. Engine request-record liveness. **The only Urgent item under the epic — needs a home, not a hold.** |
+| **FIX-1156** | Backlog | An abort accepted between the post-drain re-read and the terminal patch still loses. From FIX-1001's investigation. |
+| **FIX-1036** | Backlog | `isTerminalRequestStatus` conflates "the stream ended" with "nothing can still write". Same. |
+| **FIX-1035** | Backlog | A failed terminal patch strands the request record. Same. |
+| **FIX-1034** | Backlog | Lifecycle observers and TTS chains outlive the terminal request record. Same. |
+| **FIX-1037** | Backlog · P4 | A surviving branch's late `.work()` is invisible to the request work pool's quiescence drain. Same. |
+| **FIX-1000** | Backlog | Fence the scope generation against a create racing session deletion. Session/scope storage. |
+| **FIX-1030** | **Canceled** | Dead row. |
+| **FIX-1038** | **Duplicate** | Dead row. |
+| **FIX-964** | Backlog · P3 · spec PR [#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994) *on hold* | **Descoped by owner call, 2026-08-24** — the one removal that *was* on-objective. FIX-976's shipped widening rejects a legacy two-arg ref at declaration time, which is most of what this issue was for. What is left is the options-parameter gap, the `as unknown as` bypass, and `dispatchAndExecuteBlock`'s direct-ref path (exported, no first-party caller) — a thin containment hole on a path nothing currently uses. Reopen as epic work if a real custom-store user hits it. The deeper cause stays as **OQ-D**. |
+
+**FIX-1001** (*Background work pool is not drained on the abort/disconnect/error paths*,
+**Done**) is the parent investigation the five request-record rows came out of, and it stays
+parented. It is the same engine layer, but it is closed, so it costs the epic nothing and its
+own defect — *a request reports itself finished while its background work is still running* —
+is this objective almost verbatim, one layer up. Kept as history, not as work.
+
+**FIX-993** (*Replan output can stamp an unvalidated `maxAttempts` onto a task*, Ready to
+Spec, **P2 High**) is the one genuine judgment call. It **is** in the task substrate and it
+**is** a silent-acceptance defect, so it fits the shape; but it is a *validation* gap rather
+than a *reporting* gap, and it is the last thing standing between this epic and a wrap.
+**Recommendation: keep it in and spec it**, because it is High, unblocked, and small — not
+because the objective demands it.
+
+---
+
+## 4. Open cross-cutting questions
+
+**OQ-C — does FIX-933 subsume FIX-948? — CLOSED by shipment (2026-08-24).** The question
+was whether a cost/budget ceiling already bounded a retry storm by spend, making FIX-948
+redundant. It was answered in the doing: FIX-948 shipped `maxTotalRetries`
+([#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031)) and is `Done`. Whatever
+FIX-933 bounds, it did not cover this.
+
+**OQ-E — is FIX-978 subsumed by FIX-1005? — SETTLED YES, 2026-08-25. FIX-978 closed.**
+Checked against `origin/main` @ `2e046e9`, deliberately not against FIX-978's own spec. All
+three of its claims:
+
+| FIX-978 claimed | Status on `main` |
+|---|---|
+| No reclaim path, so a later drain rides out ~14h | **Closed.** `isClaimable` admits a lapsed `in_progress` row (`status !== "pending" && !leaseLapsed(task, now)` is the only rejection), so the next claim reclaims a stranded row. The same predicate feeds the wake probe, so exit and wake agree. |
+| The drain reports `blocked`, naming the wrong cause | **Closed, from the other side.** `claimDisposition` settles a row `errored` once `readAbandonments(task) >= maxAbandonments` (`DEFAULT_MAX_ABANDONMENTS = 3`), with `abandonmentExhaustedError` naming the real cause. A row nobody is on is now re-dispatched or settled — never left in-flight forever. |
+| Never write to a row you no longer own | **Closed in-process.** `transitionDeclineReason` declines `not-my-task` when the ticket doesn't name the row, `lost-claim` when the lease lapsed under the holder. |
+
+**Decision 3 is what made the fix possible, not what blocked it.** D3 held that an expired lease
+is not evidence of abandonment, and that a real recovery path needs either a run identity on the
+claim or **lease renewal during execution**. FIX-1005 shipped renewal (`renewLease`, cadence
+`span / RENEWAL_DIVISOR`, lease default 120 s), so recovery counts renewals a live worker failed
+to make rather than inferring death from expiry. The constraint this epic wrote in July is
+satisfied by construction in the code that closed the issue.
+
+**The one residue has an owner.** Claim 3 holds in-process only: `TaskWorkerInput` carries no
+claim ticket or incarnation id, so an out-of-process worker cannot fence a stale settle at the
+boundary. That is **FIX-1250**, filed 2026-08-25 out of Conductor (LAB-138 / PR #1442), which had
+to re-derive the fence in userland. It is in Track 2, and it is where the last of FIX-978 went.
+
+**Spec PR [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) is closed with the
+issue.** It predates FIX-1005, FIX-981 and FIX-990 and describes a substrate that no longer
+exists — do not build from it. Reopen FIX-978 only if a hang is observed on current `main`; the
+table above is the thing to falsify.
+
+**OQ-D — is `TaskCollectionRef` the wrong shape for an extension point? *(follow-up beyond this
+epic — explicitly not this epic's work.)*** Recorded in round 3 from FIX-964's spec (PR #994), which
+names it a deliberate **non-goal** of that issue. The finding: `TaskCollectionRef` asks a custom-store
+author to re-derive **~18 methods** (19 measured on the interface) of state-machine, claim, CAS and
+advisory-write semantics correctly — which is *why* FIX-964's bug exists, since re-deriving
+`complete` / `fail` without the guards is the easy mistake and the interface invites it. The
+structurally right fix is a narrower **store-shaped** extension point (persistence primitives only)
+with the **substrate composing the ref** on top, so the semantics can't be re-implemented wrong
+because they're no longer the extender's to implement.
+
+**Why it is out of scope and recorded anyway.** It is a redesign of a shipped public extension point
+— strictly larger than this epic's objective, and it would swallow FIX-964 rather than resolve it.
+FIX-964 ships the behavioral decline-classification fix; this is the deeper cause underneath it. It
+is captured here so it is **not lost when FIX-964 closes**, which is the specific failure mode of a
+non-goal noted only inside one issue's spec. **Needs a human to decide whether it becomes its own
+epic** — no issue in this set should start on it, and no issue in this set is blocked by it.
+*(OQ-D outlived FIX-964's descope on 2026-08-24, which is exactly what recording it here was for.)*
+
+> **One open item lives in §2, not here, deliberately** — stated once, where the
+> reasoning it depends on lives. Duplicating it is how two copies drift apart.
+>
+> - **A-i — what `updateTask` reports when it patches several fields and settles mid-sequence.**
+>   A *design* question inside the already-decided Option A, not a fork. It was routed to
+>   FIX-976, and **FIX-976 has shipped** ([#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004)) —
+>   so whatever that PR does is the answer. Recorded as closed-by-implementation; read the
+>   merged code, not this note. See §2 Decision 1 → A-i for the original framing.
+>
+> Three items that used to live here are now closed. The **Decision-1 fork** (A / B / C) is
+> decided — Option A, approved by the repo owner; the rejected options and their reasons stay
+> in §2. The **type-widening claim** is settled empirically — see §5. **FIX-964's dependence on
+> that widening** is settled too (round 3): there is none — see §5's second entry.
+
+---
+
+## 5. Settled claims (evidence on record)
+
+Claims this epic argued, then settled empirically. **Recorded so a later reviewer does not
+reopen them blind** — if you want to revisit one, falsify the evidence rather than restate the
+original doubt.
+
+### Does widening `complete`/`fail`'s return type give FIX-964 a compile-time signal? — **CONFIRMED, with two gaps**
+
+Settled by throwaway POC (round 1; the POC is reverted and nothing was committed). Bears on
+§2 Decision 1, Option A, and on **FIX-964's scope**.
+
+**Confirmed.** A legacy two-arg ref fails to typecheck against the widened interface, in all
+three declaration forms tried — annotated object literal, inline `TaskBoardCollectionFactory`
+arrow, and `class ... implements`:
+
+```
+error TS2322: Type '(id: string, output: Out) => Promise<void>' is not assignable to type
+  '(id, output, options?: TaskTransitionOptions) => Promise<TaskWriteOutcome>'.
+    Type 'void' is not assignable to type 'TaskWriteOutcome'.
+error TS2416: Property 'complete' in type 'LegacyCustomRef' is not assignable ...
+```
+
+Mechanism: return types are strictly covariant in TypeScript with no bivariance escape, and
+the `void`-return special case runs the opposite direction, so it does not apply here. The
+error fires at **implementation-declaration** time, not at the call site — a caller that awaits
+and discards the outcome produces no error. **The signal therefore does not depend on anyone
+consuming it**, which is what makes it usable as a guard-adoption signal at all.
+
+**Gap 1 — it does not force the guards to be honoured.** A ref that returns
+`Promise<{ outcome: "recorded" }>` but still declares only `(id, output)`, with **no `options`
+parameter**, compiles clean: fewer-parameter assignability is untouched by a return-type
+change. So the widening forces an author to *touch and think about* both methods; it does not
+force them to accept or honour `TaskTransitionOptions`. **FIX-964 is substantially helped and
+not closed** — its spec still owes a mechanism for the options-parameter gap.
+
+**Gap 2 — a cast bypasses it entirely.** `as unknown as TaskCollectionRef` defeats the check,
+and `packages/orchestration/test/flow-policy.test.ts:45` already does exactly that. Any
+FIX-964 claim of "custom refs now get a signal" states what it does about casts.
+
+> **⚠ Superseded inference (round 3) — the evidence above stands, the conclusion drawn from it does
+> not.** Both gaps remain true facts about the type system; do not delete them, and do not re-run
+> this POC. What is superseded is the *inference* this document then drew: that FIX-964 needs a
+> mechanism **because** the widening is incomplete, i.e. that its scope is defined by this residue.
+> FIX-964's spec (PR #994) rejected the entire family this framing assumed. Its fix does not depend
+> on the widening at all — see the next claim.
+>
+> **Update 2026-08-24:** the widening **shipped** with FIX-976, so the confirmed signal is now live
+> on `main`. That is what reduced FIX-964 to its two gaps plus the direct-ref path, and what made
+> the owner's descope call available. The evidence here is the reason the descope is safe.
+
+### Is FIX-964's fix reachable by certifying the store? — **REFUTED (code-derived, round 3)**
+
+From FIX-964's spec (PR #994), **independently verified against the code in this fold** because it is
+load-bearing for Decision 1's scope. Bears on §1's membership table, §2 Decision 1 and Decision 2.
+
+**The convergence point has two writers, and the bug report named only one.**
+
+| Writer | How it gets its collection | Certifiable? |
+|---|---|---|
+| `task-board/blocks/record-result.ts` | via the board's **factory** — `collection: (ctx) => Promise<TaskCollectionRef>` (`:39`, `:73`), which the substrate calls | **Yes** — the substrate owns an interposition point |
+| `tasks/helpers/dispatch-and-execute.ts` | **handed a ref directly as an option** — `DispatchAndExecuteOptions.collection: TaskCollectionRef` (`:36`), already constructed by the caller | **No** — there is no factory to interpose on |
+
+`dispatchAndExecuteBlock` is exported from `tasks/index.ts:118` with **no first-party caller in
+`packages/`** — it exists for patterns and users to compose, so the ref arrives from outside the
+substrate fully built. A brand check, an `fn.length` arity probe, or a capability check
+**structurally cannot protect that path** through the factory seam, because the value never passes
+through a substrate-owned factory. (`routedSpecialists` is excluded for the opposite reason: it
+builds its own collection via `getOrCreateTaskCollection` / `getCollection` — `index.ts:194,383`,
+writes at `:443,472` — so no custom store reaches it at all.)
+
+**FIX-964's mechanism is therefore behavioral, at the substrate's advisory write-back seam:** attempt
+the write; on a throw, re-read the task; if it is settled by someone else (terminal, or `attempts`
+moved past the claimed attempt), classify the throw as a decline. **No guard, so no check-then-write
+window is reopened** — which is what makes it compatible with the constraint stated before Decision
+1's options.
+
+**Also empirically refuted: "make `options` non-optional."** Against `tsc 6.0.2` with this repo's
+settings, a two-parameter implementation is **still assignable** to a three-**required**-parameter
+signature, in both object-literal and `class … implements` form. So Gap 1 above cannot be closed by
+removing the `?`, and nobody should retry it.
+
+---
+
+## Epic evolution
+
+- **Epic created** — the sub-issues share one shape (the substrate's report diverging from
+  what it did), one live contradiction about when silence is permitted (Decision 1), and two
+  adjacent project siblings on a direct-fix track. Objective sharpened from "no silent
+  failures" to "silence is a named contract," because the naive form would have reverted
+  FIX-951.
+- **Round 1 review folded** — three changes of substance. (1) **FIX-951 is `Done` and
+  merged**, resolving the former OQ-A: Decision 1 is now about revising a *shipped* contract,
+  with the compatibility cost that implies, not about coordinating with in-flight work; the
+  former Decision 2 sequencing rationale went with it. (2) **Option A was under-scoped** —
+  FIX-976's tools call `setAssignee` and `cancel`, not `complete` / `fail`, and the patch path
+  has no guard at all, so the option's real cost is larger than stated. (3) **A boundary
+  pre-check cannot be the mechanism** — it reopens the check-then-write window FIX-951 closed,
+  which refutes Option B as written and Option C's assignment half. (2) and (3) are folded as
+  a constraint stated before the options, and both were verified against
+  `task-tools-capability.ts`, `resource-backed.ts` and `sequencer-backed.ts` rather than taken
+  from the review on faith. Also settled: FIX-972 and FIX-962 are project siblings, not epic
+  members, resolving the §1/§3 scope contradiction.
+- **Type-widening claim settled by POC** (same round; evidence, so it cost no extra round).
+  **CONFIRMED** that widening `complete`/`fail`'s return type rejects a legacy two-arg ref at
+  implementation-declaration time — but with two verified gaps: a ref that returns the new
+  outcome while declaring no `options` parameter still compiles, and a cast bypasses the check
+  outright. **This moved the design**: Option A's FIX-964 bonus is downgraded from "closes it"
+  to "substantially helps, leaves the options-parameter gap," so FIX-964's scope must cover
+  that residue under any answer to Decision 1. Full evidence in §5. *(Both follow-on claims in this
+  entry were later corrected in round 3: the blast radius recorded here — 6 sites in 3 files —
+  measured only `complete`/`fail` and is superseded by the ~22–30 site table in §2; and FIX-964's
+  scope turned out not to depend on the widening at all. The POC's own verdict stands.)*
+- **Objective approved** — the repo owner approved the epic objective in-session at head
+  `1126cd1`; recorded durably as the `epic approved` label on PR #983, and the Epic issue moved
+  to *In Development*. The gate is closed; the sub-issue lifecycles may run.
+- **Decision 1 answered — Option A.** The shipped write contract gains a return value: the
+  terminal guard and the outcome reporting it are produced inside the atomic mutation, and the
+  relevant methods return a discriminated outcome instead of `void`. The repo owner accepted
+  both stated costs — a breaking change to a contract on `main`, and a genuinely new guard on
+  the `patchRef` / `patchOne` path. Options B and C stay recorded as rejected, with their
+  reasons, so the fork is not reopened by a later reader.
+- **Round 2 review folded — three P1s, all above the bar, all verified against the code, and
+  all of them sharpening Option A rather than challenging it.**
+  1. **The new guard is scoped to assignment (A1).** Both backings funnel five methods through
+     one shared `patchRef` / `patchOne` helper, so a blanket terminal guard there would also
+     decline `addLabel` — breaking `supervisor/blocks/label-failed-reviews.ts`, which
+     deliberately labels terminal `errored` tasks and is wired into the supervisor pipeline as
+     `.tap(labelFailedReviews)`. Per-operation guard, never per-helper.
+  2. **FIX-963 is not solved by return values, and leaves the Decision-1-bound set.** In both
+     backings the write commits before `emit`, so a recorder failure is a *rejection*, and a
+     rejected promise carries no outcome; `recordSuccess` is a `.tap()` handler that discards
+     the result and has no `outputSchema` to carry one; `recordError` only ever receives the
+     thrown error. FIX-963 needs its own recorder-state/error-channel design either way. The
+     bound set is now **FIX-976 and FIX-964** — two, not three. A fourth silence (**S4**: the
+     write committed and something after it rejected) is now named separately from S2, because
+     collapsing them is what produced the wrong grouping.
+  3. **`updateTask`'s multi-field atomicity is an open sub-question (A-i), not an answered
+     one.** It performs up to five sequential writes; under A1 only the assignee write is
+     guarded, so a mid-sequence settle commits some fields and declines that one, and a single
+     `ok` boolean misreports in both directions. Two shapes resolve it (one atomic batch patch,
+     or an explicit partial outcome); the choice is recorded as open and routed to FIX-976
+     rather than invented here.
+
+  Taken together with the settled type-widening result above, these folds narrow what the
+  decided option delivers: **Option A resolves FIX-976, partly helps FIX-964, and does not
+  reach FIX-963** — leaving Decision 1 resting primarily on FIX-976 as of this round. *(Round 3
+  removed the FIX-964 half too; it now rests on FIX-976 alone.)*
+- **The epic-spec converged at round 2.** The objective is approved and the one decision this epic
+  existed to make is made. *(Round 3 followed — see below — and did not reopen either.)*
+- **Round 3 folded — a third round spent deliberately, outside the two-round budget, because all
+  three items were evidence-driven corrections or a coordination error that would have skipped a
+  gate; none was a new approach question, and leaving any of them would have left the doc factually
+  wrong or the process broken.** That is the convergence rule's stated exception, recorded here in
+  one line so the extra round is a visible decision rather than drift. All three verified against the
+  code in this fold, not taken on faith.
+  1. **The blast-radius figure was wrong by ~4×.** "6 sites in 3 files" measured only
+     `complete`/`fail`. Across all four widened methods it is **~22 sites / 4 files to compile,
+     ~30 / 10 to be semantically complete** (67 baseline errors → 71; an error count *undercounts*,
+     since a correctly-fixed file stops erroring). Three ripples the old figure missed, all verified:
+     the `withTask` trap (widening `mutator` to `Promise<unknown>` silences four errors *by
+     discarding the outcome*; honest handling needs a **`declined`** arm on `okOrError`); a **second**
+     shared helper, `patchRef`/`patchOne`, serving 8 further call sites that would silently drop an
+     outcome; and **zero test signal** — 51 test call sites discard these results, so CI would not
+     catch a backing returning the wrong outcome.
+  2. **`cross-spec-review`'s scope was wrong and could have skipped a gate.** Decision 2 scoped the
+     pass to the file-colliding subset. Verified against `epic-lifecycle` → "Cross-spec coherence":
+     the gate covers *every* spec the epic planned to open, and `crossSpecCleared: false` holds all of
+     them short of implementation. The old scoping would have released **FIX-978 and FIX-948** with no
+     conformance check. Corrected: the pass runs over the **full active spec set**; file collision is
+     one kind of conflict, not the set-selection rule.
+  3. **FIX-964 left Decision 1's orbit, so Decision 1 now rests on FIX-976 alone.** FIX-964's spec
+     (PR #994) rejected the whole certify-the-store family on a code-derived argument this fold
+     independently confirmed: the convergence point has **two writers**, and only one is certifiable.
+     `record-result.ts` receives a *factory* the substrate calls; `dispatch-and-execute.ts` is handed
+     a **ref directly as an option** (`:36`) with no factory, so a brand, arity probe, or capability
+     check structurally cannot reach it — and the helper is exported with no first-party caller, so
+     the ref arrives from outside fully built. FIX-964's mechanism is instead behavioral at the
+     advisory write-back seam (attempt, then on a throw re-read and classify a settled-by-someone-else
+     task as a decline), which opens no check-then-write window. Separately, "make `options`
+     non-optional" is **empirically refuted** — a two-parameter implementation stays assignable to a
+     three-required-parameter signature. §5's evidence is kept and the *inference* drawn from it is
+     marked superseded rather than deleted.
+
+  **Consequences.** The Decision-1-bound set drops from three to two to **one — FIX-976**. Decision 1
+  is recorded as **DECIDED with the cost restated, not reopened**: Option A's accepted cost is
+  ~22–30 sites plus a breaking change to a shipped contract, **in service of one issue**. That
+  arithmetic is stated in §2 without a recommendation attached; it has been surfaced to the repo
+  owner, and Option A stands unless they say otherwise. FIX-964's architectural finding — that
+  `TaskCollectionRef` asks a custom-store author to re-derive ~18 methods of semantics, and the right
+  fix is a narrower store-shaped extension point with the substrate composing the ref — is recorded
+  as **OQ-D, a follow-up beyond this epic**, so it is not lost when FIX-964 closes. **FIX-985**
+  (`cascade-skip-dependents.ts:73` treats a declined `cancel()` as success) is indexed as discovered
+  work: same defect family, filed separately, deliberately not in the epic, and independent evidence
+  for Decision 1.
+- **Still converged.** Nothing in round 3 reopened the objective or the decided option, and no
+  further review pass is expected. Remaining questions are issue-level (A-i to FIX-976; OQ-C to
+  FIX-948) or beyond the epic (OQ-D, needs a human). Further edits should be driven by what
+  implementation discovers.
+- **Dormant, 2026-07-30 → 2026-08-24.** The coordinating session ended. The three open spec
+  PRs (#990, #992, #994) stopped moving, the epic PR was closed unmerged on 2026-08-16, and
+  nine unrelated issues were parented under FIX-980 in the interval. Meanwhile the objective
+  kept being served by work filed *outside* the epic's index: FIX-989, FIX-992 and FIX-995 all
+  shipped, and FIX-976 and FIX-948 — two of the five active issues — shipped without this doc
+  recording it. **The lesson is in the gap:** an epic-spec that is only refreshed by its own
+  coordinator goes stale silently, and the staler it gets the more it argues about a codebase
+  that no longer exists.
+- **Revived 2026-08-24 — widened, re-verified, and pruned.** Epic PR reopened. Four changes:
+  1. **Widened to two tracks** on the owner's call. The original honesty set keeps its frame;
+     a **human-wait board pair** (FIX-1234 / FIX-1238 / FIX-1244) joins it under the same
+     objective, with one clause added to §1 — *a drain that left because a human is owed must
+     say so, and there is a primitive to unblock that row with an input.* Decisions 4 and 5
+     apply to it; **Decision 1 is not reopened** and its arithmetic is not recounted.
+  2. **Every open Track-1 row re-verified against `main` rather than against its own spec.**
+     FIX-963 is still live (and now implementable — FIX-989 shipped the primitive it lacked).
+     FIX-964 is partly closed by FIX-976's shipped widening, leaving a narrow residue.
+     FIX-978 looks **subsumed** by FIX-1005's `leaseLapsed` → `isClaimable` change; raised as
+     **OQ-E**, and its spec PR #990 must not be built from as written. Three specs at review
+     for four weeks are now a staleness problem, not a review problem.
+  3. **Nine off-objective issues removed from the epic** (§3.5) — engine request-record and
+     session-scope defects that are honesty-shaped but sit in a different package with a
+     different caller. Detached, not closed; each keeps its project, priority and relations.
+     FIX-993 flagged as the one genuine judgment call and kept in.
+  4. **FIX-1245 folded in.** Filed by the owner at 18:49 on 2026-08-24, after the widening
+     comment that had listed the status rename as out of scope. It is now in, at High, and it
+     gates the close of Track 2. Recorded here because the comment and the ticket disagree and
+     the ticket is later.
+- **FIX-964 descoped, 2026-08-24 (owner call).** Unparented from FIX-980; spec PR #994 stays
+  open, marked *on hold*. The reasoning is the epic working as intended: FIX-976 shipped the
+  widened return types, which delivered the compile-time signal §5 had confirmed, and the
+  residue — the options-parameter gap, the cast bypass, and `dispatchAndExecuteBlock`'s
+  factory-less ref path — is thinner than the issue that was filed. It is a containment hole
+  on a path with no first-party caller, not the defect the objective promised to close.
+  **Track 1's open set is now FIX-963, plus FIX-978 pending OQ-E**, which also collapses
+  `cross-spec-review` to a set of one — see the note on Decision 2.
+- **2026-08-25 — the staleness sweep finished, and it mostly removed work.** Four movements
+  since the revival, folded together:
+  1. **FIX-978 closed as subsumed (OQ-E settled).** All three of its claims are closed on `main`
+     by FIX-1005; spec PR #990 closed unmerged. The residue — an out-of-process worker cannot
+     fence a stale settle — is **FIX-1250**'s. Full evidence table in §4. Decision 3 turned out
+     to be what *enabled* the fix rather than what blocked it: it named lease renewal as one of
+     the two acceptable mechanisms, and renewal is what FIX-1005 shipped.
+  2. **FIX-1234 merged** ([#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422)),
+     Track 2's first landed deliverable.
+  3. **FIX-1250 added to Track 2**, out of Conductor (LAB-138 / PR #1442) having to re-derive
+     claim fencing in userland. It is the same objective at the process boundary: a worker
+     settling a row should be able to prove its claim is still live.
+  4. **FIX-1245 retargeted** — the rename lands on **`parked`**, not `needs_input`. Both the
+     widening comment and this doc's first revision named the wrong target.
+
+  **The pattern is worth naming, because it is the argument against letting an epic idle.** Of
+  the three Track-1 specs that sat at review for four weeks, **two were resolved without being
+  built** — one descoped because a sibling shipped the mechanism, one closed because a sibling
+  shipped the fix. The review rounds spent on them in July bought nothing; the codebase answered
+  both questions first. **Track 1 is down to FIX-963 and FIX-993**, and Decision 2's
+  `cross-spec-review` has no set left to run over.
