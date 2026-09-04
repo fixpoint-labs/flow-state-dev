@@ -19,6 +19,28 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "./item-types";
 
 /** Component-item type emitted on every per-task lifecycle event. */
+/**
+ * The status `awaiting_review` shipped as `parked` (FIX-1245). Item logs are
+ * immutable — a trace recorded before that rename still carries the old word on
+ * `task-change.task.status`, and a `counts.awaiting_review` key on
+ * `task-board-meta` — and no resource-level migration can reach them. So they
+ * are mapped forward here, at the fold every consumer of this state reads
+ * through. A trace recorded after the rename allocates nothing.
+ */
+const LEGACY_PARKED_STATUS = "awaiting_review";
+
+function migrateTaskStatus<T extends { status?: unknown }>(task: T): T {
+  return task.status === LEGACY_PARKED_STATUS ? { ...task, status: "parked" } : task;
+}
+
+function migrateCounts<T extends { parked?: number }>(counts: T | undefined): T | undefined {
+  if (counts === undefined) return counts;
+  const legacy = (counts as Record<string, unknown>)[LEGACY_PARKED_STATUS];
+  if (typeof legacy !== "number") return counts;
+  const { [LEGACY_PARKED_STATUS]: _legacy, ...rest } = counts as Record<string, unknown>;
+  return { ...rest, parked: (counts.parked ?? 0) + legacy } as unknown as T;
+}
+
 export const TASK_CHANGE_COMPONENT = "task-change";
 
 /** Component-item type emitted at board start / end. */
@@ -254,7 +276,7 @@ export function groupCollections(
       }
       bucket.tsById.set(change.taskId, ts);
       bucket.tasksById.set(change.taskId, {
-        task: change.task,
+        task: migrateTaskStatus(change.task),
         kind: change.kind,
         prevStatus: change.prevStatus,
         changeCount,
@@ -276,7 +298,7 @@ export function groupCollections(
       bucket.metaTs = ts;
       bucket.boardMeta = {
         status: meta.status,
-        counts: meta.counts,
+        counts: migrateCounts(meta.counts),
       };
     }
   }

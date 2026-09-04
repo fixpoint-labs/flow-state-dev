@@ -1,5 +1,6 @@
 ---
 "@flow-state-dev/orchestration": minor
+"@flow-state-dev/devtool": patch
 ---
 
 Task status `awaiting_review` is now `parked` (FIX-1245).
@@ -19,6 +20,8 @@ to a legacy row heals it.
 `awaiting_review`, or listing it in a status filter, should now use `parked`. The
 `awaitReview()` method that parks a task is unchanged.
 
-**One thing that is not migrated:** `task-change` items and `task-board-meta` counts
-already written into a persisted item log keep the old status word. Replaying an old
-trace renders those entries under the old label; live boards are unaffected.
+**Replaying an old trace still works.** `task-change` items and `task-board-meta` counts
+already written into a persisted item log keep the old status word — an item log is
+immutable, so nothing can rewrite them. The DevTool and the task-plan renderer map them
+forward as they fold the log, so an old parked row renders as parked and its count reaches
+the ribbon.
