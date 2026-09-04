@@ -1295,6 +1295,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../scheduled
       pg:
         specifier: ^8.13.0
         version: 8.20.0
@@ -1302,9 +1305,6 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.4
         version: 0.5.4
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../scheduled
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
@@ -1323,13 +1323,13 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../scheduled
       better-sqlite3:
         specifier: ^11.0.0
         version: 11.10.0
     devDependencies:
-      '@flow-state-dev/scheduled':
-        specifier: workspace:*
-        version: link:../scheduled
       '@types/better-sqlite3':
         specifier: ^7.6.0
         version: 7.6.13
