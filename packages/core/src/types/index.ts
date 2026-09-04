@@ -49,7 +49,37 @@ export {
 } from "./workstream";
 
 export type {
+  BlockDispatchType,
+  DispatchAddress,
+  DispatchOutcome,
+  DispatchRefusal,
+  DispatchSeam,
+  DispatchSpec,
+  DispatchType,
+  InternalEntry,
+  SessionTarget,
+  TaskBinding,
+  TaskDispatchInput,
+  TaskEntry,
+  TaskSessionPolicy
+} from "./dispatch";
+
+export {
+  DISPATCH_SEAM,
+  DISPATCH_TYPES,
+  DispatchRefusedError,
+  NoDispatchSeamError,
+  bindTaskDispatcher,
+  dispatchThroughSeam,
+  markDispatcher,
+  taskBindingOf,
+  taskDispatchInputSchema,
+  taskSessionKeyFor
+} from "./dispatch";
+
+export type {
   ActionConfig,
+  TypedEntries,
   ActionCore,
   ActionMcpConfig,
   CostEstimator,

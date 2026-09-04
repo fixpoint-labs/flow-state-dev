@@ -32,7 +32,7 @@
  * A detached generator also streams no in-flight text — a reader attaching to
  * the Workstream sees completed items, not tokens arriving.
  */
-import { generator, handler, sequencer } from "@flow-state-dev/core";
+import { dispatcher, generator, handler, sequencer } from "@flow-state-dev/core";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
@@ -227,14 +227,21 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     // and costs the honest status.
     onError: "fail",
     workers: {
-      // Cast: a registry is heterogeneous, so `TaskWorker` fixes its output at
-      // `unknown` while this worker settles a `string`. The board only ever
-      // reads `task.output` as `unknown`, so the runtime contract holds — the
-      // same narrowing `task-queue-demo` takes on its registry.
-      [ASSIGNEE]: {
-        worker: briefWorker as unknown as TaskWorker,
-        dispatch: { mode: "detached" },
-      },
+      // The seat is a dispatcher: it hands each row off to the flow's
+      // `brief` task entry (`briefWorker`, declared below) instead of running
+      // anything in the drain. Keyed on the task's `metadata.topic`: two
+      // requests on one topic land in the same Workstream and continue its
+      // history, which is the point of the topic (see `routingTopicFor`). A
+      // row with no topic gets a child of its own.
+      [ASSIGNEE]: dispatcher<TaskWorkerInput>({
+        name: "background-work-hand-off",
+        type: "task",
+        target: ASSIGNEE,
+        session: {
+          key: (task) =>
+            typeof task.metadata?.topic === "string" ? task.metadata.topic : task.taskId,
+        },
+      }),
     },
   });
 
@@ -408,7 +415,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     },
   });
 
-  return sequencer({
+  const pipeline = sequencer({
     name: "background-work-thinking",
     inputSchema: z.object({ message: z.string() }),
     outputSchema: z.string(),
@@ -419,4 +426,15 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     // the report below reads its own input rather than the drain's bookkeeping.
     .tap(board.drain)
     .step(reportBackgroundWork);
+
+  // The task entry rides along so the flow can declare it under
+  // `task: { actions }`: the block that runs in the Workstream for each row
+  // the seat hands off. `defineFlow` puts it behind the board's claim gate,
+  // and refuses the flow if the hand-off is reachable and the entry is not
+  // declared. Cast: a registry is heterogeneous, so `TaskWorker` fixes its
+  // output at `unknown` while this worker settles a `string` — the same
+  // narrowing `task-queue-demo` takes.
+  return Object.assign(pipeline, {
+    taskEntries: { [ASSIGNEE]: { block: briefWorker as unknown as TaskWorker } },
+  });
 }

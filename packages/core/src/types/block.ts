@@ -12,6 +12,8 @@ import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { RequestHost } from "./request-host";
 import type { WorkstreamBindings } from "./workstream";
+import type { DispatchAddress, DispatchSeam } from "./dispatch";
+import { DISPATCH_SEAM } from "./dispatch";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -468,6 +470,14 @@ export interface BlockContext<
    * TypeScript said it did not have.
    */
   requestHost?: RequestHost;
+
+  /**
+   * @internal The runtime's dispatch operation, attached under a symbol key so
+   * it is not a named member any handler body reaches. Read only by
+   * `dispatchThroughSeam`, which `dispatcher()` and the task board's hand-off
+   * call — the blocks that carry a `DispatchAddress`. See `types/dispatch.ts`.
+   */
+  [DISPATCH_SEAM]?: DispatchSeam;
 
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
@@ -981,6 +991,16 @@ export interface BlockDefinition<
    * boards instead of advertising workers nothing can reach.
    */
   ownWorkstreamBindings?: WorkstreamBindings;
+  /**
+   * The address this block dispatches to, when it is a dispatcher.
+   *
+   * Stamped by `dispatcher()` (and by the task board on its hand-off block)
+   * and carried across every rebuild path, so `defineFlow` can walk the graph
+   * and refuse an address that resolves no entry, and a board can read which
+   * of its seats hand off without running anything. `undefined` on every block
+   * that dispatches nothing, which is every block that computes.
+   */
+  dispatch?: DispatchAddress;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;
   connectOutput<TTo>(

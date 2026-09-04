@@ -35,7 +35,9 @@ import {
   createDetachedStartOperation,
   type DispatchedDetachedChild
 } from "../context/detached-start-operation";
+import { createDispatchOperation, type DispatchOperation } from "../context/dispatch-operation";
 import type { DetachedStartOperation } from "../context/create-request-host";
+import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
@@ -239,6 +241,12 @@ class InternalFlowState<TSettings extends object>
    * not accumulate them.
    */
   readonly #detachedChildren = new Set<DispatchedDetachedChild>();
+  /**
+   * The host the request-host operations dispatch through, built on first use
+   * and shared by the detached start and the dispatch seam — see
+   * `#hostForRequestHostOperations`.
+   */
+  #requestHostOperationsHost: InboundTransportHost | undefined;
   /**
    * The resolved runtime config, kept so `dispose()` can read the logger a host
    * configured. Held as the object rather than the logger value: a host may
@@ -923,6 +931,7 @@ class InternalFlowState<TSettings extends object>
     // BEFORE the worker wiring and before any router exists, so every later copy
     // of `requestHost` carries it. See `#installDetachedStart`.
     this.#installDetachedStart(runtimeConfig, stores);
+    this.#installDispatchOperation(runtimeConfig, stores);
 
     this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
 
@@ -1058,7 +1067,88 @@ class InternalFlowState<TSettings extends object>
   }
 
   /**
-   * Build the host and the operation it dispatches through, on first use.
+   * Install the dispatch seam's operation on the shared config, before any fork
+   * of `requestHost` exists — on the same terms as `#installDetachedStart`, and
+   * for the same reason: `createFlowApiRouter` rebuilds `requestHost` as a
+   * fresh literal, so anything stamped there lands on a copy a colocated worker
+   * never sees.
+   *
+   * The disposal gate is the detached start's, applied to the same instant: a
+   * dispatched child runs here under the same drain, so admission has to close
+   * for it at the same moment or the drain's snapshot is incomplete.
+   */
+  #installDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
+    const requestHost = runtimeConfig.requestHost;
+    if (requestHost === undefined) return;
+    if (requestHost.dispatchOperation !== undefined) return;
+
+    let operation: DispatchOperation | undefined;
+    requestHost.dispatchOperation = (spec) => {
+      if (this.#disposed) {
+        return Promise.resolve({
+          notStarted: true,
+          reason: "the runtime is shutting down and is no longer dispatching work"
+        });
+      }
+      operation ??= this.#buildDispatchOperation(runtimeConfig, stores);
+      return operation(spec);
+    };
+  }
+
+  /**
+   * The host the request-host operations dispatch through, built on first use
+   * and shared between the detached start and the dispatch seam.
+   *
+   * Built lazily so everything it reads — the worker's dispatcher, the shared
+   * arbiter — is resolved by the time it runs, rather than captured at a moment
+   * when the worker adapter has not been consulted yet.
+   *
+   * Shared rather than one per operation because a second host in this process
+   * would be a second place the same questions get answered — which dispatcher
+   * is effective, whether it is external — and two answers to one question is
+   * how a seam and a dispatch branch come to disagree. The arbiter is already
+   * shared for exactly that reason.
+   */
+  #hostForRequestHostOperations(
+    runtimeConfig: RuntimeConfig,
+    stores: StoreRegistry
+  ): InboundTransportHost {
+    this.#requestHostOperationsHost ??= createInboundTransportHost({
+      registry: this.#registry,
+      stores,
+      // Never consulted by `dispatch` — a detached or dispatched envelope
+      // carries a server-derived principal — but it is what the router would
+      // pass, so the host is not subtly different from the one HTTP gets.
+      resolvePrincipal:
+        this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
+      runtimeConfig,
+      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher,
+      // One arbiter across every host in the process — see `#arbiter`.
+      arbiter: this.#arbiter
+    });
+    return this.#requestHostOperationsHost;
+  }
+
+  /**
+   * Build the dispatch seam's operation, on first use. A dispatched child that
+   * runs here is tracked for the shutdown drain exactly as a detached one is —
+   * see `#buildDetachedStartOperation` for why that is keyed on the effective
+   * dispatcher.
+   */
+  #buildDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): DispatchOperation {
+    const dispatcher = this.#options.dispatcher ?? this.#workerDispatcher;
+    const host = this.#hostForRequestHostOperations(runtimeConfig, stores);
+    const runsHere = isInProcessDispatcher(dispatcher);
+    return createDispatchOperation({
+      host,
+      ...(runsHere
+        ? { onDispatched: (child: DispatchedDetachedChild) => this.#trackDetachedChild(child) }
+        : {})
+    });
+  }
+
+  /**
+   * Build the detached start operation, on first use.
    *
    * Split from the install so everything it reads — the worker's dispatcher, the
    * shared arbiter — is resolved by the time it runs, rather than captured at a
@@ -1069,20 +1159,7 @@ class InternalFlowState<TSettings extends object>
     stores: StoreRegistry
   ): DetachedStartOperation {
     const dispatcher = this.#options.dispatcher ?? this.#workerDispatcher;
-
-    const host = createInboundTransportHost({
-      registry: this.#registry,
-      stores,
-      // Never consulted by `dispatch` — a detached envelope carries a
-      // server-derived principal — but it is what the router would pass, so the
-      // host is not subtly different from the one HTTP gets.
-      resolvePrincipal:
-        this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
-      runtimeConfig,
-      dispatcher,
-      // One arbiter across every host in the process — see `#arbiter`.
-      arbiter: this.#arbiter
-    });
+    const host = this.#hostForRequestHostOperations(runtimeConfig, stores);
 
     // Track children for the shutdown drain ONLY when they run here.
     //

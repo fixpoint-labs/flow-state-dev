@@ -19,6 +19,7 @@ import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { isCollectionConfig } from "./is-collection-config";
 import { resourceStorageKeys } from "./storage-keys";
 import type { StorageScopeType } from "../stores/types";
+import { resolveLineageId } from "../stores/scope-keys";
 
 /** The session-record fields lineage addressing reads. */
 export type LineageSession = {
@@ -85,7 +86,7 @@ function lineageScopeId(session: LineageSession): string {
   // Prefixed for the same reason `createExecutionContext` prefixes it: the
   // fallback must never equal the session key, or unshared resources become
   // indistinguishable from lineage ones.
-  return session.lineageId ?? `lin_${session.id}`;
+  return resolveLineageId(session);
 }
 
 /**

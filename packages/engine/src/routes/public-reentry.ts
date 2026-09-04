@@ -26,7 +26,12 @@
  *
  * FIX-1021 generalizes this predicate; it does not replace it.
  */
-import { WEBHOOK_SOURCE, WORKSTREAM_SOURCE } from "../execution/transport-sources";
+import {
+  INTERNAL_SOURCE,
+  TASK_SOURCE,
+  WEBHOOK_SOURCE,
+  WORKSTREAM_SOURCE
+} from "../execution/transport-sources";
 
 /**
  * Sources that arrived on a caller-facing transport and may be re-entered.
@@ -43,6 +48,11 @@ import { WEBHOOK_SOURCE, WORKSTREAM_SOURCE } from "../execution/transport-source
  *   routes already refused it.
  * - `workstream` — a detached dispatch started by the injection seam. It has no
  *   caller-facing entry at all, so it must have no caller-facing re-entry.
+ * - `task` and `internal` — dispatched by the dispatch seam from inside a
+ *   running request. Neither has a caller-facing entry at all, so neither may
+ *   have a caller-facing re-entry. A dispatched session IS reachable from
+ *   outside — by a `public` dispatch to it, which is an ordinary
+ *   caller-addressed request — so nothing is lost by refusing here.
  */
 const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   "http",
@@ -54,20 +64,29 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
 /**
  * Sources a host may never declare, whatever it passes.
  *
- * Both are stamped by the framework itself, not by a deployment's transport, so
- * neither is a deployment's to re-open — and the reason each is excluded is a
- * property of the framework rather than of the deployment. `webhook`'s handler
- * is reachable only behind signature verification; `workstream` has no
- * caller-facing entry at all by construction. Re-admitting either hands an HTTP
- * caller `inputOverride` on a handler that was never caller-addressed, which is
- * precisely the bypass the allow-list exists to close.
+ * All four are stamped by the framework itself, not by a deployment's
+ * transport, so none is a deployment's to re-open — and the reason each is
+ * excluded is a property of the framework rather than of the deployment.
+ * `webhook`'s handler is reachable only behind signature verification;
+ * `workstream`, `task` and `internal` have no caller-facing entry at all by
+ * construction. Re-admitting any of them hands an HTTP caller `inputOverride`
+ * on a handler that was never caller-addressed, which is precisely the bypass
+ * the allow-list exists to close.
+ *
+ * Three tiers, not two: the allow-list above, this never-set, and the host's own
+ * `publicReentrySources`. A source that is merely *absent* from the allow-list
+ * can be re-opened by one line of deployment config; a source in this set
+ * cannot. A new framework-stamped type belongs here, not merely off the
+ * allow-list.
  *
  * A host that names one is refused at construction by
  * {@link assertPublicReentrySources} rather than having it silently dropped.
  */
 const NEVER_PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   WEBHOOK_SOURCE,
-  WORKSTREAM_SOURCE
+  WORKSTREAM_SOURCE,
+  TASK_SOURCE,
+  INTERNAL_SOURCE
 ]);
 
 /**

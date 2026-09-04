@@ -1,0 +1,9 @@
+{
+  "salt": "held-out-9b3f14",
+  "seat": "background",
+  "entry": "summarize-report",
+  "tasks": [
+    { "id": "quarterly-close", "goal": "reconcile the quarterly ledger" },
+    { "id": "vendor-audit", "goal": "audit the vendor invoices" }
+  ]
+}

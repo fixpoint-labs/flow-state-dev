@@ -843,8 +843,8 @@ createFlowApiRouter({
   // Sources from your own inbound transports that `retry` / `continue` /
   // `resume` may re-enter. The built-ins (`http`, `mcp`, `chat`, `scheduled`)
   // are always admitted; every other source is refused with a not-found unless
-  // named here. `webhook` and the detached-dispatch source are never openable
-  // — naming one throws at construction.
+  // named here. `webhook`, the detached-dispatch source, `task` and `internal`
+  // are never openable — naming one throws at construction.
   publicReentrySources: ["echo"]
 });
 ```

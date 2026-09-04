@@ -80,20 +80,23 @@ function that finds the core to run:
 
 ```ts
 function resolveActionCore(flow, actionName, source, metadata): ActionCore | undefined {
-  if (source === "webhook")   { /* read flow.webhooks[md.webhook.provider].on[md.webhook.eventType] */ }
-  if (source === "chat")      { /* read flow.chat.on[md.chat.eventKey] */ }
-  if (source === "scheduled") { /* read flow.schedules.static[md.schedule.scheduleId] */ }
-  if (source === "workstream") { return flow.workstream; }   // TERMINAL — no fallback
-  return flow.actions[actionName];   // caller-addressed fallback
+  if (source === "workstream") { return flow.workstream; }   // TERMINAL — the fenced path
+  const type = dispatchTypeOf(source);                         // public | chat | webhook | schedule | task | internal
+  return resolveEntry(flow, type, actionName, metadata);       // ONE map, no fallback
 }
 ```
 
-Each event branch reads a **namespaced** coordinate from metadata —
-`metadata.webhook` / `metadata.chat.eventKey` / `metadata.schedule.scheduleId`
-— and looks the binding up on the matching transport map. When no event
-coordinate resolves, it falls back to the named `flow.actions` entry. This is
-the one seam that lets an event handler be a first-class action without ever
-appearing in `flow.actions`.
+`resolveEntry` reads exactly one map for the dispatch's type: `flow.actions`
+by name for `public`; `flow.webhooks[md.webhook.provider].on[md.webhook.eventType]`,
+`flow.chat.on[md.chat.eventKey]` and `flow.schedules.static[md.schedule.scheduleId]`
+by their **namespaced** metadata coordinate for the event forms;
+`flow.internal.actions` and `flow.task.actions` by name for the dispatched
+forms. A coordinate that does not resolve is `undefined`, and `runAction`
+refuses the dispatch by name. There is no fallback from any map into
+`flow.actions`: an event whose binding is missing is a missing binding, not a
+caller-addressed action wearing the same name. This is the seam that lets an
+event handler be a first-class action without ever appearing in
+`flow.actions`.
 
 ### The source gate (security)
 
@@ -121,13 +124,14 @@ It is `undefined` until something populates it, and that *off* state is a normal
 state rather than a gap: a flow with no workstream core refuses detached dispatch
 by name.
 
-**The branch is terminal, and that is the security property.** Note the shape
-difference above: an event branch falls through when its coordinate does not
-match, because an event whose binding is missing should still be able to resolve
-a named action. The detached branch returns unconditionally. A detached dispatch
-carries `actionName` as provenance only, and that name can collide with a public
-`flow.actions` key — so falling through would hand a framework-stamped dispatch a
-caller-addressed handler. Because the seam stamps its own source, that is not a
+**The branch is terminal, and that is the security property.** It returns
+unconditionally before the typed lookup runs, so the workstream source never
+reaches a map keyed by name. A detached dispatch carries `actionName` as
+provenance only, and that name can collide with a public `flow.actions` key —
+so any path from this branch into `flow.actions` would hand a framework-stamped
+dispatch a caller-addressed handler. (Every other source now has the same
+property through `resolveEntry`'s one-map rule; this branch is simply the older,
+fenced spelling of it.) Because the seam stamps its own source, that is not a
 caller forging anything; it is the runtime admitting everything through its own
 trusted source. There is no route from the seam to a caller-addressed action.
 
@@ -199,6 +203,72 @@ Sharing a worker block between boards is fine — that is ordinary composition, 
 what is refused is the shared coordinate, not the shared block. One board reached
 from several places is a duplicate rather than a conflict, and deduplicates
 silently.
+
+## Dispatched: `internal` and `task` entries
+
+Beside the transport maps, a flow may declare two more entry maps, each nested
+under `actions` so a per-type setting has a home beside them:
+
+```ts
+defineFlow({
+  actions:  { ask: { block: ask } },                              // caller-addressed
+  internal: { actions: { summarize: { block: summarize } } },     // reached by a dispatcher()
+  task:     { actions: { implement: { block: implement } } },     // reached by a task-board seat
+});
+```
+
+Every entry, of every type, shares `ActionCore` — including `concurrency`,
+which moved from `ActionConfig` to the core so an `internal` or `task` entry
+can carry its own policy. The flat spelling (`internal: { summarize }`) is
+refused by name, and both maps are definition-only like the transport maps.
+
+**Resolution is one `(type, name)` lookup, with no fallback for any type.**
+`resolveEntry(flow, type, name, coordinate?)` (`core/flow/resolve-entry.ts`)
+reads exactly one map — `flow.actions` for `public`, `flow.internal.actions`
+for `internal`, `flow.task.actions` for `task`, and the transport maps by their
+coordinate for `webhook` / `chat` / `schedule` — and returns `undefined` when
+the name is not there. `resolveActionCore` keeps its terminal `workstream`
+branch and otherwise delegates to `resolveEntry`, so the event branches no
+longer fall through to `flow.actions` when their coordinate misses: an absent
+binding is a refusal, not a pivot into a caller-addressed handler.
+`dispatchTypeOf(source)` (`engine/transport-sources.ts`) maps a request
+source onto the type it resolves as, and returns `undefined` for `workstream`.
+
+**The sender is a `dispatcher()` handler.** It builds the typed envelope from
+its input, puts it through a factory-only seam (`DISPATCH_SEAM`, attached to
+the block context by `createExecutionContext`, never a named member of
+`BlockContext`), and returns `{ sessionId, requestId, adopted }`. Its address
+(`type`, `target`) is fixed on the block, so `defineFlow` walks the flow graph
+(`walkFlowGraph`, including a `forEach` factory's declared `blocks`) and
+refuses a dispatcher whose target the flow does not declare. A `task`
+dispatcher is a seat on a task board; the board binds its id and claim gate
+onto it, and `defineFlow` puts the addressed entry behind that gate.
+
+**Two session targets, two guards.** `{ key }` derives a child of the running
+session (`deriveDispatchChildSessionId`, its own `dispatch` namespace beside
+the workstream one) and adopts it on the same key; the adoption check includes
+the parent's lineage. `{ id }` delivers into an existing session of the same
+flow kind and principal — an unknown id, another principal's, or another
+tenant's is `session-not-found`; another flow's or a mismatched org is
+`session-not-addressable` — and is refused under an external dispatcher
+(`usesExternalDispatcher`, refusal `external-dispatcher`) because the run
+would start on another process against a session this one cannot fence.
+Acceptance happens at enqueue time; when the run starts, `runAction` re-reads
+the session and **drops** the delivery if the session was deleted and
+recreated in between (the incarnation guard), deleting the request row rather
+than running a stale envelope against a new incarnation.
+
+The dispatched request carries `source: "internal"` or `"task"` and a
+server-assembled stamp, `metadata.dispatch = { type, target, from: { block,
+sessionId }, key?, recipientLineageId?, ...provenance }`, read back through
+`readDispatchStamp`, which is gated on those two sources exactly as the event
+coordinates are gated on theirs. Neither source is re-enterable from a public
+route: `isPublicReentryAllowed` never admits `task` or `internal`, and
+`assertPublicReentrySources` refuses a host that names them.
+
+The workstream path above is untouched by all of this: `flow.workstream`,
+`flow.workstreamBindings`, `startDetached` and `dispatch: { mode: "detached" }`
+resolve and run exactly as before and take no new callers.
 
 ## The carried core: dynamic schedules
 

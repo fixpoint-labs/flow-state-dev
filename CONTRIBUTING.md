@@ -50,7 +50,7 @@ The architecture has locked contracts. Don't change these without explicit discu
 3. Include tests for new behavior
 4. Run `pnpm typecheck && pnpm test` before submitting
 5. Follow the code style in `AGENTS.md`
-6. Run `pnpm changeset` if the change has user-facing impact (see [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md)). Internal-only PRs can skip this — state that in the PR description or commit an empty fragment via `pnpm changeset --empty`.
+6. Run `pnpm changeset` only if somebody who has installed a published package needs to know about the change (see [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md)). Most PRs don't need one, and skipping needs no empty fragment — just say "no changeset needed" in the PR description.
 
 ## Code of conduct
 

@@ -20,10 +20,19 @@
  *    calls the verbs through the declared member. There is deliberately no cast
  *    anywhere in this file: if reaching the runtime required one, this file would
  *    not compile, which is the compile-time half of the deliverable.
+ *
+ * 3. **Dispatch is not a named member of the context.** A block that sends a
+ *    dispatch is a `dispatcher()`, and the runtime's operation is reachable only
+ *    under the `DISPATCH_SEAM` symbol through `dispatchThroughSeam`. If a
+ *    `dispatchMessage`-shaped verb ever appears on the public context, the set
+ *    of blocks that dispatch stops being knowable at definition time, and a
+ *    directive below reports "unused". (`startDetached` stays on the request
+ *    host this cycle, behind the fence, and takes no new callers.)
  */
 import type { BlockContext } from "../block";
 import type { RequestHost, StartDetachedResult } from "../request-host";
 import { requireRequestHost } from "../request-host";
+import { DISPATCH_SEAM, dispatchThroughSeam, type DispatchOutcome } from "../dispatch";
 
 declare const ctx: BlockContext;
 
@@ -98,3 +107,56 @@ if (started.ok) {
 
 // @ts-expect-error a refusal carries no session id — the branch must be taken.
 void started.sessionId;
+
+// ── 3. Dispatch: a symbol slot, not a verb ────────────────────────────────
+
+// @ts-expect-error dispatch is not a named member of the context.
+void ctx.dispatchMessage;
+
+// @ts-expect-error nor under the detached name.
+void ctx.startDetached;
+
+// The slot is declared under the symbol, and only there.
+const seam = ctx[DISPATCH_SEAM];
+void seam;
+
+// The substrate call takes the whole spec, and identity is never a field of it.
+const dispatched: Promise<DispatchOutcome> = dispatchThroughSeam(ctx, {
+  type: "internal",
+  target: "wake",
+  session: { id: "s_epic" },
+  payload: { reason: "answered" },
+  from: "wake-epic"
+});
+void dispatched;
+
+void dispatchThroughSeam(ctx, {
+  type: "internal",
+  target: "wake",
+  // @ts-expect-error a caller supplies the target session, never the principal.
+  session: { id: "s_epic", userId: "u_other" },
+  payload: {},
+  from: "wake-epic"
+});
+
+void dispatchThroughSeam(ctx, {
+  // @ts-expect-error a block cannot dispatch a type whose trust it does not hold.
+  type: "webhook",
+  target: "github/push",
+  session: { key: "k" },
+  payload: {},
+  from: "forged"
+});
+
+// The outcome is a discriminated union, so a refusal cannot be read as a start.
+declare const settled: DispatchOutcome;
+if (settled.ok) {
+  const dispatchedIds: [string, string, boolean] = [settled.sessionId, settled.requestId, settled.adopted];
+  void dispatchedIds;
+} else {
+  const dispatchRefusal: string = settled.refused;
+  void dispatchRefusal;
+}
+
+// @ts-expect-error a refusal carries no session id — the branch must be taken.
+void settled.sessionId;

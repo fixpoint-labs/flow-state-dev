@@ -146,8 +146,28 @@ interface InboundTransportHost {
   validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;
   dispatch(envelope: InboundRequestEnvelope): DispatchHandle;
   resolvePrincipal(ctx: PrincipalResolutionContext): Promise<ResolvedPrincipal>;
+  /** True when `dispatch` hands the run to another process (a queue adapter). */
+  readonly usesExternalDispatcher: boolean;
 }
 ```
+
+`host.usesExternalDispatcher` is published so a request-host operation can
+refuse what cannot be fenced across a process boundary: a `dispatcher()`
+delivering into an *existing* session (`{ id }`) is refused with
+`external-dispatcher` on such a host, while a `{ key }` child and every
+transport dispatch take the ordinary enqueue path.
+
+Two operations run *from inside a block* through the same host, installed on
+`RuntimeConfig.requestHost` by `createFlowState` (and as a last resort by the
+HTTP handlers): `startOperation`, which `ctx.requestHost.startDetached` uses
+for a workstream, and `dispatchOperation`, which the `dispatcher()` seam uses
+for an `internal` or `task` dispatch. `createDispatchOperation({ host })`
+(`engine/context/dispatch-operation.ts`) stamps the source and the
+server-assembled `metadata.dispatch`, materializes the child session at
+enqueue time so acceptance is decided before the caller's request ends, and
+answers `{ requestId }` or `{ notStarted, reason }`. Both operations reach the
+concurrency arbiter and the transport-source gates exactly as an adapter's
+dispatch does; neither is an adapter.
 
 `host.validateDispatch` enforces async flow-level pre-conditions.
 Adapters must call it after `resolvePrincipal` and before `dispatch`.
