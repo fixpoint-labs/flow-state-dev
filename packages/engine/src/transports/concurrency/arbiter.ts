@@ -34,15 +34,29 @@ import type {
 } from "@flow-state-dev/core";
 import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
 import { WORKSTREAM_SOURCE } from "../../execution/transport-sources";
+import { resolveEntry } from "../../execution/resolve-entry";
 import { ConcurrencyRejectedError } from "../errors";
 import type { DispatchEnvelope } from "../dispatcher";
 
 /** Default budget a `queue` request waits for the key before timing out. */
 const QUEUE_WAIT_TIMEOUT_MS = 30_000;
 
-/** Minimal view of a flow the arbiter reads to resolve a policy. */
+/** The one field the arbiter reads off an entry. */
+type EntryPolicyView = { concurrency?: ConcurrencyConfig } | undefined;
+
+/**
+ * Minimal view of a flow the arbiter reads to resolve a policy: the typed
+ * entry maps, narrowed to `concurrency`, plus the flow-level default. Every
+ * dispatch type gets the same ladder — default → per-entry — because the entry
+ * is found through the same keyed lookup a dispatch resolves its handler with.
+ */
 export interface ConcurrencyFlowView {
-  actions: Record<string, { concurrency?: ConcurrencyConfig } | undefined>;
+  actions: Record<string, EntryPolicyView>;
+  internal?: { actions?: Record<string, EntryPolicyView> };
+  task?: { actions?: Record<string, EntryPolicyView> };
+  chat?: { on?: Record<string, EntryPolicyView> };
+  webhooks?: Record<string, { on?: Record<string, EntryPolicyView> } | undefined>;
+  schedules?: { static?: Record<string, EntryPolicyView> };
   request?: { concurrency?: ConcurrencyConfig };
 }
 
@@ -129,34 +143,29 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
 
   return {
     resolve(flow, actionName, view): ResolvedDecision {
-      // Event dispatches (webhook/chat/scheduled) carry their handler inline and
-      // pass the handler *block name* as `actionName` — provenance only. That
-      // name can coincide with a public `flow.actions` key, so consulting
-      // `flow.actions` here would let an event silently inherit an unrelated
-      // caller action's policy. Only caller-addressed dispatches resolve a
-      // per-action override; events take the flow default.
-      //
-      // The event check must gate on the trusted transport `source` (set by the
-      // adapter, never the caller) AND the metadata coordinate, exactly as
-      // `resolveActionCore` does — `metadata` alone is caller-controllable over
-      // HTTP, so trusting it would let a caller spoof `metadata.webhook` to skip
-      // a public action's reject/queue policy.
-      const isEvent =
-        (view.source === "webhook" && view.metadata?.webhook !== undefined) ||
-        (view.source === "chat" && view.metadata?.chat !== undefined) ||
-        (view.source === "scheduled" && view.metadata?.schedule !== undefined);
-      // A detached dispatch (FIX-999) carries its handler inline on the flow's
-      // workstream core and passes the handler block name as `actionName` —
-      // provenance only, exactly like an event. It takes the flow default for the
-      // same reason: that name can collide with a public action's key, and
-      // inheriting an unrelated action's `queue`/`reject` policy would let its
-      // back-pressure decide whether detached work runs. No metadata coordinate
-      // is required here because the source alone identifies the dispatch, and
-      // the source is stamped by the seam rather than by a caller.
+      // A detached dispatch (FIX-999, behind the fence) carries its handler
+      // inline on the flow's workstream core and passes the handler block name
+      // as `actionName` — provenance only. It takes the flow default: that name
+      // can collide with a public action's key, and inheriting an unrelated
+      // action's `queue`/`reject` policy would let its back-pressure decide
+      // whether detached work runs. No metadata coordinate is required here
+      // because the source alone identifies the dispatch, and the source is
+      // stamped by the seam rather than by a caller.
       const isDetached = view.source === WORKSTREAM_SOURCE;
-      const actionConfig =
-        isEvent || isDetached ? undefined : flow.actions[actionName]?.concurrency;
-      const effective = actionConfig ?? flow.request?.concurrency;
+      // Every other dispatch resolves the entry's own policy through the same
+      // keyed lookup the dispatch resolves its handler with: the trusted
+      // `source` (set by the adapter or the dispatch seam, never the caller)
+      // decides the type, and the type's own map is read — `flow.actions` by
+      // name for a `public` dispatch, the adapter's namespaced coordinate for
+      // chat / webhook / schedule, the entry name for task / internal. A forged
+      // `metadata.webhook` on an HTTP dispatch therefore still resolves the
+      // named action's policy, and a task hand-off whose name collides with a
+      // public action never inherits that action's `queue` / `reject` — each
+      // reads only its own map.
+      const entryConfig = isDetached
+        ? undefined
+        : resolveEntry(flow, actionName, view.source, view.metadata)?.concurrency;
+      const effective = entryConfig ?? flow.request?.concurrency;
       const { policy, key } = normalizeConfig(effective);
       return { policy, key: resolveKey(key, view) };
     },
