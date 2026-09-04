@@ -33,11 +33,17 @@ Two other things they were carrying, now handled elsewhere:
 ## Reading them
 
 Each file is verbatim, under its original filename. The frontmatter names the
-packages the change touched and the bump its author intended; the body names the
-Linear issue it came from (BP-022's rule, enforced by
-`scripts/validate-changeset-refs.mjs`). The issue is the durable record — the
-repo keeps no spec copy — so a fragment here is best used as an index into
-Linear, not as a standalone account of what happened.
+packages the change touched and the bump its author intended.
+
+**Only 147 of the 422 bodies name a Linear issue.** `scripts/validate-changeset-refs.mjs`
+enforces that rule on *added or modified* fragments, so it only ever reached the ones
+written or edited after the guard landed — the older majority predate it. For those,
+the route back is `git log --diff-filter=A -- .changeset/<name>.md` to find the commit
+that introduced the fragment, and from there its PR.
+
+Where an issue id is present it is the better record, since the repo keeps no spec
+copy. Where it is absent, the fragment is the only account of that change outside the
+commit itself.
 
 ## The policy now
 
