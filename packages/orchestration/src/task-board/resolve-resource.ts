@@ -31,7 +31,7 @@ export function resolveResourceTaskCollection<TInput = unknown, TOutput = unknow
      * other board bound to the same declaration. Reading the policy off the
      * shared declaration at the moment of resolution is what makes those agree:
      * a boolean captured per call site guards only that call site, and one
-     * captured before the detached board was declared would be stale besides.
+     * captured before the handed-off board was declared would be stale besides.
      */
     ledger: DefinedTaskCollection;
   }

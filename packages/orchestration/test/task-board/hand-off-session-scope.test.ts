@@ -6,7 +6,7 @@
  * session: an ordinary session-scoped ledger resolves against the running
  * session, so the child addresses an empty collection, the start gate reads
  * the missing row as a stale claim, and the board reclaims and redispatches
- * until the abandonment cap errors it. `sharedToWorkstream` removes exactly
+ * until the abandonment cap errors it. `sharedToLineage` removes exactly
  * that: parent and child resolve one ledger, at the lineage address.
  *
  * Reachable is all it makes the ledger. The hand-off lease bound (FIX-1070)
@@ -69,7 +69,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
     const shared = defineTaskCollection({
       id: "briefs",
       scope: "session",
-      sharedToWorkstream: true,
+      sharedToLineage: true,
       stateSchema: z.object({ request: z.string() })
     });
 
@@ -84,7 +84,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
     const shared = defineTaskCollection({
       id: "briefs",
       scope: "session",
-      sharedToWorkstream: true,
+      sharedToLineage: true,
       stateSchema: z.object({ request: z.string() })
     });
     const board = boardFor(shared);
@@ -103,7 +103,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
     });
 
     const flow = defineFlow({
-      kind: "session-detached-flow",
+      kind: "session-hand-off-flow",
       actions: {
         run: {
           inputSchema: z.object({ request: z.string() }),

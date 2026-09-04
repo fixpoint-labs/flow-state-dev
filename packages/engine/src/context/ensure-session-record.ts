@@ -4,7 +4,7 @@
  * Every creator used to do this itself, and they disagreed in two ways that
  * only show up later:
  *
- * - **Minting.** A session's `lineageId` is the address its `sharedToWorkstream`
+ * - **Minting.** A session's `lineageId` is the address its `sharedToLineage`
  *   resources store under. A creator that omits it leaves the session falling
  *   back to a value derived from its own key — so deleting that session and
  *   recreating it under the same id lands on the same address, which is the

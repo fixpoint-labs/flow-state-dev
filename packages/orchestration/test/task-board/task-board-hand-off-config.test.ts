@@ -69,20 +69,40 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
     expect(board.backing).toBe("request");
   });
 
-  it("reads a `{ worker, dispatch }` entry as before — the detached shape is untouched", () => {
-    // The dispatcher seat sits BESIDE the detached entry shape; neither reads
-    // the other's declaration. A detached entry stays detached and hands
-    // nothing off.
-    const board = taskBoard({
-      name: "detached-beside",
-      boardId: "detached-beside",
-      collection: durable,
-      workers: {
-        summarize: { worker: worker("summarize-2b"), dispatch: { mode: "detached" } },
-      },
-    });
-    expect(board.detachedWorkers.map((slot) => slot.label)).toEqual(["assignee:summarize"]);
-    expect(board.handedOff).toEqual([]);
+  it("refuses the removed `{ worker, dispatch }` seat shape by name", () => {
+    // A seat is a block. The old entry shape would otherwise be read as an
+    // object with no `run`, and the board must say which shape it saw rather
+    // than fail later on a row nobody routes.
+    expect(() =>
+      taskBoard({
+        name: "old-entry-shape",
+        boardId: "old-entry-shape",
+        collection: durable,
+        workers: {
+          summarize: { worker: worker("summarize-2b"), dispatch: { mode: "detached" } } as never,
+        },
+      })
+    ).toThrow(/removed `dispatch: \{ mode \}` option/);
+  });
+
+  it("refuses the removed `{ block, session }` seat shape by name", () => {
+    expect(() =>
+      taskBoard({
+        name: "old-block-shape",
+        boardId: "old-block-shape",
+        collection: durable,
+        workers: { summarize: { block: worker("summarize-2c"), session: "per-task" } as never },
+      })
+    ).toThrow(/removed `\{ block, session \}` seat shape/);
+  });
+
+  it("refuses a seat that is not a block, naming the seat", () => {
+    expect(() =>
+      taskBoard({
+        name: "not-a-block",
+        workers: { summarize: "summarize" as never },
+      })
+    ).toThrow(/seat "summarize" is not a block/);
   });
 
   it("reads a dispatcher seat as handed off, with the address it carries", () => {
@@ -260,16 +280,14 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
   });
 });
 
-describe("hand-off dispatch — the uniform and floor coordinates", () => {
+describe("hand-off dispatch — the uniform and floor seats", () => {
   it("refuses a task dispatcher as the uniform worker — only a named seat can hand off", () => {
     // A uniform worker has no seat name, so a row it takes has no assignee for
-    // the child's gate to check the row against. (The board-level
-    // `dispatch: { mode: "detached" }` option is a different mechanism and is
-    // untouched here.)
+    // the child's gate to check the row against.
     expect(() =>
       taskBoard({
-        name: "uniform-detached",
-        boardId: "uniform-detached",
+        name: "uniform-hand-off",
+        boardId: "uniform-hand-off",
         collection: durable,
         workers: seat("uniform-impl"),
       })
@@ -281,8 +299,8 @@ describe("hand-off dispatch — the uniform and floor coordinates", () => {
     // is nothing for the child's gate to check the row against.
     expect(() =>
       taskBoard({
-        name: "floor-detached",
-        boardId: "floor-detached",
+        name: "floor-hand-off",
+        boardId: "floor-hand-off",
         collection: durable,
         workers: { summarize: worker("sum-floor") },
         defaultWorker: seat("floor-impl"),
@@ -310,8 +328,8 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
   it("refuses, naming the board and pointing at the scopes that work", () => {
     expect(() =>
       taskBoard({
-        name: "session-detached",
-        boardId: "session-detached",
+        name: "session-hand-off",
+        boardId: "session-hand-off",
         collection: sessionScoped,
         workers: { implement: seat("implement") },
       })
@@ -321,23 +339,23 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
   it("names the declared worker, so the message points at what would not run", () => {
     expect(() =>
       taskBoard({
-        name: "session-detached-named",
-        boardId: "session-detached-named",
+        name: "session-hand-off-named",
+        boardId: "session-hand-off-named",
         collection: sessionScoped,
         workers: { implement: seat("implement") },
       })
     ).toThrow(/assignee:implement/);
   });
 
-  it("points at sharedToWorkstream as the fix", () => {
+  it("points at sharedToLineage as the fix", () => {
     expect(() =>
       taskBoard({
-        name: "session-detached-fix",
-        boardId: "session-detached-fix",
+        name: "session-hand-off-fix",
+        boardId: "session-hand-off-fix",
         collection: sessionScoped,
         workers: { implement: seat("implement") },
       })
-    ).toThrow(/sharedToWorkstream/);
+    ).toThrow(/sharedToLineage/);
   });
 
   it("leaves a session-scoped board with nothing handed off alone", () => {
@@ -359,8 +377,8 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
     // handed-off board.
     expect(() =>
       taskBoard({
-        name: "user-detached",
-        boardId: "user-detached",
+        name: "user-hand-off",
+        boardId: "user-hand-off",
         collection: defineTaskCollection({ id: "user-tasks", scope: "user" }),
         workers: { implement: seat("implement") },
       })

@@ -577,20 +577,6 @@ export type FlowInstance<
   requiresOrg: boolean;
   authentication?: AuthenticationConfig;
   actions: TActions;
-  /**
-   * The single pre-assembled entry a detached dispatch resolves — a request
-   * started from inside a running block rather than by a caller (FIX-999).
-   *
-   * `undefined` on every flow until something populates it, and that *off* state
-   * is a real, testable state rather than a gap: resolution for the detached
-   * source is **terminal**, so an absent core is a named refusal and never falls
-   * through to {@link actions}. That is the security invariant — a detached
-   * dispatch must have no route to a caller-addressed action.
-   *
-   * Not an app-author surface. It is assembled by the framework from a board's
-   * drain bindings; nothing is declared to get one.
-   */
-  workstream?: ActionCore;
   /** See {@link FlowDefinition.internal}. Absent when the flow declares none. */
   internal?: TypedEntries<InternalEntry>;
   /**
@@ -636,12 +622,6 @@ export type FlowType<
   requireUser: boolean;
   /** Mirror of `FlowInstance.requiresOrg`. */
   requiresOrg: boolean;
-  /**
-   * Mirror of `FlowInstance.workstream` — the single assembled entry a detached
-   * dispatch resolves, present exactly when {@link workstreamBindings} is
-   * non-empty.
-   */
-  workstream?: ActionCore;
   authentication?: AuthenticationConfig;
   actions: TActions;
   /** Mirror of `FlowInstance.internal`. */

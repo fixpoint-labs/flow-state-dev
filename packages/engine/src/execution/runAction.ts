@@ -11,7 +11,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
-import { RESUME_ACTION_STATUS, workstreamBindingKey } from "@flow-state-dev/core/types";
+import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -189,11 +189,6 @@ function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
   // are settings), so this list is the whole executable surface.
   const carriers = [core.block, core.onCompleted, core.onErrored];
 
-  for (const carrier of carriers) {
-    const declared = carrier?.workstreamBindings;
-    if (declared === undefined) continue;
-    assertBindingsRoutable(flow, declared);
-  }
 
   assertDispatchersRoutable(flow, carriers);
 }
@@ -262,30 +257,6 @@ function assertDispatchersRoutable(
     for (const child of block.childBlocks ?? []) queue.push(child);
     const tools = (block.config as { tools?: unknown }).tools;
     if (Array.isArray(tools)) queue.push(...(tools as BlockDefinition[]));
-  }
-}
-
-/** Refuse any binding in `declared` the flow has no route for. */
-function assertBindingsRoutable(
-  flow: FlowInstance,
-  declared: NonNullable<BlockDefinition["workstreamBindings"]>
-): void {
-  for (const binding of declared.values()) {
-    const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
-    // Identity, not key equality — the same test `defineFlow`'s reachability
-    // assertion makes. A binding present under a DIFFERENT object is a second
-    // declaration that happens to collide on the coordinate, not this one
-    // arriving by another route, and routing it would run someone else's board.
-    if (flow.workstreamBindings?.get(key) === binding) continue;
-    throw new ValidationError(
-      `Flow "${flow.kind}" cannot route the detached work in this dispatch's action core: ` +
-        `board "${binding.boardId}" coordinate "${binding.coordinateKey}" (worker ` +
-        `"${binding.worker.name}") is not among the flow's declared bindings. The core was ` +
-        `produced at dispatch time — a dynamic schedule's resolver — so its board never reached ` +
-        `the flow definition and no workstream route exists for it. Declare the board on a ` +
-        `statically-reachable action, or drop the detached dispatch from it.`,
-      { scope: "request" }
-    );
   }
 }
 

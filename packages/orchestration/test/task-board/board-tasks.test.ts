@@ -220,7 +220,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     expect(flow.task?.actions.review.block.name).toBe("review-work-review-gate");
   });
 
-  it('throws with the hand-off\'s coordinate when `tasks` is omitted', () => {
+  it('throws with the hand-off\'s seat when `tasks` is omitted', () => {
     // The real drain, nowhere else: the worker pool declares the blocks its
     // per-worker factory composes, so `defineFlow`'s walk reaches the hand-off
     // sitting in the worker router and refuses the flow before any request

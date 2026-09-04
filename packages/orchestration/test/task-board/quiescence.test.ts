@@ -28,7 +28,11 @@ import {
 } from "../../src/tasks";
 import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quiescence";
 import { whenBoardClaimable } from "../../src/task-board/predicates";
-import { detachedTaskPredicate } from "../../src/task-board/detached";
+import {
+  handedOffTaskPredicate,
+  seatLabel,
+  type ResolvedWorkerSlot,
+} from "../../src/task-board/hand-off";
 import { createFakeSequencerState } from "../helpers";
 
 type OnIdle = "wait" | "complete" | "complete-or-blocked";
@@ -229,7 +233,7 @@ async function boardWithRows(
 const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
 
 /**
- * A row handed to a Workstream must not hold its launching request open
+ * A row handed to a child session must not hold its launching request open
  * (FIX-982).
  *
  * The bug these pin is a *non-event*: the drain claims the task, spawns the
@@ -243,19 +247,19 @@ const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
  * drained.
  *
  * The inline control is the load-bearing half. `runsElsewhere` is `undefined`
- * for every board that declares nothing detached, and an inline `in_progress`
+ * for every board with no dispatcher seat, and an inline `in_progress`
  * row must still hold the drain open — get that wrong and every existing board
  * exits mid-flight.
  */
-describe("boardQuiescence - work handed to a Workstream", () => {
+describe("boardQuiescence - work handed to a child session", () => {
   const onIdles: OnIdle[] = ["complete", "complete-or-blocked"];
-  /** Stands in for a board whose only worker is detached. */
-  const allDetached = () => true;
+  /** Stands in for a board whose only seat hands off. */
+  const allHandedOff = () => true;
 
   it.each(onIdles)(
     "onIdle %s: an inline in-progress row still holds the drain open",
     async (onIdle) => {
-      // The control. Same board, same row, no detached declaration — this is
+      // The control. Same board, same row, no dispatcher seat — this is
       // the behaviour every board on the repo depends on.
       const collection = await boardWithRows([{ id: "a", drive: "claim" }]);
       const options = { onIdle };
@@ -269,7 +273,7 @@ describe("boardQuiescence - work handed to a Workstream", () => {
     "onIdle %s: the same row drains once it is running elsewhere",
     async (onIdle) => {
       const collection = await boardWithRows([{ id: "a", drive: "claim" }]);
-      const options = { onIdle, runsElsewhere: allDetached };
+      const options = { onIdle, runsElsewhere: allHandedOff };
 
       // The fix, stated against the control above: one declaration flips the
       // identical board state from "keep waiting" to "nothing left for me".
@@ -282,7 +286,7 @@ describe("boardQuiescence - work handed to a Workstream", () => {
   it.each(onIdles)(
     "onIdle %s: an inline sibling still holds a mixed board open",
     async (onIdle) => {
-      // A registry board where one coordinate detached and one did not. The
+      // A registry board where one seat hands off and one does not. The
       // exclusion has to be per-row, not per-board.
       const collection = await boardWithRows([
         { id: "bg", assignee: "background", drive: "claim" },
@@ -299,13 +303,13 @@ describe("boardQuiescence - work handed to a Workstream", () => {
   );
 
   it.each(onIdles)(
-    "onIdle %s: a pending detached row is still this drain's work to dispatch",
+    "onIdle %s: a pending handed-off row is still this drain's work to dispatch",
     async (onIdle) => {
       // The exclusion reaches `in_progress` only. A drain that dropped pending
-      // detached rows would exit before spawning them — the feature inverted
+      // handed-off rows would exit before dispatching them — the feature inverted
       // into a board that silently runs nothing.
       const collection = await boardWithRows([{ id: "a" }]);
-      const options = { onIdle, runsElsewhere: allDetached };
+      const options = { onIdle, runsElsewhere: allHandedOff };
 
       expect(boardQuiescence(collection, options)).toBe("continue");
       // ...and it is claimable, so a sleeping worker must be stirred to spawn it.
@@ -313,25 +317,25 @@ describe("boardQuiescence - work handed to a Workstream", () => {
     }
   );
 
-  it("keeps a parked detached row holding the drain, and says so on purpose", async () => {
+  it("keeps a parked handed-off row holding the drain, and says so on purpose", async () => {
     // A documented bound, not an oversight: `awaiting_review` waits on an
     // external actor whichever way the row was dispatched, so it is left alone.
     // Pinned here so removing the limit is a deliberate edit to this line
     // rather than a silent widening of the exclusion.
     const collection = await boardWithRows([{ id: "a", drive: "park" }]);
-    const options = { onIdle: "complete-or-blocked" as OnIdle, runsElsewhere: allDetached };
+    const options = { onIdle: "complete-or-blocked" as OnIdle, runsElsewhere: allHandedOff };
 
     expect(boardQuiescence(collection, options)).toBe("continue");
   });
 
   it.each(onIdles)(
-    "onIdle %s: a detached row nobody is holding any more is this drain's work again",
+    "onIdle %s: a handed-off row nobody is holding any more is this drain's work again",
     async (onIdle) => {
       // The exclusion is "running elsewhere", and `runsElsewhere` alone cannot
       // say that: it reads the board's declarations and the row's assignee, and
       // both are just as true of a row NOBODY is running. A claimant that died
       // between `claim()` and the child's first breath leaves exactly this row
-      // — `in_progress`, detached assignee, no worker anywhere — and so does a
+      // — `in_progress`, handed-off assignee, no worker anywhere — and so does a
       // child that was accepted and then died.
       //
       // What it costs is the worker loop's exit: `claimTask` runs before
@@ -351,7 +355,7 @@ describe("boardQuiescence - work handed to a Workstream", () => {
         [{ id: "a", drive: "claim" }],
         AFTER_EVERY_LEASE
       );
-      const options = { onIdle, runsElsewhere: allDetached };
+      const options = { onIdle, runsElsewhere: allHandedOff };
 
       expect(boardQuiescence(collection, options)).toBe("continue");
       // ...and it is reclaimable, so the sleeper must be stirred to take it —
@@ -364,7 +368,7 @@ describe("boardQuiescence - work handed to a Workstream", () => {
 
   it("does not report a handed-off board as blocked", async () => {
     // `blocked` means "nothing is producing state changes and nothing can be
-    // claimed". A board whose only remaining row is running in a Workstream is
+    // claimed". A board whose only remaining row is running in a child session is
     // drained from this drain's side, and `drained` dominates — reporting
     // `blocked` would send `blocked-by-failures` for healthy background work.
     const collection = await boardWithRows([{ id: "a", drive: "claim" }]);
@@ -372,42 +376,39 @@ describe("boardQuiescence - work handed to a Workstream", () => {
     expect(
       boardQuiescence(collection, {
         onIdle: "complete-or-blocked",
-        runsElsewhere: allDetached,
+        runsElsewhere: allHandedOff,
       })
     ).toBe("drained");
   });
 });
 
 /**
- * How a board decides which of its rows a Workstream is running (FIX-982).
+ * How a board decides which of its rows a child session is running.
  *
- * Resolution has to mirror the detached runner's own `coordinateForTask` —
- * uniform, then a declared assignee, then the floor — or the drain and the
- * Workstream disagree about which worker a row belongs to.
+ * Resolution has to mirror the child's own gate — a declared assignee, else
+ * the floor — or the drain and the child disagree about which seat a row
+ * belongs to.
  */
-describe("detachedTaskPredicate", () => {
+describe("handedOffTaskPredicate", () => {
   const slot = (
-    coordinate: { kind: "uniform" } | { kind: "floor" } | { kind: "assignee"; name: string },
-    detached: boolean
-  ) =>
-    ({ coordinate, detached, label: "", worker: {} }) as unknown as Parameters<
-      typeof detachedTaskPredicate
-    >[0][number];
+    seat: { kind: "uniform" } | { kind: "floor" } | { kind: "assignee"; name: string },
+    handsOff: boolean
+  ): ResolvedWorkerSlot => ({
+    seat,
+    label: seatLabel(seat),
+    block: (handsOff
+      ? { run: () => null, dispatch: { type: "task", target: "t", session: "per-task" } }
+      : { run: () => null }) as unknown as ResolvedWorkerSlot["block"],
+  });
 
-  it("is absent for a board that declares nothing detached", () => {
+  it("is absent for a board with no dispatcher seat", () => {
     // Absence is what keeps every existing board on the `count()` path — the
     // classifier's answer for them is bit-for-bit unchanged.
-    expect(detachedTaskPredicate([slot({ kind: "uniform" }, false)])).toBeUndefined();
+    expect(handedOffTaskPredicate([slot({ kind: "uniform" }, false)])).toBeUndefined();
   });
 
-  it("covers every row on a detached uniform board", () => {
-    const predicate = detachedTaskPredicate([slot({ kind: "uniform" }, true)])!;
-    expect(predicate({ assignee: "anything" } as never)).toBe(true);
-    expect(predicate({} as never)).toBe(true);
-  });
-
-  it("separates a detached assignee from an inline one", () => {
-    const predicate = detachedTaskPredicate([
+  it("separates a handed-off assignee from an inline one", () => {
+    const predicate = handedOffTaskPredicate([
       slot({ kind: "assignee", name: "background" }, true),
       slot({ kind: "assignee", name: "inline" }, false),
     ])!;
@@ -415,29 +416,22 @@ describe("detachedTaskPredicate", () => {
     expect(predicate({ assignee: "inline" } as never)).toBe(false);
   });
 
-  it("sends an undeclared assignee to the floor, and reads the floor's own mode", () => {
-    const detachedFloor = detachedTaskPredicate([
-      slot({ kind: "assignee", name: "inline" }, false),
-      slot({ kind: "floor" }, true),
-    ])!;
-    expect(detachedFloor({ assignee: "unknown" } as never)).toBe(true);
-    expect(detachedFloor({ assignee: "inline" } as never)).toBe(false);
-
-    // The floor is defined by the assignees it is NOT, so the predicate has to
-    // see the inline registry entries too. Built from the detached slots alone,
-    // "inline" would read as unrouted and fall to a detached floor.
-    const inlineFloor = detachedTaskPredicate([
+  it("never hands an undeclared assignee off — only a named seat can", () => {
+    // The floor and the uniform seat cannot hand off (the board refuses a
+    // dispatcher there), so an unrouted row is always this drain's.
+    const predicate = handedOffTaskPredicate([
       slot({ kind: "assignee", name: "background" }, true),
       slot({ kind: "floor" }, false),
     ])!;
-    expect(inlineFloor({ assignee: "unknown" } as never)).toBe(false);
-    expect(inlineFloor({ assignee: "background" } as never)).toBe(true);
+    expect(predicate({ assignee: "unknown" } as never)).toBe(false);
+    expect(predicate({} as never)).toBe(false);
+    expect(predicate({ assignee: "background" } as never)).toBe(true);
   });
 
-  it("does not resolve an inherited Object.prototype member as a worker", () => {
+  it("does not resolve an inherited Object.prototype member as a seat", () => {
     // `assignee` reaches the board from a model-facing tool, so a bare index
-    // would route `"constructor"` at a declared worker that does not exist.
-    const predicate = detachedTaskPredicate([
+    // would route `"constructor"` at a declared seat that does not exist.
+    const predicate = handedOffTaskPredicate([
       slot({ kind: "assignee", name: "background" }, true),
       slot({ kind: "floor" }, false),
     ])!;

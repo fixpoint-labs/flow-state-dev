@@ -1,7 +1,7 @@
 /**
- * Recursive JSON-value validation for a detached payload (FIX-982 P3a §7.5).
+ * Recursive JSON-value validation for a dispatched payload (FIX-982 P3a §7.5).
  *
- * A detached worker's input crosses a process boundary and a durable store, so
+ * A handed-off worker's input crosses a process boundary and a durable store, so
  * it has to be a JSON value. The obvious check is not one:
  * `JSON.parse(JSON.stringify(v))` throws on exactly two things — `BigInt` and a
  * cycle — and silently *mangles* the rest. A `Date` becomes a string, a `Map`,
@@ -74,7 +74,7 @@ export function assertJsonSafe(
 
   // A single mutable path, pushed and popped as the walk descends. The obvious
   // `[...path, segment]` at each node allocates a fresh array per node and is
-  // quadratic in depth; a detached payload carrying a deep dependency graph is
+  // quadratic in depth; a dispatched payload carrying a deep dependency graph is
   // exactly where that would be paid.
   const path: string[] = [];
 

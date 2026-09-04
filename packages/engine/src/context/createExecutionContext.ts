@@ -673,7 +673,7 @@ export async function createExecutionContext<
 
   const resolvedOrgId = sessionOrgId;
 
-  // The lineage root this session's `sharedToWorkstream` resources address
+  // The lineage root this session's `sharedToLineage` resources address
   // (FIX-1068). Stamped on a child at creation by the detached-start writer; a
   // record without it IS the root — true of every top-level session and of every
   // record persisted before the field existed, so `== null` reads both the
@@ -939,7 +939,7 @@ export async function createExecutionContext<
   //
   // The flag means something different per scope, but routes identically:
   // user/org route on `flowIsolation` (bare identity vs `${id}:${flowKind}`,
-  // FIX-735); session routes on `sharedToWorkstream` (this session vs the
+  // FIX-735); session routes on `sharedToLineage` (this session vs the
   // lineage root, FIX-1068).
   type ScopeBuckets = {
     singles: Map<string, boolean>;
@@ -989,15 +989,15 @@ export async function createExecutionContext<
     (scope: "user" | "org") =>
     (config: ResourceConfig | ResourceCollectionConfig): boolean =>
       resolveResourceIsolation((config as { flowIsolation?: boolean }).flowIsolation, flow, scope);
-  const sharedToWorkstreamFlagOf = (
+  const sharedToLineageFlagOf = (
     config: ResourceConfig | ResourceCollectionConfig
-  ): boolean => (config as { sharedToWorkstream?: boolean }).sharedToWorkstream === true;
+  ): boolean => (config as { sharedToLineage?: boolean }).sharedToLineage === true;
   const scopeBuckets: Record<ContentScopeType, ScopeBuckets> = {
     session: buildScopeBuckets(
       "session",
       sessionResourceConfigs,
-      sharedToWorkstreamFlagOf,
-      "sharedToWorkstream"
+      sharedToLineageFlagOf,
+      "sharedToLineage"
     ),
     user: buildScopeBuckets("user", userResourceConfigs, isolationFlagOf("user"), "flowIsolation"),
     org: buildScopeBuckets("org", orgResourceConfigs, isolationFlagOf("org"), "flowIsolation")
@@ -1005,18 +1005,18 @@ export async function createExecutionContext<
 
   // Resolve the per-resource storage `scopeId` from a (scope, config). Used by
   // the eager load waves and persist paths, which hold the config and so can
-  // read its `flowIsolation` / `sharedToWorkstream` directly (correct for
+  // read its `flowIsolation` / `sharedToLineage` directly (correct for
   // collections, whose accessor is not a key prefix). `undefined` when the scope
   // is absent this request.
   const resolveConfigScopeId = (
     scope: ContentScopeType,
     config: ResourceConfig | ResourceCollectionConfig
   ): string | undefined => {
-    // FIX-1068: a session-scoped resource marked `sharedToWorkstream` addresses
+    // FIX-1068: a session-scoped resource marked `sharedToLineage` addresses
     // the lineage root, so a parent and its Workstreams resolve one resource.
     // Everything else stays on the running session, unchanged.
     if (scope === "session") {
-      return sharedToWorkstreamFlagOf(config) ? lineageId : sessionKey;
+      return sharedToLineageFlagOf(config) ? lineageId : sessionKey;
     }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
@@ -1079,7 +1079,7 @@ export async function createExecutionContext<
 
   // Group a per-scope config subset by the storage scopeId each entry resolves
   // to (at most two groups per scope: user/org split on `flowIsolation`,
-  // session on `sharedToWorkstream`). Lets the eager load waves issue one store
+  // session on `sharedToLineage`). Lets the eager load waves issue one store
   // read per bucket and merge. Empty when the scope is absent.
   const partitionConfigsByScopeId = (
     scope: ContentScopeType,
@@ -1117,7 +1117,7 @@ export async function createExecutionContext<
 
   /**
    * Rows a session-scoped resource held BEFORE it was marked
-   * `sharedToWorkstream` (FIX-1068).
+   * `sharedToLineage` (FIX-1068).
    *
    * Turning the flag on moves a resource from this session's own key to the
    * lineage address. A resource already carrying data in a deployed app would

@@ -26,15 +26,12 @@ export type {
 export { asRuntime } from "./block";
 
 export type {
-  DetachedProvenance,
   DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
   SettleParentTaskResult,
-  StartDetachedInput,
-  StartDetachedRefusal,
   StartDetachedResult
 } from "./request-host";
 

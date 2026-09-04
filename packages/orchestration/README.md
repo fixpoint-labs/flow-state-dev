@@ -313,7 +313,8 @@ in that position and the seat hands its tasks off: the drain claims a row, sends
 entry's block runs in a **child session** of the session that drained — on a request
 of its own — and settles the row itself. Any other block in that position runs
 inline in the drain. The worker is declared once, on the flow, exactly like an
-action.
+action. A seat holding anything other than a block (an object such as
+`{ worker, dispatch }` or `{ block, session }`) is refused by name at construction.
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";

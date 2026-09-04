@@ -120,7 +120,7 @@ export type ExpectedChildIdentity = {
   parentSessionId: string;
   /**
    * The parent's lineage, when the caller requires the child to share it — a
-   * `{ key }` dispatch does, since `sharedToWorkstream` resources in the child
+   * `{ key }` dispatch does, since `sharedToLineage` resources in the child
    * resolve against that root. Absent → not compared, which is the detached
    * start's contract as shipped.
    */
