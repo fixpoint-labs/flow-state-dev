@@ -2,6 +2,7 @@
 "@flow-state-dev/core": minor
 "@flow-state-dev/engine": minor
 "@flow-state-dev/orchestration": minor
+"@flow-state-dev/testing": patch
 ---
 
 One dispatch protocol: every arrival at a flow — a caller's action, a chat event, a webhook, a schedule, a task hand-off, an internal dispatch — is a dispatch of one type delivered to one entry addressed by `(type, name)`, with no fallback between types.
@@ -12,4 +13,5 @@ One dispatch protocol: every arrival at a flow — a caller's action, a chat eve
 - **A task board hands off through a dispatcher seat.** A seat under `workers` is a block; a `dispatcher({ name, type: "task", target, session: "per-task" | "per-worker" | { key: (task) => string } })` (`TaskDispatcherConfig`) in that position hands the seat's rows off to `flow.task.actions[target]` in the child session the policy names. A `task` dispatch carries `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }` (`taskDispatchInputSchema`, `TaskDispatchInput` from core), and the entry's gate re-reads the row and verifies the claim before the block runs. An entry a `per-worker` or `key` seat hands off to defaults to `concurrency: "queue"` (an explicit policy wins); a `per-task` seat keeps the flow default. `board.handedOff` lists the seats that hand off, beside the unchanged `board.detachedWorkers`; `createTaskGate`, `createHandOff`, `handOffSeats`, `StaleTaskClaimError` and the `TaskSeatRegistry` type are exported from `@flow-state-dev/orchestration/task-board`. `TaskSessionPolicy`, `taskSessionKeyFor`, `bindTaskDispatcher` and `taskBindingOf` are exported from core for substrate code.
 - **A dispatched request is stamped.** It records `metadata.dispatch = { type, target, from, key?, ... }` under `source: "internal"` or `"task"`; the child session it runs in carries `topic` (the key) and `coordinate` (`"<type>:<target>"`) and is listed by the existing workstreams route like any other child of its parent.
 - **`task` and `internal` dispatches can never be re-entered** from a public route: retry, continue and resume refuse them, and `publicReentrySources` cannot re-open them.
+- **`createMockTransportHost` publishes `usesExternalDispatcher: false`**, matching the widened `InboundTransportHost` contract.
 - **Nothing is removed.** `startDetached`, `dispatch: { mode: "detached" }`, `flow.workstream`, `workstreamBindings` and the workstreams route are unchanged and take no new callers; the dispatch seam is not a named member of the block context — reach it with `dispatcher()`, or in substrate code with `dispatchThroughSeam` and `markDispatcher`.

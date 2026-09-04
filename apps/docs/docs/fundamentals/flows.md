@@ -90,7 +90,7 @@ const supportFlow = defineFlow({
 export default supportFlow({ id: "default" });
 ```
 
-Every instance of a type serves the same transports. Pass one of the four to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option.
+Every instance of a type serves the same transports. Pass one of the four to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option. The `internal` and `task` entry maps described [below](#entries-only-the-flow-can-reach) are definition-only in the same way.
 
 Everything else is settable per instance: `id`, `kind`, `actions`, `session`, `request`, `user`, `org`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
 
@@ -126,6 +126,34 @@ When an action executes:
 5. Lifecycle hooks fire on completion or error
 
 See [Actions](/docs/fundamentals/actions) for the full picture.
+
+### Entries only the flow can reach
+
+Beside `actions`, a flow can declare two more maps of entries. Each entry has the same shape as an action, `{ block, inputSchema?, concurrency?, onCompleted?, onErrored?, userMessage? }`, minus the client-facing `description` and `mcp`, and no client, MCP server, or HTTP caller can invoke one.
+
+```ts
+const documents = defineFlow({
+  kind: "documents",
+  actions: {
+    upload: { block: summarizeInBackground },   // a dispatcher()
+  },
+  internal: {
+    actions: {
+      summarize: { block: summarizeDocument },  // reached by a dispatcher() in this flow
+    },
+  },
+  task: {
+    actions: {
+      implement: { block: implementBlock },     // reached by a task-board seat in this flow
+    },
+  },
+});
+```
+
+- **`internal.actions`** — reached by a `dispatcher({ type: "internal", target })` block running in this flow, which sends the work to a child session or an existing one. See [Starting a job from a flow](/docs/server/background-work#starting-a-job-from-a-flow).
+- **`task.actions`** — reached by a `dispatcher({ type: "task", target })` sitting as a seat on a task board, which hands each claimed task to a child session. See [Seats that hand off](/docs/orchestration/task-board#seats-that-hand-off).
+
+Each map is looked up on its own. An action named `summarize` does not satisfy a dispatcher whose target is the internal entry `summarize`, and `defineFlow()` throws at definition time when a reachable dispatcher names an entry its map does not hold. Both maps nest under `actions`; the flat spelling `internal: { summarize: { block } }` is refused by name.
 
 ## Session configuration
 
