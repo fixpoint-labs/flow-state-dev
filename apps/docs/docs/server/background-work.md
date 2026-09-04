@@ -85,7 +85,7 @@ as soon as the runtime has accepted it. It does not wait for the work.
 
 ```ts
 // what the dispatcher returns
-{ sessionId: "sess_9f2c1a", requestId: "req_c41e", adopted: false }
+{ sessionId: "dsx_9f2c1a", requestId: "req_c41e", adopted: false }
 ```
 
 `sessionId` is the session the work runs in, `requestId` the run it became, and
