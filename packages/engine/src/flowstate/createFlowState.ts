@@ -71,7 +71,7 @@ const MAX_NAMED_TRUNCATED_CHILDREN = 5;
  * would trade a run that never finished for one that half-wrote.
  *
  * A **cap on a slice of the drain budget**, not an addition to it: the reserve
- * is carved out of `detachedDrainTimeoutMs` so the option stays a true ceiling.
+ * is carved out of `dispatchDrainTimeoutMs` so the option stays a true ceiling.
  */
 const DETACHED_ABORT_UNWIND_MS = 2_000;
 
@@ -131,7 +131,7 @@ const RECOVERY_SWEEP_DRAIN_MS = 5_000;
  * honoured as "do not wait": that is a legitimate choice for a host that wants
  * shutdown to be immediate, and it still reports what it left behind.
  */
-function resolveDetachedDrainTimeout(configured: number | undefined): number {
+function resolveDispatchDrainTimeout(configured: number | undefined): number {
   if (configured === undefined || !Number.isFinite(configured)) {
     return DEFAULT_DETACHED_DRAIN_TIMEOUT_MS;
   }
@@ -275,6 +275,14 @@ class InternalFlowState<TSettings extends object>
       throw new FlowStateConfigError(
         "createFlowState: the removed `middleware` option is not executed. " +
           "Move policy checks to the HTTP authentication layer or block logic."
+      );
+    }
+
+    if (Object.hasOwn(options, "detachedDrainTimeoutMs")) {
+      throw new FlowStateConfigError(
+        "createFlowState: `detachedDrainTimeoutMs` is now `dispatchDrainTimeoutMs`. " +
+          "Accepting it silently would leave the shutdown drain on its default, so a host " +
+          "tuned for a long-running child would truncate one without saying why."
       );
     }
 
@@ -443,7 +451,7 @@ class InternalFlowState<TSettings extends object>
   async #drainDetachedChildren(): Promise<void> {
     if (this.#detachedChildren.size === 0) return;
 
-    const budgetMs = resolveDetachedDrainTimeout(this.#options.detachedDrainTimeoutMs);
+    const budgetMs = resolveDispatchDrainTimeout(this.#options.dispatchDrainTimeoutMs);
     const startedAt = Date.now();
     // ONE deadline for the whole drain, not one per round. A per-round budget
     // multiplies by the round cap, so a slow-but-progressing spawn chain could
@@ -492,7 +500,7 @@ class InternalFlowState<TSettings extends object>
       // stderr, where every other diagnostic in this file already goes.
       this.#logShutdown(
         "warn",
-        `[flowstate] waiting for ${pending.length} detached request(s) to finish before shutdown`,
+        `[flowstate] waiting for ${pending.length} dispatched request(s) to finish before shutdown`,
         { pending: pending.length, budgetMs }
       );
 
@@ -531,7 +539,7 @@ class InternalFlowState<TSettings extends object>
    * aborted run throws at its next await and writes a terminal record, and that
    * write needs the stores still open. It runs against the SAME deadline the
    * wait phase did, so the whole drain — waiting, cancelling and unwinding —
-   * fits inside `detachedDrainTimeoutMs` rather than overrunning it by a
+   * fits inside `dispatchDrainTimeoutMs` rather than overrunning it by a
    * constant. A child that ignores its abort signal therefore cannot re-open the
    * hang this method exists to close, and a `0` budget cancels and returns
    * without waiting at all.
@@ -637,7 +645,7 @@ class InternalFlowState<TSettings extends object>
     const overflow = abandoned.length - MAX_NAMED_TRUNCATED_CHILDREN;
 
     console.error(
-      `[flowstate] shutdown cancelled ${abandoned.length} detached request(s) ` +
+      `[flowstate] shutdown cancelled ${abandoned.length} dispatched request(s) ` +
         `after ${elapsedMs}ms (budget ${budgetMs}ms); they may not have completed: ` +
         `${named}${overflow > 0 ? `, and ${overflow} more` : ""}`
     );
@@ -918,7 +926,7 @@ class InternalFlowState<TSettings extends object>
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,
-      maxWorkstreamListLimit: this.#options.maxWorkstreamListLimit,
+      maxChildSessionListLimit: this.#options.maxChildSessionListLimit,
       requestHost: {
         staleThresholdMs,
         ...(this.#routerRequested ? { staleSweepIntervalMs } : {})

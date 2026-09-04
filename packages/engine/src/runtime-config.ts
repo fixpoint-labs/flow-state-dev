@@ -98,7 +98,7 @@ export interface RuntimeConfig {
    * completeness with read amplification on every turn, which is why this is
    * an operator's decision rather than a caller's.
    */
-  maxWorkstreamListLimit?: number;
+  maxChildSessionListLimit?: number;
 }
 
 /**
@@ -110,7 +110,7 @@ export interface RuntimeConfig {
 export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
   // Both boundary points funnel through here, so a host that never builds a
   // router is validated too.
-  assertMaxWorkstreamListLimit(options.maxWorkstreamListLimit);
+  assertMaxChildSessionListLimit(options.maxChildSessionListLimit);
   return {
     modelResolver: options.modelResolver,
     voiceProvider: options.voiceProvider,
@@ -126,7 +126,7 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     requestHost: options.requestHost,
     queuedGraceMs: options.queuedGraceMs,
     publicReentrySources: options.publicReentrySources,
-    maxWorkstreamListLimit: options.maxWorkstreamListLimit
+    maxChildSessionListLimit: options.maxChildSessionListLimit
   };
 }
 
@@ -138,7 +138,7 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
 export const DEFAULT_MAX_WORKSTREAM_LIST_LIMIT = 100;
 
 /**
- * Validate a host's `maxWorkstreamListLimit` at construction, throwing on a
+ * Validate a host's `maxChildSessionListLimit` at construction, throwing on a
  * value that cannot bound anything.
  *
  * Loud rather than silently ignored: this number is a safety cap, and every
@@ -149,11 +149,11 @@ export const DEFAULT_MAX_WORKSTREAM_LIST_LIMIT = 100;
  * `NaN` in particular is what `Number(process.env.X)` produces from a typo,
  * which is exactly how this option will usually be set.
  */
-export function assertMaxWorkstreamListLimit(limit: number | undefined): void {
+export function assertMaxChildSessionListLimit(limit: number | undefined): void {
   if (limit === undefined) return;
   if (!Number.isSafeInteger(limit) || limit < 1) {
     throw new Error(
-      `maxWorkstreamListLimit must be a positive safe integer, received ${String(limit)}. ` +
+      `maxChildSessionListLimit must be a positive safe integer, received ${String(limit)}. ` +
         "It caps how many workstream rows one read may return, and a value that " +
         "cannot be compared against (Infinity, NaN) or cannot be a page size " +
         "(zero, negative) would leave the read unbounded rather than capped."

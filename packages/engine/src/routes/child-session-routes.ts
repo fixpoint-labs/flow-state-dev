@@ -1,5 +1,5 @@
 /**
- * `GET /sessions/:sessionId/workstreams` — the first hop from a conversation
+ * `GET /sessions/:sessionId/children` — the first hop from a conversation
  * to the background work hanging off it (FIX-1010).
  *
  * Two hops by design: this read returns one summary row per child session, and
@@ -33,7 +33,7 @@ const WORKSTREAM_LIST_DEFAULT_LIMIT = 25;
  * amplification rather than only payload size.
  *
  * A deployment running large orchestrations raises it with
- * `maxWorkstreamListLimit` — the list is all-time history, so it outgrows any
+ * `maxChildSessionListLimit` — the list is all-time history, so it outgrows any
  * fixed number, and the right ceiling depends on what that deployment is
  * willing to spend per read.
  */
@@ -116,7 +116,7 @@ function isLiveWhenMostRecent(
  * `active` (most recent, so continuable) or superseded and ignored, so it can
  * never be the emitted value.
  */
-export type WorkstreamStatus =
+export type ChildSessionStatus =
   | "active"
   | "completed"
   | "failed"
@@ -136,7 +136,7 @@ type TerminalRequestStatus = Exclude<
 /**
  * How a finished run reads on the wire.
  *
- * Every entry is an identity today, so `status as WorkstreamStatus` would be
+ * Every entry is an identity today, so `status as ChildSessionStatus` would be
  * shorter and would behave identically — **until it didn't.** A cast assumes
  * the two unions stay 1:1 and asserts it once, at author time, forever. This
  * map is total over {@link TerminalRequestStatus}, so a new terminal status
@@ -149,7 +149,7 @@ type TerminalRequestStatus = Exclude<
  */
 export const TERMINAL_WIRE_STATUS: Record<
   TerminalRequestStatus,
-  WorkstreamStatus
+  ChildSessionStatus
 > = {
   completed: "completed",
   failed: "failed",
@@ -158,7 +158,7 @@ export const TERMINAL_WIRE_STATUS: Record<
 };
 
 /** One background job, as this route reports it. */
-export type WorkstreamSummary = {
+export type ChildSessionSummary = {
   /** Bare child session id — the address for hop 2. */
   id: string;
   /** Bare id of the conversation this job hangs off. */
@@ -173,7 +173,7 @@ export type WorkstreamSummary = {
    * Absent when the job has no run of this conversation's identity at all —
    * absence is not a status and is deliberately not defaulted to anything.
    */
-  status?: WorkstreamStatus;
+  status?: ChildSessionStatus;
 };
 
 type WorkstreamRouteContext = {
@@ -257,11 +257,11 @@ function parentIdentity(
  * is an alarm the user has no way to clear, and the failed attempt is still
  * one hop away in the job's own history.
  */
-async function resolveWorkstreamStatus(
+async function resolveChildSessionStatus(
   store: RequestStore,
   childSessionId: string,
   identity: ParentIdentity
-): Promise<WorkstreamStatus | undefined> {
+): Promise<ChildSessionStatus | undefined> {
   const live = await store.list({
     sessionId: childSessionId,
     status: LIVE_STATUSES,
@@ -305,7 +305,7 @@ async function resolveWorkstreamStatus(
  */
 function readWorkstreamLabels(
   record: SessionRecord
-): Pick<WorkstreamSummary, "topic" | "coordinate"> {
+): Pick<ChildSessionSummary, "topic" | "coordinate"> {
   return {
     ...(record.topic == null ? {} : { topic: record.topic }),
     ...(record.coordinate == null ? {} : { coordinate: record.coordinate })
@@ -339,7 +339,7 @@ function boundedParam(
 
 export async function handleListSessionWorkstreams(
   request: Request,
-  route: Extract<ParsedFlowRoute, { kind: "list_session_workstreams" }>,
+  route: Extract<ParsedFlowRoute, { kind: "list_session_children" }>,
   ctx: WorkstreamRouteContext
 ): Promise<Response> {
   const parent = await loadTenantSession(
@@ -394,11 +394,11 @@ export async function handleListSessionWorkstreams(
   });
 
   const workstreams = await Promise.all(
-    children.map(async (child): Promise<WorkstreamSummary> => {
+    children.map(async (child): Promise<ChildSessionSummary> => {
       // Request records key on the bare session id, not the namespaced
       // storage key.
       const id = toBareSessionId(child.id, ctx.tenantId);
-      const status = await resolveWorkstreamStatus(
+      const status = await resolveChildSessionStatus(
         ctx.stores.request,
         id,
         identity

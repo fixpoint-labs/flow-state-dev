@@ -39,7 +39,7 @@ import {
   handleListSessions,
   handlePatchSessionMetadata
 } from "./session-routes";
-import { handleListSessionWorkstreams } from "./workstream-routes";
+import { handleListSessionWorkstreams } from "./child-session-routes";
 import { handleGetSessionState } from "./state-routes";
 import {
   handleGetResourceContent,
@@ -435,12 +435,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         });
       }
 
-      if (route.kind === "list_session_workstreams") {
+      if (route.kind === "list_session_children") {
         return await handleListSessionWorkstreams(request, route, {
           registry: options.registry,
           stores,
           tenantId,
-          maxListLimit: runtimeConfig.maxWorkstreamListLimit
+          maxListLimit: runtimeConfig.maxChildSessionListLimit
         });
       }
 

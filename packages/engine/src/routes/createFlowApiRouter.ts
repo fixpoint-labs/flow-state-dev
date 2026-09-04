@@ -16,7 +16,7 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import {
-  assertMaxWorkstreamListLimit,
+  assertMaxChildSessionListLimit,
   createRuntimeConfig,
   resolveStaleSweep,
   type RuntimeConfig
@@ -193,7 +193,7 @@ export type CreateFlowApiRouterOptions = {
    * each row resolves its status from the request store and clients re-read
    * the list on every interaction, so a larger ceiling costs more per turn.
    */
-  maxWorkstreamListLimit?: number;
+  maxChildSessionListLimit?: number;
 
   /**
    * Enable the privileged read-only debug endpoint surface under
@@ -458,7 +458,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   assertPublicReentrySources(runtimeConfig.publicReentrySources);
   // Same reasoning one option over: a cap that cannot bound anything reads as
   // configured and behaves as absent.
-  assertMaxWorkstreamListLimit(runtimeConfig.maxWorkstreamListLimit);
+  assertMaxChildSessionListLimit(runtimeConfig.maxChildSessionListLimit);
 
   const handlers = createFlowRouteHandlers({
     ...options,

@@ -182,7 +182,7 @@ export interface CreateFlowStateOptions<
    * `0` disables waiting entirely — a legitimate choice for a host that wants
    * immediate shutdown, and it still reports what it left behind.
    */
-  detachedDrainTimeoutMs?: number;
+  dispatchDrainTimeoutMs?: number;
 
   /** Forwarded to `createFlowApiRouter` for power users (custom transports). */
   adapters?: CreateFlowApiRouterOptions["adapters"];
@@ -232,7 +232,7 @@ export interface CreateFlowStateOptions<
    * each row resolves its status from the request store and clients re-read
    * the list on every interaction, so a larger ceiling costs more per turn.
    */
-  maxWorkstreamListLimit?: number;
+  maxChildSessionListLimit?: number;
 
   /**
    * Enable durable execution. When `true`, `createFlowState` builds the
