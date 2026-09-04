@@ -17,7 +17,6 @@ import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { ChatConfig } from "./chat";
 import type { WebhookConfig } from "./webhooks";
-import type { WorkstreamBindings } from "./workstream";
 import type { InternalEntry, TaskEntry } from "./dispatch";
 import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
@@ -592,27 +591,6 @@ export type FlowInstance<
    * drain bindings; nothing is declared to get one.
    */
   workstream?: ActionCore;
-  /**
-   * Every detached worker binding declared anywhere in this flow's block tree
-   * (FIX-982), keyed by board and coordinate.
-   *
-   * This is the **durable** half of detached routing, and it is why the routing
-   * decision survives a restart: a binding is `(boardId, coordinateKey) → block`,
-   * all strings on the addressing side, so a wake that arrives with nothing but a
-   * task row can still find the block that runs it. {@link workstream} is the
-   * assembled entry a dispatch executes; this is what that entry is assembled
-   * *from*, and what a board's reconciler re-reads to rebuild a routing tuple.
-   *
-   * Produced by construction, never authored — bindings accumulate on the
-   * declaring board's drain sequencer and bubble to the action root exactly as
-   * resource declarations do. `undefined` on every flow that declares no
-   * detached work.
-   *
-   * Deliberately **not** a dispatch-time lookup table: resolution for the
-   * detached source is terminal on {@link workstream} alone, so nothing indexes
-   * this map by a coordinate carried on an envelope (BP-031).
-   */
-  workstreamBindings?: WorkstreamBindings;
   /** See {@link FlowDefinition.internal}. Absent when the flow declares none. */
   internal?: TypedEntries<InternalEntry>;
   /**
@@ -658,16 +636,6 @@ export type FlowType<
   requireUser: boolean;
   /** Mirror of `FlowInstance.requiresOrg`. */
   requiresOrg: boolean;
-  /**
-   * Mirror of `FlowInstance.workstreamBindings` — every detached worker binding
-   * declared anywhere in this flow's block tree.
-   *
-   * Present because this blueprint is inspected directly, not only called: code
-   * reading it saw actions, resources, schedules and `requiresOrg` here and
-   * reasonably concluded a flow with none of it declared no detached work. The
-   * value is copied from the base instance, so the two never disagree.
-   */
-  workstreamBindings?: WorkstreamBindings;
   /**
    * Mirror of `FlowInstance.workstream` — the single assembled entry a detached
    * dispatch resolves, present exactly when {@link workstreamBindings} is

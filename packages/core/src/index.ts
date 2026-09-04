@@ -235,12 +235,9 @@ export { runRescue } from "./blocks/sequencer";
 export { composeSideChainSignal } from "./blocks/sequencer";
 export {
   defineFlow,
-  buildWorkstreamCore,
   resolveEntry,
-  workstreamDispatchInputSchema,
   type EntryCoordinate,
   type EntryMaps,
-  type WorkstreamDispatchInput,
 } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";

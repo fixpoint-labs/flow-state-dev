@@ -206,7 +206,7 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    *
    * Session **state** is never shared — this flag reaches resources only.
    */
-  sharedToWorkstream?: boolean;
+  sharedToLineage?: boolean;
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   content?: string;
@@ -542,9 +542,9 @@ export function defineResource<
     );
   }
 
-  if (config.sharedToWorkstream === true && config.scope !== "session") {
+  if (config.sharedToLineage === true && config.scope !== "session") {
     throw new Error(
-      `defineResource() rejects sharedToWorkstream:true on ${config.scope}-scoped resources — ` +
+      `defineResource() rejects sharedToLineage:true on ${config.scope}-scoped resources — ` +
         `${config.scope} scope already spans every session in a lineage`
     );
   }
