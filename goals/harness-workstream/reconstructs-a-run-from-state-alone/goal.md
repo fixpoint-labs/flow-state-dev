@@ -615,6 +615,31 @@ not currently grade:
   by the fourth's own repair. Writing a class down makes its instances recognisable; it does not
   make them stop. The correction is left visible here rather than edited away, because a file
   about checks that certify more than they measured should not quietly fix its own overclaim.
+- **A2 certifies the TERMINAL touch on a path, never how many touches landed.** The reader
+  projects `topic`, `path`, `kind`, `outcome`, `firstAt`, `namedBy` — and not `appliedCount`, the
+  field `work-collections.ts` exposes precisely because a terminal settlement cannot say how many
+  confirmations a path received. So a recorder that loses one of two completed `Edit` settlements
+  while leaving `lastKind`/`outcome` intact emits `a2-ok`. **Reasoned from the omitted field, not
+  measured** — and it cannot be measured: one row folding two mutations is the FAITHFUL aggregate
+  shape, so a directly-fed world stands equally for a correct count of two and a lossy count of
+  one, and `DidEntry` has nowhere to tell them apart. **The field arrived on this branch by
+  merge, not by authorship**, which is why this entry is dated to the merge rather than to a
+  review round: the state grew and the check did not, and that gap is the same shape as
+  certifying a fractional account.
+
+  **Deliberately NOT closed, and the reason is scope, not entanglement.** The comparison needs no
+  gap term: a pathless mutation is dropped by BOTH surfaces — `translate.ts` returns after
+  `work_gap_observed` without emitting `file_op_observed`, the reader `continue`s before pushing
+  it — so it is on neither side. What is left is a field on `DidEntry`, one comparison in the
+  per-row loop, both fixtures updated so the pin has teeth, and two guard cases, deferred to its
+  own change because this one is documentation and that is code with a review surface. One detail
+  for whoever builds it: `naming` counts non-terminal mutations too, and one with unreadable
+  status yields `outcome: null` (`reader.mts:446`), so the expected count is a range, and the
+  check abstains when any naming mutation's `outcome` is null.
+  **No guard case ships beside it either, and that is not an omission**: the guard cases feed
+  `gradeRun` a single view, and `DidEntry` carries no count — so no directly-fed world separates a
+  faithful two-touch row from a lossy one, and a pin would have nothing to assert. The pin becomes
+  constructible in the same change that projects the field.
 - **A5 skips gap handling whenever any plan row exists.** A run whose plan was partly recorded and
   partly gapped emits `a5-ok`, because a non-empty `rows` short-circuits the branch that reads
   plan gaps. **It certifies a fractional account** — which is, in one phrase, the thing this whole
@@ -804,6 +829,7 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-20 | **`3ec59dc4b`** (merged `main`) | Agent SDK default | **PASS — re-earned, and WEAKER than the row below** | Thirty-fifth consecutive real run, and the first **not** measured against the tree that earned the previous row. `fd0791dcd` graded a `translate.ts` that was missing LAB-134's two fixes; LAB-133/134/135 are all on `main` now, so the previous verdict described code that no longer exists and was re-run rather than carried. 3 of 3 held-out paths present; non-decreasing across 30 items at 25 distinct positions; mutations 17–22, last word at 24; items 30 · topLevel 30 · messages 3 · fileRows 3; 0 gap rows, 0 plan rows; 1 shell call, 0 completed. **81 guards** proven first, calibration clean. A5 UNMEASURED (no plan tool). Store: `@flow-state-dev/store-sqlite`. **This PASS covers LESS than the thirty-fourth did:** `appliedCount` arrived from LAB-134 and the reader does not project it, so A2 graded 3 single-touch paths on terminal kind and outcome, certifying nothing about repeated touches. Named, not closed — see *"A2 certifies the TERMINAL touch on a path"* |
 | 2026-08-18 | **`fd0791dcd`** | Agent SDK default | **PASS — the verdict** | Thirty-fourth consecutive real run, on the committed tree. 3 of 3 held-out paths `created`/`edited` and `applied`; non-decreasing across 31 items at 27 distinct positions; mutations 18–23, last word at 25; 1 shell call, 0 completed. **81 guards** proven first. Plan arm UNMEASURED. First run with the ground-truth rule graded in BOTH directions |
 | 2026-08-18 | working tree at `fd0791dcd`, grader at `7b8c90745` | — | FAIL *(deliberate)* | **The mirror the ground-truth rule was missing**, settled by building the world before changing anything: a fresh target with two applied `Write` calls and a row still saying `created` came back `A1 ["a1-ok=pass"], A2 ["a2-ok=pass"]`. As a guard case: *"'A1 — a fresh target written twice, still recorded as created' did not reach A1/a1-kind-stale-created with a fail; it produced `["a1-ok=pass"]`"*. The check certifying the exact recorder regression its own ground truth was added to catch |
 | 2026-08-18 | working tree at `fd0791dcd`, mid-fold | — | FAIL *(deliberate, and unplanned)* | **The must-pass neighbour caught a degradation inside the fold that created it.** Restructuring the branch dropped the `entry.kind !== "created"` guard off the original rule, so a fresh target written ONCE began failing: *"'A1 — a fresh target written once still reads as created' did not reach A1/a1-ok with a pass; it produced `["a1-kind-not-created=fail"]`"*. Caught on the first table run, before the fold was committed |
