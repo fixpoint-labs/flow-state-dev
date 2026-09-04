@@ -15,12 +15,14 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { abortRequest } from "@flow-state-dev/engine";
 import { acquireCheckout, conductorTaskId, encodeSegment } from "../src/workspace";
 import {
   createConductorHarness,
@@ -41,6 +43,8 @@ type StatusRow = {
   status: string;
   attempts: number;
   feedback: string | null;
+  /** What the operator filed with the issue, when they did. */
+  brief?: string | null;
   /** The whole run row, as `status` returns it. */
   run: {
     attempt: number | null;
@@ -55,6 +59,7 @@ type StatusRow = {
     costUsd: number | null;
     childSessionId: string | null;
     requestId: string | null;
+    prUrl: string | null;
     updatedAt: number | null;
   } | null;
   /** The open questions this issue-phase is waiting on (LAB-139). */
@@ -183,22 +188,69 @@ describe("the manager — the verdict at each exit", () => {
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     live = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
-      isDone: () => true,
+      isDone: () => ({
+        done: true,
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/12",
+      }),
     });
 
     const row = await seedAndDrain(live);
 
     expect(row.status).toBe("completed");
     expect(row.run?.outcome).toBe("succeeded");
+    expect(row.run?.prUrl).toBe("https://github.com/fixpoint-labs/flow-state-dev/pull/12");
     expect(row.run?.sessionId).toBe("sess_stub");
     expect(row.run?.costUsd).toBe(0.02);
-    // The run was given a checkout that is not the server's directory, and the
-    // row records the one it was given.
-    expect(seen.cwds[0]).toBe(row.run?.workspacePath);
+    // The run was given a checkout that is not the server's directory. The
+    // workspace chain hands the SDK the physical path; the row records the
+    // derived one, which is the same directory.
+    expect(seen.cwds[0]).toBe(realpathSync(row.run!.workspacePath!));
     expect(row.run?.workspacePath).toContain(conductorTaskId(ISSUE, PHASE));
     // Principal- and epic-namespaced: two users, or two epics, never share a ref.
     expect(row.run?.branch).toBe(
       `conductor/t0/${encodeSegment(USER_ID)}/${COLLECTION_ID}/${conductorTaskId(ISSUE, PHASE)}`,
+    );
+  });
+
+  it("runs the coding agent as a trusted workspace on that checkout", async () => {
+    // contain: false so Bash / git / gh can write the tree. acceptEdits plus
+    // an allow-all canUseTool so a detached worker is not waiting on HITL.
+    // Relocation tools stay off so the model cannot leave the checkout the
+    // operator is watching — which is the failure that looks like "bash did
+    // nothing".
+    const seen = {
+      cwds: [] as (string | undefined)[],
+      sandboxes: [] as unknown[],
+      disallowed: [] as (readonly string[] | undefined)[],
+      permissionMode: [] as (string | undefined)[],
+      hasCanUseTool: [] as boolean[],
+    };
+    live = createConductorHarness({
+      resolveClaudeAgent: () => ({
+        query: async function* (args) {
+          seen.cwds.push(args.options?.cwd);
+          seen.sandboxes.push(args.options?.sandbox);
+          seen.disallowed.push(args.options?.disallowedTools);
+          seen.permissionMode.push(args.options?.permissionMode);
+          seen.hasCanUseTool.push(typeof args.options?.canUseTool === "function");
+          yield sdkResult("success");
+        },
+      }),
+      isDone: () => ({
+        done: true,
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/12",
+      }),
+    });
+
+    const row = await seedAndDrain(live);
+
+    expect(row.status).toBe("completed");
+    expect(seen.cwds[0]).toBe(realpathSync(row.run!.workspacePath!));
+    expect(seen.sandboxes[0]).toBeUndefined();
+    expect(seen.permissionMode[0]).toBe("acceptEdits");
+    expect(seen.hasCanUseTool[0]).toBe(true);
+    expect(seen.disallowed[0]).toEqual(
+      expect.arrayContaining(["EnterWorktree", "ExitWorktree"]),
     );
   });
 
@@ -227,13 +279,17 @@ describe("the manager — the verdict at each exit", () => {
     const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
     live = createConductorHarness({
       resolveClaudeAgent: scriptedAgent([sdkResult("error_max_budget_usd")], seen),
-      isDone: () => true,
+      isDone: () => ({
+        done: true,
+        prUrl: "https://github.com/fixpoint-labs/flow-state-dev/pull/12",
+      }),
     });
 
     const row = await seedAndDrain(live);
 
     expect(row.status).not.toBe("completed");
     expect(row.run?.outcome).toBe("failed");
+    expect(row.run?.prUrl).toBe("https://github.com/fixpoint-labs/flow-state-dev/pull/12");
   });
 
   it("does NOT complete a run that finished cleanly and did not do the job", async () => {
@@ -380,6 +436,11 @@ describe("the manager — what carries across an attempt", () => {
     expect(afterThrow.run?.finalMessage).toBeNull();
     expect(afterThrow.run?.usage).toBeNull();
     expect(afterThrow.run?.costUsd).toBeNull();
+    // The runtime ids are this attempt's, restamped at open — not attempt 1's,
+    // and not cleared. A failed row still names the request that ran it.
+    expect(afterThrow.run?.requestId).toEqual(expect.any(String));
+    expect(afterThrow.run?.requestId).not.toBe(afterFirst.run?.requestId);
+    expect(afterThrow.run?.childSessionId).toEqual(expect.any(String));
   });
 });
 
@@ -436,6 +497,105 @@ describe("the manager — the deadline", () => {
     expect(row.run?.sessionId).toBeNull();
     expect(row.run?.usage).toBeNull();
     expect(row.run?.costUsd).toBeNull();
+    // The runtime ids were known at open and survive the abort write.
+    expect(row.run?.requestId).toEqual(expect.any(String));
+    expect(row.run?.childSessionId).toEqual(expect.any(String));
+  });
+
+  it("re-pends the row when the operator aborts the workstream", async () => {
+    // `/abort` cancels the workstream request, not a step. Resource CAS
+    // keys off that request's side-chain signal, so firing it before
+    // rescue ran left the row `in_progress`. This is the operator path —
+    // a wall-clock timeout is step-scoped and already covered above.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: hangingAgent(seen),
+      isDone: () => true,
+      maxAttempts: 3,
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+
+    const deadline = Date.now() + 10_000;
+    let requestId: string | undefined;
+    for (;;) {
+      const mid = await readStatus(live);
+      if (mid?.status === "in_progress" && typeof mid.run?.requestId === "string") {
+        requestId = mid.run.requestId;
+        break;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `workstream never opened — last seen ${JSON.stringify(mid)}`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const runtime = await (
+      live.state as {
+        getRuntime(): Promise<{
+          stores: {
+            request: {
+              setFieldsIfStatus: (
+                id: string,
+                fields: { abortRequested: true },
+                statuses: string[],
+                now: number,
+              ) => Promise<unknown>;
+            };
+          };
+        }>;
+      }
+    ).getRuntime();
+    await runtime.stores.request.setFieldsIfStatus(
+      requestId,
+      { abortRequested: true },
+      ["in_progress"],
+      Date.now(),
+    );
+    expect(abortRequest(requestId), "workstream controller was not registered").toBe(
+      true,
+    );
+
+    const row = await settle(live);
+
+    expect(row.status).toBe("pending");
+    expect(row.run?.outcome).toBe("failed");
+    expect(row.run?.reason).toMatch(/abort/i);
+    expect(row.run?.requestId).toBe(requestId);
+  });
+});
+
+describe("the manager — a live row is followable", () => {
+  it("puts the workstream request id on the row before the agent returns", async () => {
+    // `status` is the only board read. Writing `requestId` only when the agent
+    // returns leaves every in-flight row with `requestId: null`, so a follower
+    // that keys off the board cannot attach. Read during `query`, before the
+    // handle exists — that is the live row, not the verdict.
+    let midRun: StatusRow | undefined;
+    live = createConductorHarness({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          midRun = await readStatus(live!);
+          yield sdkResult("success");
+        },
+      }),
+      isDone: () => true,
+      maxAttempts: 3,
+    });
+
+    const row = await seedAndDrain(live);
+
+    expect(midRun, "the agent never ran").toBeDefined();
+    expect(midRun?.status).toBe("in_progress");
+    expect(midRun?.run?.outcome).toBe("running");
+    expect(midRun?.run?.requestId).toEqual(expect.any(String));
+    expect(midRun?.run?.childSessionId).toEqual(expect.any(String));
+    // The verdict rewrite keeps the same ids — a follower that attached mid-run
+    // is still looking at the request that finished.
+    expect(row.run?.requestId).toBe(midRun?.run?.requestId);
+    expect(row.run?.childSessionId).toBe(midRun?.run?.childSessionId);
   });
 });
 
@@ -1438,6 +1598,46 @@ describe("the ledger is partitioned by tenant", () => {
     expect(seen).toBe("the-validated-value");
   });
 
+  it("hands a seed brief to the prompt builder on attempt 1", async () => {
+    let seen: string | undefined;
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: () => true,
+      buildPrompt: (run) => {
+        seen = run.brief;
+        return "p";
+      },
+    });
+
+    await live.call("seed", {
+      issue: ISSUE,
+      phase: PHASE,
+      brief: "Rename getSession in client.md",
+    });
+    await settle(live);
+
+    expect(seen).toBe("Rename getSession in client.md");
+  });
+
+  it("returns the seed brief on status so the board can see what attempt 1 was filed with", async () => {
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], { prompts: [], cwds: [] }),
+      isDone: () => true,
+    });
+
+    await live.call("seed", {
+      issue: ISSUE,
+      phase: PHASE,
+      brief: "Rename getSession in client.md",
+    });
+    const withBrief = await settle(live);
+    expect(withBrief.brief).toBe("Rename getSession in client.md");
+
+    await live.call("seed", { issue: "FIX-1220", phase: PHASE });
+    const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: "FIX-1220" });
+    expect(rows[0]?.brief).toBeNull();
+  });
+
   describe("every action refuses another tenant BEFORE touching the board", () => {
     // The guarantee this file documents used to hold for exactly one of the
     // three actions. The tenant check lived only in the manager, which runs
@@ -1833,7 +2033,7 @@ describe("a phase spelled differently is the same phase", () => {
   }, 20_000);
 });
 
-describe("the phase's own precondition is refused at the same door", () => {
+describe("the phase's own precondition is refused before the first claim", () => {
   it("refuses a source repo the completion probe could not read a remote from", async () => {
     // The implement phase's probe runs `git remote get-url origin` AFTER the
     // paid agent run. A repository whose GitHub remote is called `upstream` is
@@ -1854,13 +2054,12 @@ describe("the phase's own precondition is refused at the same door", () => {
       { cwd: noOrigin, stdio: "pipe" },
     );
 
-    expect(() =>
-      conductorFlow({
-        epic: "remote-epic",
-        workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
-        phase: implementPhase(),
-      }),
-    ).toThrow(/has no "origin" remote/);
+    const built = conductorFlow({
+      epic: "remote-epic",
+      workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
+      phase: implementPhase(),
+    });
+    expect(() => built.preparePhase()).toThrow(/has no "origin" remote/);
 
     // **And the guard is scoped to the probe that needs it.** A caller who
     // supplies `prExists` has replaced the thing that reads `origin`, so
@@ -1870,7 +2069,7 @@ describe("the phase's own precondition is refused at the same door", () => {
         epic: "remote-epic",
         workspace: { root: "/tmp/remote-epic", sourceRepo: noOrigin, baseRef: "main" },
         phase: implementPhase({ prExists: () => true }),
-      }),
+      }).preparePhase(),
     ).not.toThrow();
   });
 
@@ -1893,7 +2092,7 @@ describe("the phase's own precondition is refused at the same door", () => {
         epic: "remote-epic",
         workspace: { root: "/tmp/remote-epic", sourceRepo: localRemote, baseRef: "main" },
         phase: implementPhase(),
-      }),
+      }).preparePhase(),
     ).toThrow(/does not name a host and repository/);
   });
 
@@ -1917,7 +2116,7 @@ describe("the phase's own precondition is refused at the same door", () => {
     const mutable = { root, sourceRepo: repo, baseRef: "main" };
 
     let retained: { root: string; sourceRepo: string; baseRef: string } | undefined;
-    conductorFlow({
+    const built = conductorFlow({
       epic: "snapshot-epic",
       workspace: mutable,
       phase: {
@@ -1930,6 +2129,8 @@ describe("the phase's own precondition is refused at the same door", () => {
         },
       },
     });
+    expect(retained, "validate must not run at construction").toBeUndefined();
+    built.preparePhase();
     expect(retained, "validate was never called").toBeDefined();
 
     // The host mutates its own object afterwards.
@@ -2011,7 +2212,7 @@ describe("the phase's own precondition is refused at the same door", () => {
           epic: "gh-epic",
           workspace: { root: "/tmp/gh-epic", sourceRepo: repo, baseRef: "main" },
           phase: implementPhase(),
-        }),
+        }).preparePhase(),
       ).toThrow(/`gh` CLI could not be run/);
     } finally {
       process.env["PATH"] = realPath;

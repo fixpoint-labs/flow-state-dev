@@ -1,0 +1,129 @@
+/**
+ * Env the lab bin fills so you can sit in a product checkout and run it.
+ *
+ * The config door still refuses an unset `CONDUCTOR_REPO`. This fills `.`
+ * (the process cwd) and this lab's `fsdev.config.ts` only when those are
+ * blank. A match with the dispatcher is still refused after the config loads.
+ *
+ * After the fill, a leftover `CONDUCTOR_REPO` that names a different git
+ * checkout than cwd is refused — from this bin, and from the lab config
+ * door (`fsdev conductor --config` / `CONDUCTOR_CONFIG`). The board would
+ * otherwise operate on that other tree while you are standing in this one.
+ * Unsetting only `CONDUCTOR_REPO` still leaves `CONDUCTOR_EPIC` and
+ * `CONDUCTOR_CHECKOUTS` pointed at that other board, so the refuse names
+ * all three. Other `CONDUCTOR_*` knobs stay set after that trio is unset,
+ * so the refuse names those too when they are present.
+ */
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+
+/**
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} labRoot
+ */
+export function applyConductorBinDefaults(env, labRoot) {
+  if (!env.CONDUCTOR_CONFIG?.trim()) {
+    env.CONDUCTOR_CONFIG = path.join(labRoot, "fsdev.config.ts");
+  }
+  if (!env.CONDUCTOR_REPO?.trim()) {
+    env.CONDUCTOR_REPO = ".";
+  }
+}
+
+/**
+ * Git toplevel for `dir`, or `undefined` when it is not a work tree.
+ *
+ * @param {string} dir
+ * @returns {string | undefined}
+ */
+export function gitToplevel(dir) {
+  try {
+    return execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * When both cwd and `CONDUCTOR_REPO` are git checkouts and they differ.
+ *
+ * Standing in the dispatcher (the repo that contains `labs/conductor`) is
+ * allowed: `CONDUCTOR_REPO` must then name the product, or the config door
+ * refuses. Standing in a product checkout with a leftover other tree is not.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} cwd
+ * @param {string} [labRoot]
+ * @returns {{ cwdRoot: string, repoRoot: string } | undefined}
+ */
+export function conductorRepoMismatch(env, cwd, labRoot) {
+  const raw = env.CONDUCTOR_REPO?.trim();
+  if (!raw) return undefined;
+  const cwdRoot = gitToplevel(cwd);
+  const repoRoot = gitToplevel(path.resolve(cwd, raw));
+  if (!cwdRoot || !repoRoot || cwdRoot === repoRoot) return undefined;
+  if (labRoot !== undefined) {
+    const dispatcherRoot = gitToplevel(path.resolve(labRoot, "..", ".."));
+    if (dispatcherRoot !== undefined && cwdRoot === dispatcherRoot) return undefined;
+  }
+  return { cwdRoot, repoRoot };
+}
+
+const RECOVERY_TRIO = new Set(["CONDUCTOR_REPO", "CONDUCTOR_EPIC", "CONDUCTOR_CHECKOUTS"]);
+const BIN_FILLED = new Set(["CONDUCTOR_CONFIG"]);
+
+/**
+ * `CONDUCTOR_*` that are not the recovery trio and not the bin-filled config.
+ * Those stay set after the trio is unset and still apply to the next run.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string[]}
+ */
+export function leftoverConductorKnobs(env) {
+  return Object.keys(env)
+    .filter((key) => key.startsWith("CONDUCTOR_") && !RECOVERY_TRIO.has(key) && !BIN_FILLED.has(key))
+    .filter((key) => Boolean(env[key]?.trim()))
+    .sort();
+}
+
+/**
+ * Leftover `CONDUCTOR_*` to name on a refuse. `CONDUCTOR_REPO` is leftover
+ * only when it resolves to a different checkout than cwd — the same
+ * comparison as `conductorRepoMismatch`. leftover `CONDUCTOR_EPIC` and
+ * `CONDUCTOR_CHECKOUTS` are named when that repo is leftover, not when
+ * `CONDUCTOR_REPO` is an explicit path of this checkout.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} cwd
+ * @param {string} [labRoot]
+ * @returns {string[]}
+ */
+export function leftoverConductorEnv(env, cwd, labRoot) {
+  const knobs = leftoverConductorKnobs(env);
+  if (conductorRepoMismatch(env, cwd, labRoot) === undefined) return knobs;
+  return [
+    ...["CONDUCTOR_REPO", "CONDUCTOR_EPIC", "CONDUCTOR_CHECKOUTS"].filter((key) =>
+      Boolean(env[key]?.trim()),
+    ),
+    ...knobs,
+  ];
+}
+
+/**
+ * @param {{ cwdRoot: string, repoRoot: string }} mismatch
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function formatRepoMismatch(mismatch, env) {
+  let msg =
+    `conductor: CONDUCTOR_REPO is ${mismatch.repoRoot} but you are standing in ${mismatch.cwdRoot}.\n` +
+    `cd there, or unset CONDUCTOR_REPO, CONDUCTOR_EPIC, and CONDUCTOR_CHECKOUTS together to use this checkout.\n`;
+  const knobs = leftoverConductorKnobs(env ?? {});
+  if (knobs.length > 0) {
+    const verb = knobs.length === 1 ? "is" : "are";
+    msg += `${knobs.join(", ")} ${verb} still set and will apply after that.\n`;
+  }
+  return msg;
+}

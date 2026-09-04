@@ -8,7 +8,7 @@ sidebar_label: "Interactive chat"
 
 `fsdev chat` opens a persistent terminal session over your flows. Type a message, it routes to whichever flow is driving, and the reply streams back live. It's a REPL — a read-eval-print loop, the same shape as a Python or Node shell — except each turn runs a flow action and the conversation persists across turns.
 
-Every other way to talk to a flow-state project is one-shot: `fsdev run` executes a single action, the DevTool drives one request at a time from the browser. `fsdev chat` is the one that holds a live session you can talk to.
+`fsdev run` executes a single action. The DevTool drives one request at a time from the browser. `fsdev chat` holds a live conversation. `fsdev conductor` holds a live task board; typed input there is a coordinator turn, not a conversation.
 
 ## Starting a session
 
@@ -56,11 +56,12 @@ Turns and the engine identity that owns them default to `cli-user`. The DevTool 
 
 `--session <id>` resumes a specific session for the initially bound flow. A session that belongs to a different flow is rejected rather than silently reused, since the engine routes state by the session's flow.
 
-## chat vs run vs dev
+## chat vs run vs dev vs conductor
 
 - **`fsdev chat`** — a live, multi-turn conversation from the terminal. Reach for it to prod a flow interactively, test that history threads, or drive one flow then switch to another.
 - **`fsdev run`** — one action, one result, NDJSON to stdout. Best for scripts and the edit → run → read loop.
 - **`fsdev dev`** — the DevTool in a browser, with rich rendering and resource inspection. Best when you want to *see* the stream and state, not just read it.
+- **`fsdev conductor`** — also opens a live terminal surface, but over a task board rather than a conversation. Typed input that is not a slash verb talks to the coordinator (`steer`). Enter or a click opens inspect for one row; type the reply there, or `/answer` from the board. See [Conductor](./conductor.md).
 
 ## A session
 

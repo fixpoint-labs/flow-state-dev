@@ -1,0 +1,643 @@
+/**
+ * Fullscreen loop over conductor actions.
+ *
+ * I/O only. Keys go through `applyKey`; verbs go through `startConductorAction`
+ * so a wake streams the same events `fsdev run conductor wake` would, and the
+ * board is re-read through `status` afterwards — that action is the authority.
+ */
+import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
+import {
+  abortConductorRequest,
+  answerInput,
+  seedInput,
+  startConductorAction,
+  steerInput,
+  type ConductorAction,
+  type ConductorDispatch,
+} from "./dispatch";
+import { applyKey, decodeKeys, ESC_FLUSH_MS, flushHeldKeys, rowAfterRefresh, type Key } from "./keys";
+import { conductorWindowTitle, formatBoardIdentity, renderFrame, windowTitleSequence } from "./render";
+import {
+  applyTranscriptPatch,
+  createStreamTranscript,
+  diffBoard,
+  newlyAsked,
+  newlySettled,
+} from "./transcript";
+import { createChildFollow } from "./follow";
+import { readDrafts, writeDrafts } from "./compose-history";
+import { readLastFocus, writeLastFocus } from "./last-focus";
+import { readTalk, writeTalk } from "./talk-history";
+import {
+  clampSelected,
+  dropRequestActivity,
+  focusNewlyAsked,
+  focusNewlySettled,
+  echoTalk,
+  emptyView,
+  noteSteerReply,
+  pushActivity,
+  idsToFollow,
+  rowNeedsYou,
+  rowRunning,
+  runningRequestIds,
+  selectedRow,
+  selectedRequestId,
+  selectedRunningRequestId,
+  type AnswerOutput,
+  type OperatorCommand,
+  type SeedOutput,
+  type StatusOutput,
+  type ViewState,
+} from "./types";
+
+const ENTER_ALT = "\x1b[?1049h";
+const LEAVE_ALT = "\x1b[?1049l";
+const HIDE_CURSOR = "\x1b[?25l";
+const SHOW_CURSOR = "\x1b[?25h";
+/** Clear leftover tracking. The board never enables it — yank is out, so native select is the copy path. */
+const MOUSE_OFF = "\x1b[?1000l\x1b[?1006l";
+const PASTE_ON = "\x1b[?2004h";
+const PASTE_OFF = "\x1b[?2004l";
+const HOME = "\x1b[H";
+const ERASE = "\x1b[J";
+const POLL_MS = 1_000;
+
+/**
+ * Status is a board read. Binding Ctrl-C to it lets a poll or an `r` steal
+ * the abort from a drain that is still running.
+ */
+export function bindsOperatorAbort(action: ConductorAction): boolean {
+  return action !== "status";
+}
+
+/**
+ * A second board read while one is already in flight, or while a drain is
+ * running, is the same race: two `status` actions, and the later one owns
+ * `abortInFlight`. Skip. The in-flight read or the post-drain refresh will
+ * paint the board.
+ */
+export function canStartBoardRefresh(busy: boolean, refreshInFlight: boolean): boolean {
+  return !busy && !refreshInFlight;
+}
+
+export interface LoopOptions {
+  dispatch: ConductorDispatch;
+  epicLabel: string;
+  /** Product checkout basename for the header, when known. */
+  repoLabel?: string;
+  input?: NodeJS.ReadStream;
+  output?: NodeJS.WriteStream;
+  pollMs?: number;
+  focusIssue?: string;
+  /**
+   * Run after the first board read. Interactive `start` seeds here so
+   * the row appears inside the alt screen instead of as a dump first.
+   */
+  initialCommand?: OperatorCommand;
+  /** Sidecar that remembers the selected issue across `/quit`. */
+  lastFocusPath?: string;
+  /** Sidecar that remembers submitted compose lines across `/quit`. */
+  lastDraftsPath?: string;
+  /** Sidecar that remembers operator talk across `/quit`. */
+  lastTalkPath?: string;
+  now?: () => number;
+}
+
+export async function runConductorTui(options: LoopOptions): Promise<number> {
+  const input = options.input ?? process.stdin;
+  const output = options.output ?? process.stdout;
+  const pollMs = options.pollMs ?? POLL_MS;
+  const now = options.now ?? Date.now;
+  const isTTY = Boolean(input.isTTY && output.isTTY);
+
+  if (!isTTY) {
+    output.write(
+      "fsdev conductor: the interactive surface needs a TTY. Use a headless verb (status, seed, wake, answer, steer, watch, abort).\n",
+    );
+    return 1;
+  }
+
+  let state = emptyView(options.epicLabel);
+  if (options.repoLabel !== undefined && options.repoLabel !== "") {
+    state = { ...state, repoLabel: options.repoLabel };
+  }
+  if (options.lastDraftsPath !== undefined) {
+    const drafts = readDrafts(options.lastDraftsPath);
+    if (drafts.length > 0) state = { ...state, drafts };
+  }
+  if (options.lastTalkPath !== undefined) {
+    const talk = readTalk(options.lastTalkPath);
+    if (talk.length > 0) {
+      state = {
+        ...state,
+        activity: [...talk.map((line) => ({ at: line.at, text: line.text })), ...state.activity],
+      };
+    }
+  }
+  let pending = "";
+  let escFlush: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
+  let abortInFlight: (() => void) | undefined;
+  let refreshSeq = 0;
+  let refreshInFlight = false;
+  let loadedRequestId: string | undefined;
+  let queued: OperatorCommand | undefined;
+  const operatorTranscript = createStreamTranscript();
+  const childTranscripts = new Map<string, ReturnType<typeof createStreamTranscript>>();
+
+  const childTranscript = (requestId: string) => {
+    let machine = childTranscripts.get(requestId);
+    if (machine === undefined) {
+      machine = createStreamTranscript();
+      childTranscripts.set(requestId, machine);
+    }
+    return machine;
+  };
+
+  const size = () => ({
+    cols: output.columns || 80,
+    rows: output.rows || 24,
+  });
+
+  const paint = () => {
+    if (closed) return;
+    output.write(
+      `${windowTitleSequence(conductorWindowTitle(state))}${HOME}${ERASE}${renderFrame(state, size(), now())}`,
+    );
+  };
+
+  const applyOperator = (event: RequestStreamEventWithId) => {
+    state = applyTranscriptPatch(state, operatorTranscript.apply(event), now());
+    paint();
+  };
+
+  const applyChild = (event: RequestStreamEventWithId) => {
+    const requestId = event.requestId;
+    if (typeof requestId !== "string" || requestId === "") {
+      applyOperator(event);
+      return;
+    }
+    state = applyTranscriptPatch(state, childTranscript(requestId).apply(event), now(), requestId);
+    paint();
+  };
+
+  const follow = createChildFollow({
+    stores: options.dispatch.stores,
+    onEvent: applyChild,
+    onEnd: (requestId) => {
+      const machine = childTranscripts.get(requestId);
+      if (machine === undefined) return;
+      state = applyTranscriptPatch(state, machine.flush(), now(), requestId);
+      childTranscripts.delete(requestId);
+      paint();
+    },
+  });
+
+  const stopRunning = async (view: ViewState) => {
+    for (const id of runningRequestIds(view.rows)) {
+      await abortConductorRequest(options.dispatch.stores, id);
+    }
+  };
+
+  const endTurn = () => {
+    state = applyTranscriptPatch(state, operatorTranscript.flush(), now());
+    paint();
+  };
+
+  /** Select a row and tail it — same first-paint rule as `tui <issue>` / `start`. */
+  const lookAtIssue = (issue: string) => {
+    if (closed || issue === "") return;
+    state = rowAfterRefresh(state, issue);
+    follow.sync(idsToFollow(state));
+    void loadSelectedJournal();
+    paint();
+  };
+
+  /**
+   * A talk turn that filed work selects that row. A wake or talk-to-retry
+   * that started an existing row does the same, unless the selected row
+   * is itself the one that just started — then stay. A new question on
+   * any row still wins — answer it before watching the new row.
+   */
+  const lookAtFiledRows = (before: ViewState["rows"]) => {
+    if (closed || newlyAsked(before, state.rows)) return;
+    if (state.inputMode !== "command" || state.input !== "") return;
+    const known = new Set(before.map((row) => row.taskId));
+    const filed = [...state.rows].reverse().find((row) => !known.has(row.taskId));
+    if (filed !== undefined) {
+      const issue = filed.issue ?? filed.taskId;
+      if (issue !== "") lookAtIssue(issue);
+      return;
+    }
+    const selected = state.rows[state.selected];
+    const selectedWas =
+      selected === undefined ? undefined : before.find((prior) => prior.taskId === selected.taskId);
+    if (
+      selected !== undefined &&
+      rowRunning(selected) &&
+      (selectedWas === undefined || !rowRunning(selectedWas))
+    ) {
+      return;
+    }
+    const woke = [...state.rows].reverse().find((row) => {
+      const prev = before.find((prior) => prior.taskId === row.taskId);
+      return rowRunning(row) && (prev === undefined || !rowRunning(prev));
+    });
+    if (woke === undefined || woke.taskId === selected?.taskId) return;
+    const issue = woke.issue ?? woke.taskId;
+    if (issue !== "") lookAtIssue(issue);
+  };
+
+  const rememberedFocus =
+    options.focusIssue === undefined && options.lastFocusPath !== undefined
+      ? readLastFocus(options.lastFocusPath)
+      : undefined;
+  let readyToRemember = false;
+  const rememberFocus = () => {
+    if (!readyToRemember || options.lastFocusPath === undefined) return;
+    const row = state.rows[state.selected];
+    const id = row?.issue ?? row?.taskId;
+    if (id !== undefined && id !== "") writeLastFocus(options.lastFocusPath, id);
+  };
+  const rememberDrafts = () => {
+    if (options.lastDraftsPath === undefined) return;
+    writeDrafts(options.lastDraftsPath, state.drafts);
+  };
+  const rememberTalk = () => {
+    if (options.lastTalkPath === undefined) return;
+    writeTalk(options.lastTalkPath, state.activity);
+  };
+
+  const runAction = <T>(action: ConductorAction, input: unknown) => {
+    const running = startConductorAction<T>(options.dispatch, action, input, applyOperator);
+    if (bindsOperatorAbort(action)) {
+      abortInFlight = running.requestAbort;
+    }
+    return running.done;
+  };
+
+  const refresh = async () => {
+    const seq = ++refreshSeq;
+    const result = await runAction<StatusOutput>("status", {});
+    if (closed || seq !== refreshSeq) return;
+    if (result.error !== undefined) throw new Error(result.error);
+    const nextRows = result.output?.rows ?? [];
+    const prevRows = state.rows;
+    const asked = newlyAsked(prevRows, nextRows);
+    const settled = newlySettled(prevRows, nextRows);
+    state = applyStatus(state, result.output ?? { rows: [] }, now());
+    if (asked || settled) {
+      output.write("\x07");
+    }
+    if (asked) {
+      state = focusNewlyAsked(prevRows, state);
+    } else if (settled) {
+      state = focusNewlySettled(prevRows, state);
+    } else if (!readyToRemember && rememberedFocus !== undefined) {
+      state = rowAfterRefresh(state, rememberedFocus);
+    }
+    follow.sync(idsToFollow(state));
+    void loadSelectedJournal();
+    rememberFocus();
+    endTurn();
+  };
+
+  const beginRefresh = () => {
+    if (closed || !canStartBoardRefresh(state.busy, refreshInFlight)) return;
+    refreshInFlight = true;
+    void refresh()
+      .catch((err: unknown) => {
+        state = { ...state, notice: err instanceof Error ? err.message : String(err) };
+        paint();
+      })
+      .finally(() => {
+        refreshInFlight = false;
+      });
+  };
+
+  const loadSelectedJournal = async () => {
+    const id = selectedRequestId(state);
+    if (id === loadedRequestId) return;
+    if (id === undefined) {
+      loadedRequestId = undefined;
+      return;
+    }
+    if (selectedRunningRequestId(state) !== undefined) return;
+    loadedRequestId = id;
+    state = dropRequestActivity(state, id);
+    childTranscripts.delete(id);
+    const events = await follow.reload(id);
+    if (closed || selectedRequestId(state) !== id) return;
+    for (const event of events) applyChild(event);
+  };
+
+  const dispatchCommand = async (command: OperatorCommand) => {
+    state = { ...state, busy: true, notice: null };
+    paint();
+    try {
+      switch (command.kind) {
+        case "seed":
+        case "start": {
+          const seeded = await runAction<SeedOutput>(
+            "seed",
+            seedInput(command.issue, command.phase, command.brief),
+          );
+          if (seeded.error !== undefined) throw new Error(seeded.error);
+          if (seeded.output === undefined) throw new Error("conductor seed returned no task id");
+          endTurn();
+          state = pushActivity(state, `seeded ${command.issue} → ${seeded.output.taskId}`, now());
+          await refresh();
+          lookAtIssue(command.issue);
+          break;
+        }
+        case "wake": {
+          const result = await runAction<unknown>("wake", {});
+          if (result.error !== undefined) throw new Error(result.error);
+          endTurn();
+          state = pushActivity(state, "wake · drain ran", now());
+          const beforeWake = state.rows;
+          await refresh();
+          lookAtFiledRows(beforeWake);
+          break;
+        }
+        case "steer": {
+          state = echoTalk(state, command.message, now());
+          paint();
+          const steered = await runAction<string>("steer", steerInput(command.message));
+          if (steered.error !== undefined) throw new Error(steered.error);
+          endTurn();
+          const said =
+            typeof steered.output === "string" && steered.output.trim() !== ""
+              ? steered.output.trim()
+              : "";
+          state = noteSteerReply(state, said, now());
+          const beforeSteer = state.rows;
+          await refresh();
+          lookAtFiledRows(beforeSteer);
+          break;
+        }
+        case "answer": {
+          const answered = await runAction<AnswerOutput>(
+            "answer",
+            answerInput(command.question, command.text),
+          );
+          if (answered.error !== undefined) throw new Error(answered.error);
+          if (answered.output === undefined) throw new Error("conductor answer returned nothing");
+          endTurn();
+          const label =
+            answered.output.result === "declined"
+              ? `answer declined · ${answered.output.reason ?? "refused"}`
+              : `answer ${answered.output.result}${answered.output.drained ? " · drain ran" : ""}`;
+          state = pushActivity(state, label, now());
+          state = { ...state, notice: answered.output.result === "declined" ? answered.output.reason : null };
+          await refresh();
+          break;
+        }
+        case "abort": {
+          const ids =
+            command.issue !== undefined
+              ? runningRequestIds(
+                  state.rows.filter(
+                    (row) =>
+                      row.issue?.toLowerCase() === command.issue!.toLowerCase() ||
+                      row.taskId === command.issue,
+                  ),
+                )
+              : selectedRunningRequestId(state) !== undefined
+                ? [selectedRunningRequestId(state)!]
+                : [];
+          if (ids.length === 0) {
+            state = { ...state, notice: "nothing running to stop" };
+            break;
+          }
+          for (const id of ids) {
+            const result = await abortConductorRequest(options.dispatch.stores, id);
+            state = pushActivity(
+              state,
+              result === "signaled" ? `stop · ${id}` : `stop · ${id} was not running`,
+              now(),
+              id,
+            );
+          }
+          await refresh();
+          break;
+        }
+        case "watch":
+        case "status":
+        case "refresh":
+          await refresh();
+          break;
+        case "help":
+          state = { ...state, help: true };
+          break;
+        case "find":
+          break;
+        case "quit":
+          closed = true;
+          await stopRunning(state);
+          break;
+      }
+    } catch (err) {
+      endTurn();
+      const message = err instanceof Error ? err.message : String(err);
+      state = { ...pushActivity(state, message, now()), notice: message };
+    } finally {
+      abortInFlight = undefined;
+      const next = queued;
+      queued = undefined;
+      state = { ...state, busy: false };
+      rememberTalk();
+      if (next !== undefined && !closed) {
+        void dispatchCommand(next);
+      } else {
+        paint();
+      }
+    }
+  };
+
+  const wasRaw = input.isRaw;
+  let poll: ReturnType<typeof setInterval> | undefined;
+  let finish = () => {};
+
+  const handleKey = (key: Key) => {
+    if (state.busy && key.type === "ctrl" && key.value === "c") {
+      abortInFlight?.();
+      state = pushActivity(state, "abort requested", now());
+      paint();
+      return;
+    }
+    const result = applyKey(state, key);
+    state = result.state;
+    follow.sync(idsToFollow(state));
+    void loadSelectedJournal();
+    rememberFocus();
+    rememberDrafts();
+    rememberTalk();
+    if (result.effect === undefined) {
+      paint();
+      return;
+    }
+    if (result.effect.type === "quit") {
+      closed = true;
+      state = applyTranscriptPatch(state, operatorTranscript.flush(), now());
+      rememberTalk();
+      void stopRunning(state).then(finish, finish);
+      return;
+    }
+    if (result.effect.type === "refresh") {
+      beginRefresh();
+      return;
+    }
+    if (result.effect.type === "hold") {
+      queued = result.effect.command;
+      paint();
+      return;
+    }
+    void dispatchCommand(result.effect.command).then(() => {
+      if (closed) finish();
+    });
+  };
+
+  const armEscFlush = () => {
+    if (escFlush !== undefined) {
+      clearTimeout(escFlush);
+      escFlush = undefined;
+    }
+    if (pending !== "\x1b") return;
+    escFlush = setTimeout(() => {
+      escFlush = undefined;
+      if (closed || pending !== "\x1b") return;
+      const flushed = flushHeldKeys(pending);
+      pending = flushed.rest;
+      for (const key of flushed.keys) {
+        handleKey(key);
+        if (closed) break;
+      }
+    }, ESC_FLUSH_MS);
+  };
+
+  const onData = (buf: Buffer | string) => {
+    if (closed) return;
+    if (escFlush !== undefined) {
+      clearTimeout(escFlush);
+      escFlush = undefined;
+    }
+    const chunk = typeof buf === "string" ? buf : buf.toString("utf8");
+    const decoded = decodeKeys(chunk, pending);
+    pending = decoded.rest;
+    for (const key of decoded.keys) {
+      handleKey(key);
+      if (closed) break;
+    }
+    armEscFlush();
+  };
+
+  const onSigint = () => {
+    if (state.busy) {
+      abortInFlight?.();
+      return;
+    }
+    handleKey({ type: "ctrl", value: "c" });
+  };
+
+  const session = new Promise<void>((resolve) => {
+    finish = () => {
+      if (poll !== undefined) clearInterval(poll);
+      if (escFlush !== undefined) clearTimeout(escFlush);
+      input.off("data", onData);
+      process.off("SIGINT", onSigint);
+      resolve();
+    };
+  });
+
+  // Listen before resume. resume() without a reader drops keys, and the
+  // first status used to run in that window — /quit during load never left.
+  input.on("data", onData);
+  process.on("SIGINT", onSigint);
+  input.setRawMode?.(true);
+  input.resume();
+  output.write(
+    `${formatBoardIdentity({
+      epic: options.epicLabel,
+      ...(options.repoLabel !== undefined ? { repo: options.repoLabel } : {}),
+    })}${ENTER_ALT}${MOUSE_OFF}${PASTE_ON}${HIDE_CURSOR}`,
+  );
+  paint();
+
+  const onResize = () => paint();
+  output.on("resize", onResize);
+
+  try {
+    await refresh();
+    if (closed) {
+      finish();
+      await session;
+      return 0;
+    }
+    if (options.focusIssue !== undefined) {
+      state = rowAfterRefresh(state, options.focusIssue);
+      follow.sync(idsToFollow(state));
+      void loadSelectedJournal();
+      paint();
+    }
+    readyToRemember = true;
+    rememberFocus();
+
+    if (options.initialCommand !== undefined && !closed) {
+      await dispatchCommand(options.initialCommand);
+      if (closed) {
+        finish();
+        await session;
+        return 0;
+      }
+      if (options.focusIssue !== undefined) {
+        state = rowAfterRefresh(state, options.focusIssue);
+        follow.sync(idsToFollow(state));
+        void loadSelectedJournal();
+        paint();
+      }
+    }
+
+    poll = setInterval(() => {
+      beginRefresh();
+    }, pollMs);
+    await session;
+  } finally {
+    rememberFocus();
+    rememberDrafts();
+    state = applyTranscriptPatch(state, operatorTranscript.flush(), now());
+    rememberTalk();
+    follow.stop();
+    output.off("resize", onResize);
+    input.setRawMode?.(wasRaw ?? false);
+    input.pause();
+    output.write(`${windowTitleSequence("")}${PASTE_OFF}${MOUSE_OFF}${SHOW_CURSOR}${LEAVE_ALT}`);
+  }
+  return 0;
+}
+
+export function applyStatus(state: ViewState, output: StatusOutput, at: number): ViewState {
+  const previousTaskId = state.rows[state.selected]?.taskId;
+  const wasEmpty = state.rows.length === 0;
+  const moved = diffBoard(state.rows, output.rows);
+  let next = clampSelected({
+    ...state,
+    rows: output.rows,
+    lastRefreshAt: at,
+  });
+  next = rowAfterRefresh(next, undefined, previousTaskId);
+  for (const line of moved) next = pushActivity(next, line, at);
+  if (
+    wasEmpty &&
+    !next.inspect &&
+    next.inputMode === "command" &&
+    next.input === ""
+  ) {
+    const row = selectedRow(next);
+    if (row !== undefined && rowNeedsYou(row, next.activity)) {
+      next = { ...next, inspect: true };
+    }
+  }
+  return next;
+}

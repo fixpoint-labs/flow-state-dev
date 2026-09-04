@@ -9,6 +9,7 @@ import { delimiter, join } from "node:path";
 import { seedRepo } from "./harness";
 import {
   COMPLETING_QUERY_STATES,
+  completingPrUrl,
   hasCompletingPr,
   implementPhase,
   prListArgs,
@@ -23,6 +24,7 @@ import {
   conductorTaskId,
   encodeSegment,
 } from "../src/workspace";
+import type { PromptRunContext } from "../src/manager";
 
 /** Temp trees this file made; removed after each test so none outlive the run. */
 const dirs: string[] = [];
@@ -88,6 +90,22 @@ describe("the done-condition — which pull requests count", () => {
     // only for open ones would have missed.
     expect(hasCompletingPr(JSON.stringify([{ number: 1, state: "OPEN" }]))).toBe(true);
     expect(hasCompletingPr(JSON.stringify([{ number: 2, state: "MERGED" }]))).toBe(true);
+  });
+
+  it("keeps the completing pull request's URL when the listing named one", () => {
+    const listed = JSON.stringify([
+      {
+        number: 1496,
+        state: "OPEN",
+        url: "https://github.com/fixpoint-labs/flow-state-dev/pull/1496",
+        headRepository: { name: "flow-state-dev" },
+        headRepositoryOwner: { login: "fixpoint-labs" },
+      },
+    ]);
+    expect(completingPrUrl(listed, "fixpoint-labs/flow-state-dev")).toBe(
+      "https://github.com/fixpoint-labs/flow-state-dev/pull/1496",
+    );
+    expect(completingPrUrl(JSON.stringify([{ number: 1, state: "OPEN" }]))).toBeUndefined();
   });
 
   it("refuses a completing PR whose head is in another repository", () => {
@@ -559,18 +577,17 @@ describe("the done-condition — which pull requests count", () => {
 
 describe("the forced ask tells the run to keep the marker out of the commit", () => {
   /** The minimum a prompt builder needs; none of it is what these assert. */
-  const promptRun = (askMarkerPath: string) =>
-    ({
-      epic: EPIC,
-      issue: "FIX-1219",
-      phase: "implement",
-      attempt: 1,
-      workspacePath: "/tmp/does-not-matter",
-      branch: "conductor/FIX-1219/implement",
-      answers: [],
-      askMarkerPath,
-      ctx: {} as never,
-    }) as never;
+  const promptRun = (askMarkerPath: string): PromptRunContext => ({
+    epic: EPIC,
+    issue: "FIX-1219",
+    phase: "implement",
+    attempt: 1,
+    workspacePath: "/tmp/does-not-matter",
+    branch: "conductor/FIX-1219/implement",
+    answers: [],
+    askMarkerPath,
+    ctx: {} as never,
+  });
 
   it("instructs rather than reassures, because the rule can stop holding mid-run", async () => {
     // It used to say the file "is already gitignored, so it will not be
@@ -587,6 +604,22 @@ describe("the forced ask tells the run to keep the marker out of the commit", ()
 
     expect(prompt).toMatch(/Never stage or commit anything under `\.fsdev\/`/);
     expect(prompt).not.toMatch(/will not be committed/);
+  });
+
+  it("treats a failed pull-request open as a question, not as done", async () => {
+    const prompt = await implementPhase().buildPrompt(promptRun("/w/.fsdev/ask/1.md"));
+    expect(prompt).toContain("A pushed branch is not done");
+    expect(prompt).toContain("question for a person");
+    expect(prompt).toContain("Do not declare the work complete");
+  });
+
+  it("folds an operator brief so attempt 1 already has the ticket", async () => {
+    const prompt = await implementPhase().buildPrompt({
+      ...promptRun("/w/.fsdev/ask/1.md"),
+      brief: "Rename getSession to getSessionState in apps/docs/docs/api/client.md",
+    });
+    expect(prompt).toContain("Rename getSession to getSessionState");
+    expect(prompt).toContain("The operator filed this brief");
   });
 
   it("still spells the marker path in full", async () => {

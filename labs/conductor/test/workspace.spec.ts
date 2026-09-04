@@ -26,7 +26,7 @@ import {
   isStrictlyInside,
 } from "../src/workspace";
 import { seedRepo } from "./harness";
-import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "../src/ask";
+import { ASK_MARKER_DIR } from "../src/ask";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -1065,7 +1065,7 @@ describe("provisioning verifies the branch a reused checkout is actually on", ()
   });
 });
 
-describe("provisioning refuses a repository that would commit the ask marker", () => {
+describe("provisioning heals a repository that would commit the ask marker", () => {
   /** Drop the ignore rule from the source repo's `main`, and commit that. */
   function dropIgnoreRule(sourceRepo: string): void {
     execFileSync("git", ["rm", "-q", ".gitignore"], { cwd: sourceRepo, stdio: "pipe" });
@@ -1075,95 +1075,36 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     });
   }
 
-  it("refuses a source repository with no rule covering the marker", async () => {
-    // The marker lands in the PRODUCT checkout, which this lab requires be a
-    // different repository from the one dispatching the run. Its
-    // do-not-commit guarantee was resting on the dispatching repository's
-    // `.gitignore` — a rule the target has no reason to carry. Without it the
-    // coding agent's own `git add -A` stages the question and it lands in a
-    // commit on the branch, and from there in the pull request.
+  it("writes the directory rule onto a worktree cut from a source with none", async () => {
+    // The marker lands in the PRODUCT checkout. A target that never adopted
+    // `**/.fsdev/` used to fail the board before the agent ran. The work
+    // branch is ours: append the rule there, leave `baseRef` alone, and let
+    // the coding agent inherit a tree that will not commit its questions.
     const config = workspace();
     dropIgnoreRule(config.sourceRepo);
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      /does not ignore the directory "\.fsdev/,
-    );
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    expect(checkout.created).toBe(true);
+    expect(checkout.healed).toEqual(["added **/.fsdev/ to .gitignore"]);
+    expect(readFileSync(join(checkout.path, ".gitignore"), "utf8")).toContain("**/.fsdev/");
+    expect(existsSync(join(config.sourceRepo, ".gitignore"))).toBe(false);
   });
 
-  it("names the rule to add, because the operator owns that repository", async () => {
-    // The refusal is only useful if it says what to do. Nothing here can fix
-    // it: a tracked `.gitignore` is the operator's file, and `info/exclude`
-    // lives in the common directory every worktree of that repository shares.
-    const config = workspace();
-    dropIgnoreRule(config.sourceRepo);
-
-    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
-      () => undefined,
-      (error: Error) => error.message,
-    );
-
-    expect(failure).toMatch(/Add `\*\*\/\.fsdev\/` to that repository's \.gitignore/);
-    // And that is the WHOLE instruction here, so it does not carry the branch
-    // half. This checkout's branch is deleted on the way out and the next
-    // attempt cuts a new one from the fixed base; telling the operator to go
-    // repair a branch that no longer exists is advice they cannot act on.
-    expect(failure).not.toMatch(/bring "/);
-  });
-
-  it("tells the operator a REUSED branch needs fixing too", async () => {
-    // "Fix the repository" is the whole instruction only for a tree about to be
-    // cut fresh from `baseRef`. This one already exists on a branch cut before
-    // the fix, and nothing here deletes it — so the operator follows the
-    // instruction, the next attempt reuses the same branch, and it refuses
-    // identically. An advertised recovery that quietly does not apply is worse
-    // than no advice.
-    const config = workspace();
-    const branch = branchFor(at("FIX-1219", "implement"));
-    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
-    dropIgnoreRule(first.path);
-
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      new RegExp(`This checkout is on branch "${branch}"`),
-    );
-  });
-
-  it("tells a REUSED checkout's operator to remove the tree before the branch", async () => {
-    // Measured, and this repository's own specs already lean on it: git refuses
-    // `branch -D` for a branch a linked worktree has checked out. Reuse leaves
-    // the tree standing on purpose, so "delete it" alone was advice git rejects
-    // — the operator runs it, gets `cannot delete branch ... used by worktree`,
-    // and is back where they started.
-    //
-    // Separate from the test above because they fail for different reasons: one
-    // that the branch goes unnamed, this one that naming it is not enough.
-    const config = workspace();
-    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
-    dropIgnoreRule(first.path);
-
-    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
-      () => undefined,
-      (error: Error) => error.message,
-    );
-
-    expect(failure).toMatch(/remove the checkout at /);
-    expect(failure).toContain(first.path);
-  });
-
-  it("refuses a REUSED checkout whose branch dropped the rule", async () => {
+  it("heals a reused checkout whose branch dropped the rule, and keeps the work", async () => {
     // The rule is a tracked file on the branch the checkout is on, so a run
-    // can delete it. A guard that only fired on creation would then hand the
-    // next attempt a tree that provisioned legally and is no longer safe to
-    // write a question into — the same defect, one attempt later.
+    // can delete it. Refusing left the operator to restore it by hand. Heal
+    // writes the line back onto THIS tree and leaves whatever else it holds.
     const config = workspace();
     const first = await provisionCheckout(config, at("FIX-1219", "implement"));
     expect(first.created).toBe(true);
+    writeFileSync(join(first.path, "wip.txt"), "half done");
     dropIgnoreRule(first.path);
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      /does not ignore the directory "\.fsdev/,
-    );
-    // Refused, not cleared: the tree may hold the run's real work.
-    expect(existsSync(join(first.path, "tracked.txt"))).toBe(true);
+    const second = await provisionCheckout(config, at("FIX-1219", "implement"));
+    expect(second.created).toBe(false);
+    expect(second.healed).toEqual(["added **/.fsdev/ to .gitignore"]);
+    expect(readFileSync(join(first.path, "wip.txt"), "utf8")).toBe("half done");
+    expect(readFileSync(join(first.path, ".gitignore"), "utf8")).toContain("**/.fsdev/");
   });
 
   it("does not read a leaked marker as a missing rule", async () => {
@@ -1222,65 +1163,34 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     ).resolves.toMatchObject({ created: true });
   });
 
-  it("leaves nothing behind, so fixing the repository fixes the task", async () => {
-    // The refusal runs after `worktree add`, so without this the checkout and
-    // its branch are durable. The next call finds a complete checkout with no
-    // interrupted-provision marker, reuses it, and asks the same question of
-    // the same branch — cut BEFORE the rule was added, so it fails identically
-    // forever. The operator fixes the repository and the task stays wedged.
+  it("does not write the rule onto the source repository's base ref", async () => {
+    // The work branch carries the fix. Mutating `main` would edit a branch
+    // this call did not create. A later issue cut from the same unfixed
+    // `baseRef` heals the same way.
     const config = workspace();
     dropIgnoreRule(config.sourceRepo);
-    const checkout = checkoutPathFor(config, at("FIX-1219", "implement"));
-    const branch = branchFor(at("FIX-1219", "implement"));
+    const first = await provisionCheckout(config, at("FIX-1219", "implement"));
+    expect(first.healed).toHaveLength(1);
+    expect(existsSync(join(config.sourceRepo, ".gitignore"))).toBe(false);
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      /does not ignore/,
-    );
-
-    // Neither half of what the failed call made is still there.
-    expect(existsSync(checkout)).toBe(false);
-    // Nor the interrupted-provision marker the cleanup wears while it deletes.
-    // It goes back on before `rmSync` so a delete cut short leaves a leftover
-    // the next attempt can identify and clear rather than one it refuses by
-    // hand — but left behind after a delete that DID finish, it is a claim
-    // about a tree that no longer exists.
-    expect(existsSync(`${checkout}.provisioning`)).toBe(false);
-    expect(
-      execFileSync("git", ["branch", "--list", branch], {
-        cwd: config.sourceRepo,
-        encoding: "utf8",
-      }).trim(),
-    ).toBe("");
-
-    // And the recovery works: add the rule, provision again, no manual step.
-    writeFileSync(join(config.sourceRepo, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
-    execFileSync("git", ["add", ".gitignore"], { cwd: config.sourceRepo, stdio: "pipe" });
-    execFileSync("git", ["commit", "-q", "-m", "restore the rule"], {
-      cwd: config.sourceRepo,
-      stdio: "pipe",
-    });
-
-    await expect(
-      provisionCheckout(config, at("FIX-1219", "implement")),
-    ).resolves.toMatchObject({ created: true });
+    const second = await provisionCheckout(config, at("FIX-1220", "implement"));
+    expect(second.created).toBe(true);
+    expect(second.healed).toEqual(["added **/.fsdev/ to .gitignore"]);
+    expect(existsSync(join(config.sourceRepo, ".gitignore"))).toBe(false);
   });
 
-  it("keeps a branch it did not create, even when it refuses the checkout", async () => {
-    // `worktree add` without `-b` attaches an existing branch. Removing the
-    // tree is undoing our own call; removing someone else's branch is not, and
-    // it may carry work nothing here can see.
+  it("keeps a branch it did not create, and heals that tree", async () => {
+    // `worktree add` without `-b` attaches an existing branch. The branch
+    // points at a commit without the rule; heal writes the file onto the
+    // attached tree and leaves the branch standing.
     const config = workspace();
     const branch = branchFor(at("FIX-1219", "implement"));
-    // The rule goes first, so the branch points at a commit without it —
-    // otherwise `worktree add` checks out a tree that passes and this asserts
-    // nothing about the refusal path.
     dropIgnoreRule(config.sourceRepo);
     execFileSync("git", ["branch", branch], { cwd: config.sourceRepo, stdio: "pipe" });
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      /does not ignore/,
-    );
-
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    expect(checkout.created).toBe(true);
+    expect(checkout.healed).toEqual(["added **/.fsdev/ to .gitignore"]);
     expect(
       execFileSync("git", ["branch", "--list", branch], {
         cwd: config.sourceRepo,
@@ -1289,37 +1199,12 @@ describe("provisioning refuses a repository that would commit the ask marker", (
     ).not.toBe("");
   });
 
-  it("names the branch it preserved, because fixing the repository misses it", async () => {
-    // The branch it kept is the reason the refusal needs a second half. Kept
-    // means the next attempt reattaches it, and it points at a commit cut
-    // before the fix — so the recovery the message advertises leaves the task
-    // exactly as wedged as it found it. Same tree as the test above; this one
-    // asserts the operator is told what to do about it.
-    const config = workspace();
-    const branch = branchFor(at("FIX-1219", "implement"));
-    dropIgnoreRule(config.sourceRepo);
-    execFileSync("git", ["branch", branch], { cwd: config.sourceRepo, stdio: "pipe" });
-
-    const failure = await provisionCheckout(config, at("FIX-1219", "implement")).then(
-      () => undefined,
-      (error: Error) => error.message,
-    );
-
-    expect(failure).toMatch(new RegExp(`bring "${branch}" up to date, or delete "${branch}"`));
-    // And NOT the reuse path's extra step: the cleanup took the tree away
-    // before this was rethrown, so sending the operator to remove it would send
-    // them after a directory that is gone.
-    expect(failure).not.toMatch(/remove the checkout at /);
-  });
-
-  it("refuses a rule that names one marker file rather than the directory", async () => {
+  it("appends the directory rule when the existing one names only one marker file", async () => {
     // A marker is named for the attempt that writes it, so a check on one
     // filename answers about one attempt. This rule ignores `1.md` and nothing
-    // else: attempt 1 is safe, attempt 2's question gets committed. Probing a
-    // concrete filename accepted this checkout.
-    //
-    // The directory is what is checked now, because git does not descend into
-    // an excluded one — so no enumeration of filenames can satisfy it partway.
+    // else: attempt 1 is safe, attempt 2's question gets committed. Heal
+    // appends the directory rule rather than refusing a tree that is one
+    // line away from being safe.
     const config = workspace();
     writeFileSync(join(config.sourceRepo, ".gitignore"), ".fsdev/ask/1.md\n");
     execFileSync("git", ["commit", "-q", "-am", "ignore only the first marker"], {
@@ -1327,9 +1212,11 @@ describe("provisioning refuses a repository that would commit the ask marker", (
       stdio: "pipe",
     });
 
-    await expect(provisionCheckout(config, at("FIX-1219", "implement"))).rejects.toThrow(
-      /does not ignore the directory/,
-    );
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    expect(checkout.healed).toEqual(["added **/.fsdev/ to .gitignore"]);
+    const ignore = readFileSync(join(checkout.path, ".gitignore"), "utf8");
+    expect(ignore).toContain(".fsdev/ask/1.md");
+    expect(ignore).toContain("**/.fsdev/");
   });
 
   it("removes the checkout even when the refusal is the budget running out", async () => {

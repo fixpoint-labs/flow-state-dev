@@ -154,6 +154,7 @@ const sidebars: SidebarsConfig = {
                 "cli/configuration",
                 "cli/agent-dev-loop",
                 "cli/interactive-chat",
+                "cli/conductor",
               ],
             },
             {

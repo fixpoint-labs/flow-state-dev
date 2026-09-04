@@ -5,13 +5,12 @@
  * ## Why a file at all
  *
  * **The harness offers no seam for a question, and that was checked rather
- * than assumed.** `claudeCodeAgent`'s options are `model`, `systemPrompt`,
- * `allowedTools`, `disallowedTools`, `permissionMode`, `agents`, `maxTurns`,
- * `includePartialMessages`, `onToolApproval`, `detached`, `recordWork`, plus
- * LAB-138's per-run working directory. There is no MCP-server option and no
- * way to hand the run an FSD tool, so a conductor-owned "ask" tool the model
- * calls cannot be built without widening the framework — which LAB-138's
- * decision 3 rules out.
+ * than assumed.** The coding step is the workspace-agent chain, which
+ * forwards every `claudeCodeAgent` option except `cwd` (it owns the
+ * directory). There is still no MCP-server option and no way to hand the
+ * run an FSD tool, so a conductor-owned "ask" tool the model calls cannot
+ * be built without widening the framework — which LAB-138's decision 3
+ * rules out.
  *
  * So the question travels as a file the implement prompt names, written before
  * the run opens the PR. That is why the ask is **forced** rather than
@@ -39,13 +38,12 @@
  * Two constraints meet here and this path satisfies both with no step.
  *
  * - **Writable.** Inside `cwd` is the only place it is. Measured, not assumed:
- *   under exactly the config every call site uses today — no `permissionMode`,
- *   no `onToolApproval` — an out-of-tree Write is denied with
- *   `decision_reason_type: "workingDir"`, and the SDK's `additionalDirectories`
- *   is exposed nowhere in conductor's options. Reaching it would be a framework
- *   change. **What makes that fatal rather than annoying is that the run's
- *   result subtype stays `"success"`** — a refused ask is indistinguishable
- *   from an attempt that never asked.
+ *   under the trusted-checkout config (in-tree tools are auto-approved) an
+ *   out-of-tree Write is still denied with `decision_reason_type: "workingDir"`,
+ *   and the SDK's `additionalDirectories` is exposed nowhere in conductor's
+ *   options. Reaching it would be a framework change. **What makes that fatal
+ *   rather than annoying is that the run's result subtype stays `"success"`** —
+ *   a refused ask is indistinguishable from an attempt that never asked.
  * - **Not committable.** `git add -A` does not stage a gitignored path, so the
  *   marker is safe exactly where git already ignores it — and **provisioning
  *   asks git whether it does**, in the checkout, before the agent runs
@@ -63,8 +61,9 @@
  * The marker lands in the product checkout, a worktree of `sourceRepo`, which
  * this lab requires be a different repository, and a target that never adopted
  * the pattern has no such rule. So the rule is now checked where the marker
- * lands rather than assumed from where the code lives, and a repository that
- * lacks it is refused with the line to add.
+ * lands rather than assumed from where the code lives. A repository that
+ * lacks the directory rule is healed on the work branch; a marker that is
+ * already tracked is still refused.
  */
 import { readFile } from "node:fs/promises";
 import { join, sep } from "node:path";

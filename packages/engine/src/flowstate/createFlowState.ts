@@ -246,6 +246,13 @@ class InternalFlowState<TSettings extends object>
    */
   #resolvedRuntimeConfig: RuntimeConfig | undefined;
   /**
+   * Host logger installed via {@link FlowState.setLogger} before the runtime
+   * resolves. `#logVia` reads this first so `--quiet` reaches init narration
+   * that runs during `getRuntime()`, not only logs after the CLI assigns
+   * `runtimeConfig.logger`.
+   */
+  #hostLogger: RuntimeLogger | undefined;
+  /**
    * The in-flight startup recovery sweep, held so `dispose()` can let it finish
    * before the adapters it is writing through are closed. Never rejects — the
    * sweep owns its own failure reporting.
@@ -334,6 +341,13 @@ class InternalFlowState<TSettings extends object>
 
   getRuntime(): Promise<FlowStateRuntime> {
     return this.#runtime();
+  }
+
+  setLogger(logger: RuntimeLogger): void {
+    this.#hostLogger = logger;
+    if (this.#resolvedRuntimeConfig !== undefined) {
+      this.#resolvedRuntimeConfig.logger = logger;
+    }
   }
 
   async dispose(): Promise<void> {
@@ -683,7 +697,9 @@ class InternalFlowState<TSettings extends object>
   ): void {
     try {
       logRuntimeEvent(
-        this.#resolvedRuntimeConfig?.logger ?? DEFAULT_RUNTIME_LOGGER,
+        this.#hostLogger ??
+          this.#resolvedRuntimeConfig?.logger ??
+          DEFAULT_RUNTIME_LOGGER,
         level,
         message,
         context
@@ -691,6 +707,20 @@ class InternalFlowState<TSettings extends object>
     } catch (err) {
       console.error("[flowstate] runtime logger failed", err);
     }
+  }
+
+  /**
+   * Init narration that a host logger can suppress.
+   *
+   * `info` through a host logger. Without one, `console.error` — not
+   * `DEFAULT_RUNTIME_LOGGER.info`, which writes to stdout.
+   */
+  #narrateInit(message: string, context: Record<string, unknown>): void {
+    if (this.#hostLogger !== undefined) {
+      this.#logVia("info", message, context);
+      return;
+    }
+    console.error(message);
   }
 
   /**
@@ -833,11 +863,13 @@ class InternalFlowState<TSettings extends object>
     const profile = this.#options.stores[profileName]!;
     const { stores } = await resolveProfileStores({ profileName, profile });
 
-    // Diagnostic on stderr (like the worker/dispose logs below): stdout is
-    // reserved for data streams such as `fsdev run`'s NDJSON, which a config
-    // load must not corrupt.
-    // eslint-disable-next-line no-console
-    console.error(`[flowstate] active profile: "${profileName}"`);
+    // Narration, not an outcome. Through the host logger at `info` so
+    // `--quiet` and a warn-level TUI can suppress it. Without a host logger,
+    // stay on `console.error`: `DEFAULT_RUNTIME_LOGGER.info` writes to
+    // stdout and would corrupt `fsdev run`'s NDJSON.
+    this.#narrateInit(`[flowstate] active profile: "${profileName}"`, {
+      profile: profileName
+    });
 
     const modelResolver =
       this.#options.modelResolver ??
@@ -904,6 +936,7 @@ class InternalFlowState<TSettings extends object>
       modelResolver,
       voiceProvider,
       settings: this.#options.settings as FlowStateSettings | undefined,
+      logger: this.#hostLogger,
       onBackgroundWork: this.#options.onBackgroundWork,
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
       durabilityProvider,

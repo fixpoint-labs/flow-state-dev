@@ -1081,17 +1081,29 @@ export async function runActionInternal<
   // composed into `composedSignal` via `AbortSignal.any` do NOT propagate
   // here because we listen on `abortController.signal` directly — so a client
   // disconnect or SSE close leaves side-chain work to settle.
+  //
+  // The fire is delayed until the foreground chain (including `.rescue()`)
+  // returns. Resource CAS keys off this signal, not `ctx.signal`, so firing
+  // it the moment `/abort` lands cancelled the settlement write a rescue
+  // handler is there to make — a cancelled worker left its row `in_progress`.
+  // A cancel that arrives after the body has returned still fires immediately
+  // so in-flight `.sideChain()` tasks self-cancel under the drain.
   const sideChainController = new AbortController();
   const fireSideChain = (): void => {
-    // Guard against the TOCTOU window where both the abort listener and the
-    // defensive already-aborted branch below call this: the abort is
-    // idempotent, but skipping here avoids a duplicate diagnostic log.
+    // Guard against the TOCTOU window where settleForeground and the abort
+    // listener both call this: the abort is idempotent, but skipping here
+    // avoids a duplicate diagnostic log.
     if (sideChainController.signal.aborted) return;
     sideChainController.abort(abortController.signal.reason);
     logRuntimeEvent(logger, "warn", "[flow-state] [abort] background signal fired", {
       requestId,
       reason: serializeAbortReason(abortController.signal.reason)
     });
+  };
+  let foregroundSettled = false;
+  const settleForeground = (): void => {
+    foregroundSettled = true;
+    if (abortController.signal.aborted) fireSideChain();
   };
   // `{ once: true }` so the listener auto-removes after firing, avoiding
   // listener accumulation per nodejs/node#46525.
@@ -1103,16 +1115,10 @@ export async function runActionInternal<
       reason: serializeAbortReason(abortController.signal.reason),
       stack: new Error("abort fire site").stack
     });
-    fireSideChain();
+    // Body still running: leave side-chains live so a rescue can write.
+    // Body already returned: fire now so the drain's in-flight tasks stop.
+    if (foregroundSettled) fireSideChain();
   }, { once: true });
-  // Defensive: addEventListener does NOT fire for an already-aborted signal.
-  // Covers the (microsecond) TOCTOU window between registerAbortController
-  // and this listener install. In practice abortController only fires from
-  // the /abort endpoint (a network round-trip), so this branch is exercised
-  // only if registration races abort — but the guard is free.
-  if (abortController.signal.aborted) {
-    fireSideChain();
-  }
 
   // Same-request continuation (FIX-811): `isReplayMode` / `resumeContextRaw` /
   // `priorRecord` were determined above (before the request-start emits, so the
@@ -1421,6 +1427,7 @@ export async function runActionInternal<
       });
     } catch (suspendError) {
       if (suspendError instanceof SuspensionError) {
+        settleForeground();
         const provider = options.runtimeConfig.durabilityProvider;
         // The suspending block's identity is stamped on the error at the
         // innermost scope (FIX-811); the outer ctx usually has no
@@ -1553,6 +1560,8 @@ export async function runActionInternal<
       }
       throw suspendError;
     }
+
+    settleForeground();
 
     if (result.error !== undefined) {
       throw result.error;
@@ -1821,6 +1830,7 @@ export async function runActionInternal<
       requestId
     };
   } catch (error) {
+    settleForeground();
     // The heartbeat is deliberately NOT cleared here. It has to outlive the
     // drain below: while the pool settles, this request is still alive, and a
     // request with no heartbeat goes stale. `detectInterruptedRequests` sweeps

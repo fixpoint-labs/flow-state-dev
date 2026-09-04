@@ -97,4 +97,66 @@ describe("FlowState.getRuntime()", () => {
     await fs.dispose();
     expect(() => fs.getRuntime()).toThrow(FlowStateDisposedError);
   });
+
+  it("narrates the active profile through a host logger installed before getRuntime()", async () => {
+    const info = vi.fn();
+    const errors: unknown[][] = [];
+    const restore = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+    try {
+      const fs = createFlowState({
+        flows: flows(),
+        stores: { default: { primary: inMemoryStores() } }
+      });
+      fs.setLogger({ info });
+      const runtime = await fs.getRuntime();
+      expect(info).toHaveBeenCalledWith(
+        `[flowstate] active profile: "default"`,
+        expect.objectContaining({ profile: "default" })
+      );
+      expect(
+        errors.some((args) => String(args[0] ?? "").includes("active profile"))
+      ).toBe(false);
+      expect(runtime.runtimeConfig.logger).toEqual({ info });
+    } finally {
+      console.error = restore;
+    }
+  });
+
+  it("replaces the host logger on the shared runtimeConfig after resolve", async () => {
+    const first = { info: vi.fn() };
+    const second = { warn: vi.fn() };
+    const fs = createFlowState({
+      flows: flows(),
+      stores: { default: { primary: inMemoryStores() } }
+    });
+    fs.setLogger(first);
+    const runtime = await fs.getRuntime();
+    fs.setLogger(second);
+    expect(runtime.runtimeConfig.logger).toBe(second);
+  });
+
+  it("prints the active profile on stderr when no host logger is installed", async () => {
+    const errors: unknown[][] = [];
+    const restore = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+    try {
+      const fs = createFlowState({
+        flows: flows(),
+        stores: { default: { primary: inMemoryStores() } }
+      });
+      await fs.getRuntime();
+      expect(
+        errors.some(
+          (args) => String(args[0] ?? "") === `[flowstate] active profile: "default"`
+        )
+      ).toBe(true);
+    } finally {
+      console.error = restore;
+    }
+  });
 });

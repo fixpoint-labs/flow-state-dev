@@ -8,13 +8,18 @@
     ".": "./src/index.ts"
   },
   "description": "Incubation lab: Conductor (LAB-138). A task row becomes a watched, settled coding run — a board, one detached harness manager per epic, a per-run checkout, and a verdict read before the row is settled.",
+  "bin": {
+    "conductor": "./bin/conductor.mjs"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
-    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts"
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "conductor": "node ./bin/conductor.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.234",
     "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",

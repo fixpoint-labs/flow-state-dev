@@ -201,6 +201,58 @@ Options:
 
 Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/session [new|<id>]`, `/exit`. A `/name` no built-in claims is sent to the flow as chat text (how skills are invoked). Messages are sent as `{ message: "<text>" }`. Sessions are kept per flow kind and persist in the engine's stores.
 
+### `fsdev conductor` — Drive a conductor flow
+
+An operator board for a flow whose `kind` is `"conductor"`: a table of rows, each one pending, running, waiting on a question, or done. No verb opens a fullscreen board (table plus talk prompt). Enter or a click opens inspect for one row. Typed input that is not a slash verb is a talk turn (`steer`). It needs `seed`, `wake`, `status`, `answer`, and `steer`; other flows are ignored. The screens, keys, and action contract are on the [Conductor](https://flow-state.dev/docs/cli/conductor) page.
+
+```bash
+# Fullscreen board, live poll, slash commands
+fsdev conductor
+
+# Open the board, then file the row focused on that issue
+fsdev conductor start PR-482 Rename getSession in the docs
+
+# Script it: file a row (extra words are the brief), then read the board back as JSON
+fsdev conductor seed PR-482 Rename getSession in the docs
+fsdev conductor seed PR-482 -- --phase is the ticket
+fsdev conductor seed PR-482 --json
+fsdev conductor status PR-482 --json
+
+# Drain pending rows, then poll until the board is not code 3
+fsdev conductor wake
+fsdev conductor watch
+
+# Answer an open question
+fsdev conductor answer PR-482/implement/1/q "target the release branch"
+
+# Talk to the coordinator (an unslashed line that is not a known verb is the same command)
+fsdev conductor steer "retry the failed rows"
+fsdev conductor please start FIX-99
+
+# Stop a running request, then print the board
+fsdev conductor abort PR-482
+```
+
+It needs a registered flow whose `kind` is `"conductor"` with `seed`, `wake`, `status`, `answer`, and `steer` actions; other flows in the project are ignored. If none is found, the error tells you to `cd` into the app that defines one, or pass `--config` / `--flow-dir`, or set `CONDUCTOR_CONFIG`. Missing one is a config error that names it. Stopping a running request is a CLI verb (`abort` / `stop`). See [Conductor](https://flow-state.dev/docs/cli/conductor) for the exact contract each action has to satisfy and the full verb reference.
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `-s, --session <id>` | Session id used for every `wake` (default: `conductor-operator`). Not a per-row session. |
+| `-u, --user <id>` | Engine identity (default: `cli-user`) |
+| `-m, --model <model>` | Override model for generator blocks run in this process |
+| `--json` | Headless verbs print JSON instead of a plain-text board |
+| `--phase <name>` | Phase for `seed` and `start` (default: `implement`) |
+| `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `--dotenv <path>` | Load a specific `.env` file (repeatable, resolved from cwd) |
+| `--config <path>` / `--no-config` | Load an explicit config (used even when `CONDUCTOR_CONFIG` is set), or ignore config files and `CONDUCTOR_CONFIG` and discover from the cwd |
+| `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. |
+| `CONDUCTOR_REPO` | When set, the fullscreen header, tab title, leftover line after `/quit`, and headless board dumps include the basename of that checkout. A blank value is treated as unset. |
+| `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (board and interactive `start`: silent; other headless: `warn`) |
+
+`status`, `wake`, `watch`, `abort`, and non-interactive `start` exit with a board-outcome code, distinct from the CLI's usual startup exit codes: `0` every named row is completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call itself failed, `2` at least one row has an open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always exits `0`. `steer` exits `0` when the talk succeeds, even when the board then has a pending, running, failed, or open-question row; when the action returns an error it prints the error and exits `1`. `answer` exits `0` on `"answered"` or `"recovered"`, `1` on `"declined"` and prints `declined · <reason>`. `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and uses that board code. With no running request id it prints `nothing running to stop` and exits `1`. The interactive board (no verb, or `tui`) needs a TTY; without one it prints a message and exits `1`.
+
 ### `fsdev block` — Execute a single block in isolation
 
 Runs a block outside of a flow using the testing harness. Useful for development and debugging.
@@ -299,7 +351,7 @@ See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for th
 
 ## Environment variables
 
-`fsdev run`, `fsdev dev`, `fsdev serve`, `fsdev chat`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys. `fsdev serve` also reads `$HOST` and `$PORT` for its bind defaults.
+`fsdev run`, `fsdev dev`, `fsdev serve`, `fsdev chat`, `fsdev conductor`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys. `fsdev serve` also reads `$HOST` and `$PORT` for its bind defaults.
 
 Resolution, highest precedence first:
 
@@ -349,7 +401,7 @@ A module that throws during import doesn't abort discovery: the CLI prints a `Wa
 
 ## Using `fsdev.config.ts`
 
-Directory discovery covers a simple app whose providers are env-keyed. An app with intent-mapped models, a gateway, or a custom store adapter keeps that wiring in its `createFlowState` call. Put a `fsdev.config.ts` at your project root that default-exports that same FlowState handle, and `fsdev run`, `fsdev dev`, and `fsdev chat` use your registry, stores, and model resolver instead of CLI defaults.
+Directory discovery covers a simple app whose providers are env-keyed. An app with intent-mapped models, a gateway, or a custom store adapter keeps that wiring in its `createFlowState` call. Put a `fsdev.config.ts` at your project root that default-exports that same FlowState handle, and `fsdev run`, `fsdev dev`, `fsdev chat`, and `fsdev conductor` use your registry, stores, and model resolver instead of CLI defaults.
 
 The CLI searches the current directory for `fsdev.config.{ts,mts,js,mjs}` (TS first). Pass `--config <path>` to point at an explicit file, or `--no-config` to ignore any config and force directory discovery. With a config loaded, `--model` is routed through your resolver, and `--flow-dir` is rejected (use `--no-config` if you wanted directory discovery).
 

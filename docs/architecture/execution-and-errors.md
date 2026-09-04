@@ -186,7 +186,7 @@ pipeline
 Background `.sideChain()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request constructs two `AbortController`s:
 
 - `abortController` — the abort-registry controller. Fires on an explicit cancellation only, never on a transport signal. Two paths reach it and they converge here: the `/abort` endpoint / `session.abortRequest()` when the request is running in this process, and `runAction`'s heartbeat-tick poll when the intent was recorded by another process (FIX-1026). A cross-process abort is therefore indistinguishable downstream from a local one.
-- `sideChainController` — fires only when `abortController` fires.
+- `sideChainController` — fires only when `abortController` fires, and only after the foreground chain (including `.rescue()`) has returned. Resource CAS uses this signal, so firing it the moment `/abort` lands would cancel the settlement write a rescue handler is there to make.
 
 ```
 runActionInternal
@@ -195,7 +195,9 @@ runActionInternal
                            the request store (cross-process delivery)
   composedSignal = AbortSignal.any([options.signal, abortController.signal])
                          ← foreground chain; also fires on transport signal
-  sideChainController   ← NEW; listens on abortController.signal ({ once: true })
+  sideChainController   ← fires after the foreground chain returns when
+                           abortController has fired; fires immediately
+                           if `/abort` arrives after that (mid-drain)
                            does NOT see options.signal / composedSignal
 
   createExecutionContext({ signal: composedSignal,
@@ -213,7 +215,7 @@ runActionInternal
 
 Wiring details:
 
-- `sideChainController` listens on `abortController.signal` with `{ once: true }`, plus a defensive `if (signal.aborted)` guard for the registration/abort race. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `sideChainController` because the listener is on `abortController.signal` directly.
+- `sideChainController` is armed from `abortController.signal`, but the fire is deferred until `executeBlock` returns (success, throw, or suspend) so a `.rescue()` handler can still write resources. A cancel that arrives after that — including mid-drain — fires immediately. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `sideChainController`.
 - `_requestSideChainSignal` is an internal `BlockContext` field, propagated through every scope alongside `_requestSideChainPool`.
 - The sequencer DSL substitutes `ctx.signal` with `_requestSideChainSignal` at `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` dispatch, and threads a `signalOverride` through `_withExecutionScope` so descendant scopes inherit it rather than the closure-captured root signal.
 - `drainRequestSideChainPool` takes no signal: it waits unconditionally, on every terminal path — success, `failed`, `aborted`, and `interrupted` alike (FIX-1001). If an explicit `/abort` arrives mid-drain, in-flight tasks self-cancel via their own `ctx.signal` and settle as rejections, so the drain still resolves. **The suspend path is not a terminal path and still does not drain** — see the replay contract below; `suspended` is a pause, and its in-flight background work is re-run after resume.

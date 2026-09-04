@@ -71,6 +71,23 @@ function identity(attempt: number): AttemptIdentity {
   return { taskId: TASK, attempt, topic: TOPIC, boardCollectionId: BOARD };
 }
 
+/** What an attempt already knows when it opens the row. */
+function opened(
+  ids: { requestId?: string; childSessionId?: string } = {},
+): {
+  workspacePath: string;
+  branch: string;
+  requestId: string;
+  childSessionId: string;
+} {
+  return {
+    workspacePath: "/w/a",
+    branch: "b",
+    requestId: ids.requestId ?? "req-open",
+    childSessionId: ids.childSessionId ?? "child-open",
+  };
+}
+
 /** A board row as a claim leaves it. */
 function claimed(attempts: number, status = "in_progress") {
   return { id: TASK, status, attempts };
@@ -83,7 +100,7 @@ describe("the run record — the two key vocabularies", () => {
     await board.upsert(TASK, claimed(1));
     const ctx = contextWith(runs, board);
 
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), opened());
 
     // Written and read by the BARE topic.
     expect(await runs.getOptional(TOPIC)).toBeDefined();
@@ -128,7 +145,7 @@ describe("the run record — obligation A", () => {
 
     // Attempt 1 claims and opens the row.
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), opened());
 
     // The lease lapses and attempt 2 is claimed. The board's counter moves; the
     // run row does not, because attempt 2 is still waiting for the checkout.
@@ -159,9 +176,9 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), opened());
     await board.upsert(TASK, claimed(2));
-    await openRunRow(ctx, identity(2), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(2), opened());
     await writeRunRow(ctx, identity(2), { sessionId: "sess_live" });
 
     expect(await writeRunRow(ctx, identity(1), { sessionId: "sess_stale" })).toBe(
@@ -180,7 +197,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(3));
-    expect(await openRunRow(ctx, identity(3), { workspacePath: "/w/a", branch: "b" })).toBe(
+    expect(await openRunRow(ctx, identity(3), opened())).toBe(
       "applied",
     );
     expect(await writeRunRow(ctx, identity(3), { sessionId: "s" })).toBe("applied");
@@ -196,7 +213,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), opened());
     await board.upsert(TASK, claimed(1, "pending"));
 
     expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("refused");
@@ -217,7 +234,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), opened());
     await board.upsert(TASK, { ...claimed(1), leaseUntil: Date.now() - 1_000 });
 
     expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("refused");
@@ -232,7 +249,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, { ...claimed(1), leaseUntil: Date.now() + 60_000 });
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), opened());
 
     expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("applied");
   });
@@ -247,7 +264,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), opened());
     await board.upsert(TASK, {
       ...claimed(1, "awaiting_review"),
       leaseUntil: Date.now() - 1_000,
@@ -268,7 +285,7 @@ describe("the run record — the clearing rule", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), opened({ requestId: "req-1", childSessionId: "child-1" }));
     await writeRunRow(ctx, identity(1), {
       sessionId: "sess_one",
       finalMessage: "attempt one said this",
@@ -278,17 +295,41 @@ describe("the run record — the clearing rule", () => {
     });
 
     await board.upsert(TASK, claimed(2));
-    await openRunRow(ctx, identity(2), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(2), opened({ requestId: "req-2", childSessionId: "child-2" }));
 
     const row = (await runs.getOptional(TOPIC))!.state as RunRecordState;
     expect(row.sessionId).toBeNull();
     expect(row.finalMessage).toBeNull();
     expect(row.costUsd).toBeNull();
     expect(row.reason).toBeNull();
+    // The runtime ids are restamped, not left as attempt 1's follow target.
+    expect(row.requestId).toBe("req-2");
+    expect(row.childSessionId).toBe("child-2");
     // The checkout and branch are re-stated, not cleared — they describe the
     // issue-phase, not the attempt.
     expect(row.workspacePath).toBe("/w/a");
     expect(row.attempt).toBe(2);
+  });
+
+  it("stamps the runtime ids at open so a live row is followable", async () => {
+    // A follower reads `status` while the agent is still running. Writing the
+    // request id only at the verdict leaves every live row with `requestId:
+    // null`, which is a board that cannot be watched.
+    const runs = fakeCollection(RUNS);
+    const board = fakeCollection(BOARD);
+    const ctx = contextWith(runs, board);
+
+    await board.upsert(TASK, claimed(1));
+    await openRunRow(
+      ctx,
+      identity(1),
+      opened({ requestId: "req-live", childSessionId: "child-live" }),
+    );
+
+    const row = (await runs.getOptional(TOPIC))!.state as RunRecordState;
+    expect(row.outcome).toBe("running");
+    expect(row.requestId).toBe("req-live");
+    expect(row.childSessionId).toBe("child-live");
   });
 });
 

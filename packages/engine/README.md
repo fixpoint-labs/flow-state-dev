@@ -40,6 +40,7 @@ That's a full API with action execution, session management, SSE streaming with 
 - `getRouter(): Promise<FlowApiRouter>` — resolve the route handlers (first call triggers store init).
 - `ready(): Promise<void>` — eager warmup, idempotent.
 - `dispose(): Promise<void>` — drain in-process background work, close the worker, release pooled resources.
+- `setLogger(logger: RuntimeLogger): void` — install a host logger. Call it before `getRouter()` / `ready()` if you want init lines (the active-profile line, for example) to go through your logger. Calling it again replaces the logger, including for later lines from `dispose()`. If you never call it, init prints the active-profile line on stderr. Not a `createFlowState` option.
 - `activeProfile`, `settings`, `meta` — read-only diagnostics.
 
 Construction is synchronous; stores initialize lazily and memoized on the first `getRouter()` / `ready()`. There's no top-level await, so the same instance works in a Next.js Route Handler.

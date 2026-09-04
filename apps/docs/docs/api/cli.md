@@ -164,6 +164,57 @@ A `/name` that no built-in claims is sent to the flow as chat text (this is how 
 
 Startup binds a default target from the positional arguments, a config `chat.default`, or a sole discovered flow; otherwise the session starts unbound. Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). No new exit codes: startup failures reuse `EXIT_CONFIG_ERROR` / `EXIT_DISCOVERY_ERROR` / `EXIT_INVALID_ARGS`; a failed turn never exits the loop, and in piped (non-TTY) mode a run with any failed turn or built-in exits `EXIT_EXECUTION_ERROR`. See [Interactive Chat](/docs/cli/interactive-chat) for the guide.
 
+### `fsdev conductor [verb]`
+
+Operator surface for a flow whose `kind` is `"conductor"`, with `seed`, `wake`, `status`, `answer`, and `steer` actions. No verb (or `tui [issue]`) opens two screens: the board (table plus talk prompt) and inspect (one row's question, transcript, files). Enter or a click opens inspect; Esc returns to the board. Any other verb runs headless and exits. Typed input that is not a slash verb is a talk turn (`steer`). On the board, letters talk even when a row is waiting; type the reply on inspect, or `/answer`.
+
+```bash
+fsdev conductor status
+fsdev conductor seed PR-482 Rename getSession in the docs
+fsdev conductor answer PR-482/implement/1/q "target the release branch"
+fsdev conductor steer "retry the failed rows"
+fsdev conductor please start FIX-99
+fsdev conductor abort PR-482
+```
+
+**Verbs:**
+
+| Verb | Does |
+|------|------|
+| (none) / `tui [issue]` | Fullscreen board. Needs a TTY; without one, prints a message and exits `1` |
+| `status [issue]` | Print the board, optionally filtered to one issue |
+| `seed <issue> [--phase implement] [brief…]` | File a row, then print it. Extra words after the issue id are the brief attempt 1 reads. `--` starts a literal brief |
+| `wake` | Process pending rows, then print the board |
+| `answer <question-id> <reply…>` | Resolve one open question |
+| `steer <message…>` | Talk to the coordinator. An unslashed line that is not a known verb is the same command. Talking can start work. The coordinator may file a row. `--json` prints `{ "message": "<reply>" }` and omits the board |
+| `abort [issue]` / `stop [issue]` | Stop running requests, optionally filtered to one issue. Omit `issue` to stop every running row on the board |
+| `watch [issue]` | Poll `status` until the board is not code `3`. An open question is code `2` and `watch` stops there; a failed last attempt is code `1` |
+| `start <issue> [brief…]` | On a TTY, open the board, then file the row focused on that issue. On a pipe, seed then watch. Extra words after the issue id are the brief |
+| `help` / `-h` | Print the help text |
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-s, --session <id>` | Session id used for every `wake` (default: `conductor-operator`). Not a per-row session. |
+| `-u, --user <id>` | Engine identity (default: `cli-user`) |
+| `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
+| `--json` | Headless verbs print JSON instead of a plain-text board |
+| `--phase <name>` | Phase for `seed` and `start` (default: `implement`) |
+| `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
+| `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd. Used even when `CONDUCTOR_CONFIG` is set. |
+| `--no-config` | Ignore config files and `CONDUCTOR_CONFIG`, and discover from the cwd |
+| `CONDUCTOR_CONFIG` | Config path when `--config` and `--no-config` are omitted. A blank value is treated as unset. |
+| `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
+| `--quiet` | Suppress runtime logs on stderr |
+| `--log-level <level>` | Stderr log level: `debug` \| `info` \| `warn` \| `error` (board and interactive `start`: silent; other headless: `warn`) |
+
+**Exit codes:** startup failures reuse the codes in [Exit Codes](#exit-codes) below (`2` invalid args, `3` config error, `4` discovery error). Once running, `status`, `wake`, `watch`, `abort`, and a non-interactive `start` return a second scheme describing the board itself: `0` every named row completed, `1` the board is empty, the last attempt failed (`errored`, `cancelled`, or `run.outcome` `"failed"`, including a `pending` row), or the call failed, `2` at least one open question (wins over a failed attempt), `3` running or pending with no question and no failed attempt. `seed` always returns `0`. `steer` returns `0` when the talk succeeds, even when the board then has a pending, running, failed, or open-question row; when the action returns an error it prints the error and returns `1`. `answer` returns `0` on `"answered"`/`"recovered"`, `1` on `"declined"` (prints `declined · <reason>`). `abort` / `stop` prints `stop · <requestId>` (or `stop · <requestId> was not running`), then the board, and returns that board code. With no running request id it prints `nothing running to stop` and returns `1`.
+
+In the TUI, `/` lists matching verbs and board ids for `Tab` to complete, and `/find` searches the selected row's transcript (opens inspect). While a seed, wake, answer, or steer is in flight, `Ctrl-C` cancels it.
+
+Runtime resolution matches `fsdev run` (an `fsdev.config.ts` wins over discovery). See [Conductor](/docs/cli/conductor) for `x`, `Ctrl-C`, `/quit`, the action contract a conductor-shaped flow has to satisfy, the two-screen keys, the RUN band, and a full walkthrough.
+
 ### `fsdev block <specifier>`
 
 Execute a single block in isolation using the testing harness.
@@ -347,3 +398,5 @@ import type {
 | 3 | Configuration error (invalid port, missing devtool assets) |
 | 4 | Discovery error (flow or block not found, import failed) |
 | 10 | Internal error (unhandled exception) |
+
+This table covers startup and generic execution failures across every command. `fsdev conductor`'s headless verbs return a second, board-specific 0–3 scheme once past startup — see [its exit codes](#fsdev-conductor-verb) above.

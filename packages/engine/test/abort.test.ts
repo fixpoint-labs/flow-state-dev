@@ -1,4 +1,4 @@
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, defineResource, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, beforeEach } from "vitest";
 import {
@@ -274,6 +274,98 @@ describe("runAction — abort path", () => {
     const updatedRecord = await stores.request.get("req_abort_test");
     expect(updatedRecord?.status).toBe("aborted");
     expect(updatedRecord?.abortedAt).toBeTypeOf("number");
+  });
+
+  it("lets a rescue handler write a resource after operator abort", async () => {
+    // `/abort` fires the request controller immediately. Resource CAS keys
+    // off the side-chain signal, which used to fire in that same listener —
+    // so a `.rescue()` that settled a row aborted its own write. The
+    // side-chain signal must stay live until the foreground chain,
+    // including rescue, returns.
+    const stores = createInMemoryStores();
+    const requestId = "req_abort_rescue_write";
+    const sessionId = "sess_abort_rescue";
+    const note = defineResource({
+      scope: "session",
+      ref: "note",
+      stateSchema: z.object({ settled: z.string().nullable().default(null) }),
+      writable: true
+    });
+    const hang = handler({
+      name: "hang-until-abort",
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.string(),
+      execute: async (_input, ctx) => {
+        await new Promise<never>((_resolve, reject) => {
+          if (ctx.signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          ctx.signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true }
+          );
+        });
+      }
+    });
+    const record = handler({
+      name: "record-settlement",
+      inputSchema: z.unknown(),
+      outputSchema: z.never(),
+      resources: { note },
+      execute: async (_error, ctx): Promise<never> => {
+        await ctx.resources.note.setState({ settled: "yes" });
+        throw _error instanceof Error ? _error : new Error(String(_error));
+      }
+    });
+    const flow = defineFlow({
+      kind: "abort-rescue-write",
+      resources: { note },
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: sequencer({ name: "seq" }).step(hang).rescue([{ block: record }])
+        }
+      }
+    })();
+
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "user_abort_rescue",
+      sessionId,
+      stores,
+      runtimeConfig: {}
+    });
+
+    const deadline = Date.now() + 2_000;
+    for (;;) {
+      const live = await stores.request.get(requestId);
+      if (live?.status === "in_progress") break;
+      if (Date.now() >= deadline) {
+        throw new Error("request never reached in_progress");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await stores.request.setFieldsIfStatus(
+      requestId,
+      { abortRequested: true },
+      ["in_progress"],
+      Date.now()
+    );
+    expect(abortRequest(requestId)).toBe(true);
+
+    const result = await resultPromise;
+    expect(result.error).toBeUndefined();
+
+    const updatedRecord = await stores.request.get(requestId);
+    expect(updatedRecord?.status).toBe("aborted");
+    expect((await stores.resourceState.get("session", sessionId, "note"))?.state).toEqual({
+      settled: "yes"
+    });
   });
 
   it("writes interrupted status when signal aborts without abortRequested flag", async () => {

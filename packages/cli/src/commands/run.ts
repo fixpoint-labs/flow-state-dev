@@ -204,6 +204,8 @@ export async function executeRunCommand(
         }
       : undefined;
 
+  const logger = createCliLogger(resolveLogLevel(options, "info"));
+
   try {
     let flow: FlowInstance;
     let stores: StoreRegistry;
@@ -213,6 +215,10 @@ export async function executeRunCommand(
       // --- config path: take the app's registry/stores/runtimeConfig ---
       // Guarded here (inside the try) so a failure disposes the loaded FlowState.
       assertNoFlowDirWithConfig(options.flowDir);
+      // Before getRuntime(): the active-profile line is init narration and
+      // `--quiet` must reach it. The same logger is stamped on runtimeConfig
+      // again below so dispose() still sees it.
+      resolved.flowState.setLogger(logger);
       let runtime;
       try {
         runtime = await resolved.flowState.getRuntime();
@@ -325,11 +331,8 @@ export async function executeRunCommand(
       },
     });
 
-    // 6b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
-    const logLevel = resolveLogLevel(options, "info");
-    const logger = createCliLogger(logLevel);
-
-    // Install it on the app's OWN runtime config too, not just on the derived
+    // Logger was built before getRuntime() so `--quiet` reaches init narration.
+    // Stamp it on the app's OWN runtime config too, not just on the derived
     // copy below. The FlowState logs on its own account outside any request —
     // notably while `dispose()` waits for detached work to finish — and it reads
     // this object, never the copy. Without this, `--quiet` silenced the run and

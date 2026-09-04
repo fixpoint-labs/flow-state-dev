@@ -227,6 +227,12 @@ export interface HarnessOptions {
   provisionTimeoutMs?: number;
   /** The relay seam. Called after the park; a no-op by default. */
   announce?: NonNullable<Parameters<typeof conductorFlow>[0]["announce"]>;
+  /**
+   * Resolver for the coordinator talk turn. Tests that do not call `steer`
+   * leave this unset — the default still throws, so a stray generator call
+   * cannot silently succeed.
+   */
+  modelResolver?: ModelResolver;
 }
 
 /** A real git repository with one commit, so `worktree add` has something to cut. */
@@ -236,6 +242,10 @@ export function seedRepo(dir: string): void {
   git("init", "--initial-branch=main", ".");
   git("config", "user.email", "conductor@example.test");
   git("config", "user.name", "Conductor Test");
+  // Fixtures do not sign. A host that requires commit signing would otherwise
+  // hang every `git commit` on its signing helper, and the suite would fail
+  // under that host rather than on the thing it is testing.
+  git("config", "commit.gpgsign", "false");
   // **A stand-in repository has tracked content, because a real one does.**
   // These fixtures committed nothing, so every worktree cut from them had zero
   // tracked files — which makes a half-populated checkout indistinguishable from
@@ -244,22 +254,20 @@ export function seedRepo(dir: string): void {
   // Another fixture that had drifted from the thing it stands for.
   writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
   // **A stand-in source repository ignores the ask marker, because a real one
-  // has to.** The marker lands in the product checkout, so the rule that keeps
-  // it out of a commit belongs to THAT repository — and provisioning now
-  // refuses a checkout whose repository does not carry it, before the agent
-  // runs. Third fixture in this file that had drifted from the thing it stands
-  // for, and the same tell each time: the specs passed because nothing asked.
+  // should.** The marker lands in the product checkout. Provisioning heals a
+  // missing directory rule onto the worktree; fixtures that already carry it
+  // keep the common path free of that write.
   writeFileSync(join(dir, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
   git("add", "tracked.txt", ".gitignore");
   git("commit", "-m", "root");
   // **A stand-in source repository has an `origin`, because a real one does.**
-  // The implement phase's completion probe reads it, and `conductorFlow` now
-  // refuses a source repo without one — a guard that exists because the failure
-  // otherwise lands after a paid agent run, once per retry. These fixtures had
-  // no remote at all, so every flow built here was one the probe could not have
-  // run against; the specs passed only because the probe is stubbed. Nothing
-  // resolves this URL: the phase's `gh` call is replaced in every test that
-  // reaches it.
+  // The implement phase's completion probe reads it, and `preparePhase` (called
+  // before seed / wake / a draining answer) refuses a source repo without one —
+  // a guard that exists because the failure otherwise lands after a paid agent
+  // run, once per retry. These fixtures had no remote at all, so every flow
+  // that started a worker here was one the probe could not have run against;
+  // the specs passed only because the probe is stubbed. Nothing resolves this
+  // URL: the phase's `gh` call is replaced in every test that reaches it.
   git("remote", "add", "origin", "https://github.com/fixpoint-labs/conductor-fixture.git");
 }
 
@@ -342,9 +350,10 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
     flows: { [CONDUCTOR_FLOW_KIND]: built.flow },
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
-    modelResolver: Object.assign(neverResolvesAModel, {
-      resolveId: neverResolvesAModel,
-    }) as unknown as ModelResolver,
+    modelResolver: (options.modelResolver ??
+      Object.assign(neverResolvesAModel, {
+        resolveId: neverResolvesAModel,
+      })) as unknown as ModelResolver,
     // The default is a serverless SIGTERM window, far shorter than a coding
     // run. An in-process host must raise it or a shutdown truncates one.
     detachedDrainTimeoutMs: 60_000,

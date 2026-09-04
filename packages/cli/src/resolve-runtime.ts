@@ -1,5 +1,6 @@
 /**
- * Shared runtime-resolution prelude for `fsdev run`, `fsdev dev`, and `fsdev chat`.
+ * Shared runtime-resolution prelude for `fsdev run`, `fsdev dev`, `fsdev chat`,
+ * and `fsdev conductor`.
  *
  * Absorbs only the copy-paste-identical front of those commands: load `.env`
  * files, import an `fsdev.config.*` (or fall back to directory discovery), and
@@ -59,6 +60,13 @@ export interface ResolveRuntimeParams {
    * always `source: "config"`.
    */
   requireConfig?: boolean;
+  /**
+   * Write each discovery import failure to stderr. Default true — the same
+   * as `run` / `dev` / `chat`. `fsdev conductor` sets this false so a
+   * repo-root miss can lead with the "cd labs/conductor" hint instead of
+   * kitchen-sink / trading-desk import noise.
+   */
+  warnImportFailures?: boolean;
 }
 
 /** Config path: an `fsdev.config.*` was found and loaded. */
@@ -132,9 +140,10 @@ export async function resolveRuntimeSource(
     );
   }
 
-  // Discovery path: scan conventional directories. Import failures are warned to
-  // stderr unconditionally — diagnostics about broken modules, the same category
-  // as CliError output, and stderr keeps stdout pure.
+  // Discovery path: scan conventional directories. Import failures are collected
+  // always; stderr warnings are the default so `run` / `dev` / `chat` still
+  // surface broken modules. A caller that owns the miss message
+  // (`warnImportFailures: false`) keeps those lines off stderr.
   const importFailures: FlowImportFailure[] = [];
   const discoverOptions: DiscoverFlowsOptions = {
     cwd: params.cwd,
@@ -142,8 +151,10 @@ export async function resolveRuntimeSource(
     onImportFailed: (failure) => importFailures.push(failure),
   };
   const flows = await discoverFlows(discoverOptions);
-  for (const failure of importFailures) {
-    process.stderr.write(formatImportFailureWarning(failure));
+  if (params.warnImportFailures !== false) {
+    for (const failure of importFailures) {
+      process.stderr.write(formatImportFailureWarning(failure));
+    }
   }
 
   return {
@@ -243,11 +254,12 @@ export function createCliLogger(level: RuntimeLoggerLevel | "silent"): RuntimeLo
  * Resolves the effective stderr log level from `--quiet` / `--log-level`.
  * `--quiet` wins ("silent"); an explicit `--log-level` is validated; the default
  * is provided by the caller (`run` defaults to "info", `chat` to "warn" so the
- * transcript isn't drowned by info-level engine logs).
+ * transcript isn't drowned by info-level engine logs, `conductor` TUI to
+ * "silent" so engine lines do not write over the board).
  */
 export function resolveLogLevel(
   options: { quiet?: boolean; logLevel?: RuntimeLoggerLevel },
-  defaultLevel: RuntimeLoggerLevel,
+  defaultLevel: RuntimeLoggerLevel | "silent",
 ): RuntimeLoggerLevel | "silent" {
   if (options.quiet === true) return "silent";
   const requested = options.logLevel;
@@ -261,4 +273,21 @@ export function resolveLogLevel(
     return requested;
   }
   return defaultLevel;
+}
+
+/**
+ * Install the CLI stderr logger on a config `FlowState` before `getRuntime()`.
+ *
+ * Init narration (the active-profile line) runs during that call. Installing
+ * afterwards is too late for `--quiet` and for a silent TUI. Returns the
+ * same logger so the command can also stamp it on the resolved `runtimeConfig`.
+ */
+export function installCliLogger(
+  flowState: FlowState,
+  options: { quiet?: boolean; logLevel?: RuntimeLoggerLevel },
+  defaultLevel: RuntimeLoggerLevel | "silent",
+): RuntimeLogger {
+  const logger = createCliLogger(resolveLogLevel(options, defaultLevel));
+  flowState.setLogger(logger);
+  return logger;
 }

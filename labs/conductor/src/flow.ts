@@ -1,10 +1,11 @@
 /**
- * The conductor flow — a board, one detached worker, and three zero-model
- * actions.
+ * The conductor flow — a board, one detached worker, four zero-model verbs,
+ * and one talk turn.
  *
  * `seed` files an issue-phase as a durable row. `wake` drains the board, which
  * claims a row and hands it to the manager in its own workstream. `status`
- * reads back what happened.
+ * reads back what happened. `steer` is the coordinator: the operator talks,
+ * and that turn may call the same verbs as tools. It does not implement.
  *
  * ## The board's own ledger is a deliverable, not a default
  *
@@ -53,7 +54,7 @@
  * reads as a success while the board row is still open. **The board row is the
  * authority on completion; the run record never is.**
  */
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -113,6 +114,16 @@ import {
   tenantSegment,
   type WorkspaceConfig,
 } from "./workspace";
+import {
+  COORDINATOR_HISTORY_LIMIT,
+  STEER_PROMPT,
+  coordinatorInputSchema,
+  coordinatorModelId,
+  coordinatorPhase,
+  formatCoordinatorBoard,
+  projectCoordinatorRow,
+  steerInputSchema,
+} from "./steer";
 
 /** The one assignee this board routes to. */
 export const ASSIGNEE = "harness" as const;
@@ -466,9 +477,12 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // through `sameSegment` so nothing depends on this call folding anything.
   assertSafeSegment("phase", phase.phase);
 
-  // The phase's own preconditions, at the same door and for the same reason —
-  // see `PhaseSpec.validate`. Last, because a phase's requirements are stated in
-  // terms of a repository the checks above have already established is real.
+  // The phase's own preconditions run before the first *claim*, not here.
+  // `status` and a talk turn that does not start work never claim, and a
+  // missing `origin` / `gh` is only fatal for the implement probe. Refusing
+  // the whole flow at construction made those doors a dead stop. Last, because
+  // a phase's requirements are stated in terms of a repository the checks
+  // above have already established is real.
   if (tenant === "") {
     throw new Error(
       "[conductor] tenant is an empty string. Omit it for an untenanted conductor, or " +
@@ -477,45 +491,34 @@ export function conductorFlow(options: ConductorFlowOptions) {
     );
   }
 
-  // **Above `validate`, and no longer for safety.** Under the previous design
-  // this ordering was load-bearing and got it wrong: `validate` stored what it
-  // found, so a construction that then failed here left the pin behind and the
-  // corrected retry was refused as already pinned. `validate` retains nothing
-  // now, so either order is correct — which is what makes the cheap check
-  // going first a plain economy rather than a fix. The implement phase's
-  // `validate` spawns `git` and `gh`; comparing a string to `""` does not.
+  // **Lazy, and memoized on THIS conductor.** `validate` used to run here, which
+  // made `status` and talk refuse a checkout the implement probe cannot query.
+  // Seed, wake, and a draining answer call `preparePhase` before they claim, so
+  // a missing `origin` still cannot charge a retry. The value is captured the
+  // first time it succeeds; a phase that stored it on itself would hand it to
+  // the next conductor.
   //
-  // **Captured, not left in the phase.** What `validate` learns belongs to THIS
-  // conductor; a phase that stored it on itself would hand it to the next one.
-  const validated = phase.validate?.(workspace);
-
-  // The phase the manager actually runs: this conductor's `validated` bound
-  // into every run context, by a closure that belongs to this construction and
-  // nothing else. Two conductors from one `PhaseSpec` get two wrappers, so
-  // neither can reach the other's value — which is the property the phase
-  // could not give itself, since the snapshot above copies function references
-  // and not what they close over.
-  //
-  // Gated on the VALUE rather than on `validate` being defined, and the two are
-  // equivalent: binding `undefined` produces a run context whose `validated` is
-  // `undefined`, which is what an unwrapped phase already receives. A phase
-  // cannot distinguish "not bound" from "bound as undefined", so the wrapper
-  // would be a no-op — and this way a `validate` that only refuses, returning
-  // nothing, costs no allocation per run.
   // **Both hooks, because the type promises both.** `validated` lives on
   // `PhaseRunContext`, which `PromptRunContext` extends — so a phase's prompt
   // builder is told it receives the value. Binding it into `isDone` alone made
-  // the type a lie for the other half: a custom phase whose prompt depends on
-  // what `validate` found would read `undefined` and build the wrong prompt,
-  // silently, after a construction that succeeded. The manager builds the two
-  // contexts separately, so one wrapper cannot cover both.
+  // the type a lie for the other half.
+  let prepared: { value: unknown } | undefined;
+  const preparePhase = (): unknown => {
+    if (prepared === undefined) {
+      prepared = { value: phase.validate?.(workspace) };
+    }
+    return prepared.value;
+  };
+
   const runPhase: PhaseSpec =
-    validated === undefined
+    phase.validate === undefined
       ? phase
       : Object.freeze({
           ...phase,
-          isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
-          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
+          isDone: (run: PhaseRunContext) =>
+            phase.isDone({ ...run, validated: preparePhase() }),
+          buildPrompt: (run: PromptRunContext) =>
+            phase.buildPrompt({ ...run, validated: preparePhase() }),
         });
 
   // **An empty tenant is a mistake, and refusing it is not the same as
@@ -717,7 +720,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
           assignee: ASSIGNEE,
           // The typed payload. NEVER `metadata`: that is model-patchable through
           // `updateTask`, and the checkout path is derived from these two fields.
-          input: { issue: input.issue, phase: input.phase },
+          input: {
+            issue: input.issue,
+            phase: input.phase,
+            ...(typeof input.brief === "string" && input.brief.trim() !== ""
+              ? { brief: input.brief.trim() }
+              : {}),
+          },
           // Without this the substrate is single-attempt and a reported failure
           // costs nothing and delivers nothing — the defect this lab exists to fix.
           maxAttempts,
@@ -786,6 +795,13 @@ export function conductorFlow(options: ConductorFlowOptions) {
         status: z.string(),
         attempts: z.number(),
         feedback: z.string().nullable(),
+        /**
+         * What the operator filed with the issue, when they did. Stored on
+         * the task payload; attempt 1 already reads it. The board and the
+         * coordinator talk turn read it here so that memory is not trapped
+         * in the collection.
+         */
+        brief: z.string().nullable(),
         /**
          * The run's own row, **as the schema declares it** rather than as a
          * hand-listed subset.
@@ -883,6 +899,27 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     },
   });
 
+  /**
+   * Run the phase's workspace checks before a claim. Memoized on this
+   * conductor. `status` and a talk turn that does not start work skip it.
+   */
+  const phaseReady = handler({
+    name: "conductor-phase-ready",
+    inputSchema: z.unknown(),
+    outputSchema: z.void(),
+    execute: () => {
+      preparePhase();
+    },
+  });
+
+  const drainWhenReady = sequencer({
+    name: "conductor-drain",
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+  })
+    .tap(phaseReady)
+    .step(board.drain);
+
   const readStatus = handler({
     name: "conductor-status",
     inputSchema: z.object({ issue: z.string().optional() }),
@@ -899,6 +936,8 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
         const payload = conductorTaskInputSchema.safeParse(task.input);
         const issue = payload.success ? payload.data.issue : null;
         const phaseName = payload.success ? payload.data.phase : null;
+        const briefRaw = payload.success ? payload.data.brief?.trim() : undefined;
+        const brief = briefRaw !== undefined && briefRaw !== "" ? briefRaw : null;
         // **Compare the canonical form on both sides.** Identity derivation folds
         // case (`assertSafeSegment`), so seeding `FIX-1` and seeding `fix-1`
         // resolve the same row — but a raw comparison here then hid that row
@@ -977,6 +1016,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           status: task.status,
           attempts: task.attempts,
           feedback: task.feedback ?? null,
+          brief,
           // The whole row, not a re-listing of it — see the output schema.
           run: record ?? null,
           questions,
@@ -1026,6 +1066,113 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     },
   });
 
+  const rememberSteerMessage = handler({
+    name: "conductor-steer-remember",
+    inputSchema: steerInputSchema,
+    outputSchema: z.void(),
+    execute: async (input, ctx) => {
+      await ctx.sequencer?.patchState({ message: input.message });
+    },
+  });
+
+  const bindSteerInput = handler({
+    name: "conductor-steer-bind",
+    inputSchema: statusOutput,
+    outputSchema: coordinatorInputSchema,
+    execute: (status, ctx) => {
+      const message = (ctx.sequencer?.state as { message?: unknown } | undefined)?.message;
+      if (typeof message !== "string" || message === "") {
+        throw new Error(
+          "[conductor] steer lost the operator message before the coordinator ran.",
+        );
+      }
+      return {
+        message,
+        rows: status.rows.map(projectCoordinatorRow),
+      };
+    },
+  });
+
+  /**
+   * File an issue-phase and drain — the same two steps `seed` runs, callable
+   * as a tool so a talk turn can start work without a second operator verb.
+   */
+  const seedIssueTool = sequencer({
+    name: "seed_issue",
+    description:
+      "File an issue-phase on this epic's board and start a coding worker for it. When the operator already said what the ticket is, pass that as brief.",
+    inputSchema: z.object({
+      issue: z.string().describe("Issue id to file, such as FIX-1049."),
+      phase: z
+        .string()
+        .optional()
+        .describe("Phase the operator named. Omit to use this board's phase. Never pass default."),
+      brief: z
+        .string()
+        .optional()
+        .describe("Ticket text the operator already said. Omit when they only named the id."),
+    }),
+    outputSchema: z.object({ taskId: z.string() }),
+    stateSchema: z.object({ taskId: z.string().nullable().default(null) }),
+  })
+    .tap(phaseReady)
+    .tap((input: { issue: string; phase?: string; brief?: string }) => {
+      const brief = input.brief?.trim();
+      return {
+        issue: input.issue,
+        phase: coordinatorPhase(input.phase, phase.phase),
+        ...(brief !== undefined && brief !== "" ? { brief } : {}),
+      };
+    }, seedTask)
+    .step(drainWhenReady)
+    .step(returnTaskId);
+
+  const wakeBoardTool = sequencer({
+    name: "wake_board",
+    description:
+      "Claim pending or failed rows and start or retry their workers. Do not call this just to read the board.",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+  }).step(drainWhenReady);
+
+  const answerQuestionTool = sequencer({
+    name: "answer_question",
+    description:
+      "Answer one open question and resume that worker. Pass the question id verbatim from the board snapshot.",
+    inputSchema: answerInputSchema,
+    outputSchema: answerOutputSchema,
+  })
+    .step(answerQuestionStep)
+    .tapIf((outcome: AnswerOutput) => outcome.drained, drainWhenReady);
+
+  const coordinator = generator({
+    name: "conductor-coordinator",
+    description: "Talk to the operator and route work through board verbs.",
+    model: coordinatorModelId(),
+    prompt: STEER_PROMPT,
+    inputSchema: coordinatorInputSchema,
+    user: (input: z.infer<typeof coordinatorInputSchema>) => input.message,
+    context: {
+      board: (input: z.infer<typeof coordinatorInputSchema>) =>
+        formatCoordinatorBoard(input.rows),
+    },
+    tools: [seedIssueTool, wakeBoardTool, answerQuestionTool],
+    history: { limit: COORDINATOR_HISTORY_LIMIT },
+    itemVisibility: { client: true, history: true },
+  });
+
+  const steerTurn = sequencer({
+    name: "conductor-steer",
+    inputSchema: steerInputSchema,
+    outputSchema: z.string(),
+    stateSchema: z.object({ message: z.string().nullable().default(null) }),
+  })
+    .tap(tenantGate)
+    .tap(rememberSteerMessage)
+    .step(readStatus)
+    .step(bindSteerInput)
+    .step(coordinator);
+
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
     actions: {
@@ -1041,11 +1188,12 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // that ran after it would be reporting an injection rather than
           // preventing one.
           .tap(tenantGate)
+          .tap(phaseReady)
           .tap(seedTask)
           // The drain claims the row and hands it to a workstream, then returns
           // with the row still open. The seeding request does not wait for the
           // run — which is the point.
-          .step(board.drain)
+          .step(drainWhenReady)
           // **The action answers with the task id, not the drain's output.**
           // `.tap()` discards what `seedTask` returned and the drain replaces the
           // chain value, so without this the caller got `undefined` — and a
@@ -1078,7 +1226,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           outputSchema: z.unknown(),
         })
           .tap(tenantGate)
-          .step(board.drain),
+          .step(drainWhenReady),
       },
       /** The read surface. Zero-model, server-side, board row first. */
       status: { block: readStatus },
@@ -1101,7 +1249,15 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // Only when the decision actually authorized it. A drain is NOT a
           // no-op — on a `pending` row it claims and dispatches — so a
           // declined answer must not run one.
-          .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain),
+          .tapIf((outcome: AnswerOutput) => outcome.drained, drainWhenReady),
+      },
+      /**
+       * Talk to the coordinator. Slash verbs still run the work directly;
+       * this turn may call those same verbs as tools.
+       */
+      steer: {
+        block: steerTurn,
+        userMessage: (input: z.infer<typeof steerInputSchema>) => input.message,
       },
     },
   });
@@ -1142,6 +1298,12 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     collectionId,
     runs: runRecordCollection,
     drainBudgetMs,
+    /**
+     * Run the phase's workspace checks against the snapshotted config.
+     * `seed`, `wake`, and a draining `answer` call this before they claim.
+     * `status` and a talk turn that does not start work do not.
+     */
+    preparePhase,
   };
 }
 

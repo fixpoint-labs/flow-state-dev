@@ -2,13 +2,39 @@
 
 A row on a board becomes a supervised coding run.
 
+The map is [`docs/atlas/conductor.html`](../../docs/atlas/conductor.html) — what exists,
+what is still dashed, and the env a first run needs (`CONDUCTOR_REPO` is a different
+checkout, not this dispatcher). Opening the board and talking do not need an
+`origin` remote or `gh`. Starting a coding run does — `seed`, `wake`, and a talk
+turn that files or retries refuse before they claim if the completion check
+cannot name a repository. Sit in the product checkout and run `pnpm conductor` (repo-root script) or
+this lab's `bin/conductor`. `bin/conductor install` puts `conductor` on PATH
+under `~/.local/bin`.
+The bin sets `CONDUCTOR_CONFIG` to this lab and `CONDUCTOR_REPO=.` when those
+are unset, and it does not change cwd. `--config` still wins when you pass it.
+Pointing the bin at this dispatcher is still refused.
+The board lives next to this config, not next to cwd, so the same epic is
+the same board from either directory. `pnpm --dir labs/conductor` changes cwd
+to the lab — use `pnpm conductor` from the product root, or invoke the bin by
+path. From the repo root, `fsdev conductor` will not find this flow unless
+`CONDUCTOR_CONFIG` or `--config` names it. That door applies the same leftover
+`CONDUCTOR_REPO` refuse as the PATH bin.
+
+A live Claude child authenticates through the Agent SDK. If `ANTHROPIC_API_KEY` is set
+and invalid, it wins over `CLAUDE_CODE_OAUTH_TOKEN` and every implement 401s — unset the
+key and leave the OAuth token when that is the credential that works.
+`CONDUCTOR_AGENT_MODEL` picks the coding-run model. `CONDUCTOR_COORDINATOR_MODEL` is
+only the talk turn.
+
 Something claims the row, gives the run its own checkout of the repository, stays with it until it
 stops, reads what came back, and then closes the row or lets it run again.
 
 Two things make that supervision real:
 
 - **The checkout is the run's own.** Without one, a coding agent edits whatever directory the
-  server happens to sit in — which is the conductor's.
+  server happens to sit in — which is the conductor's. The coding step is the workspace
+  agent on that tree (`contain: false`, so Bash / git / gh can write it) and cannot
+  relocate into a different worktree.
 - **One place decides the verdict**, before the row is settled. A run that exhausts its turn
   budget or its spend does not fail: it finishes normally and reports the bad news *inside* its
   result. Anything that treats a normal finish as success records a run that produced nothing as
@@ -34,7 +60,7 @@ const { flow } = conductorFlow({
 });
 ```
 
-Three zero-model actions:
+Four zero-model verbs, plus one talk turn:
 
 | Action | What it does |
 |---|---|
@@ -42,6 +68,7 @@ Three zero-model actions:
 | `wake` | Drains again — claims whatever is ready, including a re-pended retry. |
 | `status` | Reads the board row beside the run's own record, and the questions the run is waiting on. |
 | `answer` | Answers one of those questions and starts the run again holding it. |
+| `steer` | The coordinator. The operator talks; this turn may call the verbs above as tools. It does not implement. |
 
 `status` reads the **board row** for completion, always. The board ledger cannot be made
 client-readable (`defineTaskCollection()` exposes no `client` option, so its collection-state route
@@ -79,12 +106,19 @@ file in its own checkout. The manager reads that file, files the question as a d
 the job on hold and returns. Nothing is held open while you think about it, and the run costs
 nothing.
 
-You answer the row by name:
+You answer the row by name. Daily use is `fsdev conductor` — same host as `fsdev run`. Type to talk, or use a slash verb. While composing, ↑/↓ recall a prior line, ←/→ move in it, and Ctrl-J starts a new line:
+
+```bash
+pnpm conductor status FIX-1219
+# → questions: [{ question: "FIX-1219/implement/1/a3f19c…", text: "Which path did you mean?" }]
+
+pnpm conductor answer FIX-1219/implement/1/a3f19c… "Correct the path only. Leave the symlink alone."
+```
+
+The JSON door is still there if a script already speaks it:
 
 ```bash
 pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
-# → questions: [{ question: "FIX-1219/implement/1/a3f19c…", text: "Which path did you mean?" }]
-
 pnpm fsdev run conductor answer -i '{
   "question": "FIX-1219/implement/1/a3f19c…",
   "answer": "Correct the path only. Leave the symlink alone."
@@ -108,13 +142,31 @@ rows' statuses. Answering a question the job is not actually waiting on does not
 - **A second answer arriving while the first is still being applied is dropped, not refused.** The
   run comes back holding the first one. Answer once, and read `status` before answering again.
 
-There is no inbox UI, and no way to redirect a run mid-flight or send it on a side errand. The one
-thing you can do to a live run is answer what it asked.
+`fsdev conductor` is the operator surface: a live board in a TTY, or the same verbs
+headless for a script. There is no way to redirect a run mid-flight or send it on a side
+errand. You can stop a live run (`abort` / `x` in the board), and you can answer
+what it asked. A full-board `status` prints each running row's current action
+(the same ASK column the TUI uses) — a tool, or `think ·` while the child is
+reasoning. `--json` adds `now`, `files`, `hunk`, and `todo` on those same rows.
+`e` expands the last Read peek or command tail. A named `status ISSUE` or `watch ISSUE`
+prints that attempt's last tool, files, hunk, and current todo on stdout. A
+running row also prints how long since it last wrote (`8s`, `3m`).
 
 Nothing bounds how long a question may stay open. A job waiting on a person is deliberately
 outside the lease's governance, so a question nobody answers holds its row indefinitely.
 
 ### Reading it back
+
+```bash
+pnpm conductor                  # live board; slash commands, poll, answer in place
+pnpm conductor seed FIX-1219
+pnpm conductor wake
+pnpm conductor status FIX-1219
+pnpm conductor watch FIX-1219   # poll status until waiting or terminal
+pnpm conductor abort FIX-1219   # stop the running request on that row
+```
+
+Or the JSON door:
 
 ```bash
 pnpm fsdev run conductor seed   -i '{"issue":"FIX-1219","phase":"implement"}'
@@ -208,7 +260,7 @@ commits land on another is the kind of agreement where every layer is wrong toge
   board's `concurrency` is set to 1, which bounds how many rows one drain hands off — but a
   detached dispatch hands off and returns, releasing the slot long before the run finishes. Two
   seeded issues produce two live runs whatever that setting is; measured, and pinned by a test.
-- **No UI.**
+- **No web UI.** The terminal surface is `fsdev conductor` (from this directory: `pnpm conductor`).
 
 ## Deployment
 

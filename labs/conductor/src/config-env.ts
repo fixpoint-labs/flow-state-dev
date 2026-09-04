@@ -77,33 +77,30 @@ export function repositoryIdentity(dir: string): string | undefined {
 }
 
 /**
- * Where the dispatcher's OWN code lives, as a repository identity.
+ * Where the dispatcher's OWN source lives, as a repository identity.
  *
- * **`process.cwd()` is not the dispatcher.** It was the only source of "my
- * repository" here, and a host started from anywhere outside its checkout — a
- * service unit, a container whose `WORKDIR` is not the source tree, a process
- * launched from `/` — made `repositoryIdentity` return `undefined`. This guard
- * only refuses on a MATCH, so an undefined identity is not a near miss: it is
- * the guard silently doing nothing, in a deployment shape that is ordinary
- * rather than exotic. Obligation A was then unenforced exactly where nobody
- * would look.
+ * **`process.cwd()` is not the dispatcher.** Treating it as one refuses the
+ * daily-drive: stand in the product checkout, set `CONDUCTOR_REPO=.` (or that
+ * product's path), and load this lab with `CONDUCTOR_CONFIG` (or `--config`).
+ * The process's directory
+ * is then the product — the repository the coding agent should work on — and a
+ * match with cwd refused it.
  *
- * This module's own file is a fact about the running code and does not move
- * when the process's directory does. Neither source is authoritative on its
- * own — a bundler can rewrite `import.meta.url`, and a host can legitimately run
- * from its checkout — so both are consulted and a match with EITHER refuses.
+ * This module's own file does not move when the process's directory does. A
+ * host started from `/`, a service unit, or a container whose `WORKDIR` is not
+ * the source tree still identifies the dispatcher, so pointing `CONDUCTOR_REPO`
+ * at this source tree is refused even when cwd is nowhere near it.
+ *
+ * When this file is not inside a git repository (a published install under
+ * `node_modules`), there is no dispatcher repository to collide with and the
+ * identity check does not fire. Absent `CONDUCTOR_REPO` is still refused.
  */
-function dispatcherIdentities(from: string): string[] {
-  const here = (() => {
-    try {
-      return path.dirname(fileURLToPath(import.meta.url));
-    } catch {
-      return undefined;
-    }
-  })();
-  return [from, ...(here === undefined ? [] : [here])]
-    .map(repositoryIdentity)
-    .filter((id): id is string => id !== undefined);
+function dispatcherIdentity(): string | undefined {
+  try {
+    return repositoryIdentity(path.dirname(fileURLToPath(import.meta.url)));
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -117,11 +114,7 @@ function dispatcherIdentities(from: string): string[] {
  * vocabulary (BP-034), and a rule that lives in one function cannot be adopted
  * halfway.
  */
-export function assertDistinctRepository(
-  variable: string,
-  repo: string,
-  from: string = process.cwd(),
-): void {
+export function assertDistinctRepository(variable: string, repo: string): void {
   const theirs = repositoryIdentity(repo);
   if (theirs === undefined) {
     // **An unusable target is refused here, not discovered later.** Provisioning
@@ -130,21 +123,22 @@ export function assertDistinctRepository(
     throw new Error(
       `[conductor] ${variable} (${repo}) is not a git repository — it does not exist, or ` +
         "it is an ordinary directory. Checkouts are cut from it with `git worktree add`, " +
-        "so this fails on every attempt and no retry can fix it.",
+        "so this fails on every attempt and no retry can fix it. Initialize a git " +
+        "repository there, or point at an existing checkout that is not this dispatcher.",
     );
   }
 
-  // Both the process's directory AND this module's own location, because a
-  // dispatcher started outside its checkout has a cwd that collides with
-  // nothing while its code sits squarely in the repository being pointed at.
-  // Only a MATCH is a refusal; a host genuinely unrelated to the target still
-  // matches neither.
-  if (dispatcherIdentities(from).includes(theirs)) {
+  // This module's own repository, not the process's directory. Only a MATCH
+  // is a refusal; standing in the product and pointing at that product matches
+  // neither this source tree nor a worktree of it.
+  const ours = dispatcherIdentity();
+  if (ours !== undefined && ours === theirs) {
     throw new Error(
       `[conductor] ${variable} (${repo}) is the repository this process is itself running ` +
         "from — a different path inside it, another of its worktrees, or a symlink to it " +
         "is still the same repository. The point is a run driving ANOTHER repository " +
-        "rather than editing the thing that dispatched it.",
+        "rather than editing the thing that dispatched it. Cut a throwaway clone, or " +
+        "point this variable at a different project.",
     );
   }
 }
@@ -159,13 +153,16 @@ export function assertDistinctRepository(
  * and could commit and open a pull request against the wrong project, and the
  * first symptom would be a PR nobody asked for.
  *
- * **Pointing at the dispatcher's own repository is refused by repository
- * identity, not by path equality.** Comparing resolved paths only caught the
- * one spelling — `CONDUCTOR_REPO` set to exactly this directory. Set it to the
- * repository root while running from `labs/conductor`, or to any sibling
- * worktree of it, and the strings differ while the repository is the same one,
- * so the check passed and the harm was unchanged. The rule is *the same
- * repository*, and only git can answer that.
+ * **Pointing at the dispatcher's own source repository is refused by
+ * repository identity, not by path equality.** Comparing resolved paths only
+ * caught the one spelling — `CONDUCTOR_REPO` set to exactly this directory.
+ * Set it to the repository root while this file lives under `labs/conductor`,
+ * or to any sibling worktree of it, and the strings differ while the
+ * repository is the same one. The rule is *the same repository as this
+ * source tree*, and only git can answer that. Standing in a different
+ * repository and pointing at that repository is the daily-drive, not a match.
+ * A relative value is resolved to an absolute path before it is returned, so
+ * `CONDUCTOR_REPO=.` survives the programmatic door that refuses relatives.
  */
 export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
   // The variable NAME is a parameter so the whole rule travels, not two thirds
@@ -177,12 +174,18 @@ export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
     throw new Error(
       `[conductor] ${variable} is not set. It names the repository the coding agent ` +
         "works on, and there is no safe default: falling back to this process's directory " +
-        "would point the agent at the dispatcher's own repository.",
+        "would point the agent at the dispatcher's own repository. Point it at another " +
+        "git checkout — a throwaway clone is enough — not this dispatcher.",
     );
   }
 
   assertDistinctRepository(variable, repo);
-  return repo;
+  // Pin the spelling the rest of construction sees. A relative value (`'.'`,
+  // the daily-drive) is the directory the operator is standing in *now*;
+  // `conductorFlow` refuses a relative `sourceRepo` because a later chdir
+  // would retarget it. Resolving here is that pin, not a default — absent
+  // still refuses above.
+  return path.resolve(repo);
 }
 
 /**

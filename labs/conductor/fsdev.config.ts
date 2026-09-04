@@ -1,24 +1,26 @@
 /**
  * fsdev config for the conductor lab (LAB-138).
  *
- * Filesystem `dev` profile, zero generators — the coding run goes through the
- * Claude Code Agent SDK, which resolves its own model, so an explicit throwing
- * resolver skips the ambient `FSDEV_DEFAULT_MODEL` scan that would otherwise
- * fire on a model-using environment.
+ * Filesystem `dev` profile. The coding run goes through the Claude Code Agent
+ * SDK (its own model). `steer` is the one generator action — the coordinator
+ * talk turn — and uses `createModelResolver` like every other `fsdev` host.
  *
+ *   pnpm conductor                  # live board
+ *   pnpm conductor seed FIX-1219
+ *   pnpm conductor status FIX-1219
  *   pnpm fsdev run conductor seed   -i '{"issue":"FIX-1219","phase":"implement"}'
- *   pnpm fsdev run conductor wake   -i '{}'
- *   pnpm fsdev run conductor status -i '{"issue":"FIX-1219"}'
  *
- * No `-s` needed. The CLI mints a fresh session per invocation, and both the
- * board row and the run record are `user`-scoped, so `status` answers with the
- * run's session, checkout, outcome and cost whichever session asks.
+ * No `-s` needed. The operator surface reuses session `conductor-operator`
+ * so the board stays one conversation; both the board row and the run record
+ * are `user`-scoped, so `status` answers with the run's session, checkout,
+ * outcome and cost whichever session asks.
  *
  * `CONDUCTOR_REPO` names the repository checkouts are cut from. **Required** —
- * absent, or resolving to the repository this dispatcher itself runs from, is
- * refused at startup, because either one silently aims the coding agent at the
- * dispatcher's own code. Numeric settings are validated there too; see
- * `positiveIntFromEnv` for why an unchecked one is charged to a task.
+ * absent, or resolving to the repository this dispatcher's own source lives
+ * in, is refused at startup, because either one silently aims the coding
+ * agent at the dispatcher's own code. Standing in the product and pointing
+ * at that product is not that case. Numeric settings are validated there
+ * too; see `positiveIntFromEnv` for why an unchecked one is charged to a task.
  *
  * **`detachedDrainTimeoutMs` is derived, not chosen.** Its default is tuned to a
  * serverless SIGTERM grace period, far shorter than a coding run, so an
@@ -33,24 +35,33 @@
  * timeout is the real ceiling — see the README.
  */
 import path from "node:path";
-import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
-import type { ModelResolver } from "@flow-state-dev/core";
+import { fileURLToPath } from "node:url";
+import { createFlowState, createModelResolver, filesystemStores } from "@flow-state-dev/engine";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
+import { conductorRepoMismatch, formatRepoMismatch } from "./bin/env.mjs";
 import { assertBaseRefExists, positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
-function neverResolvesAModel(): never {
-  throw new Error(
-    "conductor declares no generator actions; the coding run resolves its own model.",
-  );
-}
-
 const RUN_TIMEOUT_MS = positiveIntFromEnv("CONDUCTOR_RUN_TIMEOUT_MS", 1_800_000);
-const root = path.join(process.cwd(), ".fsdev");
+// This file's directory, not cwd. Sitting in the product and passing --config
+// must see the same board as `pnpm conductor` from this lab. A cwd-relative
+// `.fsdev` opened an empty store beside the product instead.
+const labRoot = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(labRoot, ".fsdev");
+
+// Same leftover refuse as the PATH bin. `fsdev conductor --config` this
+// lab used to skip it, so a leftover CONDUCTOR_REPO silently aimed the
+// board at another checkout. Standing in the dispatcher is still allowed.
+const leftoverRepo = conductorRepoMismatch(process.env, process.cwd(), labRoot);
+if (leftoverRepo !== undefined) {
+  throw new Error(formatRepoMismatch(leftoverRepo, process.env).trimEnd());
+}
 
 const sourceRepo = requireSourceRepo();
 const baseRef = process.env.CONDUCTOR_BASE_REF ?? "main";
 // Startup, not mid-run: a ref that does not resolve fails every `worktree add`.
 assertBaseRefExists(sourceRepo, baseRef);
+
+const agentModel = process.env.CONDUCTOR_AGENT_MODEL;
 
 const { flow, drainBudgetMs } = conductorFlow({
   epic: process.env.CONDUCTOR_EPIC ?? "harness-manager",
@@ -61,14 +72,25 @@ const { flow, drainBudgetMs } = conductorFlow({
   },
   maxAttempts: positiveIntFromEnv("CONDUCTOR_MAX_ATTEMPTS", 3),
   runTimeoutMs: RUN_TIMEOUT_MS,
+  // Coding-run model. Default is the Agent SDK's own. `CONDUCTOR_COORDINATOR_MODEL`
+  // is only the talk turn.
+  ...(agentModel !== undefined && agentModel !== ""
+    ? { agent: { model: agentModel } }
+    : {}),
 });
 
 export default createFlowState({
   flows: { [CONDUCTOR_FLOW_KIND]: flow },
-  modelResolver: Object.assign(neverResolvesAModel, {
-    resolveId: neverResolvesAModel,
-  }) as ModelResolver,
-  stores: { dev: { primary: filesystemStores({ rootDir: path.join(root, "data") }) } },
+  modelResolver: createModelResolver(),
+  stores: {
+    dev: {
+      primary: filesystemStores({
+        rootDir: path.join(root, "data"),
+        // Local lab board. Same acknowledgement `fsdev run` already makes.
+        developmentOnly: true,
+      }),
+    },
+  },
   defaultProfile: "dev",
   detachedDrainTimeoutMs: drainBudgetMs,
 });

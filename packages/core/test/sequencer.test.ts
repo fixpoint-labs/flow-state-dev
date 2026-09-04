@@ -405,6 +405,39 @@ describe("sequencer builder", () => {
     await expect(runForTest(seq, 1, ctx)).resolves.toBe("recovered:broken");
   });
 
+  it("runs the rescue handler on a live signal when the request has been aborted", async () => {
+    // Resource CAS refuses writes on an aborted signal. Operator abort
+    // cancels the whole request, including this handler — so a recorder
+    // that used the request signal left the row `in_progress`.
+    const failing = handler({
+      name: "failing-aborted",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new Error("broken");
+      },
+    });
+    let rescueSignalAborted: boolean | undefined;
+    const rescueBlock = handler({
+      name: "rescue-after-abort",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: (_error: Error, rescueCtx) => {
+        rescueSignalAborted = rescueCtx.signal?.aborted === true;
+        return "recovered";
+      },
+    });
+    const seq = sequencer({ name: "rescue-aborted-seq", inputSchema: z.number() })
+      .step(failing)
+      .rescue([{ block: rescueBlock }]);
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(runForTest(seq, 1, createMockContext({ signal: aborted.signal }))).resolves.toBe(
+      "recovered",
+    );
+    expect(rescueSignalAborted).toBe(false);
+  });
+
   it("sets the internal _didRescue flag on ctx when a rescue handler recovers", async () => {
     const failing = handler({
       name: "failing-flag",

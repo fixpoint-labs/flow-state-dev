@@ -18,6 +18,7 @@ import type { CapabilitySlot, StoresConfig } from "../stores/store-adapter";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { RuntimeConfig } from "../runtime-config";
+import type { RuntimeLogger } from "../execution/logging";
 
 /** Model-resolver config, re-shaped for the FlowState surface. */
 export interface FlowStateModelsConfig {
@@ -348,6 +349,14 @@ export interface FlowState<TSettings extends object = FlowStateSettings> {
 
   /** Dispose pooled resources across every declared adapter. */
   dispose(): Promise<void>;
+
+  /**
+   * Install the host logger before `getRuntime()` / `getRouter()` so init
+   * narration (`--quiet`, a warn-level TUI) can suppress it. Calling again
+   * replaces the logger. After the runtime has resolved, this also writes
+   * through to the shared `runtimeConfig` object `dispose()` reads.
+   */
+  setLogger(logger: RuntimeLogger): void;
 
   /**
    * The active profile name. Resolved on first `ready()` / `getRouter()`.

@@ -114,7 +114,7 @@ export function prListArgs(
     "--state",
     state,
     "--json",
-    "number,state,headRepository,headRepositoryOwner",
+    "number,state,headRepository,headRepositoryOwner,url",
     "--limit",
     String(limit),
     "-R",
@@ -164,28 +164,44 @@ export function readCompletion(
   return false;
 }
 
-export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
+function findCompletingPr(
+  stdout: string,
+  inRepo?: string,
+): { url?: string } | undefined {
   let rows: unknown;
   try {
     rows = JSON.parse(stdout || "[]");
   } catch {
-    return false;
+    return undefined;
   }
-  if (!Array.isArray(rows)) return false;
-  return rows.some((row) => {
+  if (!Array.isArray(rows)) return undefined;
+  for (const row of rows) {
     const r = row as {
       state?: unknown;
+      url?: unknown;
       headRepository?: { name?: unknown } | null;
       headRepositoryOwner?: { login?: unknown } | null;
     } | null;
-    if (!COMPLETING_PR_STATES.has(String(r?.state))) return false;
-    if (inRepo === undefined) return true;
-    const owner = r?.headRepositoryOwner?.login;
-    const name = r?.headRepository?.name;
-    // Either field missing is unattributable, so it does not count.
-    if (typeof owner !== "string" || typeof name !== "string") return false;
-    return sameRepo(`${owner}/${name}`, inRepo);
-  });
+    if (!COMPLETING_PR_STATES.has(String(r?.state))) continue;
+    if (inRepo !== undefined) {
+      const owner = r?.headRepositoryOwner?.login;
+      const name = r?.headRepository?.name;
+      // Either field missing is unattributable, so it does not count.
+      if (typeof owner !== "string" || typeof name !== "string") continue;
+      if (!sameRepo(`${owner}/${name}`, inRepo)) continue;
+    }
+    return { url: typeof r?.url === "string" && r.url !== "" ? r.url : undefined };
+  }
+  return undefined;
+}
+
+export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
+  return findCompletingPr(stdout, inRepo) !== undefined;
+}
+
+/** The completing pull request's URL, when the listing named one. */
+export function completingPrUrl(stdout: string, inRepo?: string): string | undefined {
+  return findCompletingPr(stdout, inRepo)?.url;
 }
 
 /**
@@ -322,11 +338,13 @@ export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
  * last left there. A fallback that re-read `origin` would be the silent wrong
  * success this probe exists to detect, reachable by making the value absent.
  */
-async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
+async function completingPrViaGh(
+  ctx: PhaseRunContext,
+): Promise<{ done: boolean; url?: string }> {
   // Read inside the async body, not at the call site: `isDone` is declared
-  // `boolean | Promise<boolean>` and every caller awaits it, so a probe that
-  // throws synchronously on one path and rejects on the others is an asymmetry
-  // waiting to be handled in one place and not the other.
+  // `DoneAnswer | Promise<DoneAnswer>` and every caller awaits it, so a probe
+  // that throws synchronously on one path and rejects on the others is an
+  // asymmetry waiting to be handled in one place and not the other.
   const repo = pinFrom(ctx);
 
   // One listing per state that counts, stopping at the first match. The whole
@@ -342,15 +360,18 @@ async function prExistsViaGh(ctx: PhaseRunContext): Promise<boolean> {
       signal: ctx.ctx.signal,
       maxBuffer: 4 * 1024 * 1024,
     });
-    if (readCompletion(stdout, repo.ownerRepo)) return true;
+    if (readCompletion(stdout, repo.ownerRepo)) {
+      return { done: true, url: completingPrUrl(stdout, repo.ownerRepo) };
+    }
   }
-  return false;
+  return { done: false };
 }
+
 
 /**
  * Refuse a configuration the completion probe cannot run under.
  *
- * **The probe's unstated preconditions, moved to startup.** `prExistsViaGh`
+ * **The probe's unstated preconditions, moved to the first claim.** `prExistsViaGh`
  * needs two things the rest of the conductor never touches: an `origin` remote
  * it can name a repository from, and a runnable `gh`. Neither is checked
  * anywhere else, and both fail AFTER the paid agent run — the rescue re-pends
@@ -456,8 +477,6 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
   // configure. Nothing in this repository ever passed it. An option with no
   // callers whose only effect is to reintroduce the ambiguity this change
   // removes is not an escape hatch, it is the hatch left open.
-  const prExists = options.prExists ?? prExistsViaGh;
-
   return {
     phase: "implement",
     // **Only when the built-in probe is the one that will run.** A caller who
@@ -493,7 +512,13 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
         "",
         `You are working in ${ctx.workspacePath}, on branch ${ctx.branch}.`,
         "Commit your work and open a pull request for that branch when the change is done.",
+        "A pushed branch is not done. The job is done when a pull request exists for this branch.",
+        "If you cannot open one — missing auth, a permission error, gh refusing — that is a",
+        "question for a person. Write it to the ask file and stop. Do not declare the work complete.",
         "",
+        ...(ctx.brief !== undefined && ctx.brief !== ""
+          ? ["The operator filed this brief with the issue:", ctx.brief, ""]
+          : []),
         // **The forced ask.** The harness offers no seam for a question, so this
         // instruction IS the seam: nothing else tells the run how to reach a
         // person, and a run that ignores it takes the ordinary no-question
@@ -576,6 +601,10 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
       return lines.join("\n");
     },
 
-    isDone: (ctx) => prExists(ctx),
+    isDone: async (ctx) => {
+      if (options.prExists !== undefined) return options.prExists(ctx);
+      const found = await completingPrViaGh(ctx);
+      return { done: found.done, prUrl: found.url ?? null };
+    },
   };
 }

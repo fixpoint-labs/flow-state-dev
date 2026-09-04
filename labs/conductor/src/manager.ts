@@ -36,7 +36,11 @@ import type {
   BlockContext,
   DeclaredResourceEntry,
 } from "@flow-state-dev/core/types";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import {
+  createWorkspaceAgent,
+  RELOCATION_TOOLS,
+  type ClaudeCodeAgentOptions,
+} from "@flow-state-dev/claude-code/sdk";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
@@ -120,6 +124,11 @@ export interface PhaseRunContext {
    * nothing.
    */
   feedback?: string;
+  /**
+   * Ticket text the operator filed with the seed, when they gave more
+   * than an id. Absent means the run has only the issue identifier.
+   */
+  brief?: string;
   /** The block context, so a builder can read its phase's collections. */
   ctx: BlockContext;
 }
@@ -161,8 +170,10 @@ export interface PhaseSpec {
   /** Rebuilt on every wake from current state, never computed when the row was filed. */
   buildPrompt(run: PromptRunContext): string | Promise<string>;
   /**
-   * Has the job actually been done? Re-evaluated now, and consulted ONLY after
-   * a successful verdict — never as an alternative route to completion.
+   * Has the job actually been done? Re-evaluated now. The boolean is
+   * consulted only after a successful verdict — never as an alternative
+   * route to completion. `{ prUrl }` is recorded after any verdict: a
+   * run can open the pull request and then exhaust its turns.
    *
    * **The two carry-forward fields are prompt-time only: `feedback` and
    * `previousSessionId` are absent here, deliberately and always.** They
@@ -174,7 +185,7 @@ export interface PhaseSpec {
    * either wants them put on the manager's state first; do that when such a
    * phase exists rather than plumbing a field nothing reads.
    */
-  isDone(run: PhaseRunContext): boolean | Promise<boolean>;
+  isDone(run: PhaseRunContext): DoneAnswer | Promise<DoneAnswer>;
   /**
    * Collections this phase's prompt builder may read, keyed by the accessor it
    * reads them under. The manager declares them so `ctx.resources` resolves.
@@ -185,12 +196,13 @@ export interface PhaseSpec {
    * claimed. Throws to refuse; absent means the phase needs nothing.
    *
    * **A phase's own preconditions are configuration, and configuration is
-   * refused at startup.** The other guards at that door — the repository, the
-   * base ref, the numbers — protect a *task* from paying for a shell typo: the
-   * row is claimed, the attempt is charged, and the failure is permanent, so
-   * every retry spends itself on it. A precondition belonging to the phase has
-   * exactly that shape and could not use that door, because only the phase knows
-   * what it needs and only the flow holds the workspace.
+   * refused before the first claim.** The other guards at that door — the
+   * repository, the base ref, the numbers — protect a *task* from paying for a
+   * shell typo: the row is claimed, the attempt is charged, and the failure is
+   * permanent, so every retry spends itself on it. A precondition belonging to
+   * the phase has exactly that shape. It is not refused at `conductorFlow`
+   * construction: `status` and a talk turn that does not start work never
+   * claim, and they must still open.
    *
    * The implement phase's completion probe reads the source repository's
    * `origin`; a checkout whose GitHub remote is called something else fails it
@@ -207,6 +219,14 @@ export interface PhaseSpec {
    * that then failed, and a comparison written to paper over both.
    */
   validate?(workspace: WorkspaceConfig): unknown;
+}
+
+/** The job is done, and optionally the pull request that proves it. */
+export type DoneAnswer = boolean | { done: boolean; prUrl?: string | null };
+
+function interpretDone(value: DoneAnswer): { done: boolean; prUrl?: string | null } {
+  if (typeof value === "boolean") return { done: value };
+  return { done: value.done, prUrl: value.prUrl };
 }
 
 /** How the manager is wired to its board and its host. */
@@ -238,7 +258,7 @@ export interface ManagerOptions {
    */
   ownership?: Partial<OwnershipBounds>;
   /** Forwarded to the coding agent, so tests can script the SDK. */
-  agent?: Omit<Parameters<typeof claudeCodeAgent>[0], "detached" | "recordWork" | "cwd">;
+  agent?: Omit<ClaudeCodeAgentOptions, "detached" | "recordWork" | "cwd">;
   /**
    * Tell the coordinator session a question exists, so it learns without
    * polling. Defaults to a no-op.
@@ -270,6 +290,11 @@ export const conductorTaskInputSchema = z.object({
   issue: z.string(),
   /** Which phase of it. */
   phase: z.string(),
+  /**
+   * Optional ticket text the operator filed with the seed. Absent on
+   * rows seeded with only an id (BP-030).
+   */
+  brief: z.string().optional(),
 });
 
 /**
@@ -424,10 +449,10 @@ export function describeTenant(tenantId: string | undefined): string {
 }
 
 /** Read the typed payload off the worker input, refusing an unusable one loudly. */
-function taskPayload(input: { input?: unknown; taskId: string }): {
-  issue: string;
-  phase: string;
-} {
+function taskPayload(input: {
+  input?: unknown;
+  taskId: string;
+}): z.infer<typeof conductorTaskInputSchema> {
   const parsed = conductorTaskInputSchema.safeParse(input.input);
   if (!parsed.success) {
     throw new ConductorAttemptFailed(
@@ -917,7 +942,14 @@ export function harnessManager(options: ManagerOptions) {
             topic,
             boardCollectionId,
           },
-          { workspacePath, branch },
+          {
+            workspacePath,
+            branch,
+            // Known now, not at the verdict. `status` is the only board read,
+            // and a live row with no request id cannot be followed.
+            requestId: ctx.request.identity.id,
+            childSessionId: ctx.session.identity.id,
+          },
         ),
         "the run row was opened",
       );
@@ -974,6 +1006,8 @@ export function harnessManager(options: ManagerOptions) {
         .filter((row) => row.state.status === "answered" && row.state.answer !== null)
         .map((row) => ({ question: row.state.question, answer: row.state.answer! }));
 
+      const payload = taskPayload(input);
+      const brief = payload.brief?.trim();
       const run: PromptRunContext = {
         epic: boardCollectionId,
         issue: state.issue!,
@@ -982,6 +1016,7 @@ export function harnessManager(options: ManagerOptions) {
         workspacePath: state.workspacePath!,
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
+        ...(brief !== undefined && brief !== "" ? { brief } : {}),
         ...(state.previousSessionId != null
           ? { previousSessionId: state.previousSessionId }
           : {}),
@@ -1022,9 +1057,8 @@ export function harnessManager(options: ManagerOptions) {
       // Safe in this order because `acquireCheckout` needs only the path, not a
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
-      leases.set(
-        leaseKey(ctx as BlockContext),
-        await acquireCheckout(
+      const held = leaseKey(ctx as BlockContext);
+      const lease = await acquireCheckout(
           state.workspacePath!,
           `${input.taskId}#${input.attempts}`,
           ownership,
@@ -1034,14 +1068,27 @@ export function harnessManager(options: ManagerOptions) {
           // longer record — and the wait is now long enough for that to cost a
           // replacement most of an hour.
           (ctx as BlockContext).signal,
-        ),
-      );
-      await provisionCheckout(workspace, {
+        );
+      // The coding step is its own sequencer, so `ctx.sequencer` inside it is
+      // not this one. The path travels by request id, the same way the lease
+      // does. Written only after the lease is held, so a failed acquire
+      // leaves nothing to forget.
+      checkouts.set(held, state.workspacePath!);
+      leases.set(held, lease);
+      const checkout = await provisionCheckout(workspace, {
         principal: runPrincipal(ctx as BlockContext),
         epic: boardCollectionId,
         issue: state.issue!,
         phase: state.phase!,
       });
+      if (checkout.healed.length > 0) {
+        await fenced(
+          writeRunRow(ctx as BlockContext, identityFrom(ctx as BlockContext, boardCollectionId), {
+            healed: checkout.healed,
+          }),
+          "the setup heal was recorded",
+        );
+      }
       return { prompt };
     },
   });
@@ -1212,21 +1259,29 @@ export function harnessManager(options: ManagerOptions) {
         // from, leaving the row `in_progress` with nothing to settle it. The
         // bound is the constant the budget already spends, so it makes the
         // advertised number true rather than adding one.
-        const done = await withDeadline(
-          async () =>
-            phase.isDone({
-              epic: boardCollectionId,
-              issue: state.issue!,
-              phase: state.phase!,
-              attempt: identity.attempt,
-              workspacePath: state.workspacePath!,
-              branch: state.branch!,
-              ctx: ctx as BlockContext,
-            }),
-          NETWORK_CALL_TIMEOUT_MS,
-          `the ${state.phase} phase's completion check`,
+        const answer = interpretDone(
+          await withDeadline(
+            async () =>
+              phase.isDone({
+                epic: boardCollectionId,
+                issue: state.issue!,
+                phase: state.phase!,
+                attempt: identity.attempt,
+                workspacePath: state.workspacePath!,
+                branch: state.branch!,
+                ctx: ctx as BlockContext,
+              }),
+            NETWORK_CALL_TIMEOUT_MS,
+            `the ${state.phase} phase's completion check`,
+          ),
         );
-        if (done) {
+        if (answer.prUrl) {
+          await fenced(
+            writeRunRow(ctx as BlockContext, identity, { prUrl: answer.prUrl }),
+            "the pull request was recorded",
+          );
+        }
+        if (answer.done) {
           // No question to withdraw: arm 1 returned on every attempt that asked
           // one, so reaching here with a succeeded verdict means the marker was
           // empty.
@@ -1239,6 +1294,33 @@ export function harnessManager(options: ManagerOptions) {
             phase: state.phase!,
             sessionId: handle.sessionId,
           };
+        }
+      } else {
+        try {
+          const answer = interpretDone(
+            await withDeadline(
+              async () =>
+                phase.isDone({
+                  epic: boardCollectionId,
+                  issue: state.issue!,
+                  phase: state.phase!,
+                  attempt: identity.attempt,
+                  workspacePath: state.workspacePath!,
+                  branch: state.branch!,
+                  ctx: ctx as BlockContext,
+                }),
+              NETWORK_CALL_TIMEOUT_MS,
+              `the ${state.phase} phase's pull-request check`,
+            ),
+          );
+          if (answer.prUrl) {
+            await fenced(
+              writeRunRow(ctx as BlockContext, identity, { prUrl: answer.prUrl }),
+              "the pull request was recorded",
+            );
+          }
+        } catch {
+          // A failed listing must not replace the run's own failure reason.
         }
       }
 
@@ -1307,7 +1389,12 @@ export function harnessManager(options: ManagerOptions) {
             topic: state.topic,
             boardCollectionId,
           },
-          { outcome: "failed", reason },
+          {
+            outcome: "failed",
+            reason,
+            requestId: ctx.request.identity.id,
+            childSessionId: ctx.session.identity.id,
+          },
         );
       }
       throw error;
@@ -1323,16 +1410,45 @@ export function harnessManager(options: ManagerOptions) {
     .tap(openRun)
     .step(prepare)
     .step(
-      claudeCodeAgent({
+      createWorkspaceAgent({
         ...agent,
         // The board-construction shim: a detached board refuses a worker whose
         // block authors a session-state schema.
         detached: true,
         recordWork: true,
-        // The framework's one addition, and the reason this lab needs it: the
-        // run edits ITS checkout, and the record of what it touched is keyed
-        // there too.
-        cwd: (_input, ctx) => managerState(ctx).workspacePath!,
+        // The checkout is already on disk (a git worktree). This chain owns
+        // `cwd` so the agent, the place, and any sandbox stay on one resolved
+        // root — pointing `claudeCodeAgent` at a directory by itself is the
+        // half that leaves Bash writing a tree the operator is not watching.
+        //
+        // `contain: false` is the trusted-workspace door. The product tree is
+        // not assembled from user-writable collections, so the run may load
+        // the checkout's own CLAUDE.md, run git / gh, and write without a
+        // sandbox. Relocation tools stay disallowed so the model cannot leave
+        // the checkout the manager provisioned.
+        //
+        // The SDK default is HITL (`permissionMode: "default"` with no
+        // `canUseTool`). A detached worker has no one to answer those prompts,
+        // so every Write / Bash sits until the run dies having changed
+        // nothing. `acceptEdits` covers the file tools; the approval seam
+        // covers the rest (git, gh). A caller that already set either keeps
+        // it — tests and a later HITL host still own that door.
+        contain: false,
+        collections: [],
+        permissionMode: agent?.permissionMode ?? "acceptEdits",
+        onToolApproval: agent?.onToolApproval ?? (() => ({ decision: "allow" })),
+        disallowedTools: [
+          ...new Set([...(agent?.disallowedTools ?? []), ...RELOCATION_TOOLS]),
+        ],
+        root: (_input, ctx) => {
+          const path = checkouts.get(leaseKey(ctx as BlockContext));
+          if (path == null) {
+            throw new Error(
+              "[conductor] no checkout is held for this request — the workspace agent ran without openRun.",
+            );
+          }
+          return path;
+        },
       }),
       {
         // The cancellable-under-a-deadline obligation, met by a primitive core
@@ -1358,6 +1474,8 @@ export function harnessManager(options: ManagerOptions) {
  * — the whole point of a board — never release each other's.
  */
 const leases = new Map<string, CheckoutLease>();
+/** Checkout path by request. The workspace agent cannot read manager state. */
+const checkouts = new Map<string, string>();
 
 function leaseKey(ctx: BlockContext): string {
   return ctx.request.identity.id;
@@ -1374,6 +1492,7 @@ function releaseLease(ctx: BlockContext): void {
   const key = leaseKey(ctx);
   leases.get(key)?.release();
   leases.delete(key);
+  checkouts.delete(key);
 }
 
 export { RUNS };

@@ -113,6 +113,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 - `docs/contributing/best-practices.md` — Universal BPs + the situational index; per-category situational BPs live in `docs/contributing/best-practices/<category>.md` (open the category file for the area you're touching). Universal BPs are mirrored in this file's "Best practices" section.
 - Per-package `CHANGELOG.md` files and `docs/contributing/release-notes-workflow.md` — what shipped and how new changes get recorded
 - `packages/*/README.md` — Per-package API docs
+- `docs/atlas/conductor.html` — **Read before working on Conductor, `fsdev conductor`, or the harness manager.** The map of what exists, what is dashed, and how to run the lab.
 
 ## Package Map
 
