@@ -32,16 +32,23 @@ const LEGACY_PARKED_STATUS = "awaiting_review";
  * The status as it is read back off a **persisted** row: `taskStatusSchema`,
  * plus the legacy member mapped forward.
  *
- * This is not politeness about a name. Persisted resource state is parsed on
- * every read, and a value that fails its schema is never surfaced — the engine
- * substitutes the resource's default (`normalizeResourceState`). An enum that
- * simply dropped the old member would therefore not mislabel a task written
- * before the rename; it would silently reset the whole collection instance.
+ * This is not politeness about a name. Where a stored row IS parsed — a plain
+ * resource, `taskSchema` as a block's input schema, the delegation board field
+ * — a value that fails its schema is never surfaced: the engine substitutes
+ * the resource's default (`normalizeResourceState`). An enum that simply
+ * dropped the old member would therefore not mislabel a task written before
+ * the rename; it would reset that state to empty.
  *
  * The mapping is a **fixed point**, which is what makes it safe to use on a
  * persisted schema at all: `assertStableResourceState` re-parses any value a
  * schema rewrote and rejects the write if the second parse moves it again.
  * Parsing `parked` yields `parked`, so the second parse is a no-op.
+ *
+ * This covers the parse paths only. A **task collection instance is never
+ * parsed on read** — the engine skips collection configs when it normalizes
+ * scope resources, and both backings cast the stored row — so the durable
+ * board is covered by {@link withMigratedStatus} instead. The two together
+ * are the dual read.
  *
  * Use this wherever a stored row is decoded. Use {@link taskStatusSchema} for
  * everything a caller writes or a type is derived from.
@@ -50,6 +57,25 @@ export const persistedTaskStatusSchema = z.preprocess(
   (value) => (value === LEGACY_PARKED_STATUS ? "parked" : value),
   taskStatusSchema
 );
+
+/**
+ * The same mapping for a stored row that is **cast rather than parsed**.
+ *
+ * A task collection instance never reaches {@link persistedTaskStatusSchema}:
+ * the engine skips collection configs when it normalizes scope resources and
+ * copies their instances through verbatim, and both backings' read helpers
+ * cast the stored row straight to `Task`. So the schema above covers the parse
+ * paths (`taskSchema` as a block's input schema, the delegation board field)
+ * and this covers the durable board — the two together are the dual read.
+ *
+ * Call it at the read boundary, once, so every consumer downstream — the
+ * transition guard, `count`, drain, park-exit, the UI — sees one vocabulary.
+ * A row already at `parked` is returned as-is, so the common path allocates
+ * nothing.
+ */
+export function withMigratedStatus<T extends { status?: unknown }>(row: T): T {
+  return row.status === LEGACY_PARKED_STATUS ? { ...row, status: "parked" } : row;
+}
 
 const TERMINAL_STATUSES = new Set<TaskStatus>(["completed", "errored", "cancelled"]);
 
@@ -73,13 +99,17 @@ const ALLOWED_TRANSITIONS: Record<TaskStatus, ReadonlyArray<TaskStatus>> = {
  * Terminal statuses return an empty array.
  */
 export function allowedTransitionsFrom(from: TaskStatus): ReadonlyArray<TaskStatus> {
-  return ALLOWED_TRANSITIONS[from];
+  // A status the table does not know reaches no other status. It should not be
+  // possible — rows are migrated at the read boundary and the enum is closed —
+  // but indexing straight into the record made an unmapped value a TypeError
+  // inside the CAS, where callers expect `IllegalTaskTransitionError`.
+  return ALLOWED_TRANSITIONS[from] ?? [];
 }
 
 /** True when `from → to` is permitted by the state machine. Same-status is allowed (idempotent updates). */
 export function isTransitionAllowed(from: TaskStatus, to: TaskStatus): boolean {
   if (from === to) return true;
-  return ALLOWED_TRANSITIONS[from].includes(to);
+  return allowedTransitionsFrom(from).includes(to);
 }
 
 /**
