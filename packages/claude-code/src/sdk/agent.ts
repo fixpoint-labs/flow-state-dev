@@ -832,23 +832,19 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // found the same shape in the Codex CLI), so waiting on it directly
           // would bound the deadline by the vendor instead of by the caller.
           //
-          // `raced` flips true the instant the signal wins the race — BEFORE
-          // the `catch` block below runs `finalizeOpenItems`/`recorder.stop()`,
-          // guaranteed by attaching this flip to `abortRace.promise` ahead of
-          // `Promise.race`'s own subscription. Every iteration checks it before
-          // touching `emitState`/`translateState`/`recorder`: those are state
-          // the abort branch is about to finalize and tear down, and a vendor
-          // stream that keeps yielding buffered messages after the kill would
-          // otherwise write into it concurrently — orphaned items with no
-          // terminal `item.done`, or a recorder observation landing after
-          // `stop()` and never flushed.
-          let raced = false;
+          // `ctx.signal.aborted` is the gate, not a shadow flag. Abort flips
+          // that bit synchronously, before any promise reaction, so the
+          // abandoned loop sees it before the `catch` below finalizes
+          // `emitState` / tears down `recorder`. A vendor stream that keeps
+          // yielding after the kill would otherwise write into that state —
+          // orphaned items with no terminal `item.done`, or a recorder
+          // observation landing after `stop()` and never flushed.
           const loop = (async () => {
             for await (const message of resolved.query({
               prompt: promptText,
               options: queryOptions,
             })) {
-              if (raced) return;
+              if (ctx.signal.aborted) return;
 
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
@@ -869,18 +865,18 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               //
               // `observe` is synchronous and never throws, so handing it the whole
               // batch first closes the window rather than guarding it. No `await`
-              // separates the `raced` check above from this line, so nothing can
-              // flip the flag in between.
+              // separates the abort check above from this line, so nothing can
+              // flip the signal in between.
               for (const event of events) recorder?.observe(event);
               for (const event of events) {
-                if (raced) return;
+                if (ctx.signal.aborted) return;
                 inFlightRef.current = emitTranslatedEvent(event, ctx, emitState, name);
                 try {
                   await inFlightRef.current;
                 } finally {
                   inFlightRef.current = null;
                 }
-                if (raced) return;
+                if (ctx.signal.aborted) return;
                 if (event.kind === "result") {
                   resultSubtype = event.subtype;
                   if (event.sessionId !== null) newSessionId = event.sessionId;
@@ -890,7 +886,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                   if (event.costUsd !== null) costUsd = event.costUsd;
                 }
               }
-              if (raced) return;
+              if (ctx.signal.aborted) return;
               // Partials path: the whole `assistant` message is the turn's close
               // boundary. translate skips its text/thinking (already streamed), so
               // close the open streaming items here before the next turn's deltas.
@@ -901,7 +897,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 } finally {
                   inFlightRef.current = null;
                 }
-                if (raced) return;
+                if (ctx.signal.aborted) return;
               }
             }
           })();
@@ -913,12 +909,6 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // not wait to find out whether it did.
           loop.catch(() => {});
           const abortRace = rejectOnAbort(ctx.signal);
-          // Attached BEFORE `Promise.race` subscribes below, so this reaction
-          // runs first: `raced` is guaranteed true by the time the `catch`
-          // block's cleanup runs, not merely likely to be.
-          abortRace.promise.catch(() => {
-            raced = true;
-          });
           try {
             await Promise.race([loop, abortRace.promise]);
           } finally {
