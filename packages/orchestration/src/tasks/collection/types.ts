@@ -276,6 +276,39 @@ export interface TaskTransitionOptions {
    */
   refuseWhenParked?: boolean;
   /**
+   * Let a **renewal** take back a row whose lease lapsed while the claim it
+   * names stayed intact (FIX-1305).
+   *
+   * The lease fence declines a ticketed write on a lapsed row because a lapsed
+   * lease means the row is the queue's again. That is right for a *result* — a
+   * worker that ran past its lease may have been superseded, and the successor
+   * owns the outcome — and it is too strong for a claimant that has not started
+   * yet. A task handed to a child session is the case: nothing renews the row
+   * between the parent's release and the child's first breath, so a child that
+   * waits in the host's queue longer than the lease arrives to a lapsed row
+   * that **no one has taken** — same `attempts`, same `createdAt`, same
+   * incarnation, still `in_progress`.
+   *
+   * With this set, that renewal is decided by the race instead of by the
+   * clock: every other guard still runs inside the same atomic write, so it is
+   * recorded only while the identity the ticket names is still the row's, and
+   * declines `lost-claim` the moment a reclaim has moved `attempts` or the
+   * status. Winning the write **is** the takeover — the caller holds the row
+   * for another lease span, on the same attempt.
+   *
+   * **Opt-in, because the substrate cannot tell the two lapsed claimants
+   * apart.** A stalled worker whose renewal timer finally fired presents the
+   * same evidence as the queued child above, and only the second should take
+   * the row back: the first has been running against a row the queue may have
+   * re-dispatched. So the caller asserts "I have not started yet", which is
+   * something only it knows.
+   *
+   * Honoured **only on a renewal** — the one write that targets `in_progress`.
+   * Passing it to a settlement changes nothing: `complete` and `fail` on a
+   * lapsed row still decline `lost-claim`.
+   */
+  adoptLapsedLease?: boolean;
+  /**
    * Record this write on the task, so the caller can find out afterwards
    * whether it committed — **even if this call throws** (FIX-989).
    *
@@ -532,6 +565,10 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * that motivated the verb: a renewal that commits *after* the lease it was
    * extending.** Without that arm a late renewal would install a fresh
    * deadline on a row somebody else now holds.
+   *
+   * {@link TaskTransitionOptions.adoptLapsedLease} is the one opt-out of that
+   * last arm, for a claimant that has not started yet — see it for why the
+   * choice cannot be made down here.
    *
    * Throws — never declines — on a non-finite `leaseUntil` or a missing
    * ticket. Both are programming errors rather than lost races, matching this

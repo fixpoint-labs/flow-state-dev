@@ -21,8 +21,9 @@
  *    a stale snapshot — a cancelled task running to completion. The gate re-reads
  *    the row and aborts unless the claim is still current: `attempts` matches,
  *    `createdAt` matches, the row's incarnation matches, the status is still
- *    `in_progress`, the claim's lease has not run out, and the row still routes
- *    to THIS seat.
+ *    `in_progress`, and the row still routes to THIS seat. A lease that ran out
+ *    while the dispatch queued is taken back rather than refused — see "what a
+ *    lapsed lease is allowed to mean here", below.
  * 2. **The task-scope mark.** `_markTaskScope` walks up to the first sequencer
  *    parent, so the entry's root must be a sequencer and this must happen in
  *    its leading `.tap`, before any child scope exists. Without it every item the
@@ -44,15 +45,25 @@
  * left it. So the gate checks *which row* as well as *which attempt* —
  * `createdAt` as the cheap half, `incarnationId` as the sound one.
  *
- * ## And why identity alone is not enough
+ * ## And what a lapsed lease is allowed to mean here
  *
  * Nothing renews a handed-off row's lease between the parent's hand-off and the
  * child's first breath, so a child that waits in the host's queue longer than
- * the lease starts on a row the substrate already counts as free. Letting that
- * through is the expensive direction: the worker's side effects commit first
- * and the refusal arrives second. Refused instead — the row keeps its lapsed
- * lease and `in_progress` status, which `isClaimable` reads as recoverable, so
- * the next drain takes it and the work runs once.
+ * the lease arrives at a row the substrate already counts as free. Refusing it
+ * on that alone is more conservative than this gate's own evidence: with
+ * `attempts`, `createdAt`, the incarnation, the status and the seat all still
+ * matching, no reclaim has happened — a lapsed lease only means one *could*
+ * have. Under an external dispatcher with a sustained backlog that reading
+ * fails every hand-off before it starts, and each re-dispatch spends an
+ * attempt, so backlog alone can fail a task (FIX-1305).
+ *
+ * So the lapse arm asks the substrate instead of the clock: renew the lease
+ * with the claim's own ticket, and let the atomic write decide. Every other
+ * ownership guard still runs inside it, so the renewal is recorded only while
+ * the row is still on this attempt and still `in_progress`, and declines the
+ * moment a reclaim has moved either. Winning the write *is* the takeover —
+ * same attempt, no second dispatch. Losing it is a real successor, and that is
+ * the only case still refused.
  */
 import { sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
@@ -76,9 +87,11 @@ import { stampCurrentClaim } from "./flow-policy-wiring";
 import { createRecordError, createRecordSuccess } from "./blocks/record-result";
 import { taskBoardWorkerBodyStateSchema } from "./schemas";
 import {
+  committedLeaseSpan,
   leaseLapsed,
   type Task,
   type TaskCollectionRef,
+  type TaskWriteOutcome,
   type TaskWorker,
   type TaskWorkerInput,
 } from "../tasks";
@@ -220,21 +233,16 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
               `the row is "${row.status}", so no claim is outstanding on it`
             );
           }
-          // The one arm about liveness rather than identity. Refused, not
-          // renewed: `renewLease` is fenced on this exact subtraction, and
-          // adopting the row would mean re-claiming it under a fresh attempt.
-          if (leaseLapsed(row, board.now())) {
-            throw new StaleTaskClaimError(
-              dispatch.taskId,
-              "its lease ran out before this dispatch started, so the row is back in " +
-                "the claim queue and any work done under it could not be recorded"
-            );
-          }
           // The row must still route to the seat that handed it off. A hand-off
           // board freezes a task's assignee at admission precisely because it is
           // the address the hand-off is reached by; a mismatch means that guard
           // was bypassed, and running would mix two workers' histories under one
           // child.
+          //
+          // Ahead of the lease arm because that arm WRITES: every refusal this
+          // gate can decide by reading has to be decided before the row is
+          // taken back, or a dispatch that is about to be refused anyway
+          // extends a lease on a row somebody else is entitled to.
           if (row.assignee !== dispatch.seat) {
             throw new StaleTaskClaimError(
               dispatch.taskId,
@@ -242,22 +250,27 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
                 `"${row.assignee ?? "(no assignee)"}"`
             );
           }
+          // The one arm about liveness rather than identity — and the one the
+          // substrate decides, not this read. See the file header.
+          const held = leaseLapsed(row, board.now())
+            ? await adoptLapsedLease(board, row)
+            : row;
 
           // The ticket is minted from the row just verified, never carried on the
           // envelope — the envelope supplied the target of the check and never the
           // authority for it. It rides the state under the SAME key the drain's
           // worker body uses, so the shipped recorders settle this row without a
           // second implementation of the fence.
-          const ticket = ticketForClaim(board.collectionId, row);
+          const ticket = ticketForClaim(board.collectionId, held);
           await ctx.sequencer!.patchState({ currentClaim: ticket });
 
-          ctx._markTaskScope?.(row.id);
+          ctx._markTaskScope?.(held.id);
           stampCurrentClaim(ticket);
           stampLeaseRenewal(
             startLeaseRenewal({
               collection: board,
               ticket,
-              claimedTask: row,
+              claimedTask: held,
               signal: ctx.signal,
             })
           );
@@ -289,6 +302,100 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
 
     return { ...entry, block, inputSchema: boardScopedSchema(boardId) };
   };
+}
+
+/**
+ * Take a lapsed row back for the dispatch that was handed it (FIX-1305), and
+ * return it as the renewal committed it.
+ *
+ * The gate's read has already shown that nothing has reclaimed this row. What
+ * it cannot show is that nothing *will*, between that read and the worker's
+ * first side effect — so the answer is a write rather than a second read: the
+ * substrate's own ownership guards run inside the renewal, and whichever of
+ * this dispatch and a racing drain commits first is the one that holds the row.
+ *
+ * @throws {StaleTaskClaimError} when the renewal is declined — a reclaim
+ *   genuinely won — and when the row or the collection cannot say what lease
+ *   this dispatch would be taking back. All three keep the `stale-task-claim`
+ *   code, because what the dispatch must do about them is the same: stop, and
+ *   write nothing.
+ */
+async function adoptLapsedLease(
+  board: TaskCollectionRef,
+  row: Task
+): Promise<Task> {
+  // The duration the CLAIM committed to, read through the substrate rather
+  // than restated here. Not what is left of it (nothing is) and not a fresh
+  // default: the renewal driver derives its cadence from the same function, so
+  // a takeover that wrote any other span would change the cadence of a claim it
+  // did not make.
+  const span = committedLeaseSpan(row);
+  if (span === undefined || span <= 0) {
+    // Reachable on a row claimed before the duration was stored, where the
+    // fallback subtraction has since been overtaken by an ordinary field
+    // mutation, and on a hand-written collection. `undefined` is not reachable
+    // at all — the lapse that got us here required a deadline.
+    //
+    // Refused rather than guessed at: taking the row back for a duration
+    // nothing committed to would either install a deadline already in the past
+    // — the very next ticket-fenced write refused, the work run unrecordable —
+    // or invent a lease this board never chose.
+    throw new StaleTaskClaimError(
+      row.id,
+      "its lease ran out before this dispatch started, and the row carries no lease " +
+        "duration this dispatch could take it back for"
+    );
+  }
+
+  // Typed as possibly absent on purpose. A `TaskCollectionRef` written by hand
+  // is a supported extension point, and one whose `renewLease` resolves to
+  // nothing gives no verdict — the substrate does not invent one. Reading
+  // `.outcome` off that would throw a `TypeError` where this dispatch is
+  // entitled to the ordinary refusal, so the missing verdict is its own arm: a
+  // ref that answers nothing has not told us the row is ours.
+  const outcome: TaskWriteOutcome | undefined = await board.renewLease(
+    row.id,
+    board.now() + span,
+    {
+      claim: ticketForClaim(board.collectionId, row),
+      adoptLapsedLease: true,
+    }
+  );
+  if (outcome === undefined) {
+    throw new StaleTaskClaimError(
+      row.id,
+      `its lease ran out before this dispatch started and this board's collection reported ` +
+        `no verdict for the renewal, so nothing says the row is still this dispatch's to run`
+    );
+  }
+  if (outcome.outcome === "declined") {
+    throw new StaleTaskClaimError(
+      row.id,
+      `its lease ran out before this dispatch started and the row was taken back ` +
+        `(${outcome.reason}), so the successor owns it and any work done here could ` +
+        `not be recorded`
+    );
+  }
+
+  // Read the row the renewal committed, so the driver started below phases its
+  // first tick against the lease this dispatch now holds rather than the one it
+  // arrived to find expired.
+  const adopted = board.get(row.id) as Task | undefined;
+  if (adopted === undefined) {
+    // The ledger recorded a write and then denied the row exists. Falling back
+    // to the pre-renewal row is the one thing this cannot do: it would run the
+    // worker while asserting a lapsed lease, which is the failure the whole
+    // takeover exists to close, and it would do it silently. Not a
+    // `StaleTaskClaimError` either — nothing here says the claim was
+    // superseded, and a caller branching on that code would draw the wrong
+    // conclusion from a store that contradicted itself.
+    throw new Error(
+      `[task-board] ledger "${board.collectionId}" recorded the lease renewal for task ` +
+        `"${row.id}" and then reported no such row. The claim cannot be re-minted from a ` +
+        `row the collection denies holding.`
+    );
+  }
+  return adopted;
 }
 
 /**
