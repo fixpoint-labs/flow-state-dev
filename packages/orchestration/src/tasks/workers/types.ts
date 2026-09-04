@@ -16,26 +16,33 @@
  * pattern) calls `collection.complete(taskId, output)` afterward.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { z } from "zod";
 
 /**
  * Input contract handed to every worker. The pattern's
- * `dispatchAndExecute` step packs the claimed task's salient fields
- * into this shape so workers don't depend on the substrate's `Task`
- * type directly.
+ * `dispatchAndExecute` / board `packWorkerInput` packs the claimed
+ * task's salient fields into this shape so workers don't depend on
+ * `Task` directly.
+ *
+ * This Zod object is also the declared `inputSchema` workers reuse —
+ * a declared schema is a filter, so a field the substrate packs but
+ * this object omits reaches no worker that declares it. The TypeScript
+ * type below is inferred from this object (with `input` re-genericized),
+ * so the two cannot drift.
  */
-export type TaskWorkerInput<TIn = unknown> = {
-  taskId: string;
-  goal: string;
+export const taskWorkerInputSchema = z.object({
+  taskId: z.string(),
+  goal: z.string(),
   /** Concise label for the task, distinct from `goal`. Mirrors `Task.title`. */
-  title?: string;
+  title: z.string().optional(),
   /**
    * Readable per-task support text — the request/conversation slice the
    * worker needs to act on this task. Mirrors `Task.context`. Distinct
    * from the generic typed `input` payload below: `context` is prose data
    * the worker renders into its prompt, not a typed directive.
    */
-  context?: string;
-  input?: TIn;
+  context: z.string().optional(),
+  input: z.unknown().optional(),
   /**
    * Dep outputs keyed by dep task id, materialized from the collection
    * at claim time. Always populated when the task declares
@@ -50,10 +57,10 @@ export type TaskWorkerInput<TIn = unknown> = {
    * results through their own glue — this happens in the worker
    * dispatch path itself.
    */
-  deps?: Record<string, unknown>;
-  attempts: number;
-  feedback?: string;
-  metadata?: Record<string, unknown>;
+  deps: z.record(z.unknown()).optional(),
+  attempts: z.number().int().nonnegative(),
+  feedback: z.string().optional(),
+  metadata: z.record(z.unknown()).optional(),
   /**
    * Selected observations from prior tasks in this board run.
    * Populated when the Task Board's `flowPolicy` returns a non-empty
@@ -62,12 +69,24 @@ export type TaskWorkerInput<TIn = unknown> = {
    * policy supplied one. Absent when no policy is configured or when
    * the policy selected nothing.
    *
-   * Typed loosely as `unknown` here so workers that don't reach for
-   * prior work don't pick up a transitive type dep. The concrete
-   * shape is `TaskPriorWork`, also exported from this package
-   * (`@flow-state-dev/orchestration`).
+   * `unknown` so workers that don't reach for prior work don't pick
+   * up a transitive type. The concrete shape is `TaskPriorWork`.
+   * Optional so an unselected slot stays an absent key (the detached
+   * path's JSON-safety gate rejects present `undefined`).
    */
-  priorWork?: unknown;
+  priorWork: z.unknown().optional(),
+});
+
+/**
+ * Input contract handed to every worker. Inferred from
+ * {@link taskWorkerInputSchema}; `input` is re-genericized so a
+ * worker can name its payload type without a second field list.
+ */
+export type TaskWorkerInput<TIn = unknown> = Omit<
+  z.infer<typeof taskWorkerInputSchema>,
+  "input"
+> & {
+  input?: TIn;
 };
 
 /**
