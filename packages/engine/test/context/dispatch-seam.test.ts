@@ -109,12 +109,23 @@ async function createSession(
   runtime: FlowStateRuntime,
   id: string,
   flowKind: string,
-  userId: string
+  userId: string,
+  orgId?: string
 ): Promise<void> {
   const ts = Date.now();
   await runtime.stores.session.set(
     id,
-    { id, state: {}, version: 0, createdAt: ts, updatedAt: ts, flowKind, userId, journal: [] },
+    {
+      id,
+      state: {},
+      version: 0,
+      createdAt: ts,
+      updatedAt: ts,
+      flowKind,
+      userId,
+      ...(orgId !== undefined ? { orgId } : {}),
+      journal: []
+    },
     "any"
   );
 }
@@ -210,6 +221,52 @@ describe("a dispatcher delivering into an existing session (the `id` policy)", (
       expect(result.error?.message).toMatch(/deliver-work/);
       expect(observed.runs).toHaveLength(0);
       expect(await runtime.stores.session.get("s_nowhere")).toBeUndefined();
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("refuses an org binding that differs in either direction, and accepts a matching one", async () => {
+    const { observed, flow, runtime, state } = await boot("seam-org");
+    try {
+      await createSession(runtime, "s_unbound", "seam-org", USER_ID);
+      await createSession(runtime, "s_acme", "seam-org", USER_ID, "org_acme");
+
+      // A sender session per binding: a session's org is fixed on first use,
+      // so an unbound send cannot come from a session an earlier bound send
+      // created.
+      const orgRun = (to: string, orgId?: string) =>
+        runAction({
+          flow,
+          actionName: "deliver",
+          input: { to, note: "org" },
+          userId: USER_ID,
+          sessionId: orgId === undefined ? "s_sender_unbound" : `s_sender_${orgId}`,
+          ...(orgId !== undefined ? { orgId } : {}),
+          stores: runtime.stores,
+          runtimeConfig: { ...runtime.runtimeConfig }
+        });
+
+      // Bound sender → unbound recipient. Accepting this would report a
+      // delivery that the recipient's own org-immutability check then refuses
+      // before the handler runs.
+      const boundToUnbound = await orgRun("s_unbound", "org_acme");
+      expect(boundToUnbound.error?.message).toMatch(/session-not-addressable/);
+      expect(boundToUnbound.error?.message).toMatch(/<unbound>/);
+
+      // Unbound sender → bound recipient. Accepting this would run the
+      // sender's work under an org it never carried.
+      const unboundToBound = await orgRun("s_acme");
+      expect(unboundToBound.error?.message).toMatch(/session-not-addressable/);
+      expect(unboundToBound.error?.message).toMatch(/org_acme/);
+
+      expect(observed.runs).toHaveLength(0);
+
+      // The same binding on both sides is the one shape that delivers.
+      const matched = await orgRun("s_acme", "org_acme");
+      expect(matched.error).toBeUndefined();
+      await until(() => observed.runs.length === 1, "the org-bound delivery to run");
+      expect(observed.runs[0]).toMatchObject({ sessionId: "s_acme" });
     } finally {
       await state.dispose();
     }

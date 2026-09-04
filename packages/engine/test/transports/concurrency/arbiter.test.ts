@@ -54,6 +54,25 @@ describe("arbiter.resolve — policy resolution", () => {
   });
 });
 
+describe("arbiter.resolve — a carried core (dynamic schedule)", () => {
+  it("reads the policy off the envelope's resolvedActionCore, which has no static coordinate", () => {
+    // A dynamic schedule's core is produced by the resolver at dispatch time
+    // and never appears in `flow.schedules.static`, so the keyed lookup finds
+    // nothing for it; its own `concurrency` must still win over the default.
+    const arbiter = createConcurrencyArbiter();
+    const d = arbiter.resolve(
+      flow({ request: { concurrency: "queue" } }),
+      "digest",
+      envelope({
+        source: "scheduled",
+        metadata: { schedule: { scheduleId: "dyn_1" } },
+        resolvedActionCore: { concurrency: "reject" } as never
+      })
+    );
+    expect(d.policy).toBe("reject");
+  });
+});
+
 describe("arbiter.resolve — key resolution", () => {
   it("tenant-namespaces the session key", () => {
     const arbiter = createConcurrencyArbiter();

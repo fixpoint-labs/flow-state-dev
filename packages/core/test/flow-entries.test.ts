@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, dispatcher, generator, handler, resolveEntry, sequencer } from "../src";
-import { bindTaskDispatcher, markDispatcher } from "../src/types/dispatch";
+import { bindTaskDispatcher, markDispatcher, type TaskBinding } from "../src/types/dispatch";
 import type { ActionCore } from "../src/types/flow";
 
 const noop = handler({ name: "noop", inputSchema: z.unknown(), execute: () => null });
@@ -185,13 +185,21 @@ describe("task entries", () => {
    * entry's block. The gate here just nests the block under a named sequencer,
    * which is enough to tell a gated entry from the author's.
    */
-  const bindingFor = (boardId: string) => ({
-    boardId,
-    gate: (entry: ActionCore, target: string): ActionCore => ({
-      ...entry,
-      block: sequencer({ name: `${boardId}-${target}-gate` }).step(entry.block)
-    })
-  });
+  // One gate per board, as `taskBoard()` builds it: the binding is keyed on
+  // the gate, so two seats of one board share it and two boards never do.
+  const gates = new Map<string, TaskBinding["gate"]>();
+  const gateFor = (boardId: string): TaskBinding["gate"] => {
+    let gate = gates.get(boardId);
+    if (gate === undefined) {
+      gate = (entry: ActionCore, target: string): ActionCore => ({
+        ...entry,
+        block: sequencer({ name: `${boardId}-${target}-gate` }).step(entry.block)
+      });
+      gates.set(boardId, gate);
+    }
+    return gate;
+  };
+  const bindingFor = (boardId: string): TaskBinding => ({ boardId, gate: gateFor(boardId) });
   const handOff = (target: string, boardId: string, seat = target) => {
     const block = markDispatcher(
       handler({ name: `hand-off-${boardId}-${seat}`, inputSchema: z.unknown(), execute: () => null }),
@@ -274,6 +282,26 @@ describe("task entries", () => {
         task: { actions: { implement: {} as never } }
       })
     ).toThrow(/task entry "implement" has no block/);
+  });
+
+  it("refuses two boards that spell one boardId with different gates", () => {
+    // A `boardId` string is not a board: two `taskBoard()` instances can
+    // spell the same one over different ledgers, and only one gate can front
+    // the entry. The rule keys on the gate the board bound, not the string.
+    const other = markDispatcher(
+      handler({ name: "hand-off-other", inputSchema: z.unknown(), execute: () => null }),
+      { type: "task", target: "implement", session: "per-task" }
+    );
+    bindTaskDispatcher(other, { boardId: "issues", gate: (entry) => entry });
+    expect(() =>
+      defineFlow({
+        kind: "same-id-two-boards",
+        actions: {
+          run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")).step(other) }
+        },
+        task: { actions: { implement: { block: noop } } }
+      })
+    ).toThrow(/two boards that both declare boardId "issues"/);
   });
 
   it("refuses a hand-off to a task entry the flow does not declare", () => {

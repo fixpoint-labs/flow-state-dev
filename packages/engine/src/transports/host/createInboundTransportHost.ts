@@ -500,6 +500,15 @@ export function createInboundTransportHost(
             "any"
           )
         ]).catch(async (error: unknown) => {
+          // Under `reject` the arbiter claimed the key synchronously in
+          // `gate()` and only the wrapper it returned releases it — and that
+          // wrapper is invoked only once materialization succeeds. Run it here
+          // with a start that fails, so the failed dispatch does not hold the
+          // key until the process restarts. `queue` and `allow` hold nothing
+          // before `gateStart` runs, so there is nothing to give back.
+          if (decision.policy === "reject") {
+            await gateStart(() => Promise.reject(error)).catch(() => undefined);
+          }
           await terminateUnenqueuedRequest(stores, requestId);
           throw error;
         });

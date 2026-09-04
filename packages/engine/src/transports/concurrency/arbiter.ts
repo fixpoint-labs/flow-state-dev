@@ -162,9 +162,15 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       // named action's policy, and a task hand-off whose name collides with a
       // public action never inherits that action's `queue` / `reject` — each
       // reads only its own map.
+      // A dynamic schedule has no static coordinate: its core is produced by
+      // the resolver at dispatch time and carried on the envelope, so its
+      // policy is read from there — the same core `runAction` will run.
+      const carried = (view as { resolvedActionCore?: EntryPolicyView }).resolvedActionCore;
       const entryConfig = isDetached
         ? undefined
-        : resolveEntry(flow, actionName, view.source, view.metadata)?.concurrency;
+        : carried !== undefined
+          ? carried.concurrency
+          : resolveEntry(flow, actionName, view.source, view.metadata)?.concurrency;
       const effective = entryConfig ?? flow.request?.concurrency;
       const { policy, key } = normalizeConfig(effective);
       return { policy, key: resolveKey(key, view) };

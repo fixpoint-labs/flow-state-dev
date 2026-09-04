@@ -19,7 +19,7 @@ import {
   type WorkstreamBindings,
 } from "../types/workstream";
 import { buildWorkstreamCore } from "./workstream-core";
-import { taskBindingOf, type InternalEntry, type TaskEntry } from "../types/dispatch";
+import { taskBindingOf, type TaskBinding, type InternalEntry, type TaskEntry } from "../types/dispatch";
 import type {
   ActionConfig,
   FlowDefinition,
@@ -758,7 +758,10 @@ function resolveDispatchTargets(
   tasks: Record<string, TaskEntry> | undefined
 ): Record<string, TaskEntry> | undefined {
   const gated: Record<string, TaskEntry> = {};
-  const gatedBy = new Map<string, string>();
+  // Keyed on the gate the board bound, not on its `boardId` string: two
+  // `taskBoard()` instances can spell the same `boardId` over different
+  // ledgers, and only one of their gates can front the entry.
+  const gatedBy = new Map<string, TaskBinding>();
   // Entries some seat hands off to under a policy that shares one child across
   // rows (`per-worker`, or a `key`). Two rows dispatched into one session
   // interleave their writes under the `allow` default, so these default to
@@ -801,15 +804,19 @@ function resolveDispatchTargets(
         );
       }
       const holder = gatedBy.get(address.target);
-      if (holder !== undefined && holder !== binding.boardId) {
+      if (holder !== undefined && holder.gate !== binding.gate) {
         throw new Error(
-          `Flow "${kind}" task entry "${address.target}" is handed off to by two boards, ` +
-            `"${holder}" and "${binding.boardId}". One entry settles against one ledger; ` +
-            `declare a second entry for the second board.`
+          holder.boardId === binding.boardId
+            ? `Flow "${kind}" task entry "${address.target}" is handed off to by two boards ` +
+                `that both declare boardId "${binding.boardId}". A boardId names one board and ` +
+                `one ledger; give the second board its own boardId and its own entry.`
+            : `Flow "${kind}" task entry "${address.target}" is handed off to by two boards, ` +
+                `"${holder.boardId}" and "${binding.boardId}". One entry settles against one ` +
+                `ledger; declare a second entry for the second board.`
         );
       }
       if (holder === undefined) {
-        gatedBy.set(address.target, binding.boardId);
+        gatedBy.set(address.target, binding);
         gated[address.target] = binding.gate(entry, address.target);
       }
       if (address.session !== "per-task") sharedChild.add(address.target);

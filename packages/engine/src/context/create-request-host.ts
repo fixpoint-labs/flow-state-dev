@@ -509,17 +509,25 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           `cross-flow delivery is not supported`
       );
     }
+    // Compared as two bindings, not two values that happen to be set: an
+    // org-bound sender delivering into an unbound session would be accepted
+    // here and then refused by `createExecutionContext`'s org-immutability
+    // check before the handler ran (a reported success that never runs), and
+    // an unbound sender delivering into a bound session would run under an
+    // org it never carried.
     const recordOrg = record.orgId ?? undefined;
-    if (recordOrg !== undefined && identity.orgId !== undefined && recordOrg !== identity.orgId) {
+    if (recordOrg !== identity.orgId) {
       return refuse(
         "session-not-addressable",
-        `session "${sessionId}" is bound to org "${recordOrg}", not "${identity.orgId}"`
+        `session "${sessionId}" is bound to org "${recordOrg ?? "<unbound>"}", but this ` +
+          `request is bound to "${identity.orgId ?? "<unbound>"}"; a delivery never moves a ` +
+          `session across an org boundary`
       );
     }
     return {
       ok: true,
       sessionId,
-      orgId: recordOrg ?? identity.orgId,
+      orgId: recordOrg,
       adopted: true,
       delivery: "existing",
       // The incarnation the checks above approved. Acceptance and execution are

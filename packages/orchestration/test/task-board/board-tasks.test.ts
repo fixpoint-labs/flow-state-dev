@@ -263,6 +263,29 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     ).toThrow(/handed off to by two boards, "board-[ab]" and "board-[ab]"/);
   });
 
+  it("refuses two boards that spell one boardId over different ledgers, handing off to one entry", () => {
+    // A `boardId` string is not a board. Two `taskBoard()` instances can share
+    // it while claiming from different collections; only one of their gates
+    // could front the entry, and a dispatch from the other would be checked
+    // against the wrong ledger — starving as stale at best.
+    const other = defineTaskCollection({ id: "board-tasks-other-ledger", scope: "user" });
+    const a = handOffBoard({ name: "board-a", boardId: "shared-id", seat: "implement" });
+    const b = taskBoard({
+      name: "board-b",
+      boardId: "shared-id",
+      collection: other,
+      workers: { implement: seat("implement") },
+    });
+
+    expect(() =>
+      defineFlow({
+        kind: "board",
+        actions: { runA: { block: a.drain }, runB: { block: b.drain } },
+        task: { actions: { implement: { block: worker("implement") } } },
+      })
+    ).toThrow(/two boards that both declare boardId "shared-id"/);
+  });
+
   it("refuses a task entry no reachable board hands off to", () => {
     expect(() =>
       defineFlow({

@@ -20,7 +20,7 @@
  *   failure rather than a passing test about the wrong thing.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineTaskCollection,
@@ -195,6 +195,29 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
         } },
       })
     ).toThrow(/sessionStateSchema/);
+  });
+
+  it("refuses a handed-off entry block whose capability declares sessionStateSchema", () => {
+    // The schema arrives through `uses`, not the block's own config, and lands
+    // in the same shared child session; the refusal reads the block's resolved
+    // capabilities so the channel does not matter.
+    const memo = defineCapability({
+      name: "memo",
+      sessionStateSchema: z.object({ topic: z.string() }),
+    });
+    const board = taskBoard({
+      name: "cap-session",
+      boardId: "cap-session",
+      collection: durable,
+      workers: { implement: seat("implement") },
+    });
+    expect(() =>
+      defineFlow({
+        kind: "cap-session",
+        actions: { run: { block: board.drain } },
+        task: { actions: { implement: { block: worker("impl-cap", { uses: [memo] }) } } },
+      })
+    ).toThrow(/via capability "memo"/);
   });
 
   it("does NOT refuse sessionStateSchema on an INLINE worker of a hand-off board", () => {

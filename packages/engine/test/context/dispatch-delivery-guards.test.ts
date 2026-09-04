@@ -313,3 +313,81 @@ describe("the stamp is trusted only under a seam-stamped source", () => {
     expect(dispatchTypeOf("task")).toBe("task");
   });
 });
+
+describe("a failed enqueue-time materialization gives a `reject` key back", () => {
+  it("does not hold the entry's key after the record write failed", async () => {
+    // Under `reject` the arbiter claims the key synchronously, before the
+    // dispatched request's record and registry entry are written; a failure in
+    // those writes used to skip the wrapper that releases it, so every later
+    // dispatch on that key was refused until the process restarted.
+    const runs: unknown[] = [];
+    const work = handler({
+      name: "work",
+      inputSchema: z.object({ note: z.string() }),
+      outputSchema: z.object({}),
+      execute: async (input) => {
+        runs.push(input);
+        return {};
+      }
+    });
+    const spawn = dispatcher({
+      name: "spawn-work",
+      type: "internal",
+      target: "work",
+      inputSchema: z.object({ key: z.string(), note: z.string() }),
+      session: { key: (input) => input.key },
+      payload: (input) => ({ note: input.note })
+    });
+    const kind = "guard-reject-lease";
+    const flow = defineFlow({
+      kind,
+      actions: { spawn: { block: spawn } },
+      internal: {
+        actions: { work: { block: work, concurrency: { policy: "reject", key: "user" } } }
+      }
+    })({ id: kind });
+    const state = createFlowState({
+      flows: { [kind]: flow },
+      stores: { default: { primary: inMemoryStores() } }
+    });
+    const runtime = await state.getRuntime();
+    try {
+      // Fail the DISPATCHED record's write exactly once. The sender's own
+      // record is written through the same store and must go through.
+      const requestStore = runtime.stores.request;
+      const realSet = requestStore.set.bind(requestStore);
+      let failed = false;
+      requestStore.set = (async (id, record, expected) => {
+        if (!failed && (record as { source?: string }).source === "internal") {
+          failed = true;
+          throw new Error("request store unavailable");
+        }
+        return realSet(id, record, expected);
+      }) as typeof requestStore.set;
+
+      const send = (key: string, note: string) =>
+        runAction({
+          flow,
+          actionName: "spawn",
+          input: { key, note },
+          userId: USER_ID,
+          sessionId: "s_sender",
+          stores: runtime.stores,
+          runtimeConfig: { ...runtime.runtimeConfig }
+        });
+
+      const first = await send("k1", "first");
+      expect(first.error).toBeDefined();
+      expect(failed).toBe(true);
+      expect(runs).toHaveLength(0);
+
+      // Same user key. Before the fix this was refused as held by "first".
+      const second = await send("k2", "second");
+      expect(second.error).toBeUndefined();
+      await until(() => runs.length === 1, "the second dispatch to run");
+      expect(runs[0]).toEqual({ note: "second" });
+    } finally {
+      await state.dispose();
+    }
+  });
+});

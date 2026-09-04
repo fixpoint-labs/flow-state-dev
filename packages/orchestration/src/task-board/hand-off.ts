@@ -39,7 +39,7 @@
  * policy on the entry wins), so two rows dispatched into one child do not
  * interleave their writes.
  */
-import type { DispatchHandle } from "@flow-state-dev/core";
+import { getBaseCapability, type DispatchHandle } from "@flow-state-dev/core";
 import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-state-dev/core/types";
 import type { DefinedTaskCollection, Task, TaskWorker } from "../tasks";
 import type { ResolvedWorkerSlot, TaskWorkerSlot } from "./detached";
@@ -157,9 +157,23 @@ export function handedOffTaskPredicate(
  * the scope-state schemas, but the builders spread the caller's whole config
  * onto it (`blocks/handler.ts`), so the authored value is there at runtime.
  */
-function authoredSessionStateSchema(block: TaskWorker): unknown {
-  return (block.config as { sessionStateSchema?: unknown } | undefined)
-    ?.sessionStateSchema;
+function authoredSessionStateSchema(
+  block: TaskWorker
+): { schema: unknown; capability?: string } | undefined {
+  const config = block.config as
+    | { sessionStateSchema?: unknown; __resolvedCapabilities?: unknown[] }
+    | undefined;
+  if (config?.sessionStateSchema !== undefined) return { schema: config.sessionStateSchema };
+  // A capability's own top-level schema is unconditional whenever the
+  // capability is used, so it is as walkable as the block's. (A preset's
+  // contribution is not: it is conditional on runtime opt-out.)
+  for (const ref of config?.__resolvedCapabilities ?? []) {
+    const base = getBaseCapability(ref as Parameters<typeof getBaseCapability>[0]);
+    if (base.sessionStateSchema !== undefined) {
+      return { schema: base.sessionStateSchema, capability: base.name };
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -168,22 +182,22 @@ function authoredSessionStateSchema(block: TaskWorker): unknown {
  * Composed children are the reachable half of this refusal. A handed-off block
  * is routinely a sequencer or a router, and the block that declares the schema
  * is usually a step inside it — which runs in the child's session exactly as
- * the root does. Capabilities are not walkable here: a capability that
- * contributes `sessionStateSchema` never writes it onto the consuming block's
- * `config`, and a preset's contribution is conditional on runtime opt-out.
+ * the root does. A capability a block `uses` is read through the block's
+ * resolved capabilities, for its own top-level schema; a preset's contribution
+ * is conditional on runtime opt-out and is not walked.
  */
 function nestedSessionStateSchema(
   root: TaskWorker
-): { block: { name: string }; schema: unknown } | undefined {
+): { block: { name: string }; schema: unknown; capability?: string } | undefined {
   const seen = new Set<unknown>();
   const queue: unknown[] = [root];
   while (queue.length > 0) {
     const block = queue.pop();
     if (block == null || seen.has(block)) continue;
     seen.add(block);
-    const schema = authoredSessionStateSchema(block as TaskWorker);
-    if (schema !== undefined) {
-      return { block: block as { name: string }, schema };
+    const authored = authoredSessionStateSchema(block as TaskWorker);
+    if (authored !== undefined) {
+      return { block: block as { name: string }, ...authored };
     }
     for (const child of (block as { childBlocks?: unknown[] }).childBlocks ?? []) {
       queue.push(child);
@@ -293,10 +307,14 @@ export function assertHandOffBlockSupported(options: {
   const { name, target, block } = options;
   const authored = nestedSessionStateSchema(block);
   if (authored === undefined) return;
+  const via =
+    authored.capability !== undefined
+      ? `, via capability "${authored.capability}"`
+      : "";
   const where =
     authored.block.name === block.name
-      ? `("${block.name}")`
-      : `("${block.name}", via composed block "${authored.block.name}")`;
+      ? `("${block.name}"${via})`
+      : `("${block.name}", via composed block "${authored.block.name}"${via})`;
   throw new Error(
     `[task-board] "${name}" hands off to task entry "${target}" ${where}, which declares ` +
       `sessionStateSchema — a handed-off block runs in a child session it may share with ` +

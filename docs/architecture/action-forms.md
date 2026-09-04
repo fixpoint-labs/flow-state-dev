@@ -80,20 +80,23 @@ function that finds the core to run:
 
 ```ts
 function resolveActionCore(flow, actionName, source, metadata): ActionCore | undefined {
-  if (source === "webhook")   { /* read flow.webhooks[md.webhook.provider].on[md.webhook.eventType] */ }
-  if (source === "chat")      { /* read flow.chat.on[md.chat.eventKey] */ }
-  if (source === "scheduled") { /* read flow.schedules.static[md.schedule.scheduleId] */ }
-  if (source === "workstream") { return flow.workstream; }   // TERMINAL — no fallback
-  return flow.actions[actionName];   // caller-addressed fallback
+  if (source === "workstream") { return flow.workstream; }   // TERMINAL — the fenced path
+  const type = dispatchTypeOf(source);                         // public | chat | webhook | schedule | task | internal
+  return resolveEntry(flow, type, actionName, metadata);       // ONE map, no fallback
 }
 ```
 
-Each event branch reads a **namespaced** coordinate from metadata —
-`metadata.webhook` / `metadata.chat.eventKey` / `metadata.schedule.scheduleId`
-— and looks the binding up on the matching transport map. When no event
-coordinate resolves, it falls back to the named `flow.actions` entry. This is
-the one seam that lets an event handler be a first-class action without ever
-appearing in `flow.actions`.
+`resolveEntry` reads exactly one map for the dispatch's type: `flow.actions`
+by name for `public`; `flow.webhooks[md.webhook.provider].on[md.webhook.eventType]`,
+`flow.chat.on[md.chat.eventKey]` and `flow.schedules.static[md.schedule.scheduleId]`
+by their **namespaced** metadata coordinate for the event forms;
+`flow.internal.actions` and `flow.task.actions` by name for the dispatched
+forms. A coordinate that does not resolve is `undefined`, and `runAction`
+refuses the dispatch by name. There is no fallback from any map into
+`flow.actions`: an event whose binding is missing is a missing binding, not a
+caller-addressed action wearing the same name. This is the seam that lets an
+event handler be a first-class action without ever appearing in
+`flow.actions`.
 
 ### The source gate (security)
 
@@ -121,13 +124,14 @@ It is `undefined` until something populates it, and that *off* state is a normal
 state rather than a gap: a flow with no workstream core refuses detached dispatch
 by name.
 
-**The branch is terminal, and that is the security property.** Note the shape
-difference above: an event branch falls through when its coordinate does not
-match, because an event whose binding is missing should still be able to resolve
-a named action. The detached branch returns unconditionally. A detached dispatch
-carries `actionName` as provenance only, and that name can collide with a public
-`flow.actions` key — so falling through would hand a framework-stamped dispatch a
-caller-addressed handler. Because the seam stamps its own source, that is not a
+**The branch is terminal, and that is the security property.** It returns
+unconditionally before the typed lookup runs, so the workstream source never
+reaches a map keyed by name. A detached dispatch carries `actionName` as
+provenance only, and that name can collide with a public `flow.actions` key —
+so any path from this branch into `flow.actions` would hand a framework-stamped
+dispatch a caller-addressed handler. (Every other source now has the same
+property through `resolveEntry`'s one-map rule; this branch is simply the older,
+fenced spelling of it.) Because the seam stamps its own source, that is not a
 caller forging anything; it is the runtime admitting everything through its own
 trusted source. There is no route from the seam to a caller-addressed action.
 
