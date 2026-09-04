@@ -180,12 +180,13 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
       // Past this point the child owns the row, and nothing fallible remains:
       // stop asserting a lease this request no longer holds, and return.
       //
-      // KNOWN GAP, scoped to deferred-start deployments: with an external
-      // dispatcher or under flow-level `queue` concurrency the start is
-      // deferred past this call by design, so between here and the child's gate
-      // nobody holds the lease. If that delay exceeds the lease TTL another
-      // drain reclaims the row and the child then fails its gate as stale —
-      // bounded and safe per occurrence, but starvable under sustained backlog.
+      // Nobody renews the lease between here and the child's gate — with an
+      // external dispatcher or under flow-level `queue` concurrency the start
+      // is deferred past this call by design, so a queue deeper than the lease
+      // TTL leaves the row lapsed when the child arrives. That is no longer a
+      // refusal: the gate takes the row back with a fenced renewal on the same
+      // attempt and proceeds, and only a reclaim that actually won the write
+      // stops it (FIX-1305, `task-entry.ts`).
       currentLeaseRenewal()?.stop();
 
       return {

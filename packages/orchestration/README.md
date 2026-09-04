@@ -225,6 +225,26 @@ Settle the task inside `withLeaseRenewal`'s `run`: it stops renewing the moment
 `run` returns, so a `complete()` or `fail()` issued after it is a fenced write
 on a lease nobody is keeping alive.
 
+**A claimant that has not started yet can take a lapsed row back.**
+`renewLease(id, deadline, { claim, adoptLapsedLease: true })` renews a row whose
+lease has already run out, as long as the ticket still names it and the attempt
+is still the row's. That is the queued-worker case — a task handed to a child
+that waited longer than the lease with nobody renewing it — and the takeover is
+decided by the write: it declines `lost-claim` the moment a reclaim has moved the
+row on, and stays on the same attempt when it lands. It is opt-in because the
+substrate cannot tell that caller apart from a stalled worker whose renewal fired
+late, and only the first should take the row back. The flag applies to renewals
+only; a settlement on a lapsed lease is still declined.
+
+Renew it for `committedLeaseSpan(task)` — the duration that claim committed to,
+which the claim writes onto the row (`leaseDurationMs`) rather than leaving to be
+inferred from `leaseUntil - updatedAt`. Those two stamps stop agreeing as soon as
+anything else writes to the row: `setPriority`, the label verbs and
+`patchMetadata` all move `updatedAt` and leave the deadline alone. The renewal
+driver reads the same function, so a task's cadence and its takeover cannot
+disagree about one lease. A row claimed before that field existed falls back to
+the subtraction.
+
 A worker composed as several steps reaches its driver through
 `currentLeaseRenewal()`. Wrap the block that claims the task in
 `withLeaseRenewalScope(async () => { … })` — **as its first statement, before
@@ -397,10 +417,12 @@ and nothing more.
 
 **The claim has to survive the wait before the child starts.** A claim carries a
 lease (two minutes by default), and nothing extends it until the worker is
-actually running. A Workstream that starts after its lease has run out does
-nothing at all — the task is already back in the queue, and the next drain picks
-it up. A deep queue backlog in front of the child is where this shows up, and the
-board's lease is not configurable today.
+actually running. A Workstream that starts after its lease has run out takes the
+task back first — it renews the lease against the claim it was dispatched with,
+on the same attempt — and stops only if that renewal is declined, which means
+another drain reclaimed the task and is running it elsewhere. A deep queue
+backlog in front of the child is where this shows up; the board's lease is not
+configurable today.
 
 **Serverless without a queue adapter** is the last bound. Detached work runs
 inside the invocation that started it and is bounded by that function's maximum
@@ -486,7 +508,7 @@ The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`
 JSON-serializable; a payload that is not fails the row in the drain. When the dispatch
 arrives, the entry re-reads the row and runs the worker only if the claim is still
 current: same attempt, same row (not deleted and recreated under the same id), still
-`in_progress`, lease not lapsed, still routed to this seat. Otherwise it throws
+`in_progress`, still routed to this seat. Otherwise it throws
 `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing; the row stays
 `in_progress` until its lease runs out and the next drain reclaims it. On the drain
 side the hand-off block returns `{ handedOff: true, taskId, sessionId, requestId,
@@ -518,9 +540,11 @@ the rule belongs to the collection rather than the board.
 
 A claim carries a lease (two minutes by default), and nothing renews it between the
 hand-off and the child's first step. A child that starts after the lease has lapsed
-refuses its claim as stale, and the next drain picks the row up again. A deep queue
-backlog in front of the child is where this shows up; the board's lease is not
-configurable.
+takes the row back before it runs: it renews the lease against the claim it was
+dispatched with, on the same attempt, and proceeds when that write lands. It refuses
+only when the renewal is declined, which is the case another drain reclaimed the row
+first. So a deep queue in front of the child costs nothing, and a genuine reclaim is
+still the successor's to run. The board's lease is not configurable.
 
 ### goalSeekLoop
 
