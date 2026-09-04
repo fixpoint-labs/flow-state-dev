@@ -1233,11 +1233,6 @@ function nextRow(row, { worker, action, landed, folded }) {
 function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const actionable = []
   const converged = []
-  // A row `pendingAction` refused for the SAME reason cursorUsable refuses it elsewhere — activity
-  // reported with no timestamp to advance past — is not converged: `atReviewBudget` never got asked.
-  // Bucketed separately so the caller can log it as what it is (withheld, scan retries) instead of
-  // claiming a convergence that never happened. → FIX-1303.
-  const withheldCursor = []
   const blocked = []
   const waiting = []
   // Work that AUTHORS against the objective — a spec, or an implementation of one. When this wake is
@@ -1269,15 +1264,8 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       continue
     }
     if (next) actionable.push({ row, ...next })
-    else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents) {
-      // `pendingAction` returned null for this exact combination for more than one reason (at budget,
-      // a cross-spec hold, or an unusable cursor), and only the first is a real convergence. Re-asking
-      // `atReviewBudget` and `cursorUsable` here — rather than having `pendingAction` say which — is
-      // what keeps `pendingAction` itself unchanged (BP-035's cost of touching a well-covered switch).
-      if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) converged.push(row)
-      else if (!cursorUsable(row)) withheldCursor.push(row)
-      else waiting.push(row)
-    } else waiting.push(row)
+    else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents && atReviewBudget(row.specReviewRounds, row.specLevelFound)) converged.push(row)
+    else waiting.push(row)
   }
 
   const held = epicApproved ? [] : actionable
@@ -1295,7 +1283,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const settle = claims.slice(0, Math.max(0, cap - advance.length - (foldEpic ? 1 : 0)))
   const queuedClaims = claims.slice(settle.length)
 
-  return { advance, deferred, held, blocked, converged, withheldCursor, waiting, foldEpic, settle, queuedClaims, heldForFold }
+  return { advance, deferred, held, blocked, converged, waiting, foldEpic, settle, queuedClaims, heldForFold }
 }
 
 /**
@@ -2757,11 +2745,7 @@ if (unmergedBlockers.size) {
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)
 }
-// The scan reported spec-review activity with no timestamp to advance the cursor to — the same
-// unusable-batch case cursorUsable refuses everywhere else, not a spec that actually hit its review
-// budget. Said out loud rather than folded into "converged": the fold is withheld, nothing is spent,
-// and the next wake's scan retries. → FIX-1303.
-for (const row of plan.withheldCursor) {
+for (const row of plan.waiting.filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && r.newSpecReviewEvents && !cursorUsable(r))) {
   log(
     `${row.id}: spec-review activity reported with no timestamp to advance the cursor to — fold withheld, not converged. The next wake's scan retries.`,
   )
