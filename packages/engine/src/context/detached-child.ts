@@ -31,7 +31,7 @@ export type DerivationIdentity = {
    *
    * In the key material because a session id can be deleted and recreated: the
    * same id, same principal and same seed would otherwise derive the same child,
-   * and the new conversation would ADOPT the old lineage's workstream — silently
+   * and the new conversation would ADOPT the old lineage's child — silently
    * inheriting an address belonging to a conversation that no longer exists.
    * Conjoining the lineage makes the two children different sessions, so nothing
    * has to detect the case.

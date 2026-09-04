@@ -39,7 +39,7 @@ import {
   handleListSessions,
   handlePatchSessionMetadata
 } from "./session-routes";
-import { handleListSessionWorkstreams } from "./child-session-routes";
+import { handleListSessionChildren } from "./child-session-routes";
 import { handleGetSessionState } from "./state-routes";
 import {
   handleGetResourceContent,
@@ -258,9 +258,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`), and
   // that spread is a fork — so anything stamped here lands on a copy nobody
   // else holds. The object `createFlowState` gives `worker.startWorker` never
-  // saw it, so a colocated queue worker running a detached board met
-  // `no-start-operation`; and because this operation carries no child tracking,
-  // an HTTP-started Workstream was invisible to the shutdown drain.
+  // saw it, so a colocated queue worker running a board that hands off met
+  // `no-dispatch-operation`; and because this operation carries no child tracking,
+  // an HTTP-started child session was invisible to the shutdown drain.
   //
   // `createFlowState` now installs on the shared config before any fork exists,
   // so in every deployment it owns, the operation is already present here and
@@ -436,7 +436,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "list_session_children") {
-        return await handleListSessionWorkstreams(request, route, {
+        return await handleListSessionChildren(request, route, {
           registry: options.registry,
           stores,
           tenantId,

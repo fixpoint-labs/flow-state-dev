@@ -26,11 +26,11 @@
  *    under the `DISPATCH_SEAM` symbol through `dispatchThroughSeam`. If a
  *    `dispatchMessage`-shaped verb ever appears on the public context, the set
  *    of blocks that dispatch stops being knowable at definition time, and a
- *    directive below reports "unused". (`startDetached` stays on the request
- *    host this cycle, behind the fence, and takes no new callers.)
+ *    directive below reports "unused". The request host has no start verb of
+ *    its own: a child is started only by a dispatch.
  */
 import type { BlockContext } from "../block";
-import type { RequestHost, StartDetachedResult } from "../request-host";
+import type { RequestHost } from "../request-host";
 import { requireRequestHost } from "../request-host";
 import { DISPATCH_SEAM, dispatchThroughSeam, type DispatchOutcome } from "../dispatch";
 
@@ -57,29 +57,6 @@ void declared;
 
 const host: RequestHost = requireRequestHost(ctx);
 
-declare const started: StartDetachedResult;
-
-// Start-or-adopt takes a routing seed and never a session id.
-void host.startDetached({ seed: { topic: "review" }, input: { n: 1 } });
-
-// @ts-expect-error no session id is nameable on the seam.
-void host.startDetached({ sessionId: "s_other", seed: { topic: "review" } });
-
-// @ts-expect-error identity is closed over, never a parameter.
-void host.startDetached({ seed: { topic: "review" }, userId: "u_other" });
-
-// Server-derived provenance is its own channel, distinct from the caller's bag.
-void host.startDetached({
-  seed: { topic: "review" },
-  provenance: { taskId: "task_7f3" }
-});
-
-// @ts-expect-error a provenance bag with no facts in it is not provenance.
-void host.startDetached({ seed: { topic: "review" }, provenance: {} });
-
-// @ts-expect-error the channel is closed — adding a fact to it is a decision.
-void host.startDetached({ seed: { topic: "r" }, provenance: { taskId: "t", boardId: "b1" } });
-
 // Settlement addresses the stamped row and takes no claim.
 void host.settleParentTask({ outcome: "complete", output: { ok: true } });
 
@@ -96,25 +73,16 @@ void host.livenessOf?.(["req_a", "req_b"]);
 // @ts-expect-error liveness is batch-shaped; a bare id is not the surface.
 void host.livenessOf?.("req_a");
 
-// The result is a discriminated union, so a refusal cannot be read as a start.
-if (started.ok) {
-  const ids: [string, string, boolean] = [started.sessionId, started.requestId, started.adopted];
-  void ids;
-} else {
-  const refusal: string = started.refused;
-  void refusal;
-}
-
-// @ts-expect-error a refusal carries no session id — the branch must be taken.
-void started.sessionId;
-
 // ── 3. Dispatch: a symbol slot, not a verb ────────────────────────────────
 
 // @ts-expect-error dispatch is not a named member of the context.
 void ctx.dispatchMessage;
 
-// @ts-expect-error nor under the detached name.
+// @ts-expect-error nor as a start verb on the context.
 void ctx.startDetached;
+
+// @ts-expect-error and not on the request host either — a child is started by a dispatch.
+void host.startDetached;
 
 // The slot is declared under the symbol, and only there.
 const seam = ctx[DISPATCH_SEAM];

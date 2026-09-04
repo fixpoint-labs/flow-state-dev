@@ -142,11 +142,7 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
 
   return {
     resolve(flow, actionName, view): ResolvedDecision {
-      // A detached dispatch (FIX-999, behind the fence) carries its handler
-      // inline on the flow's workstream core and passes the handler block name
-      // as `actionName` — provenance only. It takes the flow default: that name
-      // can collide with a public action's key, and inheriting an unrelated
-      // Every other dispatch resolves the entry's own policy through the same
+      // Every dispatch resolves the entry's own policy through the same
       // keyed lookup the dispatch resolves its handler with: the trusted
       // `source` (set by the adapter or the dispatch seam, never the caller)
       // decides the type, and the type's own map is read — `flow.actions` by

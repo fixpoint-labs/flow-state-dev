@@ -21,11 +21,11 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareSessionId } from "../stores/scope-keys";
 import { jsonResponse, loadTenantSession } from "./route-utils";
-import { DEFAULT_MAX_WORKSTREAM_LIST_LIMIT } from "../runtime-config";
+import { DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT } from "../runtime-config";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 /** Rows returned when the caller passes no `limit`. */
-const WORKSTREAM_LIST_DEFAULT_LIMIT = 25;
+const CHILD_LIST_DEFAULT_LIMIT = 25;
 /**
  * Largest `limit` this route accepts when the host configures none. Lower than
  * the collection-state listing's 200 because the cost per row is different:
@@ -37,14 +37,14 @@ const WORKSTREAM_LIST_DEFAULT_LIMIT = 25;
  * fixed number, and the right ceiling depends on what that deployment is
  * willing to spend per read.
  */
-const WORKSTREAM_LIST_MAX_LIMIT = DEFAULT_MAX_WORKSTREAM_LIST_LIMIT;
+const CHILD_LIST_MAX_LIMIT = DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT;
 /**
  * Largest `offset` this route accepts. A database walks and discards every row
  * up to the offset, and those rows are inside the caller's own owner and
  * tenant — so without a cap a nominally bounded read scans the parent's whole
  * child history and every boundary check still passes.
  */
-const WORKSTREAM_LIST_MAX_OFFSET = 10_000;
+const CHILD_LIST_MAX_OFFSET = 10_000;
 
 /**
  * Statuses that make a row `active` wherever in the job they appear.
@@ -176,14 +176,14 @@ export type ChildSessionSummary = {
   status?: ChildSessionStatus;
 };
 
-type WorkstreamRouteContext = {
+type ChildSessionRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   /** Tenant id from the request header (FIX-682). */
   tenantId?: string;
   /**
    * Largest `limit` this listing accepts (FIX-1012). Absent →
-   * {@link WORKSTREAM_LIST_MAX_LIMIT}.
+   * {@link CHILD_LIST_MAX_LIMIT}.
    */
   maxListLimit?: number;
 };
@@ -303,7 +303,7 @@ async function resolveChildSessionStatus(
  *
  * The labels decide nothing here or anywhere else — see `SessionRecord.topic`.
  */
-function readWorkstreamLabels(
+function readChildSessionLabels(
   record: SessionRecord
 ): Pick<ChildSessionSummary, "topic" | "coordinate"> {
   return {
@@ -337,10 +337,10 @@ function boundedParam(
   return parsed;
 }
 
-export async function handleListSessionWorkstreams(
+export async function handleListSessionChildren(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "list_session_children" }>,
-  ctx: WorkstreamRouteContext
+  ctx: ChildSessionRouteContext
 ): Promise<Response> {
   const parent = await loadTenantSession(
     ctx.stores.session,
@@ -355,7 +355,7 @@ export async function handleListSessionWorkstreams(
   }
 
   const url = new URL(request.url);
-  const maxLimit = ctx.maxListLimit ?? WORKSTREAM_LIST_MAX_LIMIT;
+  const maxLimit = ctx.maxListLimit ?? CHILD_LIST_MAX_LIMIT;
   const limit = boundedParam(
     url.searchParams.get("limit"),
     "limit",
@@ -366,14 +366,14 @@ export async function handleListSessionWorkstreams(
     // client that wants more now asks for it. The clamp is for the opposite
     // case — a host that lowers the ceiling below the default, where an
     // unclamped default would exceed its own maximum.
-    Math.min(WORKSTREAM_LIST_DEFAULT_LIMIT, maxLimit)
+    Math.min(CHILD_LIST_DEFAULT_LIMIT, maxLimit)
   );
   if (typeof limit !== "number") return jsonResponse(400, limit);
   const offset = boundedParam(
     url.searchParams.get("offset"),
     "offset",
     0,
-    WORKSTREAM_LIST_MAX_OFFSET,
+    CHILD_LIST_MAX_OFFSET,
     0
   );
   if (typeof offset !== "number") return jsonResponse(400, offset);
@@ -393,7 +393,7 @@ export async function handleListSessionWorkstreams(
     ...identity
   });
 
-  const workstreams = await Promise.all(
+  const summaries = await Promise.all(
     children.map(async (child): Promise<ChildSessionSummary> => {
       // Request records key on the bare session id, not the namespaced
       // storage key.
@@ -408,7 +408,7 @@ export async function handleListSessionWorkstreams(
         parentSessionId: route.sessionId,
         createdAt: child.createdAt,
         updatedAt: child.updatedAt,
-        ...readWorkstreamLabels(child),
+        ...readChildSessionLabels(child),
         ...(status !== undefined ? { status } : {})
       };
     })
@@ -418,5 +418,5 @@ export async function handleListSessionWorkstreams(
   // session records, which here would put every child's `state`, `resources`
   // and append-only `journal` on the wire — unbounded per row, multiplied by
   // the page.
-  return jsonResponse(200, { workstreams });
+  return jsonResponse(200, { children: summaries });
 }

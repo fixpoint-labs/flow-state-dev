@@ -737,7 +737,7 @@ export async function createExecutionContext<
   //  - `resolvedOrgId` is the session's authoritative org. A dispatch against an
   //    org-bound session may omit `orgId` (only a *differing* value is
   //    rejected, above), so capturing `options.orgId` left the host unbound and
-  //    `startDetached` created children outside the parent's org, contrary to
+  //    the dispatch seam created children outside the parent's org, contrary to
   //    its inheritance contract.
   //
   // `userId` and `tenantId` need no such resolution: both are validated to be
@@ -757,7 +757,6 @@ export async function createExecutionContext<
             sessionId,
             lineageId
           },
-          startOperation: options.requestHost.startOperation,
           dispatchOperation: options.requestHost.dispatchOperation,
           parentTask: options.requestHost.parentTask,
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
@@ -1013,7 +1012,7 @@ export async function createExecutionContext<
     config: ResourceConfig | ResourceCollectionConfig
   ): string | undefined => {
     // FIX-1068: a session-scoped resource marked `sharedToLineage` addresses
-    // the lineage root, so a parent and its Workstreams resolve one resource.
+    // the lineage root, so a parent and its child sessions resolve one resource.
     // Everything else stays on the running session, unchanged.
     if (scope === "session") {
       return sharedToLineageFlagOf(config) ? lineageId : sessionKey;

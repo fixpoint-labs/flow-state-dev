@@ -507,32 +507,27 @@ function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
  * Walk the flow's block graph once, returning the two views the caller needs.
  *
  * - `reachable` — every block, through composition AND through a generator's
- *   static `tools` array. What the reachability assertion checks.
+ *   static `tools` array. What the dispatch-target resolution reads.
  * - `toolRoots` — the blocks arrived at *across a tool edge*. What the collector
  *   adds to the action roots.
  *
- * **The two views are different on purpose, and collapsing them re-opens a bug.**
- * A composed child's bindings bubble into its parent, so reading them off the
- * ROOT and reading them off the child should agree — and when they don't, some
- * composition step dropped the rail, which is precisely what
- * {@link assertWorkstreamBindingsReachable} exists to catch. Collecting from
- * every reachable block instead would repair that silently by reading the child
- * directly, and the assertion could never fire again.
+ * **The two views are different on purpose.** A composed child's declarations
+ * (resources, `requiresOrg`) bubble into its parent, so the collector reads
+ * them off the action ROOTS and trusts composition to have carried them.
  *
  * A tool edge is not that. A generator is a leaf that bubbles none of its tools'
- * rails **by design**, so a tool's bindings are missing for a structural reason
+ * declarations **by design**, so a tool's are missing for a structural reason
  * rather than a propagation failure — and each tool block is the root of its own
  * composed subtree, so its own accumulated union is authoritative exactly as an
  * action root's is. That is why tool roots are collected and their descendants
  * are not.
  *
  * **The tool edge is here because a board can be handed to a model as a tool**
- * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a detached
- * board reached only that way contributed no bindings, `flow.workstream` was
- * never built, and the first time the model called the tool the board claimed a
- * row, spawned, and failed `no-workstream-core` — recording the task as failed
- * for a configuration the author had every reason to think was supported
- * (FIX-1074).
+ * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a board
+ * reached only that way was invisible to the walk: its dispatcher seats went
+ * unresolved and its ledger's declarations never reached the flow, so the first
+ * time the model called the tool the board failed on a configuration the author
+ * had every reason to think was supported (FIX-1074).
  *
  * A block is visited once: blocks are shared freely (one handler across several
  * actions) and a router route may point back up the tree, so revisits and cycles
@@ -649,8 +644,8 @@ function validateEntryMaps(
  * two boards addressing one entry are each refused by name — every one of them
  * is a worker that could run against a row nothing verified.
  *
- * Reads the same reachable closure {@link assertWorkstreamBindingsReachable}
- * does, and for the same reason: a dispatcher is reachable only through
+ * Reads the reachable closure {@link walkFlowGraph} builds, taking the tool
+ * edge, because a dispatcher is reachable only through
  * composition, a rescue handler or a tool edge, and the seam is reachable only
  * from blocks that carry an address — `dispatcher()` and the board's hand-off
  * both stamp one, and nothing on `ctx` lets a handler body dispatch without it.
@@ -885,7 +880,7 @@ function mergeFlowResourceMap(
   // instance — built its durability on that answer. Overriding the flag through
   // an accessor-name collision leaves the block claiming rows in one place while
   // the work that must read them looks in another: a parent claims a task in its
-  // own session and the Workstream resolves an empty ledger, which is a silent
+  // own session and the child session resolves an empty ledger, which is a silent
   // loop rather than an error. Refused by name, so the author can see which two
   // declarations disagree.
   for (const [accessor, blockEntry] of Object.entries(blockResources)) {
@@ -899,8 +894,8 @@ function mergeFlowResourceMap(
         `sharedToLineage: ${flowShared}, but a block declared the same accessor with ` +
         `sharedToLineage: ${blockShared}. A flow-level declaration overrides a block's, so ` +
         `this would move the resource between the running session and the lineage without the ` +
-        `block knowing — a detached task board would claim rows in one place while its ` +
-        `Workstream reads an empty ledger and loops. Make the two agree, or give one a ` +
+        `block knowing — a task board that hands off would claim rows in one place while its ` +
+        `child session reads an empty ledger and loops. Make the two agree, or give one a ` +
         `distinct accessor name.`
     );
   }
@@ -1075,7 +1070,7 @@ function createFlowInstance(
 
   // Enumerated once and shared by every collector below. Three separate
   // walks was how a lifecycle observer's board could reach `runAction` while
-  // being invisible to `flow.workstreamBindings`.
+  // being invisible to the dispatch-target walk.
   // Merged before collection, not after: `FlowInstanceOptions` can replace a
   // `request` lifecycle observer, and the instance returned below runs the
   // merged one. Collecting from `definition.*` would read the blocks the flow was
@@ -1119,7 +1114,7 @@ function createFlowInstance(
   // binding. Collect resources and `requiresOrg` over the action blocks plus
   // those runners, or a worker whose resource nothing inline happens to also
   // declare would be missing from `flow.resources` — and the failure surfaces as
-  // an unresolved resource inside the Workstream, far from the declaration.
+  // an unresolved resource inside the child session, far from the declaration.
   // `requiresOrg` is worse: it would simply not be enforced.
   //
   // Collected from the action roots PLUS every block reached across a static

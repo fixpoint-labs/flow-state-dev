@@ -187,7 +187,7 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Give this session-scoped resource ONE identity across the whole session
    * lineage (FIX-1068), so a session and every background child session it
-   * spawns — a Workstream, and a Workstream's own Workstreams — read and write
+   * dispatches — and every child those children dispatch — read and write
    * the same resource through the ordinary resource API.
    *
    * Default `false`: a session-scoped resource resolves against the running

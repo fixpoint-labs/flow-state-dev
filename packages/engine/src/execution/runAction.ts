@@ -142,17 +142,15 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
 }
 
 /**
- * Refuse a dispatch-time core whose detached boards this flow cannot route
- * (FIX-982).
+ * Refuse a dispatch-time core whose dispatchers this flow cannot route.
  *
  * A carried core is produced after `defineFlow` ran — today by a dynamic
- * schedule's `resolve` — so its blocks were never walked and its declarations
- * never reached `flow.workstreamBindings`. A task board with a detached worker
- * inside one is therefore admitted with no route: the drain claims a row, the
- * spawn refuses `no-workstream-core` (or the workstream core has no route for
- * that `boardId`), and the row fails or cycles through lease recovery. Work that
- * stalls without erroring, which is the failure class this whole change exists
- * to remove.
+ * schedule's `resolve` — so its blocks were never walked and the
+ * definition-time address check never saw them. A dispatcher admitted here
+ * whose address the flow does not declare would otherwise reach the seam's
+ * `no-entry` refusal only after a board had claimed a row — a row that then
+ * waits out its lease. Work that stalls without erroring, which is the failure
+ * class this check exists to remove.
  *
  * Checked HERE because this is the one seam every carried core passes through,
  * whatever transport produced it, and because it is upstream of everything: the
@@ -163,21 +161,10 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
  * does not exist at definition time, and the only predicate available there —
  * "this flow has a `schedules.resolve`" — would refuse flows whose resolvers
  * never touch a board. This predicate is exact: it fires when a core actually
- * carries a detached binding this flow cannot route, and never otherwise.
+ * carries a dispatcher this flow cannot route, and never otherwise.
  *
- * **Bound worth knowing.** The bindings check reads the union already
- * accumulated on the core's root block, which is what composition bubbles up. A
- * board reachable from the carried core only through a generator's static
- * `tools` array is not in that union (a generator carries none of its tools'
- * rails), so it is not caught here and keeps the late failure it has today.
- *
- * The same seam refuses a **dispatcher** inside a carried core whose address
- * the flow does not declare. The definition-time address check never walked
- * these blocks, and a dispatcher admitted here would otherwise reach the seam's
- * `no-entry` refusal only after a board had claimed a row — a row that then
- * waits out its lease. This walk does take the tool edge, on the same terms as
- * `defineFlow`'s: composition through `childBlocks`, plus a generator's static
- * `tools`.
+ * This walk takes the tool edge, on the same terms as `defineFlow`'s:
+ * composition through `childBlocks`, plus a generator's static `tools`.
  */
 function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
   // Every block an `ActionCore` can execute, which is the root plus the two
@@ -188,8 +175,6 @@ function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
   // `userMessage` are a schema and a pure function; `tokenBudget` and `durable`
   // are settings), so this list is the whole executable surface.
   const carriers = [core.block, core.onCompleted, core.onErrored];
-
-
   assertDispatchersRoutable(flow, carriers);
 }
 

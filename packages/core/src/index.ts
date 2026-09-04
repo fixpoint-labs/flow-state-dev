@@ -124,8 +124,7 @@ export type {
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./types/request-host";
 
 /**

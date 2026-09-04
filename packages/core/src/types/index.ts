@@ -31,8 +31,7 @@ export type {
   ParentTaskOutcome,
   RequestHost,
   SettleParentTaskInput,
-  SettleParentTaskResult,
-  StartDetachedResult
+  SettleParentTaskResult
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";

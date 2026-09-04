@@ -98,7 +98,7 @@ type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
  * **scope generation**, which is tracked and specced as FIX-1000 ("A create
  * racing session deletion lands in a purged, caller-reusable scope — fence the
  * scope generation") and deliberately not attempted here. Reach for that, not
- * for a second primitive: `lineageId` is a workstream address (FIX-1068) and
+ * for a second primitive: `lineageId` is a lineage address (FIX-1068) and
  * answers a different question.
  *
  * The one thing the narrowing to tombstones does buy: a losing reclaimer can

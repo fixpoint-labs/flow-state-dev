@@ -87,10 +87,10 @@ export interface RuntimeConfig {
    */
   publicReentrySources?: readonly string[];
   /**
-   * Largest `limit` the workstream listing route accepts (FIX-1012). Absent →
-   * {@link DEFAULT_MAX_WORKSTREAM_LIST_LIMIT}.
+   * Largest `limit` the child-session listing route accepts (FIX-1012). Absent →
+   * {@link DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT}.
    *
-   * The list a client reads is all-time history — finished workstreams
+   * The list a client reads is all-time history — finished child sessions
    * stays listed — so a deployment running large orchestrations outgrows the
    * default. Raising it is a deliberate act because the cost is per row and
    * per read: each row resolves its status from the request store, and clients
@@ -131,11 +131,11 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
 }
 
 /**
- * Largest `limit` the workstream listing route accepts when the host
+ * Largest `limit` the child-session listing route accepts when the host
  * configures none (FIX-1012). Bounds read amplification rather than payload
  * size: each row resolves its status from the request store.
  */
-export const DEFAULT_MAX_WORKSTREAM_LIST_LIMIT = 100;
+export const DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT = 100;
 
 /**
  * Validate a host's `maxChildSessionListLimit` at construction, throwing on a
@@ -154,7 +154,7 @@ export function assertMaxChildSessionListLimit(limit: number | undefined): void 
   if (!Number.isSafeInteger(limit) || limit < 1) {
     throw new Error(
       `maxChildSessionListLimit must be a positive safe integer, received ${String(limit)}. ` +
-        "It caps how many workstream rows one read may return, and a value that " +
+        "It caps how many child-session rows one read may return, and a value that " +
         "cannot be compared against (Infinity, NaN) or cannot be a page size " +
         "(zero, negative) would leave the read unbounded rather than capped."
     );

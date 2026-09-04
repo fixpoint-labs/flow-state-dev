@@ -30,15 +30,10 @@
  * 4. **Start it through the host operation**, resolving only once the host has
  *    *accepted* it.
  *
- * `startDetached` stays on the bundle behind the D-8 fence: unchanged, and
- * taking no new callers.
- *
  * Verbs whose preconditions a deployment has not met are not silently broken —
  * each has a named outcome in the public contract:
  *
- * - no host start operation wired → `startDetached` refuses `no-start-operation`
  * - no host dispatch operation wired → the seam refuses `no-dispatch-operation`
- * - the flow declares no workstream core → refuses `no-workstream-core`
  * - this request was not dispatched for a task → `parentTask()` resolves
  *   `undefined` and `settleParentTask` refuses `no-parent-task`
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
@@ -58,68 +53,11 @@ import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveEntry } from "@flow-state-dev/core";
 import type { RuntimeConfig } from "../runtime-config";
 import { resolveLineageId, resolveSessionStorageKey } from "../stores/scope-keys";
-import {
-  deriveChildSessionId,
-  deriveDispatchChildSessionId,
-  evaluateAdoption
-} from "./detached-child";
+import { deriveDispatchChildSessionId, evaluateAdoption } from "./detached-child";
 import type { DispatchOperation } from "./dispatch-operation";
 import { purgeStaleResourceState } from "./ensure-session-record";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
-
-/**
- * Starts a request the seam has already prepared a child session for. Supplied
- * by the host, because dispatch must go through the host-level arbiter and
- * enqueue-time materialization rather than straight to a dispatcher.
- */
-export type DetachedStartOperation = (spec: {
-  sessionId: string;
-  input: unknown;
-  /** Handler block name, carried as provenance only. */
-  actionName: string;
-  /** The flow the child belongs to — always the parent's own (FIX-982 P3a). */
-  flowKind: string;
-  /**
-   * The child's principal, tenant and org.
-   *
-   * Passed rather than re-read from the child record the seam just wrote: these
-   * are the values the seam **derived the child key from** and validated
-   * adoption against, so passing them is what makes the dispatch provably the
-   * same identity as the record. Re-reading would introduce a second source that
-   * can disagree, and the disagreement would be a request running under an
-   * identity the key was never derived for.
-   */
-  userId: string;
-  tenantId?: string;
-  orgId?: string;
-  /**
-   * Provenance stamped onto the request record — what a reader needs to tell
-   * *which* body of background work a detached request is. Server-assembled;
-   * never the caller's bag.
-   */
-  metadata?: Record<string, unknown>;
-  /**
-   * The runtime config the LAUNCHING request is running under, for the child to
-   * inherit (FIX-1077).
-   *
-   * A host is built once, but a caller may run a given request under a derived
-   * config — `fsdev run` builds `{ ...appConfig, modelResolver, logger }` so
-   * `--model` takes effect. The child is that request's own work continued in
-   * the background, so it runs under the same resolvers and logger rather than
-   * the host's construction-time ones. Absent → the host's own config applies.
-   */
-  runtimeConfig?: RuntimeConfig;
-}) => Promise<
-  | { requestId: string }
-  /**
-   * The dispatch never happened, definitively. Distinguished from a thrown
-   * rejection because the two need opposite handling by the caller: nothing
-   * started means the caller still owns whatever it was about to hand over, so
-   * it can settle it; a throw after the attempt cannot rule out a live child.
-   */
-  | { notStarted: true; reason: string }
->;
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -146,14 +84,12 @@ export type RequestHostInputs = {
      */
     lineageId: string;
   };
-  /** Absent when this process executes requests but cannot start one. */
-  startOperation?: DetachedStartOperation;
   /** Absent when this process executes requests but cannot dispatch one. */
   dispatchOperation?: DispatchOperation;
   /**
-   * The config this request runs under, handed to the start and dispatch
-   * operations so a child inherits it rather than the host's construction-time
-   * one (FIX-1077). See `DetachedStartOperation` / `DispatchOperation`.
+   * The config this request runs under, handed to the dispatch operation so
+   * a child inherits it rather than the host's construction-time one
+   * (FIX-1077). See `DispatchOperation`.
    */
   effectiveRuntimeConfig?: RuntimeConfig;
   /** Absent unless this request was dispatched for a parent-board task. */
@@ -331,9 +267,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // derived from, and the entry it was dispatched for. Taken from the
       // values this call already consumed to derive the child, so they cannot
       // disagree with the record's identity — and carrying no authority, which
-      // is what keeps them safe (see `SessionRecord.topic`). The same two
-      // fields the detached start stamps, so the workstreams listing shows a
-      // dispatched child like any other.
+      // is what keeps them safe (see `SessionRecord.topic`). They are the two
+      // fields the children listing reads.
       topic: key,
       coordinate: `${address.type}:${address.target}`
     };
@@ -511,7 +446,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
  * renders a blank name where absence renders its fallback.
  *
  * For `coordinate` this is also a consistency rule rather than a preference:
- * `deriveChildSessionId` length-frames the seed, so `key: ""` and an absent
+ * `deriveDispatchChildSessionId` length-frames the key, so `key: ""` and an absent
  * `key` produce the **same child**. Stamping one of them an empty coordinate
  * would let two calls that provably land on the same record disagree about its
  * label, with the winner decided by whoever created it first.

@@ -232,14 +232,14 @@ class InternalFlowState<TSettings extends object>
   /** Started worker, closed by dispose() before store adapters. */
   #workerHandle: WorkerHandle | undefined;
   /**
-   * In-process detached children still running, drained by `dispose()`.
+   * In-process dispatched children still running, drained by `dispose()`.
    *
-   * Only ever populated by the start operation `#installDetachedStart` installs
+   * Only ever populated by the operation `#installDispatchOperation` installs
    * — a queue-backed child runs in another process and is not this one's to wait
    * for. Entries remove themselves when they settle, so a long-lived server does
    * not accumulate them.
    */
-  readonly #detachedChildren = new Set<DispatchedChild>();
+  readonly #dispatchedChildren = new Set<DispatchedChild>();
   /**
    * The host the request-host operations dispatch through, built on first use
    * and shared by the detached start and the dispatch seam — see
@@ -261,9 +261,9 @@ class InternalFlowState<TSettings extends object>
   /**
    * The one concurrency arbiter every host in this process shares (FIX-1077).
    *
-   * Two hosts exist in a router deployment — the one the detached start
-   * operation is built over, and the router's. Each would otherwise own a
-   * private keyed gate, so a Workstream spawned by an HTTP request could start
+   * Two hosts exist in a router deployment — the one the dispatch operation
+   * is built over, and the router's. Each would otherwise own a private keyed
+   * gate, so a child session dispatched by an HTTP request could start
    * under a `user`/`session` key its own parent still held: a declared `queue`
    * policy silently not serialising, or a `reject` policy silently admitting.
    * Policy is a property of the flow, not of whichever host took the dispatch.
@@ -438,7 +438,7 @@ class InternalFlowState<TSettings extends object>
    *
    * Every wait here races a deadline. A round cap alone bounded the number of
    * batches and not the wait inside one, so a single child that never settles —
-   * a Workstream blocked on an external call — meant the `await` never returned,
+   * a child blocked on an external call — meant the `await` never returned,
    * the cap was never reached, and `dispose()` hung forever, taking `fsdev run`
    * and any production shutdown with it.
    *
@@ -449,7 +449,7 @@ class InternalFlowState<TSettings extends object>
    * process leaves nothing.
    */
   async #drainDetachedChildren(): Promise<void> {
-    if (this.#detachedChildren.size === 0) return;
+    if (this.#dispatchedChildren.size === 0) return;
 
     const budgetMs = resolveDispatchDrainTimeout(this.#options.dispatchDrainTimeoutMs);
     const startedAt = Date.now();
@@ -477,13 +477,13 @@ class InternalFlowState<TSettings extends object>
 
     for (
       let round = 0;
-      this.#detachedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
+      this.#dispatchedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
       round += 1
     ) {
       const remainingMs = waitDeadline - Date.now();
       if (remainingMs <= 0) break;
 
-      const pending = [...this.#detachedChildren];
+      const pending = [...this.#dispatchedChildren];
       // Printed because an unexplained pause at exit reads as a hang — this says
       // what is being waited for.
       //
@@ -513,7 +513,7 @@ class InternalFlowState<TSettings extends object>
       if (!finishedInTime) break;
     }
 
-    if (this.#detachedChildren.size > 0) {
+    if (this.#dispatchedChildren.size > 0) {
       await this.#cancelOutstandingChildren(deadline, startedAt, budgetMs);
     }
   }
@@ -549,7 +549,7 @@ class InternalFlowState<TSettings extends object>
     startedAt: number,
     budgetMs: number
   ): Promise<void> {
-    const abandoned = [...this.#detachedChildren];
+    const abandoned = [...this.#dispatchedChildren];
 
     for (const child of abandoned) {
       // Best-effort by contract: `false` means the run already deregistered,
@@ -738,7 +738,7 @@ class InternalFlowState<TSettings extends object>
    * was a flag threaded into the route handlers to suppress theirs, which buys
    * a no-op query at the price of a new option on a public surface — and the
    * handlers must keep their own call regardless, for the same reason they keep
-   * their own `startOperation` installer: a caller mounting the router without
+   * their own dispatch-operation installer: a caller mounting the router without
    * a `FlowState` has no other owner.
    *
    * Both bounds come off the SAME `resolveStaleSweep` values the request host
@@ -880,8 +880,8 @@ class InternalFlowState<TSettings extends object>
     //
     // The sweeper facts come from `resolveStaleSweep` — the same rule the
     // router applies to the pair it builds its own sweeper from — so the gate
-    // and the sweeper cannot describe different cadences. `startOperation` is
-    // wired at the bottom of this method, once the dispatcher it must go
+    // and the sweeper cannot describe different cadences. The dispatch
+    // operation is wired at the bottom of this method, once the dispatcher it must go
     // through is resolved; `parentTask` stays unwired here, and that verb
     // refuses by name rather than pretending otherwise.
     //
@@ -936,7 +936,7 @@ class InternalFlowState<TSettings extends object>
     this.#resolvedRuntimeConfig = runtimeConfig;
 
     // BEFORE the worker wiring and before any router exists, so every later copy
-    // of `requestHost` carries it. See `#installDetachedStart`.
+    // of `requestHost` carries it. See `#installDispatchOperation`.
     this.#installDispatchOperation(runtimeConfig, stores);
 
     this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
@@ -969,8 +969,7 @@ class InternalFlowState<TSettings extends object>
 
   /**
    * Install the dispatch seam's operation on the shared config, before any fork
-   * of `requestHost` exists — on the same terms as `#installDetachedStart`, and
-   * for the same reason: `createFlowApiRouter` rebuilds `requestHost` as a
+   * of `requestHost` exists, because `createFlowApiRouter` rebuilds `requestHost` as a
    * fresh literal, so anything stamped there lands on a copy a colocated worker
    * never sees.
    *
@@ -1032,8 +1031,7 @@ class InternalFlowState<TSettings extends object>
 
   /**
    * Build the dispatch seam's operation, on first use. A dispatched child that
-   * runs here is tracked for the shutdown drain exactly as a detached one is —
-   * see `#buildDetachedStartOperation` for why that is keyed on the effective
+   * runs here is tracked for the shutdown drain, keyed on the effective
    * dispatcher.
    */
   #buildDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): DispatchOperation {
@@ -1058,10 +1056,10 @@ class InternalFlowState<TSettings extends object>
    * and become the unhandled rejection this is meant to avoid.
    */
   #trackDetachedChild(child: DispatchedChild): void {
-    this.#detachedChildren.add(child);
+    this.#dispatchedChildren.add(child);
     void child.finished
       .catch(() => undefined)
-      .finally(() => this.#detachedChildren.delete(child));
+      .finally(() => this.#dispatchedChildren.delete(child));
   }
 
   async #doInit(): Promise<FlowApiRouter> {

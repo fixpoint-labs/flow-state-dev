@@ -735,7 +735,7 @@ describe("defineFlow", () => {
     // FIX-1068: a flow-level declaration overrides a block's under the same
     // accessor. Silently moving a resource between the running session and the
     // lineage that way breaks the block that declared it — a detached board
-    // claims rows in one place while its Workstream reads an empty ledger.
+    // claims rows in one place while its child session reads an empty ledger.
     it("rejects a flow-level override that changes sharedToLineage", () => {
       const blockLedger = defineResourceCollection({
         pattern: "tasks/**",

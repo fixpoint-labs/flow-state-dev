@@ -102,7 +102,7 @@ const STYLE_OPTIONS: StyleOption[] = [
     label: "Background Work",
     shortLabel: "Background",
     description:
-      "Hands the message to a workstream and replies without waiting; results arrive on a later turn",
+      "Hands the message to a child session and replies without waiting; results arrive on a later turn",
     icon: Hourglass,
     color: "text-indigo-500 dark:text-indigo-400",
   },

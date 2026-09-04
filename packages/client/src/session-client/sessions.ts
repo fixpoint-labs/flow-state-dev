@@ -225,11 +225,11 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     listOptions?: ListChildSessionsOptions
   ): Promise<ChildSessionSummary[]> => {
     const parentId = requireId(parentSessionId, "parentSessionId");
-    const payload = await requestJson<{ childSessions: ChildSessionSummary[] }>({
+    const payload = await requestJson<{ children: ChildSessionSummary[] }>({
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
-        path: `/api/flows/sessions/${encodeURIComponent(parentId)}/childSessions`,
+        path: `/api/flows/sessions/${encodeURIComponent(parentId)}/children`,
         query: asQuery({
           limit: listOptions?.limit,
           offset: listOptions?.offset
@@ -239,7 +239,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
 
     // The client is about to relabel these rows as this conversation's
     // background work, and it will not relabel a row the server did not claim.
-    return payload.childSessions.filter((childSession) => {
+    return payload.children.filter((childSession) => {
       if (childSession.parentSessionId === parentId) return true;
       warnParentMismatchOnce(
         `${parentId}:${childSession.id}`,

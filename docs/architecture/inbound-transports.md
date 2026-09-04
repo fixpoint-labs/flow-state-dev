@@ -91,13 +91,13 @@ dispatches. That is the rule, and `runtimeConfig` on the envelope is the single
 exception to it — set by the framework, never by an adapter and never read from
 a request body.
 
-It exists for one invariant: **a detached child inherits the launching request's
+It exists for one invariant: **a dispatched child inherits the sending request's
 effective config, not the host's construction-time one.** A host is built once,
 but any given request may be running under a config its caller derived. `fsdev
 run` is the shipped case: it builds `{ ...appConfig, modelResolver, logger }` so
-`--model` takes effect, and a Workstream that request spawns is that request's
-own work continued in the background. Without the field the child would silently
-resolve the app's default model while the flag claimed otherwise.
+`--model` takes effect, and a child session that request dispatches is that
+request's own work continued in the background. Without the field the child
+would silently resolve the app's default model while the flag claimed otherwise.
 
 **The inheritance cannot cross a serialization boundary, and that is part of the
 rule rather than an exception to it.** A `RuntimeConfig` holds live resolvers and
@@ -113,7 +113,7 @@ A custom host or dispatcher should read this as: honour `envelope.runtimeConfig`
 when you run work in-process, and expect not to receive it when you don't.
 
 Which dispatches run in-process, and what else changes with that answer, is
-[Detached Work](./detached-work.md).
+[Dispatched Work](./dispatched-work.md).
 
 ### The shared action core
 
@@ -157,17 +157,20 @@ delivering into an *existing* session (`{ id }`) is refused with
 `external-dispatcher` on such a host, while a `{ key }` child and every
 transport dispatch take the ordinary enqueue path.
 
-Two operations run *from inside a block* through the same host, installed on
+One operation runs *from inside a block* through the same host, installed on
 `RuntimeConfig.requestHost` by `createFlowState` (and as a last resort by the
-HTTP handlers): `startOperation`, which `ctx.requestHost.startDetached` uses
-for a workstream, and `dispatchOperation`, which the `dispatcher()` seam uses
-for an `internal` or `task` dispatch. `createDispatchOperation({ host })`
-(`engine/context/dispatch-operation.ts`) stamps the source and the
-server-assembled `metadata.dispatch`, materializes the child session at
-enqueue time so acceptance is decided before the caller's request ends, and
-answers `{ requestId }` or `{ notStarted, reason }`. Both operations reach the
-concurrency arbiter and the transport-source gates exactly as an adapter's
-dispatch does; neither is an adapter.
+HTTP handlers): `dispatchOperation`, which the dispatch seam uses for an
+`internal` or `task` dispatch — a `dispatcher()` block, or a task board's
+hand-off at a dispatcher seat. The seam (`engine/context/create-request-host.ts`)
+resolves the entry, derives or adopts the child session and writes its record,
+and assembles the envelope with the source and the server-assembled
+`metadata.dispatch`; `createDispatchOperation({ host })`
+(`engine/context/dispatch-operation.ts`) then starts it through
+`host.dispatch` and resolves only once the host has accepted it, so acceptance
+is decided before the sender's request ends. It answers `{ requestId }` or
+`{ notStarted, reason }`. The operation reaches the concurrency arbiter and
+the transport-source gates exactly as an adapter's dispatch does; it is not an
+adapter.
 
 `host.validateDispatch` enforces async flow-level pre-conditions.
 Adapters must call it after `resolvePrincipal` and before `dispatch`.
