@@ -15,17 +15,19 @@ with the reason each was dropped.
 
 ## This cycle's slice
 
-**The record is D-8** — *"One-inbox this cycle (same-flow); dispatcher is a
-handler"* (#1530, closed 2026-09-01). Architect and Cycle PM each applied their
-own lens and agreed; it is not an owner leftover. Cite D-8 rather than this
-document or the PR thread when a later change asks why dispatcher is a handler
-this cycle.
+**The record is D-8** — *"One-inbox this cycle; then delete Workstreams
+(FIX-1308)"* (#1530, amended 2026-09-04). Cite D-8 rather than this document or
+the PR thread when a later change asks why dispatcher is a handler, or why the
+deletion follows the protocol rather than accompanying it.
 
-**One direction, a narrower first cut.** The body below describes the whole
-design. This section says which part of it this cycle builds, so a reader does
-not mistake the endpoint for the scope.
+**One direction, in two halves.** The original slice (2026-09-01) cut full
+Workstreams deletion out of cycle. Jake settled otherwise on 2026-09-04: land
+the protocol, then remove Workstreams immediately after, both this cycle. So
+this section is a sequencing statement, not a scope reduction — the body below
+describes the whole design, and all of it is in cycle except the five items
+listed as deferred.
 
-**In this cycle**
+**First half — the protocol** (#1544 / #1555)
 
 - **One inbox per flow, addressed `(type, name)`, same-flow only** — the address,
   the five dispatch types, the no-fallback rule, and the typed entry.
@@ -36,23 +38,30 @@ not mistake the endpoint for the scope.
   cycle, a kind later".
 - No `relay.on`. No `sessionKind`.
 
+**Second half — the deletion** (#1560, FIX-1308). Once dispatch and task seats
+exist, Workstreams are a leftover door rather than a second architecture, so the
+whole surface goes: the maps, the source, the route, the devtool tab, and the
+`client` / `react` rename. §"Deletions and renames" is the work list, and
+#1543 is the reference end state for *what* to delete — it is never-merge, so
+read its shape rather than taking its diff.
+
 **Out this cycle.** Deferred is not rejected; each of these stays live for a
 later cycle:
 
 | Deferred | Why it is not in this cut |
 |---|---|
-| Full Workstreams deletion | the addressing lands first; the deletion is its own change with its own public-surface rename in `client` and `react` — §"Deletions and renames" |
 | A fifth `dispatcher` block kind | a locked-contract amendment is not something a first cut should carry. The three arguments for it survive in §"`dispatcher` — a handler this cycle, a kind later" |
 | Amending `architecture-reference.md` | the reference stays the single spine; this document must not become a second one |
 | Cross-flow dispatch | already phased out of v1 by two independent findings — §"more complicated" #2 and #3 |
 | Layer 2 — Agent / Team / Channel (FIX-867) | out of scope, unchanged |
 | PR #1527 | held as written — see §"What this costs, stated plainly" |
 
-**The fence.** The leftover Workstream maps stay where they are and **do not
-grow**. Nothing new routes through `flow.workstream`, `workstreamBindings`, or
+**The fence — staging, not direction.** While the protocol lands beside
+Workstreams, the leftover maps stay where they are and **do not grow**: nothing
+new routes through `flow.workstream`, `workstreamBindings`, or
 `WORKSTREAM_SOURCE`, and they are not a compatibility path for the new
-addressing. Work that would need them is out of this cycle rather than bridged
-into it.
+addressing. That is a rule about the order of two merges, not a claim that the
+surface survives. It lifts when #1560 deletes it.
 
 ---
 
@@ -66,7 +75,7 @@ discovered at implementation.
 | Line | Today | After |
 |---|---|---|
 | 15 — block kinds | `handler`, `generator`, `sequencer`, `router` | **unchanged this cycle.** `dispatcher` ships as a handler factory; the fifth kind is deferred, not rejected — see §"`dispatcher` — a handler this cycle, a kind later" |
-| 31 — action forms & resolution | `resolveActionCore` reads a namespaced coordinate gated on `source`, falling back to `flow.actions[name]`, terminal only for `"workstream"` | one keyed lookup on `(type, name)`; **no fallback for any type**. `"workstream"` keeps its existing terminal path this cycle, behind the fence and taking no new callers; it loses its referent with the deletion |
+| 31 — action forms & resolution | `resolveActionCore` reads a namespaced coordinate gated on `source`, falling back to `flow.actions[name]`, terminal only for `"workstream"` | one keyed lookup on `(type, name)`; **no fallback for any type**. `"workstream"` keeps its existing terminal path across the first half, behind the fence and taking no new callers; it loses its referent in the second (#1560) |
 | 32 — public re-entry | allow-list `http` / `mcp` / `chat` / `scheduled`; `webhook` and `workstream` never openable | unchanged in shape; `task` inherits `workstream`'s exclusion — see §"What must not silently change" |
 
 **The fifth kind was the one that needed a decision, and it has one: not this
@@ -1321,10 +1330,10 @@ them, so per-entry addressability ships **with** the collapse, not after it.
 
 ## Deletions and renames
 
-**The full deletion is out of this cycle** (§"This cycle's slice"). The table is
-the endpoint, not the first cut. What the fence requires meanwhile: the rows
-below stay as they are and take no new callers — the new addressing does not
-route through them.
+**This is the second half of the cycle** — #1560 / FIX-1308, landing straight
+after the protocol (§"This cycle's slice"). Until it starts, the fence holds:
+the rows below stay as they are and take no new callers, because the addressing
+lands beside them before it replaces them.
 
 | Today | After | Note |
 |---|---|---|
@@ -1462,7 +1471,8 @@ already in the codebase. Every other rename here is cosmetic and can wait.
    workstream addresses — so this is a clean break with no dual-read, and the
    `client` / `react` rename is a breaking changeset rather than a migration
    (§"The purge is wider than the deletions above"). *Decided, unless a
-   deployment exists that this document does not know about.*
+   deployment exists that this document does not know about.* This is what
+   makes the deletion cheap enough to follow the protocol in the same cycle.
 4. **`per-worker` contract.** Narrow to one session per parent, which the existing
    derivation gives, or build a derivation that omits `parentSessionId`?
    *Recommendation: narrow for v1.*
