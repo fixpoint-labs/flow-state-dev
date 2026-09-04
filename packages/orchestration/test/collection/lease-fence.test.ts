@@ -149,6 +149,77 @@ describe.each([
     expect(recovered?.attempts).toBe(2);
   });
 
+  it("lets a claimant that has not started yet take a lapsed row BACK, on the same attempt", async () => {
+    // FIX-1305. The arm above is right about a worker reporting a result and
+    // too strong for one that has not begun — a task handed to a child session
+    // has nobody renewing its lease until the child's gate runs, so an ordinary
+    // queue delay presents exactly this row: lapsed, and untouched by anyone.
+    //
+    // The takeover keeps the attempt. That is the half worth pinning: a
+    // re-claim would recover the row too, and would spend an attempt and a
+    // second dispatch to do it.
+    const { collection, setNow, claim } = await claimed();
+    setNow(1000 + 10_000);
+
+    const outcome = await collection.renewLease("t", 1000 + 20_000, {
+      claim,
+      adoptLapsedLease: true,
+    });
+
+    expect(outcome).toEqual({ outcome: "recorded" });
+    expect(collection.get("t")?.leaseUntil).toBe(1000 + 20_000);
+    expect(collection.get("t")?.attempts).toBe(1);
+    expect(collection.get("t")?.status).toBe("in_progress");
+    // And the row is genuinely held again, not merely stamped: the settlement
+    // the taker owes is now accepted, which is the whole point of taking it.
+    expect(await collection.complete("t", "done", { ifAllowed: true, claim })).toEqual({
+      outcome: "recorded",
+    });
+  });
+
+  it("refuses the takeover when a reclaim actually won the row", async () => {
+    // The other side of the same write, and the one that makes the option safe
+    // to hand out: the race is decided by the substrate, not by the caller's
+    // read. Here the row lapsed and a second worker took it, so the first
+    // claimant's takeover has to lose — with nothing installed on the row the
+    // successor now holds.
+    const { collection, setNow, claim } = await claimed();
+    setNow(1000 + 10_000);
+    const successor = await collection.claim("w2", { leaseDurationMs: 10_000 });
+    expect(successor?.attempts).toBe(2);
+    const successorLease = collection.get("t")!.leaseUntil;
+
+    const outcome = await collection.renewLease("t", 1000 + 60_000, {
+      claim,
+      adoptLapsedLease: true,
+    });
+
+    expect(outcome).toEqual({
+      outcome: "declined",
+      reason: "lost-claim",
+      status: "in_progress",
+    });
+    expect(collection.get("t")?.leaseUntil).toBe(successorLease);
+  });
+
+  it("still refuses a SETTLEMENT that carries the takeover flag", async () => {
+    // The flag is scoped to the renewal — the one write that targets
+    // `in_progress` — so a worker that ran past its lease cannot reach for it
+    // to force its result in. Without the scope this option would quietly undo
+    // the arm at the top of this file.
+    const { collection, setNow, claim } = await claimed();
+    setNow(1000 + 10_000);
+
+    expect(
+      await collection.complete("t", "done", {
+        ifAllowed: true,
+        claim,
+        adoptLapsedLease: true,
+      })
+    ).toEqual({ outcome: "declined", reason: "lost-claim", status: "in_progress" });
+    expect(collection.get("t")?.status).toBe("in_progress");
+  });
+
   it("leaves a write presenting NO ticket completely alone", async () => {
     // The arm is scoped to a presented ticket, so `reclaim()` and every other
     // unfenced write behave exactly as they did.

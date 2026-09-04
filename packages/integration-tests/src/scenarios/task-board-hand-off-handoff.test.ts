@@ -421,19 +421,20 @@ describe("a hand-off board's launching request returns while the work is outstan
     expect(afterChild?.output).toBeUndefined();
   });
 
-  it("refuses a child whose lease lapsed while it sat in the host's queue", async () => {
+  it("takes back a lapsed row whose claim identity is intact, and runs it", async () => {
     // Nothing renews a handed-off row's lease between the parent handing it off
     // and the child actually starting, so a child that waits in the host's
-    // queue longer than the lease can start on a row the substrate already
+    // queue longer than the lease starts on a row the substrate already
     // considers free. The other three gate arms all still pass — same attempt,
     // same creation stamp, same incarnation, still `in_progress` — because no
     // successor has come along and taken it yet.
     //
-    // What makes that worse than a wasted run: the worker's side effects happen
-    // first and the refusal comes second. The settlement is fenced on the lease,
-    // so `complete()` is declined `lost-claim`, the row stays recoverable, and
-    // the next drain runs the same work again. Duplicate effects, and no error
-    // at the point they are committed.
+    // Refusing on the lapse alone is more conservative than that evidence, and
+    // it does not merely waste this run: the row goes back to the queue, the
+    // next drain spends an attempt re-dispatching it into the same queue, and
+    // under a sustained backlog every hand-off lapses before it starts. So the
+    // gate asks the substrate rather than the clock — a lease renewal fenced on
+    // the claim it was dispatched with — and runs when that write lands.
     //
     // The lapse is written onto the durable row rather than waited out: the
     // board's default lease is two minutes and no board-level knob shortens it,
@@ -471,15 +472,22 @@ describe("a hand-off board's launching request returns while the work is outstan
     // The claim wrote a lease, or there is nothing here to lapse.
     expect(claimed?.leaseUntil).toBeDefined();
 
-    // The deadline moves back to the instant the claim was committed, so the
-    // lease expired the moment it was granted. Derived from the row's own
-    // `updatedAt` rather than from a wall-clock read: that stamp was written by
-    // the claim on the collection's clock, which is the clock the gate and the
-    // fence both compare against, and it is strictly in the past by the time
-    // the child runs. Subtracting a wall-clock offset instead would be reading
-    // one clock to make a claim about another.
+    // The whole claim moves back by its own lease span, so the deadline sits on
+    // the instant the claim was committed and has therefore just passed. Both
+    // stamps move: `leaseUntil - updatedAt` is the span the claim committed and
+    // the takeover renews for it, so a rewrite that moved only the deadline
+    // would leave a row with a zero-length lease — something no real claim can
+    // produce, since the substrate floors a lease at one second.
+    //
+    // Both numbers come off the row rather than from a wall-clock read: they
+    // were written by the claim on the collection's clock, which is the clock
+    // the gate and the fence both compare against.
     const lapsedAt = claimed!.updatedAt;
-    await rewriteRow(stores, "handoff-lapsed", "t1", { leaseUntil: lapsedAt });
+    const span = claimed!.leaseUntil! - claimed!.updatedAt;
+    await rewriteRow(stores, "handoff-lapsed", "t1", {
+      updatedAt: lapsedAt - span,
+      leaseUntil: lapsedAt,
+    });
 
     const child = await runAction({
       flow,
@@ -492,19 +500,116 @@ describe("a hand-off board's launching request returns while the work is outstan
       runtimeConfig: baseRuntimeConfig(),
     });
 
-    // THE ASSERTION THIS CASE EXISTS FOR: the worker never ran. Asserting on
-    // the row alone would pass without the gate too, since the fence declines
-    // the settlement either way — the row looks identical whether the work was
-    // refused or merely wasted.
-    expect(ran).toEqual([]);
+    // THE ASSERTION THIS CASE EXISTS FOR: the work the parent handed off ran,
+    // in the child it was handed to.
     expect(child.error).toBeUndefined();
+    expect(ran).toEqual(["t1"]);
 
     const afterChild = await durableRow(stores, "handoff-lapsed", "t1");
-    expect(afterChild?.status).toBe("in_progress");
-    expect(afterChild?.output).toBeUndefined();
-    // Refused, not adopted: the child extended nothing, so the row is still as
-    // recoverable as the next drain found it.
-    expect(afterChild?.leaseUntil).toBe(lapsedAt);
+    // And it SETTLED, which is the half that proves the takeover rather than a
+    // gate that merely stopped checking. Every write the child makes is fenced
+    // on the lease, so a recorded completion is only reachable through a row
+    // this child holds — running the worker without taking the row back would
+    // leave exactly the row this case started from, side effects already spent.
+    expect(afterChild?.status).toBe("completed");
+    expect(afterChild?.output).toEqual({ handled: "t1" });
+    // On the SAME attempt. Recovery by re-claim gets the work done too, and
+    // spends an attempt and a second dispatch to do it — which is how a queue
+    // deeper than the lease can exhaust `maxAttempts` on backlog alone.
+    expect(afterChild?.attempts).toBe(1);
+  });
+
+  it("refuses a child whose row a second drain had already reclaimed", async () => {
+    // The other side of that write, and the one that keeps the takeover honest:
+    // a lapsed lease still means the row is the queue's, so a child arriving
+    // after a successor has actually taken it must write nothing. The successor
+    // here is a real second drain over the same durable ledger — the recovery
+    // path the lapse exists to enable — rather than a hand-written row.
+    const stores = createInMemoryStores();
+    const { flow, ran } = buildFlow({ kind: "handoff-reclaimed", mode: "hand-off" });
+
+    const dispatched: RecordedDispatch[] = [];
+    const recorder = {
+      dispatchOperation: async (spec: {
+        sessionId: string;
+        target: string;
+        input: unknown;
+      }) => {
+        dispatched.push({
+          sessionId: spec.sessionId,
+          actionName: spec.target,
+          input: spec.input,
+        });
+        return { requestId: `child_req_${dispatched.length}` };
+      },
+    };
+
+    const first = await runAction({
+      flow,
+      actionName: "start",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_parent",
+      stores,
+      runtimeConfig: { ...baseRuntimeConfig(), requestHost: recorder as never },
+    });
+    expect(first.error).toBeUndefined();
+
+    const claimed = await durableRow(stores, "handoff-reclaimed", "t1");
+    await rewriteRow(stores, "handoff-reclaimed", "t1", { leaseUntil: claimed!.updatedAt });
+
+    const second = await runAction({
+      flow,
+      actionName: "start",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_parent_2",
+      stores,
+      runtimeConfig: { ...baseRuntimeConfig(), requestHost: recorder as never },
+    });
+    expect(second.error).toBeUndefined();
+    // The row was handed out again, as a fresh attempt, to a second child.
+    expect(dispatched).toHaveLength(2);
+    const reclaimed = await durableRow(stores, "handoff-reclaimed", "t1");
+    expect(reclaimed?.attempts).toBe(2);
+
+    const stale = await runAction({
+      flow,
+      actionName: dispatched[0]!.actionName as never,
+      input: dispatched[0]!.input,
+      userId: USER_ID,
+      sessionId: dispatched[0]!.sessionId,
+      source: TASK_SOURCE,
+      stores,
+      runtimeConfig: baseRuntimeConfig(),
+    });
+
+    // THE ASSERTION THIS CASE EXISTS FOR: the first child stopped, and left the
+    // successor's row alone — no run, no completion, and no failure either.
+    expect(stale.error).toBeUndefined();
+    expect(ran).toEqual([]);
+    const afterStale = await durableRow(stores, "handoff-reclaimed", "t1");
+    expect(afterStale?.status).toBe("in_progress");
+    expect(afterStale?.output).toBeUndefined();
+    expect(afterStale?.attempts).toBe(2);
+    // Nothing installed on the way past, either: a refusal that had extended
+    // the lease first would hold the row away from the worker that owns it.
+    expect(afterStale?.leaseUntil).toBe(reclaimed?.leaseUntil);
+
+    // And the successor's own child runs it — once.
+    const successor = await runAction({
+      flow,
+      actionName: dispatched[1]!.actionName as never,
+      input: dispatched[1]!.input,
+      userId: USER_ID,
+      sessionId: dispatched[1]!.sessionId,
+      source: TASK_SOURCE,
+      stores,
+      runtimeConfig: baseRuntimeConfig(),
+    });
+    expect(successor.error).toBeUndefined();
+    expect(ran).toEqual(["t1"]);
+    expect((await durableRow(stores, "handoff-reclaimed", "t1"))?.status).toBe("completed");
   });
 
   it("still holds the request open for an inline worker on the same board shape", async () => {

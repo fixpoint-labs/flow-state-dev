@@ -437,6 +437,12 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  * after a lost lease is refused so the row stays recoverable instead of being
  * terminalized `errored` by our own liveness mechanism.
  *
+ * Its one opt-out is `adoptLapsedLease` on a renewal (FIX-1305): a claimant
+ * that has not started yet takes the row back rather than being refused, and
+ * because every other arm still runs, "took it back" and "lost it" are decided
+ * by this same write. See the option for why only the caller can tell the two
+ * lapsed claimants apart.
+ *
  * @param collectionId The board this write is happening on — compared against
  *   the ticket's, because two boards may both hold a task id.
  * @param now The clock the write is running against. Both backings already
@@ -503,7 +509,20 @@ export function transitionDeclineReason(
     return "parked";
   }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
-  if (claim !== undefined && leaseLapsed(task, now)) return "lost-claim";
+  // FIX-1305: a renewal may be the ticket-holder taking the row BACK, rather
+  // than a late write against a row it has lost. The two are the same evidence
+  // — everything above passed, so the identity the ticket names is still the
+  // row's and nobody has reclaimed it — and only the caller knows which one it
+  // is, so it says (`adoptLapsedLease`).
+  //
+  // Scoped to a renewal, and that scope is structural rather than a promise:
+  // `renewLease` is the only write that targets `in_progress`, so a settlement
+  // carrying the flag is unaffected and a lapsed worker's result is still
+  // refused. Nothing else about the write changes — a reclaim that moved
+  // `attempts` or the status has already declined one arm up, which is what
+  // makes the takeover decided by the race instead of by the clock.
+  const adopting = options.adoptLapsedLease === true && targetStatus === "in_progress";
+  if (claim !== undefined && !adopting && leaseLapsed(task, now)) return "lost-claim";
   return undefined;
 }
 

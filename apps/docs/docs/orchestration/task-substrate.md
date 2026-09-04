@@ -214,6 +214,8 @@ A skipped write resolves to `{ outcome: "declined", reason, status }` instead of
 
 While a task is `in_progress`, your writes are good for as long as you hold the lease. Present a ticket after the deadline has passed and the write is declined `lost-claim`, the same as any other lost claim, because by then the task is the queue's to hand out again. That is the reason to size a lease to the job it covers.
 
+One caller is entitled to more than that: a worker that has not started yet. If your claim sat in a queue and its lease ran out before the work began, `renewLease(id, deadline, { claim, adoptLapsedLease: true })` takes the task back instead of being declined — same attempt, same claim, no re-dispatch. The write is what decides it, so you get `lost-claim` if another claimant has meanwhile taken the task, and the task if nobody has. Reach for it only from a worker that has run nothing yet. A worker already partway through the job is in the other case, where the lapse means the task may be somebody else's now, and the flag is ignored on any write except a renewal.
+
 The lease answers one question: is a live worker on this right now? A task in `awaiting_review` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: a `resumeFromReview` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
 
 With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing, because it runs the terminal check whether you pass options or not.
@@ -277,7 +279,7 @@ A `TaskCollectionRef` of your own has to do three things:
 
 1. Implement `renewLease`, fenced by the same claim ticket your other writes take.
 2. Make your own `claim()` consider tasks whose lease has run out, take them over as a new attempt, and settle one whose abandonment allowance is spent instead of running it again.
-3. Refuse any ticketed write whose lease has already run out, or a worker that lost its task can still write to it.
+3. Refuse any ticketed write whose lease has already run out, or a worker that lost its task can still write to it. The one exception is a renewal that passes `adoptLapsedLease` — let that one through while every other guard still holds, or a task board's handed-off work stalls behind a queue.
 
 A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than restating the rule.
 
