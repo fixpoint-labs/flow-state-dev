@@ -1,7 +1,7 @@
 ---
 title: Work that outlives the turn
 sidebar_label: Work that outlives the turn
-description: "What background work means in flow-state-dev: side chains, queue-backed action runs, and workstreams, what each one outlives, and which page documents it."
+description: "What background work means in flow-state-dev: side chains, queue-backed action runs, and dispatched child sessions, what each one outlives, and which page documents it."
 ---
 
 # Work that outlives the turn
@@ -20,7 +20,7 @@ Each mechanism outlives something different, and that is the whole distinction.
 |---|---|---|---|
 | **Side chain** | the request that dispatched it | the sequencer, not the request | no |
 | **Queue-backed action run** | a worker process | the web process that accepted it | no, same request id |
-| **Workstream** | a child session | the request that started it | yes |
+| **Dispatch** | a child session | the request that started it | yes |
 
 If you can answer "what still has to be alive when this finishes", you've picked one.
 
@@ -69,31 +69,31 @@ Reach for it when the run is long or heavy enough that you don't want it on the 
 
 Read next: **[Background jobs with BullMQ](/guides/background-jobs-bullmq)** for the setup, from Docker to separated worker containers, and **[Host adapters](/docs/server/host-adapters)** for where this sits among the deployment shapes.
 
-## Workstreams: a job with its own session
+## Dispatch: work in a child session
 
-A workstream is background work that runs in a session of its own, hanging off the conversation that started it. Its runs don't show up in the parent session's request list. You reach them by asking the parent conversation what work belongs to it, then opening one.
+A **dispatch** sends one unit of work to an entry the flow declares, and it runs in a session of its own, hanging off the conversation that started it. Its runs don't show up in the parent session's request list. You reach them by asking the parent what work belongs to it, then opening one.
 
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
 const sessions = createSessionClient();
 
-const workstreams = await sessions.listWorkstreams("sess_abc");
-const first = workstreams[0];
+const children = await sessions.listChildSessions("sess_abc");
+const first = children[0];
 const runs = first === undefined ? [] : await sessions.listSessionRequests(first.id);
 ```
 
-A workstream's `id` is a session id, so every session read works on it, and a workstream that files work of its own has workstreams too.
+A child's `id` is a session id, so every session read works on it, and a child that dispatches work of its own has children too.
 
-Having its own session is also what it costs you. A workstream keeps its own state, its own history, and its own session-scoped resources, and none of those are the parent conversation's. What the two share without asking is the user: user- and org-scoped data is the same data on both sides, because a workstream runs as the same user on the same flow.
+Having its own session is also what it costs you. The child keeps its own state, its own history, and its own session-scoped resources, and none of those are the parent conversation's. What the two share without asking is the user: user- and org-scoped data is the same data on both sides, because the child runs as the same user on the same flow.
 
-For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToWorkstream` and the conversation and every workstream under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
+For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToLineage` and the conversation and every session under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
 
-A `dispatcher()` block sends a single piece of work to a workstream. A task board seat sends every task it claims to one. Both live inside the flow.
+Dispatching is declared in the flow. A `dispatcher()` block sends a single piece of work. A task board seat holding a dispatcher sends every row it claims. There is no client call that starts either one.
 
 ### From a block: `dispatcher()`
 
-A flow declares the work a workstream can run under `internal.actions`, beside `actions`. An internal entry has an action's shape, but no client can call it. A `dispatcher()` block in the same flow is the only way in:
+A flow declares the work under `internal.actions`, beside `actions`. An internal entry has an action's shape, but no client can call it. A `dispatcher()` block in the same flow is the only way in:
 
 ```ts
 import { defineFlow, dispatcher, generator } from "@flow-state-dev/core";
@@ -127,35 +127,7 @@ Read next: **[Starting a job from a flow](/docs/server/background-work#starting-
 
 ### From a task board seat
 
-A board is a list of tasks plus a set of named workers that claim them. A seat in that set can run its tasks in a workstream instead of in the request that claimed them. Wrap the worker in `{ worker, dispatch }`:
-
-```ts
-import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
-
-const diligenceTasks = defineTaskCollection({ id: "diligence-tasks", scope: "user" });
-
-const board = taskBoard({
-  name: "diligence",
-  boardId: "diligence",
-  collection: diligenceTasks,
-  workers: {
-    investigate: { worker: investigateBlock, dispatch: { mode: "detached" } },
-    verify: { worker: verifyBlock, dispatch: { mode: "detached" } },
-    summarize: summarizeBlock, // a bare block runs inline, in the request that claimed the task
-  },
-  initialTasks: [
-    { id: "filings", goal: "Read the Q3 filings", assignee: "investigate", metadata: { topic: "acme" } },
-    { id: "calls", goal: "Summarize the analyst calls", assignee: "investigate", metadata: { topic: "acme" } },
-  ],
-});
-```
-
-`boardId` is required once anything on the board is detached, and the collection has to be a `defineTaskCollection()`. The workstream settles its task after the request that claimed it is gone, so the collection it settles against has to outlive that request too. Both are checked when the board is built, not when the first detached task arrives.
-
-Tasks are seeded here to keep the example in one piece. A task added later with `addTask` carries the same `assignee` and `metadata` fields.
-
-Or put a `dispatcher({ type: "task" })` in the seat and declare the worker on the flow, under `task.actions`:
+A board is a list of tasks plus a set of named workers that claim them. A seat normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ type: "task" })` in the seat's position instead and the board hands each claimed row to a worker running in a child session. The worker is declared once on the flow, under `task.actions`, and the seat names it with `target`:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -173,10 +145,14 @@ const board = taskBoard({
       name: "hand-off-investigate",
       type: "task",
       target: "investigate",      // flow.task.actions.investigate
-      session: "per-task",        // one workstream per task
+      session: "per-task",        // one child session per row
     }),
-    summarize: summarizeBlock,    // still inline
+    summarize: summarizeBlock,    // a bare block runs inline, in the request that claimed the row
   },
+  initialTasks: [
+    { id: "filings", goal: "Read the Q3 filings", assignee: "investigate" },
+    { id: "calls", goal: "Summarize the analyst calls", assignee: "investigate" },
+  ],
 });
 
 export default defineFlow({
@@ -186,37 +162,29 @@ export default defineFlow({
 })();
 ```
 
-The drain claims a task, sends it to the `investigate` entry, and moves on; the workstream runs `investigateBlock` with the same worker input an inline seat would get, and settles the task itself. Which workstream a task lands in is the seat's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`. The `boardId` and durable-collection requirements above apply to this shape too.
+The drain claims a row, sends it to the `investigate` entry, and moves on. The child runs `investigateBlock` with the same worker input an inline seat would get, and settles the row itself. Which child a row lands in is the seat's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
+
+Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
+
+A board with a seat that hands off needs an explicit `boardId` and a `defineTaskCollection()`. The child settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
 
 Read next: **[Seats that hand off](/docs/orchestration/task-board#seats-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 
 Some bounds are worth knowing before you reach for this.
 
-**The board has to be reachable from the child session.** The workstream settles its own task, and resource scope resolves against whichever session is running — so a session-scoped board hydrates empty inside a workstream and has nothing to settle. Give the collection `sharedToWorkstream: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
+**The board has to be reachable from the child session.** The child settles its own row, and resource scope resolves against whichever session is running, so a session-scoped board hydrates empty in the child and has nothing to settle. Give the collection `sharedToLineage: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
 
-**On serverless, the work is bounded by the function unless something else consumes the queue.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. A queue adapter alone does not lift it: in `colocated` mode the same process both enqueues *and* consumes, so the job is picked up by the invocation that is already running out of time. What lifts the ceiling is a consumer with its own lifetime — run the function in `dispatch-only` mode and host the worker separately, as a container or a long-lived process in `worker-only` mode. `colocated` is the right answer on a server you keep running, not on a function.
+**On serverless, the work is bounded by the function unless something else consumes the queue.** A dispatched child runs inside the invocation that started it, so the function's maximum duration is the ceiling. A queue adapter alone does not lift it: in `colocated` mode the same process both enqueues *and* consumes, so the job is picked up by the invocation that is already running out of time. What lifts the ceiling is a consumer with its own lifetime — run the function in `dispatch-only` mode and host the worker separately, as a container or a long-lived process in `worker-only` mode. `colocated` is the right answer on a server you keep running, not on a function.
 
-**A `worker-only` process starts workstreams that aren't durable.** That mode dispatches nothing, so the work runs in the worker process and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
+**A `worker-only` process dispatches children that aren't durable.** That mode installs no dispatcher, so the child runs in the worker process and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
 
-**A workstream releases the request while it is actually working the task.** A task a workstream has in hand is not counted by the board that filed it, so the request that filed it finishes without waiting.
+**A row released to a child stops holding up the drain.** A row a child has in hand is not counted by the board that filed it, so the request that filed it finishes without waiting.
 
-That release lasts only while a workstream is actually holding the task, not for the rest of the task's life. Handing work over says where it belongs; it does not promise the work is still moving. If the workstream stops without settling the task — its process dies, its host is shut down — the task goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A task parked for a person counts again too, unless the board asked not to wait on reviews with [`onReview: "exit"`](/docs/orchestration/task-board#waiting-on-a-person-onreview).
-
-### Which tasks share a workstream
-
-A workstream is one `boardId`, one worker, one topic. A task matching an earlier task on all three lands in the workstream that task is already using and continues its history. Differ in any one and the task gets a workstream of its own.
-
-`filings` and `calls` above match on all three, so they run in one workstream: two runs in the same session, and `listSessionRequests` on that workstream returns both. Change `calls` to `assignee: "verify"` and the two split into a workstream each. Two boards with different `boardId`s split the same way, even on the same topic.
-
-A task with no topic, or a blank one, falls back to its own task id. So a task that doesn't ask for continuity always gets a workstream to itself, and two tasks that both left the topic off never share one by accident. Set a topic when a worker should pick up where it left off on the same body of work: one research thread, one issue, one document. Leave it off when each task starts cold.
-
-A dispatcher seat ignores the topic. Its `session` policy decides: `"per-task"` is a workstream per task, `"per-worker"` is one per seat, and `{ key }` shares a workstream between every task, on any seat or board, whose key comes out the same. A `dispatcher()` block outside a board works the same way with its own `key`: same key from the same conversation, same workstream.
-
-Starting a workstream is server-side only. There's no client call for it.
+That release lasts only while the child is actually holding the row, not for the rest of the row's life. Handing work over says where it belongs; it does not promise the work is still moving. If the child stops without settling the row — its process dies, its host is shut down — the row goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A row parked for a person counts again too, unless the board asked not to wait on reviews with [`onReview: "exit"`](/docs/orchestration/task-board#waiting-on-a-person-onreview).
 
 You can exercise all of it from the terminal by running the flow against an `fsdev.config.*`. Whether the command waits for the background work before exiting depends on whether a queue is configured, and running without a config can't start it at all. See [Background work from the CLI](/docs/cli/overview#background-work).
 
-Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and the access rules the listing endpoint applies; **[Client overview](/docs/client/overview#background-work)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
+Read next: **[Dispatched work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and the access rules the listing endpoint applies; **[Client overview](/docs/client/overview#child-sessions)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
 
 ## Nearby, and often confused
 
@@ -229,6 +197,6 @@ Read next: **[Background work](/docs/server/background-work)** for the HTTP surf
 Whichever path the work takes, the thing you observe is a request — for a side chain, the request it runs inside; for the other two, one of their own. Every run has an id, a lifecycle status, and an item log, and the same tools read all three.
 
 - Attach live with `GET /api/flows/:kind/requests/:requestId/stream`. See [Streaming](/docs/streaming/overview).
-- Read a session's runs with `listSessionRequests`, and a conversation's jobs with `listWorkstreams`. See [Client API](/docs/api/client).
+- Read a session's runs with `listSessionRequests`, and the sessions started under it with `listChildSessions`. See [Client API](/docs/api/client).
 - Reconnect and resume from a sequence number rather than replaying from zero. See [Connection resilience](/docs/server/connection-resilience).
 - Inspect any of it block by block in the [DevTool](/docs/devtool/overview).

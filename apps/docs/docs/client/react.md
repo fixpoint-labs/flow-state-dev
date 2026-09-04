@@ -102,31 +102,40 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 ### Background work
 
-Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on somewhere else. `session.workstreams` is how you show it.
+Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own. `session.childSessions` is how you show it.
 
-Each entry is one body of background work, with enough on it to render a row:
+Each entry is one child session, with enough on it to render a row:
 
 ```tsx
 const session = useSession(sessionId, { flowKind: "assistant" });
 
 return (
   <aside>
-    {session.workstreams.map((work) => (
-      <button key={work.id} onClick={() => setOpenJobId(work.id)}>
-        {work.topic ?? "Background work"} — {work.status ?? "not started"}
+    {session.childSessions.map((child) => (
+      <button key={child.id} onClick={() => setOpenJobId(child.id)}>
+        {child.topic ?? "Background work"} — {child.status ?? "not started"}
       </button>
     ))}
   </aside>
 );
 ```
 
-This list sits beside the conversation rather than inside it. Nothing a background job produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
+This list sits beside the conversation rather than inside it. Nothing a child session produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
 
 #### When the list changes
 
-The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. It does not update on its own while someone sits and watches, so a job started in another tab shows up on their next action — or immediately, if you give them a refresh control.
+The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. It does not update on its own while someone sits and watches, so work started in another tab shows up on their next action — or immediately, if you give them a refresh control.
 
-`session.workstreamsStale` turns `true` when a re-read fails. The rows already fetched stay on screen, so use this to mark them as possibly out of date rather than showing an empty panel.
+`session.childSessionsStale` turns `true` when a re-read fails, and when there are more children than the list can hold. The rows already fetched stay on screen either way — the hook never clears the list — so read it as "there may be more than you can see", not "what you're seeing is wrong", and mark the panel as possibly incomplete rather than emptying it.
+
+The list holds 100 rows by default, newest first. Ask for a different page size with `childSessions: { limit }`; the server rejects one larger than it allows, which arrives as `childSessionsStale` rather than as rows.
+
+```tsx
+const session = useSession(sessionId, {
+  flowKind: "assistant",
+  childSessions: { limit: 25 },
+});
+```
 
 #### What a row's status tells you
 
@@ -138,7 +147,7 @@ New status values can appear over time. Render one you don't recognise instead o
 
 #### Opening one
 
-A body of background work is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
+A child is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
 
 ```tsx
 function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {

@@ -86,19 +86,19 @@ For generator blocks, the panel also shows what the model actually saw on that t
 
 When a block fails, the detail panel surfaces enough context to diagnose without re-running. The error message renders at the top with the `code` as a small mono-text label. When the runtime captures `details` on the failure — generator output-validation errors carry the raw model text and the Zod issues, author-thrown `FlowError`s carry whatever was attached — the panel renders them as dedicated sections: a "Raw output" pane for the model's text, a typed "Validation issues" list for Zod issues, and a "Details" JSON panel for the rest. For tool-invoked blocks that fail, the panel also surfaces the originating tool call's arguments and the block's resolved input, so the failure stops requiring a hunt through sibling rows for the missing context. See [Error handling](/docs/advanced/error-handling).
 
-## Workstreams
+## Children
 
-Some work leaves the session you are watching. A task board can declare that a worker's tasks run in a workstream — a session of its own that keeps going after the request which started it has returned — and none of that work shows up in the conversation's own stream or trace.
+Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs work in a child session — a session of its own that keeps going after the request which started it has returned — and none of that work shows up in the conversation's own stream or trace.
 
-The Workstreams tab lists it. One row per body of background work, with the topic it is for, the board and worker it was routed to, the state its runs reached, and its session id.
+The Children tab lists it. One row per child session, with the labels it carries, the state its runs reached, and its session id.
 
-Click a row and the workspace opens that workstream. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it, and a workstream that files work of its own has a Workstreams tab too. A breadcrumb above the tabs shows how deep you are and takes you back.
+Click a row and the workspace opens that session. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it, and a child that dispatched work of its own has a Children tab too. A breadcrumb above the tabs shows how deep you are and takes you back.
 
 A few things worth knowing about a row:
 
 - **Status is coarse on purpose.** `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A row with no status has not run anything yet.
-- **Labels can be missing.** The topic and the board/worker labels are stamped by whatever started the work. A workstream started outside a task board may carry neither, and the row still renders — the session id is the address.
-- **The task link is a match, not a foreign key.** Where a row lines up with a task on a board in this session, the Tasks tab shows a link on that task's row and the Workstreams tab names the tasks. Where a task cannot be matched to exactly one workstream, no link is shown rather than a guessed one.
+- **Labels can be missing.** The topic and the entry label are stamped when the child is created, and either can be absent. The row still renders — the session id is the address.
+- **The task link is a match, not a foreign key.** Where a row lines up with a task on a board in this session, the Tasks tab shows a link on that task's row and the Children tab names the tasks. Where a task cannot be matched to exactly one child, no link is shown rather than a guessed one.
 
 The list is read when you open a session and when you refresh; it does not update on its own while you watch. See [Work that outlives the turn](/guides/background-work).
 

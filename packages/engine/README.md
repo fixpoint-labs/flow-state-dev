@@ -49,10 +49,10 @@ Construction is synchronous; stores initialize lazily and memoized on the first 
 `dispose()` runs in order:
 
 1. Waits for background work still running in this process. A job handed to a queue is not waited for here — but if this process also *consumes* that queue, step 5 waits for whatever it has already claimed.
-2. Bounds that wait with `detachedDrainTimeoutMs`, a `createFlowState` option defaulting to 30000 ms. It's a ceiling, not a target: work that finishes sooner is not delayed. `0` means don't wait at all.
+2. Bounds that wait with `dispatchDrainTimeoutMs`, a `createFlowState` option defaulting to 30000 ms. It's a ceiling, not a target: work that finishes sooner is not delayed. `0` means don't wait at all.
 3. Cancels whatever is still running when the budget runs out, and gives it a brief window, inside that same budget rather than added to it, to unwind.
 4. Reports the request ids and session ids it gave up on, on stderr. That report prints even when the runtime's logger is silenced, since work may have been left unfinished.
-5. Closes the worker and releases pooled resources across every declared store adapter. Closing the worker waits for any queue job this process has already claimed, and that wait is **not** bounded by `detachedDrainTimeoutMs` — it takes as long as the job does. Size your platform's kill timeout for the longest job.
+5. Closes the worker and releases pooled resources across every declared store adapter. Closing the worker waits for any queue job this process has already claimed, and that wait is **not** bounded by `dispatchDrainTimeoutMs` — it takes as long as the job does. Size your platform's kill timeout for the longest job.
 
 Shutdown mostly does not write a terminal status on background work's behalf. It cancels the work rather than marking those records finished or failed. The exception is a run still waiting behind a concurrency limit when the drain reaches it, which is recorded `aborted` without ever having started. Otherwise the task is taken back by the next claim once its lease has lapsed — the row stays `in_progress` as a fresh attempt, and settles `errored` only past the abandonment allowance — and the request record reads `interrupted`: written by the run itself if it unwinds inside the drain's budget, or by a later runtime start's sweep once its heartbeat has been quiet longer than the staleness threshold. See [what a stopped process leaves behind](https://flow-state.dev/docs/server/background-work#what-a-stopped-process-leaves-behind).
 
@@ -137,7 +137,7 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 It also forwards `publicReentrySources` — the sources your own inbound transports stamp that `retry` / `continue` / `resume` may re-enter. See [Inbound transports](https://flow-state.dev/docs/advanced/inbound-transports).
 
-`maxWorkstreamListLimit` sets the largest `limit` the workstream listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
+`maxChildSessionListLimit` sets the largest `limit` the child-session listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
 
 ### DevTool connection (dev-only)
 
@@ -355,38 +355,38 @@ const stores = createFilesystemStores({
 });
 ```
 
-## Background jobs on a session
+## Child sessions of a session
 
-`GET /api/flows/sessions/:sessionId/workstreams` lists the background jobs
-started by a session — the child sessions attached to it. Each row carries the
-child's id, its parent, `topic` and `coordinate` labels, timestamps, and a
-`status` of `active` (not finished) or a terminal outcome (`completed`,
-`failed`, `aborted`, `incomplete`). A job with no runs has no `status`.
+`GET /api/flows/sessions/:sessionId/children` lists the sessions started under
+one session. Each row carries the child's id, its parent, `topic` and
+`coordinate` labels, timestamps, and a `status` of `active` (not finished) or a
+terminal outcome (`completed`, `failed`, `aborted`, `incomplete`). A child with
+no runs has no `status`. Those seven fields are the whole row — the route sends
+a named field set, not a session record.
 
-`topic` and `coordinate` are written by `ctx.requestHost.startDetached` when it
-creates the job's session, taken from the routing seed that session's id was
-derived from (`seed.topic` and `seed.key`). The caller's own `record` bag lands
-on the child session record and never becomes a label. Both labels are display
-only — nothing routes, authorizes or adopts on them — and both are optional, so
-guard with `== null`.
+`topic` and `coordinate` are stamped when the child session is created, from the
+values the child's id was derived from: `topic` is the session key, `coordinate`
+is the entry the dispatch was addressed to (`internal:<target>` or
+`task:<target>`). Both are display only — nothing routes, authorizes or adopts
+on them — and both are optional, so guard with `== null`.
 
 The route is session-addressed: the parent is loaded and ownership-checked
 before the handler runs, and the answer is scoped to the stored parent's owner,
 tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 0–10000; anything outside returns `400`. Use each row's `id` with the existing
-`/sessions/:id/requests` endpoint to read that job's history.
+`/sessions/:id/requests` endpoint to read that child's history.
 
-Those runs carry a `metadata.workstream` bag on the request record: `topic` and
-`key` from the routing seed, plus `taskId` naming the task-board row the run was
-started for. Read the bag at all only when the record's `source` is
-`"workstream"` — `metadata` is caller-writable on an ordinary request, `source`
-is not. `topic` and `key` are the seed the child session's id was derived from,
-so they cannot disagree with the run they sit on. `taskId` holds whatever the
-caller of `startDetached` passed and is checked against no board, so treat it as
-a correlation to display rather than one to key on. `key` and `taskId` are
-optional, so guard with `== null`.
+Those runs carry a `metadata.dispatch` bag on the request record: `type` and
+`target` for the entry, `from` naming the block and session that dispatched,
+`key` for the derived session key, and `taskId` naming the task-board row on a
+task hand-off. Read the bag at all only when the record's `source` is
+`"internal"` or `"task"` — `metadata` is caller-writable on an ordinary request,
+`source` is not. The runtime assembles the bag from values it derived itself, so
+it is trustworthy to display; it is still a correlation rather than authority, so
+do not key a settlement on `taskId`. `key` and `taskId` are optional, so guard
+with `== null`.
 
-See [Background work](https://flow-state.dev/docs/server/background-work) for
+See [Dispatched work](https://flow-state.dev/docs/server/background-work) for
 the full contract.
 
 ## Store list options
@@ -843,7 +843,7 @@ createFlowApiRouter({
   // Sources from your own inbound transports that `retry` / `continue` /
   // `resume` may re-enter. The built-ins (`http`, `mcp`, `chat`, `scheduled`)
   // are always admitted; every other source is refused with a not-found unless
-  // named here. `webhook`, the detached-dispatch source, `task` and `internal`
+  // named here. `webhook`, `task` and `internal`
   // are never openable — naming one throws at construction.
   publicReentrySources: ["echo"]
 });

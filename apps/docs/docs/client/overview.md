@@ -128,29 +128,29 @@ const list = await sessions.listSessions({ flowKind: "my-app" });
 
 The typed client includes a session client when created with a flow. Use it for creating sessions, listing requests, and fetching state.
 
-### Background work
+### Child sessions
 
-Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in its own session hanging off the one the user is in, so it never shows up in the parent session's own requests. `listWorkstreams` asks a session what background work belongs to it.
+Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own hanging off the one the user is in, so it never shows up in the parent session's own requests. `listChildSessions` asks a session what ran under it.
 
-[Work that outlives the turn](/guides/background-work) covers where these jobs come from and how they differ from the other things the docs call background work; [Background work](/docs/server/background-work) is the HTTP surface underneath the two calls below.
+[Work that outlives the turn](/guides/background-work) covers where these sessions come from and how they differ from the other things the docs call background work; [Dispatched work](/docs/server/background-work) is the HTTP surface underneath the two calls below.
 
 ```ts
-const workstreams = await sessions.listWorkstreams("sess_1");
+const children = await sessions.listChildSessions("sess_1");
 
-for (const workstream of workstreams) {
+for (const child of children) {
   console.log(
-    workstream.id,
-    workstream.topic ?? "untitled",
-    workstream.status ?? "not started",
+    child.id,
+    child.topic ?? "untitled",
+    child.status ?? "not started",
   );
 }
 ```
 
-Each row is a `WorkstreamSummary`:
+Each row is a `ChildSessionSummary`:
 
 ```ts
-type WorkstreamSummary = {
-  id: string;               // the workstream's own session id
+type ChildSessionSummary = {
+  id: string;               // the child's own session id
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
@@ -160,34 +160,36 @@ type WorkstreamSummary = {
 };
 ```
 
+That is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
+
 Paging is `{ limit, offset }`: `limit` runs 1–100 and defaults to 25, `offset` runs 0–10000.
 
-A workstream's `id` is a session id, so hand it to any session read to drill in:
+A child's `id` is a session id, so hand it to any session read to drill in:
 
 ```ts
-const [workstream] = await sessions.listWorkstreams("sess_1");
+const [child] = await sessions.listChildSessions("sess_1");
 
-if (workstream) {
-  const requests = await sessions.listSessionRequests(workstream.id);
+if (child) {
+  const requests = await sessions.listSessionRequests(child.id);
 }
 ```
 
-**What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a job whose worker died, until the server records otherwise. The terminal values are `completed`, `failed`, `aborted`, and `incomplete`.
+**What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a child whose worker died, until the server records otherwise. The terminal values are `completed`, `failed`, `aborted`, and `incomplete`.
 
-A workstream that has never run anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
+A child that has never run anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
 
-`topic` and `coordinate` are optional too. `topic` names the body of work, `coordinate` names the worker handling it. Both are display labels, and a row can arrive without either. Guard all three with `== null`:
+`topic` and `coordinate` are optional too. `topic` names the body of work, `coordinate` names the entry running it. Both are display labels — nothing identifies or authorizes from them — and a row can arrive without either. Guard all three with `== null`:
 
 ```tsx
 <li>
-  <span>{workstream.topic ?? "Untitled work"}</span>
-  <span>{workstream.status == null ? "Not started" : workstream.status}</span>
+  <span>{child.topic ?? "Untitled work"}</span>
+  <span>{child.status == null ? "Not started" : child.status}</span>
 </li>
 ```
 
-**An empty list and an error mean different things.** A session that has no background work resolves to `[]`. A session id that doesn't exist, or one the caller isn't allowed to read, rejects with [`ClientHttpError`](/docs/api/client#clienthttperror). So `[]` means there is none, not that the lookup failed.
+**An empty list and an error mean different things.** A session that started nothing resolves to `[]`. A session id that doesn't exist, or one the caller isn't allowed to read, rejects with [`ClientHttpError`](/docs/api/client#clienthttperror). So `[]` means there is none, not that the lookup failed.
 
-**No client call starts background work.** Whether a piece of work detaches is the flow author's decision, declared on the server when the flow is wired up. From the client you read what exists.
+**There is no call that starts one.** Whether work runs in a child session is the flow author's decision, declared on the server when the flow is wired up. From the client you read what exists.
 
 ## State snapshots and clientData
 
