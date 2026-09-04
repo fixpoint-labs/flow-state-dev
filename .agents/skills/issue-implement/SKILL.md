@@ -295,7 +295,7 @@ This is the critical quality gate. **Invoke `review`** on the change (the implem
 
 - **Coherence** (`audit-coherence`) — does the solution cohere with `docs/philosophy.md` and the surrounding patterns? The apex lens: it catches the "directionally-right spec but the design feels off" failure the others structurally can't. A coherence break usually means reshaping the approach, not patching lines.
 - **Restraint** (`second-look`) — overbuilt / YAGNI / 80-20 / what can be subtracted (BP-038)?
-- **Correctness** — bugs and logic errors + the second-path checklist (BP-035) + the changeset (BP-022).
+- **Correctness** — bugs and logic errors + the second-path checklist (BP-035). Changesets (BP-022) are opt-in, so the lens flags a fragment that is present and wrong, never a missing one.
 - **Completeness** (a spec is in scope) — every spec requirement built and nothing extra, **red demonstrated** (the failing output captured before the fix), and the **goal proven** on a real model (or the documented "no goal check applies" justification; for bugs, diagnose's real-path confirmation).
 
 Depth follow-ups (`improve-codebase-architecture`) come back as non-blocking notes. If the area is unfamiliar or large, `review` may run the depth lens too.

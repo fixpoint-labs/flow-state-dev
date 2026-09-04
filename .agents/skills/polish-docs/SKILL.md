@@ -128,5 +128,5 @@ what was cut, and anything you **flagged as possibly inaccurate** rather than ed
 - **Don't invent features or docs for things that don't exist.** You edit what's there.
 - **Code examples stay correct** and use current model names (`openai/gpt-5.4-mini` for small/fast;
   no `gpt-4o*`/`gpt-3.5*`).
-- **Changeset (BP-022):** docs-site-only edits are internal → `pnpm changeset --empty`. Add a real
-  changeset only if your edits document a package API change.
+- **Changeset (BP-022):** docs-site-only edits are internal → no changeset. Add one only if your
+  edits document a package API change a consumer needs to know about.

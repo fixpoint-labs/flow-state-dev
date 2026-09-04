@@ -331,7 +331,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 
 - **BP-003** Verification evidence is mandatory — every deliverable has an evidence path + pass criteria, and so does every claim the change rests on (scope counts, equivalence, runtime behaviour): execute or parse it, don't read it. The command itself is subject to tenet 7 — watch for a green result from a check aimed at a neighbour of the claim.
 - **BP-007** Concise API/file docs — file header + 100% of exported APIs documented; non-obvious helpers too.
-- **BP-022** Release notes via Changesets — every user-facing PR adds a `.changeset/*.md`; internal-only → `--empty`. Pre-1.0: `patch`/`minor` only.
+- **BP-022** Release notes via Changesets — **not required by default.** Add a `.changeset/*.md` only when a downstream consumer of a published package needs to know; private packages (labs, examples, apps, plugin, goals) never get one. Skipping needs no empty fragment, just a line in the PR. Pre-1.0: `patch`/`minor` only.
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
 - **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
 - **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.

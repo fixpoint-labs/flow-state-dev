@@ -5,8 +5,9 @@ How we publish `@flow-state-dev` and `@thought-fabric` packages to npm. For how 
 ## Versioning policy
 
 - All packages start at 0.x (currently 0.1.0 baseline).
-- Pre-1.0 discipline: `patch` for compatible changes, `minor` for breaking changes. Never file a `major` changeset while pre-1.0. Changesets will jump the package straight to 1.0.0.
+- Pre-1.0 discipline: `patch` for compatible changes, `minor` for breaking changes. Never file a `major` changeset while pre-1.0. Changesets will jump the package straight to 1.0.0. [release-notes-workflow.md](./release-notes-workflow.md#pre-10-discipline-current-state) is the authoritative wording.
 - Graduate to 1.0 only by explicit decision, not by accident.
+- Only publishable packages are versioned. `.changeset/config.json` sets `privatePackages: { version: false }`, so every `private: true` package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals` — is skipped by both `pnpm changeset` and `pnpm version-packages`.
 
 ## Tag scheme
 
@@ -28,8 +29,8 @@ Sourcemaps are stripped from published tarballs. Every publishable package decla
 
 This is the normal path. No manual steps beyond merging PRs.
 
-1. Land PRs with changeset fragments (see [release-notes-workflow.md](./release-notes-workflow.md)).
-2. `release.yml` runs on every push to `main`. When pending changesets exist, the `changesets/action` opens (or updates) a **Version Packages** PR that bumps versions and updates per-package `CHANGELOG.md` files.
+1. Land PRs. A minority carry a changeset fragment — the ones a consumer of a published package needs to hear about (see [release-notes-workflow.md](./release-notes-workflow.md)).
+2. `release.yml` runs on every push to `main`. When pending changesets exist, the `changesets/action` opens (or updates) a **Version Packages** PR that bumps versions and updates per-package `CHANGELOG.md` files. With no pending fragments it does nothing, which is the normal state between releases — a release happens when a batch of consumer-visible changes has accumulated, not on every merge.
 3. Merge the Version Packages PR. `release.yml` runs again, this time publishing all changed packages to npm with provenance and creating GitHub Releases from the generated changelogs.
 
 ### Snapshot releases

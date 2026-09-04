@@ -41,7 +41,7 @@ Before declaring a wave complete, all of these must pass:
 - [ ] Lint/static checks pass
 - [ ] Architecture contract spot-check against `docs/architecture/`
 - [ ] Wave changelog and journal updated
-- [ ] Changesets present for all packages with user-facing impact (verify via `pnpm changeset status`; see [`release-notes-workflow.md`](release-notes-workflow.md))
+- [ ] Changesets present for the wave's changes a downstream consumer of a published package needs to know about — and absent everywhere else, which is most of them (see [`release-notes-workflow.md`](release-notes-workflow.md)). `pnpm changeset status` is not the check: it exits non-zero whenever a package changed without a fragment, which is now the normal case.
 
 ## Wave Completion Record
 
