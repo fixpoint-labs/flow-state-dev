@@ -619,11 +619,14 @@ function subPrScanBinding(subPrs, states) {
 /**
  * Can this row's cursor move past the activity it is reporting?
  *
- * A scan may report new activity and omit `latestActivityAt` — schema-valid, and useless: there is
- * nothing to advance the cursor to. Dispatching anyway consumes the batch (a review round spent, or
- * PR fixes applied) while the cursor stays put, so the next wake rediscovers exactly the same
- * feedback and does it again. Withholding is the recoverable outcome: the flag stays live and the
- * batch is genuinely re-derived once a scan reports a timestamp.
+ * `latestActivityAt` is REQUIRED on PR_STATE_SCHEMA, so an omitted timestamp never reaches this guard
+ * — the batch fails schema validation first and the row reads unobserved. What this clause actually
+ * catches is the case the schema still allows: an explicit `null`, the scout saying "no activity to
+ * date" while also reporting `newSpecReviewEvents`/`newPrEvents` true — a contradiction with nothing
+ * to advance the cursor to. Dispatching anyway consumes the batch (a review round spent, or PR fixes
+ * applied) while the cursor stays put, so the next wake rediscovers exactly the same feedback and does
+ * it again. Withholding is the recoverable outcome: the flag stays live and the batch is genuinely
+ * re-derived once a scan reports a timestamp.
  *
  * The same rule covers every OTHER observation the prompt asked this scan for and it left out. An
  * incomplete scan that consumes the batch destroys the announcement of whatever it failed to look at,
