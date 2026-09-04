@@ -52,6 +52,7 @@
 import { handler } from "@flow-state-dev/core";
 import {
   bindTaskDispatcher,
+  DispatchRefusedError,
   dispatchThroughSeam,
   markDispatcher,
   taskSessionKeyFor,
@@ -164,9 +165,15 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
         // fails the row against it, which is the honest outcome for work that
         // was claimed and could not be started.
         await ctx.sequencer!.patchState({ currentClaim: claim });
-        throw new Error(
+        // The same error a `dispatcher()` block throws, so a `.rescue()` can
+        // branch on `refused` whichever block sent the dispatch; the board
+        // and row are named in the detail.
+        throw new DispatchRefusedError(
+          name,
+          address,
+          outcome.refused,
           `[task-board] "${boardId}" could not hand off task "${claim.taskId}" from seat ` +
-            `"${seat}" to task entry "${address.target}": ${outcome.refused} — ${outcome.detail}`
+            `"${seat}": ${outcome.detail}`
         );
       }
 

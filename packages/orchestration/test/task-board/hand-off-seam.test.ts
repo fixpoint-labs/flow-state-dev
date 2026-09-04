@@ -205,7 +205,14 @@ describe("the parent releases its claim before the dispatch it cannot take back"
       }),
     });
 
-    await expect(harness.run()).rejects.toThrow(/no-entry/);
+    // The same error a `dispatcher()` block throws, so a `.rescue()` branches
+    // on `refused` the same way whichever block sent the dispatch.
+    await expect(harness.run()).rejects.toMatchObject({
+      name: "DispatchRefusedError",
+      code: "dispatch-refused",
+      refused: "no-entry",
+      address: { type: "task", target: "implement" },
+    });
 
     expect(harness.timeline).toEqual(["release", "dispatch", "restore"]);
     expect(harness.claimAfter()).toEqual(CLAIM);

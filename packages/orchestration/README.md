@@ -491,7 +491,8 @@ current: same attempt, same row (not deleted and recreated under the same id), s
 `in_progress` until its lease runs out and the next drain reclaims it. On the drain
 side the hand-off block returns `{ handedOff: true, taskId, sessionId, requestId,
 adopted }`, and a refused dispatch fails the row through the board's ordinary
-error path. The child settles its own row, and the board's `onError` reaches it:
+error path, throwing the same `DispatchRefusedError` (with its `refused` code)
+that a `dispatcher()` block throws. The child settles its own row, and the board's `onError` reaches it:
 `"skip"` settles the row and lets the child's request complete, `"fail"` also fails
 that request.
 
