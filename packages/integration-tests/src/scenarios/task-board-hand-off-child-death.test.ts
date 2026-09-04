@@ -33,6 +33,11 @@ import { z } from "zod";
 
 const USER_ID = "u_death";
 const KIND = "hand-off-child-death";
+/** The provenance a hand-off dispatch carries; spelled literally because the constant is internal to `engine`. */
+const TASK_SOURCE = "task";
+
+/** What a hand-off dispatch was asked to do. Recorded, replayed by hand. */
+type RecordedDispatch = { sessionId: string; target: string; input: unknown };
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
 function buildFlow() {
@@ -107,7 +112,7 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     // 1. The parent hands the row over. The child is recorded and never
     //    started — the strongest form of "died before taking ownership", since
     //    it cannot have partially run.
-    const dispatched: unknown[] = [];
+    const dispatched: RecordedDispatch[] = [];
     const parent = await runAction({
       flow,
       actionName: "start",
@@ -118,8 +123,8 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
       runtimeConfig: {
         ...baseRuntimeConfig(),
         requestHost: {
-          dispatchOperation: async (spec: { input: unknown }) => {
-            dispatched.push(spec.input);
+          dispatchOperation: async (spec: RecordedDispatch) => {
+            dispatched.push({ sessionId: spec.sessionId, target: spec.target, input: spec.input });
             return { requestId: "child_never_runs" };
           },
         },
@@ -137,7 +142,8 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     await lapseLease(stores, "t1");
 
     // 3. THE ASSERTION THIS FILE EXISTS FOR. A later drain finds the row
-    //    claimable again and runs the work. Nothing was lost — the cost of the
+    //    claimable again and hands it off a second time, and THAT child runs
+    //    the work to completion. Nothing was lost — the cost of the first
     //    child's death was one lease of latency.
     const recovery = await runAction({
       flow,
@@ -149,13 +155,11 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
       runtimeConfig: {
         ...baseRuntimeConfig(),
         requestHost: {
-          // This drain runs the worker inline rather than handing off again, so
-          // the test observes the work completing rather than a second
-          // hand-off. Refusing the spawn is how the row reaches the worker on
-          // this pass — the board falls back to failing it, and the row's own
-          // retry budget is not what is under test here.
-          dispatchOperation: async (spec: { input: unknown }) => {
-            dispatched.push(spec.input);
+          // Recorded like the first, so the second child can be replayed by
+          // hand below: a recovery that only re-dispatched forever would look
+          // identical up to this point.
+          dispatchOperation: async (spec: RecordedDispatch) => {
+            dispatched.push({ sessionId: spec.sessionId, target: spec.target, input: spec.input });
             return { requestId: "child_2" };
           },
         },
@@ -166,6 +170,47 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     // The row was reclaimed: a second dispatch was issued for it, which only
     // happens if `claim` considered the lapsed row claimable again.
     expect(dispatched).toHaveLength(2);
+    expect(ran).toEqual([]);
     expect(await durableRow(stores, "t1")).toMatchObject({ status: "in_progress" });
+
+    // 4. The second child runs — replaying the captured envelope through the
+    //    `task` source, as the real host would — and its gate accepts it: the
+    //    envelope carries the RECLAIM's attempt, so the row it re-reads is the
+    //    one it was dispatched for. The worker runs once and settles the row.
+    const second = dispatched[1]!;
+    const child = await runAction({
+      flow,
+      actionName: second.target as never,
+      input: second.input,
+      userId: USER_ID,
+      sessionId: second.sessionId,
+      source: TASK_SOURCE,
+      stores,
+      runtimeConfig: baseRuntimeConfig(),
+    });
+
+    expect(child.error).toBeUndefined();
+    expect(ran).toEqual(["t1"]);
+    expect(await durableRow(stores, "t1")).toMatchObject({ status: "completed" });
+
+    // The dead first child's envelope is stale by construction: it carries the
+    // superseded attempt, so replaying it now is refused by the gate (which
+    // writes nothing and lets the request complete, as `onError: "skip"`
+    // reads it) rather than run a second time over a row another attempt
+    // already settled.
+    const first = dispatched[0]!;
+    const stale = await runAction({
+      flow,
+      actionName: first.target as never,
+      input: first.input,
+      userId: USER_ID,
+      sessionId: first.sessionId,
+      source: TASK_SOURCE,
+      stores,
+      runtimeConfig: baseRuntimeConfig(),
+    });
+    expect(stale.error).toBeUndefined();
+    expect(ran).toEqual(["t1"]);
+    expect(await durableRow(stores, "t1")).toMatchObject({ status: "completed", attempts: 2 });
   });
 });
