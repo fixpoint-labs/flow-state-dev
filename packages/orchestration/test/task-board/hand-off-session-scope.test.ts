@@ -19,21 +19,10 @@ import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core
 import { createExecutionContext, createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { SessionRecord, StoreRegistry } from "@flow-state-dev/engine";
 import { defineTaskCollection } from "../../src/tasks";
-import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { taskBoard } from "../../src/task-board";
 import type { TaskWorker } from "../../src/tasks";
 
 const BOARD_ID = "session-scoped-hand-off";
-
-/**
- * A handler, not a generator: these tests are about where the LEDGER resolves,
- * and a model would only add an environment dependency to that question.
- */
-const worker = handler({
-  name: "brief",
-  inputSchema: taskWorkerInputSchema,
-  outputSchema: z.string(),
-  execute: () => "done"
-});
 
 function boardFor(collection: ReturnType<typeof defineTaskCollection>) {
   return taskBoard({
