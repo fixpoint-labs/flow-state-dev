@@ -12,7 +12,7 @@ state, its resources, and the history of every request that ran in it. A
 background job's session hangs off the conversation that started it, as a child
 of it.
 
-This page covers two things: how a flow starts a job, and the HTTP surface for
+This page covers how a flow starts a job, and the HTTP surface for
 reading them afterwards. Ask a conversation for its jobs, then ask any one job
 for its history.
 

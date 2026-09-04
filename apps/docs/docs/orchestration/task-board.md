@@ -311,7 +311,7 @@ A registry seat can also run its tasks somewhere other than the request that cla
 
 A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead send each claimed task to a **Workstream**, a child session of the one draining, and move on. The drain finishes with the row still `in_progress`, and the Workstream settles it when the worker is done.
 
-Two seat shapes do that. Both need the same board setup, and a board can mix them with inline seats.
+Both shapes below need the same board setup, and a board can mix them with inline seats.
 
 **A detached worker** wraps the block: `{ worker, dispatch: { mode: "detached" } }`. The worker runs in the Workstream exactly as it would inline, and which tasks share a Workstream is decided by the task's `metadata.topic`. See [Which tasks share a workstream](/guides/background-work#which-tasks-share-a-workstream).
 
@@ -377,7 +377,7 @@ implement: dispatcher({
   name: "hand-off-implement",
   type: "task",
   target: "implement",
-  session: { key: (task: TaskWorkerInput) => String(task.metadata?.issueKey ?? task.taskId) },
+  session: { key: (task: TaskWorkerInput) => (task.input as { issueKey: string }).issueKey },
 }),
 ```
 
@@ -408,7 +408,7 @@ The drain's final `task-board-meta` item reports `terminationReason: "handed-off
 
 The hand-off block itself returns `{ handedOff: true, taskId, sessionId, requestId, adopted }`, where `sessionId` is the Workstream and `requestId` the run in it. The task's worker input has to survive a JSON round-trip; a payload carrying a `Date`, a `Map`, a class instance, or `undefined` in object position fails the task in the drain, naming the offending path. A refused dispatch fails the task through the board's ordinary error path.
 
-When the dispatch arrives, the Workstream re-reads the row and runs the worker only if the claim is still current: same attempt, same row, still `in_progress`, lease not lapsed, still routed to this seat. Otherwise it throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing; the row stays `in_progress` until its lease runs out and the next drain reclaims it. A claim's lease is two minutes and is not configurable, so a deep queue in front of the Workstream is where this shows up.
+When the dispatch arrives, the Workstream re-reads the row and runs the worker only if the claim is still current: same attempt, same row, still `in_progress`, lease not lapsed, still routed to this seat. Otherwise it throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing; the row stays `in_progress` until its lease runs out and the next drain reclaims it. The board claims with the collection's default two-minute lease and exposes no setting for it, so a deep queue in front of the Workstream is where this shows up.
 
 The board's `onError` reaches the Workstream. `"skip"` settles the row with the error and lets the Workstream's run complete; `"fail"` also fails that run. See [What `status` tells you](../server/background-work#what-status-tells-you) for how that reads from the listing.
 

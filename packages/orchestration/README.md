@@ -519,7 +519,7 @@ A claim carries a lease (two minutes by default), and nothing renews it between 
 hand-off and the child's first step. A child that starts after the lease has lapsed
 refuses its claim as stale, and the next drain picks the row up again. A deep queue
 backlog in front of the child is where this shows up; the board's lease is not
-configurable today.
+configurable.
 
 ### goalSeekLoop
 

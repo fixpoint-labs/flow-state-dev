@@ -89,7 +89,7 @@ Having its own session is also what it costs you. A workstream keeps its own sta
 
 For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToWorkstream` and the conversation and every workstream under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
 
-There are two ways to start one, and both live inside the flow. A `dispatcher()` block sends a single piece of work to a workstream. A task board seat sends every task it claims to one.
+A `dispatcher()` block sends a single piece of work to a workstream. A task board seat sends every task it claims to one. Both live inside the flow.
 
 ### From a block: `dispatcher()`
 
@@ -127,7 +127,7 @@ Read next: **[Starting a job from a flow](/docs/server/background-work#starting-
 
 ### From a task board seat
 
-A board is a list of tasks plus a set of named workers that claim them. A seat in that set can run its tasks in a workstream instead of in the request that claimed them, in one of two shapes. Wrap the worker in `{ worker, dispatch }`:
+A board is a list of tasks plus a set of named workers that claim them. A seat in that set can run its tasks in a workstream instead of in the request that claimed them. Wrap the worker in `{ worker, dispatch }`:
 
 ```ts
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
