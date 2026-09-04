@@ -722,6 +722,77 @@ describe("claudeCodeAgent", () => {
       expect(doneIndex).toBeGreaterThan(-1);
       expect(events.slice(doneIndex + 1).some((e) => e.type === "content.delta")).toBe(false);
     });
+
+    it("classifies the abort branch by which racer won, not by the reason's error shape — a TimeoutError reason still gets the in-flight-write wait and an unwrapped rethrow", async () => {
+      // A caller-supplied `AbortSignal.timeout(...)` rejects with a
+      // `TimeoutError` DOMException, which `isAbortLike` does not recognize
+      // (it only matches `AbortError`-shaped reasons). Deciding the abort
+      // branch from `isAbortLike(err)` therefore misses this signal
+      // entirely — skipping the in-flight-write wait and wrapping the
+      // reason as `ClaudeAgentRunError` instead of handing it back
+      // unwrapped. The branch must be decided by which racer won
+      // (`ctx.signal.aborted`), never by the reason's shape.
+      const messages: SdkMessageLike[] = [
+        {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } },
+        },
+      ];
+      const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const originalEmit = runtime.response.emit.bind(runtime.response);
+      let releaseFirstEmit: () => void = () => {};
+      const firstEmitHeld = new Promise<void>((resolve) => {
+        releaseFirstEmit = resolve;
+      });
+      let sawFirstEmit: () => void = () => {};
+      const firstEmitStarted = new Promise<void>((resolve) => {
+        sawFirstEmit = resolve;
+      });
+      (runtime.response as { emit: typeof originalEmit }).emit = async (event) => {
+        sawFirstEmit();
+        await firstEmitHeld;
+        return originalEmit(event);
+      };
+
+      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      await firstEmitStarted;
+      const timeoutReason = new DOMException("The operation timed out.", "TimeoutError");
+      controller.abort(timeoutReason);
+
+      // While our own write is still held open, the run must not settle —
+      // proves the in-flight-write wait still runs for a TimeoutError reason.
+      let settledEarly = false;
+      runPromise!.catch(() => {}).then(() => {
+        settledEarly = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(settledEarly).toBe(false);
+
+      releaseFirstEmit();
+      const caught = await withRaceTimeout(
+        runPromise!.then(
+          () => null,
+          (err) => err,
+        ),
+        500,
+      );
+
+      // Rethrown unwrapped: the caller gets its own TimeoutError back,
+      // never a ClaudeAgentRunError — and never mind that isAbortLike
+      // doesn't recognize it.
+      expect(caught).toBe(timeoutReason);
+      expect(caught).not.toBeInstanceOf(ClaudeAgentRunError);
+      expect(isAbortLike(caught)).toBe(false);
+
+      const messageItems = runtime.getItems().filter((i) => i.type === "message") as Array<{
+        status: string;
+      }>;
+      expect(messageItems.some((i) => i.status === "in_progress")).toBe(false);
+    });
   });
 
   it("routes onToolApproval deny onto canUseTool and emits a status item", async () => {

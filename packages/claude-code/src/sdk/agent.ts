@@ -14,7 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler, isAbortLike } from "@flow-state-dev/core";
+import { handler } from "@flow-state-dev/core";
 import type { AnyResourceRef, BlockContext } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -607,6 +607,11 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
  * listener: a signal that fires AFTER the race has already settled on the
  * other side must never surface as an unhandled rejection, and must not fire
  * at all once the caller is done racing against it.
+ *
+ * Twin of the private `raceAbort` in
+ * `packages/engine/src/voice/tts-pipeline.ts` — same listener/reason/
+ * already-aborted shape for a different harness. Promote one shared
+ * `@flow-state-dev/core` helper once a second harness needs this, not before.
  */
 function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: () => void } {
   let onAbort = () => {};
@@ -832,23 +837,23 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // found the same shape in the Codex CLI), so waiting on it directly
           // would bound the deadline by the vendor instead of by the caller.
           //
-          // `raced` flips true the instant the signal wins the race — BEFORE
-          // the `catch` block below runs `finalizeOpenItems`/`recorder.stop()`,
-          // guaranteed by attaching this flip to `abortRace.promise` ahead of
-          // `Promise.race`'s own subscription. Every iteration checks it before
-          // touching `emitState`/`translateState`/`recorder`: those are state
-          // the abort branch is about to finalize and tear down, and a vendor
+          // `ctx.signal.aborted` flips synchronously the instant `abort()` is
+          // called — before any microtask runs — so it's already true by the
+          // time the `catch` block below runs `finalizeOpenItems`/
+          // `recorder.stop()`, with no ordering to reason about. Every
+          // iteration checks it before touching
+          // `emitState`/`translateState`/`recorder`: those are state the
+          // abort branch is about to finalize and tear down, and a vendor
           // stream that keeps yielding buffered messages after the kill would
           // otherwise write into it concurrently — orphaned items with no
           // terminal `item.done`, or a recorder observation landing after
           // `stop()` and never flushed.
-          let raced = false;
           const loop = (async () => {
             for await (const message of resolved.query({
               prompt: promptText,
               options: queryOptions,
             })) {
-              if (raced) return;
+              if (ctx.signal.aborted) return;
 
               // Capture the SDK session id from any message that carries it (the
               // `system` init message does, well before the terminal result), so an
@@ -869,18 +874,18 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               //
               // `observe` is synchronous and never throws, so handing it the whole
               // batch first closes the window rather than guarding it. No `await`
-              // separates the `raced` check above from this line, so nothing can
-              // flip the flag in between.
+              // separates the `ctx.signal.aborted` check above from this line, so
+              // nothing can flip it in between.
               for (const event of events) recorder?.observe(event);
               for (const event of events) {
-                if (raced) return;
+                if (ctx.signal.aborted) return;
                 inFlightRef.current = emitTranslatedEvent(event, ctx, emitState, name);
                 try {
                   await inFlightRef.current;
                 } finally {
                   inFlightRef.current = null;
                 }
-                if (raced) return;
+                if (ctx.signal.aborted) return;
                 if (event.kind === "result") {
                   resultSubtype = event.subtype;
                   if (event.sessionId !== null) newSessionId = event.sessionId;
@@ -890,7 +895,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                   if (event.costUsd !== null) costUsd = event.costUsd;
                 }
               }
-              if (raced) return;
+              if (ctx.signal.aborted) return;
               // Partials path: the whole `assistant` message is the turn's close
               // boundary. translate skips its text/thinking (already streamed), so
               // close the open streaming items here before the next turn's deltas.
@@ -901,7 +906,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 } finally {
                   inFlightRef.current = null;
                 }
-                if (raced) return;
+                if (ctx.signal.aborted) return;
               }
             }
           })();
@@ -913,26 +918,20 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // not wait to find out whether it did.
           loop.catch(() => {});
           const abortRace = rejectOnAbort(ctx.signal);
-          // Attached BEFORE `Promise.race` subscribes below, so this reaction
-          // runs first: `raced` is guaranteed true by the time the `catch`
-          // block's cleanup runs, not merely likely to be.
-          abortRace.promise.catch(() => {
-            raced = true;
-          });
           try {
             await Promise.race([loop, abortRace.promise]);
           } finally {
             abortRace.stop();
           }
         } catch (err) {
-          // The block's OWN signal firing is surfaced unwrapped — rather than
-          // as a `ClaudeAgentRunError` — so it stays recognizable to
-          // `isAbortLike`, the same distinction `generator.ts`'s
-          // `surfaceModelCallError` draws between an abort and a genuine model
-          // failure. `ctx.signal.aborted` (not just the error's shape) confirms
-          // this abort is OURS: an abort-shaped error the SDK threw on its own
-          // for an unrelated reason must still wrap below.
-          const abortedByOurSignal = isAbortLike(err) && ctx.signal.aborted;
+          // Which racer won decides this branch — `ctx.signal.aborted`,
+          // never the caught error's shape. A caller can supply any signal
+          // (the conductor's is `AbortSignal.timeout(...)`, whose reason is
+          // a `TimeoutError` DOMException; a lease-loss cancel uses a plain
+          // `Error`), and `isAbortLike` only recognizes an `AbortError`
+          // name/code — so gating on it here missed every other reason
+          // shape despite OUR signal having fired and won the race.
+          const abortedByOurSignal = ctx.signal.aborted;
           if (abortedByOurSignal && inFlightRef.current) {
             // The abandoned loop can still be mid-`await` on its own
             // `emitTranslatedEvent`/`closeStreamingItems` call when the race
@@ -953,13 +952,26 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             );
           }
           if (abortedByOurSignal) {
+            // Surfaced as the signal's OWN reason, unwrapped — never
+            // `ClaudeAgentRunError` — so a caller that supplied e.g. a
+            // timeout signal gets its `TimeoutError` back rather than a
+            // generic run-failure wrapper. `err` itself may not be this
+            // reason (the loop could have already thrown something else in
+            // the same tick our signal fired), so read it from the signal
+            // directly.
+            const reason =
+              ctx.signal.reason ?? new DOMException("This operation was aborted.", "AbortError");
             await emitTranslatedEvent(
-              { kind: "error", message: (err as Error).message, code: "ABORT_ERR" },
+              {
+                kind: "error",
+                message: reason instanceof Error ? reason.message : String(reason),
+                code: "ABORT_ERR",
+              },
               ctx,
               emitState,
               name,
             );
-            throw err;
+            throw reason;
           }
           const wrapped = new ClaudeAgentRunError(
             `Claude Code agent run failed: ${(err as Error).message}`,
