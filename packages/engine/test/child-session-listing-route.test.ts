@@ -1,5 +1,5 @@
 /**
- * FIX-1010 — `GET /sessions/:sessionId/workstreams`, exercised as HTTP
+ * FIX-1010 — `GET /sessions/:sessionId/children`, exercised as HTTP
  * requests against the real router rather than as calls to the store. The
  * parentage predicate is already proved in `session-parentage-listing.test.ts`;
  * what is unproven is that the *route* reaches it correctly and refuses
@@ -10,7 +10,7 @@
  * property does not depend on one writer's convention.
  *
  * The `topic`/`coordinate` labels are the opposite case and are exercised
- * through the real `startDetached` writer instead: a writer does produce them,
+ * through the real dispatch seam instead: a writer does produce them,
  * so seeding them by hand would assert a shape nothing emits and pass whether
  * or not the feature exists.
  */
@@ -23,13 +23,13 @@ import {
   createInMemoryStores,
   parseFlowRoute
 } from "../src";
-import type { RequestHost, StartDetachedInput } from "@flow-state-dev/core/types";
+
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
-import { createRequestHost } from "../src/context/create-request-host";
-import { TERMINAL_WIRE_STATUS } from "../src/routes/workstream-routes";
+import { dispatchChild, dispatchableFlow } from "./context/seam-harness";
+import { TERMINAL_WIRE_STATUS } from "../src/routes/child-session-routes";
 
 type Router = ReturnType<typeof createFlowApiRouter>;
-type WorkstreamRow = {
+type ChildRow = {
   id: string;
   parentSessionId: string;
   createdAt: number;
@@ -82,7 +82,7 @@ function secureFlow(kind: string) {
 
 function buildRouter(
   flows: Array<ReturnType<typeof openFlow>> = [openFlow("chat")],
-  runtime: { maxWorkstreamListLimit?: number } = {}
+  runtime: { maxChildSessionListLimit?: number } = {}
 ): { router: Router; stores: StoreRegistry } {
   const registry = createFlowRegistry();
   for (const flow of flows) registry.register(flow);
@@ -107,14 +107,14 @@ function call(
   );
 }
 
-async function workstreams(
+async function children(
   router: Router,
   parentId: string,
   opts: { query?: string; headers?: Record<string, string> } = {}
-): Promise<WorkstreamRow[]> {
-  const res = await call(router, ["sessions", parentId, "workstreams"], opts);
+): Promise<ChildRow[]> {
+  const res = await call(router, ["sessions", parentId, "children"], opts);
   expect(res.status).toBe(200);
-  return ((await res.json()) as { workstreams: WorkstreamRow[] }).workstreams;
+  return ((await res.json()) as { children: ChildRow[] }).children;
 }
 
 function sessionRecord(
@@ -178,9 +178,9 @@ async function seedRequest(
 // ---------------------------------------------------------------------------
 
 describe("route registration", () => {
-  it("resolves GET /sessions/:sessionId/workstreams", () => {
-    expect(parseFlowRoute("GET", ["sessions", "sess_abc", "workstreams"])).toEqual({
-      kind: "list_session_workstreams",
+  it("resolves GET /sessions/:sessionId/children", () => {
+    expect(parseFlowRoute("GET", ["sessions", "sess_abc", "children"])).toEqual({
+      kind: "list_session_children",
       sessionId: "sess_abc"
     });
   });
@@ -209,10 +209,10 @@ describe("route registration", () => {
     const { router, stores } = buildRouter([secureFlow("secure")]);
     await seedSession(stores, "parent", { flowKind: "secure" });
 
-    const anonymous = await call(router, ["sessions", "parent", "workstreams"]);
+    const anonymous = await call(router, ["sessions", "parent", "children"]);
     expect(anonymous.status).toBe(401);
 
-    const owner = await call(router, ["sessions", "parent", "workstreams"], {
+    const owner = await call(router, ["sessions", "parent", "children"], {
       headers: { "x-verified-user": "alice" }
     });
     expect(owner.status).toBe(200);
@@ -222,7 +222,7 @@ describe("route registration", () => {
     const { router, stores } = buildRouter([secureFlow("secure")]);
     await seedSession(stores, "parent", { flowKind: "secure", userId: "alice" });
 
-    const res = await call(router, ["sessions", "parent", "workstreams"], {
+    const res = await call(router, ["sessions", "parent", "children"], {
       headers: { "x-verified-user": "mallory" }
     });
     // Deliberately not 404: the caller authenticated and already holds the id.
@@ -242,14 +242,14 @@ describe("the read", () => {
     await seedSession(stores, "child_b", { parentSessionId: "parent" });
     await seedSession(stores, "unrelated");
 
-    const rows = await workstreams(router, "parent");
+    const rows = await children(router, "parent");
     expect(rows.map((r) => r.id).sort()).toEqual(["child_a", "child_b"]);
     expect(rows.every((r) => r.parentSessionId === "parent")).toBe(true);
   });
 
   it("404s an absent parent", async () => {
     const { router } = buildRouter();
-    const res = await call(router, ["sessions", "nope", "workstreams"]);
+    const res = await call(router, ["sessions", "nope", "children"]);
     expect(res.status).toBe(404);
   });
 
@@ -258,7 +258,7 @@ describe("the read", () => {
     await seedSession(stores, "parent");
     // Not 404 — "no background work" is an ordinary answer, and a client that
     // has to branch on it will get it wrong.
-    expect(await workstreams(router, "parent")).toEqual([]);
+    expect(await children(router, "parent")).toEqual([]);
   });
 
   it("lists a child's own children — nesting is legal", async () => {
@@ -267,7 +267,7 @@ describe("the read", () => {
     await seedSession(stores, "child", { parentSessionId: "parent" });
     await seedSession(stores, "grandchild", { parentSessionId: "child" });
 
-    expect((await workstreams(router, "child")).map((r) => r.id)).toEqual([
+    expect((await children(router, "child")).map((r) => r.id)).toEqual([
       "grandchild"
     ]);
   });
@@ -293,7 +293,7 @@ describe("the read", () => {
       resources: { big: { blob: "x".repeat(1000) } }
     });
 
-    const [row] = await workstreams(router, "parent");
+    const [row] = await children(router, "parent");
     expect(Object.keys(row).sort()).toEqual([
       "createdAt",
       "id",
@@ -312,7 +312,7 @@ describe("the read", () => {
     await seedSession(stores, "parent");
     await seedSession(stores, "child", { parentSessionId: "parent" });
 
-    expect((await workstreams(router, "parent")).map((r) => r.id)).toEqual([
+    expect((await children(router, "parent")).map((r) => r.id)).toEqual([
       "child"
     ]);
 
@@ -338,135 +338,111 @@ describe("the read", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * `topic` and `coordinate` name the body of work and the worker handling it.
- * Without them a UI can only label background work by an opaque derived id.
+ * `topic` and `coordinate` name the key a child was dispatched under and the
+ * entry it was dispatched to. Without them a UI can only label background work
+ * by an opaque derived id.
  *
- * **Every case here goes through the real `startDetached`.** The earlier
- * version of this suite hand-seeded the two fields onto a session record, which
+ * **Every case here goes through the real dispatch seam.** An earlier version
+ * of this suite hand-seeded the two fields onto a session record, which
  * asserted a shape no writer emitted — so it stayed green while nothing wrote
  * them, and an endpoint advertising labels it never returned reached review.
  * A test that cannot fail is worse than no test, because it is counted. Delete
- * the stamp in `context/create-request-host.ts` and the first three cases below
- * fail.
+ * the stamp in `context/create-request-host.ts` and the first case below fails.
  */
-const LIVENESS = {
-  heartbeatIntervalMs: 10_000,
-  staleThresholdMs: 60_000,
-  staleSweepIntervalMs: 30_000
+
+/** The seam's flow: the router's `chat` kind, plus the `internal` entry a child is dispatched to. */
+const DISPATCH_FLOW = dispatchableFlow("chat");
+
+/** The running request's server-derived identity. The caller names none of it. */
+const PARENT_IDENTITY = {
+  userId: "alice",
+  tenantId: undefined,
+  orgId: undefined,
+  sessionId: "parent",
+  lineageId: "lin_parent"
 };
 
-/** The shipped detached-start writer, wired to the stores the router reads. */
-function detachedStart(stores: StoreRegistry): RequestHost["startDetached"] {
-  const instance = openFlow("chat")({ id: "chat" });
-  const { host } = createRequestHost({
-    stores,
-    // A detached dispatch resolves into the workstream core and never into a
-    // caller-addressed action; a flow without one refuses before it writes.
-    flow: { ...instance, workstream: { block: instance.actions.run!.block } },
-    // The running request's server-derived identity. The child's parent is
-    // this session, and the caller names none of it.
-    identity: {
-      userId: "alice",
-      tenantId: undefined,
-      orgId: undefined,
-      sessionId: "parent"
-    },
-    startOperation: async ({ sessionId }) => {
-      // A real run on the child, so a labelled row also resolves a status —
-      // the two must not be traded against each other.
+/**
+ * Dispatch a child of `parent` through the real seam, wired to the stores the
+ * router reads, and give it a real run — so a labelled row also resolves a
+ * status; the two must not be traded against each other.
+ */
+function dispatchUnderParent(
+  stores: StoreRegistry,
+  key: string,
+  provenance?: Record<string, unknown>
+) {
+  return dispatchChild(stores, DISPATCH_FLOW, key, {
+    identity: PARENT_IDENTITY,
+    ...(provenance !== undefined ? { provenance } : {}),
+    dispatchOperation: async ({ sessionId, metadata }) => {
       const requestId = `req_${sessionId}`;
-      await seedRequest(stores, { id: requestId, sessionId, status: "in_progress" });
+      await seedRequest(stores, {
+        id: requestId,
+        sessionId,
+        status: "in_progress",
+        source: "internal",
+        ...(metadata !== undefined ? { metadata } : {})
+      });
       return { requestId };
-    },
-    liveness: LIVENESS
+    }
   });
-  return host.startDetached;
 }
 
-/** Start a child under `parent` through the real writer; return its bare id. */
+/** `dispatchUnderParent`, returning the child's bare id or throwing on a refusal. */
 async function startChild(
   stores: StoreRegistry,
-  input: StartDetachedInput
+  key: string,
+  provenance?: Record<string, unknown>
 ): Promise<string> {
-  const result = await detachedStart(stores)(input);
-  if (!result.ok) throw new Error(`startDetached refused: ${result.refused}`);
+  const result = await dispatchUnderParent(stores, key, provenance);
+  if (!result.ok) throw new Error(`dispatch refused: ${result.refused}`);
   return result.sessionId;
 }
 
-describe("row labels, as the detached-start writer stamps them", () => {
-  it("labels a job started through startDetached with its seed's topic and worker", async () => {
+describe("row labels, as the dispatch seam stamps them", () => {
+  it("labels a child dispatched through the seam with its key and its entry", async () => {
     const { router, stores } = buildRouter();
     await seedSession(stores, "parent");
 
-    const childId = await startChild(stores, {
-      seed: { topic: "market-research", key: "researcher" },
-      input: {}
-    });
+    const childId = await startChild(stores, "market-research");
 
-    const [row] = await workstreams(router, "parent");
-    // The row the route returns is the child the writer created, not a
+    const [row] = await children(router, "parent");
+    // The row the route returns is the child the seam created, not a
     // look-alike seeded beside it.
     expect(row?.id).toBe(childId);
     expect(row?.topic).toBe("market-research");
-    expect(row?.coordinate).toBe("researcher");
+    expect(row?.coordinate).toBe("internal:work");
     expect(row?.status).toBe("active");
   });
 
-  it("omits coordinate entirely when the seed named no worker", async () => {
-    const { router, stores } = buildRouter();
-    await seedSession(stores, "parent");
-    await startChild(stores, { seed: { topic: "draft-summary" }, input: {} });
-
-    const [row] = await workstreams(router, "parent");
-    expect(row?.topic).toBe("draft-summary");
-    // Absent, not `null` and not `""`. A client reads the presence of the key.
-    expect(row).not.toHaveProperty("coordinate");
-  });
-
   /**
-   * An empty seed field leaves the label off rather than emitting `""`, so
-   * "unlabelled" has exactly one shape on the wire. For `coordinate` that is
-   * forced: the key derivation length-frames the seed, so `key: ""` and an
-   * absent `key` are the same child — stamping one of them an empty label
-   * would make two calls that land on one record disagree about its name.
+   * The labels are server-stamped from the address the child key was derived
+   * from. `provenance` is the caller's server-derived facts and lands on the
+   * REQUEST record under `metadata.dispatch` — a `topic` there is data, never
+   * a label. Choosing a label and choosing which child you get are one
+   * choice, which is what makes a forged label unreachable rather than merely
+   * filtered.
    */
-  it("treats an empty seed field as no label, not as an empty one", async () => {
-    const { router, stores } = buildRouter();
-    await seedSession(stores, "parent");
-    await startChild(stores, { seed: { topic: "triage", key: "" }, input: {} });
-
-    const [row] = await workstreams(router, "parent");
-    expect(row?.topic).toBe("triage");
-    expect(row).not.toHaveProperty("coordinate");
-  });
-
-  /**
-   * The labels are server-stamped from the seed the child key was derived
-   * from. `record` is the caller's own bookkeeping and lands in `metadata`
-   * untouched — a `topic` there is data, never a label. Choosing a label and
-   * choosing which child you get are one choice, which is what makes a forged
-   * label unreachable rather than merely filtered.
-   */
-  it("takes the labels from the seed, not from the caller's record bag", async () => {
+  it("takes the labels from the address, not from the caller's provenance", async () => {
     const { router, stores } = buildRouter();
     await seedSession(stores, "parent");
 
-    const childId = await startChild(stores, {
-      seed: { topic: "board-review" },
-      input: {},
-      record: { topic: "forged", coordinate: "forged-worker", taskId: "task_7f3" }
-    });
-
-    const [row] = await workstreams(router, "parent");
-    expect(row?.topic).toBe("board-review");
-    expect(row).not.toHaveProperty("coordinate");
-
-    // And the bag itself survives verbatim — this suppresses nothing.
-    const stored = await stores.session.get(childId);
-    expect(stored?.metadata).toEqual({
+    const childId = await startChild(stores, "board-review", {
       topic: "forged",
       coordinate: "forged-worker",
       taskId: "task_7f3"
+    });
+
+    const [row] = await children(router, "parent");
+    expect(row?.topic).toBe("board-review");
+    expect(row?.coordinate).toBe("internal:work");
+
+    // And the provenance itself survives verbatim on the request record —
+    // this suppresses nothing; it only refuses to read a label off it.
+    const stored = await stores.request.get(`req_${childId}`);
+    expect(stored?.metadata).toMatchObject({
+      dispatch: { topic: "forged", coordinate: "forged-worker", taskId: "task_7f3" }
     });
   });
 
@@ -488,7 +464,7 @@ describe("row labels, as the detached-start writer stamps them", () => {
       ...({ topic: null, coordinate: null } as unknown as Partial<SessionRecord>)
     });
 
-    const rows = await workstreams(router, "parent");
+    const rows = await children(router, "parent");
     expect(rows.map((r) => r.id).sort()).toEqual(["legacy", "nulled"]);
     for (const row of rows) {
       expect(row).not.toHaveProperty("topic");
@@ -508,24 +484,23 @@ describe("row labels, as the detached-start writer stamps them", () => {
     const { router, stores } = buildRouter();
     await seedSession(stores, "parent");
 
-    const childId = await startChild(stores, { seed: { topic: "review" }, input: {} });
+    const childId = await startChild(stores, "review");
 
-    // Rewrite the child's label to something the seed would never produce,
+    // Rewrite the child's label to something the key would never produce,
     // leaving its identity untouched.
     const child = await stores.session.get(childId);
-    await stores.session.set(childId, { ...child!, topic: "not-the-seed" }, "any");
+    await stores.session.set(childId, { ...child!, topic: "not-the-key" }, "any");
 
-    // Same seed, same derived key: adopted on identity, label ignored.
-    const again = await detachedStart(stores)({ seed: { topic: "review" }, input: {} });
+    // Same key, same derived id: adopted on identity, label ignored.
+    const again = await dispatchUnderParent(stores, "review");
     expect(again).toMatchObject({ ok: true, adopted: true, sessionId: childId });
 
     // And the route reports what is stored rather than re-deriving it — the
     // labels are display, so nothing repairs them behind a reader's back.
-    const [row] = await workstreams(router, "parent");
-    expect(row?.topic).toBe("not-the-seed");
+    const [row] = await children(router, "parent");
+    expect(row?.topic).toBe("not-the-key");
   });
 });
-
 // ---------------------------------------------------------------------------
 // The identity boundary (spec §7 rule 0 / rule 1)
 // ---------------------------------------------------------------------------
@@ -538,7 +513,7 @@ describe("the identity boundary", () => {
     await seedSession(stores, "theirs", { parentSessionId: "parent", userId: "bob" });
     await seedRequest(stores, { sessionId: "theirs", status: "failed", userId: "bob" });
 
-    const rows = await workstreams(router, "parent");
+    const rows = await children(router, "parent");
     expect(rows.map((r) => r.id)).toEqual(["mine"]);
   });
 
@@ -558,7 +533,7 @@ describe("the identity boundary", () => {
       flowKind: "secure"
     });
 
-    expect((await workstreams(router, "parent")).map((r) => r.id)).toEqual(["ours"]);
+    expect((await children(router, "parent")).map((r) => r.id)).toEqual(["ours"]);
 
     // Hop 2 on the same child, same anonymous caller, refuses.
     const hop2 = await call(router, ["sessions", "theirs", "requests"]);
@@ -579,7 +554,7 @@ describe("the identity boundary", () => {
     // The case a plain equality predicate silently drops.
     await seedSession(stores, "unbound_child", { parentSessionId: "bound_parent" });
 
-    expect((await workstreams(router, "bound_parent")).map((r) => r.id)).toEqual([
+    expect((await children(router, "bound_parent")).map((r) => r.id)).toEqual([
       "same_org"
     ]);
 
@@ -588,7 +563,7 @@ describe("the identity boundary", () => {
     // direction.
     await seedSession(stores, "unbound_parent");
     await seedSession(stores, "unbound_kid", { parentSessionId: "unbound_parent" });
-    expect((await workstreams(router, "unbound_parent")).map((r) => r.id)).toEqual([
+    expect((await children(router, "unbound_parent")).map((r) => r.id)).toEqual([
       "unbound_kid"
     ]);
   });
@@ -614,10 +589,10 @@ describe("the identity boundary", () => {
       status: "failed"
     });
 
-    const acme = await workstreams(router, "parent", {
+    const acme = await children(router, "parent", {
       headers: { "x-tenant-id": "acme" }
     });
-    const globex = await workstreams(router, "parent", {
+    const globex = await children(router, "parent", {
       headers: { "x-tenant-id": "globex" }
     });
     expect(acme).toEqual([expect.objectContaining({ id: "child", status: "completed" })]);
@@ -628,7 +603,7 @@ describe("the identity boundary", () => {
     const { router, stores } = buildRouter();
     await seedSession(stores, "acme:parent", { tenantId: "acme" });
 
-    const res = await call(router, ["sessions", "parent", "workstreams"], {
+    const res = await call(router, ["sessions", "parent", "children"], {
       headers: { "x-tenant-id": "globex" }
     });
     // Indistinguishable from absent.
@@ -649,14 +624,14 @@ async function withChild(): Promise<{ router: Router; stores: StoreRegistry }> {
 }
 
 async function statusOf(router: Router): Promise<string | undefined> {
-  const [row] = await workstreams(router, "parent");
+  const [row] = await children(router, "parent");
   return row.status;
 }
 
 describe("status — decision 4", () => {
   it("reports absence, not a status, for a child with no runs", async () => {
     const { router } = await withChild();
-    const [row] = await workstreams(router, "parent");
+    const [row] = await children(router, "parent");
     // Absence is not a status, and is deliberately not defaulted to anything.
     expect("status" in row).toBe(false);
   });
@@ -681,7 +656,7 @@ describe("status — decision 4", () => {
 
   /**
    * A request is persisted `in_progress` at enqueue, before any worker picks
-   * it up, and detached work *is* the queued path. This row is why the value
+   * it up, and dispatched work *is* the queued path. This row is why the value
    * is `active` rather than `running` — the earlier design reported *running*
    * here and claimed a worker was on the job.
    */
@@ -731,7 +706,7 @@ describe("status — decision 4", () => {
   it("carries active as a single opaque value with no accompanying detail", async () => {
     const { router, stores } = await withChild();
     await seedRequest(stores, { sessionId: "child", status: "suspended" });
-    const [row] = await workstreams(router, "parent");
+    const [row] = await children(router, "parent");
     expect(row.status).toBe("active");
     expect(Object.keys(row).filter((k) => k.toLowerCase().includes("status"))).toEqual(
       ["status"]
@@ -814,7 +789,7 @@ describe("status — decision 4a, the terminal reduction", () => {
       await seedRequest(stores, { sessionId: `child_${outcome}`, status: outcome });
     }
 
-    const rows = await workstreams(router, "parent");
+    const rows = await children(router, "parent");
     expect(
       Object.fromEntries(rows.map((r) => [r.id, r.status]))
     ).toEqual({
@@ -832,7 +807,7 @@ describe("status — decision 4a, the terminal reduction", () => {
    * *today*. This pins what has to keep being true: the map's domain is
    * exactly the terminal statuses.
    *
-   * The map exists instead of `status as WorkstreamStatus` because a cast
+   * The map exists instead of `status as ChildSessionStatus` because a cast
    * asserts the two unions are 1:1 once, at author time, and then forwards
    * whatever ships next straight to clients. Adding a terminal member to
    * `RequestStatus` is now a compile error on this map — verified by adding
@@ -1051,7 +1026,7 @@ describe("paging", () => {
     const { router, stores } = buildRouter();
     await seedChildren(stores, 6);
 
-    const page1 = await workstreams(router, "parent", { query: "limit=3" });
+    const page1 = await children(router, "parent", { query: "limit=3" });
     expect(page1).toHaveLength(3);
 
     // A child from page 2 starts a run: the session record's `updatedAt` is
@@ -1063,7 +1038,7 @@ describe("paging", () => {
       "any"
     );
 
-    const page2 = await workstreams(router, "parent", { query: "limit=3&offset=3" });
+    const page2 = await children(router, "parent", { query: "limit=3&offset=3" });
     const seen = [...page1, ...page2].map((r) => r.id);
     expect(seen).toHaveLength(6);
     expect(new Set(seen).size).toBe(6);
@@ -1079,14 +1054,14 @@ describe("paging", () => {
     const { router, stores } = buildRouter();
     await seedChildren(stores, 6);
 
-    await workstreams(router, "parent", { query: "limit=3" });
+    await children(router, "parent", { query: "limit=3" });
     await seedSession(stores, "child_new", {
       parentSessionId: "parent",
       createdAt: Date.now(),
       updatedAt: Date.now()
     });
 
-    const res = await call(router, ["sessions", "parent", "workstreams"], {
+    const res = await call(router, ["sessions", "parent", "children"], {
       query: "limit=3&offset=3"
     });
     expect(res.status).toBe(200);
@@ -1095,7 +1070,7 @@ describe("paging", () => {
   it("orders newest-created first", async () => {
     const { router, stores } = buildRouter();
     await seedChildren(stores, 3);
-    expect((await workstreams(router, "parent")).map((r) => r.id)).toEqual([
+    expect((await children(router, "parent")).map((r) => r.id)).toEqual([
       "child_2",
       "child_1",
       "child_0"
@@ -1107,7 +1082,7 @@ describe("paging", () => {
     await seedChildren(stores, 30);
     // An omitted `limit` must not become an unbounded read — this endpoint is
     // polled per conversation.
-    expect(await workstreams(router, "parent")).toHaveLength(25);
+    expect(await children(router, "parent")).toHaveLength(25);
   });
 
   it.each([
@@ -1120,7 +1095,7 @@ describe("paging", () => {
     const { router, stores } = buildRouter();
     await seedChildren(stores, 3);
 
-    const res = await call(router, ["sessions", "parent", "workstreams"], { query });
+    const res = await call(router, ["sessions", "parent", "children"], { query });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toContain(name);
   });
@@ -1140,11 +1115,11 @@ describe("paging", () => {
     const router = createFlowApiRouter({
       registry,
       stores,
-      maxWorkstreamListLimit: 500
+      maxChildSessionListLimit: 500
     });
 
     await seedChildren(stores, 3);
-    const res = await call(router, ["sessions", "parent", "workstreams"], {
+    const res = await call(router, ["sessions", "parent", "children"], {
       query: "limit=500"
     });
     expect(res.status).toBe(200);
@@ -1166,9 +1141,9 @@ describe("paging", () => {
       createFlowApiRouter({
         registry,
         stores: createInMemoryStores(),
-        maxWorkstreamListLimit: value
+        maxChildSessionListLimit: value
       })
-    ).toThrow(/maxWorkstreamListLimit/);
+    ).toThrow(/maxChildSessionListLimit/);
   });
 
   it("accepts a limit above the built-in ceiling when the host raises it", async () => {
@@ -1176,11 +1151,11 @@ describe("paging", () => {
     // orchestrations outgrows any fixed ceiling. Raising it is the operator's
     // call because the cost is per row and per read.
     const { router, stores } = buildRouter(undefined, {
-      maxWorkstreamListLimit: 500
+      maxChildSessionListLimit: 500
     });
     await seedChildren(stores, 3);
 
-    const res = await call(router, ["sessions", "parent", "workstreams"], {
+    const res = await call(router, ["sessions", "parent", "children"], {
       query: "limit=500"
     });
     expect(res.status).toBe(200);
@@ -1189,11 +1164,11 @@ describe("paging", () => {
   it("still rejects past the host's own raised ceiling", async () => {
     // Raised, not removed — an unbounded read of this endpoint is never on.
     const { router, stores } = buildRouter(undefined, {
-      maxWorkstreamListLimit: 500
+      maxChildSessionListLimit: 500
     });
     await seedChildren(stores, 3);
 
-    const res = await call(router, ["sessions", "parent", "workstreams"], {
+    const res = await call(router, ["sessions", "parent", "children"], {
       query: "limit=501"
     });
     expect(res.status).toBe(400);
@@ -1203,23 +1178,23 @@ describe("paging", () => {
     // A host can tighten as well as loosen. Left unclamped the default page
     // would exceed that host's own stated maximum.
     const { router, stores } = buildRouter(undefined, {
-      maxWorkstreamListLimit: 10
+      maxChildSessionListLimit: 10
     });
     await seedChildren(stores, 30);
 
-    expect(await workstreams(router, "parent")).toHaveLength(10);
+    expect(await children(router, "parent")).toHaveLength(10);
   });
 
   it("accepts the boundary values", async () => {
     const { router, stores } = buildRouter();
     await seedChildren(stores, 3);
     expect(
-      (await call(router, ["sessions", "parent", "workstreams"], { query: "limit=100" }))
+      (await call(router, ["sessions", "parent", "children"], { query: "limit=100" }))
         .status
     ).toBe(200);
     expect(
       (
-        await call(router, ["sessions", "parent", "workstreams"], {
+        await call(router, ["sessions", "parent", "children"], {
           query: "offset=10000"
         })
       ).status
@@ -1228,7 +1203,7 @@ describe("paging", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Provenance — read here, written by the detached-start path
+// Provenance — read here, written by the dispatch seam
 // ---------------------------------------------------------------------------
 
 describe("provenance", () => {
@@ -1240,16 +1215,26 @@ describe("provenance", () => {
    */
   it("a server-stamped source and task id survive to the requests endpoint", async () => {
     const { router, stores } = await withChild();
+    // The shape the seam writes for a task hand-off: the trusted `task`
+    // source, and the board's task id beside the address under
+    // `metadata.dispatch`.
+    const stamp = {
+      type: "task",
+      target: "implement",
+      from: { block: "board-drain", sessionId: "parent" },
+      key: "t1",
+      taskId: "task_7f3"
+    };
     await seedRequest(stores, {
       id: "req_task",
       sessionId: "child",
       status: "completed",
-      source: "taskboard",
-      metadata: { taskId: "task_7f3" }
+      source: "task",
+      metadata: { dispatch: stamp }
     });
 
     // Hop 1 finds the job.
-    const [row] = await workstreams(router, "parent");
+    const [row] = await children(router, "parent");
     expect(row.id).toBe("child");
 
     // Hop 2 returns its run, provenance intact.
@@ -1257,8 +1242,8 @@ describe("provenance", () => {
     expect(res.status).toBe(200);
     const { requests } = (await res.json()) as { requests: RequestRecord[] };
     expect(requests).toHaveLength(1);
-    expect(requests[0]!.source).toBe("taskboard");
-    expect(requests[0]!.metadata).toEqual({ taskId: "task_7f3" });
+    expect(requests[0]!.source).toBe("task");
+    expect(requests[0]!.metadata).toEqual({ dispatch: stamp });
   });
 
   /**
@@ -1276,7 +1261,7 @@ describe("provenance", () => {
       metadata: { taskId: "task_forged", topic: "not-a-label" }
     });
 
-    const [row] = await workstreams(router, "parent");
+    const [row] = await children(router, "parent");
     expect(row.topic).toBeUndefined();
     expect(row.coordinate).toBeUndefined();
 
@@ -1325,7 +1310,7 @@ describe("read bounds", () => {
       return realList(options);
     };
 
-    await workstreams(router, "parent", { query: "limit=3" });
+    await children(router, "parent", { query: "limit=3" });
 
     // Three rows, at most two reads each — bounded by the page, not by the
     // parent's ten children.

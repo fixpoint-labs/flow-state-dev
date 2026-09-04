@@ -1,7 +1,7 @@
 /**
  * FIX-1068: which DECLARATION owns a storage key decides where that key lives.
  *
- * `sharedToWorkstream` splits one session scope across two storage addresses,
+ * `sharedToLineage` splits one session scope across two storage addresses,
  * so every read has to agree on which declaration owns a given key. Matching
  * "any shared prefix" is not that rule, and gets two shapes wrong in a way that
  * leaks one session's rows into another:
@@ -45,7 +45,7 @@ import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
 const noteSchema = z.object({ note: z.string().default("") });
 
-/** Seed a session record the detached-start writer's way. */
+/** Seed a session record the way the dispatch seam mints a child. */
 async function seedSession(
   stores: StoreRegistry,
   flow: FlowInstance,
@@ -96,7 +96,7 @@ describe("FIX-1068: a shared EMPTY-prefix collection must not swallow private ke
   const observations = defineResourceCollection({
     pattern: "[topic]/observations",
     scope: "session",
-    sharedToWorkstream: true,
+    sharedToLineage: true,
     stateSchema: noteSchema
   });
   // `client` so the resource is visible over the wire at all — a single with no
@@ -159,7 +159,7 @@ describe("FIX-1068: a private prefix nested under a shared one owns its keys", (
     const shared = defineResourceCollection({
       pattern: "tasks/**",
       scope: "session",
-      sharedToWorkstream: true,
+      sharedToLineage: true,
       stateSchema: noteSchema
     });
     const priv = defineResourceCollection({
@@ -258,7 +258,7 @@ describe("FIX-1068: collection routes address the key's owner, not the route's d
   const shared = defineResourceCollection({
     pattern: "tasks/**",
     scope: "session",
-    sharedToWorkstream: true,
+    sharedToLineage: true,
     stateSchema: noteSchema,
     client: grants
   });
@@ -364,7 +364,7 @@ describe("FIX-1068: a filtered scan does not cover another bucket's keys", () =>
   const shared = defineResourceCollection({
     pattern: "tasks/**",
     scope: "session",
-    sharedToWorkstream: true,
+    sharedToLineage: true,
     stateSchema: noteSchema
   });
   // Lazy, so it is NOT part of the eager wave — its rows are fetched on first
