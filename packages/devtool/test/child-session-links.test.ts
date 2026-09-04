@@ -1,16 +1,23 @@
 /**
  * The two derivations the ChildSessions panel rests on (FIX-1071).
  *
- * Both matter because both fail *quietly* if they are wrong. A coordinate that
- * mis-parses names the wrong board on screen and nothing errors; a topic match
- * that is too eager points a task at another board's background work and the
- * developer clicks through into an unrelated session. So the cases pinned here
- * are the ones where a looser implementation still renders something.
+ * Both matter because both fail *quietly* if they are wrong. A key that
+ * mis-parses names the wrong board or row on screen and nothing errors; a
+ * pairing that is too eager points a task at another board's background work
+ * and the developer clicks through into an unrelated session. So the cases
+ * pinned here are the ones where a looser implementation still renders
+ * something.
+ *
+ * The labels are built by the writer itself — `taskSessionKeyFor` — rather
+ * than by a local mirror of its encoding, so a change to the key's spelling
+ * fails here instead of drifting past.
  */
 import { describe, expect, it } from "vitest";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
+import { taskSessionKeyFor } from "@flow-state-dev/core";
 import {
-  decodeChildSessionCoordinate,
+  decodeChildSessionEntry,
+  decodeChildSessionKey,
   linkChildSessionsToTasks,
   taskLinkKey,
 } from "../src/react/lib/child-session-links";
@@ -20,6 +27,26 @@ import type {
   Task,
   TaskStreamItem,
 } from "../src/react/lib/task-collection-state";
+
+/** The key a `per-task` seat's hand-off runs `taskId` under, as the writer spells it. */
+function perTaskKey(boardId: string, taskId: string): string {
+  return taskSessionKeyFor(
+    "board",
+    "per-task",
+    { boardId, seat: "unused", taskId, attempt: 0, createdAt: 0, payload: undefined },
+    {} as never
+  );
+}
+
+/** The key a `per-worker` seat's hand-off runs every one of its rows under. */
+function perWorkerKey(boardId: string, seat: string): string {
+  return taskSessionKeyFor(
+    "board",
+    "per-worker",
+    { boardId, seat, taskId: "unused", attempt: 0, createdAt: 0, payload: undefined },
+    {} as never
+  );
+}
 
 /** One `task-change` item for `task-a`, as the substrate emits it. */
 function taskChange(options: {
@@ -45,19 +72,9 @@ function taskChange(options: {
         goal: "do the thing",
         status: "in_progress",
         assignee: options.assignee,
-        metadata: { topic: "FIX-1" },
       },
     },
   } as never;
-}
-
-/** The exact encoding `childSessionRoutingSeed` writes into `coordinate`. */
-function coordinate(boardId: string, coordinateKey: string): string {
-  return `${boardId.length}:${boardId}|${coordinateKey.length}:${coordinateKey}`;
-}
-
-function assigneeKey(name: string): string {
-  return `assignee|${name.length}:${name}`;
 }
 
 function task(overrides: Partial<Task> & { id: string }): Task {
@@ -77,120 +94,160 @@ function childSession(overrides: Partial<ChildSessionSummary> & { id: string }):
     parentSessionId: "sess_parent",
     createdAt: 1,
     updatedAt: 2,
+    coordinate: "task:implement",
     ...overrides,
   };
 }
 
-describe("decodeChildSessionCoordinate", () => {
-  it("splits the board from the worker, not on the first separator", () => {
-    // The whole reason the encoding is length-framed: a board id containing the
-    // separator would make a naive `split("|")` report board "issue" and a
-    // worker of "work", which is a board that does not exist.
-    const decoded = decodeChildSessionCoordinate(
-      coordinate("issue|work", assigneeKey("implement"))
-    );
-    expect(decoded).toEqual({ boardId: "issue|work", worker: "assignee:implement" });
+describe("decodeChildSessionKey", () => {
+  it("reads a per-task key back into its board and row", () => {
+    expect(decodeChildSessionKey(perTaskKey("issue-work", "task-a"))).toEqual({
+      policy: "per-task",
+      boardId: "issue-work",
+      taskId: "task-a",
+    });
   });
 
-  it("spells an assignee the way the board's own diagnostics do", () => {
-    expect(
-      decodeChildSessionCoordinate(coordinate("b", assigneeKey("review")))?.worker
-    ).toBe("assignee:review");
+  it("reads a per-worker key back into its board and seat", () => {
+    expect(decodeChildSessionKey(perWorkerKey("issue-work", "implement"))).toEqual({
+      policy: "per-worker",
+      boardId: "issue-work",
+      seat: "implement",
+    });
   });
 
-  it("keeps uniform and floor apart from an assignee that shares their spelling", () => {
-    // Assignee names are unrestricted, so a board may legally declare one called
-    // "uniform". The tag is serialized before the name precisely so the two
-    // cannot alias, and this asserts the reader honours that.
-    expect(decodeChildSessionCoordinate(coordinate("b", "uniform"))?.worker).toBe(
-      "uniform"
-    );
-    expect(
-      decodeChildSessionCoordinate(coordinate("b", assigneeKey("uniform")))?.worker
-    ).toBe("assignee:uniform");
+  it("splits fields by their length, not on the first separator", () => {
+    // The whole reason the key is length-framed: a board id containing `|` or
+    // `:` would make a naive `split` report a board that does not exist.
+    expect(decodeChildSessionKey(perTaskKey("issue|work", "a:b|c"))).toEqual({
+      policy: "per-task",
+      boardId: "issue|work",
+      taskId: "a:b|c",
+    });
   });
 
-  it("returns null for a label it does not recognise rather than half-parsing one", () => {
-    // A ChildSession started by something other than a task board may put anything
-    // here. Guessing at a partial parse would print a board id that was never
-    // declared, which reads as fact.
-    expect(decodeChildSessionCoordinate("not-framed")).toBeNull();
-    expect(decodeChildSessionCoordinate("5:ab|3:cd")).toBeNull();
-    expect(decodeChildSessionCoordinate(coordinate("b", "uniform") + "trailing")).toBeNull();
+  it("returns null for a flow-computed key rather than guessing at it", () => {
+    // A `{ key }` policy's string is opaque by contract. "FIX-1" names something
+    // to the flow's author and nothing to this reader.
+    expect(decodeChildSessionKey("FIX-1")).toBeNull();
+    expect(decodeChildSessionKey("wake")).toBeNull();
+  });
+
+  it("returns null for a label whose framing does not check out, instead of half-parsing it", () => {
+    // Each of these is one byte away from a key the writer would produce.
+    // Accepting any of them prints a board or a row that was never declared,
+    // which reads as fact on a debugging surface.
+    const good = perTaskKey("issue-work", "task-a");
+    expect(decodeChildSessionKey(`${good}x`)).toBeNull(); // trailing bytes
+    expect(decodeChildSessionKey(good.slice(0, -1))).toBeNull(); // short value
+    expect(decodeChildSessionKey("task|9:issue-work|6:task-a")).toBeNull(); // wrong length
+    expect(decodeChildSessionKey("task|010:issue-work|6:task-a")).toBeNull(); // leading zero
+    expect(decodeChildSessionKey("task|10:issue-work;6:task-a")).toBeNull(); // wrong separator
+    expect(decodeChildSessionKey("task|10:issue-work")).toBeNull(); // one field
+    expect(decodeChildSessionKey("task|0:|6:task-a")).toBeNull(); // empty board
+    expect(decodeChildSessionKey("row|10:issue-work|6:task-a")).toBeNull(); // unknown tag
+    expect(decodeChildSessionKey("10:issue-work|6:task-a")).toBeNull(); // no tag
   });
 
   it("treats both spellings of absent as absent", () => {
     // A record written before the labels existed reads `undefined`; a store that
     // nulls absent keys hands back `null` (BP-030).
-    expect(decodeChildSessionCoordinate(undefined)).toBeNull();
-    expect(decodeChildSessionCoordinate(null)).toBeNull();
-    expect(decodeChildSessionCoordinate("")).toBeNull();
+    expect(decodeChildSessionKey(undefined)).toBeNull();
+    expect(decodeChildSessionKey(null)).toBeNull();
+    expect(decodeChildSessionKey("")).toBeNull();
+  });
+});
+
+describe("decodeChildSessionEntry", () => {
+  it("splits the dispatch type from the entry name at the first colon", () => {
+    expect(decodeChildSessionEntry("task:implement")).toEqual({
+      type: "task",
+      target: "implement",
+    });
+    expect(decodeChildSessionEntry("internal:wake")).toEqual({ type: "internal", target: "wake" });
+    // A dispatch type never contains `:`; a target may.
+    expect(decodeChildSessionEntry("task:ns:implement")).toEqual({
+      type: "task",
+      target: "ns:implement",
+    });
+  });
+
+  it("returns null for a label that names no entry", () => {
+    expect(decodeChildSessionEntry("opaque")).toBeNull();
+    expect(decodeChildSessionEntry(":implement")).toBeNull();
+    expect(decodeChildSessionEntry("task:")).toBeNull();
+    expect(decodeChildSessionEntry(undefined)).toBeNull();
+    expect(decodeChildSessionEntry(null)).toBeNull();
   });
 });
 
 describe("linkChildSessionsToTasks", () => {
-  it("matches a task that declared no topic by its id", () => {
-    // The routing seed falls back to the task id, so an unlabelled task's
-    // ChildSession is named after it. Without this the common case — a board whose
-    // tasks carry no topic metadata — would show no links at all.
-    const ws = childSession({ id: "dsx_1", topic: "task-a" });
+  it("links a per-task child to the row its key names, in both directions", () => {
+    const ws = childSession({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
     const { byTask, byChildSession } = linkChildSessionsToTasks(
       [ws],
-      [board("issues", [task({ id: "task-a" })])]
+      [board("issues", [task({ id: "task-a", assignee: "implement" }), task({ id: "task-b" })])]
     );
     expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
+    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBeUndefined();
     expect(byChildSession.get("dsx_1")).toEqual([
-      { collectionId: "issues", task: task({ id: "task-a" }) },
+      { collectionId: "issues", task: task({ id: "task-a", assignee: "implement" }) },
     ]);
   });
 
-  it("prefers a declared topic over the id, the way the seed does", () => {
-    const ws = childSession({ id: "dsx_1", topic: "FIX-1" });
-    const { byTask } = linkChildSessionsToTasks(
-      [ws],
-      [board("issues", [task({ id: "task-a", metadata: { topic: "FIX-1" } })])]
-    );
-    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
-  });
-
-  it("falls back to the id when the declared topic is blank", () => {
-    // `childSessionRoutingSeed` normalizes a whitespace-only topic to absent, so a
-    // reader that trusted the blank string would fail to match the very
-    // ChildSession the seed created.
-    const ws = childSession({ id: "dsx_1", topic: "task-a" });
-    const { byTask } = linkChildSessionsToTasks(
-      [ws],
-      [board("issues", [task({ id: "task-a", metadata: { topic: "  " } })])]
-    );
-    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
-  });
-
-  it("puts several tasks on one ChildSession when they share a topic", () => {
-    // Not a collision to resolve — it is the substrate's behaviour. A second task
-    // on the same topic lands in the same child session and continues its
-    // history, so the panel has to be able to say so.
-    const ws = childSession({ id: "dsx_1", topic: "FIX-1" });
-    const shared = { topic: "FIX-1" };
-    const { byChildSession } = linkChildSessionsToTasks(
+  it("fans a per-worker child out over every row on its seat", () => {
+    // Not a collision to resolve — it is the substrate's behaviour. A
+    // `per-worker` seat runs all of its rows in one child, so the panel has to
+    // be able to say so, and each of those rows points back at the same child.
+    const ws = childSession({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
+    const { byTask, byChildSession } = linkChildSessionsToTasks(
       [ws],
       [
         board("issues", [
-          task({ id: "task-a", metadata: shared }),
-          task({ id: "task-b", metadata: shared }),
+          task({ id: "task-a", assignee: "implement" }),
+          task({ id: "task-b", assignee: "review" }),
+          task({ id: "task-c", assignee: "implement" }),
+          // Unassigned: not on any seat, so not on this one.
+          task({ id: "task-d" }),
         ]),
       ]
     );
-    expect(byChildSession.get("dsx_1")?.map((l) => l.task.id)).toEqual([
-      "task-a",
-      "task-b",
-    ]);
+    expect(byChildSession.get("dsx_impl")?.map((l) => l.task.id)).toEqual(["task-a", "task-c"]);
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
+    expect(byTask.get(taskLinkKey("issues", "task-c"))).toBe(ws);
+    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBeUndefined();
+    expect(byTask.get(taskLinkKey("issues", "task-d"))).toBeUndefined();
   });
 
-  it("leaves a task with no matching ChildSession unlinked", () => {
-    // The majority case: an inline worker runs inside the request being viewed.
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [childSession({ id: "dsx_1", topic: "something-else" })],
+  it("pairs a per-task key on the row's id, not its assignee", () => {
+    // The key names one row. Whatever seat the row is on now — or none — the
+    // child derived for it is this one.
+    const ws = childSession({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
+    const { byTask } = linkChildSessionsToTasks(
+      [ws],
       [board("issues", [task({ id: "task-a" })])]
+    );
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
+  });
+
+  it("links nothing off a flow-computed key", () => {
+    // A `{ key }` policy child is a board's child too, but its key says nothing
+    // this reader can act on. Matching it against a task carrying the same
+    // string in some field would be a guess dressed as a rule.
+    const { byTask, byChildSession } = linkChildSessionsToTasks(
+      [childSession({ id: "dsx_1", topic: "task-a" })],
+      [board("issues", [task({ id: "task-a", assignee: "implement" })])]
+    );
+    expect(byTask.size).toBe(0);
+    expect(byChildSession.size).toBe(0);
+  });
+
+  it("links nothing off a key whose framing does not check out", () => {
+    // One byte off from a real key. A lenient reader that recovered "task-a"
+    // from it would link on a label the writer never wrote.
+    const { byTask, byChildSession } = linkChildSessionsToTasks(
+      [childSession({ id: "dsx_1", topic: `${perTaskKey("issue-work", "task-a")}x` })],
+      [board("issues", [task({ id: "task-a", assignee: "implement" })])]
     );
     expect(byTask.size).toBe(0);
     expect(byChildSession.size).toBe(0);
@@ -200,339 +257,42 @@ describe("linkChildSessionsToTasks", () => {
     // A row with no topic is unlabelled, not a wildcard. Treating absence as a
     // match would attach the first task on every board to it.
     const { byTask } = linkChildSessionsToTasks(
-      [childSession({ id: "dsx_1" })],
+      [childSession({ id: "dsx_1", topic: undefined, coordinate: undefined })],
       [board("issues", [task({ id: "task-a" })])]
     );
     expect(byTask.size).toBe(0);
   });
 
-  it("separates two workers on one topic by the task's assignee", () => {
-    // A topic is not a session. The routing seed hashes the topic AND the
-    // coordinate key, so one topic routed to two workers is two child sessions
-    // — matching on topic alone sent both tasks into whichever arrived first
-    // and left the other ChildSession looking taskless.
-    const implementWs = childSession({
-      id: "dsx_impl",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("implement")),
-    });
-    const reviewWs = childSession({
-      id: "dsx_review",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("review")),
-    });
-    const shared = { topic: "FIX-1" };
-
-    const { byTask } = linkChildSessionsToTasks(
-      [implementWs, reviewWs],
-      [
-        board("issues", [
-          task({ id: "task-a", assignee: "implement", metadata: shared }),
-          task({ id: "task-b", assignee: "review", metadata: shared }),
-        ]),
-      ]
-    );
-
-    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(implementWs);
-    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBe(reviewWs);
-  });
-
-  it("checks the coordinate even when the topic has only one candidate", () => {
-    // The ordinary shape of the same defect, and the one a count-gated check
-    // waves through: two tasks share a topic but target different workers, and
-    // only the `implement` one has spawned — the `review` task is inline, or has
-    // not started. That single ChildSession is then the only candidate for BOTH,
-    // so a check that runs only on contested topics links the review task to a
-    // session that is not running it.
-    const implementWs = childSession({
-      id: "dsx_impl",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("implement")),
-    });
-    const shared = { topic: "FIX-1" };
-
+  it("links nothing off a child that is not a board's", () => {
+    // An `internal:` dispatch's key is whatever the block chose. Even one that
+    // happens to equal a task id names no row.
     const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [implementWs],
-      [
-        board("issues", [
-          task({ id: "task-a", assignee: "implement", metadata: shared }),
-          task({ id: "task-b", assignee: "review", metadata: shared }),
-        ]),
-      ]
+      [childSession({ id: "dsx_wake", topic: "task-a", coordinate: "internal:wake" })],
+      [board("issues", [task({ id: "task-a", assignee: "implement" })])]
     );
-
-    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(implementWs);
-    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBeUndefined();
-    // And the reverse direction must not claim the review task either.
-    expect(byChildSession.get("dsx_impl")?.map((l) => l.task.id)).toEqual(["task-a"]);
-  });
-
-  it("refuses a named-assignee ChildSession for a task carrying no assignee", () => {
-    // An ABSENT assignee is not an unreadable one. `coordinateForTask` routes an
-    // `assignee` coordinate only when the row has an assignee the board
-    // declares (`task.assignee !== undefined && declared.has(...)`); an
-    // unassigned row gets `uniform`, `floor`, or a refusal. So this task could
-    // not possibly have produced this ChildSession, and treating its missing
-    // assignee as ignorance throws away something the routing rule tells us.
-    const ws = childSession({
-      id: "dsx_impl",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("implement")),
-    });
-
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [ws],
-      // A genuinely unassigned task, not a hand-built candidate.
-      [board("issues", [task({ id: "task-a", metadata: { topic: "FIX-1" } })])]
-    );
-
     expect(byTask.size).toBe(0);
     expect(byChildSession.size).toBe(0);
   });
 
-  it("links a task whose assignee is the empty string, which is a legal worker name", () => {
-    // The empty string is a NAME, not an absence, and the whole chain accepts
-    // it: a registry is read with `Object.entries` and length-checks no key,
-    // `assignee` is a bare `z.string().optional()`, and `coordinate.ts` states
-    // that assignee names are unrestricted (`boardId`, next to it, IS
-    // length-checked — so this is a choice, not an oversight). A board
-    // declaring `workers: { "": … }` therefore routes this row to
-    // `{ kind: "assignee", name: "" }`, framed as `assignee|0:`.
-    //
-    // Folding it in with "no assignee" made the one thing the routing rule
-    // forbids and a route the rule permits look identical, and blanked the link
-    // in both directions for work that really did run there.
-    const ws = childSession({
-      id: "dsx_blank",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("")),
-    });
-
+  it("leaves a task with no matching ChildSession unlinked", () => {
+    // The majority case: an inline seat runs inside the request being viewed.
     const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [ws],
-      [board("issues", [task({ id: "task-a", assignee: "", metadata: { topic: "FIX-1" } })])]
+      [childSession({ id: "dsx_1", topic: perTaskKey("issue-work", "task-z") })],
+      [board("issues", [task({ id: "task-a" })])]
     );
-
-    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
-    expect(byChildSession.get("dsx_blank")?.map((l) => l.task.id)).toEqual(["task-a"]);
-  });
-
-  it("keeps the empty-string worker distinct from a differently named one", () => {
-    // The pairing above must come from the names matching, not from the check
-    // having been dropped: a `""` row against an `implement` ChildSession is the
-    // same contradiction as any other mismatch.
-    const ws = childSession({
-      id: "dsx_impl",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("implement")),
-    });
-
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [ws],
-      [board("issues", [task({ id: "task-a", assignee: "", metadata: { topic: "FIX-1" } })])]
-    );
-
     expect(byTask.size).toBe(0);
     expect(byChildSession.size).toBe(0);
   });
 
-  // The two sides' silences mean different things, and the pair below keeps them
-  // apart on purpose. A COORDINATE that names no worker is ignorance and stays
-  // eligible; a TASK with no assignee, against a coordinate that DOES name one,
-  // is a contradiction. Kept as separate tests so a later change cannot quietly
-  // collapse the two back into one rule — the test above pins the second half.
-
-  it("still links a lone ChildSession whose coordinate names no assignee, for an assigned task", () => {
-    // A `uniform` board's key names no assignee, and an unlabelled record
-    // carries no coordinate at all — neither contradicts anything.
-    const uniformWs = childSession({
-      id: "dsx_uniform",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", "uniform"),
-    });
-    const bareWs = childSession({ id: "dsx_bare", topic: "FIX-2" });
-
+  it("does not let the entry label stand in for the key", () => {
+    // `coordinate` names the entry the child was dispatched for, and a seat's
+    // name is usually its entry's — but "usually" is not a pairing rule. A
+    // child whose key does not decode stays unlinked however apt its entry.
     const { byTask } = linkChildSessionsToTasks(
-      [uniformWs, bareWs],
-      [
-        board("issues", [
-          task({ id: "task-a", assignee: "implement", metadata: { topic: "FIX-1" } }),
-          task({ id: "task-b", assignee: "review", metadata: { topic: "FIX-2" } }),
-        ]),
-      ]
+      [childSession({ id: "dsx_1", topic: "FIX-1", coordinate: "task:implement" })],
+      [board("issues", [task({ id: "task-a", assignee: "implement" })])]
     );
-
-    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(uniformWs);
-    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBe(bareWs);
-  });
-
-  it("still links a lone ChildSession whose coordinate names no assignee, for an UNASSIGNED task", () => {
-    // The pairing that must survive the tightening, and the one the assigned
-    // case above cannot speak for. An unassigned row is exactly what
-    // `coordinateForTask` routes to `uniform` or `floor`, so this is the
-    // ordinary shape of unassigned detached work — not an edge case.
-    const uniformWs = childSession({
-      id: "dsx_uniform",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", "uniform"),
-    });
-    const floorWs = childSession({
-      id: "dsx_floor",
-      topic: "FIX-2",
-      coordinate: coordinate("issue-work", "floor"),
-    });
-    const bareWs = childSession({ id: "dsx_bare", topic: "FIX-3" });
-
-    const { byTask } = linkChildSessionsToTasks(
-      [uniformWs, floorWs, bareWs],
-      [
-        board("issues", [
-          task({ id: "task-a", metadata: { topic: "FIX-1" } }),
-          task({ id: "task-b", metadata: { topic: "FIX-2" } }),
-          task({ id: "task-c", metadata: { topic: "FIX-3" } }),
-        ]),
-      ]
-    );
-
-    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(uniformWs);
-    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBe(floorWs);
-    expect(byTask.get(taskLinkKey("issues", "task-c"))).toBe(bareWs);
-  });
-
-  it("draws no link when a shared topic cannot be resolved to one worker", () => {
-    // A `uniform` board's coordinate names no assignee, so nothing distinguishes
-    // the two candidates. On a debugging surface a wrong link is worse than
-    // none — the developer clicks through into unrelated background work.
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [
-        childSession({
-          id: "dsx_1",
-          topic: "FIX-1",
-          coordinate: coordinate("issue-work", "uniform"),
-        }),
-        childSession({
-          id: "dsx_2",
-          topic: "FIX-1",
-          coordinate: coordinate("issue-work", "uniform"),
-        }),
-      ],
-      [board("issues", [task({ id: "task-a", assignee: "implement", metadata: { topic: "FIX-1" } })])]
-    );
-
     expect(byTask.size).toBe(0);
-    expect(byChildSession.size).toBe(0);
-  });
-
-  describe("the identity parts, taken one at a time", () => {
-    // A child session is identified by (board, worker coordinate, topic). The
-    // rule is one rule, not three cases: a part that DECODES AND DISAGREES
-    // disqualifies a candidate, and a part that cannot be read leaves it
-    // eligible. What differs between the parts is only whether the task side
-    // carries anything to compare against — and the board side carries nothing,
-    // which is why its disagreement has to be detected rather than checked.
-    const cases: Array<{
-      part: string;
-      candidates: ChildSessionSummary[];
-      taskAssignee?: string;
-      /** The id expected, or `undefined` for "ambiguous, draw nothing". */
-      expected: string | undefined;
-      why: string;
-    }> = [
-      {
-        part: "board",
-        candidates: [
-          childSession({
-            id: "dsx_a",
-            topic: "FIX-1",
-            coordinate: coordinate("board-a", assigneeKey("implement")),
-          }),
-          childSession({
-            id: "dsx_b",
-            topic: "FIX-1",
-            coordinate: coordinate("board-b", assigneeKey("implement")),
-          }),
-        ],
-        taskAssignee: "implement",
-        expected: undefined,
-        why: "the task carries no board id, so it cannot pick between them",
-      },
-      {
-        part: "worker (task names one)",
-        candidates: [
-          childSession({
-            id: "dsx_impl",
-            topic: "FIX-1",
-            coordinate: coordinate("issue-work", assigneeKey("implement")),
-          }),
-          childSession({
-            id: "dsx_review",
-            topic: "FIX-1",
-            coordinate: coordinate("issue-work", assigneeKey("review")),
-          }),
-        ],
-        taskAssignee: "implement",
-        expected: "dsx_impl",
-        // The one part the task CAN check, so a difference is resolvable rather
-        // than ambiguous. Refusing here would delete correct behaviour.
-        why: "assignee decides it",
-      },
-      {
-        part: "worker (task names none)",
-        candidates: [
-          childSession({
-            id: "dsx_impl",
-            topic: "FIX-1",
-            coordinate: coordinate("issue-work", assigneeKey("implement")),
-          }),
-          childSession({
-            id: "dsx_review",
-            topic: "FIX-1",
-            coordinate: coordinate("issue-work", assigneeKey("review")),
-          }),
-        ],
-        expected: undefined,
-        // Not "nothing to compare" — an unassigned row cannot reach an
-        // assignee coordinate at all, so BOTH are contradicted rather than
-        // both being unknown. Same outcome, different reason.
-        why: "an unassigned task contradicts every named-assignee coordinate",
-      },
-      {
-        part: "nothing (identical coordinates)",
-        candidates: [
-          childSession({
-            id: "dsx_1",
-            topic: "FIX-1",
-            coordinate: coordinate("issue-work", "uniform"),
-          }),
-          childSession({
-            id: "dsx_2",
-            topic: "FIX-1",
-            coordinate: coordinate("issue-work", "uniform"),
-          }),
-        ],
-        taskAssignee: "implement",
-        expected: undefined,
-        why: "a uniform board names no assignee, so neither can be excluded",
-      },
-    ];
-
-    for (const scenario of cases) {
-      it(`differing in ${scenario.part} — ${scenario.why}`, () => {
-        const { byTask } = linkChildSessionsToTasks(scenario.candidates, [
-          board("issues", [
-            task({
-              id: "task-a",
-              metadata: { topic: "FIX-1" },
-              ...(scenario.taskAssignee !== undefined
-                ? { assignee: scenario.taskAssignee }
-                : {}),
-            }),
-          ]),
-        ]);
-
-        expect(byTask.get(taskLinkKey("issues", "task-a"))?.id).toBe(scenario.expected);
-      });
-    }
   });
 
   it("resolves against the task's newest state, not the oldest request's", () => {
@@ -543,16 +303,11 @@ describe("linkChildSessionsToTasks", () => {
     // The task was claimed by `implement` in an earlier request and reassigned
     // to `review` in a later one. Requests arrive newest-first, so a fold that
     // takes the last item it walks past holds the `implement` snapshot, and the
-    // link then resolves against an assignee the task no longer has.
-    const reviewWs = childSession({
-      id: "dsx_review",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("review")),
-    });
+    // link then resolves against a seat the task is no longer on.
+    const reviewWs = childSession({ id: "dsx_review", topic: perWorkerKey("issue-work", "review") });
     const implementWs = childSession({
       id: "dsx_impl",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("implement")),
+      topic: perWorkerKey("issue-work", "implement"),
     });
 
     const collections = groupCollections([
@@ -561,72 +316,89 @@ describe("linkChildSessionsToTasks", () => {
       taskChange({ requestId: "req_1", ts: 1_000, assignee: "implement" }),
     ]);
 
-    const { byTask } = linkChildSessionsToTasks([reviewWs, implementWs], collections);
+    const { byTask, byChildSession } = linkChildSessionsToTasks(
+      [reviewWs, implementWs],
+      collections
+    );
 
     expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(reviewWs);
+    expect(byChildSession.get("dsx_impl")).toBeUndefined();
   });
 
-  it("draws no link when two boards in the session contend for one ChildSession", () => {
-    // The third leg of identity. `deriveChildSessionId` hashes topic AND a key
-    // built from `boardId|coordinateKey`, so a ChildSession belongs to ONE board —
-    // but nothing on the task side carries a board id. `task-change` and
-    // `task-board-meta` emit `collectionId`, and `taskBoard` documents that as a
-    // deliberately different string from `boardId`, so board equality can never
-    // be checked the way the worker can.
+  describe("the board leg, which cannot be checked and so is detected", () => {
+    // A key frames `boardId` in beside the row or the seat, so a child belongs
+    // to ONE board — but nothing on the task side carries a board id.
+    // `task-change` and `task-board-meta` emit `collectionId`, and `taskBoard`
+    // documents that as a deliberately different string from `boardId`, so
+    // board equality can never be checked the way the row and the seat can.
     //
-    // What IS observable is contention: if tasks in more than one collection
-    // each resolve to the same ChildSession, at most one of them owns it and
-    // nothing on the wire says which. Clicking the wrong one opens unrelated
-    // work, so neither gets a link.
-    const ws = childSession({
-      id: "dsx_1",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("implement")),
-    });
-    const shared = { topic: "FIX-1" };
+    // What IS observable is contention, and clicking the wrong claimant opens
+    // unrelated work, so contention draws nothing.
 
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [ws],
-      [
-        board("issues", [task({ id: "task-a", assignee: "implement", metadata: shared })]),
-        board("chores", [task({ id: "task-b", assignee: "implement", metadata: shared })]),
-      ]
-    );
-
-    expect(byTask.size).toBe(0);
-    expect(byChildSession.size).toBe(0);
-  });
-
-  it("keeps one board's tasks linked when it is the only claimant", () => {
-    // The guard against over-reading contention: two collections in the session
-    // is not itself ambiguity. Only the collection whose task actually resolves
-    // to the ChildSession claims it, so the link stands.
-    const ws = childSession({
-      id: "dsx_1",
-      topic: "FIX-1",
-      coordinate: coordinate("issue-work", assigneeKey("implement")),
+    it("draws no link when two collections hold the row a per-task child names", () => {
+      const ws = childSession({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
+      const { byTask, byChildSession } = linkChildSessionsToTasks(
+        [ws],
+        [
+          board("issues", [task({ id: "task-a", assignee: "implement" })]),
+          board("chores", [task({ id: "task-a", assignee: "implement" })]),
+        ]
+      );
+      expect(byTask.size).toBe(0);
+      expect(byChildSession.size).toBe(0);
     });
 
-    const { byTask } = linkChildSessionsToTasks(
-      [ws],
-      [
-        board("issues", [
-          task({ id: "task-a", assignee: "implement", metadata: { topic: "FIX-1" } }),
-        ]),
-        board("chores", [
-          task({ id: "task-b", assignee: "implement", metadata: { topic: "FIX-2" } }),
-        ]),
-      ]
-    );
+    it("draws no link when two collections carry the seat a per-worker child names", () => {
+      // Seat names are per board, so two boards may each declare `implement`.
+      // Only one of them owns this child, and nothing on the wire says which.
+      const ws = childSession({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
+      const { byTask, byChildSession } = linkChildSessionsToTasks(
+        [ws],
+        [
+          board("issues", [task({ id: "task-a", assignee: "implement" })]),
+          board("chores", [task({ id: "task-b", assignee: "implement" })]),
+        ]
+      );
+      expect(byTask.size).toBe(0);
+      expect(byChildSession.size).toBe(0);
+    });
 
-    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
-    expect(byTask.size).toBe(1);
+    it("draws no link when two children name the same row", () => {
+      // The other direction of the same gap: two boards' per-task children for
+      // a `task-a`, and one rendered collection holding a `task-a`. The keys
+      // carry different board ids, and the task carries none to pick with.
+      const { byTask, byChildSession } = linkChildSessionsToTasks(
+        [
+          childSession({ id: "dsx_a", topic: perTaskKey("board-a", "task-a") }),
+          childSession({ id: "dsx_b", topic: perTaskKey("board-b", "task-a") }),
+        ],
+        [board("issues", [task({ id: "task-a", assignee: "implement" })])]
+      );
+      expect(byTask.size).toBe(0);
+      expect(byChildSession.size).toBe(0);
+    });
+
+    it("keeps one collection's tasks linked when it is the only claimant", () => {
+      // The guard against over-reading contention: two collections in the
+      // session is not itself ambiguity. Only the collection whose task
+      // actually fits the child claims it, so the link stands.
+      const ws = childSession({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
+      const { byTask } = linkChildSessionsToTasks(
+        [ws],
+        [
+          board("issues", [task({ id: "task-a", assignee: "implement" })]),
+          board("chores", [task({ id: "task-b", assignee: "review" })]),
+        ]
+      );
+      expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
+      expect(byTask.size).toBe(1);
+    });
   });
 
   it("keys a link by collection, so one board's row is never another's", () => {
     // Same task id on two boards is legal, which is why the key carries the
     // collection. Asserted on the key itself rather than through a link, because
-    // two boards claiming one ChildSession is now refused outright.
+    // two boards claiming one ChildSession is refused outright.
     expect(taskLinkKey("issues", "task-a")).not.toBe(taskLinkKey("chores", "task-a"));
   });
 });

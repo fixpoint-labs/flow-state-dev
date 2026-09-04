@@ -53,14 +53,14 @@ function renderTasks(
   );
 }
 
-/** A ChildSession that matches `task-a` by topic and worker. */
+/** A ChildSession whose per-task key names `task-a`, dispatched for the `implement` entry. */
 const matching = {
   id: "dsx_1",
   parentSessionId: "sess_parent",
   createdAt: 1,
   updatedAt: 2,
-  topic: "FIX-1",
-  coordinate: "10:issue-work|20:assignee|9:implement",
+  topic: "task|10:issue-work|6:task-a",
+  coordinate: "task:implement",
 } as never;
 
 describe("TaskCollectionsView — an unmatched task", () => {
@@ -97,21 +97,21 @@ describe("TaskCollectionsView — a matched task", () => {
   it("links plainly when the whole listing was read", () => {
     renderTasks("complete", [matching]);
 
-    const link = screen.getByRole("button", { name: /FIX-1/ });
+    const link = screen.getByRole("button", { name: /implement/ });
     expect(link.getAttribute("title")).not.toMatch(/may not be the one/i);
   });
 
   it("marks the link unverified when part of the listing was not read", () => {
-    // The match is page-local: `resolveChildSession` found exactly one candidate
-    // among the rows LOADED. An older unlisted ChildSession sharing the topic and
-    // a compatible worker would fit too, and would belong to another board.
+    // The match is page-local: the pairing is unambiguous among the rows
+    // LOADED. An older unlisted ChildSession whose key names the same task id
+    // would fit too, and would belong to another board.
     //
     // Marked, not withheld — the link is a best-effort navigation affordance,
     // and withholding it would delete the feature on any session big enough to
     // page.
     renderTasks("more", [matching]);
 
-    const link = screen.getByRole("button", { name: /FIX-1/ });
+    const link = screen.getByRole("button", { name: /implement/ });
     expect(link.getAttribute("title")).toMatch(/may not be the one running the task/i);
   });
 });

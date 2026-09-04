@@ -66,37 +66,45 @@ describe("ChildSessionsView", () => {
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "dsx_bare" }));
   });
 
-  it("decodes the board and worker out of the coordinate label", () => {
-    // The raw label is `10:issue-work|20:assignee|9:implement`. Rendering that
-    // verbatim beside a hashed id tells a developer nothing.
+  it("decodes the seat and board out of a per-worker key, and the entry out of the coordinate", () => {
+    // The raw labels are `worker|10:issue-work|9:implement` and
+    // `task:implement`. Rendering those verbatim beside a hashed id tells a
+    // developer nothing.
     renderView({
       childSessions: [
         childSession({
           id: "dsx_1",
-          topic: "FIX-1",
-          coordinate: "10:issue-work|20:assignee|9:implement",
+          topic: "worker|10:issue-work|9:implement",
+          coordinate: "task:implement",
           status: "active",
         }),
       ],
     });
 
     expect(screen.getByText("issue-work")).toBeInTheDocument();
-    expect(screen.getByText("assignee:implement")).toBeInTheDocument();
+    expect(screen.getByText("seat")).toBeInTheDocument();
+    // Once as the seat, once as the entry — both are `implement` here, which is
+    // the usual shape and exactly why the row says which is which.
+    expect(screen.getAllByText("implement")).toHaveLength(2);
     expect(screen.getByText("active")).toBeInTheDocument();
   });
 
-  it("shows an unrecognised coordinate raw instead of dropping it", () => {
-    // Some other writer's label is still the most specific thing known about
-    // that worker.
+  it("shows a flow-computed key and an unrecognised coordinate raw instead of dropping them", () => {
+    // A `{ key }` policy's string is the flow's own name for the work, and some
+    // other writer's coordinate is still the most specific thing known about
+    // that entry. Neither decodes, and neither is nothing.
     renderView({
-      childSessions: [childSession({ id: "dsx_1", topic: "t", coordinate: "opaque" })],
+      childSessions: [childSession({ id: "dsx_1", topic: "FIX-1", coordinate: "opaque" })],
     });
+    expect(screen.getByText("FIX-1")).toBeInTheDocument();
     expect(screen.getByText("opaque")).toBeInTheDocument();
   });
 
   it("names the board tasks a ChildSession is running", () => {
     renderView({
-      childSessions: [childSession({ id: "dsx_1", topic: "task-a" })],
+      childSessions: [
+        childSession({ id: "dsx_1", topic: "task|10:issue-work|6:task-a", coordinate: "task:implement" }),
+      ],
       items: [
         {
           id: "item-1",
@@ -112,8 +120,8 @@ describe("ChildSessionsView", () => {
       ],
     });
 
-    // Twice: once as the row's topic, once as the task it resolved to. The Tasks
-    // column is the one that proves the item stream was folded in.
+    // Twice: once as the row the key names, once as the task it resolved to.
+    // The Tasks column is the one that proves the item stream was folded in.
     expect(screen.getAllByText("task-a")).toHaveLength(2);
   });
 
@@ -155,7 +163,7 @@ describe("ChildSessionsView", () => {
     expect(
       screen.queryByText(/No background work in this session/i)
     ).not.toBeInTheDocument();
-    expect(screen.queryByText(/^0 childSessions/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^0 child sessions/i)).not.toBeInTheDocument();
   });
 
   it("opens a ChildSession from the keyboard, not only by pointer", async () => {
@@ -176,7 +184,7 @@ describe("ChildSessionsView", () => {
     // document order, the row's control second.
     await user.tab();
     await user.tab();
-    const open = screen.getByRole("button", { name: /Open childSession dsx_1/i });
+    const open = screen.getByRole("button", { name: /Open child session dsx_1/i });
     expect(open).toHaveFocus();
 
     await user.keyboard("{Enter}");

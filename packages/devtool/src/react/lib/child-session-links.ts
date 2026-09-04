@@ -11,85 +11,67 @@
  *
  * ## What the labels contain
  *
- * The task board's routing seed (`orchestration/task-board/coordinate.ts`) is
- * the writer:
+ * The dispatch seam (`engine/src/context/create-request-host.ts`,
+ * `resolveChildSession`) stamps both labels when it mints a child, from the
+ * values it has just used to derive the child's id:
  *
- * - `topic` is the claimed task's own `metadata.topic`, falling back to the
- *   **task id** when the task declared none. That fallback is the whole of the
- *   association: an unlabelled task's ChildSession is named after it.
- * - `coordinate` is `framed(boardId)|framed(coordinateKey)`, where `framed(v)`
- *   is `` `${v.length}:${v}` `` and `coordinateKey` is `assignee|framed(name)`,
- *   `uniform`, or `floor`.
+ * - `topic` is the **session key** the child was derived from. For a task
+ *   board's hand-off that key is what `taskSessionKeyFor`
+ *   (`core/src/types/dispatch.ts`) returns for the seat's session policy:
+ *   - `per-task` → `task|framed(boardId)|framed(taskId)`
+ *   - `per-worker` → `worker|framed(boardId)|framed(seat)`
+ *   - `{ key }` → whatever non-empty string the flow computed, used as returned
+ *   where `framed(v)` is `` `${v.length}:${v}` ``.
+ * - `coordinate` is `<dispatchType>:<target>` — the entry the child was
+ *   dispatched for, e.g. `task:implement`. It names the worker's entry, not a
+ *   board or a row, so it is displayed and never used to pair.
  *
- * Both are decoded here rather than rendered raw, because a hashed `ws_…` id
- * beside `10:issue-work|20:assignee|9:implement` tells a developer nothing.
+ * Both are decoded here rather than rendered raw, because a hashed `dsx_…` id
+ * beside `task|10:issue-work|6:task-a` tells a developer nothing.
  *
- * ## Why the match starts at the topic
+ * ## What the key says, and what it cannot
  *
- * `boardId` and a collection's `collectionId` are deliberately different strings
- * (`taskBoard` documents that they "are not always the same"), and only
- * `collectionId` reaches the item stream the Tasks panel reads. So the board id
- * decoded from a coordinate cannot be joined against a rendered board, which
- * leaves the topic as the only value both sides can be INDEXED on. The worker is
- * comparable once a candidate is in hand, but it cannot key the lookup.
+ * A preset key names the board and either the row (`per-task`) or the seat
+ * (`per-worker`), so the task side has something to compare on each:
  *
- * ## A ChildSession's identity has three parts, so the match checks three
- *
- * `deriveChildSessionId` hashes the topic together with the routing seed's
- * `key`, and `childSessionRoutingSeed` builds that key as
- * `framed(boardId)|framed(coordinateKey)`. So a child session is identified by
- * **(board, worker coordinate, topic)** — and a match that indexes on one part
- * and checks another leaves the third as a defect waiting to be reported. This
- * file therefore takes each part in turn rather than special-casing the shapes
- * that happen to have been noticed:
- *
- * - **Topic** — the index key. Both sides carry it (a task's `metadata.topic`,
- *   else its id, which is the fallback the routing seed itself applies).
- * - **Worker** — comparable. The coordinate decodes to `assignee:<name>` and a
- *   task carries `assignee`, so a disagreement is visible and disqualifying.
- * - **Board** — NOT comparable, in either direction of the data. The coordinate
- *   carries `boardId`, but nothing on the task side does: `task-change` and
+ * - **Task** (`per-task`) — comparable. A task carries `id`, and exactly one row
+ *   on the child's board has it.
+ * - **Seat** (`per-worker`) — comparable. A task carries `assignee`, and the
+ *   child is shared by every row the seat runs, so it pairs with all of them.
+ * - **Board** — NOT comparable, in either direction of the data. The key carries
+ *   `boardId`, but nothing on the task side does: `task-change` and
  *   `task-board-meta` emit `collectionId`, which `taskBoard` documents as a
  *   deliberately different string. Its disagreement is therefore detected
  *   rather than checked — see `linkChildSessionsToTasks`'s second pass.
  *
- * One rule spans all three: a part that DECODES AND DISAGREES disqualifies a
- * candidate; a part that cannot be read at all is "cannot tell" and leaves the
- * candidate eligible. Those are deliberately not the same. Collapsing them
- * would drop the ordinary lone unlabelled ChildSession, which carries no
- * coordinate and still pairs correctly with its task.
+ * A `{ key }` policy's string is opaque by contract: the flow chose it, and
+ * nothing here can say what it names. Such a child decodes to `null` and pairs
+ * with nothing — "cannot tell" rather than a guess. The same goes for a child
+ * that is not a board's at all (an `internal:` dispatch), for a record stamped
+ * before the labels existed, and for a label whose framing does not check out.
+ * One consequence is a bound: a custom key that happens to spell the preset
+ * grammar is indistinguishable from the preset, and pairs as if it were one.
  *
- * The two sides are not symmetric about what counts as unreadable, and that is
- * the easy thing to get wrong. A COORDINATE that names no worker is ignorance.
- * A TASK with no assignee, against a coordinate that names one, is a
- * DISAGREEMENT — `coordinateForTask` cannot route an unassigned row to an
- * assignee coordinate, so the absence rules the pairing out rather than leaving
- * it open. See `couldRun`.
- *
- * A link is drawn only when exactly one candidate survives, and only when no
- * second board is contending for it.
+ * A link is drawn only when the pairing is unambiguous on every part that can
+ * be read, and only when no second board is contending for it.
  *
  * That uniqueness is PAGE-LOCAL. The panel reads one page of the ChildSession
  * listing (a budget fixed in `docs/architecture/server-and-client.md`), so
- * "exactly one candidate" means exactly one among the rows loaded — an older
- * unlisted ChildSession sharing the topic and a compatible worker would fit too.
- * Nothing here can see that, and nothing here tries to: the caller knows how
- * much of the index it holds, and the Tasks tab marks both a match and an
- * absence as unverified whenever that is less than all of it. Withholding
- * matches instead would delete the feature on any session large enough to
- * page.
+ * "unambiguous" means unambiguous among the rows loaded. Nothing here can see
+ * beyond that, and nothing here tries to: the caller knows how much of the
+ * index it holds, and the Tasks tab marks both a match and an absence as
+ * unverified whenever that is less than all of it. Withholding matches instead
+ * would delete the feature on any session large enough to page.
  *
  * ## The bound: this pairing is best-effort, and cannot be made otherwise here
  *
  * Board ownership is not verifiable from what the server sends, so the match is
  * as strong as the data permits and no stronger. Contention between claimants is
  * detected and refused, but a SINGLE claimant is taken as the owner — and a
- * single *wrong* claimant is undetectable.
- *
- * The scenario that produces one: a task's topic is changed after its work was
- * dispatched (`patchMetadata`). Its own board stops contributing a candidate,
- * and an unrelated collection holding a task with the original topic and
- * assignee becomes the sole claimant, so it gets the link.
+ * single *wrong* claimant is undetectable: a collection from another board that
+ * happens to hold the same task id, or a seat of the same name, is the sole
+ * claimant when the child's own board is not in the item stream, and it gets
+ * the link.
  *
  * Read a link accordingly: it is a **navigation affordance, not an assertion of
  * provenance**. It says "this is probably the session doing this work, go look",
@@ -97,49 +79,59 @@
  *
  * That bound is about identity, and it is separate from FRESHNESS. Everything
  * here resolves against whatever snapshot of a task `groupCollections` produced,
- * and that fold used to land on the OLDEST one — so a task reassigned or
- * re-topiced across two requests was matched on state it no longer had. The
- * fold now keeps the newest change per task (see `task-collection-state`), which
- * removes two effects that looked like this bound and were not: a wrong link
- * drawn against a superseded assignee, and a CORRECT link suppressed because a
- * stale topic made a second collection appear to contend. Neither retires the
- * bound — an unverifiable board is unverifiable however fresh the row is — but
- * ambiguity now reflects a real gap in the data rather than a stale read of it.
+ * and that fold keeps the newest change per task (see `task-collection-state`),
+ * so a row reassigned between two requests pairs on the seat it has now, not
+ * the one it had. An unverifiable board is unverifiable however fresh the row
+ * is, but ambiguity reflects a real gap in the data rather than a stale read.
  *
  * Refusing to link without verified attribution is not an option that leaves the
  * feature standing — attribution is not merely absent from the payload, it is
  * inexpressible from it, so that rule would draw no link ever. The fix belongs
  * in the substrate: **FIX-1088** tracks emitting the owning board's id on task
  * events. Once attribution is verifiable the rules here get SIMPLER, and the
- * contention pass above is retired rather than extended.
- *
- * Two consequences, both real and both correct to show:
- *
- * - **Several tasks can share one ChildSession.** That is the substrate's own
- *   behaviour — a second task on the same board, worker and topic lands in the
- *   same child session and continues its history — not an artifact of matching
- *   this way.
- * - **A `uniform` or `floor` board cannot be disambiguated by worker.** Its
- *   coordinate names no assignee, so a topic with two such ChildSessions links to
- *   neither. Tightening it needs the routing key itself on the wire.
+ * contention pass is retired rather than extended.
  */
 import type { ChildSessionSummary } from "@flow-state-dev/client";
 import type { CollectionView, Task } from "./task-collection-state";
 
-/** A ChildSession's `coordinate` label, decoded into the two strings it frames. */
-export type ChildSessionCoordinate = {
-  /** The declaring board's stable id. */
-  boardId: string;
-  /** Which worker on that board, as `assignee:<name>` / `uniform` / `floor`. */
-  worker: string;
+/**
+ * A ChildSession's `topic` label, decoded as the session key a task board's
+ * hand-off writes. Which of the two preset policies produced it, and what it
+ * names on that board.
+ */
+export type ChildSessionKey =
+  | {
+      policy: "per-task";
+      /** The declaring board's stable id. */
+      boardId: string;
+      /** The one row this child runs. */
+      taskId: string;
+    }
+  | {
+      policy: "per-worker";
+      /** The declaring board's stable id. */
+      boardId: string;
+      /** The seat whose every row this child runs — the task's `assignee`. */
+      seat: string;
+    };
+
+/** A ChildSession's `coordinate` label, split into the entry it was dispatched for. */
+export type ChildSessionEntry = {
+  /** The dispatch type — `task` for a board's hand-off, `internal` otherwise. */
+  type: string;
+  /** The entry name on that type's map, e.g. `implement`. */
+  target: string;
 };
 
 /**
  * Read one length-framed field (`` `${length}:${value}` ``) starting at `at`.
  *
  * Returns the value and where the next field begins, or `null` when the input
- * does not have that shape — a label written by some other producer, or a
- * future encoding. Callers fall back to showing the raw label.
+ * does not have that shape. Strict about the shape `framed` in
+ * `core/src/types/dispatch.ts` writes: the digits must be exactly the decimal
+ * spelling of the value's length (no leading zeros), the value must be fully
+ * present, and it must be non-empty — every field the writer frames is
+ * `z.string().min(1)` on the envelope, so an empty one was not written by it.
  */
 function readFramed(
   input: string,
@@ -150,6 +142,7 @@ function readFramed(
   const digits = input.slice(at, separator);
   if (!/^\d+$/.test(digits)) return null;
   const length = Number.parseInt(digits, 10);
+  if (String(length) !== digits || length === 0) return null;
   const start = separator + 1;
   const end = start + length;
   if (end > input.length) return null;
@@ -157,58 +150,57 @@ function readFramed(
 }
 
 /**
- * Decode a `coordinate` label into its board and worker.
+ * Decode a `topic` label as a task board's session key.
  *
- * `null` for an absent label, and for any value that is not the task board's
- * encoding — a ChildSession started by another writer may put anything here, and
- * guessing at a half-parsed value would name a board that does not exist.
+ * Accepts exactly the two preset spellings of `taskSessionKeyFor` —
+ * `task|framed(boardId)|framed(taskId)` and `worker|framed(boardId)|framed(seat)`
+ * — with nothing trailing. `null` for an absent label and for anything else:
+ * a `{ key }` policy's string, another dispatcher's key, a label the framing
+ * does not fit. Guessing at a half-parsed value would name a board or a row
+ * that does not exist.
  */
-export function decodeChildSessionCoordinate(
-  coordinate: string | undefined | null
-): ChildSessionCoordinate | null {
+export function decodeChildSessionKey(
+  topic: string | undefined | null
+): ChildSessionKey | null {
   // `== null` rather than a truthiness check: a store that nulls absent keys
   // hands back `null`, an older record `undefined`, and both mean unlabelled
   // (BP-030).
-  if (coordinate == null || coordinate.length === 0) return null;
+  if (topic == null || topic.length === 0) return null;
 
-  const board = readFramed(coordinate, 0);
+  const tag = topic.startsWith("task|")
+    ? "per-task"
+    : topic.startsWith("worker|")
+      ? "per-worker"
+      : null;
+  if (tag === null) return null;
+
+  const board = readFramed(topic, topic.indexOf("|") + 1);
   if (board === null) return null;
-  if (coordinate[board.next] !== "|") return null;
+  if (topic[board.next] !== "|") return null;
 
-  const key = readFramed(coordinate, board.next + 1);
-  if (key === null || key.next !== coordinate.length) return null;
+  const second = readFramed(topic, board.next + 1);
+  if (second === null || second.next !== topic.length) return null;
 
-  return { boardId: board.value, worker: describeCoordinateKey(key.value) };
+  return tag === "per-task"
+    ? { policy: "per-task", boardId: board.value, taskId: second.value }
+    : { policy: "per-worker", boardId: board.value, seat: second.value };
 }
 
 /**
- * Render a `coordinateKey` the way the board's own diagnostics spell it.
+ * Split a `coordinate` label into the dispatch type and entry it names.
  *
- * Mirrors `coordinateLabel` in `orchestration/task-board/coordinate.ts`. An
- * unrecognised key is returned as-is: it is still the most specific thing we
- * know about that worker.
+ * The seam writes `<type>:<target>`, and a dispatch type never contains `:`,
+ * so the first one is the separator; a target may contain any character.
+ * `null` for an absent label and for one with no separator — display only,
+ * never a pairing input.
  */
-function describeCoordinateKey(key: string): string {
-  if (key === "uniform" || key === "floor") return key;
-  if (key.startsWith("assignee|")) {
-    const name = readFramed(key, "assignee|".length);
-    if (name !== null && name.next === key.length) {
-      return `assignee:${name.value}`;
-    }
-  }
-  return key;
-}
-
-/** The topic a task would be addressed by, if a ChildSession ran it. */
-function topicOf(task: Task): string {
-  const declared = task.metadata?.["topic"];
-  if (typeof declared === "string") {
-    const trimmed = declared.trim();
-    // A blank topic is normalized to absent by the routing seed, so it falls
-    // back to the id here for the same reason it does there.
-    if (trimmed.length > 0) return trimmed;
-  }
-  return task.id;
+export function decodeChildSessionEntry(
+  coordinate: string | undefined | null
+): ChildSessionEntry | null {
+  if (coordinate == null || coordinate.length === 0) return null;
+  const separator = coordinate.indexOf(":");
+  if (separator <= 0 || separator === coordinate.length - 1) return null;
+  return { type: coordinate.slice(0, separator), target: coordinate.slice(separator + 1) };
 }
 
 /** A task and the board it was rendered under, so a link can name both. */
@@ -219,78 +211,18 @@ export type LinkedTask = {
 };
 
 /**
- * Could this ChildSession be running this task?
+ * Does this task fit the decoded key?
  *
- * `false` on a positive contradiction. The subtlety is which absences count as
- * one, and the two sides are not symmetric:
- *
- * - **An unreadable coordinate is ignorance.** No coordinate at all, a label the
- *   decoder cannot parse, or a `uniform`/`floor` key names no worker, so there
- *   is nothing to compare and the candidate stays eligible. This is what lets a
- *   lone unlabelled ChildSession pair with its task.
- * - **An absent assignee is not.** When the coordinate DOES name an assignee,
- *   a task without one could not have produced it: `coordinateForTask`
- *   (`task-board/detached-runner.ts`) reaches its `assignee` branch only via
- *   `task.assignee !== undefined && declared.has(task.assignee)`, and routes an
- *   unassigned row to `uniform`, to `floor`, or to a refusal. The absence is
- *   therefore a statement about where the task can have gone, not a gap in what
- *   we know — treating it as ignorance discards that.
- *
- * So the asymmetry is deliberate: the coordinate's silence is unknown, the
- * task's silence is informative, because only one of them is governed by a
- * routing rule that forbids the pairing.
+ * A `per-task` key names one row by id. A `per-worker` key names a seat, and a
+ * task sits on it when its `assignee` is that seat — `== null`-guarded, since a
+ * store that writes absent keys as `null` hands one back (BP-030). An
+ * unassigned row fits no seat: the board routes a row to a seat's dispatcher
+ * only once it is assigned there, so the absence is a statement about where
+ * the row has not gone, not a gap in what is known.
  */
-function couldRun(childSession: ChildSessionSummary, task: Task): boolean {
-  const worker = decodeChildSessionCoordinate(childSession.coordinate)?.worker;
-  if (worker === undefined || !worker.startsWith("assignee:")) return true;
-  const assignee = task.assignee;
-  // `== null` and nothing more. The absence that routes a row away from an
-  // assignee coordinate is `undefined` (and `null` from a store that writes
-  // one, BP-030) — NOT the empty string, which is a name like any other:
-  // registry keys come from `Object.entries` with no length check, `assignee`
-  // is a bare `z.string()`, and `coordinate.ts` says in as many words that
-  // assignee names are unrestricted. `boardId` is length-checked where it is
-  // declared; this deliberately is not.
-  //
-  // So a board declaring `workers: { "": … }` routes a row carrying
-  // `assignee: ""` to `{ kind: "assignee", name: "" }`, which frames to
-  // `assignee|0:` and decodes back to `assignee:`. Rejecting that on length
-  // called a real route impossible and blanked the link in both directions.
-  if (assignee == null) return false;
-  return worker === `assignee:${assignee}`;
-}
-
-/**
- * The one ChildSession a task is addressed by, or `undefined` when that cannot be
- * decided.
- *
- * A topic alone does not identify a child session. The routing seed carries a
- * `key` beside the topic — `framed(boardId)|framed(coordinateKey)` — and the
- * seam hashes BOTH into the child's id, so one topic routed to two different
- * workers is two different sessions rather than one. Matching on topic alone
- * pointed every such task at whichever arrived first and left the other
- * ChildSession looking taskless.
- *
- * The coordinate is the half of that key which reaches the client, and a task's
- * `assignee` is what the board turns into it, so the two are compared —
- * **always, not only when the topic is contested**. A single candidate is the
- * ordinary shape of the same defect: two tasks share a topic but target
- * different workers and only one has spawned (the other is inline, or has not
- * started), so the lone ChildSession is the only candidate for BOTH and a
- * count-gated check waves the wrong one through.
- *
- * Where the comparison still does not name exactly one — a `uniform` or `floor`
- * board, a label the decoder cannot read, two candidates wearing the same
- * coordinate — this returns nothing. A wrong link on a debugging surface is
- * worse than no link, which is the call the decoder already makes for a label
- * it cannot parse.
- */
-function resolveChildSession(
-  candidates: readonly ChildSessionSummary[],
-  task: Task
-): ChildSessionSummary | undefined {
-  const matched = candidates.filter((candidate) => couldRun(candidate, task));
-  return matched.length === 1 ? matched[0] : undefined;
+function fits(key: ChildSessionKey, task: Task): boolean {
+  if (key.policy === "per-task") return task.id === key.taskId;
+  return task.assignee != null && task.assignee === key.seat;
 }
 
 /**
@@ -308,57 +240,57 @@ export function linkChildSessionsToTasks(
   /** Every task one ChildSession covers, keyed by childSession id. */
   byChildSession: Map<string, LinkedTask[]>;
 } {
-  // Every ChildSession on a topic, not just the first — which of them a given
-  // task belongs to is decided per task, by `resolveChildSession`.
-  const byTopic = new Map<string, ChildSessionSummary[]>();
-  for (const childSession of childSessions) {
-    if (childSession.topic == null || childSession.topic.length === 0) continue;
-    const bucket = byTopic.get(childSession.topic);
-    if (bucket === undefined) byTopic.set(childSession.topic, [childSession]);
-    else bucket.push(childSession);
-  }
-
-  // Pass 1 — resolve the two identity parts that CAN be compared: the topic
-  // (the index key) and the worker (assignee against the decoded coordinate).
+  // Pass 1 — the parts that CAN be compared: the row (`per-task`) or the seat
+  // (`per-worker`) the child's key names, against every task in every
+  // collection. A child whose key does not decode contributes nothing.
   const claims: Array<{ collectionId: string; task: Task; childSession: ChildSessionSummary }> = [];
-  for (const collection of collections) {
-    for (const entry of collection.tasks) {
-      const childSession = resolveChildSession(
-        byTopic.get(topicOf(entry.task)) ?? [],
-        entry.task
-      );
-      if (childSession === undefined) continue;
-      claims.push({ collectionId: collection.id, task: entry.task, childSession });
+  for (const childSession of childSessions) {
+    const key = decodeChildSessionKey(childSession.topic);
+    if (key === null) continue;
+    for (const collection of collections) {
+      for (const entry of collection.tasks) {
+        if (!fits(key, entry.task)) continue;
+        claims.push({ collectionId: collection.id, task: entry.task, childSession });
+      }
     }
   }
 
   // Pass 2 — the BOARD leg, which cannot be compared and so is detected instead.
   //
-  // A ChildSession belongs to exactly one board: `deriveChildSessionId` hashes the
-  // topic together with a key built from `boardId|coordinateKey`. The board id
-  // is on the ChildSession's coordinate, but NOTHING on the task side carries one
-  // — `task-change` and `task-board-meta` emit `collectionId`, and `taskBoard`
-  // documents that as a deliberately different string from `boardId`. So board
-  // equality can never be verified the way the worker can.
+  // A ChildSession belongs to exactly one board: its key frames `boardId` in
+  // beside the row or the seat. The board id is on the key, but NOTHING on the
+  // task side carries one — `task-change` and `task-board-meta` emit
+  // `collectionId`, and `taskBoard` documents that as a deliberately different
+  // string from `boardId`. So board equality can never be verified the way the
+  // row and the seat can.
   //
-  // What is observable is CONTENTION. If tasks in more than one collection each
-  // resolve to the same ChildSession, at most one of those boards owns it and
-  // nothing on the wire says which — so none of them gets a link. That is the
-  // same rule the other two legs follow (a part that cannot decide is ambiguous,
-  // and ambiguity draws nothing), applied to the only part whose disagreement is
-  // invisible.
-  const claimants = new Map<string, Set<string>>();
+  // What is observable is CONTENTION, in both directions:
+  //
+  // - Tasks in more than one collection fit the same ChildSession. At most one
+  //   of those boards owns it and nothing on the wire says which, so none of
+  //   them gets a link.
+  // - More than one ChildSession fits the same task — two boards each holding
+  //   a row with this id, or a seat of this name, and only one rendered
+  //   collection to hang them on. At most one is running it, so neither is
+  //   linked.
+  //
+  // That is the same rule the readable parts follow (a part that cannot decide
+  // is ambiguous, and ambiguity draws nothing), applied to the only part whose
+  // disagreement is invisible.
+  const boardsClaimedBy = new Map<string, Set<string>>();
+  const childrenClaiming = new Map<string, Set<string>>();
   for (const claim of claims) {
-    const owners = claimants.get(claim.childSession.id);
-    if (owners === undefined) claimants.set(claim.childSession.id, new Set([claim.collectionId]));
-    else owners.add(claim.collectionId);
+    add(boardsClaimedBy, claim.childSession.id, claim.collectionId);
+    add(childrenClaiming, taskLinkKey(claim.collectionId, claim.task.id), claim.childSession.id);
   }
 
   const byTask = new Map<string, ChildSessionSummary>();
   const byChildSession = new Map<string, LinkedTask[]>();
   for (const claim of claims) {
-    if ((claimants.get(claim.childSession.id)?.size ?? 0) > 1) continue;
-    byTask.set(taskLinkKey(claim.collectionId, claim.task.id), claim.childSession);
+    const key = taskLinkKey(claim.collectionId, claim.task.id);
+    if ((boardsClaimedBy.get(claim.childSession.id)?.size ?? 0) > 1) continue;
+    if ((childrenClaiming.get(key)?.size ?? 0) > 1) continue;
+    byTask.set(key, claim.childSession);
     const linked = byChildSession.get(claim.childSession.id);
     const value: LinkedTask = { collectionId: claim.collectionId, task: claim.task };
     if (linked === undefined) byChildSession.set(claim.childSession.id, [value]);
@@ -366,6 +298,13 @@ export function linkChildSessionsToTasks(
   }
 
   return { byTask, byChildSession };
+}
+
+/** Add `value` to the set at `key`, creating the set on first sight. */
+function add(index: Map<string, Set<string>>, key: string, value: string): void {
+  const bucket = index.get(key);
+  if (bucket === undefined) index.set(key, new Set([value]));
+  else bucket.add(value);
 }
 
 /**
@@ -381,4 +320,3 @@ export function linkChildSessionsToTasks(
 export function taskLinkKey(collectionId: string, taskId: string): string {
   return `${collectionId}\u0000${taskId}`;
 }
-

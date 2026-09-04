@@ -11,8 +11,8 @@
  * `<TaskPlan />` renderer is what apps embed in their chat UI; this panel is
  * for debugging the substrate itself.
  *
- * A task whose worker was declared detached is run by a ChildSession rather than
- * by the request you are looking at, so its row carries a link into that
+ * A task whose seat hands its rows off to a `task` entry is run by a ChildSession
+ * rather than by the request you are looking at, so its row carries a link into that
  * ChildSession (FIX-1071). The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/child-session-links`.
  */
@@ -26,7 +26,11 @@ import {
   type ResolvedTask,
   type TaskStreamItem,
 } from "../../lib/task-collection-state";
-import { linkChildSessionsToTasks, taskLinkKey } from "../../lib/child-session-links";
+import {
+  decodeChildSessionEntry,
+  linkChildSessionsToTasks,
+  taskLinkKey,
+} from "../../lib/child-session-links";
 import type { Truncation } from "../../hooks/use-child-sessions";
 import { EmptyState } from "../shared/empty-state";
 import { Badge } from "../ui/badge";
@@ -44,7 +48,7 @@ type Props = {
    */
   childSessions?: readonly ChildSessionSummary[];
   /**
-   * What is known about ChildSessions beyond the page that was read. An
+   * What is known about child sessions beyond the page that was read. An
    * unmatched task is only definitely unmatched when this is `complete`.
    */
   truncation: Truncation;
@@ -262,11 +266,15 @@ function ChildSessionLink({
     return <span className="text-slate-600">—</span>;
   }
 
-  const label = childSession.topic ?? childSession.id;
-  // A match is page-local. `resolveChildSession` establishes that exactly one
-  // candidate IN THE LOADED PAGE fits; an older unlisted ChildSession with the
-  // same topic and a compatible worker would fit too, and it would belong to a
-  // different board — the FIX-1088 class, where task events carry no board
+  // The entry the child runs (`implement`, from a `task:implement` coordinate).
+  // A linked child's key names this very row or its seat, so repeating it here
+  // says nothing the row does not; the entry is the part that is new. The id
+  // stands in when no entry was stamped.
+  const label = decodeChildSessionEntry(childSession.coordinate)?.target ?? childSession.id;
+  // A match is page-local. `linkChildSessionsToTasks` establishes that the
+  // pairing is unambiguous IN THE LOADED PAGE; an older unlisted ChildSession
+  // whose key names the same task id or seat would fit too, and it would belong
+  // to a different board — the FIX-1088 class, where task events carry no board
   // identity to settle it.
   //
   // Marked rather than withheld. The link is a documented best-effort

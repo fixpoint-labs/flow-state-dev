@@ -28,7 +28,7 @@ vi.mock("../src/react/context/devtool-context", () => ({
   useDevTool: () => devToolState,
 }));
 
-import { useChildSessions, MAX_WORKSTREAM_ROWS } from "../src/react/hooks/use-child-sessions";
+import { useChildSessions } from "../src/react/hooks/use-child-sessions";
 import { useReadFence } from "../src/react/hooks/use-read-fence";
 
 function row(id: string, overrides: Partial<ChildSessionSummary> = {}): ChildSessionSummary {

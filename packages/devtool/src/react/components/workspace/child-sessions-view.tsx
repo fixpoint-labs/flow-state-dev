@@ -1,5 +1,5 @@
 /**
- * ChildSessions view (FIX-1071).
+ * Child sessions view (FIX-1071).
  *
  * The background work hanging off the open session. A ChildSession is a **session
  * of its own** that outlives the request which started it, so this panel is a
@@ -24,7 +24,8 @@ import {
   type TaskStreamItem,
 } from "../../lib/task-collection-state";
 import {
-  decodeChildSessionCoordinate,
+  decodeChildSessionEntry,
+  decodeChildSessionKey,
   linkChildSessionsToTasks,
   type LinkedTask,
 } from "../../lib/child-session-links";
@@ -98,10 +99,10 @@ export function ChildSessionsView({
       <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
         <span className="text-[10px] uppercase tracking-wide text-slate-500">
           {unknown ? (
-            "childSessions unknown"
+            "children unknown"
           ) : (
             <>
-              {childSessions.length} childSession{childSessions.length === 1 ? "" : "s"}
+              {childSessions.length} child session{childSessions.length === 1 ? "" : "s"}
               {truncation !== "complete" && " (first)"}
             </>
           )}
@@ -142,7 +143,7 @@ export function ChildSessionsView({
               ? "Loading childSessions…"
               : unknown
                 ? "This session's background work could not be read, so the list is unknown rather than empty. Refresh to try again."
-                : "No background work in this session. A task board worker declared `dispatch: { mode: \"detached\" }` runs in a ChildSession, and it shows up here once the board dispatches it."
+                : "No background work in this session. A task board seat that dispatches its rows to a `task` entry runs them in a child session, and it shows up here once the board hands a row off."
           }
         />
       ) : (
@@ -150,8 +151,8 @@ export function ChildSessionsView({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-1.5 font-medium">Topic</th>
-                <th className="py-1.5 font-medium">Board / worker</th>
+                <th className="px-3 py-1.5 font-medium">Key</th>
+                <th className="py-1.5 font-medium">Entry</th>
                 <th className="py-1.5 font-medium">Tasks</th>
                 <th className="py-1.5 font-medium">Status</th>
                 <th className="py-1.5 font-medium">Updated</th>
@@ -184,7 +185,8 @@ function ChildSessionRow({
   tasks: readonly LinkedTask[];
   onOpen: () => void;
 }) {
-  const coordinate = decodeChildSessionCoordinate(childSession.coordinate);
+  const key = decodeChildSessionKey(childSession.topic);
+  const entry = decodeChildSessionEntry(childSession.coordinate);
 
   return (
     <tr
@@ -195,25 +197,33 @@ function ChildSessionRow({
         {/* A record written before the labels existed, or one started by
             something that stamped none, has no name to show — the id below is
             still the whole address, so this is a missing label and not a
-            missing row. */}
+            missing row. A key that is not a board's preset (a flow-computed
+            `{ key }`, another dispatcher's) is shown as written: it is the
+            flow's own name for the work. */}
         {childSession.topic == null ? (
           <span className="italic text-slate-500">unlabelled</span>
-        ) : (
+        ) : key === null ? (
           childSession.topic
+        ) : (
+          <span className="font-mono text-[10px]">
+            <span className="text-slate-500">{key.policy === "per-task" ? "task " : "seat "}</span>
+            <span>{key.policy === "per-task" ? key.taskId : key.seat}</span>
+            <span className="text-slate-500"> on </span>
+            <span>{key.boardId}</span>
+          </span>
         )}
       </td>
       <td className="py-1.5 pr-2 text-slate-400">
-        {coordinate === null ? (
-          // Either no coordinate at all (not a task board's ChildSession) or a
-          // label some other writer put there — show it raw rather than nothing.
+        {entry === null ? (
+          // Either no coordinate at all (a record from before the label
+          // existed) or one some other writer put there — show it raw rather
+          // than nothing.
           <span className="font-mono text-[10px] text-slate-600">
             {childSession.coordinate ?? "—"}
           </span>
         ) : (
-          <span className="font-mono text-[10px]">
-            <span>{coordinate.boardId}</span>
-            <span className="text-slate-600"> / </span>
-            <span>{coordinate.worker}</span>
+          <span className="font-mono text-[10px]" title={`${entry.type} entry`}>
+            {entry.target}
           </span>
         )}
       </td>
@@ -256,10 +266,10 @@ function ChildSessionRow({
             event.stopPropagation();
             onOpen();
           }}
-          title={`Open childSession ${childSession.id}`}
+          title={`Open child session ${childSession.id}`}
           // The visible label is a SHORTENED id, which on its own names nothing
           // a screen reader user can act on. The full id is the whole address.
-          aria-label={`Open childSession ${childSession.id}`}
+          aria-label={`Open child session ${childSession.id}`}
           className="inline-flex items-center gap-1 rounded font-mono text-[10px] text-slate-400 hover:text-slate-200 focus-visible:outline focus-visible:outline-1 focus-visible:outline-sky-400"
         >
           {shortSessionId(childSession.id)}
