@@ -67,7 +67,7 @@ export const backgroundWorkLedger = defineTaskCollection({
 /**
  * The child session's `topic` — a **routing identity**, not a label.
  *
- * Whitespace-normalized and otherwise complete. `deriveChildSessionId` hashes
+ * Whitespace-normalized and otherwise complete. `deriveDispatchChildSessionId` hashes
  * this together with the board's routing key, so it is the value that decides
  * which child session a task lands in. Two turns asking the same thing land on
  * the same child session and continue its history, which is the substrate's

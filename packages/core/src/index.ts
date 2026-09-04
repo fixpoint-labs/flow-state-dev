@@ -119,7 +119,6 @@ export { defineCapability, getBaseCapability } from "./capability";
  */
 export { NoRequestHostError, requireRequestHost } from "./types/request-host";
 export type {
-  DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,

@@ -973,9 +973,9 @@ class InternalFlowState<TSettings extends object>
    * fresh literal, so anything stamped there lands on a copy a colocated worker
    * never sees.
    *
-   * The disposal gate is the detached start's, applied to the same instant: a
-   * dispatched child runs here under the same drain, so admission has to close
-   * for it at the same moment or the drain's snapshot is incomplete.
+   * The disposal gate is applied at the instant `dispose()` begins: a
+   * dispatched child runs here under the drain, so admission has to close
+   * for it at that moment or the drain's snapshot is incomplete.
    */
   #installDispatchOperation(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
     const requestHost = runtimeConfig.requestHost;
@@ -1098,7 +1098,7 @@ class InternalFlowState<TSettings extends object>
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
       queuedGraceMs: this.#options.queuedGraceMs,
       dispatcher: this.#options.dispatcher ?? this.#workerDispatcher,
-      // The same arbiter the detached-start host uses, so one flow-level
+      // The same arbiter the dispatch operation uses, so one flow-level
       // concurrency policy is enforced once across the process — see `#arbiter`.
       arbiter: this.#arbiter
     });

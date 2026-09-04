@@ -9,9 +9,9 @@
  * filter on the flat session listing: the framework resolves the parent record
  * and checks its owner before this handler runs.
  *
- * What it returns is **every** child session, not only detached ones. The
+ * What it returns is **every** child session, not only handed-off ones. The
  * store predicate selects on parentage, and nothing on a session record marks
- * it as task-board work. Today the detached-start path is the only writer of
+ * it as task-board work. Today the dispatch seam is the only writer of
  * `parentSessionId`, but that is a fact about the current tree, not a filter
  * this route applies — a second writer would be returned here, which is
  * correct and must not read as a bug.
@@ -165,9 +165,9 @@ export type ChildSessionSummary = {
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
-  /** What body of work the job is for. Written by the detached-start path. */
+  /** The key the child was derived from. Written by the dispatch seam. */
   topic?: string;
-  /** Which worker the job is routed to. Written by the detached-start path. */
+  /** The entry the child was dispatched for, as `<type>:<target>`. Written by the dispatch seam. */
   coordinate?: string;
   /**
    * Absent when the job has no run of this conversation's identity at all —
@@ -286,7 +286,7 @@ async function resolveChildSessionStatus(
 }
 
 /**
- * Project the two labels the detached-start writer stamps onto the row.
+ * Project the two labels the dispatch seam stamps onto the row.
  *
  * Read straight off `SessionRecord`, where both fields are declared: the
  * writer (`context/create-request-host.ts`) sets them from the routing seed it

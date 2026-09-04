@@ -1,5 +1,5 @@
 /**
- * Deriving and adopting the child session a detached start targets (FIX-999).
+ * Deriving and adopting the child session a dispatch targets (FIX-999).
  *
  * The seam's safety rule: a caller supplies the *target* of an operation and
  * never the *authority* for it. It hands over a routing seed and the seam builds
@@ -16,7 +16,6 @@
  * liveness calls refuse — unsettleable, uninterruptible, invisible.
  */
 import { createHash } from "node:crypto";
-import type { DetachedRoutingSeed } from "@flow-state-dev/core/types";
 
 /** The server-derived facts a child key is built from. Never caller-supplied. */
 export type DerivationIdentity = {
@@ -55,41 +54,17 @@ function framed(value: string | undefined): string {
 }
 
 /**
- * Derive the child session id for a detached start.
- *
- * Deterministic by design — the same identity and seed must land on the same
- * child, because that is what makes "adopt if it already exists" the ordinary
- * second-task-same-topic path rather than a conflict.
- */
-export function deriveChildSessionId(
-  identity: DerivationIdentity,
-  seed: DetachedRoutingSeed
-): string {
-  const material = [
-    framed(identity.tenantId),
-    framed(identity.userId),
-    framed(identity.parentSessionId),
-    framed(identity.lineageId),
-    framed(seed.topic),
-    framed(seed.key)
-  ].join("|");
-
-  const digest = createHash("sha256").update(material, "utf8").digest("hex");
-  return `${CHILD_ID_PREFIX}${digest.slice(0, 32)}`;
-}
-
-/**
- * The namespace a dispatched child's key is framed under, so a `{ key }`
- * dispatch and a detached start from the same parent can never derive the
- * same child by choosing the same string: the two seams mint separately.
+ * The namespace a dispatched child's key is framed under, so no other
+ * derivation from the same parent can land on a dispatched child by choosing
+ * the same string.
  */
 const DISPATCH_NAMESPACE = "dispatch";
 
 /**
  * Derive the child session id for a `{ key }`-targeted dispatch.
  *
- * Same identity material as {@link deriveChildSessionId} — tenant, principal,
- * parent session and lineage, none of them caller-supplied — with the key
+ * The identity material — tenant, principal, parent session and lineage,
+ * none of them caller-supplied — with the key
  * framed under its own namespace. Deterministic by design: the same key from
  * the same parent lands on the same child, which is what makes "adopt if it
  * already exists" the ordinary retry path rather than a conflict. The key alone

@@ -269,8 +269,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // disagree with the record's identity — and carrying no authority, which
       // is what keeps them safe (see `SessionRecord.topic`). They are the two
       // fields the children listing reads.
-      topic: key,
-      coordinate: `${address.type}:${address.target}`
+      ...label("topic", key),
+      ...label("coordinate", `${address.type}:${address.target}`)
     };
 
     // Reclaim the id's resource-state tombstones before the create (FIX-1258).

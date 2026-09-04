@@ -29,19 +29,6 @@
  * reviews, not a surface that grows by transitivity.
  */
 
-/**
- * The caller's routing intent for a detached child. Never a session id: the seam
- * hashes this together with the running request's principal and parent session to
- * derive the child key, so the caller cannot name — or collide with — a session it
- * does not own.
- */
-export type DetachedRoutingSeed = {
-  /** Primary routing coordinate (e.g. a board topic). */
-  readonly topic: string;
-  /** Optional further discrimination within a topic. */
-  readonly key?: string;
-};
-
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
 

@@ -674,7 +674,7 @@ export async function createExecutionContext<
   const resolvedOrgId = sessionOrgId;
 
   // The lineage root this session's `sharedToLineage` resources address
-  // (FIX-1068). Stamped on a child at creation by the detached-start writer; a
+  // (FIX-1068). Stamped on a child at creation by the dispatch seam; a
   // record without it IS the root — true of every top-level session and of every
   // record persisted before the field existed, so `== null` reads both the
   // absent and the store-nulled form (BP-030).

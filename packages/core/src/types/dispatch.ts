@@ -241,7 +241,7 @@ export type DispatchSeam = (spec: DispatchSpec) => Promise<DispatchOutcome>;
 /**
  * The context slot the runtime attaches its dispatch operation under.
  *
- * A symbol rather than a named member, deliberately: a `ctx.startDetached`-style
+ * A symbol rather than a named member, deliberately: a `ctx.dispatch`-style
  * verb is reachable from any handler body, which makes "which blocks dispatch"
  * unanswerable at definition time. Reaching the seam through
  * `dispatchThroughSeam` from a block marked with `markDispatcher` keeps the
