@@ -2364,6 +2364,21 @@ check('spec-review activity with no timestamp is withheld, not converged', async
   assert.match(logs.join('\n'), /FIX-2: spec-review activity reported with no timestamp.*fold withheld, not converged/, 'the withheld fold is logged by name, in the same style as the FIX-1299 malformed-id guard')
 })
 
+check('a row at review budget with an unusable cursor is withheld, not converged', async () => {
+  // The inverted-order edge FIX-1303's own fix missed: `allocate()` asked `atReviewBudget` before
+  // `cursorUsable`, the reverse of `pendingAction`. A row that is BOTH at budget AND carrying an
+  // unusable cursor must classify as withheld — the batch was never compared to the budget, so
+  // "converged" is as false here as it was at round 0.
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specReviewRounds: 2, specLevelFound: false })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: false, newSpecReviewEvents: true, specPr: 7, latestActivityAt: null } },
+    }),
+  })
+  assert.ok(!result.converged.includes('FIX-2'), 'budget alone must not win — the cursor is unusable, so nothing was ever compared to it')
+  assert.match(logs.join('\n'), /FIX-2: spec-review activity reported with no timestamp.*fold withheld, not converged/, 'withheld, not a budget convergence')
+})
+
 check('the conditional third round IS dispatched, and says so', async () => {
   const { calls, logs } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specReviewRounds: 2, specLevelFound: true })] }),

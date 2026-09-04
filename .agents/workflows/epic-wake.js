@@ -1277,8 +1277,11 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       // a cross-spec hold, or an unusable cursor), and only the first is a real convergence. Re-asking
       // `atReviewBudget` and `cursorUsable` here — rather than having `pendingAction` say which — is
       // what keeps `pendingAction` itself unchanged (BP-035's cost of touching a well-covered switch).
-      if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) converged.push(row)
-      else if (!cursorUsable(row)) withheldCursor.push(row)
+      // Cursor first, budget second — the SAME order `pendingAction` tests them in (line ~263): a row
+      // can be at budget AND carrying an unusable cursor at once, and that row was never compared to
+      // the budget at all, so it must not be reported as a convergence.
+      if (!cursorUsable(row)) withheldCursor.push(row)
+      else if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) converged.push(row)
       else waiting.push(row)
     } else waiting.push(row)
   }
