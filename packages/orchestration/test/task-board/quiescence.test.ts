@@ -30,8 +30,7 @@ import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quie
 import { whenBoardClaimable } from "../../src/task-board/predicates";
 import {
   handedOffTaskPredicate,
-  seatLabel,
-  type ResolvedWorkerSlot,
+  type HandOffSeat,
 } from "../../src/task-board/hand-off";
 import { createFakeSequencerState } from "../helpers";
 
@@ -390,28 +389,20 @@ describe("boardQuiescence - work handed to a child session", () => {
  * belongs to.
  */
 describe("handedOffTaskPredicate", () => {
-  const slot = (
-    seat: { kind: "uniform" } | { kind: "floor" } | { kind: "assignee"; name: string },
-    handsOff: boolean
-  ): ResolvedWorkerSlot => ({
-    seat,
-    label: seatLabel(seat),
-    block: (handsOff
-      ? { run: () => null, dispatch: { type: "task", target: "t", session: "per-task" } }
-      : { run: () => null }) as unknown as ResolvedWorkerSlot["block"],
+  const seat = (name: string): HandOffSeat => ({
+    name,
+    label: `assignee:${name}`,
+    dispatch: { type: "task", target: "t", session: "per-task" },
   });
 
   it("is absent for a board with no dispatcher seat", () => {
     // Absence is what keeps every existing board on the `count()` path — the
     // classifier's answer for them is bit-for-bit unchanged.
-    expect(handedOffTaskPredicate([slot({ kind: "uniform" }, false)])).toBeUndefined();
+    expect(handedOffTaskPredicate([])).toBeUndefined();
   });
 
   it("separates a handed-off assignee from an inline one", () => {
-    const predicate = handedOffTaskPredicate([
-      slot({ kind: "assignee", name: "background" }, true),
-      slot({ kind: "assignee", name: "inline" }, false),
-    ])!;
+    const predicate = handedOffTaskPredicate([seat("background")])!;
     expect(predicate({ assignee: "background" } as never)).toBe(true);
     expect(predicate({ assignee: "inline" } as never)).toBe(false);
   });
@@ -419,10 +410,7 @@ describe("handedOffTaskPredicate", () => {
   it("never hands an undeclared assignee off — only a named seat can", () => {
     // The floor and the uniform seat cannot hand off (the board refuses a
     // dispatcher there), so an unrouted row is always this drain's.
-    const predicate = handedOffTaskPredicate([
-      slot({ kind: "assignee", name: "background" }, true),
-      slot({ kind: "floor" }, false),
-    ])!;
+    const predicate = handedOffTaskPredicate([seat("background")])!;
     expect(predicate({ assignee: "unknown" } as never)).toBe(false);
     expect(predicate({} as never)).toBe(false);
     expect(predicate({ assignee: "background" } as never)).toBe(true);
@@ -431,10 +419,7 @@ describe("handedOffTaskPredicate", () => {
   it("does not resolve an inherited Object.prototype member as a seat", () => {
     // `assignee` reaches the board from a model-facing tool, so a bare index
     // would route `"constructor"` at a declared seat that does not exist.
-    const predicate = handedOffTaskPredicate([
-      slot({ kind: "assignee", name: "background" }, true),
-      slot({ kind: "floor" }, false),
-    ])!;
+    const predicate = handedOffTaskPredicate([seat("background")])!;
     expect(predicate({ assignee: "constructor" } as never)).toBe(false);
   });
 });
