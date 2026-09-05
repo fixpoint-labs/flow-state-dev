@@ -548,7 +548,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="channels">
   <div class="sec-head"><span class="sec-num">05</span><h2>Channels</h2></div>
-  <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. Neither is a seed-session field on <code>defineFlow</code>. That field does not exist, and this convention does not add it. There is no shared group session.</p>
+  <p class="lede">Two channel kinds. A <strong>DM</strong> is one static session with that one worker, opened at bootstrap. A <strong>group</strong> is a message board plus one subscription session per subscribed member. A group post wakes those sessions. <strong>Who answers is proposed Layer&nbsp;2 policy</strong>, not a new primitive and not a shared room. Neither channel is a seed-session field on <code>defineFlow</code>. That field does not exist, and this convention does not add it. There is no shared group session.</p>
 
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
@@ -558,6 +558,10 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <div class="card" style="--tc: var(--accent)">
       <h5>Group</h5><span class="role">board + N sessions</span>
       <p>The board is the shared working set. Each subscribed member has their own session on their flow. A post wakes those sessions via <code>dispatcher()</code>. Not one room they all enter.</p>
+    </div>
+    <div class="card" style="--tc: var(--accent)">
+      <h5>Reply discipline</h5><span class="role">proposed layer 2 policy</span>
+      <p>A wake is not a turn. Who may reply: role, <code>@</code>, or the coordinator. One claim or turn per post. Default quiet unless addressed. Not a Layer&nbsp;1 lock. Not a room.</p>
     </div>
   </div>
 
@@ -636,14 +640,52 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>Group as board + N subscriber sessions</td><td><span class="tag t-prop">proposed</span></td><td>The board is the shared working set. Each subscribed member has their own session on their flow. Not one session the group sits in.</td></tr>
         <tr><td>Seed / nonstandard sessions on <code>defineFlow</code></td><td><span class="tag t-gone">cut</span></td><td>No such field. Do not add one so a flow can declare its rooms. That is bootstrap&#8217;s job.</td></tr>
         <tr><td>One shared / multiparty group session</td><td><span class="tag t-gone">cut</span></td><td>Do not invent a session type several workers enter. Fan-out is N dispatches into N sessions that already exist.</td></tr>
+        <tr><td>Group reply discipline</td><td><span class="tag t-prop">proposed</span></td><td>Layer&nbsp;2 policy on the existing fan-out. Who may reply (role / <code>@</code> / coordinator). One claim or turn per post. Default quiet unless addressed. Not a Layer&nbsp;1 board-lock. A later POC may reuse existing task/resource claim/lease; wake Architect only if that invents substrate.</td></tr>
       </tbody>
     </table>
   </div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Group fan-out wakes N subscriber sessions. Proposed Layer 2 reply policy then says who may answer: role, at-mention, or the coordinator; one claim or turn per post; default quiet unless addressed. A cut box refuses a multiparty session and a Layer 1 board-lock type. A later proof of concept may reuse existing task or resource claim and lease.">
+        <rect class="n-code" x="16" y="16" width="292" height="176" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="38">WAKE &#183; FAN-OUT</text>
+        <text class="t-b" x="34" y="64">a post wakes N sessions</text>
+        <text class="t-s" x="34" y="92">dispatcher() &#215; N</text>
+        <text class="t-xs" x="34" y="114">ONE DELIVERY PER SUBSCRIBER</text>
+        <text class="t-xs" x="34" y="132">THE BOARD IS THE WORKING SET</text>
+        <text class="t-xs" x="34" y="158">A WAKE IS NOT A TURN</text>
+        <text class="t-xs" x="34" y="176">EVERYONE HEARS. NOT EVERYONE SPEAKS.</text>
+
+        <rect class="n-prop" x="324" y="16" width="292" height="176" rx="5"/>
+        <text class="t-lbl" x="342" y="38">REPLY &#183; PROPOSED L2 POLICY</text>
+        <text class="t-b f-accent" x="342" y="64">who may reply</text>
+        <text class="t-s" x="342" y="92">role &#183; @ &#183; coordinator</text>
+        <text class="t-xs" x="342" y="114">ONE CLAIM OR TURN PER POST</text>
+        <text class="t-xs" x="342" y="132">DEFAULT QUIET UNLESS ADDRESSED</text>
+        <text class="t-xs" x="342" y="158">NOT A NEW PRIMITIVE</text>
+        <text class="t-xs" x="342" y="176">NOT A MULTIPARTY SESSION</text>
+
+        <rect class="n-prose" x="632" y="16" width="292" height="176" rx="5"/>
+        <text class="t-lbl" x="650" y="38">CUT</text>
+        <text class="t-b" x="650" y="64">no L1 board-lock</text>
+        <text class="t-xs" x="650" y="92">DO NOT INVENT A LOCK TYPE</text>
+        <text class="t-xs" x="650" y="114">DO NOT INVENT A GROUP ROOM</text>
+        <text class="t-xs" x="650" y="140">LATER POC MAY REUSE</text>
+        <text class="t-xs" x="650" y="158">TASK / RESOURCE CLAIM / LEASE</text>
+        <text class="t-xs" x="650" y="176">WAKE ARCHITECT ONLY IF NEW SUBSTRATE</text>
+
+        <rect class="n-box" x="16" y="208" width="908" height="56" rx="5"/>
+        <text class="t-s" x="34" y="242">Fan-out is delivery. Reply discipline is who takes a turn. Same dispatcher spine. Policy, not a primitive.</text>
+      </svg>
+    </div>
+    <figcaption><b>A wake is not a turn.</b> Group fan-out already wakes N subscriber sessions. If they all answer, that is a reply storm. The proposed Layer&nbsp;2 policy is who may reply, one claim or turn per post, and quiet unless addressed. It does not invent a multiparty session or a Layer&nbsp;1 board-lock. A later POC may reuse the existing task/resource claim/lease; only inventing substrate wakes Architect.</figcaption>
+  </figure>
 </section>
 
 <section id="projects">
   <div class="sec-head"><span class="sec-num">06</span><h2>Projects and tasks</h2></div>
-  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. A group channel is this pattern &#8212; the board plus one session per subscribed member &#8212; not a third session type. That is a convention on the dispatch spine, not a second messaging product.</p>
+  <p class="lede">Projects and tasks are <strong>dynamic sessions</strong>. Every message-board subscription gets its own action and its own session. A group channel is this pattern &#8212; the board plus one session per subscribed member &#8212; not a third session type. A post on that board wakes N subscribers. Who replies is the proposed Layer&nbsp;2 policy in <a href="#channels">§05</a>, not a Layer&nbsp;1 board-lock and not a shared room. That is a convention on the dispatch spine, not a second messaging product.</p>
 
   <figure>
     <div class="fig-body">
@@ -894,6 +936,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-prop">proposed</span></td><td>Zero hits on <code>origin/main</code>. When it lands, Workforce replies on this spine. Do not add a side channel.</td></tr>
         <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td><code>packages/engine/src/context/create-request-host.ts</code> refuses with <code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>. Convention uses it when the refuse goes away.</td></tr>
         <tr><td>A second send door</td><td><span class="tag t-gone">cut</span></td><td>No <code>packages/relay</code>. No message-board package. Message board is Layer&nbsp;2 convention only. Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> &#8212; not a second bus.</td></tr>
+        <tr><td>Group reply discipline</td><td><span class="tag t-prop">proposed</span></td><td>Same spine. Policy says who may reply (role / <code>@</code> / coordinator), one claim or turn per post, default quiet unless addressed. Not a second bus. Not a Layer&nbsp;1 board-lock.</td></tr>
       </tbody>
     </table>
   </div>
@@ -991,6 +1034,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   </div>
 
   <div class="tension">
+    <h5>No Layer 1 board-lock type</h5>
+    <p>Group fan-out already wakes N sessions. Reply discipline is proposed Layer&nbsp;2 policy: who may reply, one claim or turn per post, quiet unless addressed. If a later POC needs mutual exclusion, reuse the existing task/resource claim/lease. Inventing a board-lock primitive is a Layer&nbsp;1 gap &#8212; wake Architect then, not now.</p>
+  </div>
+
+  <div class="tension">
     <h5>No knowledge product on this page</h5>
     <p>A worker&#8217;s files and isolated resources are what it knows. That is not a knowledge hub, not an inbox product, not a second memory system. Held. Not designed here.</p>
   </div>
@@ -1018,7 +1066,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Workforce is one worker contract on Layer&nbsp;1: a flow per worker, files for tools, skills, personality, and role, memory via isolation, DMs as static sessions, groups as a board plus one session per subscriber, projects as dynamic ones, teams as roster plus shared boards, plans as board plus resource text, talk as dispatch. Today it is a thin registry. This cycle writes the convention. Conductor does not wait.</p>
+    <p>Workforce is one worker contract on Layer&nbsp;1: a flow per worker, files for tools, skills, personality, and role, memory via isolation, DMs as static sessions, groups as a board plus one session per subscriber, group replies as proposed Layer&nbsp;2 policy (who may speak; one turn; quiet unless addressed), projects as dynamic ones, teams as roster plus shared boards, plans as board plus resource text, talk as dispatch. Today it is a thin registry. This cycle writes the convention. Conductor does not wait.</p>
   </div>
 </section>
 
