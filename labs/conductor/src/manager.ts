@@ -286,8 +286,11 @@ const managerStateSchema = z.object({
   workspacePath: z.string().nullable().default(null),
   branch: z.string().nullable().default(null),
   /**
-   * The harness session the LAST attempt used, captured before this attempt's
-   * opening write clears it. See `openRun`.
+   * The session the LAST attempt's harness confirmed it was in, captured before
+   * this attempt's opening write clears the row's copy (see `openRun`).
+   *
+   * Read by exactly one thing: the `resume` resolver handed to the harness. It
+   * reaches no phase and no prompt.
    */
   previousSessionId: z.string().nullable().default(null),
 });
@@ -458,6 +461,28 @@ function identityFrom(
     topic: state.topic,
     boardCollectionId,
   };
+}
+
+/**
+ * The manager's state as a HARNESS's callback sees it.
+ *
+ * The harness is not one of our blocks, so its callbacks are handed the
+ * framework's DEFAULT sequencer state rather than this manager's — the cast is
+ * where that gap is crossed. One function rather than the same cast at each of
+ * the three feeds: three spellings of one assumption is the shape that drifts,
+ * and only one of them would be updated when the state grows.
+ *
+ * Typed by what it reads, like {@link RequestIdentityContext} above, so any
+ * context satisfies it structurally and no caller needs the harness alias.
+ *
+ * It asserts nothing. The manager owns this shape and the harness never learns
+ * it, which is the point of the channel; what each feed does about an empty
+ * state is the feed's own business, and they differ.
+ */
+function harnessCtxState(ctx: {
+  sequencer?: { state?: unknown } | undefined;
+}): ManagerState | undefined {
+  return ctx.sequencer?.state as ManagerState | undefined;
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
@@ -933,20 +958,23 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         branch,
       });
 
-      // **Read the previous attempt's session BEFORE opening clears it.**
+      // **Read the session the LAST attempt confirmed, before opening clears it.**
       //
-      // `openRunRow` applies the attempt-scoped clear, which sets `sessionId`
-      // to null — correctly, since the field describes the attempt now running
-      // and this one has not reported yet. But the next attempt's prompt wants
-      // to name the session the last one used, and reading the row after the
-      // clear always saw `null`. A rule and a reader that were each right on
-      // their own.
+      // `openRunRow` applies the attempt-scoped clear, which sets `sessionId` to
+      // null — correctly, since the field describes the attempt now running and
+      // this one has not reported yet. So the read has to happen here: after the
+      // open, it is always `null`.
       //
-      // Captured here and carried on the manager's own state, so the phase is
-      // handed the value rather than reaching into a record whose lifetime it
-      // would have to know about. That is why `PhaseRunContext` gained a field
-      // instead of `implement.ts` moving its read earlier: the same collision
-      // is unavailable to the next phase that wants carry-forward.
+      // What the value feeds is the harness's `resume` resolver at the bottom of
+      // this file, and nothing else. No phase is handed it and no prompt names
+      // it: a session id is not something a model can act on, and while the
+      // prompt carried one, "the run resumed" and "the run was told" were the
+      // same observation.
+      //
+      // `null` here is the whole self-heal. It means the previous attempt's
+      // harness never confirmed a session — it was never sent one, or it was
+      // sent one the vendor could not honour — so this attempt starts fresh
+      // rather than asking for a dead id again.
       const previousSessionId = (await readRunRow(ctx, topic))?.sessionId ?? null;
       await ctx.sequencer!.patchState({ previousSessionId });
 
@@ -1409,22 +1437,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // this block as a tool can choose neither where the run writes nor what
         // conversation it continues.
         //
-        // All three cast `ctx.sequencer?.state`: `claudeCodeAgent` is not one
-        // of our blocks, so its callbacks are handed the framework's default
-        // sequencer state rather than this manager's. The manager owns that
-        // shape and the harness never learns it, which is the point of the
-        // channel — the cast is where that split is spelled out.
+        // All three reach the manager's state through `harnessCtxState`, which
+        // is where the cast lives and says why.
         //
         // The run edits ITS checkout, and the record of what it touched is
         // keyed there too.
-        cwd: (_input, ctx) =>
-          managerState(ctx.sequencer?.state as ManagerState | undefined).workspacePath!,
+        cwd: (_input, ctx) => managerState(harnessCtxState(ctx)).workspacePath!,
         // Which session this attempt continues. `null` on attempt 1, and on
         // every attempt after one whose harness never named a session — a
         // resume the vendor refused, above all — so a dead id is not re-sent
         // forever.
-        resume: (_input, ctx) =>
-          (ctx.sequencer?.state as ManagerState | undefined)?.previousSessionId ?? null,
+        resume: (_input, ctx) => harnessCtxState(ctx)?.previousSessionId ?? null,
         // **The sole writer of the row's `sessionId`**, called the moment the
         // vendor names the session. Not at the verdict: a run the deadline
         // kills returns no handle at all, and that is exactly the run the next
@@ -1440,10 +1463,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           await fenced(
             writeRunRow(
               ctx as unknown as BlockContext,
-              identityFrom(
-                ctx.sequencer?.state as ManagerState | undefined,
-                boardCollectionId,
-              ),
+              identityFrom(harnessCtxState(ctx), boardCollectionId),
               { sessionId },
             ),
             "the harness named its session",
