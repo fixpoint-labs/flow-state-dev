@@ -28,6 +28,7 @@
 import { describe, it, expect } from "vitest";
 import {
   deriveChildSessionId,
+  deriveDispatchChildSessionId,
   evaluateAdoption,
   type DerivationIdentity
 } from "../../src/context/detached-child";
@@ -154,6 +155,73 @@ describe("adoption identity validation", () => {
     // the same thing, and a strict `!==` would refuse a genuine child.
     const nulled = { ...genuineChild, orgId: null as unknown as undefined };
     expect(evaluateAdoption(nulled, { ...expected, orgId: undefined })).toEqual({
+      adoptable: true
+    });
+  });
+});
+
+describe("deriveDispatchChildSessionId — a dispatched child's own namespace", () => {
+  const identity = {
+    userId: "u_alice",
+    tenantId: undefined,
+    parentSessionId: "s_parent",
+    lineageId: "lin_parent"
+  };
+
+  it("is deterministic for the same identity and key", () => {
+    expect(deriveDispatchChildSessionId(identity, "doc-1")).toBe(
+      deriveDispatchChildSessionId(identity, "doc-1")
+    );
+  });
+
+  it("never collides with a detached start from the same parent that chose the same string", () => {
+    // A `{ key }` dispatch and `startDetached` mint separately: the same parent
+    // naming the same value through each seam lands on two children, so a
+    // dispatch can never adopt a workstream's child by coincidence of naming.
+    const dispatched = deriveDispatchChildSessionId(identity, "review");
+    expect(dispatched).not.toBe(deriveChildSessionId(identity, { topic: "review" }));
+    expect(dispatched).not.toBe(deriveChildSessionId(identity, { topic: "review", key: "review" }));
+  });
+
+  it("keys on the parent and the lineage, not the key alone", () => {
+    const base = deriveDispatchChildSessionId(identity, "doc-1");
+    expect(deriveDispatchChildSessionId({ ...identity, parentSessionId: "s_other" }, "doc-1")).not.toBe(base);
+    expect(deriveDispatchChildSessionId({ ...identity, lineageId: "lin_other" }, "doc-1")).not.toBe(base);
+    expect(deriveDispatchChildSessionId(identity, "doc-2")).not.toBe(base);
+  });
+});
+
+describe("evaluateAdoption — the lineage arm a dispatched child requires", () => {
+  const expected = {
+    flowKind: "work",
+    userId: "u_alice",
+    tenantId: undefined,
+    orgId: undefined,
+    parentSessionId: "s_parent"
+  };
+  const genuine = {
+    flowKind: "work",
+    userId: "u_alice",
+    parentSessionId: "s_parent",
+    lineageId: "lin_parent"
+  };
+
+  it("refuses a record minted for a different lineage when the caller requires one", () => {
+    const result = evaluateAdoption(
+      { ...genuine, lineageId: "lin_other" },
+      { ...expected, lineageId: "lin_parent" }
+    );
+    expect(result).toEqual({ adoptable: false, mismatch: "lineageId" });
+  });
+
+  it("adopts a record on the required lineage", () => {
+    expect(evaluateAdoption(genuine, { ...expected, lineageId: "lin_parent" })).toEqual({
+      adoptable: true
+    });
+  });
+
+  it("does not compare the lineage when the caller names none — the detached start's contract", () => {
+    expect(evaluateAdoption({ ...genuine, lineageId: "lin_other" }, expected)).toEqual({
       adoptable: true
     });
   });

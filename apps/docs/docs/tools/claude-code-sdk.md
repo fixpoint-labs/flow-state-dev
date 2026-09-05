@@ -624,9 +624,12 @@ A run isn't the only thing that can change a collection. Another run, an action 
 
 The reconcile checks before it writes: does the collection still hold what this run was given? If it does, the write goes through. If it doesn't, nothing is written and the path is recorded. Deletes go through the same check, so a file the run removed and somebody else edited stays put.
 
-Two outcomes end up in the `workspace-outcomes` collection, keyed by run:
+That check catches a writer who already wrote. It can't catch one writing at the same moment, so the run also claims each path it saves, for as long as the save takes. Another run reaching a claimed path stands off instead of overwriting. Claims are per file: two runs sharing a collection while working on different files both save, and neither is refused.
+
+Three outcomes end up in the `workspace-outcomes` collection, keyed by run:
 
 - **conflict** — two writers, one file. Carries three hashes: what the run was given, what the collection holds now, and what the run left. `ours: null` means the run deleted a file somebody else had edited.
+- **contested** — another run was writing the file at the same moment, so this one stood off. No hashes, because nothing has been written to disagree about yet. The row names the path so you can stop the two runs sharing it.
 - **orphan** — a file written outside every mounted collection, so nothing owns it.
 
 A status item reports how many there were, so a run that ends with unsaved work doesn't end quietly.

@@ -9,7 +9,9 @@ What changes for you: a file changed in its collection while a run held it is no
 Three `createBashTool` options are gone:
 
 - `syncMode: "full"` meant "write every file back regardless of what the collection holds", which is the overwrite this change exists to prevent.
-- `fileFilter` has no equivalent — exclude a collection from the mount set instead.
+- `fileFilter` has no equivalent — exclude a collection from the mount set instead, or write the files it excluded under `./tmp/`.
+
+Both are **rejected at runtime**, not ignored. An untyped caller gets no compile error, and silently accepting `fileFilter` would persist exactly the files it was there to keep out.
 - `collections` are now mounted at their pattern prefix, matching `createBashBlocks`. A collection matching `files/*` lands at `<workspace>/files/` rather than at the workspace root. A collection whose pattern gives no prefix is skipped with a warning instead of silently becoming the owner of every loose file.
 
 `FileSync` is no longer exported. `hashContent` still is, now re-exported from `@flow-state-dev/workspace`. `createSandboxPlace` is newly exported for wiring a sandbox into a projection directly.

@@ -12,6 +12,7 @@ import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { DetachedStartOperation, ParentTaskBinding } from "./create-request-host";
+import type { DispatchOperation } from "./dispatch-operation";
 import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {
@@ -142,6 +143,12 @@ export type RequestHostConstructionInputs = {
    * deployment whose capabilities dispatch must supply this there explicitly.
    */
   startOperation?: DetachedStartOperation;
+  /**
+   * Starts the request a dispatch becomes, through the same host-level arbiter
+   * and enqueue-time materialization. Absent → the dispatch seam refuses
+   * `no-dispatch-operation`, the same residual case `startOperation` has.
+   */
+  dispatchOperation?: DispatchOperation;
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
   /** The stale-request sweeper's threshold. */

@@ -17,13 +17,30 @@ Three pieces:
 - A **projection** hydrates the mounts into the place, then flushes the place back into the collections.
 
 ```ts
-import { createProjection, createHostPlace } from "@flow-state-dev/workspace";
+import {
+  collectionIdFor,
+  createProjection,
+  createHostPlace,
+  principalFromContext,
+} from "@flow-state-dev/workspace";
+
+const principal = principalFromContext(ctx);
 
 const projection = createProjection({
   place: createHostPlace("/tmp/run-42"),
   mounts: [
-    { prefix: "artifacts", collection: artifacts, writable: true },
-    { prefix: "reference", collection: docs, writable: false },
+    {
+      prefix: "artifacts",
+      collection: artifacts,
+      collectionId: collectionIdFor(artifacts, principal),
+      writable: true,
+    },
+    {
+      prefix: "reference",
+      collection: docs,
+      collectionId: collectionIdFor(docs, principal),
+      writable: false,
+    },
   ],
 });
 
@@ -47,6 +64,7 @@ After `hydrate`, `/tmp/run-42/artifacts/notes.md` holds whatever the `artifacts`
 | `deleted` | The run removed a file the projection owned, and nobody else had changed it. |
 | `orphan` | A file written outside every writable mount. Reported, never guessed into a collection. |
 | `conflict` | Two writers, one path. Nothing was written. |
+| `readonly` | A single-path `put` under a read-only mount. Nothing was written, and a retry won't change that. |
 
 A conflict is an outcome of a flush that *succeeded*. Everything uncontested still landed; the contested path was left exactly as both writers left it. The report hands you three hashes so you can say why:
 
@@ -63,6 +81,33 @@ for (const c of report.conflicts) {
 Comparing two values — collection against place — can't tell "I changed this" from "somebody else changed this". The third value, `base`, is what makes the question answerable, and it's why a concurrent write shows up as a report line instead of quietly winning.
 
 `base` tracks what this projection last committed, not what it hydrated. A file the run creates and flushes belongs to the projection from then on, which is what lets a later deletion of that file propagate. A projection holding no baseline for a path owns nothing there: it writes only where the collection is untouched, and deletes nothing.
+
+## Two runs, one file
+
+The baseline tells a projection whether a file changed since *it* last wrote. It can't tell whether another run is writing that file right now — a second projection that has never committed the path holds no baseline for it, reads the collection as untouched, and writes. The later write wins and nobody is told.
+
+So a projection also **claims** each path it commits, and holds the claim until it's released:
+
+```ts
+const report = await projection.flush();
+for (const c of report.contested) {
+  console.log(`${c.path} is being written by another run`);
+}
+```
+
+The claim covers the whole read-compare-write, not just the write. Taking it after reading the collection would leave the read unprotected: another projection can commit and release inside that await, and this one then writes from a snapshot that predates it — granted a claim that proves nothing.
+
+The claim lasts for the operation and no longer, and it belongs to that operation rather than to the projection. Those are two separate things and both matter. A session-scoped workspace is one projection shared by every request that overlaps in it, so a claim belonging to the projection is the same claim for all of them — each one is granted a key somebody already holds, and they commit over each other with everyone told they wrote. A claim held for the whole run, at the other extreme, would need releasing on every path a run can end, and one missed release leaves an entry claimed by an operation nobody will run again, refusing every later one. Writes that don't overlap in time need none of this: the second one finds the collection changed and reports a conflict.
+
+A `contested` outcome is not a `conflict`. A conflict is somebody who already *wrote* — the evidence is in the collection and three hashes describe it. A contested path is somebody writing *now*: there's nothing to compare yet, only a claim held elsewhere.
+
+Claims are per **durable entry**, not per collection, per mount, or per path. Two runs sharing a collection while touching disjoint files both land, and neither is refused — that case is the point of the design rather than a gap in it.
+
+An entry is named by its mount's `collectionId` plus its key, never by its path. A path can't name a durable row: `artifacts/report.md` is a naming convention, so two sessions writing their own copy would refuse each other over a row they don't share, and one collection mounted under two prefixes would evade arbitration over a row that genuinely is one.
+
+Pass your own `claims` registry to `createProjection` to scope arbitration to a subset of projections; omit it and they share a process-wide one, which is what makes two projections nobody wired together still arbitrate.
+
+**In-process only.** This is the same scope the baseline has. Two servers writing one collection is a larger problem, and this doesn't pretend to solve it.
 
 ## Places
 
@@ -99,10 +144,29 @@ try {
 interface Mount {
   prefix: string;      // where the collection appears in the place
   collection: ResourceCollectionRef<ProjectedEntryState>;
+  collectionId: string; // what the collection IS, durably
   writable: boolean;   // may a flush write back?
   entryState?: (key: string) => Record<string, unknown>;
 }
 ```
+
+`collectionId` is what write arbitration is keyed on: the same string for two runs addressing the same rows, a different one for two that only spell their paths alike. It's required rather than defaulted because both plausible defaults are wrong in one direction — omit the scope and unrelated tenants refuse each other's writes; use the collection object and two runs in one session stop arbitrating at all.
+
+You don't usually build it by hand. `principalFromContext(ctx)` reads the scoping identity off a block's execution context, and `collectionIdFor(collection, principal)` turns that plus the collection into the id:
+
+```ts
+const principal = principalFromContext(ctx);
+const mounts = collections.map((collection) => ({
+  prefix: getPatternPrefix(collection.pattern),
+  collection,
+  collectionId: collectionIdFor(collection, principal),
+  writable: true,
+}));
+```
+
+For a door with no execution context — plain tools rather than blocks — `unscopedCollectionId(collection)` is the fallback. It names only the scope and the pattern, so two tool sets over one pattern arbitrate whether or not they share rows. That over-arbitrates on purpose: a false refusal is reported and retryable, a missed claim is a silent overwrite.
+
+This is close to the engine's storage key, not equal to it. The engine also folds per-resource flow isolation into where a user- or org-scoped resource lands, and that rule belongs to the engine. So two flows that isolate the same user's resources from each other share an id here while their rows are separate, and one can be told `contested` over a row it doesn't share — the safe direction, and the same reason as above.
 
 The projection sets `path`, `hash`, and `updatedAt` on every entry it commits, because it needs them. Anything else your collection carries — a title, an author, a timestamp in the shape your UI expects — comes from `entryState`, which is applied last, so a mount can override what the projection chose.
 
@@ -114,10 +178,16 @@ A read-only mount is hydrated and then left alone. Its paths aren't written back
 
 | Export | What it is |
 | --- | --- |
-| `createProjection({ mounts, place })` | Returns `{ hydrate, flush, put, ownedPaths }`. |
+| `createProjection({ mounts, place, claims? })` | Returns `{ hydrate, flush, put, ownedPaths }`. |
 | `createHostPlace(root)` | A place backed by a directory. |
 | `createMemoryPlace(initial?)` | A place backed by a `Map`. |
 | `hashContent(content)` | The hex SHA-256 the projection compares with. |
+| `createClaimRegistry()` | A registry scoping write arbitration to the projections you give it. |
+| `sharedClaimRegistry` | The process-wide registry projections use by default. |
+| `claimKey(collectionId, entryKey)` | The key one durable entry is claimed under. |
+| `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
+| `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
+| `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
 
 `ownedPaths()` returns the paths the projection currently holds a baseline for — what it would write to, and what it would delete.
 
@@ -134,7 +204,9 @@ if (outcome?.kind === "conflict") {
 
 It's not a shortcut for `flush`. A full flush would walk everything to learn one thing, and a projection holding no baseline would report every pre-existing file in the place as new. `put` takes ownership of the path, so a later flush can delete it if the run removes it.
 
-It resolves `undefined` when there's nothing to decide: a read-only mount, or a collection's own metadata.
+It resolves `undefined` only when there's genuinely nothing to decide — a collection's own metadata.
+
+A read-only mount is not that case. A flush passes over one because it holds no baseline there and can't tell an edit from what it laid down itself, but `put` was handed one path and asked to persist it, so it answers `readonly` with the mount's prefix. Relay that as a refusal: unlike `conflict` and `contested`, which clear once the other writer is done, this one never does.
 
 ## License
 

@@ -28,6 +28,12 @@ import {
   RELOCATION_TOOLS,
 } from "../../src/sdk/workspace";
 import { WORKSPACE_OUTCOMES } from "../../src/sdk/workspace-collections";
+import {
+  claimKey,
+  collectionIdFor,
+  principalFromContext,
+  sharedClaimRegistry,
+} from "@flow-state-dev/workspace";
 import type {
   ClaudeAgentQueryOptions,
   ResolveClaudeAgent,
@@ -99,8 +105,14 @@ function flowWith(cap: unknown) {
 }
 
 describe("what auto-discovery will and will not mount", () => {
+  // The identity is what a mount's `collectionId` is derived from, so a
+  // context without one is not a context discovery can run against.
   const mountsFor = (resources: Record<string, unknown>) =>
-    discoverMountsForTest({ resources } as never).map((m) => m.prefix);
+    discoverMountsForTest({
+      resources,
+      session: { identity: { id: "s1" } },
+      request: { identity: { id: "r1" } },
+    } as never).map((m) => m.prefix);
 
   const ordinary = {
     pattern: "artifacts/**",
@@ -503,5 +515,97 @@ describe("createWorkspaceAgentCapability", () => {
     expect(options.cwd).toBe(base);
 
     discard(base);
+  });
+
+  it("stands off a path another run is holding, and records which one", async () => {
+    // The baseline stops a writer who already wrote. It says nothing about a
+    // writer working right now: a second run holds no baseline for the path,
+    // reads the collection as untouched, and overwrites. A foreign holder in
+    // the shared registry IS what the other run is — a symbol — so nothing
+    // here simulates the mechanism, only supplies the other party.
+    const base = scratch();
+    const otherRun = Symbol("other-run");
+    const cap = createWorkspaceAgentCapability({
+      resolveClaudeAgent: (ctx: never) => ({
+        query: async function* () {
+          mkdirSync(join(base, "artifacts"), { recursive: true });
+          writeFileSync(join(base, "artifacts", "shared.md"), "ours");
+          sharedClaimRegistry.claim(
+            claimKey(
+              collectionIdFor(artifactsCollection, principalFromContext(ctx)),
+              "shared.md",
+            ),
+            otherRun,
+          );
+          yield RESULT_OK;
+        },
+      }),
+      root: () => base,
+    });
+
+    try {
+      const result = (await testBlock(toolOf(cap) as never, {
+        input: { prompt: "go" },
+        flow: flowWith(cap) as never,
+      })) as {
+        resources: Record<string, { list(): Promise<Array<{ state: Record<string, unknown> }>> }>;
+      };
+
+      // Not written — the other run is mid-write and neither should win by
+      // arriving second.
+      expect(await result.resources.artifacts!.list()).toHaveLength(0);
+
+      // And the path is on the record, because the fix for a contested path
+      // is to stop two runs sharing it, which needs its name.
+      const rows = await result.resources[WORKSPACE_OUTCOMES]!.list();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.state.kind).toBe("contested");
+      expect(rows[0]!.state.path).toBe("artifacts/shared.md");
+    } finally {
+      sharedClaimRegistry.releaseAll(otherRun);
+      discard(base);
+    }
+  });
+
+  it("writes a path the other run is not holding", async () => {
+    // The case the claim has to keep working, not the one it exists to stop:
+    // two runs sharing a collection while touching different files.
+    const base = scratch();
+    const otherRun = Symbol("other-run");
+    const cap = createWorkspaceAgentCapability({
+      // Claimed off the same context, for the same reason as above: a key
+      // spelled by hand would match nothing the projection asks about, and
+      // this test would then pass with no claim held at all.
+      resolveClaudeAgent: (ctx: never) => ({
+        query: async function* () {
+          mkdirSync(join(base, "artifacts"), { recursive: true });
+          writeFileSync(join(base, "artifacts", "ours.md"), "ours");
+          sharedClaimRegistry.claim(
+            claimKey(
+              collectionIdFor(artifactsCollection, principalFromContext(ctx)),
+              "theirs.md",
+            ),
+            otherRun,
+          );
+          yield RESULT_OK;
+        },
+      }),
+      root: () => base,
+    });
+
+    try {
+      const result = (await testBlock(toolOf(cap) as never, {
+        input: { prompt: "go" },
+        flow: flowWith(cap) as never,
+      })) as {
+        resources: Record<string, { list(): Promise<Array<{ state: Record<string, unknown> }>> }>;
+      };
+
+      expect(await result.resources.artifacts!.list()).toHaveLength(1);
+      expect(await result.resources[WORKSPACE_OUTCOMES]!.list()).toHaveLength(0);
+    } finally {
+      sharedClaimRegistry.releaseAll(otherRun);
+      discard(base);
+    }
   });
 });

@@ -114,6 +114,29 @@ export type InlineTapConfig<
 export type InlineBlockFactory = (config: any) => BlockDefinition<any, any>;
 
 /**
+ * Trailing options for `.forEach()`.
+ *
+ * `blocks` declares the blocks a per-item **factory** can produce. A factory
+ * builds its block only when the iteration runs, so on its own it leaves
+ * nothing for `defineFlow` to walk — a dispatcher composed inside it would
+ * escape the definition-time address check, and its declarations would not
+ * bubble. Declared blocks are children of the step on exactly the terms the
+ * block-shaped call's element block is: walked for reachability, merged for
+ * resources and `requiresOrg`. Redundant with a block-shaped call, which
+ * already knows its element.
+ */
+export type IterationOptions = {
+  maxConcurrency?: number;
+  blocks?: readonly BlockDefinition<any, any>[];
+};
+
+/** Trailing options for `.forEachSideChain()`; `blocks` as on {@link IterationOptions}. */
+export type SideChainIterationOptions = {
+  concurrency?: number;
+  blocks?: readonly BlockDefinition<any, any>[];
+};
+
+/**
  * Sequencer DSL definition. Types flow through the chain via schema inference:
  * - TInput/TOutput are runtime value types (e.g., `number`, `string`)
  * - Types are inferred from Zod schemas on BlockDefinition via `z.infer<>`
@@ -197,7 +220,7 @@ export interface SequencerDefinition<
     blockOrFactory:
       | BlockDefinition<any, TOutSchema>
       | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, TOutSchema>),
-    options?: { maxConcurrency?: number }
+    options?: IterationOptions
   ): SequencerDefinition<TInput, z.infer<TOutSchema>[], TStateSchema>;
   // forEach(connector, block) — connector provides items, block output inferred
   forEach<TStepIn, TOutSchema extends ZodTypeAny>(
@@ -205,7 +228,7 @@ export interface SequencerDefinition<
     blockOrFactory:
       | BlockDefinition<any, TOutSchema>
       | ((item: TStepIn, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, TOutSchema>),
-    options?: { maxConcurrency?: number }
+    options?: IterationOptions
   ): SequencerDefinition<TInput, z.infer<TOutSchema>[], TStateSchema>;
 
   // forEachSideChain(block) — fire-and-forget fan-out, dispatches each iteration as side-chain work
@@ -213,7 +236,7 @@ export interface SequencerDefinition<
     blockOrFactory:
       | BlockDefinition<any, any>
       | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, any>),
-    options?: { concurrency?: number }
+    options?: SideChainIterationOptions
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
   // forEachSideChain(connector, block) — connector provides items, each dispatched as side-chain work
   forEachSideChain<TStepIn>(
@@ -221,7 +244,7 @@ export interface SequencerDefinition<
     blockOrFactory:
       | BlockDefinition<any, any>
       | ((item: TStepIn, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, any>),
-    options?: { concurrency?: number }
+    options?: SideChainIterationOptions
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
 
   // doUntil — loop block output inferred from schema

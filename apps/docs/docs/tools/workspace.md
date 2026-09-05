@@ -17,13 +17,30 @@ The interesting part is that last step. A run can add files, change files, delet
 ## Getting started
 
 ```ts
-import { createProjection, createHostPlace } from "@flow-state-dev/workspace";
+import {
+  collectionIdFor,
+  createProjection,
+  createHostPlace,
+  principalFromContext,
+} from "@flow-state-dev/workspace";
+
+const principal = principalFromContext(ctx);
 
 const projection = createProjection({
   place: createHostPlace("/tmp/run-42"),
   mounts: [
-    { prefix: "artifacts", collection: artifacts, writable: true },
-    { prefix: "reference", collection: docs, writable: false },
+    {
+      prefix: "artifacts",
+      collection: artifacts,
+      collectionId: collectionIdFor(artifacts, principal),
+      writable: true,
+    },
+    {
+      prefix: "reference",
+      collection: docs,
+      collectionId: collectionIdFor(docs, principal),
+      writable: false,
+    },
   ],
 });
 
@@ -91,7 +108,40 @@ if (outcome?.kind === "conflict") {
 }
 ```
 
-The path becomes the projection's from then on, so a later flush can delete it if the run removes the file. `put` resolves `undefined` when there's nothing to decide — a read-only mount, or a collection's own metadata.
+The path becomes the projection's from then on, so a later flush can delete it if the run removes the file. `put` resolves `undefined` only when there's genuinely nothing to decide — a collection's own metadata.
+
+A read-only mount is not that case. A flush passes over one, because it keeps no baseline there and can't tell an edit from the content it laid down itself. But `put` was handed one path and asked to persist it, so it answers `readonly` with the mount's prefix. Pass that on as a refusal: unlike `conflict` and `contested`, it never clears.
+
+## Two runs, one file
+
+Two runs can be working in the same collection at the same time. When they touch different files, both land. When they reach for the same one, the second is **refused** rather than allowed to overwrite the first.
+
+A refusal shows up as a `contested` outcome naming the path:
+
+```ts
+const report = await projection.flush();
+for (const c of report.contested) {
+  console.log(`${c.path} is being written by another run`);
+}
+```
+
+Nothing was written for that path, and nothing was lost: the other run's write stands, and yours is still in your place to retry.
+
+`contested` is not `conflict`. A conflict is somebody who already wrote — the evidence is sitting in the collection, and you get three hashes to work out what to do. A contested path is somebody writing *right now*, so there is nothing to compare yet.
+
+### What counts as the same file
+
+The unit is a **durable entry** — one collection, one key — not a path. Two sessions each writing their own `artifacts/report.md` are writing two different entries, so neither refuses the other. That is what `Mount.collectionId` is for: it names the collection so two runs over the same rows recognise each other, and two runs that merely spell their paths alike do not.
+
+Building it by hand is not the expected route. `principalFromContext(ctx)` reads the identity off a block's execution context, and `collectionIdFor(collection, principal)` turns it into the id. For a door with no execution context, `unscopedCollectionId(collection)` is the fallback, and it errs toward refusing: a reported refusal is retryable, a missed one is a silent overwrite.
+
+### How far a refusal reaches
+
+A refusal lasts for one operation — a single `flush` or `put` — and covers reading, comparing and writing as one. It belongs to that operation rather than to the projection, which matters when a workspace is shared: a session-scoped workspace is one projection serving every request in that session, and arbitration has to see those requests as separate writers.
+
+It is also **in-process only**, the same reach the baseline has. Two servers writing one collection is a larger problem, and this does not claim to solve it.
+
+Pass a `claims` registry to scope arbitration to a subset of projections. Omit it and they share a process-wide one, which is what lets two projections nobody wired together still arbitrate.
 
 ## Places
 

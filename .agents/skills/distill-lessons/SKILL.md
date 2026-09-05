@@ -317,8 +317,8 @@ apply it. Only then write.
   per Step 4). Number sequentially after the last existing BP across all files —
   numbers are global IDs.
 - If a "shipping" change adopts the BP in the same breath, update it in the same
-  change set (BP update policy). A BP-doc-only change is internal — `pnpm
-  changeset --empty` or state "no changeset needed" (BP-022).
+  change set (BP update policy). A BP-doc-only change is internal — no changeset
+  (BP-022); state "no changeset needed" if a reviewer might wonder.
 - If the repo keeps a skills/BP index that references entries by number or name
   (e.g. the `CLAUDE.md` skills table for a new skill), update it so the addition
   is discoverable.

@@ -7,11 +7,13 @@ import type {
   BranchStep,
   BranchStepOutput,
   InlineBlockFactory,
+  IterationOptions,
   ParallelStep,
   ParallelStepOutput,
   SequencerConfig,
   SequencerDefinition,
   SequencerRuntimeState,
+  SideChainIterationOptions,
   SideChainResult
 } from "./sequencer-methods";
 import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
@@ -25,7 +27,8 @@ import type { StepOutcome } from "./internal/arg-shapes";
 import { runSideChain, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
 import type { WorkstreamBindings } from "../types/workstream";
-import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError, withTimeout } from "./internal/utils";
+import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError } from "./internal/utils";
+import { withTimeout } from "../helpers/with-timeout";
 import {
   blockPathBranch,
   blockPathIteration,
@@ -1472,8 +1475,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg2?:
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
-        | { maxConcurrency?: number },
-      arg3?: { maxConcurrency?: number }
+        | IterationOptions,
+      arg3?: IterationOptions
     ): SequencerDefinition<TInput, TStepOut[], TStateSchema> {
       // Shapes: forEach(block|factory) | forEach(connector, block|factory),
       // each with optional trailing concurrency options.
@@ -1482,7 +1485,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       const blockOrFactory = shape.blockOrFactory as
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>);
-      const options = shape.options as { maxConcurrency?: number } | undefined;
+      const options = shape.options as IterationOptions | undefined;
 
       // Determine element output schema for z.array() propagation
       const elementBlock = isBlockDefinition(blockOrFactory)
@@ -1541,7 +1544,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         arraySchema,
         undefined,
-        elementBlock
+        elementBlock,
+        ...(options?.blocks ?? [])
       );
     },
 
@@ -1553,8 +1557,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg2?:
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
-        | { concurrency?: number },
-      arg3?: { concurrency?: number }
+        | SideChainIterationOptions,
+      arg3?: SideChainIterationOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       // Shapes mirror forEach(); the trailing options carry `concurrency`.
       const shape = resolveCallShape([arg1, arg2, arg3], "iterating");
@@ -1562,7 +1566,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       const blockOrFactory = shape.blockOrFactory as
         | BlockDefinition<any, any>
         | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>);
-      const options = shape.options as { concurrency?: number } | undefined;
+      const options = shape.options as SideChainIterationOptions | undefined;
 
       const elementBlock = isBlockDefinition(blockOrFactory)
         ? (blockOrFactory as BlockDefinition<any, any>)
@@ -1646,7 +1650,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        elementBlock
+        elementBlock,
+        ...(options?.blocks ?? [])
       );
     },
 

@@ -975,6 +975,7 @@ describe("bash blocks registry concurrency", () => {
     const { bashCommand } = createBashBlocks({ provider, destination: "/workspace" });
 
     const ctx: any = {
+      request: { identity: { id: "req-s-race" } },
       session: { identity: { id: "s-race", userId: "u1" } },
       resources: {},
     };
@@ -1016,6 +1017,7 @@ describe("createBashCapability cleanupBlock", () => {
       destination: "/workspace",
     });
     const ctx: any = {
+      request: { identity: { id: "req-s-cleanup" } },
       session: { identity: { id: "s-cleanup", userId: "u1" } },
       resources: {},
     };

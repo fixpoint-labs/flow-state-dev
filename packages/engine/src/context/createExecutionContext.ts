@@ -75,11 +75,12 @@ import {
 } from "../errors/error-capture";
 import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
 import type { ResumeContext } from "@flow-state-dev/core/types";
-import { SUSPENSION_SKIPPED } from "@flow-state-dev/core/types";
+import { DISPATCH_SEAM, SUSPENSION_SKIPPED } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
   resolveOrgStorageKey,
+  resolveLineageId,
   resolveResourceIsolation,
   resolveResourceScopeId,
   resolveSessionStorageKey,
@@ -688,7 +689,7 @@ export async function createExecutionContext<
   // an unstamped session's lineage id were its session key the two would be
   // indistinguishable — routing unshared resources into the lineage namespace
   // along with the shared ones.
-  const lineageId = sessionRecord.lineageId ?? `lin_${sessionKey}`;
+  const lineageId = resolveLineageId({ id: sessionKey, lineageId: sessionRecord.lineageId });
 
   const resolvedOrgKey =
     resolvedOrgId !== undefined
@@ -757,6 +758,7 @@ export async function createExecutionContext<
             lineageId
           },
           startOperation: options.requestHost.startOperation,
+          dispatchOperation: options.requestHost.dispatchOperation,
           parentTask: options.requestHost.parentTask,
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           liveness: {
@@ -2984,8 +2986,13 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
-      // Same reference in every nested scope (FIX-999).
-      ...(requestHostBuild !== undefined ? { requestHost: requestHostBuild.host } : {}),
+      // Same reference in every nested scope (FIX-999). The bundle and the
+      // dispatch seam, the latter under its symbol key so it is reachable from
+      // `dispatcher()` blocks and from nothing a handler body names (see
+      // `types/dispatch.ts`).
+      ...(requestHostBuild !== undefined
+        ? { requestHost: requestHostBuild.host, [DISPATCH_SEAM]: requestHostBuild.seam }
+        : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,

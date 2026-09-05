@@ -17,6 +17,7 @@ import type { DefinedResourceCollection } from "../../types/resource-collection"
 import type { JsonObject } from "../../schema/common";
 import type { CapabilityRef } from "../../capability/types";
 import { mergeWorkstreamBindings, type WorkstreamBindings } from "../../types/workstream";
+import type { DispatchAddress } from "../../types/dispatch";
 import { getBaseCapability } from "../../capability/merge";
 import { matchesRescueHandler, toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
@@ -138,6 +139,13 @@ export type BuildBlockOptions<
    */
   ownWorkstreamBindings?: WorkstreamBindings;
   /**
+   * The address this block dispatches to, when it is a dispatcher. Stamped on
+   * the built definition by `markDispatcher`; every rebuild path forwards
+   * `definition.dispatch` so a `connectInput` or `.rescue()` on a dispatcher
+   * hands back a dispatcher.
+   */
+  dispatch?: DispatchAddress;
+  /**
    * Mapper installed via `BlockDefinition.mapModelOutput`. Carried on the
    * runtime view; the generator tool bridge reads it via `asRuntime(tool)`
    * and forwards it to the AI SDK as `toModelOutput`.
@@ -249,6 +257,7 @@ export function buildBlock<
     childBlocks,
     workstreamBindings,
     ownWorkstreamBindings: options.ownWorkstreamBindings,
+    ...(options.dispatch !== undefined ? { dispatch: options.dispatch } : {}),
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
@@ -407,6 +416,7 @@ export function buildBlock<
         // dispatched and then never runs.
         childBlocks: options.childBlocks,
         ownWorkstreamBindings: definition.ownWorkstreamBindings,
+        dispatch: definition.dispatch,
         // `connectInput` preserves `TOutputSchema`, so any installed
         // `mapModelOutput` mapper is still valid against the rebuilt block's
         // output. Forward it through.
@@ -426,6 +436,7 @@ export function buildBlock<
         requiresOrg: definition.requiresOrg,
         childBlocks: options.childBlocks,
         ownWorkstreamBindings: definition.ownWorkstreamBindings,
+        dispatch: definition.dispatch,
         modelOutputMapper: mapper,
       });
     },
@@ -459,6 +470,7 @@ export function buildBlock<
         requiresOrg: mergedRequiresOrg,
         childBlocks: options.childBlocks,
         ownWorkstreamBindings: definition.ownWorkstreamBindings,
+        dispatch: definition.dispatch,
         modelOutputMapper: options.modelOutputMapper,
       });
     },
@@ -563,6 +575,7 @@ export function buildBlock<
         requiresOrg: definition.requiresOrg,
         childBlocks: options.childBlocks,
         ownWorkstreamBindings: definition.ownWorkstreamBindings,
+        dispatch: definition.dispatch,
       });
     }
   };

@@ -35,12 +35,15 @@ import type {
   CreateBashToolResult,
 } from "./types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
-import type { Mount } from "@flow-state-dev/workspace";
+import { unscopedCollectionId } from "@flow-state-dev/workspace";
 import {
+  TMP_DIR,
   createBashProjection,
   flushWithDiagnostics,
   seedWorkspaceMarkers,
+  refusalReason,
   warnUnsettled,
+  type BashMount,
 } from "./projection-setup";
 import { resolveSandbox } from "./resolve-sandbox";
 
@@ -70,6 +73,36 @@ export async function createBashTool(
     onAfterCommand,
   } = options;
 
+  // `scope` has no meaning here and cannot be given one. It picks a workspace
+  // per run, per session, per user or per org, and every one of those is read
+  // off a block's execution context — which this factory does not have, and
+  // does not get: it returns plain AI SDK tools, not blocks. Accepting it
+  // silently would hand back one shared directory while the configuration said
+  // several isolated ones.
+  if (provider.type === "local" && provider.scope !== undefined) {
+    throw new Error(
+      `[bash] \`scope: "${provider.scope}"\` is not available from createBashTool — the ` +
+        `identity it scopes by lives on a block's context, and these are plain tools. Pass ` +
+        `\`cwd\` to choose the workspace directory, or use createBashBlocks for a scoped one.`,
+    );
+  }
+
+  // Removed options are rejected, not ignored. `fileFilter` decided which
+  // files reached a collection and `syncMode` decided when; a caller still
+  // passing either is describing behaviour that no longer exists, and in
+  // `fileFilter`'s case the files it used to exclude are now persisted.
+  // Untyped callers get no compile error, so the check is at runtime (BP-030).
+  for (const [removed, replacement] of [
+    ["fileFilter", "mount only the collections whose files should persist, or write the rest under ./tmp/"],
+    ["syncMode", "the flush now runs after every command and every writeFile"],
+  ] as const) {
+    if ((options as Record<string, unknown>)[removed] !== undefined) {
+      throw new Error(
+        `[bash] \`${removed}\` was removed from createBashTool — ${replacement}.`,
+      );
+    }
+  }
+
   // 1. Resolve or create sandbox
   const existingId = persist && bashSession ? bashSession.state.sandboxId || undefined : undefined;
   const { sandbox, sandboxId } = await resolveSandbox(provider, { destination, existingId });
@@ -78,7 +111,7 @@ export async function createBashTool(
   //    sandbox. A collection whose pattern has no prefix cannot be routed to
   //    without guessing, so it is skipped loudly rather than made the default
   //    owner of every loose file.
-  const mounts: Mount[] = [];
+  const mounts: BashMount[] = [];
   for (const [name, collection] of Object.entries(collections)) {
     const prefix = getPatternPrefix(collection.pattern);
     if (!prefix) {
@@ -87,9 +120,23 @@ export async function createBashTool(
       );
       continue;
     }
+    if (prefix === TMP_DIR) {
+      // Not a mount that fails to sync — a mount that DELETES. `tmp/` is the
+      // run's scratch, so the place filters everything under it out of the
+      // listing; hydrate would lay the entries down and baseline them, the
+      // walk would report none of them, and the first flush would remove
+      // every one as locally deleted. `createBashBlocks` already excludes it.
+      console.warn(
+        `[bash] collection "${name}" mounts at "${TMP_DIR}/", which is the run's scratch prefix and never syncs — skipped. Give it a different pattern.`,
+      );
+      continue;
+    }
     mounts.push({
       prefix,
       collection,
+      // No execution context here, so no scope instance to name — see
+      // `unscopedCollectionId` for why that resolves toward arbitrating.
+      collectionId: unscopedCollectionId(collection),
       writable: true,
     });
   }
@@ -178,7 +225,8 @@ export async function createBashTool(
         await sandbox.writeFile(fullPath, content);
         const outcome = await projection.put(filePath, content);
         if (outcome !== undefined) warnUnsettled([outcome]);
-        return { success: true };
+        const refused = refusalReason(outcome);
+        return { success: refused === null, refused };
       },
     }),
   };

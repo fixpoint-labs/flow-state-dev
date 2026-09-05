@@ -130,7 +130,9 @@ export default defineFlow({
   - Provider-native web search: set `search: true` (or a `GeneratorSearchConfig`). This is the model provider's built-in search, distinct from the `@flow-state-dev/tools` `tools.search` tool — the tools `tier` knob does not apply, and the generator's `searchDepth` (`"low" | "medium" | "high"`, OpenAI `searchContextSize`) is a different field from the tools `searchDepth` (`"basic" | "advanced"`). See [Web search](https://flow-state.dev/docs/fundamentals/blocks#web-search).
   - Human-in-the-loop inside the tool loop: a generator tool can call `ctx.suspend()` to gate its own call. The request suspends like any sequencer gate, and on a durable resume the tool re-enters past the approval — prior turns and completed sibling tools replay from the item log, so the model is not re-called for them. Constraints: gate before side effects (the tool re-enters from the top on resume, so guard pre-gate work with `runOnce`), one approval gate per model turn (first-suspension-wins), and a gated tool can't be `cacheable` (the cache short-circuits before the tool body). See [Generator and router suspend/resume](https://flow-state.dev/docs/advanced/generator-and-router-suspend-resume).
 - `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `sideChain`, `sideChainIf`, `waitForSideChain`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
+  - `.forEach()` / `.forEachSideChain()` take a per-item factory `(item, index, ctx) => block` in place of a block. A block built that way does not exist when `defineFlow` walks the graph, so declare what the factory can produce with `blocks: [...]` in the trailing options (`IterationOptions` / `SideChainIterationOptions`); declared blocks count as the step's children for the dispatcher address check, resource merging, and `requireOrg`. Redundant on a call that passes a block directly.
 - `router(config)` — Runtime block selection from declared routes. Route names must be unique per router (validated at build). The selected branch dispatches through the same replay seam as sequencer children, so on a durable resume the branch decision stays stable — the framework validates the re-run selection against the recorded decision and throws `RouteUnavailableError` on a mismatch — and completed work inside the branch replays instead of re-executing. A router whose branch can suspend needs a pure `execute` selector (no side effects, no ambient state reads); see [Control-flow determinism](https://flow-state.dev/docs/advanced/block-memoization-and-replay#control-flow-determinism)
+- `dispatcher(config)` — Send one dispatch to one entry the flow declares, in a child session derived from a key or in an existing session named by id. Returns `{ sessionId, requestId, adopted }`. See [Dispatches, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)
 
 **Block methods** (available on every `BlockDefinition`):
 - `.connectInput(mapper)` — adapt input shape at the call boundary
@@ -143,11 +145,11 @@ export default defineFlow({
 **Event-driven waits:** `.waitForCondition(predicate, { timeoutMs, wakeOn? })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, an external actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch. The optional `wakeOn` filter lets high-fanout patterns skip predicate re-evaluation on irrelevant item types; `@flow-state-dev/orchestration` ships `onTaskChangeFor(collectionId)` for collection-bound waiters.
 
 **Flow:**
-- `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and per-scope `client` blocks
+- `defineFlow(definition)` — Create a flow type with actions, `internal` and `task` entries, scopes, resources, and per-scope `client` blocks. See [Dispatches, entries, and `dispatcher()`](#dispatches-entries-and-dispatcher)
 
 **Concurrency policy:**
 
-An action can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it per-action via `ActionConfig.concurrency`, or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `action.concurrency ?? flow.request.concurrency ?? "allow"`.
+Any entry can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it on the entry — an action, an `internal` entry, a task-board entry, or a chat / webhook / schedule binding — or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `entry.concurrency ?? flow.request.concurrency ?? "allow"`, the same ladder for every dispatch type.
 
 `ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
 
@@ -478,6 +480,7 @@ Helpers shared across the framework. `cloneValue`, `deepMerge`, and `deepEqual` 
 - **`deepMerge(base, override)`** — recursive merge returning a new object. Scalars and arrays in `override` replace; nested plain objects merge; `base` is never mutated.
 - **`deepEqual(a, b)`** — structural equality powering the state-write no-op guard. Primitives compared by `Object.is` (NaN-equal-NaN, `+0 != -0`); plain objects and arrays compared recursively. Rejects non-JSON shapes (Map, Set, functions) with a `TypeError`. `looseDeepEqual` is the throw-free variant.
 - **`toError(value, fallback?)`** — coerce an unknown value to `Error`. An `Error` is returned as-is. A non-empty string becomes `new Error(value)`. Anything else, including `""` and objects with a `message`, becomes `new Error(fallback)`. `fallback` defaults to `"Unknown block execution error"`.
+- **`withTimeout(promise, timeoutMs, label, onTimeout?)`** — bound a promise with a deadline. Rejects with `"<label> timed out after <ms>ms"` once the deadline passes; `undefined`, `Infinity`, or a non-positive `timeoutMs` means no deadline and arms no timer — the same three `scope-lock` disables on, and `Infinity` is guarded rather than passed through because Node coerces `setTimeout(fn, Infinity)` to 1ms. The timer is cleared on every settle path, so a bounded call that finishes in time leaves nothing holding the event loop open. The bounded work is not cancelled — pair it with an `AbortSignal` when the work itself is cancellable. Pass `onTimeout` to reject with your own error type instead of a plain `Error`. It lives here rather than in `contracts` because it arms a timer — runtime behaviour, unlike the pure helpers above it.
 
 ### Graph (`@flow-state-dev/core/graph`)
 
@@ -507,7 +510,7 @@ const counter = sequencer({
 }).step(/* ... */);
 ```
 
-**No-op write guard.** A state-write helper that produces a value structurally equal to the current state is suppressed: no persist call, no `state_change` SSE item, and the helper returns `false` instead of `true`. Idempotent writes are now free — callers no longer need to guard with manual identity checks. The comparison uses `Object.is` for primitives (NaN-equal-NaN; `+0 != -0`) and recursive structural equality for plain objects and arrays.
+**No-op write guard.** A state-write helper that produces a value structurally equal to the current state is suppressed: no persist call, no `state_change` SSE item, and the helper returns `false` instead of `true`. Callers don't need their own identity check before a repeated write. The comparison uses `Object.is` for primitives (NaN-equal-NaN; `+0 != -0`) and recursive structural equality for plain objects and arrays.
 
 **Transient slots.** `transientSlot()` marks a top-level field on `stateSchema` as in-memory only. Transient slots:
 
@@ -517,9 +520,146 @@ const counter = sequencer({
 
 Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.default()`, etc. — so the marker sits on the outermost schema instance referenced by the parent `z.object` shape.
 
+## Dispatches, entries, and `dispatcher()`
+
+Every arrival at a flow is a **dispatch** of one **type**, delivered to one **entry** addressed by `(type, name)`. Each type has its own map on the flow definition, and a dispatch resolves only that map. There is no fallback: an `internal` dispatch named `wake` resolves `flow.internal.actions.wake` or is refused, whatever `flow.actions.wake` is.
+
+| Type | Map on the definition | Sent by |
+|---|---|---|
+| `public` | `actions` | A caller over HTTP, MCP, voice, or a custom transport |
+| `internal` | `internal.actions` | A `dispatcher()` block in one of the flow's own running requests |
+| `task` | `task.actions` | A task board handing a claimed row to a child session, from a `dispatcher({ type: "task" })` seat |
+| `chat` | `chat.on` | The chat adapter |
+| `webhook` | `webhooks.<provider>.on` | The webhook adapter |
+| `schedule` | `schedules.static` | The host scheduler |
+
+`internal` and `task` are definition-only, like the transport maps: passing either to the instance call (`defineFlow({ ... })({ internal })`) throws. Each nests its entries under `actions`: `internal: { actions: { wake: { block } } }`. The flat `internal: { wake }` spelling is refused by name. Every entry of every type has the same core shape as an action, `{ block, inputSchema?, concurrency?, durable?, tokenBudget?, onCompleted?, onErrored?, userMessage? }`. Only `actions` adds the caller-facing `description` and `mcp` fields.
+
+A `task` entry is declared as a plain block, but a `task` dispatch does not run the entry's block as-is. Before the block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError`. The block then receives the worker input the row was claimed with. `defineFlow` throws, naming the block and the entry, for a task entry no reachable board hands off to, a task dispatcher no board holds, and two boards handing off to one entry.
+
+`resolveEntry(flow, type, name, coordinate?)` is the lookup itself, exported for hosts and adapters, alongside `DispatchType`, `DISPATCH_TYPES`, `BlockDispatchType`, `EntryMaps`, `EntryCoordinate`, `InternalEntry`, and `TaskEntry`.
+
+### `dispatcher(config)`
+
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `target`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes, told apart by `type`: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[target]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.task.actions[target]`.
+
+```ts
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const summarize = handler({
+  name: "summarize",
+  inputSchema: z.object({ documentId: z.string() }),
+  execute: async (input) => {
+    // runs in the child session, on its own request
+  },
+});
+
+const acknowledge = handler({
+  name: "acknowledge",
+  inputSchema: z.object({ reason: z.string() }),
+  execute: async (input) => {
+    // runs in the coordinator's existing session
+  },
+});
+
+// One child session per document. The same documentId from the same parent
+// session lands on the same child, adopted rather than created.
+const summarizeInBackground = dispatcher({
+  name: "summarize-in-background",
+  type: "internal",
+  target: "summarize",
+  inputSchema: z.object({ documentId: z.string() }),
+  session: { key: (input) => input.documentId },
+});
+
+// Deliver into a session that already exists. An unknown id is refused, never created.
+const wakeCoordinator = dispatcher({
+  name: "wake-coordinator",
+  type: "internal",
+  target: "acknowledge",
+  inputSchema: z.object({ coordinatorSessionId: z.string(), reason: z.string() }),
+  session: { id: (input) => input.coordinatorSessionId },
+  payload: (input) => ({ reason: input.reason }),
+});
+
+export default defineFlow({
+  kind: "documents",
+  actions: {
+    upload: { block: summarizeInBackground },
+    nudge: { block: wakeCoordinator },
+  },
+  internal: {
+    actions: {
+      summarize: { block: summarize },
+      acknowledge: { block: acknowledge },
+    },
+  },
+})();
+```
+
+| Field | What it does |
+|---|---|
+| `type` | `"internal"` sends this request's own authority; `"task"` sends a claim on a durable row and is meaningful only as a task board seat. |
+| `target` | The entry name, resolved as `flow.internal.actions[target]` or `flow.task.actions[target]`. Checked when the flow is defined. |
+| `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
+| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one. `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per seat), or `{ key: (task, ctx) => string }` read from the row's worker input. |
+| `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
+| `transient` | Hide the block's trace from clients. Default `false`. |
+
+A `task` dispatcher's input is the claim envelope, `taskDispatchInputSchema` / `TaskDispatchInput`: `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }`. Only a task board mints one, from the row it claimed. Put the block under a board's `workers` where an inline worker would go:
+
+```ts
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+
+const board = taskBoard({
+  name: "issue-work",
+  boardId: "issue-work",
+  collection: issues,                          // a defineTaskCollection()
+  workers: {
+    triage: triageWorker,                        // runs inline, in the drain
+    implement: dispatcher({                      // hands off
+      name: "hand-off-implement",
+      type: "task",
+      target: "implement",                       // flow.task.actions.implement
+      session: "per-task",
+    }),
+  },
+});
+
+export default defineFlow({
+  kind: "issues",
+  actions: { drain: { block: board.drain } },
+  task: { actions: { implement: { block: implementWorker } } },  // what runs in the child session
+})();
+```
+
+The block returns a `DispatchHandle` (`dispatchHandleSchema`): `{ sessionId, requestId, adopted }`, the session the dispatch runs in, the request it became, and whether a `key` landed on a child that already existed. It returns once the runtime has accepted the request and does not wait for the work; read the child's progress from that session's own request history.
+
+The same key from a different parent session, user, or tenant is a different child. A caller cannot address another user's child by key. The child's session record carries `parentSessionId`, `topic` (the key), and `coordinate` (`"internal:summarize"`). An `id` target must exist, belong to this flow kind, this principal, and this tenant, and not be bound to a different org.
+
+`defineFlow` checks every block it can reach (sequencer steps, rescue handlers, a generator's `tools`, the `blocks` a `forEach` / `forEachSideChain` factory declares, and the blocks behind `internal` and `task` entries) and throws when a dispatcher names an entry the flow does not declare, naming the block and the address. A target chosen from data is a `router` over declared dispatchers, not a dynamic string.
+
+At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-refused"`), carrying `blockName`, `address`, `detail`, and `refused`:
+
+| `refused` | Meaning |
+|---|---|
+| `no-entry` | The flow declares no entry at `(type, target)`. |
+| `session-not-found` | An `id` names a session that does not exist, or that belongs to another principal or another tenant. |
+| `session-not-addressable` | An `id` names a session on another flow, or one bound to a different org. |
+| `key-occupied` | A `key` derived a child id already held by a record that is not this request's child. |
+| `no-dispatch-operation` | This process executes requests but was not wired to dispatch one. |
+| `dispatch-rejected` | The host refused before starting, such as a `reject` concurrency policy whose key is held. |
+| `external-dispatcher` | An `id` target on a host whose dispatcher runs requests in another process (a queue adapter); delivery into an existing session is refused there. |
+
+Every refusal is decided before anything is dispatched, so a `.rescue()` on the dispatcher can branch on `refused` knowing nothing started. A `key` or `id` function that returns an empty string throws a plain `Error` naming the block. On a context no runtime wired (a hand-built test context), the block throws `NoDispatchSeamError` (`code: "no-dispatch-seam"`); attach a `DispatchSeam` under the `DISPATCH_SEAM` symbol key to test one.
+
+**Substrate exports.** A package that builds its own dispatching block (a task board's hand-off) calls `dispatchThroughSeam(ctx, spec)` and stamps the block with `markDispatcher(block, address)` so the definition-time walk sees it. A task board also binds its claim gate onto that block with `bindTaskDispatcher(block, { boardId, gate })` (`TaskBinding`; read back with `taskBindingOf`), which is what `defineFlow` applies to the entry the block addresses, and derives the child-session key with `taskSessionKeyFor(blockName, policy, envelope, ctx)`, the same derivation `dispatcher()` uses. The types are `DispatchAddress`, `SessionTarget`, `DispatchSpec`, `DispatchOutcome`, `DispatchRefusal`, `DispatchSeam`, `TaskSessionPolicy`, and `TaskDispatchInput`.
+
 ## Reaching the runtime from a capability (`ctx.requestHost`)
 
-`BlockContext` carries an optional `requestHost` member — the one declared way a capability's helper functions reach facilities only the runtime can provide, such as starting a detached child request or settling a durable row owned by another session.
+`BlockContext` carries an optional `requestHost` member — the one declared way a capability's helper functions reach facilities only the runtime can provide: the task-board row this request was dispatched for, and whether requests it dispatched are still running.
 
 It is **framework-facing**. There is nothing to declare to get one, and app code does not normally touch it: a host built through the shipped entry points supplies it.
 
@@ -529,19 +669,15 @@ import { requireRequestHost } from "@flow-state-dev/core";
 const host = requireRequestHost(ctx); // throws by name when none is wired
 ```
 
-The member is optional in the *type* so a hand-built test context still type-checks. `requireRequestHost` turns a missing host into a named error rather than `undefined is not a function`.
+The member is optional in the *type* so a hand-built test context still type-checks. `requireRequestHost` turns a missing host into a named error (`NoRequestHostError`, `code: "no-request-host"`) rather than `undefined is not a function`.
 
-**Which operations answer depends on the deployment, and each says so by name.** Getting a host is not the same as getting every verb on it:
+Which of the host's verbs answer depends on the deployment:
 
-- `livenessOf` is **absent** unless the deployment can support a trustworthy answer. It needs a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. Check for it rather than asserting it.
-- `startDetached` refuses `no-workstream-core` for a flow that declares no workstream core, `board-not-routable` where the input names a task-board worker the flow does not route, and `no-start-operation` where the host wired no start operation. A `board-not-routable` refusal returns before anything starts, so the caller still holds its claim and can settle the row itself. A `createFlowState` deployment wires a start operation in every topology, and so does the shipped HTTP router, so `no-start-operation` is reachable only on a runtime config assembled without either. Where the work then runs depends on the topology: with no dispatcher, including under `worker-only`, it runs in that process rather than on the queue, and it does not survive the process.
-- `parentTask()` resolves `undefined` and `settleParentTask` refuses `no-parent-task` unless the request was dispatched for a parent-board row.
+- `parentTask()` — the one parent-board row this request was dispatched for, as `unknown` (parse it with your own schema), or `undefined` when the request was not dispatched for a task.
+- `settleParentTask({ outcome: "complete" | "fail", output?, error? })` — settle that row. Resolves `{ ok: true }`, or `{ ok: false, refused: "no-parent-task" | "fence-rejected", detail }`. `fence-rejected` means this request's claim on the row was superseded, so nothing was written.
+- `livenessOf(requestIds)` — per-id `boolean` answers for requests this request dispatched. **Absent** unless the deployment can support a trustworthy answer: a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. `false` means no live registration was found, never "definitely dead".
 
-Nothing on this interface names a store, a flow, a session record or a task row, and no operation takes an identity or a session id. A caller supplies a routing seed and the runtime derives the rest from the running request. Values read from another session cross as `unknown`, to be parsed with your own schema.
-
-`startDetached` takes the caller's bookkeeping two ways, and they are not interchangeable. `record` is a free-form bag that lands on the child session record and never reaches the request record. `provenance` is a closed, optional field, today just `taskId`, and it is the one stamped onto the detached request record under `metadata.workstream` beside the routing seed's `topic` and `key`.
-
-`topic` and `key` are the seed the child session's id was derived from, so they cannot disagree with the child they name. `taskId` is recorded as you pass it and is checked against nothing, so a reader should treat it as a correlation the spawning code asserted. The shipped task-board caller takes it off the claim it holds on the row. Nothing carries authority either way: routing, adoption, authorization and settlement all run off values the runtime derives and re-reads, never off request metadata.
+The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, and `LivenessAnswers`. Nothing on the interface names a store, a flow, a session record, or a task row, and no verb takes an identity or a session id: each closes over the running request's own. To start work in another session, use a [`dispatcher()`](#dispatches-entries-and-dispatcher) block; the flow checks its address when it is defined.
 
 ## Key design decisions
 

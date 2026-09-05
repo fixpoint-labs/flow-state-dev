@@ -42,14 +42,14 @@ ADVISORY="BP-009 / BP-022 (optional): packages/*/src changed without doc or chan
 Changed src files:
 $SRC
 
-Consider whether the change is user-facing (public API, CLI, hooks, env vars, config, or observable behavior). If yes → update packages/*/README.md and/or apps/docs/** and add a changeset (\`pnpm changeset\`). If internal-only → say so in your reply; no docs or changeset required.
+Consider whether the change is user-facing (public API, CLI, hooks, env vars, config, or observable behavior). If yes → update packages/*/README.md and/or apps/docs/**, and add a changeset (\`pnpm changeset\`) only if a consumer of a PUBLISHED package needs to know about it (BP-022 — changesets are not required by default). If internal-only → say so in your reply; no docs or changeset required.
 
 This reminder is advisory — you may finish the task after addressing or explicitly declining."
 
 if [ "${FSD_DOCS_CHECK_STRICT:-}" = "1" ]; then
   REASON="$ADVISORY
 
-Strict mode (FSD_DOCS_CHECK_STRICT=1) is on: a verbal reply does not clear this check. Add a doc/README update, or a changeset (\`pnpm changeset\`, or \`pnpm changeset --empty\` for internal-only changes), before stopping."
+Strict mode (FSD_DOCS_CHECK_STRICT=1) is on: a verbal reply does not clear this check. Add a doc/README update before stopping — or, if the change is one a consumer of a published package needs to know about, a changeset (\`pnpm changeset\`). \`pnpm changeset --empty\` also clears it, but under BP-022 an empty fragment is a convenience, not something internal-only work owes."
 
   if command -v jq >/dev/null 2>&1; then
     jq -nc --arg r "$REASON" '{decision:"block", reason:$r}'

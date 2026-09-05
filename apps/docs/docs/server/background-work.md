@@ -12,13 +12,129 @@ state, its resources, and the history of every request that ran in it. A
 background job's session hangs off the conversation that started it, as a child
 of it.
 
-This page is the HTTP surface for reading those jobs: ask a conversation for its
-jobs, then ask any one job for its history.
+This page covers how a flow starts a job, and the HTTP surface for
+reading them afterwards. Ask a conversation for its jobs, then ask any one job
+for its history.
 
-Starting one is server-side only — there is no endpoint for it. A job begins
-inside a running request, usually as a task board with a worker declared
-detached. See [Work that outlives the
-turn](/guides/background-work#workstreams-a-job-with-its-own-session).
+Starting one is server-side only. There is no endpoint for it. A job begins
+inside a running request, either from a `dispatcher()` block or from a task
+board handing a claimed task to a child session. See [Work that outlives the
+turn](/guides/background-work#workstreams-a-job-with-its-own-session) for how
+the two relate to the other kinds of background work.
+
+## Starting a job from a flow
+
+A flow declares the work a job can run under `internal.actions`, beside
+`actions`. An internal entry has the same shape as an action, but no client can
+call it. The only way in is a `dispatcher()` block inside the same flow.
+
+```ts
+import { defineFlow, dispatcher, generator, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const summarizeDocument = generator({
+  name: "summarize-document",
+  model: "openai/gpt-5.4-mini",
+  inputSchema: z.object({ documentId: z.string() }),
+  prompt: "Summarize the document.",
+});
+
+const acknowledge = handler({
+  name: "acknowledge",
+  inputSchema: z.object({ reason: z.string() }),
+  execute: async (input) => ({ noted: input.reason }),
+});
+
+// One job per document. The same documentId from the same conversation
+// lands on the same job.
+const summarizeInBackground = dispatcher({
+  name: "summarize-in-background",
+  type: "internal",
+  target: "summarize",
+  inputSchema: z.object({ documentId: z.string() }),
+  session: { key: (input) => input.documentId },
+});
+
+// Deliver into a session that already exists.
+const nudgeCoordinator = dispatcher({
+  name: "nudge-coordinator",
+  type: "internal",
+  target: "acknowledge",
+  inputSchema: z.object({ coordinatorSessionId: z.string(), reason: z.string() }),
+  session: { id: (input) => input.coordinatorSessionId },
+  payload: (input) => ({ reason: input.reason }),
+});
+
+export default defineFlow({
+  kind: "documents",
+  actions: {
+    upload: { block: summarizeInBackground },
+    nudge: { block: nudgeCoordinator },
+  },
+  internal: {
+    actions: {
+      summarize: { block: summarizeDocument },
+      acknowledge: { block: acknowledge },
+    },
+  },
+})();
+```
+
+A dispatcher is a handler. Run it, in a sequencer step, as a generator's tool,
+or as an action's root block, and it sends one request to `target` and returns
+as soon as the runtime has accepted it. It does not wait for the work.
+
+```ts
+// what the dispatcher returns
+{ sessionId: "sess_9f2c1a", requestId: "req_c41e", adopted: false }
+```
+
+`sessionId` is the session the work runs in, `requestId` the run it became, and
+`adopted` whether that session already existed. The entry validates the payload
+against its own `inputSchema` on arrival; `payload` shapes it, and defaults to
+the dispatcher's input as-is.
+
+`session` decides which session that is.
+
+| `session` | Runs in | When it does not exist |
+|---|---|---|
+| `{ key: (input) => string }` | a child of the running session, derived from the key | created; the next call with the same key from the same conversation adopts it |
+| `{ id: (input) => string }` | the session with that id | refused. Nothing is created |
+
+A `key` child is a job in every sense on this page: it hangs off the session
+that started it, runs the same flow as the same user, keeps its own state and
+history, and shows up in the parent's listing below. The key is scoped to the
+conversation, so the same key from a different conversation is a different
+child. An `id` target has to be a session of this flow kind that belongs to
+this user.
+
+`defineFlow` checks every dispatcher it can reach and throws at definition time
+when `target` names an entry the flow does not declare. An action named
+`summarize` does not stand in for `internal.actions.summarize`; each map is
+looked up on its own.
+
+A refusal at run time throws `DispatchRefusedError`, with `code:
+"dispatch-refused"` and a `refused` field to branch on:
+
+| `refused` | Meaning |
+|---|---|
+| `no-entry` | The flow declares no entry at that address |
+| `session-not-found` | An `id` names a session that does not exist, or one that belongs to another user |
+| `session-not-addressable` | An `id` names a session on another flow |
+| `key-occupied` | The `key` derived a session id already held by something that is not this conversation's child |
+| `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
+| `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
+| `external-dispatcher` | An `id` delivery on a deployment that hands work to an external queue. A `key` child is unaffected |
+
+Every refusal is decided before anything starts, so a `.rescue()` on the
+dispatcher can branch on `refused` knowing no child is running. A `key` or
+`id` function that returns an empty string throws a plain `Error` naming the
+block.
+
+A task board seat can start a job the same way: a `dispatcher({ type: "task"
+})` under `workers` sends each claimed task to one of the flow's `task.actions`
+entries, and the child session lands in the same listing. See [Task board →
+Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
 
 ## Listing a conversation's jobs
 
@@ -53,11 +169,13 @@ and the response key, and means the same thing throughout this page.
 }
 ```
 
-`topic` names the body of work and `coordinate` names where it runs. Work
-started from a task board, which is the usual way, gets a `coordinate` holding
-the board and the worker together in one encoded string. Compare it whole. The
-worker's name is visible inside it, but matching on that substring collides
-across boards.
+`topic` names the body of work and `coordinate` names where it runs. A job a
+`dispatcher()` started carries the dispatcher's key as `topic` and the entry it
+runs as `coordinate`: `internal:summarize` for an internal entry, `task:implement`
+for a task-board seat that hands off. Work started from a detached task-board
+worker gets a `coordinate` holding the board and the worker together in one
+encoded string. Compare it whole. The worker's name is visible inside it, but
+matching on that substring collides across boards.
 
 Together the two identify a job, so two rows sharing a `topic` are separate jobs
 whenever their `coordinate`s differ. A row with a `topic` and no `coordinate` was
@@ -216,6 +334,37 @@ one, so read it with a `== null` guard.
 
 Nothing routes, authorizes or settles on the bag. A wrong `taskId` mislabels a
 run for whoever is reading it and grants nothing.
+
+A run a `dispatcher()` started reads `source: "internal"`, or `source: "task"`
+when a task-board seat handed the work off, and carries a `metadata.dispatch`
+bag instead:
+
+```json
+{
+  "source": "task",
+  "actionName": "implement",
+  "metadata": {
+    "dispatch": {
+      "type": "task",
+      "target": "implement",
+      "from": { "block": "hand-off-implement", "sessionId": "sess_abc" },
+      "key": "task|10:issue-work|3:t42",
+      "taskId": "t42"
+    }
+  }
+}
+```
+
+`type` and `target` are the entry the run executes, `from` names the block that
+sent it and the session it was running in, `key` is the session key the child
+was derived from, and `taskId` the board row on a task hand-off. `key` is
+absent when the dispatcher delivered into an existing session by `id`, and
+`taskId` is absent on an internal dispatch. Read the bag only under those two
+sources; the same rule as `metadata.workstream` applies.
+
+A run with either source cannot be re-entered from outside. `retry`,
+`continue`, and `resume` on its request id answer `404`, the same as for a
+request that does not exist.
 
 Jobs can nest. If a job files jobs of its own, calling `/workstreams` on its id
 returns them.

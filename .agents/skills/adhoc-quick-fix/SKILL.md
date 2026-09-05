@@ -99,11 +99,11 @@ Launch a `general-purpose` sub-agent to determine what documentation and changel
    - `apps/docs/` (hosted site) — Are there guides, references, or getting-started pages that describe the old behavior?
    - `packages/*/README.md` — Does the affected package's README describe the pre-fix behavior?
    - `AGENTS.md` or `docs/contributing/best-practices.md` (+ the relevant `best-practices/<category>.md`) — Does the fix introduce a new pattern or deprecate an old one that agents/contributors should know about?
-3. **Changeset** — Determine whether the fix needs a `.changeset/*.md` fragment. Not every fix warrants one. It does if:
-   - The fix changes observable behavior (API response shape, error messages, default values)
+3. **Changeset** — Determine whether the fix needs a `.changeset/*.md` fragment. Most fixes don't; the default is no. It does if somebody who has installed a published package needs to know:
+   - The fix changes behavior they can observe from outside the package (API response shape, error messages, default values)
    - The fix affects how developers use the framework
    - The fix resolves a known issue that users may have worked around
-   - It does NOT need a changeset for purely internal refactors or test-only changes. For those, run `pnpm changeset --empty` and commit the empty fragment, or state "no changeset needed" in the PR description.
+   - It does NOT need one for internal refactors, test-only changes, or anything scoped to a private package (`labs/*`, `examples/*`, `apps/*`, `plugins/*`, `goals`). Say "no changeset needed" in the PR description; an empty fragment is optional, not required.
 
    When a fragment is warranted, follow the [Release notes workflow](../../../docs/contributing/release-notes-workflow.md) and BP-022: one user-facing sentence per affected package, no file paths, no test counts, no implementation rationale. Pre-1.0: `patch` or `minor` only, never `major`.
 4. **Return a concrete list** of files that need updating and what specifically should change in each. Don't just say "README might need updating" — say which section and what the new content should reflect.

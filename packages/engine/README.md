@@ -173,7 +173,7 @@ For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.p
 
 - **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
 - **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume. Resources declaring `client: { live: true }` emit their projected delta inline on each mutation so clients merge it without a refetch
-- **State persistence** — in-memory, filesystem, SQLite, and Postgres store adapters with CAS-guarded atomic writes
+- **State persistence** — in-memory, filesystem, SQLite, and Postgres store adapters. Version-checked writes for anything computed from current state; increments, appends and single-key writes are unchecked and apply to whatever the store holds
 - **Flow registry** — Register multiple flows, routes are derived automatically
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context
 - **Structured logging** — Every action execution logs flow/action/block IDs, attempt numbers, timing, and summarized payloads
@@ -843,8 +843,8 @@ createFlowApiRouter({
   // Sources from your own inbound transports that `retry` / `continue` /
   // `resume` may re-enter. The built-ins (`http`, `mcp`, `chat`, `scheduled`)
   // are always admitted; every other source is refused with a not-found unless
-  // named here. `webhook` and the detached-dispatch source are never openable
-  // — naming one throws at construction.
+  // named here. `webhook`, the detached-dispatch source, `task` and `internal`
+  // are never openable — naming one throws at construction.
   publicReentrySources: ["echo"]
 });
 ```
@@ -881,15 +881,17 @@ See [Debug vs client state](https://flow-state.dev/docs/devtool/debug-vs-client-
 
 ## State mutations
 
-Every state mutator (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) picks a persist posture and a concurrency driver:
+Every state mutator (`patchState`, `setState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) picks a persist posture and a concurrency driver:
 
-- **In-memory scopes** — target state, sequencer state, and any scope without a `persist` bridge. Mutations serialize through a per-`StateContainer` FIFO queue (`withScopeLock`). Concurrent mutators run one at a time in submission order; there is no version check, no retry, and no `ConcurrentModificationError`. Reads are still synchronous against `container.read()`.
+- **Scopes with no store** — target state, sequencer state, and any scope without a `persist` bridge. Mutations serialize through a per-`StateContainer` FIFO queue (`withScopeLock`). Concurrent mutators run one at a time in submission order; there is no version check, no retry, and no `ConcurrentModificationError`. Reads are still synchronous against `container.read()`.
 - **Request scope** — persists each write (so `/continue` can restore it) and serializes through `withScopeLock`, with the same version-checked `runWithCAS` underneath. Serialized writers each read a current version, so a wide same-run fan-out never conflicts and never spends a retry; the retry budget stays for the one writer the queue cannot order, a recovery continuation running against the same request record. `ConcurrentModificationError` surfaces on retry exhaustion.
-- **Session, user, and org scopes** — bridged through `persist` (filesystem, sqlite, postgres) and the optimistic `runWithCAS` retry loop, because a remote authority can advance the version underneath the local cache. `ConcurrentModificationError` still surfaces on retry exhaustion at this boundary.
+- **Session, user, and org scopes** — bridged through `persist` by whichever store adapter is configured (the in-memory store, filesystem, SQLite, Postgres) and driven by the optimistic `runWithCAS` retry loop, because a remote authority can advance the version underneath the local cache. `ConcurrentModificationError` still surfaces on retry exhaustion at this boundary.
 
-`flow.request.mutationTimeoutMs` (default `30_000`, set to `Infinity` to disable) bounds the worst-case wait for any in-memory mutation. When a mutator's queue wait + execution exceeds the budget, the call rejects with `ScopeMutationTimeoutError` instead of hanging the request indefinitely.
+That covers writes that carry a version. [Unchecked writes](#unchecked-writes) below never reach `runWithCAS`.
 
-The budget covers in-memory scopes only. It is not applied to any scope that persists — request scope included. The timeout rejects the caller without cancelling the mutation, so a write that outran it would still reach the store afterwards, landing on a record the runtime may already have finished with. A bounded error is worth having where the only casualty is the caller; it is not worth having where the casualty is the stored record.
+`flow.request.mutationTimeoutMs` (default `30_000`, set to `Infinity` to disable) bounds the worst-case wait for any mutation on a scope with no store. When a mutator's queue wait + execution exceeds the budget, the call rejects with `ScopeMutationTimeoutError` instead of hanging the request indefinitely.
+
+The budget covers scopes with no store only. It is not applied to any scope that persists — request scope included. The timeout rejects the caller without cancelling the mutation, so a write that outran it would still reach the store afterwards, landing on a record the runtime may already have finished with. A bounded error is worth having where the only casualty is the caller; it is not worth having where the casualty is the stored record.
 
 ```ts
 defineFlow({
@@ -900,6 +902,39 @@ defineFlow({
 ```
 
 The lock is non-reentrant: a mutator that calls `atomicState` again on the same container would await its own completion forever. Compose state mutations within a single mutator instead. Cross-scope mutator chains (scope A's mutator calls `atomicState` on scope B) are fine — different containers have independent queues.
+
+### Unchecked writes
+
+The version check applies to writes computed from current state. A write that doesn't read state to produce its result is sent to the store as the operation itself and applied to the record as it stands:
+
+| Version-checked | Unchecked |
+|---|---|
+| `setState` | `pushState(field, value)` |
+| `atomicState` | `setStateRecord(field, key, value)` |
+| `patchState("field", updater)` | `deleteStateRecord(field, key)` |
+| `patchState` with two or more fields | `patchState({ field: value })` — one field, plain value |
+| `incState` across two or more fields | `incState({ field: n })` — one field |
+
+Right-hand-column calls never enter the retry loop and never raise `ConcurrentModificationError`. What they do to a concurrent writer splits the column:
+
+| Unchecked call | Two execution contexts, same field |
+|---|---|
+| `incState({ field: n })` — one field | Both land. The field ends up with both deltas |
+| `pushState(field, value)` | Both land. Position is not promised |
+| `patchState({ field: value })` — one field, plain value | Last write wins. The other value is gone |
+| `setStateRecord(field, key, value)` | Last write wins on that key. Other keys are untouched |
+
+Both writers get `true` in every one of those rows, the overwrite included. Where the new value depends on the old one, use `patchState("field", updater)` or `atomicState`, which re-run the mutator against the value that won.
+
+The left-hand column is a version check, not a merge, and a retry means something different per call. `atomicState`, the updater form of `patchState`, and a multi-field `incState` re-run the computation against the refreshed state, so the updates compose. A multi-field `patchState` re-applies the caller's fixed values onto the refreshed state. `setState` re-sends the whole object the caller passed, unchanged, so a retry replaces whatever the other writer landed.
+
+A store has to implement the matching operation for the write to go the right-hand way; otherwise the runtime writes the full record at the version the container holds, in a single attempt with no retry. Field deletion is the only gap in the shipped adapters: no store implements it on the request record, and the filesystem stores implement it on no scope. `deleteStateRecord` there returns `false` if the record moved first, and the key stays stored — a lost race, against a record that still exists.
+
+Every store refuses a write against a record that does not exist before it compares versions, unchecked writes included. So an increment against a deleted scope record returns `false` and creates nothing.
+
+`false` from a mutator means "nothing was written". It does not mean the store already holds the value. Three things produce it: the proposed state matched what **this container last read** (the deep-equal short-circuit runs against the cached read, ahead of any store round-trip), the record no longer exists, or a full-record fallback write lost its version check.
+
+The table above is scope state. Every *state* mutation through a resource handle takes the version check; `writeContent` carries no version and overwrites the stored body.
 
 ## Request registry sharedness
 

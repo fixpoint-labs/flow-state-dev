@@ -24,7 +24,7 @@ defineFlow({
 });
 ```
 
-Parallel runs are still safe from data corruption — the state layer's compare-and-swap prevents lost writes. What `allow` doesn't give you is *ordering*. Two replies to one session can interleave. That's what the other policies are for.
+Parallel runs are still safe from data corruption. An update computed from current state is refused and retried if someone moved the record first, and an increment or an append is applied to whatever the store holds. What that doesn't stop is one run overwriting another's value on the same field. What `allow` doesn't give you is *ordering*. Two replies to one session can interleave. That's what the other policies are for.
 
 ## Setting a policy
 
@@ -125,7 +125,7 @@ Over HTTP, a `reject` instead returns `409` carrying the in-flight `requestId`, 
 ## Relationship to other primitives
 
 - **Scheduled `onOverlap`** is the scheduled-action spelling of the same idea. `onOverlap: "skip"` is `reject` keyed on the schedule id; `onOverlap: "allow"` is `allow`. See [Scheduled actions](../server/scheduled.md).
-- **State compare-and-swap** prevents two concurrent runs from corrupting state. A concurrency policy sits above it: CAS keeps writes safe, the policy orders the responses.
+- **The state layer** decides how two concurrent writes to one record resolve: a write built on a stale read is refused and re-applied against the value that won, an increment or an append is handed to the store as the operation itself, and a plain single-field write is last-write-wins. See [State Operations](../fundamentals/state-operations.md#cas-semantics) for which calls get which. A concurrency policy sits above that: the state layer resolves a write that already happened, the policy decides whether the second run starts at all.
 
 ## Limits
 

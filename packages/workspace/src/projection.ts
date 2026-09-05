@@ -36,6 +36,7 @@ import { createHash } from "node:crypto";
 import type { FlushOutcome, FlushReport, Mount, Place, ProjectedEntryState } from "./types";
 import { PlaceUnreadableError } from "./types";
 import { isMetadataKey, normalizePath, routePath } from "./routing";
+import { claimKey, sharedClaimRegistry, type ClaimHolder, type ClaimRegistry } from "./claims";
 
 /** A hex SHA-256 of `content`. The only comparison the projection makes. */
 export function hashContent(content: string): string {
@@ -68,9 +69,10 @@ export interface Projection {
    * one path, and advances the baseline so the next flush reads the write as
    * ours rather than as somebody else's.
    *
-   * Resolves `undefined` when the path is nothing for this projection to
-   * decide: a read-only mount, or a collection's own metadata. The same two
-   * cases a flush passes over without recording an outcome.
+   * Resolves `undefined` only when the path is genuinely nothing to decide —
+   * a collection's own metadata. A read-only mount used to resolve `undefined`
+   * too, which the tools read as success and relayed to the model as a saved
+   * file; it comes back as a `readonly` outcome instead.
    */
   put(path: string, content: string): Promise<FlushOutcome | undefined>;
   /**
@@ -83,6 +85,14 @@ export interface Projection {
 export interface ProjectionOptions {
   mounts: readonly Mount[];
   place: Place;
+  /**
+   * Where this projection arbitrates writes against other live projections.
+   *
+   * Defaults to a process-wide registry, which is what makes two projections
+   * nobody wired together still arbitrate. Pass your own to scope arbitration
+   * to a subset — a test, or one tenant's runs.
+   */
+  claims?: ClaimRegistry;
 }
 
 /**
@@ -92,9 +102,33 @@ export interface ProjectionOptions {
  * which is what lets the whole of §10's behaviour set run against an
  * in-memory place with no sandbox, no harness and no model.
  */
-export function createProjection({ mounts, place }: ProjectionOptions): Projection {
+export function createProjection({
+  mounts,
+  place,
+  claims = sharedClaimRegistry,
+}: ProjectionOptions): Projection {
+
   /** path → the hash of what we last committed there. */
   const baseline = new Map<string, string>();
+
+  // Two mounts of ONE collection are two routes to the same durable rows, and
+  // nothing downstream can arbitrate between them: a claim keyed on the entry
+  // makes both aliases produce the same key, but a single flush decides both
+  // under one holder, so the second is granted a claim the first already
+  // holds and the later write silently wins. There is no correct answer to
+  // "which path owns this row" either, so the configuration is refused rather
+  // than resolved.
+  const byCollection = new Map<string, string>();
+  for (const mount of mounts) {
+    const seen = byCollection.get(mount.collectionId);
+    if (seen !== undefined) {
+      throw new Error(
+        `a projection cannot mount one collection twice — "${seen}" and "${mount.prefix}" ` +
+          `address the same durable entries, so a write under either would overwrite the other`,
+      );
+    }
+    byCollection.set(mount.collectionId, mount.prefix);
+  }
 
   const prefixes = mounts.map((m) => normalizePath(m.prefix));
 
@@ -145,7 +179,37 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
     }
   }
 
+  /**
+   * Run one claiming operation under a holder that is ITS OWN.
+   *
+   * Not the projection's. A session-scoped sandbox is one registry entry, so
+   * two requests that overlap in it share one projection — and a holder
+   * belonging to the projection is then the same holder for both. `claim`
+   * grants a key to whoever already holds it, so neither request is refused,
+   * both read the same base, and both commit with both told they wrote.
+   *
+   * Held for the operation and no longer. A claim outliving it would need a
+   * release call at the end of every run, on every path a run can end — and
+   * one missed leaves an entry claimed by an operation nobody will run again,
+   * refusing every later one. The race this exists to stop is two operations
+   * interleaving at their awaits, which is exactly this long. Writes that do
+   * NOT overlap in time are already covered: the second finds the collection
+   * changed and reports a conflict.
+   */
+  async function claiming<T>(operation: (holder: ClaimHolder) => Promise<T>): Promise<T> {
+    const holder: ClaimHolder = Symbol("operation");
+    try {
+      return await operation(holder);
+    } finally {
+      claims.releaseAll(holder);
+    }
+  }
+
   async function flush(): Promise<FlushReport> {
+    return await claiming(flushOnce);
+  }
+
+  async function flushOnce(holder: ClaimHolder): Promise<FlushReport> {
     // Before anything else: an unreadable place must abort the whole flush,
     // because the delete pass below reads "absent from the place" as "deleted
     // by the run".
@@ -193,7 +257,7 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
       // the way this was first written.
       if (local === null) continue;
 
-      outcomes.push(await decide(mount, key, path, local));
+      outcomes.push(await decide(mount, key, path, local, holder));
     }
 
     // The delete pass walks what we OWN, not what we hydrated. A path this
@@ -204,6 +268,12 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
       const routed = routePath(mounts, path);
       if (routed === undefined || !routed.mount.writable) continue;
       const { mount, key } = routed;
+
+      // A delete is a write. Same claim, same refusal.
+      if (claims.claim(claimKey(mount.collectionId, key), holder) !== holder) {
+        outcomes.push({ kind: "contested", path });
+        continue;
+      }
 
       const theirs = await theirContent(mount, key);
       const theirHash = theirs === null ? undefined : hashContent(theirs);
@@ -239,6 +309,9 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
       conflicts: outcomes.filter(
         (o): o is Extract<FlushOutcome, { kind: "conflict" }> => o.kind === "conflict",
       ),
+      contested: outcomes.filter(
+        (o): o is Extract<FlushOutcome, { kind: "contested" }> => o.kind === "contested",
+      ),
     };
   }
 
@@ -255,13 +328,33 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
     key: string,
     path: string,
     local: string,
+    holder: ClaimHolder,
   ): Promise<FlushOutcome> {
     const now = hashContent(local);
     const base = baseline.get(path);
+
+    if (now === base) return { kind: "unchanged", path };
+
+    // The claim is taken HERE, and the ordering either side of it is the
+    // whole point.
+    //
+    // After the no-op branch, because claiming a path we are not about to
+    // touch would refuse a run that merely read it unchanged. That branch
+    // needs no collection read, so nothing is lost by deciding it first.
+    //
+    // But BEFORE the collection read, because the read is what the write
+    // trusts. Read first and another projection can commit its whole write
+    // and release inside the await; this one then resumes with a snapshot
+    // that predates it, is granted a claim proving nothing, and overwrites
+    // work it never saw — with both writers told they succeeded. The claim
+    // has to cover the read-compare-write, not just the write.
+    if (claims.claim(claimKey(mount.collectionId, key), holder) !== holder) {
+      return { kind: "contested", path };
+    }
+
     const theirs = await theirContent(mount, key);
     const theirHash = theirs === null ? undefined : hashContent(theirs);
 
-    if (now === base) return { kind: "unchanged", path };
     if (base === undefined && theirHash === undefined) {
       await commit(mount, key, local, now);
       baseline.set(path, now);
@@ -294,9 +387,21 @@ export function createProjection({ mounts, place }: ProjectionOptions): Projecti
     const routed = routePath(mounts, path);
     if (routed === undefined) return { kind: "orphan", path };
     const { mount, key } = routed;
-    if (!mount.writable) return undefined;
+    // **Metadata first, and the order is the whole point.** A `_`-prefixed key
+    // is the collection's own bookkeeping, which no projection writes under any
+    // mount — so a read-only mount does not make it a refusal, it was never
+    // going to be written. Checking writability first told a caller to find a
+    // writable mount for a key no mount accepts.
     if (isMetadataKey(key)) return undefined;
-    return await decide(mount, key, path, content);
+    // `normalizePath`d for the same reason `routePath` normalizes before it
+    // compares: `Mount` is public and `createProjection` takes hand-built ones,
+    // so a prefix written `./artifacts` or `artifacts/` would otherwise reach a
+    // model as `"./artifacts/"`. In-repo prefixes come from `getPatternPrefix`
+    // and carry neither.
+    if (!mount.writable) {
+      return { kind: "readonly", path, prefix: normalizePath(mount.prefix) };
+    }
+    return await claiming((holder) => decide(mount, key, path, content, holder));
   }
 
   /** Write content back to the collection, keeping its state in step. */

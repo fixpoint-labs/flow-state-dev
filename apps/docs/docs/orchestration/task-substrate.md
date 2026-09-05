@@ -38,6 +38,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `assignee` | `string?` | Worker key a board uses to route the task. |
 | `priority` | `number?` | Higher wins under the priority dispatcher. Unset reads as 0. |
 | `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
+| `leaseDurationMs` | `number?` | How long the current claim was granted, as the claim wrote it. Read it with `committedLeaseSpan(task)` rather than subtracting the stamps yourself — every other write to the task moves `updatedAt`. |
 | `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
@@ -214,6 +215,8 @@ A skipped write resolves to `{ outcome: "declined", reason, status }` instead of
 
 While a task is `in_progress`, your writes are good for as long as you hold the lease. Present a ticket after the deadline has passed and the write is declined `lost-claim`, the same as any other lost claim, because by then the task is the queue's to hand out again. That is the reason to size a lease to the job it covers.
 
+One caller is entitled to more than that: a worker that has not started yet. If your claim sat in a queue and its lease ran out before the work began, `renewLease(id, deadline, { claim, adoptLapsedLease: true })` takes the task back instead of being declined — same attempt, same claim, no re-dispatch. The write is what decides it: `{ outcome: "declined", reason: "lost-claim" }` if another claimant has meanwhile taken the task, and `{ outcome: "recorded" }` if nobody has, which means the task is yours again for the deadline you just wrote. Pass `committedLeaseSpan(task)` past `now()` as that deadline, so the task keeps the lease length its claim was granted. Reach for it only from a worker that has run nothing yet. A worker already partway through the job is in the other case, where the lapse means the task may be somebody else's now, and the flag is ignored on any write except a renewal.
+
 The lease answers one question: is a live worker on this right now? A task in `parked` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: a `resumeFromReview` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
 
 With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing, because it runs the terminal check whether you pass options or not.
@@ -277,9 +280,9 @@ A `TaskCollectionRef` of your own has to do three things:
 
 1. Implement `renewLease`, fenced by the same claim ticket your other writes take.
 2. Make your own `claim()` consider tasks whose lease has run out, take them over as a new attempt, and settle one whose abandonment allowance is spent instead of running it again.
-3. Refuse any ticketed write whose lease has already run out, or a worker that lost its task can still write to it.
+3. Refuse any ticketed write whose lease has already run out, or a worker that lost its task can still write to it. The one exception is a renewal that passes `adoptLapsedLease` — let that one through while every other guard still holds, or a task board's handed-off work stalls behind a queue.
 
-A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than restating the rule.
+A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than restating the rule, and for `committedLeaseSpan(task)` when you need the length of the lease a claim was granted.
 
 It also has to take the trailing options argument on every write and evaluate the guards inside its own atomic section. A two-argument `complete(id, output)` satisfies the interface structurally and JavaScript drops the third argument in silence, so nothing tells you it isn't happening. A board on such a ref still finishes: where an unguarded write throws and a guarded one would have declined, the board drops that result and drains the rest of its tasks. Survival is all that buys you. The guards are what keep a late worker from overwriting a settlement somebody recorded deliberately, and a stale write the state machine happens to permit never throws at all, so nothing outside your store sees it.
 
