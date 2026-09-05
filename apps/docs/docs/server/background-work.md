@@ -371,6 +371,8 @@ more.
 - [Client overview](../client/overview.md#child-sessions) — the same two calls from an app
 - [Claude Code SDK agent](../tools/claude-code-sdk.md#turning-it-off-for-background-work) — running
   a coding agent in a child session, and what it records there
+- [Codex SDK agent](../tools/codex.md#continuing-a-thread) — the other coding agent, and how a run
+  in a child session stays resumable when it is cancelled
 - [Engine setup](./setup.md) — the full HTTP route table
 - [Authentication](./authentication.md) — how addressed routes scope by owner
 - [Persistence](../persistence/overview.md) — where sessions and requests are stored
