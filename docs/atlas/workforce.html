@@ -196,7 +196,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <aside class="rail">
   <div class="rail-mark">The Workforce Atlas</div>
   <div class="rail-sub">living design &middot; sep 2026</div>
-  <p class="sib">sibling · <a href="conductor.html">Conductor atlas</a><br>sibling · <a href="roadmap.html">Roadmap atlas</a></p>
+  <p class="sib">sibling &#183; <a href="conductor.html">Conductor atlas</a><br>sibling &#183; <a href="roadmap.html">Roadmap atlas</a></p>
   <nav>
     <a class="grp">Orientation</a>
     <a href="#what">01 &middot; What Workforce is</a>
@@ -479,7 +479,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <figcaption><b>Files configure. They do not run.</b> Today <code>defineAgent</code> is a named participant that becomes a generator. The convention&#8217;s unit is a flow. Growing the <code>Agent</code> type until it looks like a flow is how Layer&nbsp;1 absorbs a Workforce opinion.</figcaption>
   </figure>
 
-  <pre class="code"><i>// proposed factory input — not an API on main</i>
+  <pre class="code"><i>// proposed factory input &#8212; not an API on main</i>
 <b>createWorkerFlow</b>({
   name: <em>"eng-manager"</em>,
   role: <em>"./workers/eng-manager/role.md"</em>,
@@ -487,7 +487,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   tools: <em>["board", "search"]</em>,
   skills: <em>["staff-issue", "write-spec"]</em>,
 })
-<i>// → one defineFlow({ kind: "eng-manager", ... }) of the contract shape</i>
+<i>// &#8594; one defineFlow({ kind: "eng-manager", ... }) of the contract shape</i>
 <i>// a hand-written defineFlow is fine if it keeps that shape</i></pre>
 </section>
 
@@ -499,17 +499,17 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <div class="fig-body">
       <svg viewBox="0 0 940 300" role="img" aria-label="Three sessions of the same worker flow. Each session is a room. Under them, one isolated org resource and one isolated user resource keyed by flowKind, shared across those sessions and invisible to other worker flows. A side note: Agent has no resources field; isolation is the memory.">
         <rect class="n-prop" x="16" y="16" width="200" height="88" rx="4"/>
-        <text class="t-s f-accent" x="30" y="40">session · slack</text>
+        <text class="t-s f-accent" x="30" y="40">session &#183; slack</text>
         <text class="t-xs" x="30" y="60">CHANNEL</text>
         <text class="t-xs" x="30" y="78">FLOW: ENG-MANAGER</text>
 
         <rect class="n-prop" x="232" y="16" width="200" height="88" rx="4"/>
-        <text class="t-s f-accent" x="246" y="40">session · launch</text>
+        <text class="t-s f-accent" x="246" y="40">session &#183; launch</text>
         <text class="t-xs" x="246" y="60">PROJECT ROOM</text>
         <text class="t-xs" x="246" y="78">SAME FLOW KIND</text>
 
         <rect class="n-prop" x="448" y="16" width="200" height="88" rx="4"/>
-        <text class="t-s f-accent" x="462" y="40">session · dm</text>
+        <text class="t-s f-accent" x="462" y="40">session &#183; dm</text>
         <text class="t-xs" x="462" y="60">TALK TO ENG MGR</text>
         <text class="t-xs" x="462" y="78">SAME FLOW KIND</text>
 
@@ -600,7 +600,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <thead><tr><th>Piece</th><th>Status</th><th>What it is, narrowly</th></tr></thead>
       <tbody>
         <tr><td><code>create_session</code> / list / get / delete</td><td><span class="tag t-real">exists</span></td><td>Session routes on the engine. Factory bootstrap is a caller of these, not a new verb.</td></tr>
-        <tr><td><code>dispatcher</code> <code>session: { id }</code></td><td><span class="tag t-real">exists</span></td><td>Deliver into a session that already exists. Same principal, same flow. Never created.</td></tr>
+        <tr><td><code>dispatcher</code> <code>session: { id }</code></td><td><span class="tag t-real">exists</span> in-process</td><td>Deliver into a session that already exists. Same principal, same flow. Never created. <strong>Only where the host runs its own work.</strong> Past an external queue it refuses by name &#8212; a delivery into an existing session cannot be arbitrated against that session&#8217;s concurrency policy across that boundary, so a BullMQ deployment gets <code>external-dispatcher</code> rather than an under-delivered send (<code>packages/engine/src/context/create-request-host.ts</code>). The <code>{ key }</code> form is unaffected.</td></tr>
         <tr><td>Channel as a named static session</td><td><span class="tag t-prop">proposed</span></td><td>Convention: bootstrap opens the rooms the roster needs. The session <em>is</em> the channel.</td></tr>
         <tr><td>Seed / nonstandard sessions on <code>defineFlow</code></td><td><span class="tag t-gone">cut</span></td><td>No such field. Do not add one so a flow can declare its rooms. That is bootstrap&#8217;s job.</td></tr>
       </tbody>
