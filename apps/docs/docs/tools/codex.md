@@ -27,10 +27,6 @@ re-implement its tools. It runs the
 in a subprocess, watches the stream, and turns each thing that happens into a
 canonical item.
 
-One honest difference from the Claude Code page: Codex reports how many tokens a
-turn used but never what they cost, so the cost on the handle is an estimate we
-derive. The handle says so.
-
 ## Installation
 
 The SDK is an optional peer dependency, pinned to an exact version:
@@ -39,16 +35,14 @@ The SDK is an optional peer dependency, pinned to an exact version:
 pnpm add @flow-state-dev/codex @openai/codex-sdk@0.152.1
 ```
 
-The pin is enforced, not advisory. Codex's JSONL output sits behind the CLI's
-`--experimental-json` flag and can change in a lockstep CLI and SDK release, so
-building a block against any other installed version fails immediately, naming
-both versions. There is no option to override it. The way to take a newer Codex
-is a release of `@flow-state-dev/codex` that has been tested against it.
+Codex's JSONL output sits behind the CLI's `--experimental-json` flag and can
+change in a lockstep CLI and SDK release, so building a block against any other
+installed version fails immediately, naming both versions. There is no option to
+override it. The way to take a newer Codex is a release of
+`@flow-state-dev/codex` that has been tested against it.
 
 Building also fails if an SDK is installed but its version cannot be read, which
-can happen under Yarn PnP or a custom loader. A gate that guessed in that case
-would be no gate at all. Point `resolveCodexClient` at your own client if you
-need to run in a layout the check cannot see.
+can happen under Yarn PnP or a custom loader.
 
 The SDK brings the `codex` binary with it, so there is no separate CLI to
 install. At runtime it needs either `CODEX_API_KEY` in the environment or a
@@ -66,7 +60,9 @@ import { createCodexAgentCapability } from "@flow-state-dev/codex";
 
 const planner = generator({
   name: "planner",
+  // The generator's own model, as a flow-state-dev model id.
   model: "openai/gpt-5.4-mini",
+  // Codex's model is set separately, in its own ids — see the next example.
   uses: [createCodexAgentCapability({ cwd: async () => checkoutForThisRun() })],
 });
 ```
@@ -82,6 +78,8 @@ const pipeline = sequencer({ name: "do-the-work" }).step(
     cwd: (ctx) => workspacePathFor(ctx),
     resume: (ctx) => previousSessionIdFor(ctx),
     onSession: (id, ctx) => rememberSessionId(id, ctx),
+    // Options passed straight to Codex, in Codex's own vocabulary — `model`
+    // here is a Codex model id, not a flow-state-dev one.
     thread: { model: "gpt-5.4-codex", sandboxMode: "workspace-write", approvalPolicy: "never" },
   }),
   { abortSignal: () => AbortSignal.timeout(runTimeoutMs) },
@@ -89,9 +87,9 @@ const pipeline = sequencer({ name: "do-the-work" }).step(
 ```
 
 The block's input is the prompt, and nothing else. Everything that decides where
-a run writes or which conversation it continues is configuration, for a reason
-worth stating: the same block can be handed to a model as a tool, so a field on
-the input is a field the model could set.
+a run writes or which conversation it continues is configuration. The same block
+can be handed to a model as a tool, and a field on the input is a field the model
+could set.
 
 ## What it emits
 
@@ -109,9 +107,8 @@ the input is a field the model could set.
 Every item carries provenance, so the devtool shows the full trace of what the
 run did.
 
-Anything Codex emits that this version does not recognise becomes a status note
-rather than an error. The output format is experimental, and a run should degrade
-before it breaks.
+Output this package doesn't recognize becomes a status note rather than an error.
+The format is experimental, so unknown output doesn't fail the run.
 
 ## Where the run works
 
@@ -143,10 +140,10 @@ This package keeps no session state of its own. `resume` reads the thread id fro
 wherever you keep it, and `onSession` is called with the id the moment the run
 names it, which is before the run does any work.
 
-That ordering is the point. A run that is cancelled or dies partway through
-returns no handle at all, so a host that only learned the thread id from the
-returned handle would have nothing to continue. Because `onSession` fires during
-the run, the conversation is still resumable.
+A run that is cancelled or dies partway through returns no handle at all, so a
+host that only learned the thread id from the returned handle would have nothing
+to continue. Because `onSession` fires during the run, the conversation is still
+resumable.
 
 `onSession` fires only when Codex actually names a thread. If you resume an id
 Codex no longer has, it names none, the run fails, and the id you already hold is
@@ -158,9 +155,9 @@ Nothing to write. The block forwards its own signal into the turn, and a fired
 deadline throws rather than returning a handle. The thread id has already reached
 `onSession` by then, so the run can be continued.
 
-One limitation to know about: the deadline bounds Codex, not what Codex ran. A
-command Codex started can outlive the process being killed. The sandbox setting
-is what bounds that class of thing.
+The deadline bounds Codex, not what Codex ran. A command Codex started can
+outlive the process being killed. The sandbox setting is what bounds that class
+of thing.
 
 ## Usage and cost
 
@@ -169,15 +166,12 @@ harness reports, plus Codex's full breakdown — cached input, cache writes and
 reasoning output — under `codexUsage`.
 
 Cost is an estimate, derived from flow-state-dev's model price table, and
-`cost.basis` always reads `"estimated"`. It is absent rather than zero in three
-cases:
+`cost.basis` always reads `"estimated"`. It is absent rather than zero when:
 
 - No model was configured, so the run used Codex's default. Nothing in the output
   names the model that ran, so there is nothing to price.
 - The price table has no entry for the model. One patch release teaches it.
 - The turn never completed, so there is no usage.
-
-`null` means nobody knows what the run cost. It never means the run was free.
 
 ## Errors
 

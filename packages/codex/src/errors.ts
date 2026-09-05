@@ -53,7 +53,11 @@ export class CodexSdkVersionMismatchError extends Error {
         : `\`@openai/codex-sdk\` ${installed} is installed, but @flow-state-dev/codex is tested against exactly ${tested}. `) +
         "Codex's JSONL wire is experimental and can change in a lockstep CLI+SDK release, so this package refuses to run against a version it has not checked. " +
         (installed === null
-          ? `Install \`@openai/codex-sdk\` ${tested} in a layout this package can read, or pass your own \`resolveCodexClient\`.`
+          ? // Deliberately NOT offering `resolveCodexClient` as the escape: the
+            // gate runs when the block is built, before any client is resolved,
+            // so supplying one does not get past it. An error that names a way
+            // out that does not work is worse than one that names none.
+            `Install \`@openai/codex-sdk\` ${tested} in a layout this package can read.`
           : `Pin \`@openai/codex-sdk\` to ${tested}, or take a release of @flow-state-dev/codex that tests ${installed}.`),
     );
     this.name = "CodexSdkVersionMismatchError";
