@@ -141,7 +141,7 @@ function topicFor(question: string, attempt: number): string {
 // ───────────────────────────────────────────────────────────────────────────
 
 describe("the park — a handed-off worker's own hold survives its normal return", () => {
-  it("leaves the row awaiting_review and the question open", async () => {
+  it("leaves the row parked and the question open", async () => {
     // Behaviour 1. The worker calls `awaitReview` on its OWN row and then
     // returns normally; the recorders decline a parked row, so nothing settles
     // it on the way out. `completed` here would mean the park was tidied away.
@@ -153,7 +153,7 @@ describe("the park — a handed-off worker's own hold survives its normal return
 
     const row = await seedAndSettle(live);
 
-    expect(row.status).toBe("awaiting_review");
+    expect(row.status).toBe("parked");
     expect(row.questions).toHaveLength(1);
     expect(row.questions[0]!.text).toBe("which path?");
     expect(row.questions[0]!.attempt).toBe(1);
@@ -179,7 +179,7 @@ describe("the park — a handed-off worker's own hold survives its normal return
     expect(terminationReason(items)).toBe("parked-for-review");
     // Nothing was re-dispatched: a parked row is not claimable.
     expect(seen.turn).toBe(runsBefore);
-    expect((await readStatus(live)).status).toBe("awaiting_review");
+    expect((await readStatus(live)).status).toBe("parked");
   });
 
   it("does NOT report parked-for-review when nothing is parked", async () => {
@@ -244,7 +244,7 @@ describe("the decide arms — asserted on the board row AND the inbox row", () =
 
     const row = await seedAndSettle(live);
 
-    expect(row.status).toBe("awaiting_review");
+    expect(row.status).toBe("parked");
     expect(row.questions.map((q) => q.text)).toEqual(["which path?"]);
 
     // And the question is answerable, which is the whole point of holding it.
@@ -285,7 +285,7 @@ describe("the decide arms — asserted on the board row AND the inbox row", () =
     await live.call("wake", {});
     const parked = await settle(live);
 
-    expect(parked.status).toBe("awaiting_review");
+    expect(parked.status).toBe("parked");
     expect(parked.questions.map((q) => q.text)).toContain("which path?");
   });
 
@@ -296,7 +296,7 @@ describe("the decide arms — asserted on the board row AND the inbox row", () =
       isDone: () => false,
     });
     const row = await seedAndSettle(live);
-    expect(row.status).toBe("awaiting_review");
+    expect(row.status).toBe("parked");
     expect(row.questions).toHaveLength(1);
   });
 
@@ -334,7 +334,7 @@ describe("the decide arms — asserted on the board row AND the inbox row", () =
     const row = await seedAndSettle(live);
 
     expect(row.status).toBe("pending");
-    expect(row.status).not.toBe("awaiting_review");
+    expect(row.status).not.toBe("parked");
     expect(row.run?.outcome).toBe("failed");
 
     // **`present` is half the assertion.** The row is created BEFORE the arms,
@@ -368,7 +368,7 @@ describe("the answer — one action, and the run comes back holding it", () => {
       isDone: () => false,
     });
     const parked = await seedAndSettle(live);
-    expect(parked.status).toBe("awaiting_review");
+    expect(parked.status).toBe("parked");
 
     const outcome = await live.call<AnswerOutput>("answer", {
       question: topicFor("which path?", 1),
@@ -458,7 +458,7 @@ describe("the answer — one action, and the run comes back holding it", () => {
 
     // Attempt 2 asked the identical question and is waiting on it — on its OWN
     // row, which nobody has answered.
-    expect(parkedAgain.status).toBe("awaiting_review");
+    expect(parkedAgain.status).toBe("parked");
     expect(parkedAgain.questions.map((q) => q.question)).toEqual([
       topicFor("which path?", 2),
     ]);
@@ -493,7 +493,7 @@ describe("the answer — one action, and the run comes back holding it", () => {
     // Attempt 2 wrote no marker of its own, so it is an ordinary failed
     // attempt — re-pended, not parked.
     expect(after.status).toBe("pending");
-    expect(after.status).not.toBe("awaiting_review");
+    expect(after.status).not.toBe("parked");
     // And no second question appeared out of the stale file.
     expect(after.questions).toHaveLength(0);
   });
@@ -525,7 +525,7 @@ describe("the answer — one action, and the run comes back holding it", () => {
 
     await live.call("wake", {});
     const parked = await settle(live);
-    expect(parked.status).toBe("awaiting_review");
+    expect(parked.status).toBe("parked");
     // Attempt 2 WAS told why attempt 1 stopped — that channel still works.
     expect(seen.prompts[1]).toContain("error_max_turns");
 
@@ -614,7 +614,7 @@ describe("the guard — reported declines, and the row half of the pair", () => 
     await seedAndSettle(live);
     await live.call("wake", {});
     const parked = await settle(live);
-    expect(parked.status).toBe("awaiting_review");
+    expect(parked.status).toBe("parked");
     expect(parked.questions.map((q) => q.text)).toEqual(["attempt two's question"]);
 
     const stale = await live.call<AnswerOutput>("answer", {
@@ -635,7 +635,7 @@ describe("the guard — reported declines, and the row half of the pair", () => 
     // Attempt 1's row is untouched, attempt 2's is still open, and the task was
     // NOT re-queued.
     const after = await readStatus(live);
-    expect(after.status).toBe("awaiting_review");
+    expect(after.status).toBe("parked");
     expect(after.questions.map((q) => q.text)).toEqual(["attempt two's question"]);
   });
 
@@ -671,7 +671,7 @@ describe("the guard — reported declines, and the row half of the pair", () => 
     });
     expect(first.result).toBe("answered");
     const parkedOnTwo = await settle(live);
-    expect(parkedOnTwo.status).toBe("awaiting_review");
+    expect(parkedOnTwo.status).toBe("parked");
     expect(parkedOnTwo.questions.map((q) => q.text)).toEqual(["attempt two's question"]);
     const runsBefore = seen.turn;
 
@@ -686,7 +686,7 @@ describe("the guard — reported declines, and the row half of the pair", () => 
     // Nothing ran, attempt 2 is still waiting, and the task was not re-queued.
     expect(seen.turn).toBe(runsBefore);
     const after = await readStatus(live);
-    expect(after.status).toBe("awaiting_review");
+    expect(after.status).toBe("parked");
     expect(after.questions.map((q) => q.text)).toEqual(["attempt two's question"]);
   });
 });
@@ -742,7 +742,7 @@ describe("reconciliation — an unanswerable row is never left displayed as answ
     await live.call("wake", {});
     const parked = await settle(live);
 
-    expect(parked.status).toBe("awaiting_review");
+    expect(parked.status).toBe("parked");
     // At most ONE open row per issue-phase — what the proceed guard and
     // recovery's nothing-open condition both assume.
     expect(parked.questions.map((q) => q.text)).toEqual(["the real question"]);
@@ -756,7 +756,7 @@ describe("reconciliation — an unanswerable row is never left displayed as answ
     expect(orphan.drained).toBe(false);
     // The task was NOT re-queued, and the real question is still waiting.
     const after = await readStatus(live);
-    expect(after.status).toBe("awaiting_review");
+    expect(after.status).toBe("parked");
     expect(after.questions.map((q) => q.text)).toEqual(["the real question"]);
   });
 
@@ -774,7 +774,7 @@ describe("reconciliation — an unanswerable row is never left displayed as answ
       isDone: () => false,
     });
     const parked = await seedAndSettle(live);
-    expect(parked.status).toBe("awaiting_review");
+    expect(parked.status).toBe("parked");
     expect(parked.questions).toHaveLength(1);
     const topic = topicFor("which path?", 1);
 
@@ -838,7 +838,7 @@ describe("the inbox crosses the session boundary, and `status` is what reads it"
     const other = "sess_a_completely_different_coordinator";
     const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE }, other);
 
-    expect(rows[0]!.status).toBe("awaiting_review");
+    expect(rows[0]!.status).toBe("parked");
     expect(rows[0]!.questions.map((q) => q.text)).toEqual(["which path?"]);
 
     // And that other session can act on what it read.
@@ -883,7 +883,7 @@ describe("the announcement — what is announced is already answerable", () => {
     expect(announced).toHaveLength(1);
     expect(announced[0]!.question).toBe(topicFor("which path?", 1));
     // The park had ALREADY landed when the announcement fired.
-    expect(announced[0]!.statusAtAnnounce).toBe("awaiting_review");
+    expect(announced[0]!.statusAtAnnounce).toBe("parked");
 
     // And a caller acting the moment it fires is accepted, not refused.
     const outcome = await live.call<AnswerOutput>("answer", {

@@ -166,7 +166,7 @@ export function shouldRetryOnFail(task: Task): boolean {
  */
 export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
   "in_progress",
-  "awaiting_review",
+  "parked",
 ]);
 
 /**
@@ -276,7 +276,7 @@ export type FailRouting =
  *    only ever refuse a retry that would otherwise have happened, and it can
  *    never refuse a first attempt.
  * 2. **The budget applies only to attempt-owned failures.** `errored` is
- *    reachable from `in_progress` and `awaiting_review` and from NEITHER
+ *    reachable from `in_progress` and `parked` and from NEITHER
  *    `pending` nor `blocked`, while this routing is status-blind on the
  *    `maxAttempts` half — so a `fail()` on a pending or blocked task carrying
  *    `maxAttempts` legally re-pends today, and rerouting it to `errored` at the
@@ -452,7 +452,7 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  *   single edge rather than every legal path to its target. `unblock` is the
  *   only such verb: `blocked → pending`. The status table cannot express this —
  *   it maps status to status, not verb to edge, and `in_progress → pending` and
- *   `awaiting_review → pending` are legal for `reclaim` and `resumeFromReview`.
+ *   `parked → pending` are legal for `reclaim` and `resumeFromReview`.
  *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
@@ -482,9 +482,9 @@ export function transitionDeclineReason(
   // FIX-1234: the caller asked not to settle a row somebody parked for review.
   //
   // Nothing above refuses this on its own, and that is deliberate rather than an
-  // oversight: `awaiting_review` is in ATTEMPT_OWNED_STATUSES, `terminal` does
+  // oversight: `parked` is in ATTEMPT_OWNED_STATUSES, `terminal` does
   // not fire on a parked row, `isTransitionAllowed` permits both
-  // `awaiting_review → completed` and `→ errored`, and `leaseLapsed`
+  // `parked → completed` and `→ errored`, and `leaseLapsed`
   // short-circuits to `false` for any status other than `in_progress`. A holder
   // recording a review's REJECTION as a failure is a supported write, and it
   // travels exactly this path.
@@ -502,7 +502,7 @@ export function transitionDeclineReason(
   // failure also targets, and only the kind separates them.
   if (
     options.refuseWhenParked === true &&
-    task.status === "awaiting_review" &&
+    task.status === "parked" &&
     changeKind !== undefined &&
     SETTLEMENT_CHANGE_KINDS.has(changeKind)
   ) {
@@ -584,7 +584,7 @@ export function depsSatisfied(
  * agree with anything — there is no window between them to get wrong.
  *
  * **Scoped to `in_progress` on purpose.** {@link ATTEMPT_OWNED_STATUSES} also
- * contains `awaiting_review`, and `awaitReview` deliberately does *not* clear
+ * contains `parked`, and `awaitReview` deliberately does *not* clear
  * `leaseUntil` — so an unscoped reading would take back (and refuse writes on)
  * any task a human took longer than a lease to review. A review park is an
  * explicit park; the lease governs `in_progress` and nothing else.

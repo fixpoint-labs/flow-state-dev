@@ -36,7 +36,7 @@ describe("taskLoopBack", () => {
     expect(taskLoopBack().shouldContinue(c)).toBe(true);
   });
 
-  it("treats awaiting_review as in-flight (HITL-aware termination)", async () => {
+  it("treats parked as in-flight (HITL-aware termination)", async () => {
     const c = buildCollection();
     await c.addTask({ id: "t", goal: "t" });
     await c.claim("w");
@@ -69,7 +69,7 @@ describe("taskLoopBack", () => {
 });
 
 describe("defaultTaskLoopUntil", () => {
-  it("returns true when any task is pending/in_progress/awaiting_review", () => {
+  it("returns true when any task is pending/in_progress/parked", () => {
     expect(
       defaultTaskLoopUntil([
         { id: "1", goal: "x", status: "pending", attempts: 0, createdAt: 0, updatedAt: 0 },

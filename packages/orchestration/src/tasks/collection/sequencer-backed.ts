@@ -17,7 +17,11 @@ import type { StateRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
-import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
+import {
+  assertTransitionAllowed,
+  isTerminalStatus,
+  withMigratedStatus,
+} from "../schema/task-status";
 import type {
   TaskCollectionRef,
   TaskTransitionOptions,
@@ -116,12 +120,31 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     options.getItems,
   );
 
+  /**
+   * The read boundary for this backing — same job as the resource backing's
+   * `readTaskState`. Sequencer state is stored, not parsed, so a row written
+   * before the `parked` rename arrives carrying the legacy status and is
+   * mapped forward here, before any filter or the transition guard sees it.
+   *
+   * The map is rebuilt only when a legacy row is actually present, so the
+   * common path returns the stored object itself.
+   */
+  function migrateTasks(slot: unknown): Record<string, Task<TInput, TOutput>> {
+    if (!slot || typeof slot !== "object") return {};
+    const stored = slot as Record<string, Task<TInput, TOutput>>;
+    let migrated: Record<string, Task<TInput, TOutput>> | undefined;
+    for (const [id, task] of Object.entries(stored)) {
+      const next = withMigratedStatus(task);
+      if (next === task) continue;
+      migrated ??= { ...stored };
+      migrated[id] = next;
+    }
+    return migrated ?? stored;
+  }
+
   function readTasks(): Record<string, Task<TInput, TOutput>> {
     const raw = options.sequencer.state as Record<string, unknown>;
-    const slot = raw[stateKey];
-    return slot && typeof slot === "object"
-      ? (slot as Record<string, Task<TInput, TOutput>>)
-      : {};
+    return migrateTasks(raw[stateKey]);
   }
 
   const emit = createTaskChangeEmitter<TInput, TOutput>(
@@ -149,10 +172,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   ): Promise<void> {
     await options.sequencer.atomicState((state) => {
       const raw = state as Record<string, unknown>;
-      const currentTasks =
-        raw[stateKey] && typeof raw[stateKey] === "object"
-          ? (raw[stateKey] as Record<string, Task<TInput, TOutput>>)
-          : {};
+      // Through the same boundary as `readTasks`: the mutator re-reads
+      // committed state on every CAS retry, so a legacy row would otherwise
+      // reach the transition guard here even though the read path is clean.
+      const currentTasks = migrateTasks(raw[stateKey]);
 
       const next = mutate(currentTasks);
       if (next === undefined) return {} as Partial<Record<string, unknown>>;
@@ -648,7 +671,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     async awaitReview(id, feedback, options) {
       return transitionTo(
         id,
-        "awaiting_review",
+        "parked",
         "review_requested",
         () => (feedback !== undefined ? { feedback } : {}),
         options

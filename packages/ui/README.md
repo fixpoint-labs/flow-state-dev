@@ -113,7 +113,7 @@ import { TaskPlan } from "@/components/flow-state/task-plan";
 />
 ```
 
-Sections render in canonical order (`pending → in_progress → blocked → awaiting_review → completed → errored`), empty sections hide, `cancelled` is hidden by default. Statuses outside the canonical seven trail at the end with a humanized label, so pattern wrappers that emit extended states (`planning`, `replanning`, `reviewing`) still render. Pass `statusConfig` to customize their presentation.
+Sections render in canonical order (`pending → in_progress → blocked → parked → completed → errored`), empty sections hide, `cancelled` is hidden by default. Statuses outside the canonical seven trail at the end with a humanized label, so pattern wrappers that emit extended states (`planning`, `replanning`, `reviewing`) still render. Pass `statusConfig` to customize their presentation.
 
 `TaskPlan` reads its items from `useSessionItems()` by default; pass an explicit `items` prop when rendering outside that context (tests, replayed snapshots).
 

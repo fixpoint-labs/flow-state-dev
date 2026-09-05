@@ -2,7 +2,7 @@
  * Park-exit: the board mode that says "a task parked for review is not mine to
  * wait on" (FIX-1234).
  *
- * A worker that parks a task for a human leaves the row `awaiting_review`, and
+ * A worker that parks a task for a human leaves the row `parked`, and
  * that status has always held the drain open. Nobody waits on a human for the
  * length of a request on purpose, so what actually happened was worse than a
  * wait: the drain ran out its iteration budget — silently — and returned with
@@ -29,7 +29,7 @@ import type { TaskBoardBacking } from "./index";
 /**
  * What the board does when the only work left is parked for review.
  *
- * - `"hold"` — keep the drain open until the row leaves `awaiting_review`.
+ * - `"hold"` — keep the drain open until the row leaves `parked`.
  *   The default, and what every board does today.
  * - `"exit"` — excuse parked rows from the drain's waitable count: the drain
  *   returns, reports `terminationReason: "parked-for-review"`, and leaves the

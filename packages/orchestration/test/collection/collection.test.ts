@@ -184,7 +184,7 @@ describe.each([
       expect(winners[0]?.id).toBe("only");
     });
 
-    it("skips awaiting_review tasks under default eligibility", async () => {
+    it("skips parked tasks under default eligibility", async () => {
       await collection.addTask({ id: "a", goal: "A" });
       await collection.addTask({ id: "b", goal: "B" });
       const first = await collection.claim("worker-1");
@@ -293,11 +293,11 @@ describe.each([
       expect(events.at(-1)?.kind).toBe("unblocked");
     });
 
-    it("awaitReview moves in_progress → awaiting_review", async () => {
+    it("awaitReview moves in_progress → parked", async () => {
       await collection.addTask({ id: "t", goal: "t" });
       await collection.claim("w");
       await collection.awaitReview("t", "please review");
-      expect(collection.get("t")?.status).toBe("awaiting_review");
+      expect(collection.get("t")?.status).toBe("parked");
       expect(collection.get("t")?.feedback).toBe("please review");
       expect(events.at(-1)?.kind).toBe("review_requested");
     });

@@ -20,7 +20,7 @@
  *
  * ## Keeping the board's workers off the reviewer's task
  *
- * A parked row has to be `in_progress` first (`pending → awaiting_review` is not
+ * A parked row has to be `in_progress` first (`pending → parked` is not
  * a legal transition), so the sibling actor claims the task before parking it.
  * Between its `addTask` and its `claim` an idle board worker could take it
  * instead, which would make these tests flaky rather than wrong. The board's
@@ -239,7 +239,7 @@ describe("onReview — the flip: does the drain outlive the park?", () => {
     // The recording this whole file turns on: the drain had NOT finished when
     // the parked task was resumed.
     expect(scenario.observed.drainDoneBeforeResume).toBe(false);
-    expect(scenario.observed.askStatusAtCheck).toBe("awaiting_review");
+    expect(scenario.observed.askStatusAtCheck).toBe("parked");
     // And it went on to do the work once the human answered.
     expect(scenario.processed).toEqual(["gate", "ask"]);
     expect(reasonFrom(result.items)).toBe("all-completed");
@@ -256,7 +256,7 @@ describe("onReview — the flip: does the drain outlive the park?", () => {
     expect(scenario.observed.drainDoneBeforeResume).toBe(true);
     // The row was still parked at that moment — the drain did not settle it,
     // cancel it, or otherwise tidy it away on the way out.
-    expect(scenario.observed.askStatusAtCheck).toBe("awaiting_review");
+    expect(scenario.observed.askStatusAtCheck).toBe("parked");
     // Only the gate ran. The parked work was left for a later drain.
     expect(scenario.processed).toEqual(["gate"]);
     expect(reasonFrom(result.items)).toBe("parked-for-review");
@@ -277,7 +277,7 @@ describe("onReview: 'hold' — what an unanswered review actually costs", () => 
     // is bounded. And it does NOT go silent — a completion item is emitted.
     //
     // What it does is worse than either: it reports `blocked-by-failures` on a
-    // board where nothing failed, while `counts.awaiting_review` in the same
+    // board where nothing failed, while `counts.parked` in the same
     // payload says a task is parked. Two incompatible claims in one item, which
     // is the confusion `onReview: "exit"` exists to remove.
     const boardName = "park-hold-cap";
@@ -365,7 +365,7 @@ describe("onReview: 'hold' — what an unanswered review actually costs", () => 
     expect(data.terminationReason).toBe("blocked-by-failures");
     // …and the same payload says a task is parked. That contradiction is the
     // point, and it is what park-exit replaces with `parked-for-review`.
-    expect(data.counts.awaiting_review).toBe(1);
+    expect(data.counts.parked).toBe(1);
     expect(data.counts.errored).toBe(0);
     expect(data.counts.cancelled).toBe(0);
   }, 30_000);
@@ -596,7 +596,7 @@ describe("onReview: 'exit' — the return trip", () => {
     // The first drain returned with the row still parked, and it did not get
     // there by exhausting its budget — 20 iterations against a 200ms idle wait
     // could not be spent inside this bound.
-    expect(checkpoint.askStatus).toBe("awaiting_review");
+    expect(checkpoint.askStatus).toBe("parked");
     expect(checkpoint.gateStatus).toBe("completed");
     expect(checkpoint.elapsed).toBeLessThan(2_000);
     expect(checkpoint.taskCount).toBe(2);
@@ -762,7 +762,7 @@ describe("onReview: 'exit' — two drains of one board, concurrently, in one req
 
     const tasks = collectionRef!;
     // The parked row is untouched by either drain.
-    expect(tasks.get("ask")?.status).toBe("awaiting_review");
+    expect(tasks.get("ask")?.status).toBe("parked");
     expect(tasks.list().map((t) => t.id).sort()).toEqual(["ask", "gate"]);
   });
 });
@@ -774,7 +774,7 @@ describe("onReview: 'exit' — two drains of one board, concurrently, in one req
  * caller's worker has it in scope and resolves it. The board's capability is
  * not available here — it does not exist until `taskBoard()` returns, and the
  * worker is an argument to that call — and the task tools deliberately cannot
- * reach `awaiting_review` at all.
+ * reach `parked` at all.
  */
 function boardTasks(
   ctx: BlockContext,
@@ -801,7 +801,7 @@ describe("onReview: 'exit' — a worker parking its OWN task", () => {
    * has to survive the step that runs next.
    *
    * It did not. `recordSuccess` completed the row unconditionally, and both
-   * `awaiting_review → completed` and `awaiting_review → errored` are legal
+   * `parked → completed` and `parked → errored` are legal
    * transitions the claim ticket admits, so the park was overwritten a
    * millisecond after it was made. Nothing was left parked, the exclusion had
    * nothing to excuse, and `parked-for-review` was unreachable by this route —
@@ -889,7 +889,7 @@ describe("onReview: 'exit' — a worker parking its OWN task", () => {
     expect(result.error).toBeNull();
     // The park survived the worker's return. Without the guard in
     // `recordSuccess` this reads `"completed"`.
-    expect(seen.status).toBe("awaiting_review");
+    expect(seen.status).toBe("parked");
     // And the drain returned rather than holding the request open.
     expect(reasonFrom(result.items)).toBe("parked-for-review");
     void ledgerId;
@@ -931,7 +931,7 @@ describe("onReview: 'exit' — a worker parking its OWN task", () => {
     // reads `"errored"` — and on a task carrying `maxAttempts` it would read
     // `"pending"`, re-queued for a sibling to run while the human is still
     // being asked.
-    expect(seen.status).toBe("awaiting_review");
+    expect(seen.status).toBe("parked");
     expect(reasonFrom(result.items)).toBe("parked-for-review");
   });
 
@@ -989,7 +989,7 @@ describe("onReview: 'exit' — a worker parking its OWN task", () => {
 
     expect(result.error).toBeNull();
     // The first drain returned with the row still parked and nothing else added.
-    expect(checkpoint.status).toBe("awaiting_review");
+    expect(checkpoint.status).toBe("parked");
     expect(checkpoint.count).toBe(1);
     // The second drain re-claimed it, and the human's answer reached the worker.
     expect(processed).toEqual(["ask:approved, carry on"]);

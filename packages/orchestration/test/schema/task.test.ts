@@ -57,7 +57,7 @@ describe("task schema", () => {
         "pending",
         "in_progress",
         "blocked",
-        "awaiting_review",
+        "parked",
         "completed",
         "errored",
         "cancelled",
@@ -74,14 +74,14 @@ describe("state machine validators", () => {
     expect(isTerminalStatus("cancelled")).toBe(true);
     expect(isTerminalStatus("pending")).toBe(false);
     expect(isTerminalStatus("in_progress")).toBe(false);
-    expect(isTerminalStatus("awaiting_review")).toBe(false);
+    expect(isTerminalStatus("parked")).toBe(false);
   });
 
-  it("allows pending → in_progress, in_progress → completed/errored/awaiting_review/cancelled/pending", () => {
+  it("allows pending → in_progress, in_progress → completed/errored/parked/cancelled/pending", () => {
     expect(isTransitionAllowed("pending", "in_progress")).toBe(true);
     expect(isTransitionAllowed("in_progress", "completed")).toBe(true);
     expect(isTransitionAllowed("in_progress", "errored")).toBe(true);
-    expect(isTransitionAllowed("in_progress", "awaiting_review")).toBe(true);
+    expect(isTransitionAllowed("in_progress", "parked")).toBe(true);
     expect(isTransitionAllowed("in_progress", "pending")).toBe(true);
     expect(isTransitionAllowed("in_progress", "cancelled")).toBe(true);
   });
@@ -92,10 +92,10 @@ describe("state machine validators", () => {
     expect(isTransitionAllowed("cancelled", "pending")).toBe(false);
   });
 
-  it("permits awaiting_review → pending (resumeFromReview) and → completed (approve)", () => {
-    expect(isTransitionAllowed("awaiting_review", "pending")).toBe(true);
-    expect(isTransitionAllowed("awaiting_review", "completed")).toBe(true);
-    expect(isTransitionAllowed("awaiting_review", "cancelled")).toBe(true);
+  it("permits parked → pending (resumeFromReview) and → completed (approve)", () => {
+    expect(isTransitionAllowed("parked", "pending")).toBe(true);
+    expect(isTransitionAllowed("parked", "completed")).toBe(true);
+    expect(isTransitionAllowed("parked", "cancelled")).toBe(true);
   });
 
   it("permits blocked → pending and blocked → cancelled only", () => {

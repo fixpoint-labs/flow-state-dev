@@ -1654,7 +1654,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 760 250" role="img" aria-label="Task status state machine: pending claims into in_progress or is parked as blocked; in_progress may submit to awaiting_review, re-pend on a failure while retries remain, or go terminal as completed, errored or cancelled; awaiting_review returns to pending for rework or resolves to completed, and may also settle as cancelled or errored.">
+      <svg viewBox="0 0 760 250" role="img" aria-label="Task status state machine: pending claims into in_progress or is parked as blocked; in_progress may submit to parked, re-pend on a failure while retries remain, or go terminal as completed, errored or cancelled; parked returns to pending for rework or resolves to completed, and may also settle as cancelled or errored.">
         <defs><marker id="a15" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
 
         <rect class="n-grp" x="546" y="24" width="152" height="200" rx="6"/>
@@ -1670,7 +1670,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-b" x="320" y="131" text-anchor="middle">in_progress</text>
 
         <rect class="n-box" x="250" y="190" width="140" height="44" rx="22"/>
-        <text class="t-b" x="320" y="217" text-anchor="middle">awaiting_review</text>
+        <text class="t-b" x="320" y="217" text-anchor="middle">parked</text>
 
         <rect class="n-box-2" x="560" y="38" width="124" height="40" rx="20"/>
         <text class="t-b" x="622" y="63" text-anchor="middle">completed</text>
@@ -1697,7 +1697,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
         <path class="ln" d="M390,116 L470,116 L470,58 L556,58" marker-end="url(#a15)"/>
         <text class="t-xs" x="408" y="110">success</text>
-        <text class="t-xs" x="320" y="243" text-anchor="middle">awaiting_review also settles directly to cancelled or errored — four legal exits, not two</text>
+        <text class="t-xs" x="320" y="243" text-anchor="middle">parked also settles directly to cancelled or errored — four legal exits, not two</text>
         <path class="ln" d="M390,126 L556,124" marker-end="url(#a15)"/>
         <text class="t-xs" x="478" y="138">budget spent</text>
         <path class="ln" d="M390,140 L442,140 L442,192 L556,192" marker-end="url(#a15)"/>

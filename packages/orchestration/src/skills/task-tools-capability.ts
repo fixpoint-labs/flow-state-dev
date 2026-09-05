@@ -293,7 +293,7 @@ const ASSIGNEE_CLAUSE = "Its assignee will not change.";
  * **The recovery list is derived from tool-reachable actions, not from
  * `allowedTransitionsFrom`.** That helper answers a question about the
  * *collection*; the model is standing at the *tool* layer. It would advertise
- * `awaiting_review` and `in_progress`, which no task tool can reach, sending the
+ * `parked` and `in_progress`, which no task tool can reach, sending the
  * model at operations it cannot perform. Here each tool's own target is tested
  * instead.
  *
@@ -708,7 +708,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
       "List tasks on your delegation board, optionally filtered by status or assignee.",
     inputSchema: z.object({
       status: z
-        .enum(["pending", "in_progress", "awaiting_review", "completed", "errored", "cancelled", "blocked"])
+        .enum(["pending", "in_progress", "parked", "completed", "errored", "cancelled", "blocked"])
         .optional(),
       assignee: z.string().optional(),
     }),
