@@ -358,7 +358,7 @@ stirs into an exit check that no longer calls the board drained.
 
 The routing exclusion above is not the only way a row drops out of the board's
 in-flight count. A board declaring `onReview: "exit"` also excuses rows sitting
-in `awaiting_review`, and the two live side by side in `countWaitable` as
+in `parked`, and the two live side by side in `countWaitable` as
 separate predicates rather than one widened predicate. They answer different
 questions:
 
@@ -366,7 +366,7 @@ questions:
 |---|---|---|
 | Asks | where does this row's work belong? | is this row waiting on a *human*? |
 | Derived from | the board's dispatcher seats, plus the row's `assignee` | the row's status |
-| Applies to | `in_progress` rows only | `awaiting_review` rows only |
+| Applies to | `in_progress` rows only | `parked` rows only |
 | Applies on | boards with a dispatcher seat | any board, however it dispatches |
 | Liveness conjunct | **yes** — the lease | **no** |
 

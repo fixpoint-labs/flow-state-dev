@@ -374,7 +374,7 @@ function buildRunBoardTool(
         (t) =>
           t.status === "pending" ||
           t.status === "in_progress" ||
-          t.status === "awaiting_review" ||
+          t.status === "parked" ||
           t.status === "blocked",
       );
       return {

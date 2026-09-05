@@ -229,7 +229,7 @@ function rowOwnsItsIdentity(task: { id: string; input?: unknown }): boolean {
  *
  * **Drainability is ASKED, not re-derived.** Six review rounds found six
  * separate inputs to "can a drain run this" — assignee, retry budget, `deps`,
- * `blocked`, `awaiting_review`, and a spent abandonment allowance — because this
+ * `blocked`, `parked`, and a spent abandonment allowance — because this
  * function was enumerating, field by field, a question the substrate already
  * answers. `@flow-state-dev/orchestration/tasks` says so at the export:
  * `isClaimable` is THE admission predicate, and "a caller implementing

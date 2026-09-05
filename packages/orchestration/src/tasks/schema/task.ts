@@ -7,7 +7,7 @@
  * narrows them at the consumer's call site.
  */
 import { z } from "zod";
-import { taskStatusSchema, type TaskStatus } from "./task-status";
+import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 
 /** The base Task schema. */
 export const taskSchema = z.object({
@@ -28,7 +28,8 @@ export const taskSchema = z.object({
    */
   context: z.string().optional(),
 
-  status: taskStatusSchema,
+  // Decoded from a stored row, so it tolerates the pre-FIX-1245 member.
+  status: persistedTaskStatusSchema,
   attempts: z.number().int().nonnegative().default(0),
   /**
    * Optional retry budget. When set and `attempts < maxAttempts`, a

@@ -29,7 +29,7 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
 `attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
-`pending | in_progress | blocked | awaiting_review | completed | errored | cancelled`.
+`pending | in_progress | blocked | parked | completed | errored | cancelled`.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -37,10 +37,10 @@ pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ in_progress       (claim, after a lease runs out)
          │                ├─→ pending           (reclaim)
          │                ├─→ cancelled
-         │                └─→ awaiting_review ─┬─→ completed
-         │                                     ├─→ errored
-         │                                     ├─→ pending    (resumeFromReview)
-         │                                     └─→ cancelled
+         │                └─→ parked ─┬─→ completed
+         │                            ├─→ errored
+         │                            ├─→ pending    (resumeFromReview)
+         │                            └─→ cancelled
          ├─→ blocked ─┬─→ pending               (unblock)
          │            └─→ cancelled
          └─→ cancelled
@@ -115,7 +115,7 @@ argument that makes the write advisory. `ifAllowed` skips the write when the tas
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
 one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
-and no other. `in_progress → pending` and `awaiting_review → pending` sit in the
+and no other. `in_progress → pending` and `parked → pending` sit in the
 status table too, but they belong to `reclaim()` and `resumeFromReview`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
@@ -149,7 +149,7 @@ or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task`
 board hands rows off to a child session, where the assignee is fixed at admission; `not-my-task`
 means the ticket names a different task, a different collection, or an id since
 reused; `parked` means the caller passed `refuseWhenParked` and the task is in
-`awaiting_review` — nobody took it, so unlike `lost-claim` the answer is not to
+`parked` — nobody took it, so unlike `lost-claim` the answer is not to
 re-claim and redo; `lost-claim` means it names the right task but a claim that has
 moved on. A
 decline never throws, and discarding the return value is supported. `cancel` is

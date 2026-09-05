@@ -234,7 +234,23 @@ interface ClaimView {
  * claim a displaced worker matches the counter by construction. This mirrors
  * the substrate's own `ATTEMPT_OWNED_STATUSES` rather than guessing at it.
  */
-const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "awaiting_review"]);
+const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "parked"]);
+
+/**
+ * The status `parked` replaced. A row persisted before that rename still
+ * carries it. The substrate maps it forward at its own read boundary, but the
+ * fence reads the board as a plain resource collection and never passes that
+ * boundary — so it maps the value forward itself, or a parked attempt from
+ * before the rename has every write refused and its run record freezes.
+ */
+const LEGACY_PARKED_STATUS = "awaiting_review";
+
+/** The board row as the fence reads it, with the legacy status mapped forward. */
+function readClaim(state: unknown): ClaimView | undefined {
+  if (state === undefined) return undefined;
+  const claim = state as ClaimView;
+  return claim.status === LEGACY_PARKED_STATUS ? { ...claim, status: "parked" } : claim;
+}
 
 /**
  * The substrate's lease rule, mirrored here for the same reason
@@ -250,7 +266,7 @@ const ATTEMPT_OWNED_STATUSES = new Set(["in_progress", "awaiting_review"]);
  * remove, so the conjunct is taken from the same rule rather than reasoned
  * about separately.
  *
- * Only `in_progress` rows can lapse. A parked (`awaiting_review`) row is
+ * Only `in_progress` rows can lapse. A `parked` row is
  * waiting on a person, not on a lease, so its writes still apply — which is the
  * behaviour the substrate has too.
  *
@@ -332,7 +348,7 @@ export async function writeRunRow(
   const runs = collectionRef(ctx, RUNS);
   const board = collectionRef(ctx, identity.boardCollectionId);
 
-  const claim = (await board.getOptional(identity.taskId))?.state as ClaimView | undefined;
+  const claim = readClaim((await board.getOptional(identity.taskId))?.state);
   if (claim === undefined) return "refused";
   if (claim.attempts !== identity.attempt) return "refused";
   if (!ATTEMPT_OWNED_STATUSES.has(String(claim.status))) return "refused";
