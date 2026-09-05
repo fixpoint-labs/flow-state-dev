@@ -82,7 +82,7 @@ Each dispatch appends a handle to `claudeRemoteTasks` in session state:
 
 ```ts
 type ClaudeRemoteHandle = {
-  source: "cli-remote";
+  source: "claude-code/cli-remote";
   status: "dispatched";
   sessionId: string | null;   // parsed from CLI output when present
   url: string | null;         // claude.ai session URL when present

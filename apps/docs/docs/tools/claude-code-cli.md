@@ -91,7 +91,7 @@ later request can reference it:
 
 | Field | Meaning |
 |-------|---------|
-| `source` | Always `"cli-remote"`. |
+| `source` | Always `"claude-code/cli-remote"` — which agent, and which of its entry points, produced the run. |
 | `status` | Always `"dispatched"` in this version. |
 | `sessionId` | Cloud session id, when found in CLI output. |
 | `url` | claude.ai session URL, when found. |

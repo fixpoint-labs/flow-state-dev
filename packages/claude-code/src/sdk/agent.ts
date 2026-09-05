@@ -14,7 +14,7 @@
  *
  * `detached: true` turns the conversation-state half off — see the option.
  */
-import { handler } from "@flow-state-dev/core";
+import { handler, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { AnyResourceRef, BlockContext } from "@flow-state-dev/core/types";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -49,6 +49,8 @@ import {
 import { ClaudeAgentRunError } from "./errors";
 import type { ClaudeAgentSettingSource } from "./types";
 import {
+  CLAUDE_SDK_SOURCE,
+  outcomeFromResultSubtype,
   sdkAgentHandleSchema,
   type ClaudeAgentQueryOptions,
   type ResolveClaudeAgent,
@@ -69,11 +71,6 @@ export const SDK_AGENT_RUNS_KEY = "sdkAgentRuns" as const;
 export const claudeAgentSessionStateSchema = z.object({
   [SDK_SESSION_ID_KEY]: z.string().nullable().default(null),
   [SDK_AGENT_RUNS_KEY]: z.array(sdkAgentHandleSchema).default([]),
-});
-
-const inputSchema = z.object({
-  /** The instruction prompt to run through the agent loop. */
-  prompt: z.string(),
 });
 
 /** Options for {@link claudeCodeAgent}. */
@@ -639,7 +636,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     name,
     description:
       "Run the Claude Code Agent SDK in-process, translating its streamed messages into FSD items.",
-    inputSchema,
+    // The contract's own schema, not a local copy of it. The type-level
+    // conformance assertion cannot catch input drift — parameter bivariance
+    // accepts a block whose input carries extra required fields — so a
+    // hand-rolled duplicate here would sit exactly in that blind spot and stay
+    // silent if the contract's input ever grows.
+    inputSchema: harnessRunInputSchema,
     outputSchema: sdkAgentHandleSchema,
     // Decided HERE rather than at run time, and that is forced: `defineFlow`
     // inspects this static definition (`assertHandOffBlockSupported`) and
@@ -763,6 +765,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const recorder = recordWork ? openWorkRecorder(ctx, workingDirectory) : null;
 
       let resultSubtype: SdkResultSubtype | null = null;
+      // Tracked beside the subtype, not derived from it: `resultSubtype` is
+      // `null` both when no terminal result arrived and when one arrived
+      // carrying a subtype this package does not recognize. Only this flag
+      // tells those apart, and `outcome` depends on the difference.
+      let terminalResultArrived = false;
       let finalMessage: string | null = null;
       let newSessionId: string | null = session.sdkSessionId;
       let usage: SdkAgentHandle["usage"] = null;
@@ -809,6 +816,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             for (const event of events) {
               await emitTranslatedEvent(event, ctx, emitState, name);
               if (event.kind === "result") {
+                terminalResultArrived = true;
                 resultSubtype = event.subtype;
                 if (event.sessionId !== null) newSessionId = event.sessionId;
                 if (event.finalMessage !== null)
@@ -855,15 +863,19 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
         const errored = isErroredSubtype(resultSubtype);
         const handle: SdkAgentHandle = {
-          source: "sdk",
+          source: CLAUDE_SDK_SOURCE,
           status: errored ? "errored" : "completed",
           sessionId: newSessionId,
           url: null,
           dispatchedAt,
-          resultSubtype,
+          outcome: outcomeFromResultSubtype(resultSubtype, terminalResultArrived),
           finalMessage,
-          toolsObserved: emitState.toolsObserved,
           usage,
+          // The SDK reports its own total, so the basis is `reported` whenever
+          // there is one at all — this path never derives a number.
+          cost: costUsd === null ? null : { usd: costUsd, basis: "reported" },
+          resultSubtype,
+          toolsObserved: emitState.toolsObserved,
           costUsd,
         };
 

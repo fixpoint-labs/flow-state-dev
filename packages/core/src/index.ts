@@ -477,3 +477,14 @@ export type {
 // the top-level surface so flow authors import both from one place.
 export { SUSPENSION_SKIPPED } from "./types/suspension";
 export type { ResumeAction, SuspensionSkipped } from "./types/suspension";
+
+/**
+ * The coding-harness contract's runtime schemas (LAB-152). A harness block
+ * declares these as its input and output schemas; the types they validate are
+ * exported from `@flow-state-dev/core/types`.
+ */
+export {
+  harnessRunEnvelopeSchema,
+  harnessRunHandleSchema,
+  harnessRunInputSchema,
+} from "./types/harness";

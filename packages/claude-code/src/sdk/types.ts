@@ -9,7 +9,8 @@
  */
 import { z } from "zod";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { remoteAgentTaskHandleSchema, type RemoteAgentTaskHandle } from "../shared/handle";
+import { harnessRunHandleSchema } from "@flow-state-dev/core";
+import type { HarnessRunHandle, HarnessRunOutcome } from "@flow-state-dev/core/types";
 import type { ObservedFileOpKind, ObservedGapKind, ObservedOutcome } from "./work-collections";
 
 /** Terminal result subtype reported by the SDK's `result` message. */
@@ -21,32 +22,89 @@ export type SdkResultSubtype =
   | "error_max_structured_output_retries";
 
 /**
+ * This door's `<package>/<door>` name, the convention every writer of a harness
+ * handle's `source` follows.
+ */
+export const CLAUDE_SDK_SOURCE = "claude-code/sdk" as const;
+
+/** The pre-LAB-152 spelling, still found in handles persisted before the rule. */
+const LEGACY_SDK_SOURCE = "sdk";
+
+/**
+ * How the SDK's terminal subtype reads in the framework's neutral vocabulary.
+ *
+ * The mapping lives here, at the one place the vendor's word is known, so no
+ * reader downstream ever branches on an SDK enum. A turn cap and a budget cap
+ * are both limits the run was stopped at; every other non-success failed.
+ *
+ * **Whether a terminal result ARRIVED is a separate fact from whether its
+ * subtype was RECOGNIZED**, which is why the caller passes it rather than
+ * having it inferred from `subtype === null`. `normalizeSubtype` maps an
+ * unrecognized subtype — a future SDK failure mode — to `null`, the same value
+ * a run that never produced a result carries. Collapsing the two would report
+ * `outcome: null` for a run that demonstrably failed, and `null` is the one
+ * thing a manager reads as "no terminal result arrived" (LAB-154 settles runs
+ * on this field). `translate.ts` guards the same hazard by keying its error
+ * event off the raw subtype.
+ */
+export function outcomeFromResultSubtype(
+  subtype: SdkResultSubtype | null,
+  terminalResultArrived: boolean,
+): HarnessRunOutcome | null {
+  if (!terminalResultArrived) return null;
+  switch (subtype) {
+    case "success":
+      return "finished";
+    case "error_max_turns":
+    case "error_max_budget_usd":
+      return "stopped-at-limit";
+    // Includes `null`: a terminal result arrived and its subtype is not one
+    // this package knows. It was not a success, so the run failed.
+    default:
+      return "failed";
+  }
+}
+
+/**
  * Handle for a single in-process Agent SDK run.
  *
- * Unlike the fire-and-forget CLI handle, the SDK path observes the run to
- * completion, so `status` reaches `"completed"`/`"errored"` and the handle
- * carries the final assistant text, the tools the SDK exercised, and usage/cost
- * when the SDK reported them. Usage and cost are `null` when the SDK result
- * omitted them — values are never invented.
+ * The framework's neutral harness handle plus Claude's own extras. Unlike the
+ * fire-and-forget CLI handle, the SDK path observes the run to completion, so
+ * `status` reaches `"completed"`/`"errored"` and the handle carries the final
+ * assistant text, the tools the SDK exercised, and usage/cost when the SDK
+ * reported them. Usage and cost are `null` when the SDK result omitted them —
+ * values are never invented.
  */
-export interface SdkAgentHandle extends RemoteAgentTaskHandle {
-  source: "sdk";
+export interface SdkAgentHandle extends HarnessRunHandle {
+  source: typeof CLAUDE_SDK_SOURCE;
   status: "running" | "completed" | "errored";
   /** The SDK's terminal `result.subtype`, or `null` if the run never produced one. */
   resultSubtype: SdkResultSubtype | null;
-  /** The last assistant message text, or `null` if the run produced none. */
-  finalMessage: string | null;
   /** Distinct SDK tool names observed during the run, in first-seen order. */
   toolsObserved: string[];
-  /** Token usage from the SDK result, or `null` when unreported. */
-  usage: { inputTokens: number; outputTokens: number } | null;
-  /** Total cost in USD from the SDK result, or `null` when unreported. */
+  /**
+   * The run's cost in USD — always equal to `cost?.usd ?? null`.
+   *
+   * @deprecated A dual carried beside the neutral `cost` so the conductor's
+   * existing read keeps type-checking and running with no edit. It comes off
+   * when the manager reads `cost` and `outcome` instead (LAB-154). Read `cost`
+   * in new code.
+   */
   costUsd: number | null;
 }
 
-/** Runtime validator for {@link SdkAgentHandle}. */
-export const sdkAgentHandleSchema = remoteAgentTaskHandleSchema.extend({
-  source: z.literal("sdk"),
+/**
+ * Runtime validator for {@link SdkAgentHandle}.
+ *
+ * A handle persisted under the old `"sdk"` spelling reads through to the new
+ * value, and one persisted before `outcome`/`cost` existed picks them up as
+ * `null` from the neutral schema's defaults (BP-030).
+ */
+export const sdkAgentHandleSchema = harnessRunHandleSchema.extend({
+  source: z.preprocess(
+    (value) => (value === LEGACY_SDK_SOURCE ? CLAUDE_SDK_SOURCE : value),
+    z.literal(CLAUDE_SDK_SOURCE),
+  ),
   status: z.enum(["running", "completed", "errored"]),
   resultSubtype: z
     .enum([
@@ -57,9 +115,7 @@ export const sdkAgentHandleSchema = remoteAgentTaskHandleSchema.extend({
       "error_max_structured_output_retries",
     ])
     .nullable(),
-  finalMessage: z.string().nullable(),
   toolsObserved: z.array(z.string()),
-  usage: z.object({ inputTokens: z.number(), outputTokens: z.number() }).nullable(),
   costUsd: z.number().nullable(),
 });
 
