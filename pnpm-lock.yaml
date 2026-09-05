@@ -1080,12 +1080,6 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../engine
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../testing
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13

@@ -47,16 +47,14 @@ import {
 } from "../../../labs/conductor/src/implement.ts";
 import {
   branchFor,
+  GIT_TIMEOUT_MS,
   isStrictlyInside,
-} from "@flow-state-dev/harness-manager";
+  NETWORK_CALL_TIMEOUT_MS,
+} from "@flow-state-dev/harness-manager/checkout";
 import {
   positiveIntFromEnv,
   requireSourceRepo,
 } from "../../../labs/conductor/src/config-env.ts";
-import {
-  GIT_TIMEOUT_MS,
-  NETWORK_CALL_TIMEOUT_MS,
-} from "@flow-state-dev/harness-manager";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 interface Fixture {

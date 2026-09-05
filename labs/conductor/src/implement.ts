@@ -12,9 +12,17 @@
  * exhaust its turn budget.
  */
 import { execFileSync } from "node:child_process";
-import type { PhaseRunContext, PhaseSpec, PromptRunContext } from "@flow-state-dev/harness-manager";
-import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
-import { GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS, run } from "@flow-state-dev/harness-manager";
+import {
+  type PhaseRunContext,
+  type PhaseSpec,
+  type PromptRunContext,
+  type WorkspaceConfig,
+} from "@flow-state-dev/harness-manager";
+import {
+  GIT_TIMEOUT_MS,
+  NETWORK_CALL_TIMEOUT_MS,
+  run,
+} from "@flow-state-dev/harness-manager/checkout";
 import {
   API_PORT_SCHEMES,
   GIT_SUFFIX,

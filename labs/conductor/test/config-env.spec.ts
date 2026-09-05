@@ -16,7 +16,10 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MAX_TIMER_MS, repositoryIdentity } from "@flow-state-dev/harness-manager";
+import {
+  MAX_TIMER_MS,
+  repositoryIdentity,
+} from "@flow-state-dev/harness-manager";
 import { seedRepo } from "../../../packages/harness-manager/test/fixtures";
 import { positiveIntFromEnv, requireSourceRepo } from "../src/config-env";
 

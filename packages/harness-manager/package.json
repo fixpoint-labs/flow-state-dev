@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/harness-manager",
   "version": "0.0.0",
-  "description": "A task-board worker that turns a row into a supervised coding run — its own checkout, a verdict read before the row settles, a question channel, and the coding harness as a slot you fill.",
+  "description": "A task-board worker that turns a row into a supervised coding run \u2014 its own checkout, a verdict read before the row settles, a question channel, and the coding harness as a slot you fill.",
   "keywords": [
     "ai",
     "agents",
@@ -30,6 +30,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./checkout": {
+      "types": "./dist/checkout.d.ts",
+      "default": "./src/checkout.ts"
     }
   },
   "license": "MIT",
@@ -45,6 +49,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./checkout": {
+        "types": "./dist/checkout.d.ts",
+        "default": "./dist/checkout.js"
       }
     }
   },
@@ -58,8 +66,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@flow-state-dev/engine": "workspace:*",
-    "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

@@ -17,7 +17,6 @@
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 /**
  * How long a startup git query may take.
@@ -30,16 +29,6 @@ import { fileURLToPath } from "node:url";
  */
 const STARTUP_GIT_TIMEOUT_MS = 30_000;
 
-/**
- * The repository this process itself lives in, or `undefined` outside a
- * repository.
- *
- * `--git-common-dir` and not `--show-toplevel`: the common dir is the ONE
- * directory every worktree of a repository shares, so it identifies the
- * *repository* rather than the checkout. Comparing toplevels would call a
- * sibling worktree of Flow State a different repo, which is exactly the case
- * the guard exists to catch.
- */
 /**
  * Turn a `--git-common-dir` answer into the identity two callers compare.
  *
@@ -64,6 +53,15 @@ export function identityFromCommonDir(dir: string, commonDir: string): string | 
   }
 }
 
+/**
+ * The repository a directory belongs to, or `undefined` when it is not in one.
+ *
+ * `--git-common-dir` and not `--show-toplevel`: the common dir is the ONE
+ * directory every worktree of a repository shares, so it identifies the
+ * *repository* rather than the checkout. Comparing toplevels would call a
+ * sibling worktree a different repo, which is exactly the case the guard exists
+ * to catch.
+ */
 export function repositoryIdentity(dir: string): string | undefined {
   try {
     const out = execFileSync("git", ["rev-parse", "--git-common-dir"], {
@@ -84,31 +82,38 @@ export function repositoryIdentity(dir: string): string | undefined {
 }
 
 /**
- * Where the dispatcher's OWN code lives, as a repository identity.
+ * Where the HOST's own code lives, as repository identities.
  *
- * **`process.cwd()` is not the dispatcher.** It was the only source of "my
- * repository" here, and a host started from anywhere outside its checkout — a
- * service unit, a container whose `WORKDIR` is not the source tree, a process
- * launched from `/` — made `repositoryIdentity` return `undefined`. This guard
- * only refuses on a MATCH, so an undefined identity is not a near miss: it is
- * the guard silently doing nothing, in a deployment shape that is ordinary
- * rather than exotic. Obligation A was then unenforced exactly where nobody
- * would look.
+ * **The host says; this module does not guess.** An earlier version consulted
+ * this module's own file location as a second candidate, on the reasoning that
+ * it is a fact about the running code and does not move when the process's
+ * directory does. That was true while the code lived inside the application
+ * that dispatched runs. Shipped as a package it is false: `import.meta.url`
+ * names wherever the package was INSTALLED — under a host's `node_modules`, a
+ * linked workspace, a pnpm store — which is a fact about dependency resolution
+ * and says nothing about the host.
  *
- * This module's own file is a fact about the running code and does not move
- * when the process's directory does. Neither source is authoritative on its
- * own — a bundler can rewrite `import.meta.url`, and a host can legitimately run
- * from its checkout — so both are consulted and a match with EITHER refuses.
+ * The consequence was not a weakened guard but an unsatisfiable one. A host that
+ * named its own repository and pointed a run at some OTHER repository was
+ * refused whenever this package happened to be installed inside that other one,
+ * with an error claiming the process was running from it. A guard a legitimate
+ * host cannot satisfy is worse than no guard, because the host's only escape is
+ * to stop calling it.
+ *
+ * **`process.cwd()` alone is not the host either**, which is the concern that
+ * added the second candidate in the first place and has not gone away: a service
+ * unit, a container whose `WORKDIR` is not the source tree, a process launched
+ * from `/` all make `repositoryIdentity` return `undefined`. And undefined is
+ * not a near miss — this guard only refuses on a MATCH, so it silently does
+ * nothing.
+ *
+ * The answer is that such a host **passes its own root**, which is the one party
+ * that actually knows. `dispatcher` is that declaration; it defaults to
+ * `process.cwd()`, which is right for a host started from its checkout, and
+ * accepts a list for a host whose code spans more than one place.
  */
-function dispatcherIdentities(from: string): string[] {
-  const here = (() => {
-    try {
-      return path.dirname(fileURLToPath(import.meta.url));
-    } catch {
-      return undefined;
-    }
-  })();
-  return [from, ...(here === undefined ? [] : [here])]
+function dispatcherIdentities(dispatcher: readonly string[]): string[] {
+  return dispatcher
     .map(repositoryIdentity)
     .filter((id): id is string => id !== undefined);
 }
@@ -127,7 +132,7 @@ function dispatcherIdentities(from: string): string[] {
 export function assertDistinctRepository(
   variable: string,
   repo: string,
-  from: string = process.cwd(),
+  dispatcher: string | readonly string[] = process.cwd(),
 ): void {
   const theirs = repositoryIdentity(repo);
   if (theirs === undefined) {
@@ -135,46 +140,28 @@ export function assertDistinctRepository(
     // is what would find it — after a row is claimed — so every retry would be
     // spent on a permanent startup error the run cannot fix.
     throw new Error(
-      `[conductor] ${variable} (${repo}) is not a git repository — it does not exist, or ` +
+      `[harness-manager] ${variable} (${repo}) is not a git repository — it does not exist, or ` +
         "it is an ordinary directory. Checkouts are cut from it with `git worktree add`, " +
         "so this fails on every attempt and no retry can fix it.",
     );
   }
 
-  // Both the process's directory AND this module's own location, because a
-  // dispatcher started outside its checkout has a cwd that collides with
-  // nothing while its code sits squarely in the repository being pointed at.
-  // Only a MATCH is a refusal; a host genuinely unrelated to the target still
-  // matches neither.
-  if (dispatcherIdentities(from).includes(theirs)) {
+  // Only a MATCH is a refusal; a host genuinely unrelated to the target matches
+  // nothing and passes.
+  const mine = typeof dispatcher === "string" ? [dispatcher] : dispatcher;
+  if (dispatcherIdentities(mine).includes(theirs)) {
     throw new Error(
-      `[conductor] ${variable} (${repo}) is the repository this process is itself running ` +
-        "from — a different path inside it, another of its worktrees, or a symlink to it " +
-        "is still the same repository. The point is a run driving ANOTHER repository " +
-        "rather than editing the thing that dispatched it.",
+      `[harness-manager] ${variable} (${repo}) is the repository the host itself lives in ` +
+        "— a different path inside it, another of its worktrees, or a symlink to it is " +
+        "still the same repository. The point is a run driving ANOTHER repository rather " +
+        "than editing the thing that dispatched it. If this is wrong, the host's own " +
+        "location is what to correct: it defaults to the process's working directory, " +
+        "and a host that runs from elsewhere passes its root as the third argument.",
     );
   }
 }
 
 
-/**
- * Refuse a base ref the target repository does not have.
- *
- * `provisionCheckout` passes this straight to `git worktree add` as the
- * commit-ish for a fresh checkout, so a typo or a repository whose default
- * branch is not `main` fails **every** attempt — after the row is claimed, once
- * per retry, until the budget is gone. It is a startup fact, not a run-time
- * one, so it is checked where the operator can still see it.
- *
- * Verified with `rev-parse --verify`, the same call `branchExists` uses, so the
- * check and the thing it predicts cannot disagree.
- *
- * `variable` names the setting in the message, for the same reason
- * `requireSourceRepo` takes one: the whole rule has to travel to a second door,
- * not two thirds of it. Reached programmatically the failing thing is
- * `workspace.baseRef`, and an error naming an environment variable the caller
- * never set sends them looking in the wrong place.
- */
 /**
  * Refuse a checkout root the host cannot hold checkouts under.
  *
@@ -218,7 +205,7 @@ export function assertCheckoutRootUsable(root: string, variable = "workspace.roo
     rmSync(probe, { recursive: true, force: true });
   } catch (error) {
     throw new Error(
-      `[conductor] ${variable} "${root}" cannot hold checkouts: ` +
+      `[harness-manager] ${variable} "${root}" cannot hold checkouts: ` +
         `${error instanceof Error ? error.message : String(error)}. Each run cuts a fresh ` +
         `worktree beneath it, and that happens after the task is claimed — so an unusable ` +
         `root spends the whole retry budget on a host misconfiguration without ever ` +
@@ -227,6 +214,23 @@ export function assertCheckoutRootUsable(root: string, variable = "workspace.roo
   }
 }
 
+/**
+ * Refuse a base ref the target repository does not have.
+ *
+ * `provisionCheckout` passes this straight to `git worktree add` as the
+ * commit-ish for a fresh checkout, so a typo or a repository whose default
+ * branch is not `main` fails **every** attempt — after the row is claimed, once
+ * per retry, until the budget is gone. It is a startup fact, not a run-time
+ * one, so it is checked where the operator can still see it.
+ *
+ * Verified with `rev-parse --verify`, the same call `branchExists` uses, so the
+ * check and the thing it predicts cannot disagree.
+ *
+ * `variable` names the setting in the message, so the whole rule travels to a
+ * second door rather than two thirds of it. Reached programmatically the
+ * failing thing is `workspace.baseRef`, and an error naming an environment
+ * variable the caller never set sends them looking in the wrong place.
+ */
 export function assertBaseRefExists(
   repo: string,
   baseRef: string,
@@ -240,35 +244,13 @@ export function assertBaseRefExists(
     });
   } catch {
     throw new Error(
-      `[conductor] ${variable} "${baseRef}" does not resolve to a commit in ${repo}. ` +
+      `[harness-manager] ${variable} "${baseRef}" does not resolve to a commit in ${repo}. ` +
         "A fresh checkout is cut from it with `git worktree add`, so every attempt would " +
         "fail there and spend the row's whole retry budget on a name no retry can fix.",
     );
   }
 }
 
-/**
- * A positive, finite, whole number of milliseconds from the environment.
- *
- * **Every numeric setting goes through here**, because `Number()` on an
- * environment variable is not a parse: `Number("abc")` is `NaN`, and `NaN`
- * fails every comparison silently — including the manager's stale-window check,
- * which passes construction and then hands `NaN` to `AbortSignal.timeout`.
- * Measured: that throws `RangeError: The value of "delay" is out of range`,
- * mid-run, *after* the row was claimed. So the config error is charged to the
- * task as a failed attempt, once per retry, and the row settles errored for a
- * typo in a shell.
- *
- * Negative and fractional values throw the same `RangeError`. So does anything
- * past the platform timer ceiling — which is the state validating the OTHERS
- * introduced: "a positive safe integer" admits `2**32`, and
- * `AbortSignal.timeout` rejects it exactly as it rejects `NaN`, while a plain
- * `setTimeout` silently clamps to 1ms and fires immediately. Both are the same
- * defect wearing different clothes, so the bound is checked here too.
- *
- * Refusing all of them at startup turns a run-time charge into a message before
- * anything is claimed.
- */
 /**
  * The largest delay the timer paths actually honour. **Measured, and the
  * measurement moved the number.**
@@ -284,24 +266,35 @@ export const MAX_TIMER_MS = 2_147_483_647;
 
 
 /**
- * The numeric rule itself, for a value that is already a number.
+ * A positive, finite, whole number of milliseconds a timer will actually honour.
  *
- * **The programmatic door onto the same rule the env door has.** `conductorFlow`
- * is exported, so a host can pass `runTimeoutMs: NaN`, a negative, or a
- * fraction directly — bypassing `positiveIntFromEnv` entirely. Unchecked, that
- * survives `resolveOwnership`'s comparisons (`NaN` fails all of them silently)
- * and reaches `AbortSignal.timeout` only after the row is claimed and the
- * checkout provisioned, charging an attempt for a permanent misconfiguration
- * once per retry.
+ * **The rule, at every door onto it.** `harnessManager` is exported, so a host
+ * passes `runTimeoutMs` directly; a host that reads the value out of the
+ * environment has `Number()` to do first, and `Number("abc")` is `NaN`. Either
+ * way the value arrives here.
  *
- * Fixing the env door and not this one was the sixth instance of the same
- * class on this branch: a rule enforced at the door someone reported rather
- * than at every door onto it.
+ * What each refusal costs if it is not made: `NaN` fails every comparison
+ * silently — including the manager's own stale-window check, so construction
+ * passes and `AbortSignal.timeout` is handed `NaN` mid-run. Measured, that is
+ * `RangeError: The value of "delay" is out of range`, thrown *after* the row was
+ * claimed. The config error is then charged to the task as a failed attempt,
+ * once per retry, and the row settles errored for a typo in a shell. Negative
+ * and fractional values throw the same way. Zero is refused too: a deadline that
+ * fires immediately settles every row errored without running anything.
+ *
+ * The ceiling is the state that validating the others introduced. "A positive
+ * safe integer" admits `2**32`, which `AbortSignal.timeout` rejects exactly as
+ * it rejects `NaN` — while a plain `setTimeout` silently clamps it to 1ms and
+ * fires immediately. Same defect, different clothes; see {@link MAX_TIMER_MS}
+ * for why the bound is the quieter of the two limits.
+ *
+ * Refusing all of them at construction turns a run-time charge into a message
+ * before anything is claimed.
  */
 export function assertPositiveInt(label: string, value: number): number {
   if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_TIMER_MS) {
     throw new Error(
-      `[conductor] ${label} must be a positive whole number no greater than ` +
+      `[harness-manager] ${label} must be a positive whole number no greater than ` +
         `${MAX_TIMER_MS}; got ${String(value)}. Left unchecked this is not caught until a ` +
         "claimed attempt hands it to a timer and throws, charging a config error to the " +
         "task once per retry.",

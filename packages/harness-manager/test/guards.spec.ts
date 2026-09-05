@@ -124,26 +124,50 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     expect(repositoryIdentity(theirs)).not.toBe(repositoryIdentity(mine));
   });
 
-  it("refuses this repository even when the process runs from outside any repo", () => {
-    // The guard identified the dispatcher by `process.cwd()` alone, so a host
-    // started anywhere outside its checkout — a service unit, a container whose
-    // WORKDIR is not the source tree, a process launched from `/` — produced an
-    // undefined identity. And an undefined identity is not a near miss here:
-    // the guard only refuses on a MATCH, so it silently did nothing, in a
-    // deployment shape that is ordinary rather than exotic.
+  it("refuses a host that names its own repository, wherever the process stands", () => {
+    // `process.cwd()` alone is not the host: a service unit, a container whose
+    // WORKDIR is not the source tree, a process launched from `/` all produce an
+    // undefined identity. And undefined is not a near miss — the guard only
+    // refuses on a MATCH, so it would silently do nothing in a deployment shape
+    // that is ordinary rather than exotic.
     //
-    // This module's own file does not move when the process's directory does,
-    // so it is consulted too. Pointed at the repository this test file lives
-    // in, the guard must refuse however far away the process is standing.
-    const elsewhere = mkdtempSync(join(tmpdir(), "conductor-not-a-repo-"));
+    // The answer is that the host SAYS where it lives. It is the only party that
+    // knows: see the test below for what happens when the package guesses.
+    const elsewhere = mkdtempSync(join(tmpdir(), "harness-manager-not-a-repo-"));
     dirs.push(elsewhere);
     process.chdir(elsewhere);
-    // The repository holding the conductor's own source — the one a run must
-    // never be aimed at, and the one `cwd` no longer knows about.
-    // Derived from this file, not from `cwd` — which is the whole point.
-    process.env.CONDUCTOR_REPO = dirname(fileURLToPath(import.meta.url));
+    const host = repo();
 
-    expect(() => assertDistinctRepository("CONDUCTOR_REPO", process.env.CONDUCTOR_REPO!)).toThrow(/same repository/);
+    expect(() => assertDistinctRepository("sourceRepo", host, host)).toThrow(
+      /same repository/,
+    );
+    // …and a different path inside it is still the same repository.
+    expect(() => assertDistinctRepository("sourceRepo", nested(host), host)).toThrow(
+      /same repository/,
+    );
+  });
+
+  it("does NOT refuse a repository merely because this package is installed under it", () => {
+    // **The published-package bug.** The guard used to consult this module's own
+    // file location as a second candidate for "the dispatcher", which was true
+    // while the code lived in the application that dispatched runs. Shipped as a
+    // dependency, that path names wherever the package was INSTALLED — under the
+    // host's `node_modules`, a linked workspace, a pnpm store — which is a fact
+    // about dependency resolution, not about the host.
+    //
+    // So a host that names its own repository and points a run at some OTHER
+    // one was refused whenever the package happened to sit inside that other
+    // one. The error even claimed the process was running from it.
+    //
+    // A guard a legitimate host cannot satisfy is worse than no guard, because
+    // the host's only escape is to stop calling it.
+    const dispatcher = repo();
+    // The repository this test file physically lives in — the package's own.
+    const wherePackageLives = dirname(fileURLToPath(import.meta.url));
+
+    expect(() =>
+      assertDistinctRepository("sourceRepo", wherePackageLives, dispatcher),
+    ).not.toThrow();
   });
 
 });

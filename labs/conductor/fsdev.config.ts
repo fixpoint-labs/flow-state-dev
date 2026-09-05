@@ -28,7 +28,7 @@
  * engine carves its cancellation reserve OUT of this budget — so the effective
  * wait was *less* than the agent deadline alone, and a valid near-deadline run
  * was cancelled before it could produce a verdict. `conductorFlow` derives the
- * number from all four terms; see `conductorDrainBudgetMs`. On a
+ * number from all four terms; see `harnessDrainBudgetMs`. On a
  * queue-consuming host the setting does not apply at all and the platform's kill
  * timeout is the real ceiling — see the README.
  */
@@ -36,7 +36,9 @@ import path from "node:path";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
-import { assertBaseRefExists } from "@flow-state-dev/harness-manager";
+import {
+  assertBaseRefExists,
+} from "@flow-state-dev/harness-manager";
 import { positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
 function neverResolvesAModel(): never {

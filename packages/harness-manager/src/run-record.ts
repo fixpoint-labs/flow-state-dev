@@ -497,7 +497,7 @@ export function collectionRef(
   const ref = (ctx.resources as Record<string, unknown> | undefined)?.[accessor];
   if (ref === undefined || typeof (ref as ReadableCollection).upsert !== "function") {
     throw new Error(
-      `[conductor] the "${accessor}" collection is not registered on this flow — ` +
+      `[harness-manager] the "${accessor}" collection is not registered on this flow — ` +
         `the run record cannot be written, and a silent miss here is the lying ` +
         `status row this lab exists to remove.`,
     );

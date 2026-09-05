@@ -133,6 +133,59 @@ describe("the harness slot", () => {
   });
 });
 
+describe("a phase's own preconditions, at the manager's door", () => {
+  it("runs `validate` when the manager is constructed", () => {
+    // **A construction-time preflight is worthless if only one wrapper calls
+    // it.** The wiring used to live in this repository's own flow builder, so a
+    // host constructing `harnessManager` directly — which is what the README
+    // demonstrates — silently skipped it. What that costs is exactly what
+    // `validate` exists to prevent: a phase's permanent precondition failure
+    // (the implement phase reads the source repository's `origin`) landing
+    // AFTER a paid agent run, once per retry, until the budget is gone.
+    let seen: unknown = "never ran";
+    build({
+      phase: {
+        ...phase,
+        validate: (ws: unknown) => {
+          seen = ws;
+          return "the-validated-value";
+        },
+      },
+    });
+
+    expect(seen).toEqual(workspace);
+  });
+
+  it("refuses at construction when `validate` throws", () => {
+    // The refusal is the point: a phase's precondition is configuration, and
+    // configuration fails at startup where an operator can see it rather than
+    // once per claimed attempt.
+    expect(() =>
+      build({
+        phase: {
+          ...phase,
+          validate: () => {
+            throw new Error("this phase needs an origin remote");
+          },
+        },
+      }),
+    ).toThrow(/needs an origin remote/);
+  });
+
+  it("gives two managers from one PhaseSpec their own validated value", () => {
+    // What `validate` learns belongs to THIS manager. A phase that stored it on
+    // itself would hand it to the next one, and a construction that then failed
+    // would leave the pin behind for a corrected retry to trip over.
+    let calls = 0;
+    const shared = { ...phase, validate: () => `run-${++calls}` };
+
+    build({ phase: shared });
+    build({ phase: shared });
+
+    expect(calls).toBe(2);
+  });
+});
+
 describe("a phase's collections ride `uses`", () => {
   const notes = defineResourceCollection({
     name: "phase-notes",

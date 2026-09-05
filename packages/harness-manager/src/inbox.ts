@@ -411,7 +411,7 @@ function topicFromPath(path: string): string {
 function assertAttempt(attempt: number): string {
   if (!Number.isInteger(attempt) || attempt < 0) {
     throw new Error(
-      `[conductor] attempt "${attempt}" is not a usable inbox key segment — the attempt ` +
+      `[harness-manager] attempt "${attempt}" is not a usable inbox key segment — the attempt ` +
         `comes from the board's own counter, so a non-integer here means the key was ` +
         `built from something other than the worker input.`,
     );
@@ -444,7 +444,7 @@ function inboxRef(ctx: BlockContext): InboxRef {
   const ref = (ctx.resources as Record<string, unknown> | undefined)?.[INBOX];
   if (ref === undefined || typeof (ref as InboxRef).upsert !== "function") {
     throw new Error(
-      `[conductor] the "${INBOX}" collection is not registered on this flow — a question ` +
+      `[harness-manager] the "${INBOX}" collection is not registered on this flow — a question ` +
         `cannot be posted or answered, and a silent miss here is a run parked on a ` +
         `question nobody can ever see.`,
     );

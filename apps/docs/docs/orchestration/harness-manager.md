@@ -54,12 +54,18 @@ const manager = harnessManager({
 });
 ```
 
-Pointing the same manager at a different agent is that one expression:
+Pointing the same manager at a different agent is that one line. Whatever
+harness you swap in, the manager is unchanged — it never learns which one it is
+driving:
 
 ```ts
+  // Same manager, same board, a different coding agent.
   harness: ({ cwd, resume, onSession }) =>
-    codexAgent({ cwd, resume, onSession, thread: { sandboxMode: "workspace-write" } }),
+    someOtherHarness({ cwd, resume, onSession }),
 ```
+
+The three feeds are the whole contract. A harness that takes them and returns a
+run handle is one this manager can drive.
 
 **What the manager hands down.** `cwd` says where this run works. `resume` says which conversation it continues, or `null` for a fresh one. `onSession` is what the harness calls when it names its session, so the manager can record it.
 

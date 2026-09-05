@@ -80,7 +80,7 @@ import {
   withdrawQuestion,
 } from "./inbox";
 import {
-  conductorTaskId,
+  harnessTaskId,
   sameSegment,
   acquireCheckout,
   branchFor,
@@ -341,7 +341,7 @@ export interface QuestionAnnouncement {
 }
 
 /** The typed payload a conductor task carries. Not model-writable — see `./workspace`. */
-export const conductorTaskInputSchema = z.object({
+export const harnessTaskInputSchema = z.object({
   /** The Linear issue this row drives. */
   issue: z.string(),
   /** Which phase of it. */
@@ -400,10 +400,10 @@ const managerOutputSchema = z.object({
  * An attempt failed. Carries only a message — the board captures it as
  * `feedback`, which is how the next attempt is told why this one stopped.
  */
-export class ConductorAttemptFailed extends Error {
+export class HarnessAttemptFailed extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "ConductorAttemptFailed";
+    this.name = "HarnessAttemptFailed";
   }
 }
 
@@ -438,7 +438,7 @@ function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
   const userId = identity?.id;
   if (typeof userId !== "string" || userId === "") {
     throw new Error(
-      "[conductor] this request has no resolved user identity, so a run cannot be " +
+      "[harness-manager] this request has no resolved user identity, so a run cannot be " +
         "isolated to one. Refusing rather than sharing a checkout across principals.",
     );
   }
@@ -453,19 +453,19 @@ function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
 /**
  * This attempt is no longer the live one.
  *
- * Distinct from {@link ConductorAttemptFailed} because it is not a failed
+ * Distinct from {@link HarnessAttemptFailed} because it is not a failed
  * attempt — §9's taxonomy puts a lost claim in neither class: the attempt
  * writes nothing and leaves the row to be recovered. Throwing is still the
  * right exit, because the board's own fenced recorder declines a settlement
  * from a lost claim, so nothing is settled and no retry is spent.
  */
-export class ConductorAttemptSuperseded extends Error {
+export class HarnessAttemptSuperseded extends Error {
   constructor(where: string) {
     super(
-      `[conductor] this attempt was superseded before ${where}; stopping rather than ` +
+      `[harness-manager] this attempt was superseded before ${where}; stopping rather than ` +
         `continuing to work a row another attempt now holds.`,
     );
-    this.name = "ConductorAttemptSuperseded";
+    this.name = "HarnessAttemptSuperseded";
   }
 }
 
@@ -487,7 +487,7 @@ async function fenced(
   write: Promise<RunRowWrite>,
   where: string,
 ): Promise<void> {
-  if ((await write) === "refused") throw new ConductorAttemptSuperseded(where);
+  if ((await write) === "refused") throw new HarnessAttemptSuperseded(where);
 }
 
 /**
@@ -522,10 +522,10 @@ function taskPayload(input: { input?: unknown; taskId: string }): {
   issue: string;
   phase: string;
 } {
-  const parsed = conductorTaskInputSchema.safeParse(input.input);
+  const parsed = harnessTaskInputSchema.safeParse(input.input);
   if (!parsed.success) {
-    throw new ConductorAttemptFailed(
-      `[conductor] task ${input.taskId} carries no usable issue/phase payload: ` +
+    throw new HarnessAttemptFailed(
+      `[harness-manager] task ${input.taskId} carries no usable issue/phase payload: ` +
         `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`,
     );
   }
@@ -545,7 +545,7 @@ function identityFrom(
 ): AttemptIdentity {
   if (state?.topic == null || state.taskId == null || state.attempt == null) {
     throw new Error(
-      "[conductor] the manager's sequencer state is empty — this block ran outside the " +
+      "[harness-manager] the manager's sequencer state is empty — this block ran outside the " +
         "manager, or before the row was opened.",
     );
   }
@@ -582,7 +582,7 @@ function harnessCtxState(ctx: {
 /** Read the manager's state, or throw rather than derive a wrong directory. */
 function managerState(state: ManagerState | undefined): ManagerState {
   if (state?.workspacePath == null) {
-    throw new Error("[conductor] the manager's sequencer state has no checkout on it.");
+    throw new Error("[harness-manager] the manager's sequencer state has no checkout on it.");
   }
   return state;
 }
@@ -622,7 +622,7 @@ function managerState(state: ManagerState | undefined): ManagerState {
  *
  * All this adds is *whose fault it is*: a hook that misses its deadline is a
  * failed attempt, not a conductor defect, so it rejects with
- * {@link ConductorAttemptFailed} and the board records that message as the next
+ * {@link HarnessAttemptFailed} and the board records that message as the next
  * attempt's feedback. The wording differs from core's for the same reason — a
  * person reading the feedback is being told the hook did not answer, not that a
  * timer expired.
@@ -637,11 +637,11 @@ export async function withDeadline<T>(
     ms,
     what,
     (label, timeoutMs) =>
-      new ConductorAttemptFailed(`${label} did not answer within ${timeoutMs}ms`),
+      new HarnessAttemptFailed(`${label} did not answer within ${timeoutMs}ms`),
   );
 }
 
-export function conductorDrainBudgetMs(options: {
+export function harnessDrainBudgetMs(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
   ownershipWaitMs: number;
@@ -661,7 +661,7 @@ export function conductorDrainBudgetMs(options: {
 
   if (budget > MAX_TIMER_MS) {
     throw new Error(
-      `[conductor] the derived drain budget (${budget}ms) exceeds the largest delay a ` +
+      `[harness-manager] the derived drain budget (${budget}ms) exceeds the largest delay a ` +
         `timer honours (${MAX_TIMER_MS}ms). Lower runTimeoutMs, the ownership wait, or ` +
         `workspace.provisionTimeoutMs — a budget past the ceiling is silently clamped and ` +
         `would cancel every run immediately.`,
@@ -776,7 +776,7 @@ export function resolveOwnership(options: {
   const minimumWaitMs = ownership.staleAfterMs + ownership.pollMs;
   if (ownership.waitMs < minimumWaitMs) {
     throw new Error(
-      `[conductor] ownership.waitMs (${ownership.waitMs}ms) must exceed ` +
+      `[harness-manager] ownership.waitMs (${ownership.waitMs}ms) must exceed ` +
         `ownership.staleAfterMs (${ownership.staleAfterMs}ms) by at least one poll ` +
         `interval (${ownership.pollMs}ms), so at least ${minimumWaitMs}ms: a lock becomes ` +
         `stale-eligible only once its age is STRICTLY past the window, and eligibility is ` +
@@ -787,7 +787,7 @@ export function resolveOwnership(options: {
 
   if (ownership.staleAfterMs <= maxLockHeldMs) {
     throw new Error(
-      `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed the ` +
+      `[harness-manager] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed the ` +
         `longest a live attempt can hold the lock (${maxLockHeldMs}ms = the provisioning ` +
         `budget ${provisionBudget}ms + whichever of runTimeoutMs ${runTimeoutMs}ms and the ` +
         `${CHECKOUT_CLEANUP_TIMEOUT_MS}ms to undo a checkout provisioning refused is ` +
@@ -820,7 +820,7 @@ export function resolveOwnership(options: {
  * `uses` side. The accessor set is genuinely open here (a phase brings its
  * own), so declaring it open is the honest type as well as the usable one.
  */
-function createConductorCapability(options: {
+function createManagerCapability(options: {
   /** The board's ledger collection id — also the accessor the fence reads it under. */
   boardCollectionId: string;
   /** The board's ledger declaration — the same object the board itself registers. */
@@ -857,7 +857,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     boardCollectionId,
     boardCollection,
     tenant,
-    phase,
+    phase: callerPhase,
     workspace,
     runTimeoutMs,
     harness,
@@ -865,6 +865,51 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     announce = () => {},
     name = "harness-manager",
   } = options;
+
+  // **A phase is caller-owned validated configuration, so it is snapshotted.**
+  // Held by reference, a host could swap `implement` for `review` after this
+  // returns and leave the implement prompt and completion check attached to
+  // rows both runtime guards now accept. Shallow, which is all the shape needs.
+  const phase: PhaseSpec = Object.freeze({ ...callerPhase });
+
+  // **The phase's own preconditions, at the manager's door.**
+  //
+  // This used to live in one host's flow builder, which meant a host
+  // constructing this manager directly — the documented way — silently skipped
+  // it. What that costs is exactly what `validate` exists to prevent: a
+  // permanent precondition failure landing AFTER a paid agent run, once per
+  // retry, until the budget is gone. A preflight only one caller runs is not a
+  // preflight.
+  //
+  // **Captured, not left on the phase.** What `validate` learns belongs to THIS
+  // manager; a phase that stored it on itself would hand it to the next one.
+  const validated = phase.validate?.(workspace);
+
+  // The phase this manager actually runs: this construction's `validated` bound
+  // into every run context, by a closure that belongs to it and nothing else.
+  // Two managers from one `PhaseSpec` get two wrappers, so neither can reach the
+  // other's value — the property the phase cannot give itself, since the
+  // snapshot above copies function references and not what they close over.
+  //
+  // Gated on the VALUE rather than on `validate` being defined, and the two are
+  // equivalent: binding `undefined` produces a context whose `validated` is
+  // `undefined`, which is what an unwrapped phase already receives. So a
+  // `validate` that only refuses costs no allocation per run.
+  //
+  // **Both hooks, because the type promises both.** `validated` lives on
+  // `PhaseRunContext`, which `PromptRunContext` extends — so a prompt builder is
+  // told it receives the value. Binding it into `isDone` alone made the type a
+  // lie for the other half: a phase whose prompt depends on what `validate`
+  // found would read `undefined` and build the wrong prompt, silently, after a
+  // construction that succeeded.
+  const runPhase: PhaseSpec =
+    validated === undefined
+      ? phase
+      : Object.freeze({
+          ...phase,
+          isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
+          buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
+        });
 
   const { ownership } = resolveOwnership({
     runTimeoutMs,
@@ -889,37 +934,77 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // a phase re-declaring it would send the ask into a collection `answer` and
   // `status` never read, so a run would park on a question no operator could
   // ever see and no answer could ever reach.
+  // **Three accessors are the manager's and a capability may not claim them.**
+  //
+  // A capability whose resources carried `runs` would send this manager's
+  // bookkeeping into a collection the status surface never reads — the row
+  // would be written, and every read of it would answer nothing. One carrying
+  // the board's accessor is worse: the live-claim fence would consult unrelated
+  // rows, quietly defeating the whole attempt-fence mechanism while every test
+  // that does not stage two attempts still passes. `inbox` has a third harm of
+  // its own: a run would park on a question no operator could see and no answer
+  // could ever reach.
+  //
+  // Merging the manager's entries LAST would prevent all three, and it is the
+  // wrong fix: the host's declaration would simply not work, with nothing
+  // anywhere saying why. This fails loudly, naming the key.
   const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX]);
-  // **The guard's target is the merged capability set now, not a record.**
-  // `readable` was a second way to declare resources; the rule it protected is
-  // unchanged, so it is re-aimed rather than dropped. A capability contributes
-  // its resources through `resources`, so that is what is read — and a dynamic
-  // `uses` entry is skipped, because it resolves per call and cannot be
-  // inspected at construction. That is the same limit the framework's own
-  // resource collection has, not a new hole.
-  const claimed = [
-    ...new Set(
-      (hostUses ?? []).flatMap((entry) =>
-        typeof entry === "function"
-          ? []
-          : Object.keys(
-              (entry as { resources?: Record<string, unknown> }).resources ?? {},
-            ),
+
+  /** Refuse a capability set that claims one of the manager's accessors. */
+  const assertClaimsNothingReserved = (
+    entries: readonly unknown[],
+    when: string,
+  ): void => {
+    const claimed = [
+      ...new Set(
+        entries.flatMap((entry) =>
+          Object.keys(
+            (entry as { resources?: Record<string, unknown> })?.resources ?? {},
+          ),
+        ),
       ),
-    ),
-  ].filter((key) => RESERVED_ACCESSORS.has(key));
-  if (claimed.length > 0) {
+    ].filter((key) => RESERVED_ACCESSORS.has(key));
+    if (claimed.length === 0) return;
     throw new Error(
       `[harness-manager] a capability on \`uses\` declares collection(s) ` +
-        `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns — ` +
+        `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns (${when}) — ` +
         `"${RUNS}" is the run record, "${INBOX}" is the question inbox, and ` +
         `"${boardCollectionId}" is the board ledger the attempt fence reads. All ` +
         `are already available to the phase; declaring them again would replace ` +
         `the manager's own.`,
     );
-  }
+  };
 
-  const conductor = createConductorCapability({
+  // **Static entries are checked here; DYNAMIC ones are checked when they
+  // resolve, and skipping them would have been a hole rather than a limit.**
+  //
+  // A dynamic `uses` entry is a function the framework calls per invocation, so
+  // its capabilities cannot be inspected at construction. Passing it through
+  // unchecked would let a host override `runs`, `inbox` or the board ledger at
+  // run time through a documented framework feature — a guard a host bypasses
+  // by using the framework normally is not a guard.
+  //
+  // Refusing dynamic `uses` outright would close it too, and costs more than it
+  // saves: conditional capabilities are a real thing hosts need. So each dynamic
+  // entry is wrapped instead, and the same rule runs on what it actually
+  // returns. The wrapper is transparent — it returns the entry's own value —
+  // and the cost is one array scan per invocation on a path that already builds
+  // a context.
+  const staticUses = (hostUses ?? []).filter((e) => typeof e !== "function");
+  assertClaimsNothingReserved(staticUses, "declared statically");
+
+  const guardedUses = (hostUses ?? []).map((entry) =>
+    typeof entry === "function"
+      ? (ctx: never) => {
+          const resolved = (entry as (c: never) => unknown)(ctx);
+          const list = Array.isArray(resolved) ? resolved : [resolved];
+          assertClaimsNothingReserved(list, "returned by a dynamic `uses` entry");
+          return resolved;
+        }
+      : entry,
+  ) as typeof hostUses;
+
+  const managerCapability = createManagerCapability({
     boardCollectionId,
     boardCollection,
   });
@@ -944,7 +1029,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const collection = resolveResourceCollection(ctx, boardCollectionId);
     if (collection === undefined) {
       throw new Error(
-        `[conductor] the board ledger "${boardCollectionId}" is not registered on this ` +
+        `[harness-manager] the board ledger "${boardCollectionId}" is not registered on this ` +
           `worker, so a run cannot be parked on a person — the question it just posted ` +
           `would sit open with the row still reading as running.`,
       );
@@ -966,11 +1051,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * same directory (see `./workspace`).
    */
   const openRun = handler({
-    name: "conductor-open-run",
+    name: "harness-manager-open-run",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.void(),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
+    uses: [managerCapability],
     execute: async (input, ctx) => {
       const { issue, phase: phaseName } = taskPayload(input);
 
@@ -988,14 +1073,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // **Compared canonically, because the identity it guards is.** A durable
       // row outlives the process that filed it, so a restart with the phase
       // spelled differently — `IMPLEMENT` for `implement` — meets rows already
-      // on the board. `conductorTaskId` folds case, so those are the SAME task,
+      // on the board. `harnessTaskId` folds case, so those are the SAME task,
       // the same checkout and the same branch; a raw comparison here called them
       // different and refused, after `wake` had claimed the row and charged it.
       // Once per wake, until a valid task's budget was gone, for a mismatch its
       // own identity says does not exist.
       if (!sameSegment(phaseName, phase.phase)) {
-        throw new ConductorAttemptFailed(
-          `[conductor] task ${input.taskId} is a "${phaseName}" row on a manager ` +
+        throw new HarnessAttemptFailed(
+          `[harness-manager] task ${input.taskId} is a "${phaseName}" row on a manager ` +
             `configured for "${phase.phase}". Refusing rather than running ` +
             `${phase.phase}'s prompt and completion check against it.`,
         );
@@ -1012,10 +1097,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // pull request satisfying the other's completion check. "Separate trees
       // pushing one ref is not isolation" is the rule `branchFor` states; this
       // is the same collapse reached through the row id instead.
-      const canonicalId = conductorTaskId(issue, phaseName);
+      const canonicalId = harnessTaskId(issue, phaseName);
       if (input.taskId !== canonicalId) {
-        throw new ConductorAttemptFailed(
-          `[conductor] task ${input.taskId} carries the payload for ${canonicalId}. ` +
+        throw new HarnessAttemptFailed(
+          `[harness-manager] task ${input.taskId} carries the payload for ${canonicalId}. ` +
             `Refusing: the checkout, the branch and the run record are all derived from ` +
             `that payload, so a second row under a different id would run the same work ` +
             `in the same tree.`,
@@ -1031,8 +1116,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // same reason the phase is: this is where the wrong work would execute.
       const resolvedTenant = requestTenant(ctx);
       if (resolvedTenant !== tenant) {
-        throw new ConductorAttemptFailed(
-          `[conductor] this conductor serves ${describeTenant(tenant)}; the request resolved ` +
+        throw new HarnessAttemptFailed(
+          `[harness-manager] this conductor serves ${describeTenant(tenant)}; the request resolved ` +
             `to ${describeTenant(resolvedTenant)}. Refusing rather than running one tenant's ` +
             `task in another's workspace.`,
         );
@@ -1132,19 +1217,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * it, and it only fires once the step has been dispatched.
    */
   const prepare = handler({
-    name: "conductor-prepare",
+    name: "harness-manager-prepare",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ prompt: z.string() }),
     sequencerStateSchema: managerStateSchema,
     // The host's capabilities ride alongside the manager's own, so a phase's
     // prompt builder reads its collections off `ctx.resources` like any block.
-    uses: [conductor, ...(hostUses ?? [])],
+    uses: [managerCapability, ...(guardedUses ?? [])],
     // **`ctx` is annotated rather than inferred, and the annotation is
     // load-bearing.** The host's `uses` widens the context `handler()` infers —
     // its capabilities' resources and namespaces appear in it — and a narrowed
     // `BlockContext` is not assignable to a plain one, so every helper called
     // below would need a cast. Narrowing here keeps the option's cost at the
-    // option; `createConductorCapability` carries the long form of the same
+    // option; `createManagerCapability` carries the long form of the same
     // argument.
     execute: async (input, ctx: BlockContext) => {
       const state = managerState(harnessCtxState(ctx));
@@ -1188,11 +1273,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // rule, one of them carried through.
       //
       // Unlike `isDone`, the derived budget did NOT already reserve time here,
-      // so `conductorDrainBudgetMs` gains the term. A bound the budget does not
+      // so `harnessDrainBudgetMs` gains the term. A bound the budget does not
       // account for would make the advertised number wrong in the other
       // direction, which is the defect being fixed, inverted.
       const prompt = await withDeadline(
-        async () => phase.buildPrompt(run),
+        async () => runPhase.buildPrompt(run),
         NETWORK_CALL_TIMEOUT_MS,
         `the ${state.phase} phase's prompt builder`,
       );
@@ -1303,7 +1388,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * would be a second answer to a question the board already answers.
    */
   const decide = handler({
-    name: "conductor-decide",
+    name: "harness-manager-decide",
     // **The NEUTRAL contract's fields, and no vendor field at all.** This used
     // to read `resultSubtype` — the SDK's own enum — so the manager could only
     // classify runs from one vendor, which is the coupling the harness contract
@@ -1337,13 +1422,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     outputSchema: managerOutputSchema,
     sequencerStateSchema: managerStateSchema,
     // The done-condition runs in here, and it sees a phase's collections too.
-    uses: [conductor, ...(hostUses ?? [])],
+    uses: [managerCapability, ...(guardedUses ?? [])],
     // **`ctx` is annotated rather than inferred, and the annotation is
     // load-bearing.** The host's `uses` widens the context `handler()` infers —
     // its capabilities' resources and namespaces appear in it — and a narrowed
     // `BlockContext` is not assignable to a plain one, so every helper called
     // below would need a cast. Narrowing here keeps the option's cost at the
-    // option; `createConductorCapability` carries the long form of the same
+    // option; `createManagerCapability` carries the long form of the same
     // argument.
     execute: async (handle, ctx: BlockContext) => {
       const state = managerState(harnessCtxState(ctx));
@@ -1431,7 +1516,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // ── Arm 2: succeeded AND done ──────────────────────────────────────────
       if (succeeded) {
         // **Bounded, because the whole-worker budget already says it is.**
-        // `conductorDrainBudgetMs` reserves `NETWORK_CALL_TIMEOUT_MS` for this
+        // `harnessDrainBudgetMs` reserves `NETWORK_CALL_TIMEOUT_MS` for this
         // step. `isDone` is a public seam, so another phase's check was
         // unbounded and could outlive the budget a host sized its shutdown
         // from, leaving the row `in_progress` with nothing to settle it. The
@@ -1439,7 +1524,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // advertised number true rather than adding one.
         const done = await withDeadline(
           async () =>
-            phase.isDone({
+            runPhase.isDone({
               epic: boardCollectionId,
               issue: state.issue!,
               phase: state.phase!,
@@ -1480,12 +1565,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // failed, including one whose vendor subtype this framework version
         // does not recognise.
         const because = handle.outcome ?? "no result reported";
-        throw new ConductorAttemptFailed(
+        throw new HarnessAttemptFailed(
           `the run stopped without finishing: ${because}` +
             (handle.finalMessage === null ? "" : ` — ${handle.finalMessage}`),
         );
       }
-      throw new ConductorAttemptFailed(
+      throw new HarnessAttemptFailed(
         `the run finished cleanly and the ${state.phase} phase is still not done`,
       );
     },
@@ -1500,11 +1585,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * it here and the row would complete for an attempt that failed.
    */
   const recordFailure = handler({
-    name: "conductor-record-failure",
+    name: "harness-manager-record-failure",
     inputSchema: z.unknown(),
     outputSchema: z.never(),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
+    uses: [managerCapability],
     execute: async (error: unknown, ctx): Promise<never> => {
       // **Release the tree on the way out, whatever failed.**
       //

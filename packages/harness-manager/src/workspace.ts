@@ -113,7 +113,7 @@ export interface Checkout {
  * Two mechanisms serve the one rule, chosen by who owns the identifier:
  *
  * - Identifiers **we** issue (epics, issue keys, phase names) are *validated*
- *   against `OWNED_SEGMENT` (in `./patterns`, with the grammar's own rationale).
+ *   against `OWNED_SEGMENT` (in `./identity`, with the grammar's own rationale).
  *   The grammar is ours to set, a malformed issue key is a real signal, and the
  *   value stays readable in a path.
  * - Identifiers **someone else** issues (user ids, tenant ids) are *encoded*
@@ -165,7 +165,7 @@ export function assertSafeSegment(label: string, value: string): string {
   // comes from the task payload and keeps its own case.
   if (!OWNED_SEGMENT.test(value) || value.length > MAX_OWNED_SEGMENT) {
     throw new Error(
-      `[conductor] ${label} "${value}" is not a usable identity segment — ` +
+      `[harness-manager] ${label} "${value}" is not a usable identity segment — ` +
         `at most ${MAX_OWNED_SEGMENT} letters and digits, separated by single \`-\` or ` +
         `\`_\`. No dots (a git ref may not end in "." or ".lock"), no ` +
         `"${IDENTITY_DELIMITER}" (it is the component frame), nothing that could climb out ` +
@@ -200,7 +200,7 @@ export function joinIdentity(...parts: string[]): string {
  *
  * `joinIdentity`'s output satisfies this by construction; this exists for the
  * identities that arrive from elsewhere already built. The grammar itself is
- * `DERIVED_IDENTITY` in `./patterns`, beside `OWNED_SEGMENT` so the single `+`
+ * `DERIVED_IDENTITY` in `./identity`, beside `OWNED_SEGMENT` so the single `+`
  * that separates them is visible rather than looking like a typo.
  */
 
@@ -210,7 +210,7 @@ export function assertDerivedIdentity(label: string, value: string): string {
   // that reintroduces case into the derivation.
   if (!DERIVED_IDENTITY.test(value)) {
     throw new Error(
-      `[conductor] ${label} "${value}" is not a usable identity segment — ` +
+      `[harness-manager] ${label} "${value}" is not a usable identity segment — ` +
         `letters and digits, separated by \`-\` or \`_\`. No dots (a git ref may not ` +
         `end in "." or ".lock"), and nothing that could climb out of a directory.`,
     );
@@ -415,7 +415,7 @@ function locationSegments(location: RunLocation): string[] {
 
 /** The issue-phase leaf, shared by the path, the branch, and the board task id. */
 function issuePhaseSegment(location: RunLocation): string {
-  return conductorTaskId(location.issue, location.phase);
+  return harnessTaskId(location.issue, location.phase);
 }
 
 /**
@@ -456,7 +456,7 @@ export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation):
  * the same reason: the value lands in the ledger's key space, and a separator or
  * a traversal there is the identical class of problem it would be in a path.
  */
-export function conductorTaskId(issue: string, phase: string): string {
+export function harnessTaskId(issue: string, phase: string): string {
   return joinIdentity(assertSafeSegment("issue", issue), assertSafeSegment("phase", phase));
 }
 
@@ -507,7 +507,7 @@ function remainingBudget(deadline: number, now: () => number): number {
   const left = deadline - now();
   if (left <= 0) {
     throw new Error(
-      "[conductor] provisioning exceeded its budget (workspace.provisionTimeoutMs) before " +
+      "[harness-manager] provisioning exceeded its budget (workspace.provisionTimeoutMs) before " +
         "it finished. The lock is held across provisioning, so a longer one would risk " +
         "being declared stale while this attempt is still legitimately working.",
     );
@@ -577,7 +577,7 @@ async function assertAskMarkerIgnored(
     .filter((line) => line !== "" && isAskMarkerPath(line));
   if (tracked.length > 0) {
     throw new Error(
-      `[conductor] the repository behind ${checkoutPath} already tracks question markers ` +
+      `[harness-manager] the repository behind ${checkoutPath} already tracks question markers ` +
         `under ${ASK_MARKER_DIR}: ` +
         `${tracked.join(", ")}. An ignore rule does not un-track a file — the ` +
         `agent's \`git add -A\` stages a change to a tracked path regardless — so a run's ` +
@@ -619,7 +619,7 @@ async function assertAskMarkerIgnored(
     if (!gitAnsweredNo(error)) throw error;
   }
   throw new Error(
-    `[conductor] the repository behind ${checkoutPath} does not ignore the directory ` +
+    `[harness-manager] the repository behind ${checkoutPath} does not ignore the directory ` +
       `"${probe}". A run writes the question it needs answered to a file named for its ` +
       `attempt inside that directory, and nothing here can stop the coding agent's ` +
       `\`git add -A\` from staging a file git does not already ignore — so the question ` +
@@ -820,7 +820,7 @@ async function branchExists(
   } catch (err) {
     if (gitAnsweredNo(err)) return false;
     throw new Error(
-      `[conductor] could not determine whether branch "${branch}" exists in ` +
+      `[harness-manager] could not determine whether branch "${branch}" exists in ` +
         `${config.sourceRepo}: the probe failed for a reason other than the ref being ` +
         `absent. Not reporting that as a deleted branch — see the cause below.`,
       { cause: err },
@@ -937,7 +937,7 @@ export async function provisionCheckout(
 
   if (existsSync(marker) && !interrupted && existsSync(join(path, ".git"))) {
     throw new Error(
-      `[conductor] ${marker} says a provision was interrupted, but the checkout at ${path} ` +
+      `[harness-manager] ${marker} says a provision was interrupted, but the checkout at ${path} ` +
         `is complete — every tracked file is present. One of the two is lying, and this ` +
         `will not guess: the marker can be created by anything with write access to the ` +
         `workspace root, including the coding agent, and the tree may hold real work. ` +
@@ -949,7 +949,7 @@ export async function provisionCheckout(
   if (!interrupted && existsSync(join(path, ".git"))) {
     if (!(await branchExists(config, branch, left()))) {
       throw new Error(
-        `[conductor] the checkout at ${path} is on branch "${branch}", which no longer ` +
+        `[harness-manager] the checkout at ${path} is on branch "${branch}", which no longer ` +
           `exists in ${config.sourceRepo}. Refusing to recreate it: the tree may hold ` +
           `uncommitted work, and a fresh branch off ${config.baseRef} would diverge from ` +
           `whatever the deleted one pointed at.`,
@@ -973,7 +973,7 @@ export async function provisionCheckout(
     const head = await currentBranch(path, left());
     if (head !== branch) {
       throw new Error(
-        `[conductor] the checkout at ${path} is on branch "${head}", not the expected ` +
+        `[harness-manager] the checkout at ${path} is on branch "${head}", not the expected ` +
           `"${branch}". Refusing to use it: a run told it is on "${branch}" would commit ` +
           `to "${head}" while the record says otherwise. Restore the branch or remove the ` +
           `checkout by hand — nothing here resets a tree.`,
@@ -1011,7 +1011,7 @@ export async function provisionCheckout(
     ]);
     if (mine === undefined || theirs === undefined || mine !== theirs) {
       throw new Error(
-        `[conductor] the checkout at ${path} does not belong to ${config.sourceRepo}. ` +
+        `[harness-manager] the checkout at ${path} does not belong to ${config.sourceRepo}. ` +
           `Refusing to reuse it: the branch name matches, but a run given this tree would ` +
           `commit and open a pull request in another repository. It may hold uncommitted ` +
           `work, so nothing here removes it — move or delete it by hand, or point ` +
@@ -1070,7 +1070,7 @@ export async function provisionCheckout(
     // is to keep them.
     if (!interrupted) {
       throw new Error(
-        `[conductor] the checkout at ${path} has no \`.git\` and no record of an ` +
+        `[harness-manager] the checkout at ${path} has no \`.git\` and no record of an ` +
           `interrupted provision, so it is not a half-created checkout and this will not ` +
           `clear it — it may hold work. Inspect it and remove it by hand if it is junk.`,
       );
@@ -1082,7 +1082,7 @@ export async function provisionCheckout(
     const root = resolve(config.root);
     if (!isStrictlyInside(path, root)) {
       throw new Error(
-        `[conductor] refusing to clear ${path}: it is not inside the workspace root ` +
+        `[harness-manager] refusing to clear ${path}: it is not inside the workspace root ` +
           `${root}. A half-created checkout is only ever removed from the directory this ` +
           `lab owns.`,
       );
@@ -1146,7 +1146,7 @@ export async function provisionCheckout(
     // there after all. Saying so beats a refusal that describes a tree the
     // operator will not find, and beats replacing the diagnosis entirely.
     throw new Error(
-      `${(refusal as Error).message}\n\n[conductor] and the checkout this call created ` +
+      `${(refusal as Error).message}\n\n[harness-manager] and the checkout this call created ` +
         `could not be removed, so ${path}${branchPreexisted ? "" : ` and branch "${branch}"`} ` +
         `are still there. Fixing the repository will not be enough on its own — delete ` +
         `them by hand, or the next attempt reuses a tree cut before the fix and fails the ` +
@@ -1479,7 +1479,7 @@ export async function acquireCheckout(
   const stopIfCancelled = (): void => {
     if (signal?.aborted !== true) return;
     throw new Error(
-      `[conductor] the attempt waiting for the checkout at ${checkoutPath} was cancelled ` +
+      `[harness-manager] the attempt waiting for the checkout at ${checkoutPath} was cancelled ` +
         "before it acquired the lock. Stopping rather than taking a tree whose result " +
         "this attempt can no longer record.",
     );
@@ -1554,7 +1554,7 @@ export async function acquireCheckout(
 
     if (now() >= deadline) {
       throw new Error(
-        `[conductor] waited ${bounds.waitMs}ms for the checkout at ${checkoutPath} and it ` +
+        `[harness-manager] waited ${bounds.waitMs}ms for the checkout at ${checkoutPath} and it ` +
           `is still held. Treating that as a wedged process rather than a race: an ` +
           `ordinary reclaim resolves well inside this bound.`,
       );

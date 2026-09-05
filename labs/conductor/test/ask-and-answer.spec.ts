@@ -20,7 +20,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { conductorFlow } from "../src/flow";
 import type { BlockContext } from "@flow-state-dev/core";
-import { askQuestion, questionFingerprint, questionTopic } from "@flow-state-dev/harness-manager";
+import {
+  askQuestion,
+  questionFingerprint,
+  questionTopic,
+} from "@flow-state-dev/harness-manager";
 import type { AnswerOutput } from "../src/answer";
 import {
   createConductorHarness,

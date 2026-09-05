@@ -21,14 +21,19 @@ import type {
 } from "@flow-state-dev/claude-code/sdk";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
-import { ASK_MARKER_IGNORE_RULE } from "@flow-state-dev/harness-manager";
+import {
+  ASK_MARKER_IGNORE_RULE,
+  type PhaseSpec,
+  type PromptRunContext,
+} from "@flow-state-dev/harness-manager";
+import {
+  CHECKOUT_CLEANUP_TIMEOUT_MS,
+} from "@flow-state-dev/harness-manager/checkout";
 // Re-exported: this lab's own specs import it from here, and the fixture it
 // stands for — a source repository with tracked content, a `.gitignore` and
 // an `origin` — is the package's, shared rather than copied.
 import { seedRepo } from "../../../packages/harness-manager/test/fixtures";
 export { seedRepo };
-import { CHECKOUT_CLEANUP_TIMEOUT_MS } from "@flow-state-dev/harness-manager";
-import type { PhaseSpec, PromptRunContext } from "@flow-state-dev/harness-manager";
 
 export const USER_ID = "conductor-test-user";
 

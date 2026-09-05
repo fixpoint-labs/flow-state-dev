@@ -23,31 +23,28 @@
  * - `WorkspaceConfig`, and the construction-time guards a host should run at
  *   its own door (`assertDistinctRepository`, `assertBaseRefExists`,
  *   `assertCheckoutRootUsable`, `assertPositiveInt`).
- * - `conductorDrainBudgetMs` and `resolveOwnership`, because a host sizing its
+ * - `harnessDrainBudgetMs` and `resolveOwnership`, because a host sizing its
  *   own shutdown needs the same numbers the manager enforces.
  * - The run record and inbox collections, so a host can build a status surface.
  *
- * **Checkout internals** — exported because this repository's own consumer and
- * its goal checks reach for them, NOT because a host should build on them.
- * Everything below the "checkout internals" heading is git-worktree-specific:
- * `provisionCheckout` cuts worktrees, `acquireCheckout` takes a lock file
- * beside the tree, and the path grammar assumes both. A second checkout
- * strategy — a fresh clone per run, a projected workspace — would put these
- * behind a seam, and a host that built on them would move with it. Adopt
- * `harnessManager({ harness })` and let it own the checkout.
+ * **Checkout internals are NOT here.** They live behind
+ * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
+ * semver binds what this file exports regardless of what a header says about
+ * it. They are git-worktree-specific; adopt `harnessManager({ harness })` and
+ * let it own the checkout.
  */
 
 // ── The manager ─────────────────────────────────────────────────────────────
 export {
   harnessManager,
-  conductorDrainBudgetMs,
+  harnessDrainBudgetMs,
   resolveOwnership,
   requestTenant,
   describeTenant,
   withDeadline,
-  conductorTaskInputSchema,
-  ConductorAttemptFailed,
-  ConductorAttemptSuperseded,
+  harnessTaskInputSchema,
+  HarnessAttemptFailed,
+  HarnessAttemptSuperseded,
   RUNS,
   type ManagerOptions,
   type HarnessSlot,
@@ -61,22 +58,28 @@ export {
 } from "./manager";
 
 // ── The run record ──────────────────────────────────────────────────────────
+//
+// **Read, not write.** `openRunRow`, `writeRunRow` and `collectionRef` are the
+// manager's own — every one of them writes through the attempt fence, and a
+// caller outside a claimed attempt either gets refused or corrupts a ledger the
+// board is the authority on. A host builds its status surface from
+// `readRunRow` and the collection; the writes stay internal.
 export {
-  openRunRow,
   readRunRow,
-  writeRunRow,
   runRecordCollection,
   runRecordStateSchema,
   runTopic,
   runTopicPrefix,
-  collectionRef,
-  type AttemptIdentity,
   type RunRecordState,
-  type RunRowWrite,
   type CollectionHoldingContext,
 } from "./run-record";
 
 // ── The question inbox ──────────────────────────────────────────────────────
+//
+// `withdrawEarlierQuestions` is not here for the same reason the run-record
+// writes are not: it is attempt-scoped reconciliation the manager performs at
+// the start of a run, and calling it from outside one withdraws a question a
+// live attempt is still waiting on.
 export {
   INBOX,
   askQuestion,
@@ -87,7 +90,6 @@ export {
   questionFingerprint,
   questionTopic,
   readQuestion,
-  withdrawEarlierQuestions,
   withdrawQuestion,
 } from "./inbox";
 
@@ -101,36 +103,12 @@ export {
   assertCheckoutRootUsable,
   assertDistinctRepository,
   assertPositiveInt,
-  identityFromCommonDir,
   repositoryIdentity,
 } from "./guards";
 
-// ── Checkout internals — git-worktree-specific; see the note above ───────────
-export {
-  acquireCheckout,
-  branchFor,
-  canonicalSegment,
-  checkoutPathFor,
-  conductorTaskId,
-  encodeSegment,
-  isStrictlyInside,
-  joinIdentity,
-  provisionCheckout,
-  releaseCheckout,
-  sameSegment,
-  assertSafeSegment,
-  tenantSegment,
-  type CheckoutLease,
-  type OwnershipBounds,
-  type RunLocation,
-  type RunPrincipal,
-  type WorkspaceConfig,
-} from "./workspace";
-
-export {
-  run,
-  CHECKOUT_CLEANUP_TIMEOUT_MS,
-  GIT_TIMEOUT_MS,
-  NETWORK_CALL_TIMEOUT_MS,
-  type RunOptions,
-} from "./exec";
+// ── What a host configures the workspace with ───────────────────────────────
+//
+// The TYPES a host needs to write `workspace:` and `ownership:`. The functions
+// that act on them are `@flow-state-dev/harness-manager/checkout` — see that
+// module for why the split is an entry point rather than a comment.
+export type { OwnershipBounds, WorkspaceConfig } from "./workspace";

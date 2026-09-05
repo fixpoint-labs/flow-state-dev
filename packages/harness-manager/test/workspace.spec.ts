@@ -17,7 +17,7 @@ import {
   acquireCheckout,
   branchFor,
   checkoutPathFor,
-  conductorTaskId,
+  harnessTaskId,
   provisionCheckout,
   type RunLocation,
   type RunPrincipal,
@@ -119,7 +119,7 @@ describe("provisioning", () => {
       // literal here would only pin how the digest happens to be computed
       // today. What this asserts is the SHAPE — untenanted tag, principal,
       // board identity, framed leaf.
-      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${conductorTaskId("FIX-1219", "implement")}`,
+      `conductor/t0/${encodeSegment("alice")}/conductor-tasks-test-epic/${harnessTaskId("FIX-1219", "implement")}`,
     );
   });
 
@@ -985,7 +985,7 @@ describe("one job's state is isolated per principal", () => {
     // And the validated half is refused rather than silently truncated — a
     // truncation would map two distinct epics onto one directory, which is the
     // injectivity rule broken to fix a length.
-    expect(() => conductorTaskId("FIX-1", "a".repeat(65))).toThrow(
+    expect(() => harnessTaskId("FIX-1", "a".repeat(65))).toThrow(
       /not a usable identity segment/,
     );
   });
@@ -1468,7 +1468,7 @@ describe("the identity rule — case cannot split one tree in two", () => {
     // it makes the identity agree with the storage that has to hold it. And no
     // single canonical case could be required instead: real issue keys are
     // upper (`FIX-1219`) and phases are lower (`implement`).
-    expect(conductorTaskId("FIX-1", "implement")).toBe(conductorTaskId("fix-1", "IMPLEMENT"));
+    expect(harnessTaskId("FIX-1", "implement")).toBe(harnessTaskId("fix-1", "IMPLEMENT"));
     expect(checkoutPathFor(config, at("FIX-1", "implement"))).toBe(
       checkoutPathFor(config, at("fix-1", "IMPLEMENT")),
     );
@@ -1481,7 +1481,7 @@ describe("the identity rule — case cannot split one tree in two", () => {
     // in, so nothing we derive may depend on case.
     const location = at("FIX-1219", "Implement", { epic: "Conductor-Tasks-Alpha" });
     for (const derived of [
-      conductorTaskId("FIX-1219", "Implement"),
+      harnessTaskId("FIX-1219", "Implement"),
       checkoutPathFor(config, location),
       branchFor(location),
     ]) {
@@ -1492,8 +1492,8 @@ describe("the identity rule — case cannot split one tree in two", () => {
   it("keeps distinct ids distinct once folded", () => {
     // Folding must not become the collision it prevents: values that differ by
     // more than case still have to separate.
-    expect(conductorTaskId("FIX-1", "implement")).not.toBe(
-      conductorTaskId("FIX-2", "implement"),
+    expect(harnessTaskId("FIX-1", "implement")).not.toBe(
+      harnessTaskId("FIX-2", "implement"),
     );
     expect(checkoutPathFor(config, at("FIX-1", "implement"))).not.toBe(
       checkoutPathFor(config, at("FIX-11", "implement")),
@@ -1523,7 +1523,7 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     ];
     const seen = new Map<string, string>();
     for (const [issue, phase] of tuples) {
-      const id = conductorTaskId(issue, phase);
+      const id = harnessTaskId(issue, phase);
       const previous = seen.get(id);
       expect(previous, `"${id}" is also (${previous})`).toBeUndefined();
       seen.set(id, `${issue} + ${phase}`);
@@ -1539,8 +1539,8 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     // The other half: the join is only injective because no component can
     // contain the delimiter. That has to be enforced, not hoped for.
     for (const bad of ["a--b", "--a", "a--"]) {
-      expect(() => conductorTaskId(bad, "implement")).toThrow(/not a usable identity segment/);
-      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
+      expect(() => harnessTaskId(bad, "implement")).toThrow(/not a usable identity segment/);
+      expect(() => harnessTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
   });
 
@@ -1562,7 +1562,7 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     for (const phase of corpus) {
       let accepted = true;
       try {
-        conductorTaskId("FIX-1219", phase);
+        harnessTaskId("FIX-1219", phase);
       } catch {
         accepted = false;
       }
@@ -1600,7 +1600,7 @@ describe("the identity rule — injective, and safe for every consumer", () => {
     // failure — the row is claimed, the attempt is charged, and the retry
     // budget is spent on a configuration error no retry can fix.
     for (const bad of ["thing.lock", "phase.", "a.b"]) {
-      expect(() => conductorTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
+      expect(() => harnessTaskId("FIX-1", bad)).toThrow(/not a usable identity segment/);
     }
   });
 });

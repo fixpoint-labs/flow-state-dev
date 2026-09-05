@@ -46,12 +46,14 @@ The manager calls your factory once, with three feeds:
 
 They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context and nothing else — never the run's prompt, because the prompt is something a caller (or a model calling the harness as a tool) sets, and these three decide where a run writes and what it continues.
 
-Everything else about the agent — model, tools, permissions, sandbox — you write inside the factory. Pointing the same manager at another harness is one expression:
+Everything else about the agent — model, tools, permissions, sandbox — you write inside the factory. Pointing the same manager at another harness is one line, and the manager is unchanged:
 
 ```ts
   harness: ({ cwd, resume, onSession }) =>
-    codexAgent({ cwd, resume, onSession, thread: { sandboxMode: "workspace-write" } }),
+    someOtherHarness({ cwd, resume, onSession }),
 ```
+
+Any block that takes the three feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
 
 `detached: true` is not decoration in the Claude Code example: the harness becomes a child block of a gated task entry, and the claim gate refuses an entry that keeps session state anywhere beneath it. Get it wrong and your flow fails to build, naming the entry.
 
@@ -90,7 +92,7 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 ## The export surface, in two halves
 
-**Supported host API** — what you need to stand a manager up, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `conductorDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, and the run-record and inbox collections for building a status surface.
+**Supported host API** — what you need to stand a manager up, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, and the run-record and inbox collections for building a status surface.
 
 **Checkout internals** — `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. Exported because this repository's own consumer and its goal checks reach for them, **not** because you should build on them: they are git-worktree-specific, and a second checkout strategy would put them behind a seam. Adopt `harnessManager({ harness })` and let it own the checkout.
 
