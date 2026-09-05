@@ -9,7 +9,7 @@
  *
  * ## The three declarations that make the hand-off legal
  *
- * - **`backgroundWorkLedger` is resource-backed.** A detached worker's row
+ * - **`backgroundWorkLedger` is resource-backed.** A handed-off row
  *   outlives the claiming request, so the board refuses anything but a durable
  *   collection at construction.
  * - **`sharedToLineage: true`.** The ledger is session-scoped, and a
@@ -29,7 +29,7 @@
  * completion inside one turn would wait forever; the shape here is the one that
  * works.
  *
- * A detached generator also streams no in-flight text — a reader attaching to
+ * A generator running in a child session also streams no in-flight text — a reader attaching to
  * the child session sees completed items, not tokens arriving.
  */
 import { dispatcher, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -76,8 +76,8 @@ export const backgroundWorkLedger = defineTaskCollection({
  * **Never truncate this.** It used to be cut to 60 characters and reused as the
  * display label, which meant two different prompts sharing their first 59
  * characters derived the *same* child session and the panel showed one row mixing
- * both jobs. The task board frames its coordinates by length
- * (`orchestration/task-board/coordinate.ts`) precisely so two distinct
+ * both jobs. The dispatch key a seat derives is length-framed
+ * (`taskSessionKeyFor` in `core/src/types/dispatch.ts`) precisely so two distinct
  * addresses can never alias; truncating the other half of the identity at the
  * app layer gave that back. Display truncation belongs at the render edge —
  * see {@link labelFor} and the panel's `truncate` class.
@@ -112,9 +112,9 @@ function renderOutput(output: unknown): string {
  * Build the `background-work` pipeline from the resolved router config.
  *
  * The board is constructed here rather than at module scope because its worker
- * takes the router's model resolver, and because the detached bindings it
- * stamps onto `board.drain` reach the flow through this pipeline being a route
- * — a board nobody composes declares nothing.
+ * takes the router's model resolver, and because the hand-off its seat
+ * carries reaches the flow through this pipeline being a route — a board
+ * nobody composes declares nothing.
  */
 /**
  * Session state this pipeline persists: which finished ledger rows it has
@@ -176,14 +176,14 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
   const { modelId } = config;
 
   /**
-   * The detached worker.
+   * The handed-off worker.
    *
    * Deliberately bare — no capabilities, no context bundle, no history. It runs
    * in a child session whose session state and conversation are not the parent's,
    * so anything it read from them would be empty rather than wrong, and a
-   * detached worker may not declare `sessionStateSchema` at all (every detached
-   * worker in a flow shares one child-session flow, where two routes choosing the
-   * same key with different shapes would corrupt each other silently).
+   * handed-off entry may not declare `sessionStateSchema` at all (`defineFlow`
+   * refuses one: rows sharing a child session under a `per-worker` or `key`
+   * policy would corrupt each other's state silently).
    */
   const briefWorker = generator({
     name: "background-brief",
@@ -214,7 +214,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     boardId: BOARD_ID,
     collection: backgroundWorkLedger,
     // Not the default (`"skip"`), and deliberately. `onError` decides what a
-    // worker failure does to the run executing it — and for a detached worker
+    // worker failure does to the run executing it — and for a handed-off worker
     // that run is the **child session's**, not the drain's. Under `"skip"` a
     // worker that throws leaves the task `errored` while its child request
     // still completes, so the panel renders the row green while the next turn
@@ -271,7 +271,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
    * The turn's reply: what was just filed, plus anything that has landed since.
    *
    * Reads the ledger rather than the drain's output, because the rows a
-   * *previous* turn detached are the interesting ones — this turn's own row is
+   * *previous* turn handed off are the interesting ones — this turn's own row is
    * still `in_progress` by construction.
    */
   const reportBackgroundWork = handler({

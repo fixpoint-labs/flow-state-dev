@@ -1408,4 +1408,23 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     expect((thrown as Error).name).toBe("FlowStateConfigError");
     expect((thrown as Error).message).toMatch(/dispatchDrainTimeoutMs/);
   });
+
+  it("refuses the removed `maxWorkstreamListLimit` key BY NAME rather than ignoring it", () => {
+    // Same rule as the drain key: a host that raised the listing ceiling under
+    // the old name would keep the default cap and truncate its reads without a
+    // named error. The refusal names the replacement.
+    let thrown: unknown;
+    try {
+      createFlowState({
+        flows: { detaching: detachingFlow("old-list-key", { children: [] }) },
+        stores: { default: { primary: inMemoryStores() } },
+        ...({ maxWorkstreamListLimit: 500 } as object)
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(FlowStateConfigError);
+    expect((thrown as Error).name).toBe("FlowStateConfigError");
+    expect((thrown as Error).message).toMatch(/maxChildSessionListLimit/);
+  });
 });

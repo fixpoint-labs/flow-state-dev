@@ -12,7 +12,8 @@ import type {
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
+import type { TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -212,7 +213,15 @@ async function reconcileDroppedDelivery(
   }
 }
 
-/** Refuse any dispatcher reachable from `roots` whose address the flow does not declare. */
+/**
+ * Refuse any dispatcher reachable from `roots` whose address the flow does not
+ * declare — and, for a task dispatcher, one the entry's own board does not
+ * hold. Target existence is not routability for a hand-off: the entry runs
+ * behind ONE board's gate, so a seat another board holds would claim a row on
+ * its ledger and have the child refuse it at the gate, after the dispatch was
+ * accepted, leaving the row `in_progress` until lease recovery. `defineFlow`
+ * refuses that statically; this is the same rule for a core it never walked.
+ */
 function assertDispatchersRoutable(
   flow: FlowInstance,
   roots: readonly (BlockDefinition | undefined)[]
@@ -228,15 +237,34 @@ function assertDispatchersRoutable(
     seen.add(block);
 
     const address = block.dispatch;
-    if (address !== undefined && resolveTypedEntry(flow, address.type, address.target) === undefined) {
-      throw new ValidationError(
-        `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-          `dispatches to ${address.type}:"${address.target}", which the flow does not declare. ` +
-          `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
-          `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
-          `drop the dispatch from the resolver's block.`,
-        { scope: "request" }
-      );
+    if (address !== undefined) {
+      const entry = resolveTypedEntry(flow, address.type, address.target);
+      if (entry === undefined) {
+        throw new ValidationError(
+          `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
+            `dispatches to ${address.type}:"${address.target}", which the flow does not declare. ` +
+            `The core was produced at dispatch time — a dynamic schedule's resolver — so its ` +
+            `dispatcher never reached the flow definition. Declare the entry on the flow, or ` +
+            `drop the dispatch from the resolver's block.`,
+          { scope: "request" }
+        );
+      }
+      if (address.type === "task") {
+        const binding = taskBindingOf(block);
+        const gatedBy = (entry as TaskEntry).gatedBy;
+        if (binding === undefined || gatedBy === undefined || gatedBy.gate !== binding.gate) {
+          throw new ValidationError(
+            `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
+              `hands off to task:"${address.target}", which is gated for board ` +
+              `"${gatedBy?.boardId ?? "<none>"}", but the seat is held by ` +
+              (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
+              `. One entry settles against one ledger; a row claimed on another board's ledger ` +
+              `would be refused at this gate after the dispatch was accepted. Hand off from the ` +
+              `board that declares this entry, or declare an entry for the other board.`,
+            { scope: "request" }
+          );
+        }
+      }
     }
 
     for (const child of block.childBlocks ?? []) queue.push(child);

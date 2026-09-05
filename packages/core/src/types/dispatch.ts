@@ -365,7 +365,16 @@ export type InternalEntry = ActionCore;
  * the packed worker input the row was claimed with, never the envelope, and
  * never runs against a row nothing verified.
  */
-export type TaskEntry = ActionCore;
+export type TaskEntry = ActionCore & {
+  /**
+   * The binding whose gate fronts this entry, set by `defineFlow` when it
+   * applies the gate. Read by the run-time routability check on a carried
+   * core: a task dispatcher produced at dispatch time must be held by the same
+   * board, or its rows would be claimed on one ledger and refused at another
+   * board's gate after the dispatch was accepted.
+   */
+  readonly gatedBy?: TaskBinding;
+};
 
 /**
  * What a task board binds onto the hand-off it installs at a `task` dispatcher

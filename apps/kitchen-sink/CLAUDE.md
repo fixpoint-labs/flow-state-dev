@@ -108,7 +108,7 @@ Two behaviours to know before changing it:
 - **The turn cannot observe its own hand-off settling.** The board view a request
   hydrates never sees the child session's write, so polling for completion inside
   the turn would wait forever. Results surface on a later turn.
-- **A detached generator streams no in-flight text.** The child session's history
+- **A generator in a child session streams no in-flight text.** Its history
   fills in with completed items only.
 
 ## Scheduled actions demo

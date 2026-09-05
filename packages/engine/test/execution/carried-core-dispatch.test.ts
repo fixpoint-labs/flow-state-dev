@@ -21,7 +21,7 @@
  * top level.
  */
 import { describe, it, expect } from "vitest";
-import { defineFlow, dispatcher, generator, handler } from "@flow-state-dev/core";
+import { bindTaskDispatcher, defineFlow, dispatcher, generator, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createInMemoryStores, runAction } from "../../src";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -174,6 +174,78 @@ describe("a dispatch-time core carrying an unroutable dispatch is refused by nam
     const result = await runCarried(plainFlow(), {
       block: handler({ name: "ordinary-scheduled-handler", execute: () => ({ ok: true }) }) as never
     });
+    expect(result.error).toBeUndefined();
+  });
+});
+
+describe("a carried task dispatcher must be held by the board that gates its entry", () => {
+  // Target existence is not routability for a hand-off. The entry runs behind
+  // ONE board's gate; a seat another board holds would claim a row on its own
+  // ledger and have the child refuse it at the gate — after the dispatch was
+  // accepted — so the row sits `in_progress` until lease recovery. `defineFlow`
+  // refuses two boards on one entry statically; a carried core needs the same
+  // rule at adoption.
+  const boardA = { boardId: "board-a", gate: (entry: never) => entry };
+  const boardB = { boardId: "board-b", gate: (entry: never) => entry };
+  let seats = 0;
+  function seat(name: string) {
+    seats += 1;
+    return dispatcher({
+      name: `${name}-${seats}`,
+      type: "task",
+      target: "implement",
+      session: "per-task"
+    });
+  }
+  function flowGatedFor(binding: typeof boardB) {
+    const held = seat("seat-static");
+    bindTaskDispatcher(held, binding as never);
+    return defineFlow({
+      kind: "carried-core",
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: handler({ name: "plain-action", execute: () => ({ ok: true }) }).rescue([
+            { block: held }
+          ])
+        }
+      },
+      task: { actions: { implement: { block: handler({ name: "implement", execute: () => null }) } } }
+    } as never)({ id: "carried-core" });
+  }
+  function carriedWith(dispatcherBlock: ReturnType<typeof seat>) {
+    return {
+      block: handler({ name: "ordinary-root-5", execute: () => ({ ok: true }) }).rescue([
+        { block: dispatcherBlock }
+      ]) as never
+    };
+  }
+
+  it("refuses a seat another board holds, naming both boards", async () => {
+    const flow = flowGatedFor(boardB);
+    const foreign = seat("seat-a");
+    bindTaskDispatcher(foreign, boardA as never);
+
+    // Rejects rather than resolving with an `error`, like every refusal above:
+    // the core is refused before the request is registered.
+    const run = runCarried(flow as never, carriedWith(foreign));
+    await expect(run).rejects.toThrow(/gated for board "board-b"/);
+    await expect(run).rejects.toThrow(/held by board "board-a"/);
+  });
+
+  it("refuses a seat no board holds", async () => {
+    const flow = flowGatedFor(boardB);
+    await expect(runCarried(flow as never, carriedWith(seat("seat-unbound")))).rejects.toThrow(
+      /held by no board/
+    );
+  });
+
+  it("allows a seat the gating board holds — the control", async () => {
+    const flow = flowGatedFor(boardB);
+    const own = seat("seat-b");
+    bindTaskDispatcher(own, boardB as never);
+
+    const result = await runCarried(flow as never, carriedWith(own));
     expect(result.error).toBeUndefined();
   });
 });

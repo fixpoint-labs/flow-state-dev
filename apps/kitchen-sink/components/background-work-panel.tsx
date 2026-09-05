@@ -237,7 +237,7 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
  * `autoResume` matters: without it this loads one snapshot and never fills in
  * while the work keeps going.
  *
- * Completed steps appear as the work finishes them. A detached generator does
+ * Completed steps appear as the work finishes them. A generator in a child session does
  * not stream in-flight text, so nothing here types itself out.
  *
  * Rendered with `ItemsRenderer` rather than the conversation's

@@ -699,7 +699,7 @@ function resolveDispatchTargets(
       }
       if (holder === undefined) {
         gatedBy.set(address.target, binding);
-        gated[address.target] = binding.gate(entry, address.target);
+        gated[address.target] = { ...binding.gate(entry, address.target), gatedBy: binding };
       }
       if (address.session !== "per-task") sharedChild.add(address.target);
       continue;

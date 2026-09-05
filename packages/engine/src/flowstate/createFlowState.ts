@@ -285,6 +285,13 @@ class InternalFlowState<TSettings extends object>
           "tuned for a long-running child would truncate one without saying why."
       );
     }
+    if (Object.hasOwn(options, "maxWorkstreamListLimit")) {
+      throw new FlowStateConfigError(
+        "createFlowState: `maxWorkstreamListLimit` is now `maxChildSessionListLimit`. " +
+          "Accepting it silently would leave the children listing on its default cap, so a " +
+          "host that raised the ceiling would truncate its reads without a named error."
+      );
+    }
 
     this.#options = options;
     this.#profileKeys = Object.keys(options.stores);
