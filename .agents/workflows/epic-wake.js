@@ -164,6 +164,12 @@ function isDirectRoute(row) {
   return row.route === 'direct'
 }
 
+// Hoisted into the pure-rules region because `pendingAction` reads it: a rule the verify harness
+// loads on its own cannot depend on a constant declared 2000 lines down in the wake body.
+// The subset where the WORK IS GONE, as opposed to finished. A verdict can still be folded into completed
+// work (the spec is there, the thread is there); there is nothing to fold it into on cancelled work.
+const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
+
 /**
  * The next bounded action for one issue, or null if it is genuinely waiting on something
  * external. `why` is for the log line — a dispatch the user can't explain is drift.
@@ -337,6 +343,46 @@ function pendingAction(row) {
   if (!(row.subPrs || []).length && (row.blockerResolutions || []).length) {
     return { action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` }
   }
+  return null
+}
+
+/**
+ * WHY a row sitting in AWAITING_SPEC_APPROVAL with spec-review feedback in flight did not dispatch.
+ *
+ * ONE ordered statement of the park chain, because two copies of it drifted four times. `allocate`'s
+ * reporting branch has to name the reason a row did not move, and it kept re-deriving that reason
+ * from a hand-picked subset of `pendingAction`'s guards: first in the wrong order (budget before
+ * cursor), then missing `crossSpecHold` entirely, then missing the two refusals that sit AHEAD of the
+ * phase switch — a row parked on an open prerequisite or an unresolved human question was announced
+ * as "held by the cross-spec coherence pass ... it dispatches once the pass clears", which is false
+ * in both cases and points the human at the wrong lever. Each round added the missing conjunct; each
+ * next round found another. So the order lives here, once, and the reporting branch reads it.
+ *
+ * The order is `pendingAction`'s own, top to bottom: the pre-phase refusals first (terminal, an open
+ * `blockedBy`, an unresolved `blocker`), then the AWAITING_SPEC_APPROVAL branch — the hold, the
+ * cursor, the budget. Order is the whole content of this function: every one of these can be true at
+ * once, and only the FIRST is why the row is parked.
+ *
+ * `pendingAction` deliberately does NOT call this (BP-035: it is a well-covered switch, and it is the
+ * one gate that must never be bypassable). Sharing it would have to move `verdicts` — which returns an
+ * ACTION, not a park — relative to the pre-phase guards, which is a real behaviour change on the
+ * dispatch path for the sake of the reporting path. The two are pinned in agreement by a matrix check
+ * in `verify.mjs` instead: for every combination in this phase, a kind here means `pendingAction`
+ * refuses, and no kind means it dispatches.
+ *
+ * Answers only for a row `pendingAction` refused. `verdicts` and `blockerResolutions` dispatch their
+ * own actions, so a row carrying either is not in this branch to begin with.
+ *
+ * @returns 'linear-terminal' | 'blocked-by' | 'blocker' | 'cross-spec-hold' | 'cursor' | 'budget',
+ *          or null when nothing here parks the row.
+ */
+function specReviewParkKind(row) {
+  if (row.linearTerminal) return 'linear-terminal'
+  if (row.blockedBy && row.blockedBy.length) return 'blocked-by'
+  if (row.blocker) return 'blocker'
+  if (row.specApproved) return crossSpecHold ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
+  if (!cursorUsable(row)) return 'cursor'
+  if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) return 'budget'
   return null
 }
 
@@ -1276,19 +1322,23 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
     }
     if (next) actionable.push({ row, ...next })
     else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents) {
-      // `pendingAction` returned null for this exact combination for more than one reason (at budget,
-      // a cross-spec hold, or an unusable cursor), and only the first is a real convergence. Re-asking
-      // `atReviewBudget` and `cursorUsable` here — rather than having `pendingAction` say which — is
-      // what keeps `pendingAction` itself unchanged (BP-035's cost of touching a well-covered switch).
-      // Hold first, cursor second, budget third — the SAME order `pendingAction` tests them in. An
-      // APPROVED row goes down its own branch (line ~246), where `crossSpecHold` is asked BEFORE the
-      // cursor and the budget is never asked at all; testing the budget here anyway reported a
-      // convergence for a spec the human had already approved, and told them it was "awaiting the
-      // human gate" they had already given. Below that, a row can be at budget AND carrying an
-      // unusable cursor at once, and that row was never compared to the budget either.
-      if (row.specApproved && crossSpecHold) crossSpecHeld.push(row)
-      else if (!cursorUsable(row)) withheldCursor.push(row)
-      else if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) converged.push(row)
+      // `pendingAction` returned null for this exact combination for more than one reason, and only
+      // one of them — the budget — is a real convergence. WHICH reason is not re-derived here: this
+      // branch used to ask its own hand-picked subset of `pendingAction`'s guards, and that subset
+      // was wrong four times running (budget before cursor; no `crossSpecHold` at all; then neither
+      // of the two refusals that sit ahead of the phase switch). `specReviewParkKind` is the single
+      // ordered copy of that chain; this branch only maps its answer onto a bucket.
+      //
+      // The three named kinds get their own reporting line below. Everything else falls to
+      // `waiting`, which is truthful for each of them: a `blocked-by` row is already reported by
+      // name out of `plan.blocked` (and never reaches here — `allocate` routes it above), a
+      // `blocker` row's actual question is surfaced to the human every wake through `epicBlockers`,
+      // and a terminal row has no work left to announce. What none of them may be is "held by the
+      // cross-spec pass, dispatches once it clears" — the pass clearing would move none of them.
+      const parkKind = specReviewParkKind(row)
+      if (parkKind === 'cross-spec-hold') crossSpecHeld.push(row)
+      else if (parkKind === 'cursor') withheldCursor.push(row)
+      else if (parkKind === 'budget') converged.push(row)
       else waiting.push(row)
     } else waiting.push(row)
   }
@@ -2337,9 +2387,6 @@ const freshById = bindByPosition(
 // the epic could wrap without it (→ epic-lifecycle § Intake). They enter at NEEDS_SPEC and hit
 // their own spec-approval gate like any other.
 const TERMINAL_LINEAR = /^(done|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
-// The subset where the WORK IS GONE, as opposed to finished. A verdict can still be folded into completed
-// work (the spec is there, the thread is there); there is nothing to fold it into on cancelled work.
-const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
 const discovered = linearIssues
   .filter((li) => li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
   // A child the human already closed or dropped is not new work. Entering it at NEEDS_SPEC would

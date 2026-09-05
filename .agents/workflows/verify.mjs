@@ -2448,6 +2448,94 @@ check('an APPROVED spec parked by the cross-spec hold is not reported as converg
   )
 })
 
+check('an approved row parked by an unresolved BLOCKER is not reported as cross-spec-held', async () => {
+  // The fourth drift of the same duplicated chain. `pendingAction` refuses a row with an open
+  // `blocker` at line ~222 — BEFORE the phase switch where `crossSpecHold` is ever read — so the
+  // hold is not why this row did not dispatch. Classifying it as cross-spec-held told the human it
+  // "dispatches once the pass clears"; it does not. It dispatches once THEY answer the question.
+  // Everything else about the row is arranged to look like the held case: approved, feedback in
+  // flight, a usable cursor, a live hold, and at budget too — so only the guard order tells them apart.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 8,
+          specApproved: true,
+          newSpecReviewEvents: true,
+          latestActivityAt: '2026-09-05T10:00:00Z',
+          specReviewRounds: 2,
+          specLevelFound: false,
+          blocker: 'which retry semantics do we promise?',
+        }),
+        row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {},
+        'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9, specApproved: true, headSha: 'abc' },
+      },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'a row waiting on a human answer dispatches nothing')
+  assert.doesNotMatch(
+    logs.join('\n'),
+    /FIX-2: spec approved with spec-PR feedback to carry/,
+    'the cross-spec pass clearing would not un-park this row — the human answering it would',
+  )
+  assert.ok(!result.converged.includes('FIX-2'), 'nor a convergence — the budget was never the question either')
+  assert.ok(
+    result.blockers.some((b) => b.issueId === 'FIX-2' && /retry semantics/.test(b.blocker)),
+    'the question it is actually parked on is the one surfaced to the human',
+  )
+})
+
+check('an approved row parked by an open BLOCKED-BY is not reported as cross-spec-held', async () => {
+  // Same guard order, the other pre-phase refusal (`pendingAction` ~line 216). `allocate` routes
+  // these to `blocked` at the top of its own loop today, so this check passes before the extraction
+  // — it is here to pin that it stays true once ONE helper owns the ordering, since the whole point
+  // of the extraction is that neither path re-derives the chain on its own.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 8,
+          specApproved: true,
+          newSpecReviewEvents: true,
+          latestActivityAt: '2026-09-05T10:00:00Z',
+          specReviewRounds: 2,
+          specLevelFound: false,
+          blockedBy: ['FIX-9'],
+        }),
+        row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 8,
+          specApproved: true,
+          newSpecReviewEvents: true,
+          latestActivityAt: '2026-09-05T10:00:00Z',
+        },
+        'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9, specApproved: true, headSha: 'abc' },
+      },
+      linear: { 'FIX-2': { blockedBy: ['FIX-9'] } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'an open prerequisite dispatches nothing')
+  assert.doesNotMatch(
+    logs.join('\n'),
+    /FIX-2: spec approved with spec-PR feedback to carry/,
+    'the hold is not why it is parked — the prerequisite is',
+  )
+  assert.ok(!result.converged.includes('FIX-2'), 'and it is not a convergence either')
+  assert.match(logs.join('\n'), /FIX-2: blocked by FIX-9 — tracked, not admitted to the active set\./)
+})
+
 check('the conditional third round IS dispatched, and says so', async () => {
   const { calls, logs } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specReviewRounds: 2, specLevelFound: true })] }),
@@ -8481,6 +8569,65 @@ check('INVARIANT: a parked row is never dispatched, whatever else is true', asyn
   assert.ok(space.length >= 500, `expected a real space, enumerated ${space.length}`)
 })
 
+check('INVARIANT: the park reason and the dispatch decision agree across the whole spec-review space', async () => {
+  // `specReviewParkKind` is the single ordered copy of the chain, but `pendingAction` deliberately
+  // does NOT call it (BP-035 — sharing would have to move `verdicts`, which returns an action, past
+  // the pre-phase guards, changing the dispatch path for the reporting path's benefit). So the two
+  // are pinned in agreement here instead, over every combination rather than a sample: this is the
+  // check that fails the NEXT time a guard is added to one and not the other.
+  //
+  // Scoped to a row carrying no verdicts and no answered decisions, which is the only state
+  // `allocate`'s reporting branch ever sees — either dispatches its own action, so the row is not
+  // in that branch at all.
+  const { pendingAction, specReviewParkKind, setHold } = loadRules('epic-wake.js', [
+    'atReviewBudget',
+    'cursorUsable',
+    'pendingAction',
+    'specReviewParkKind',
+    // `crossSpecHold` is module state the wake assigns before `allocate` runs, so exercising both
+    // of its values needs a setter bound inside the rules region.
+    'setHold: (v) => { crossSpecHold = v }',
+  ])
+
+  const space = product({
+    linearTerminal: [true, false],
+    blockedBy: [[], ['FIX-9']],
+    blocker: [null, 'which retry semantics do we promise?'],
+    specApproved: [true, false],
+    // Drives `cursorUsable`: `null` is the scout reporting activity it cannot timestamp.
+    latestActivityAt: ['2026-09-05T10:00:00Z', null],
+    specReviewRounds: [0, 1, 2, 3],
+    specLevelFound: [true, false],
+  })
+
+  for (const hold of [true, false]) {
+    setHold(hold)
+    for (const base of space) {
+      const r = { ...base, phase: 'AWAITING_SPEC_APPROVAL', newSpecReviewEvents: true, newPrEvents: false, verdicts: [] }
+      const kind = specReviewParkKind(r)
+      const next = pendingAction(r)
+      const where = `hold=${hold} ${JSON.stringify(base)}`
+
+      // Completeness: every row the dispatcher refuses has a NAMED reason. A park with no name is
+      // what fell through to `waiting` — or, worse, to the wrong bucket's log line.
+      if (!next) assert.ok(kind, `refused with no park reason: ${where}`)
+      // Soundness: a named reason means it really is parked. No kind may be invented for a row
+      // that dispatches.
+      if (next) assert.equal(kind, null, `named a park reason for a dispatched row (${next.action}): ${where}`)
+
+      // And the defect this extraction exists for: the cross-spec pass is only ever the answer when
+      // every guard AHEAD of the phase switch is clear. Otherwise the wake tells the human the row
+      // "dispatches once the pass clears" while it is actually waiting on them, or on a prerequisite.
+      if (kind === 'cross-spec-hold') {
+        assert.ok(
+          hold && r.specApproved && !r.linearTerminal && !r.blockedBy.length && !r.blocker,
+          `claimed the cross-spec hold over an earlier refusal: ${where}`,
+        )
+      }
+    }
+  }
+  assert.ok(space.length >= 200, `expected a real space, enumerated ${space.length}`)
+})
 check('the PR-feedback cap stops feedback rounds and nothing else', async () => {
   // → orchestration.md § "PR feedback: the round cap". Three things have to hold together, and
   // the third is the one a reasonable implementation gets wrong: capping the PHASE rather than
