@@ -1236,14 +1236,6 @@ function nextRow(row, { worker, action, landed, folded }) {
 function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const actionable = []
   const converged = []
-  // A row `pendingAction` refused for the SAME reason cursorUsable refuses it elsewhere — activity
-  // reported with no timestamp to advance past — is not converged: `atReviewBudget` never got asked.
-  // Bucketed separately so the caller can log it as what it is (withheld, scan retries) instead of
-  // claiming a convergence that never happened. → FIX-1303.
-  const withheldCursor = []
-  // Same rule, third cause: an APPROVED row parked by the cross-spec hold. The hold is why nothing
-  // dispatched, and neither the cursor nor the budget was ever the question. → FIX-1303.
-  const crossSpecHeld = []
   const blocked = []
   const waiting = []
   // Work that AUTHORS against the objective — a spec, or an implementation of one. When this wake is
@@ -1275,21 +1267,17 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       continue
     }
     if (next) actionable.push({ row, ...next })
-    else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents) {
-      // `pendingAction` returned null for this exact combination for more than one reason (at budget,
-      // a cross-spec hold, or an unusable cursor), and only the first is a real convergence. Re-asking
-      // `atReviewBudget` and `cursorUsable` here — rather than having `pendingAction` say which — is
-      // what keeps `pendingAction` itself unchanged (BP-035's cost of touching a well-covered switch).
-      // Hold first, cursor second, budget third — the SAME order `pendingAction` tests them in. An
-      // APPROVED row goes down its own branch (line ~246), where `crossSpecHold` is asked BEFORE the
-      // cursor and the budget is never asked at all; testing the budget here anyway reported a
-      // convergence for a spec the human had already approved, and told them it was "awaiting the
-      // human gate" they had already given. Below that, a row can be at budget AND carrying an
-      // unusable cursor at once, and that row was never compared to the budget either.
-      if (row.specApproved && crossSpecHold) crossSpecHeld.push(row)
-      else if (!cursorUsable(row)) withheldCursor.push(row)
-      else if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) converged.push(row)
-      else waiting.push(row)
+    // Only a real budget exhaustion is a convergence. The other reasons `pendingAction` returns
+    // null for this combination (approved + cross-spec hold; unusable cursor) land in `waiting`.
+    // Hold, then cursor, then budget — the same order `pendingAction` tests them in.
+    else if (
+      row.phase === 'AWAITING_SPEC_APPROVAL' &&
+      row.newSpecReviewEvents &&
+      !(row.specApproved && crossSpecHold) &&
+      cursorUsable(row) &&
+      atReviewBudget(row.specReviewRounds, row.specLevelFound)
+    ) {
+      converged.push(row)
     } else waiting.push(row)
   }
 
@@ -1308,7 +1296,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const settle = claims.slice(0, Math.max(0, cap - advance.length - (foldEpic ? 1 : 0)))
   const queuedClaims = claims.slice(settle.length)
 
-  return { advance, deferred, held, blocked, converged, withheldCursor, crossSpecHeld, waiting, foldEpic, settle, queuedClaims, heldForFold }
+  return { advance, deferred, held, blocked, converged, waiting, foldEpic, settle, queuedClaims, heldForFold }
 }
 
 /**
@@ -2780,23 +2768,17 @@ if (unmergedBlockers.size) {
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)
 }
-// The scan reported spec-review activity with no timestamp to advance the cursor to — the same
-// unusable-batch case cursorUsable refuses everywhere else, not a spec that actually hit its review
-// budget. Said out loud rather than folded into "converged": the fold is withheld, nothing is spent,
-// and the next wake's scan retries. → FIX-1303.
-for (const row of plan.withheldCursor) {
-  log(
-    `${row.id}: spec-review activity reported with no timestamp to advance the cursor to — fold withheld, not converged. The next wake's scan retries.`,
-  )
-}
-// The approved-and-held case, said by name rather than landing silently in `waiting`. The epic-level
-// hold line above names the pass but not the rows, so a row carrying feedback it cannot act on had
-// nothing of its own to say — and a held row that says nothing is exactly the invisible stall this
-// wake's reporting exists to prevent. → FIX-1303.
-for (const row of plan.crossSpecHeld) {
-  log(
-    `${row.id}: spec approved with spec-PR feedback to carry — held by the cross-spec coherence pass, not converged. It dispatches once the pass clears.`,
-  )
+for (const row of plan.waiting) {
+  if (row.phase !== 'AWAITING_SPEC_APPROVAL' || !row.newSpecReviewEvents) continue
+  if (row.specApproved && crossSpecHold) {
+    log(
+      `${row.id}: spec approved with spec-PR feedback to carry — held by the cross-spec coherence pass, not converged. It dispatches once the pass clears.`,
+    )
+  } else if (!cursorUsable(row)) {
+    log(
+      `${row.id}: spec-review activity reported with no timestamp to advance the cursor to — fold withheld, not converged. The next wake's scan retries.`,
+    )
+  }
 }
 // No silent stops: the cap is a question for the human, and it is the one hold that looks
 // identical to a healthy quiet row from the outside — no gate pending, no blocker text of its own.
