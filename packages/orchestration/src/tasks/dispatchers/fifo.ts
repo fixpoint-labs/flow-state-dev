@@ -1,7 +1,7 @@
 /**
  * `fifoDispatcher` — picks the earliest-`createdAt` `pending` task.
  *
- * Eligibility excludes `awaiting_review` naturally because the default
+ * Eligibility excludes `parked` naturally because the default
  * eligibility predicate inside the collection's `claim` requires
  * `status === 'pending'` (FIX-443 §10.1).
  */

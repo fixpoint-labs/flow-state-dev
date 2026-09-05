@@ -223,7 +223,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
 
     await collection.awaitReview(task.id, "please look");
 
-    expect(collection.get(task.id)?.status).toBe("awaiting_review");
+    expect(collection.get(task.id)?.status).toBe("parked");
     expect(collection.get(task.id)?.claimedBy).toEqual({
       sessionId: "sess_42",
       requestId: "req_88",
@@ -234,7 +234,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
    * `unblock` owns ONE edge: `blocked → pending`.
    *
    * The status table maps status to status, not verb to edge, so it also calls
-   * `in_progress → pending` and `awaiting_review → pending` legal — those are
+   * `in_progress → pending` and `parked → pending` legal — those are
    * `reclaim`'s and `resumeFromReview`'s edges, and both of those verbs clear
    * the lease and the coordinate. `unblock` clears neither, and correctly so:
    * `blocked` is reachable only from `pending`, and every path into `pending`
@@ -275,7 +275,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
       IllegalTaskTransitionError
     );
 
-    expect(collection.get(task.id)?.status).toBe("awaiting_review");
+    expect(collection.get(task.id)?.status).toBe("parked");
   });
 
   it("still unblocks a genuinely blocked task, which carries neither field", async () => {

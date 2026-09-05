@@ -85,7 +85,7 @@ describe("recovery — the three restartable prefixes", () => {
     // never named "(answered, parked)" — and that state parks the task forever
     // holding an answer the operator watched land.
     const { ctx, topic } = await stageAnswered();
-    const { board, resumed } = fakeBoard({ status: "awaiting_review", attempts: 1 });
+    const { board, resumed } = fakeBoard({ status: "parked", attempts: 1 });
 
     const outcome = await answerAgain(ctx, board, topic);
 
@@ -135,7 +135,7 @@ describe("recovery — the three restartable prefixes", () => {
     // overwrite the answer the operator actually gave with whatever the
     // re-running caller happened to send.
     for (const task of [
-      { status: "awaiting_review" },
+      { status: "parked" },
       { status: "pending" },
       { status: "in_progress", leaseUntil: NOW - 1 },
     ]) {
@@ -273,7 +273,7 @@ describe("recovery — what it refuses outright", () => {
   it("declines a question nothing ever asked, without touching the board", async () => {
     const inbox = fakeInbox();
     const ctx = contextWithInbox(inbox);
-    const { board, resumed } = fakeBoard({ status: "awaiting_review" });
+    const { board, resumed } = fakeBoard({ status: "parked" });
     const outcome = await decideAnswer(ctx, board, {
       question: topicFor("never asked", 1),
       answer: "into the void",

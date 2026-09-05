@@ -8,7 +8,7 @@
  * with `sequencer.loopBack({ when, maxIterations })`.
  *
  * Default termination: stop when no `pending` and no `in_progress`
- * tasks remain. `awaiting_review` tasks count as in-flight (the loop
+ * tasks remain. `parked` tasks count as in-flight (the loop
  * waits, doesn't terminate) per FIX-443 §10.1 — the substrate refuses
  * to exit while a human review is outstanding.
  */
@@ -19,7 +19,7 @@ export interface TaskLoopBackOptions {
   /**
    * Optional override for the termination check. Receives the latest
    * task list and returns `true` to continue, `false` to exit. The
-   * default counts `pending`, `in_progress`, and `awaiting_review`
+   * default counts `pending`, `in_progress`, and `parked`
    * tasks as in-flight.
    */
   until?: (tasks: ReadonlyArray<Task>) => boolean;
@@ -45,7 +45,7 @@ export function defaultTaskLoopUntil(tasks: ReadonlyArray<Task>): boolean {
     if (
       task.status === "pending" ||
       task.status === "in_progress" ||
-      task.status === "awaiting_review"
+      task.status === "parked"
     ) {
       return true;
     }

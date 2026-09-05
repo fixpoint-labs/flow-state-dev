@@ -82,7 +82,7 @@ function countingDispatcher(attempts: { total: number }): TaskDispatcher {
  *
  * The external actor then, in order:
  *
- *   1. adds a task, claims it, and parks it in `awaiting_review`. Neither
+ *   1. adds a task, claims it, and parks it in `parked`. Neither
  *      world races the board's worker for it: in `complete` mode the wake
  *      predicate needs `inFlightCount === 0`, and both the stale view (which
  *      still holds `unreachable` as pending) and the shared view keep that

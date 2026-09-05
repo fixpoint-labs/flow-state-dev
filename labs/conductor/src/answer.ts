@@ -28,11 +28,11 @@
  * **Parked AND the named row still `open`.** The task is shared across
  * attempts; the row is per-attempt. Attempt 1 asks and fails, so its row is
  * withdrawn; attempt 2 later parks on a question of its own. An answer naming
- * attempt 1's row finds the shared task at `awaiting_review`, passes a
+ * attempt 1's row finds the shared task at `parked`, passes a
  * task-only guard, flips a withdrawn row to `answered` and re-queues the run —
  * while attempt 2's actual question is still open.
  *
- * *Parked* is the shipped `awaiting_review`. **Every other status refuses
+ * *Parked* is the one status `answer` proceeds from. **Every other status refuses
  * locally**: `pending` (a retry, and the *second* answer of a duplicate pair,
  * because the first already re-queued the row), `in_progress` (a claim — a live
  * run is not waiting on anybody), and the three terminal ones. *Held* would be
@@ -114,7 +114,7 @@ import { conductorTaskId } from "./workspace";
 const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
 
 /** The shipped status a task parks in. Product name: `needs_input`. */
-const PARKED = "awaiting_review";
+const PARKED = "parked";
 
 /** What `answer` takes. Both halves are the operator's words; nothing else is. */
 export const answerInputSchema = z.object({

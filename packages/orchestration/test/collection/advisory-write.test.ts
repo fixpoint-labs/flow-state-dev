@@ -452,7 +452,7 @@ describe.each([
       expect(events.at(-1)?.kind).toBe("completed");
     });
 
-    it("still writes from awaiting_review — legal today, must stay legal", async () => {
+    it("still writes from parked — legal today, must stay legal", async () => {
       await claimed({ id: "t" });
       await collection.awaitReview("t", "needs a look");
       events.length = 0;
@@ -565,7 +565,7 @@ describe.each([
       expect(events.at(-1)?.kind).toBe("completed");
     });
 
-    it("permits the write from awaiting_review, which an attempt also holds", async () => {
+    it("permits the write from parked, which an attempt also holds", async () => {
       const a = await claimed({ id: "t" });
       await collection.awaitReview("t");
       events.length = 0;
@@ -658,7 +658,7 @@ describe.each([
       await collection.addTask({ id: "c", goal: "c" });
       await collection.block("c", "parked by a coordinator"); // pending → blocked
       await claimed({ id: "d" });
-      await collection.awaitReview("d", "queued for review"); // → awaiting_review
+      await collection.awaitReview("d", "queued for review"); // → parked
 
       expect(await collection.awaitReview("b", "not yours", stranger)).toMatchObject({
         outcome: "declined",
@@ -689,7 +689,7 @@ describe.each([
         outcome: "declined",
         reason: "not-my-task",
       });
-      expect(collection.get("d")?.status).toBe("awaiting_review");
+      expect(collection.get("d")?.status).toBe("parked");
     });
 
     it("permits the five for the task's own holder", async () => {
@@ -700,7 +700,7 @@ describe.each([
       expect(await collection.awaitReview("t", "look at this", own)).toEqual({
         outcome: "recorded",
       });
-      expect(collection.get("t")?.status).toBe("awaiting_review");
+      expect(collection.get("t")?.status).toBe("parked");
       expect(await collection.resumeFromReview("t", "looks fine", own)).toEqual({
         outcome: "recorded",
       });
