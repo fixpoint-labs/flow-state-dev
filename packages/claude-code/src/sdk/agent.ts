@@ -243,18 +243,21 @@ export interface ClaudeCodeAgentOptions {
    * "sandboxed" but not "sandboxed to THIS run's workspace", which is the only
    * form of it that contains anything. Same reason `cwd` is a resolver.
    *
+   * **The resolver is handed the context alone**, like `cwd` and `resume` and
+   * for the sharper version of their reason: these settings are the FENCE, and
+   * a fence derived from the prompt is a fence the caller drew. See
+   * `HarnessResolver` in `@flow-state-dev/core/types`, which carries the
+   * argument once.
+   *
    * Loosely typed for the same reason `agents` is: this package treats the
    * Agent SDK as an optional peer, so its types are not imported here. An
    * open object rather than `unknown`, because `unknown | fn` collapses to
    * `unknown` and the resolver form — the one that matters — would then get
-   * no contextual typing and both its parameters would be implicit `any`.
+   * no contextual typing and its parameter would be an implicit `any`.
    */
   sandbox?:
     | SandboxSettings
-    | ((
-        input: { prompt: string },
-        ctx: AgentCallbackContext,
-      ) => SandboxSettings | Promise<SandboxSettings>);
+    | ((ctx: AgentCallbackContext) => SandboxSettings | Promise<SandboxSettings>);
   /**
    * Capabilities installed on the block this factory returns — the same `uses`
    * slot any other block takes, forwarded to `handler()`.
@@ -292,9 +295,16 @@ export interface ClaudeCodeAgentOptions {
    * empty, the rows are simply keyed somewhere else. See
    * `canonicalFilePathKey`, which is where the second half lands.
    *
-   * **A resolver, not a constant**, because one flow build serves many runs:
-   * the same shape {@link ClaudeCodeAgentOptions.prompt} already has. It is
-   * called once per invocation, before `query`.
+   * **A resolver, not a constant**, because one flow build serves many runs. It
+   * is called once per invocation, before `query`, and is handed the block's
+   * context and nothing else.
+   *
+   * **The prompt is deliberately not reachable from here.** It used to be the
+   * resolver's first argument, which undid the paragraph below: the prompt is
+   * the one value a caller — or a model holding this block as a tool — controls,
+   * so a resolver that could see it could be written to put the run's directory
+   * wherever the caller asked. `HarnessResolver` in
+   * `@flow-state-dev/core/types` carries the full argument.
    *
    * ```ts
    * import { mkdir, mkdtemp } from "node:fs/promises";
@@ -345,7 +355,7 @@ export interface ClaudeCodeAgentOptions {
    * }
    *
    * claudeCodeAgent({
-   *   cwd: async (_input, ctx) => {
+   *   cwd: async (ctx) => {
    *     const dir = checkoutFor(
    *       ctx.session.identity.tenantId,
    *       ctx.session.identity.id,
@@ -769,25 +779,26 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         );
       }
 
-      // ONE input for every resolver on this block, and it is the resolved
-      // prompt rather than the raw one.
+      // **No resolver on this block is told the prompt.**
       //
-      // `cwd` used to be handed the block input directly while `sandbox` was
-      // handed a fresh `{ prompt: promptText }`. Those are different strings
-      // whenever a `prompt` picker or padding is in play — `cwd` saw what the
-      // caller sent, `sandbox` saw what the run runs — so a caller deriving
-      // coordinated paths from them could confine the run to a directory it
-      // was never given. The input schema is closed to `prompt`, so this one
-      // object is the whole of what a resolver can be told.
-      const resolverInput = { prompt: promptText };
+      // It used to be handed to all three, and the reasoning was about keeping
+      // them consistent with each other — `cwd` saw what the caller sent while
+      // `sandbox` saw what the run runs, so coordinated paths derived from the
+      // two could confine a run to a directory it was never given. Consistency
+      // was the wrong fix for that: the prompt is the one value a caller or a
+      // tool-using model controls, and every one of these three decides where a
+      // run writes, what fences it, or which conversation it continues. Handing
+      // it to them at all is the BP-031 defect the resolver exists to prevent.
+      //
+      // So it is not passed. A host cannot derive a directory or a session from
+      // the caller's text, because it does not have the caller's text.
 
       // Resolved ONCE per invocation, before the query and before the recorder
       // is opened, so the directory the SDK is handed and the directory the
       // record is keyed against cannot be two different answers from one
-      // resolver (§7's invariant is about them staying the same value, not
-      // merely about both being threaded).
+      // resolver.
       const workingDirectory = normalizeWorkingDirectory(
-        resolveCwd === undefined ? undefined : await resolveCwd(resolverInput, ctx),
+        resolveCwd === undefined ? undefined : await resolveCwd(ctx),
       );
 
       // Resolved beside the working directory, from the same input, and for
@@ -807,15 +818,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // `resume` key is a value the SDK is entitled to interpret.
       const resumeSessionId =
         detached && resolveResume !== undefined
-          ? ((await resolveResume(resolverInput, ctx)) ?? "")
+          ? ((await resolveResume(ctx)) ?? "")
           : "";
 
       const sandboxSettings =
         typeof sandbox === "function"
-          ? await (sandbox as (i: { prompt: string }, c: AgentCallbackContext) => unknown)(
-              resolverInput,
-              ctx,
-            )
+          ? await (sandbox as (c: AgentCallbackContext) => unknown)(ctx)
           : sandbox;
 
       const resolved = await resolveClaudeAgent(ctx);

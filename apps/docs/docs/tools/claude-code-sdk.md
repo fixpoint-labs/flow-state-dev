@@ -175,7 +175,7 @@ claudeCodeAgent({
   detached: true,
   // Which conversation to continue. Read it from somewhere you control —
   // never from the block's input, which a model can see and set.
-  resume: (_input, ctx) => lastSessionFor(ctx),
+  resume: (ctx) => lastSessionFor(ctx),
   // Called during the run, the moment the agent names its session.
   onSession: (id, ctx) => recordSessionFor(ctx, id),
 });
@@ -233,6 +233,14 @@ const agent = claudeCodeAgent({
 It is a function rather than a string on purpose. A flow is built once and then
 serves many runs, so a fixed directory would be the wrong shape — this resolves
 per run, just before the agent starts, and can return a promise as it does here.
+
+**It is handed the block's context and nothing else**, and that is deliberate
+rather than an oversight. `cwd`, `sandbox` and `resume` decide where a run
+writes, what fences it, and which conversation it continues — and the prompt is
+the one value a caller, or a model calling this block as a tool, controls. If a
+resolver could read the prompt, a caller could choose those things. So it
+cannot: everything a resolver legitimately needs is a fact about *which run this
+is*, and that comes from the context.
 
 **A throwaway directory and a resumed conversation do not go together**, which
 is why `detached: true` is part of this example rather than an aside. By
@@ -298,7 +306,7 @@ create the directory before handing it over:
 
 ```ts
 const agent = claudeCodeAgent({
-  cwd: async (_input, ctx) => {
+  cwd: async (ctx) => {
     const dir = checkoutFor(
       ctx.session.identity.tenantId,
       ctx.session.identity.id,
@@ -451,10 +459,10 @@ const checkoutFor = (ctx: object) => {
 };
 
 claudeCodeAgent({
-  cwd: (_input, ctx) => checkoutFor(ctx),
+  cwd: (ctx) => checkoutFor(ctx),
   settingSources: ["user"],
   env: { ...process.env, CI: "1" },
-  sandbox: async (_input, ctx) => ({
+  sandbox: async (ctx) => ({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),

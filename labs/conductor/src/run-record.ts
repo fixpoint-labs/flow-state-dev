@@ -46,22 +46,39 @@
  * one issue at a time; a board driving many issues over a long life needs a
  * retention policy, which is deliberately not built here.
  *
- * ## What this is NOT
+ * ## The session id IS read back, and the rules that make that safe
  *
- * **This is observability, not the resume store.** The session id on a row is a
- * copy conductor keeps so it can say which session a run was. The association a
- * resume reads from is a typed top-level field on the task and belongs to
- * FIX-1179 / FIX-1246. Moving this ledger to `user` scope makes it durable
- * enough to *look* like a resume key, and it is not one — nothing here should
- * grow into that, and LAB-139 stays gated on FIX-1246 rather than draining
- * this.
+ * **This ledger is where an attempt's harness session lives, and the next
+ * attempt resumes from it** (LAB-154). It was observability-only before that,
+ * and the note here said so; the note is gone rather than softened, because a
+ * contract that describes the opposite of the code instructs the next
+ * maintainer to preserve the wrong thing.
+ *
+ * Three rules make the read safe, and all three are load-bearing:
+ *
+ * - **`sessionId` means the session the harness CONFIRMED it was in.** The
+ *   harness's own session hook is its sole writer, firing when the vendor names
+ *   the session. Nothing writes back the id that was *sent* — not the verdict,
+ *   not a failure path.
+ * - **Every attempt's opening write clears it** (see `ATTEMPT_SCOPED_CLEAR`).
+ *   So an attempt whose harness never named a session leaves it `null`.
+ * - **There is no fallback.** An empty field is never backfilled from a run
+ *   handle. A resume the vendor refused can return a handle still carrying the
+ *   dead id, and recording that is what made a dead session resume forever.
+ *
+ * Together those make a lost session self-heal: it is asked for once, and the
+ * attempt after that starts fresh.
+ *
+ * **This is still not the task-owned resume association.** That is a typed
+ * top-level field on the task and belongs to FIX-1179 / FIX-1246; nothing here
+ * stands in for it, and LAB-139 stays gated on FIX-1246 rather than draining
+ * this. What this row carries is the manager's own record of its own runs.
  *
  * The checkout path is still **derived** from the durable task rather than read
  * back from here (see `./workspace`). This row records a copy. That has not
  * changed and does not change with the scope: a copy, never a source.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** Accessor key and storage prefix for the run record. */
@@ -100,8 +117,12 @@ export const runRecordStateSchema = z.object({
   /** Why, in the harness's own words or the throw's message. */
   reason: z.string().nullable().default(null),
   /**
-   * The harness session this attempt was — a COPY, kept so conductor can say
-   * which session a run was. Nothing reads it back to continue anything.
+   * The session THIS attempt's harness confirmed it was in.
+   *
+   * Written by the harness's session hook and by nothing else, cleared by every
+   * attempt's opening write, and never backfilled from a run handle. The next
+   * attempt resumes from it, so those three rules are the contract rather than
+   * incidental — see the module header.
    */
   sessionId: z.string().nullable().default(null),
   /** The run's closing text, when it got far enough to produce one. */
@@ -341,7 +362,7 @@ function leaseHasLapsed(claim: ClaimView, now: number): boolean {
  * Both are named here so neither is mistaken for a bug or for a task.
  */
 export async function writeRunRow(
-  ctx: BlockContext,
+  ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
   update: Partial<RunRecordState>,
 ): Promise<RunRowWrite> {
@@ -393,7 +414,7 @@ export async function writeRunRow(
  * touches is the same defect returning.
  */
 export async function openRunRow(
-  ctx: BlockContext,
+  ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
   opened: { workspacePath: string; branch: string },
 ): Promise<RunRowWrite> {
@@ -407,7 +428,7 @@ export async function openRunRow(
 
 /** Read one issue-phase's row, or `undefined` when nothing has opened it. */
 export async function readRunRow(
-  ctx: BlockContext,
+  ctx: CollectionHoldingContext,
   topic: string,
 ): Promise<RunRecordState | undefined> {
   const ref = await collectionRef(ctx, RUNS).getOptional(topic);
@@ -427,8 +448,33 @@ interface ReadableCollection {
   list(prefix?: string): Promise<Array<{ state: unknown; path: string }>>;
 }
 
+/**
+ * What resolving a collection actually READS off a context: the resource
+ * registry, and nothing else.
+ *
+ * Typed by that rather than as a whole `BlockContext`, which is the same move
+ * `RequestIdentityContext` and `harnessCtxState` make in `./manager` and for the
+ * same reason — a helper declared against the entire context forces a cast on
+ * every caller holding a narrower one. That is not hypothetical here: a harness
+ * feed is handed the deliberately-tightened `HarnessCallbackContext`, which is
+ * not structurally assignable to the wide `BlockContext`, so the manager's
+ * session hook needed an `as unknown as` to reach `writeRunRow` — an unchecked
+ * claim, at a board-state write, which is the worst place to make one.
+ *
+ * Widening what callers may pass, so every existing one keeps compiling.
+ * `resources` is `unknown` rather than a record because `ResourceRegistry` is a
+ * mapped type carrying its own methods; the read below casts it exactly as it
+ * always did, and pinning a shape here would only move the cast.
+ */
+export interface CollectionHoldingContext {
+  resources?: unknown;
+}
+
 /** Resolve a declared collection, failing loudly rather than writing nowhere. */
-export function collectionRef(ctx: BlockContext, accessor: string): ReadableCollection {
+export function collectionRef(
+  ctx: CollectionHoldingContext,
+  accessor: string,
+): ReadableCollection {
   const ref = (ctx.resources as Record<string, unknown> | undefined)?.[accessor];
   if (ref === undefined || typeof (ref as ReadableCollection).upsert !== "function") {
     throw new Error(

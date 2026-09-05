@@ -941,7 +941,7 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
         const owns = issue !== null && phaseName !== null && rowOwnsItsIdentity(task);
 
         const record = owns
-          ? await readRunRow(ctx as never, runTopic(collectionId, issue, phaseName))
+          ? await readRunRow(ctx, runTopic(collectionId, issue, phaseName))
           : undefined;
 
         // **`status` RECONCILES what it reads.** The board's `cancel` writes the

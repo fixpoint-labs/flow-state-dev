@@ -1435,19 +1435,21 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // **Three feeds, one channel, and every one of them reads or writes
         // MANAGER state — never the block's input** (BP-031). A model holding
         // this block as a tool can choose neither where the run writes nor what
-        // conversation it continues.
+        // conversation it continues, and that is now structural rather than a
+        // convention this manager keeps: a resolver is handed the context alone,
+        // so the caller's prompt is not reachable from here at all.
         //
         // All three reach the manager's state through `harnessCtxState`, which
         // is where the cast lives and says why.
         //
         // The run edits ITS checkout, and the record of what it touched is
         // keyed there too.
-        cwd: (_input, ctx) => managerState(harnessCtxState(ctx)).workspacePath!,
+        cwd: (ctx) => managerState(harnessCtxState(ctx)).workspacePath!,
         // Which session this attempt continues. `null` on attempt 1, and on
         // every attempt after one whose harness never named a session — a
         // resume the vendor refused, above all — so a dead id is not re-sent
         // forever.
-        resume: (_input, ctx) => harnessCtxState(ctx)?.previousSessionId ?? null,
+        resume: (ctx) => harnessCtxState(ctx)?.previousSessionId ?? null,
         // **The sole writer of the row's `sessionId`**, called the moment the
         // vendor names the session. Not at the verdict: a run the deadline
         // kills returns no handle at all, and that is exactly the run the next
@@ -1462,7 +1464,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         onSession: async (sessionId, ctx) => {
           await fenced(
             writeRunRow(
-              ctx as unknown as BlockContext,
+              ctx,
               identityFrom(harnessCtxState(ctx), boardCollectionId),
               { sessionId },
             ),

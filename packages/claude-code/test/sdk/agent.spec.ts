@@ -250,18 +250,20 @@ describe("claudeCodeAgent", () => {
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
       // A resolver rather than a constant is the shape that matters: one flow
       // build serves every row, so the directory has to be derivable per run.
-      cwd: (input) => {
-        seen.push(input.prompt);
-        return `/work/checkouts/${input.prompt}`;
+      // It derives from the CONTEXT — which run this is — and not from anything
+      // the caller sent; see the prompt-reachability test below.
+      cwd: (ctx) => {
+        seen.push(ctx.session.identity.id);
+        return `/work/checkouts/${ctx.session.identity.id}`;
       },
     });
 
     await testBlock(block, { input: { prompt: "FIX-1219" } });
 
-    expect(spy.mock.calls[0][0].options?.cwd).toBe("/work/checkouts/FIX-1219");
-    // Called once per invocation, with the block's own input — not once at
+    expect(spy.mock.calls[0][0].options?.cwd).toBe("/work/checkouts/test-session");
+    // Called once per invocation — not once at
     // build time, which would make one directory serve every run.
-    expect(seen).toEqual(["FIX-1219"]);
+    expect(seen).toEqual(["test-session"]);
   });
 
   it("installs the capabilities it is handed on the block itself", async () => {
@@ -322,18 +324,18 @@ describe("claudeCodeAgent", () => {
     const seen: string[] = [];
     const block = claudeCodeAgent({
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
-      sandbox: (input) => {
-        seen.push(input.prompt);
-        return { filesystem: { allowWrite: [`/work/${input.prompt}`] } };
+      sandbox: (ctx) => {
+        seen.push(ctx.session.identity.id);
+        return { filesystem: { allowWrite: [`/work/${ctx.session.identity.id}`] } };
       },
     });
 
     await testBlock(block, { input: { prompt: "run-7" } });
 
     expect(spy.mock.calls[0][0].options?.sandbox).toEqual({
-      filesystem: { allowWrite: ["/work/run-7"] },
+      filesystem: { allowWrite: ["/work/test-session"] },
     });
-    expect(seen).toEqual(["run-7"]);
+    expect(seen).toEqual(["test-session"]);
   });
 
   it("loads no filesystem settings when handed an empty list", async () => {
@@ -1886,7 +1888,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     const spy = vi.fn();
     const agent = claudeCodeAgent({
       // Verbatim from the docs: both halves of the identity, each encoded.
-      cwd: (_input, ctx) =>
+      cwd: (ctx) =>
         checkoutFor(ctx.session.identity.tenantId, ctx.session.identity.id),
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
     });
@@ -1912,7 +1914,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     const root = mkdtempSync(join(tmpdir(), "cwd-provision-"));
     const seen: { cwd?: string; existed?: boolean } = {};
     const agent = claudeCodeAgent({
-      cwd: async (_input, ctx) => {
+      cwd: async (ctx) => {
         const dir = join(root, segment(ctx.session.identity.tenantId), segment(ctx.session.identity.id));
         await mkdirAsync(dir, { recursive: true });
         return dir;
@@ -2091,36 +2093,56 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     expect(winContains("../../server-repo")).toBe(true);
   });
 
-  it("hands cwd and sandbox the same resolved input", async () => {
-    // They used to differ: `cwd` got the raw block input while `sandbox` got a
-    // freshly built `{ prompt }`. With `pickPrompt` or a padded prompt those
-    // are different strings, so a caller deriving coordinated paths from them
-    // got a sandbox confining a directory the run was never given.
-    const seen: Array<Record<string, unknown>> = [];
+  it("hands no resolver the caller's prompt", async () => {
+    // **The BP-031 guarantee, asserted at runtime rather than left to the type.**
+    //
+    // These three decide where a run writes, what fences it, and which
+    // conversation it continues. The prompt is the one value a caller — or a
+    // model holding this block as a tool — controls, so a resolver that could
+    // see it could be written, in ordinary-looking code, to point a run at a
+    // directory or a session the caller chose.
+    //
+    // This used to be the opposite test: it pinned that `cwd` and `sandbox` saw
+    // the SAME input, because an earlier defect had them seeing different
+    // strings and a caller deriving coordinated paths got a sandbox confining a
+    // directory the run was never given. Consistency was the wrong fix for
+    // that; not passing it at all is the right one, and the case that motivated
+    // the old test cannot arise when there is nothing to be inconsistent about.
+    const args: unknown[][] = [];
     const block = claudeCodeAgent({
       resolveClaudeAgent: () => ({
         query: async function* () {
           yield RESULT_OK;
         },
       }),
+      detached: true,
       prompt: (input: { prompt: string }) => `picked:${input.prompt}`,
-      cwd: (input) => {
-        seen.push({ ...input });
+      cwd: (...received: unknown[]) => {
+        args.push(received);
         return "/tmp/agent-cwd";
       },
-      sandbox: (input) => {
-        seen.push({ ...input });
+      sandbox: (...received: unknown[]) => {
+        args.push(received);
         return { enabled: true };
+      },
+      resume: (...received: unknown[]) => {
+        args.push(received);
+        return null;
       },
     } as never);
 
     await testBlock(block as never, { input: { prompt: "  raw  " } });
 
-    expect(seen).toHaveLength(2);
-    expect(seen[0]).toEqual(seen[1]);
-    // And the prompt they see is the one the run actually runs: picked, then
-    // trimmed, exactly as it reaches the SDK.
-    expect(seen[0]!.prompt).toBe("picked:  raw");
+    expect(args).toHaveLength(3);
+    for (const received of args) {
+      // Exactly one argument, and it is a block context rather than the input.
+      expect(received).toHaveLength(1);
+      expect(received[0]).toHaveProperty("session");
+      expect(received[0]).not.toHaveProperty("prompt");
+    }
+    // Belt and braces: the prompt string the run actually runs appears nowhere
+    // in what any resolver was handed.
+    expect(JSON.stringify(args)).not.toContain("picked:");
   });
 
   // The runtime half of the conformance claim (LAB-152). The type assertion in

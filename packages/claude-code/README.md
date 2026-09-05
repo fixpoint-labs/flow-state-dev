@@ -126,7 +126,7 @@ To have the next job pick up the last one's conversation, pair two options:
 ```ts
 claudeCodeAgent({
   detached: true,
-  resume: (_input, ctx) => lastSessionFor(ctx),   // `null` or `""` starts fresh
+  resume: (ctx) => lastSessionFor(ctx),   // `null` or `""` starts fresh
   onSession: (id, ctx) => recordSessionFor(ctx, id),
 });
 ```
@@ -202,7 +202,7 @@ const checkoutFor = (ctx: object) => {
 };
 
 claudeCodeAgent({
-  cwd: (_input, ctx) => checkoutFor(ctx),
+  cwd: (ctx) => checkoutFor(ctx),
   // Which filesystem settings the run loads. Omitted, it loads all of them,
   // exactly as the CLI does.
   settingSources: ["user"],
@@ -213,7 +213,7 @@ claudeCodeAgent({
   // SDK is an optional peer here, so its own type is not imported). A value or
   // a resolver: the settings that confine a run name the directory it works
   // in, and that is per run.
-  sandbox: async (_input, ctx) => ({
+  sandbox: async (ctx) => ({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
   }),
@@ -291,7 +291,7 @@ over:
 
 ```ts
 const agent = claudeCodeAgent({
-  cwd: async (_input, ctx) => {
+  cwd: async (ctx) => {
     const dir = checkoutFor(
       ctx.session.identity.tenantId,
       ctx.session.identity.id,
