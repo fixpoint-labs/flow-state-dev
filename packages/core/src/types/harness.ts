@@ -38,6 +38,7 @@
  */
 import { z } from "zod";
 import type { BlockContext, BlockDefinition } from "./block";
+import type { AnyResourceRef } from "./resource";
 
 /**
  * Which harness, and which of its doors, produced a handle.
@@ -193,6 +194,47 @@ export const harnessRunHandleSchema = harnessRunEnvelopeSchema.extend({
 export type HarnessBlock = BlockDefinition<any, any, HarnessRunInput, HarnessRunHandle>;
 
 /**
+ * The block context a harness feed is handed — **loose in three slots and
+ * checked in every other one.**
+ *
+ * A feed's body is ordinary code a host writes against a context, so the
+ * context is the only thing keeping it honest. Declaring the whole thing `any`
+ * makes every read off it `any` too: `ctx.user.state.typo.deeper` type-checks
+ * as whatever the reader asked for, and so does a scope-state field nobody ever
+ * declared. That is not a small loss, because the one caller these exist for —
+ * a manager resolving a checkout path and a session id per attempt — reads
+ * exactly those slots.
+ *
+ * The three that stay open are the three a HARNESS's own configuration decides,
+ * so pinning them would break a feed because of an option set beside it:
+ *
+ * - **session state**, present or absent depending on whether the harness runs
+ *   detached;
+ * - **targets** and **capability namespaces**, both derived from the harness
+ *   block's `uses`.
+ *
+ * Everything else takes its default, so scope state reads `unknown` and has to
+ * be narrowed deliberately. Contravariance is what makes the rest safe to pin:
+ * a harness calls a feed with its OWN, narrower context, and the three open
+ * slots are precisely the ones a harness narrows.
+ *
+ * This is the same reasoning `@flow-state-dev/claude-code` already reached for
+ * its own option callbacks; the two are one alias now rather than two copies
+ * that have to stay identical for a harness to be able to call a feed at all.
+ */
+export type HarnessCallbackContext = BlockContext<
+  Record<string, unknown>,
+  any,
+  Record<string, unknown>,
+  Record<string, unknown>,
+  Record<string, AnyResourceRef>,
+  Record<string, unknown>,
+  unknown,
+  any,
+  any
+>;
+
+/**
  * How a host feeds a harness one piece of per-run configuration.
  *
  * The working directory a run writes in, and the session it resumes, arrive
@@ -203,10 +245,16 @@ export type HarnessBlock = BlockDefinition<any, any, HarnessRunInput, HarnessRun
  *
  * Declared here, with the contract, because a harness package and a manager
  * package both name this signature and land independently.
+ *
+ * **A manager's own state is not reachable from the type**, deliberately: the
+ * harness block carries the framework's default sequencer state, so a resolver
+ * that reads the manager's shape casts to it. The manager owns that shape and
+ * the harness never learns it, which is the whole point of the channel — the
+ * cast is the honest spelling of that split rather than a hole in it.
  */
 export type HarnessResolver<T> = (
   input: HarnessRunInput,
-  ctx: BlockContext<any, any, any, any, any, any, any, any, any>,
+  ctx: HarnessCallbackContext,
 ) => T | Promise<T>;
 
 /**
@@ -219,5 +267,5 @@ export type HarnessResolver<T> = (
  */
 export type HarnessSessionHook = (
   sessionId: string,
-  ctx: BlockContext<any, any, any, any, any, any, any, any, any>,
+  ctx: HarnessCallbackContext,
 ) => void | Promise<void>;

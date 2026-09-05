@@ -160,6 +160,48 @@ createClaudeCodeAgentCapability({ detached: true });
 See [Dispatched work](../server/background-work.md) for how the child session is
 started and read back.
 
+### Continuing a run on the background path
+
+Background jobs start fresh by default. Sometimes you want the next one to pick up
+where the last one left off — the job asked a question, a person answered it, and
+the follow-up should continue that conversation rather than start over knowing
+only what its prompt says.
+
+Two options do that, and they work as a pair. `resume` says which session to
+continue; `onSession` tells you which session the run turned out to be in.
+
+```ts
+claudeCodeAgent({
+  detached: true,
+  // Which conversation to continue. Read it from somewhere you control —
+  // never from the block's input, which a model can see and set.
+  resume: (_input, ctx) => lastSessionFor(ctx),
+  // Called during the run, the moment the agent names its session.
+  onSession: (id, ctx) => recordSessionFor(ctx, id),
+});
+```
+
+Return `null` or `""` from `resume` and the run starts fresh, which is what you
+want on the first attempt.
+
+`onSession` fires **during** the run rather than after it, and that timing is the
+reason it exists rather than reading the id off the returned handle. A run that
+gets cancelled — a deadline, a shutdown — never returns a handle at all, and that
+is exactly the run you most want to continue. The hook is called as soon as the
+agent names its session, before the run does anything that could fail.
+
+What the hook reports is the session the agent **confirmed** it is in, which is not
+always the one you asked for. Hand it an id the agent can no longer find and the
+run may answer with a session of its own, or end without naming one. So record what
+the hook gives you, and treat "the hook never fired" as "there is nothing to
+continue" — the next attempt then starts fresh on its own, instead of asking for a
+session that is gone over and over.
+
+Both options are background-path only. In session, the block already resumes the
+last run and records the new id itself, so a second answer to either question would
+be two owners of one decision. Passing them without `detached: true` throws when
+you build the block, not at run time.
+
 ## Where the run works
 
 By default the agent runs in whatever directory your server process is running

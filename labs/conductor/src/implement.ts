@@ -565,13 +565,15 @@ export function implementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
         lines.push("", "Continue on those answers.");
       }
 
-      // From the MANAGER, not from the run record. The record's `sessionId`
-      // describes the attempt now running, and this attempt's opening write
-      // cleared it before a prompt could be built — so reading it here always
-      // saw `null` and the previous session was silently never named.
-      if (ctx.previousSessionId !== undefined) {
-        lines.push("", `The previous run's harness session was ${ctx.previousSessionId}.`);
-      }
+      // **No session id in the prompt, deliberately.** The prompt used to name
+      // the last attempt's session, which told a model a fact it had no way to
+      // act on — the run still started over in a tree it had never seen. The
+      // manager continues the session through the harness's own `resume` feed
+      // now, and two mechanisms for "continue" in one window is dual semantics:
+      // whichever one is actually working, the other makes it look like it is.
+      //
+      // It is also what makes the resume proof honest. A prompt carrying the id
+      // gives a fresh session everything it needs to look like a resumed one.
 
       return lines.join("\n");
     },

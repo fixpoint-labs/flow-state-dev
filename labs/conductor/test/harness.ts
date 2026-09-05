@@ -43,15 +43,30 @@ export function sdkResult(
   } as SdkMessageLike;
 }
 
+/**
+ * What the scripted agents record about each call the manager made.
+ *
+ * `resumes` is optional so the tests that predate resume keep their two-field
+ * literals — the field is only interesting to the tests that assert on it, and
+ * widening thirty call sites to say nothing would be churn.
+ */
+export interface SeenCalls {
+  prompts: string[];
+  cwds: (string | undefined)[];
+  /** The `resume` the manager's resolver produced, per call. */
+  resumes?: (string | undefined)[];
+}
+
 /** A `query` that yields a fixed script, recording the prompt and options it saw. */
 export function scriptedAgent(
   script: SdkMessageLike[] | (() => SdkMessageLike[]),
-  seen: { prompts: string[]; cwds: (string | undefined)[] },
+  seen: SeenCalls,
 ): ResolveClaudeAgent {
   return () => ({
     query: async function* (args) {
       seen.prompts.push(String(args.prompt));
       seen.cwds.push(args.options?.cwd);
+      seen.resumes?.push(args.options?.resume);
       for (const message of typeof script === "function" ? script() : script) {
         yield message;
       }
@@ -75,7 +90,7 @@ export function scriptedAgent(
 export function askingAgent(
   question: string | (() => string | undefined),
   subtype: string,
-  seen: { prompts: string[]; cwds: (string | undefined)[] },
+  seen: SeenCalls,
 ): ResolveClaudeAgent {
   return () => ({
     query: async function* (args) {
@@ -83,6 +98,7 @@ export function askingAgent(
       seen.prompts.push(prompt);
       const cwd = args.options?.cwd;
       seen.cwds.push(cwd);
+      seen.resumes?.push(args.options?.resume);
       const text = typeof question === "function" ? question() : question;
       if (cwd !== undefined && text !== undefined) {
         // The path the PROMPT named, parsed back out of it — so a prompt that
@@ -103,12 +119,13 @@ export function askingAgent(
 /** A `query` that throws mid-stream, before any handle is constructed. */
 export function throwingAgent(
   message: string,
-  seen: { prompts: string[]; cwds: (string | undefined)[] },
+  seen: SeenCalls,
 ): ResolveClaudeAgent {
   return () => ({
     query: async function* (args) {
       seen.prompts.push(String(args.prompt));
       seen.cwds.push(args.options?.cwd);
+      seen.resumes?.push(args.options?.resume);
       throw new Error(message);
     },
   });
@@ -122,14 +139,12 @@ export function throwingAgent(
  * is the point — a stub that merely slept would time the test out instead of
  * proving the signal reached the query.
  */
-export function hangingAgent(seen: {
-  prompts: string[];
-  cwds: (string | undefined)[];
-}): ResolveClaudeAgent {
+export function hangingAgent(seen: SeenCalls): ResolveClaudeAgent {
   return () => ({
     query: async function* (args) {
       seen.prompts.push(String(args.prompt));
       seen.cwds.push(args.options?.cwd);
+      seen.resumes?.push(args.options?.resume);
       const signal = args.options?.abortController?.signal;
       await new Promise<never>((_resolve, reject) => {
         if (signal?.aborted === true) {

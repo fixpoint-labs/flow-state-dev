@@ -119,6 +119,28 @@ the result.
 have to pass it: the board refuses a block whose capability declares the schema, and
 cannot see one a capability's preset adds at all.
 
+#### Continuing a background run
+
+To have the next job pick up the last one's conversation, pair two options:
+
+```ts
+claudeCodeAgent({
+  detached: true,
+  resume: (_input, ctx) => lastSessionFor(ctx),   // `null` or `""` starts fresh
+  onSession: (id, ctx) => recordSessionFor(ctx, id),
+});
+```
+
+`onSession` fires **during** the run, as soon as the agent names its session —
+not from the returned handle, because a cancelled run returns none, and that is
+the run you most want to continue. What it reports is the session the agent
+confirmed it is in, which may not be the one you asked for: record what the hook
+gives you, and treat "never fired" as "nothing to continue" so the next attempt
+starts fresh instead of re-sending a session that is gone.
+
+Both are background-path only. In session the block already resumes and records
+the id itself, so passing either without `detached: true` throws at construction.
+
 ### Giving a run its own working directory (`/sdk`)
 
 By default a run works in whatever directory the server process is running in.

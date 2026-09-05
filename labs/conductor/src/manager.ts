@@ -102,15 +102,6 @@ export interface PhaseRunContext {
   workspacePath: string;
   branch: string;
   /**
-   * The harness session the LAST attempt used, or `undefined` on attempt 1.
-   *
-   * Supplied by the manager, captured before this attempt's opening write
-   * cleared it. A phase must not read it off the run record: that row describes
-   * the attempt now running, and the clear has already been applied by the time
-   * a phase builds its prompt.
-   */
-  previousSessionId?: string;
-  /**
    * Whatever this phase's own {@link PhaseSpec.validate} returned, for THIS
    * conductor.
    *
@@ -170,15 +161,15 @@ export interface PhaseSpec {
    * Has the job actually been done? Re-evaluated now, and consulted ONLY after
    * a successful verdict — never as an alternative route to completion.
    *
-   * **The two carry-forward fields are prompt-time only: `feedback` and
-   * `previousSessionId` are absent here, deliberately and always.** They
-   * describe the attempt BEFORE this one, which is what a prompt needs and what
-   * a done-condition has no use for — the question is whether the job is done
-   * now, not how the last attempt went. `feedback` is also not reachable at this
-   * point: it arrives on the worker's input, and the verdict handler is handed
-   * the run's own result instead. A phase whose done-condition genuinely needs
-   * either wants them put on the manager's state first; do that when such a
-   * phase exists rather than plumbing a field nothing reads.
+   * **The carry-forward field is prompt-time only: `feedback` is absent here,
+   * deliberately and always.** It describes the attempt BEFORE this one, which
+   * is what a prompt needs and what a done-condition has no use for — the
+   * question is whether the job is done now, not how the last attempt went. It
+   * is also not reachable at this point: it arrives on the worker's input, and
+   * the verdict handler is handed the run's own result instead. A phase whose
+   * done-condition genuinely needs it wants it put on the manager's state
+   * first; do that when such a phase exists rather than plumbing a field
+   * nothing reads.
    */
   isDone(run: PhaseRunContext): boolean | Promise<boolean>;
   /**
@@ -1037,9 +1028,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         workspacePath: state.workspacePath!,
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
-        ...(state.previousSessionId != null
-          ? { previousSessionId: state.previousSessionId }
-          : {}),
         ctx,
         answers,
         // The prompt is the only place this path is named, which is what makes
@@ -1167,20 +1155,31 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    */
   const decide = handler({
     name: "conductor-decide",
-    // Read off the handle. The verdict contract names FOUR optional fields —
-    // session id, terminal text, usage and cost — so this reads four. An
-    // attempt that reports three would otherwise leave the fourth showing the
-    // previous attempt's value, silently and only on the attempts that could
-    // not report it.
+    // **The NEUTRAL contract's fields, and no vendor field at all.** This used
+    // to read `resultSubtype` — the SDK's own enum — so the manager could only
+    // classify runs from one vendor, which is the coupling the harness contract
+    // exists to remove. `outcome` is the framework's three-way reading of the
+    // same fact, and every harness owes it.
+    //
+    // The contract names four optional fields beyond identity and status —
+    // terminal text, usage, cost, outcome — so this reads four. An attempt that
+    // reports three would otherwise leave the fourth showing the previous
+    // attempt's value, silently and only on the attempts that could not report
+    // it.
+    //
+    // `sessionId` is read for nothing: it is on the handle, and it is
+    // deliberately NOT what the row records. See the write below.
     inputSchema: z.object({
       status: z.string(),
       sessionId: z.string().nullable(),
-      resultSubtype: z.string().nullable(),
+      outcome: z.string().nullable(),
       finalMessage: z.string().nullable(),
       usage: z
         .object({ inputTokens: z.number(), outputTokens: z.number() })
         .nullable(),
-      costUsd: z.number().nullable(),
+      cost: z
+        .object({ usd: z.number(), basis: z.string() })
+        .nullable(),
     }),
     outputSchema: managerOutputSchema,
     sequencerStateSchema: managerStateSchema,
@@ -1192,12 +1191,20 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
+      //
+      // **`sessionId` is deliberately absent from this write.** The row's
+      // session id means one thing — the session the harness CONFIRMED it was
+      // in — and the harness's own `onSession` hook is its sole writer, firing
+      // the moment the vendor names it. Writing the handle's id here would put
+      // back the path that re-persisted a dead one: a resume the vendor
+      // refuses can return a handle still carrying the id that was SENT, and
+      // recording that makes the next attempt resume it again, forever.
+      // Leaving it to the opening clear is what makes the retry self-heal.
       await fenced(
         writeRunRow(ctx, identity, {
-        sessionId: handle.sessionId,
         finalMessage: handle.finalMessage,
         usage: handle.usage,
-        costUsd: handle.costUsd,
+        costUsd: handle.cost?.usd ?? null,
         childSessionId: ctx.session.identity.id,
         requestId: ctx.request.identity.id,
         }),
@@ -1301,8 +1308,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // ── Arm 3: anything else, INCLUDING a failed verdict with a question ───
       await withdrawOwnQuestion();
       if (!succeeded) {
+        // **Named in the framework's vocabulary, plus whatever the run said.**
+        // The outcome word is what a reader can act on across harnesses; the
+        // closing text is the only part carrying what actually went wrong, and
+        // this string becomes the next attempt's feedback.
+        //
+        // `null` here is the contract's "no terminal result arrived" — a
+        // distinct fact from `"failed"`, which is a terminal result that
+        // failed, including one whose vendor subtype this framework version
+        // does not recognise.
+        const because = handle.outcome ?? "no result reported";
         throw new ConductorAttemptFailed(
-          `the run stopped without finishing: ${handle.resultSubtype ?? "no result reported"}`,
+          `the run stopped without finishing: ${because}` +
+            (handle.finalMessage === null ? "" : ` — ${handle.finalMessage}`),
         );
       }
       throw new ConductorAttemptFailed(
@@ -1386,14 +1404,51 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // authors a session-state schema.
         detached: true,
         recordWork: true,
-        // The framework's one addition, and the reason this lab needs it: the
-        // run edits ITS checkout, and the record of what it touched is keyed
-        // there too.
-        // The one context this manager's `sequencerStateSchema` cannot reach:
-        // `claudeCodeAgent` is not one of our blocks, so its callback is handed
-        // the framework's default sequencer state rather than the manager's.
+        // **Three feeds, one channel, and every one of them reads or writes
+        // MANAGER state — never the block's input** (BP-031). A model holding
+        // this block as a tool can choose neither where the run writes nor what
+        // conversation it continues.
+        //
+        // All three cast `ctx.sequencer?.state`: `claudeCodeAgent` is not one
+        // of our blocks, so its callbacks are handed the framework's default
+        // sequencer state rather than this manager's. The manager owns that
+        // shape and the harness never learns it, which is the point of the
+        // channel — the cast is where that split is spelled out.
+        //
+        // The run edits ITS checkout, and the record of what it touched is
+        // keyed there too.
         cwd: (_input, ctx) =>
           managerState(ctx.sequencer?.state as ManagerState | undefined).workspacePath!,
+        // Which session this attempt continues. `null` on attempt 1, and on
+        // every attempt after one whose harness never named a session — a
+        // resume the vendor refused, above all — so a dead id is not re-sent
+        // forever.
+        resume: (_input, ctx) =>
+          (ctx.sequencer?.state as ManagerState | undefined)?.previousSessionId ?? null,
+        // **The sole writer of the row's `sessionId`**, called the moment the
+        // vendor names the session. Not at the verdict: a run the deadline
+        // kills returns no handle at all, and that is exactly the run the next
+        // attempt most needs to continue.
+        //
+        // **Fenced like every other write.** A refusal here means a replacement
+        // holds the row, and recording this attempt's session onto it would
+        // hand the replacement's next attempt a conversation that belongs to a
+        // run nobody is waiting on. Stopping is also the right answer for the
+        // run itself: it is mid-stream in paid model work on a row it no longer
+        // owns.
+        onSession: async (sessionId, ctx) => {
+          await fenced(
+            writeRunRow(
+              ctx as unknown as BlockContext,
+              identityFrom(
+                ctx.sequencer?.state as ManagerState | undefined,
+                boardCollectionId,
+              ),
+              { sessionId },
+            ),
+            "the harness named its session",
+          );
+        },
       }),
       {
         // The cancellable-under-a-deadline obligation, met by a primitive core

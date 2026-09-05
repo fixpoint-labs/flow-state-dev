@@ -228,7 +228,7 @@ describe("claudeCodeAgent", () => {
     expect(handle.status).toBe("completed");
     expect(handle.resultSubtype).toBe("success");
     expect(handle.usage).toEqual({ inputTokens: 50, outputTokens: 10 });
-    expect(handle.costUsd).toBe(0.01);
+    expect(handle.cost).toEqual({ usd: 0.01, basis: "reported" });
   });
 
   it("resumes a prior session id on a second run", async () => {
@@ -797,6 +797,245 @@ describe("claudeCodeAgent — detached", () => {
     expect(error).toBeNull();
     expect(state.session[SDK_SESSION_ID_KEY]).toBe("sess_new");
     expect(state.session[SDK_AGENT_RUNS_KEY]).toHaveLength(1);
+  });
+});
+
+/**
+ * `resume` and `onSession` — how a background run is CONTINUED, and how the
+ * host learns which conversation it is in (LAB-154).
+ *
+ * Two feeds of the harness contract, and the pair only makes sense together:
+ * the resolver says which session to continue, the hook says which session the
+ * run turned out to be in. A host that has one without the other either cannot
+ * continue a run it killed, or continues one the vendor never confirmed.
+ *
+ * **Both are background-path only.** In-session, the block's own conversation
+ * state already owns continuity, so an explicit id or a second writer would be
+ * a second owner racing the first — refused at construction, where a host can
+ * still act on it, rather than at run time on one unlucky request.
+ */
+describe("claudeCodeAgent — resume and onSession", () => {
+  /** A run that names ONE session on the init message and keeps naming it. */
+  const NAMES_THEN_FINISHES: SdkMessageLike[] = [
+    { type: "system", subtype: "init", session_id: "sess_named" },
+    { ...RESULT_OK, session_id: "sess_named" },
+  ];
+
+  /** Report the `resume` the SDK was handed for one configuration. */
+  async function resumeHandedToSdk(
+    options: Parameters<typeof claudeCodeAgent>[0],
+  ): Promise<unknown> {
+    const spy = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      ...options,
+    });
+    await testBlock(block, { input: { prompt: "go" } });
+    return spy.mock.calls[0][0].options?.resume;
+  }
+
+  it("hands the SDK the id the resolver returned", async () => {
+    expect(
+      await resumeHandedToSdk({ detached: true, resume: () => "sess_prev" }),
+    ).toBe("sess_prev");
+  });
+
+  it("hands the SDK nothing when the resolver returns null or an empty string", async () => {
+    // The two spellings of "start fresh". `null` is what a manager's state
+    // carries on attempt 1; `""` is what an over-eager `?? ""` produces. Both
+    // must reach the SDK as ABSENT, not as `resume: ""` — an empty resume is a
+    // value the SDK is entitled to interpret, and byte-for-byte today's
+    // detached behaviour is no `resume` key at all.
+    expect(
+      await resumeHandedToSdk({ detached: true, resume: () => null }),
+    ).toBeUndefined();
+    expect(
+      await resumeHandedToSdk({ detached: true, resume: () => "" }),
+    ).toBeUndefined();
+  });
+
+  it("still does not consult the session provider when a resolver is given", async () => {
+    // The resolver is an ADDITION to the background path, not a re-opening of
+    // the in-session one. A provider consulted here would resume a conversation
+    // the host never asked for, and the resolver's own answer would mask it on
+    // every attempt that has an id — so this fails only on attempt 1, which is
+    // the shape that hides longest.
+    const resolve = vi.fn(async () => ({ sdkSessionId: "sess_provider" }));
+    const spy = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      sessionProvider: { resolve, release: async () => {} },
+      detached: true,
+      resume: () => null,
+    });
+    await testBlock(block, {
+      input: { prompt: "go" },
+      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+    });
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(spy.mock.calls[0][0].options?.resume).toBeUndefined();
+  });
+
+  it("calls the hook with the id from the SDK's first message, before the next one is consumed", async () => {
+    // **The ordering is the whole point of the hook.** A host that learned the
+    // id from the returned handle has nothing to resume in exactly the case
+    // resume exists for — a run the deadline killed mid-stream returns no
+    // handle at all. So the assertion is not merely "the hook was called with
+    // the right id"; it is that it was called before the run consumed anything
+    // it could die on.
+    const seen: string[] = [];
+    const onSession = vi.fn((id: string) => {
+      seen.push(`hook:${id}`);
+    });
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          yield { type: "system", subtype: "init", session_id: "sess_named" };
+          seen.push("second-message");
+          yield { ...RESULT_OK, session_id: "sess_named" };
+        },
+      }),
+      detached: true,
+      onSession,
+    });
+
+    const { error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(seen).toEqual(["hook:sess_named", "second-message"]);
+  });
+
+  it("has already called the hook when the run is then aborted mid-stream", async () => {
+    // The deadline kill, which is the case the write side exists for: the run
+    // names its session and is then cut off, so it returns no handle. The id
+    // has to be out of the block by then or the next attempt starts fresh.
+    const onSession = vi.fn();
+    const controller = new AbortController();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          yield { type: "system", subtype: "init", session_id: "sess_named" };
+          controller.abort();
+          throw new Error("aborted");
+        },
+      }),
+      detached: true,
+      onSession,
+    });
+
+    const { error } = await testBlock(block, {
+      input: { prompt: "go" },
+      signal: controller.signal,
+    });
+
+    // The executor wraps a block's throw, so the class is asserted through the
+    // message the block produced rather than through `instanceof`.
+    expect((error as Error | null)?.message).toMatch(
+      /Claude Code agent run failed/,
+    );
+    expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
+  });
+
+  it("calls the hook on a run whose result is errored", async () => {
+    // An errored terminal result is a RETURN, not a throw — this lab's whole
+    // premise. The session exists and the failure was not a resume failure, so
+    // the id has to reach the host the same way it does on a clean run.
+    const onSession = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([
+        { type: "system", subtype: "init", session_id: "sess_named" },
+        { type: "result", subtype: "error_max_turns", session_id: "sess_named" },
+      ]),
+      detached: true,
+      onSession,
+    });
+
+    const { output, error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect((output as SdkAgentHandle).status).toBe("errored");
+    expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
+  });
+
+  it("calls the hook once per distinct session id, not once per message carrying it", async () => {
+    // Every message carries `session_id`. A hook fired per message would make
+    // the host's write — a durable row, in the case this exists for — a write
+    // per streamed message on the hot path.
+    const onSession = vi.fn();
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(NAMES_THEN_FINISHES),
+      detached: true,
+      onSession,
+    });
+
+    await testBlock(block, { input: { prompt: "go" } });
+
+    expect(onSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires again when the run turns out to be in a DIFFERENT session than it was sent", async () => {
+    // A resume the vendor could not honour is entitled to answer with a session
+    // of its own, and what the hook reports is the session the run IS in, not
+    // the one it was asked for. The host records the second id, so the next
+    // attempt continues the conversation that actually happened.
+    const ids: string[] = [];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([
+        { type: "system", subtype: "init", session_id: "sess_fresh" },
+        { ...RESULT_OK, session_id: "sess_fresh" },
+      ]),
+      detached: true,
+      resume: () => "sess_gone",
+      onSession: (id) => {
+        ids.push(id);
+      },
+    });
+
+    await testBlock(block, { input: { prompt: "go" } });
+
+    expect(ids).toEqual(["sess_fresh"]);
+  });
+
+  it("confirms the session it was told to resume, rather than staying silent about it", async () => {
+    // The trap in deduping: seed the "already announced" id with the one the
+    // host SENT and a run that resumed perfectly reports nothing. A host whose
+    // record is cleared per attempt — which a manager's is, so a refused resume
+    // starts fresh — would then lose the session on every successful resume.
+    const ids: string[] = [];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([
+        { type: "system", subtype: "init", session_id: "sess_prev" },
+        { ...RESULT_OK, session_id: "sess_prev" },
+      ]),
+      detached: true,
+      resume: () => "sess_prev",
+      onSession: (id) => {
+        ids.push(id);
+      },
+    });
+
+    await testBlock(block, { input: { prompt: "go" } });
+
+    expect(ids).toEqual(["sess_prev"]);
+  });
+
+  it("refuses `resume` at construction when the run is not detached", () => {
+    // Construction, not run time: session state already owns continuity there,
+    // and a host can still fix a refusal that arrives at `defineFlow`.
+    expect(() => claudeCodeAgent({ resume: () => "sess_prev" })).toThrow(
+      /in-session/i,
+    );
+    expect(() =>
+      claudeCodeAgent({ detached: false, resume: () => "sess_prev" }),
+    ).toThrow(/in-session/i);
+  });
+
+  it("refuses `onSession` at construction when the run is not detached", () => {
+    expect(() => claudeCodeAgent({ onSession: () => {} })).toThrow(/in-session/i);
+    expect(() => claudeCodeAgent({ detached: false, onSession: () => {} })).toThrow(
+      /in-session/i,
+    );
   });
 });
 
@@ -1964,7 +2203,6 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect(handle.outcome).toBeNull();
       expect(handle.usage).toBeNull();
       expect(handle.cost).toBeNull();
-      expect(handle.costUsd).toBeNull();
     });
 
     it("marks the cost reported, never estimated, on this path", async () => {
@@ -1973,14 +2211,39 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect((await runFor(RESULT_OK)).cost).toEqual({ usd: 0.01, basis: "reported" });
     });
 
-    it("keeps costUsd and resultSubtype beside the neutral fields", async () => {
-      // The dual the run manager reads today. It comes off only when the
-      // manager switches to `cost` and `outcome` — until then, removing either
-      // silently breaks a reader in another package.
+    it("keeps resultSubtype beside the neutral fields, and has dropped the cost dual", async () => {
+      // `resultSubtype` stays: it is the vendor's own reason, useful to a person
+      // reading a handle and read by nothing in the manager. `costUsd` was a
+      // dual carried for one release while the manager still read it; the
+      // manager reads `cost` now, so the copy is gone.
       const handle = await runFor(RESULT_OK);
 
-      expect(handle.costUsd).toBe(handle.cost?.usd);
       expect(handle.resultSubtype).toBe("success");
+      expect(handle).not.toHaveProperty("costUsd");
+    });
+
+    it("still parses a handle persisted WITH the retired cost dual", async () => {
+      // BP-030 from the other direction: the field is gone from the shape, and
+      // a run recorded while it existed is still in session state. Stripped
+      // rather than rejected — it was only ever a copy of `cost.usd`, which is
+      // still there.
+      const parsed = sdkAgentHandleSchema.parse({
+        source: CLAUDE_SDK_SOURCE,
+        status: "completed",
+        sessionId: "sess_old",
+        url: null,
+        dispatchedAt: 1,
+        outcome: "finished",
+        resultSubtype: "success",
+        finalMessage: "hi",
+        toolsObserved: [],
+        usage: null,
+        cost: { usd: 0.02, basis: "reported" },
+        costUsd: 0.02,
+      });
+
+      expect(parsed.cost).toEqual({ usd: 0.02, basis: "reported" });
+      expect(parsed).not.toHaveProperty("costUsd");
     });
 
     it("still parses a handle persisted under the old source spelling", async () => {
