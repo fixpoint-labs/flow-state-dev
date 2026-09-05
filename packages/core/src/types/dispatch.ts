@@ -204,8 +204,15 @@ export function taskSessionKeyFor(
  *   this principal's on this flow; refused by name otherwise. Never created —
  *   an unknown id is a typo, a stale reference, or a hallucinated value, and
  *   auto-creating turns all three into work nobody is watching.
+ * - `from` — the **seam-stamped sender**. The runtime reads
+ *   `metadata.dispatch.from.sessionId` through `readDispatchStamp` and delivers
+ *   into that session as an `id` would. The author names no session. A request
+ *   that was not dispatched has no sender (`no-sender`).
  */
-export type SessionTarget = { readonly key: string } | { readonly id: string };
+export type SessionTarget =
+  | { readonly key: string }
+  | { readonly id: string }
+  | { readonly from: true };
 
 /** What a dispatcher hands the seam. Every field is computed by the block that dispatches. */
 export type DispatchSpec = {
@@ -247,7 +254,13 @@ export type DispatchRefusal =
    * queue, where the recipient's concurrency policy would not be applied to it.
    * A `key` child is unaffected.
    */
-  | "external-dispatcher";
+  | "external-dispatcher"
+  /**
+   * A `{ from: true }` target on a request the runtime did not dispatch — no
+   * trusted `metadata.dispatch.from`. A caller-written bag on an HTTP body is
+   * not a sender.
+   */
+  | "no-sender";
 
 /** Outcome of a dispatch. `adopted` says whether the child session already existed. */
 export type DispatchOutcome =

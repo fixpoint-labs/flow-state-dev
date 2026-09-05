@@ -30,12 +30,12 @@ export type DispatchStamp = {
   readonly from: { readonly block: string; readonly sessionId: string };
   readonly key?: string;
   /**
-   * The recipient incarnation the seam approved, present only for an `id`
-   * delivery. Acceptance and execution are not the same moment — a delivery
-   * can be accepted, wait behind a held concurrency key, and run later — and a
-   * recipient deleted and recreated under the same id in that window gets a new
-   * lineage that nothing downstream re-checks. `runAction`'s incarnation guard
-   * compares against this.
+   * The recipient incarnation the seam approved, present only for an
+   * existing-session delivery (`id` or `from`). Acceptance and execution are
+   * not the same moment — a delivery can be accepted, wait behind a held
+   * concurrency key, and run later — and a recipient deleted and recreated
+   * under the same id in that window gets a new lineage that nothing
+   * downstream re-checks. `runAction`'s incarnation guard compares against this.
    */
   readonly recipientLineageId?: string;
 };

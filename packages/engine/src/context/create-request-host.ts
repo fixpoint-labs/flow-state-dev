@@ -21,7 +21,9 @@
  * 2. **Resolve the session.** A `key` derives a child of the running session
  *    and mints or adopts it; an `id` names a session that must exist and be this
  *    principal's on this flow — `session-not-found` / `session-not-addressable`
- *    otherwise, never created.
+ *    otherwise, never created. `{ from: true }` is the same delivery as `id`,
+ *    addressed at the seam-stamped sender (`readDispatchStamp` →
+ *    `from.sessionId`) — `no-sender` when this request was not dispatched.
  * 3. **Build the envelope**, from values the seam derived: the dispatch type as
  *    the source, the sender's principal, tenant and org, and server-assembled
  *    provenance under `metadata.dispatch` — including, for an `id` delivery,
@@ -36,6 +38,9 @@
  * - no host dispatch operation wired → the seam refuses `no-dispatch-operation`
  * - this request was not dispatched for a task → `parentTask()` resolves
  *   `undefined` and `settleParentTask` refuses `no-parent-task`
+ * - a `{ from: true }` target on a request the runtime did not dispatch →
+ *   the seam refuses `no-sender` (a caller-written `metadata.dispatch` is not
+ *   a sender)
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
  */
 import type {
@@ -51,6 +56,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveEntry } from "@flow-state-dev/core";
+import { readDispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
 import { resolveLineageId, resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveDispatchChildSessionId, evaluateAdoption } from "./detached-child";
@@ -94,6 +100,14 @@ export type RequestHostInputs = {
   effectiveRuntimeConfig?: RuntimeConfig;
   /** Absent unless this request was dispatched for a parent-board task. */
   parentTask?: ParentTaskBinding;
+  /**
+   * The running request's trusted source and metadata bag. A `{ from: true }`
+   * target reads `metadata.dispatch.from` only through {@link readDispatchStamp},
+   * which gates on `source`. A caller-written bag on an HTTP request is not a
+   * sender.
+   */
+  source?: string;
+  metadata?: unknown;
   /** Everything the liveness gate needs. The gate runs here, once. */
   liveness: Omit<LivenessGateInputs, "registry">;
   now?: () => number;
@@ -300,6 +314,30 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: false, delivery: "child" };
   };
 
+  /**
+   * Spec → store. `{ from: true }` is delivery into the stamped sender — the
+   * same path as `id`, with the id taken from `readDispatchStamp`, not from
+   * the spec. The author cannot name a reply-to; a missing or untrusted stamp
+   * is `no-sender`. Wrong principal / other flow / incarnation drop then share
+   * the `id` guards.
+   */
+  const resolveAddressedSession = async (spec: DispatchSpec): Promise<ResolvedSession> => {
+    if ("from" in spec.session) {
+      const stamp = readDispatchStamp(inputs.source, inputs.metadata);
+      if (stamp === undefined) {
+        return refuse(
+          "no-sender",
+          "this request was not dispatched, so there is no stamped sender to deliver back to"
+        );
+      }
+      return resolveExistingSession(stamp.from.sessionId);
+    }
+    if ("id" in spec.session) {
+      return resolveExistingSession(spec.session.id);
+    }
+    return resolveChildSession(spec.session.key, spec);
+  };
+
   const seam: DispatchSeam = async (spec: DispatchSpec): Promise<DispatchOutcome> => {
     // Admission first: the address must resolve on its own type's map. Never
     // falls through to another type — a `task` dispatch cannot reach an action.
@@ -318,10 +356,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       );
     }
 
-    const session =
-      "id" in spec.session
-        ? await resolveExistingSession(spec.session.id)
-        : await resolveChildSession(spec.session.key, spec);
+    const session = await resolveAddressedSession(spec);
     if (!session.ok) return session;
 
     // Start goes through the host operation and resolves only once the dispatch
@@ -343,7 +378,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       ...(session.orgId !== undefined ? { orgId: session.orgId } : {}),
       // Server-assembled provenance for the request record: the address, the
       // sending block and session, the key (when a child was derived), the
-      // recipient's approved lineage (when an existing session was named), and
+      // recipient's approved lineage (when an existing session was addressed), and
       // the facts the sender supplied through `provenance` — a channel whose
       // contract is "put a fact here only when the runtime produced it".
       metadata: {
