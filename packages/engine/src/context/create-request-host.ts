@@ -22,8 +22,8 @@
  *    and mints or adopts it; an `id` names a session that must exist and be this
  *    principal's on this flow — `session-not-found` / `session-not-addressable`
  *    otherwise, never created. `{ from: true }` is the same delivery as `id`,
- *    addressed at the seam-stamped sender (`readDispatchStamp` →
- *    `from.sessionId`) — `no-sender` when this request was not dispatched.
+ *    addressed at the trusted `dispatchStamp.from` — `no-sender` when this
+ *    request was not dispatched.
  * 3. **Build the envelope**, from values the seam derived: the dispatch type as
  *    the source, the sender's principal, tenant and org, and server-assembled
  *    provenance under `metadata.dispatch` — including, for an `id` delivery,
@@ -56,7 +56,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveEntry } from "@flow-state-dev/core";
-import { readDispatchStamp } from "../execution/dispatch-metadata";
+import type { DispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
 import { resolveLineageId, resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveDispatchChildSessionId, evaluateAdoption } from "./detached-child";
@@ -101,13 +101,12 @@ export type RequestHostInputs = {
   /** Absent unless this request was dispatched for a parent-board task. */
   parentTask?: ParentTaskBinding;
   /**
-   * The running request's trusted source and metadata bag. A `{ from: true }`
-   * target reads `metadata.dispatch.from` only through {@link readDispatchStamp},
-   * which gates on `source`. A caller-written bag on an HTTP request is not a
-   * sender.
+   * The running request's trusted dispatch stamp, already read through
+   * {@link readDispatchStamp}. A `{ from: true }` target delivers into
+   * `from.sessionId`. Absent when this request was not dispatched — a
+   * caller-written bag is not a sender.
    */
-  source?: string;
-  metadata?: unknown;
+  dispatchStamp?: DispatchStamp;
   /** Everything the liveness gate needs. The gate runs here, once. */
   liveness: Omit<LivenessGateInputs, "registry">;
   now?: () => number;
@@ -316,21 +315,34 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
 
   /**
    * Spec → store. `{ from: true }` is delivery into the stamped sender — the
-   * same path as `id`, with the id taken from `readDispatchStamp`, not from
-   * the spec. The author cannot name a reply-to; a missing or untrusted stamp
-   * is `no-sender`. Wrong principal / other flow / incarnation drop then share
-   * the `id` guards.
+   * same path as `id`, with the id taken from the trusted `dispatchStamp`,
+   * not from the spec. The author cannot name a reply-to; a missing stamp is
+   * `no-sender`. Wrong principal / other flow / a replaced sender incarnation
+   * then share the `id` guards (replaced sender is `session-not-addressable`).
    */
   const resolveAddressedSession = async (spec: DispatchSpec): Promise<ResolvedSession> => {
     if ("from" in spec.session) {
-      const stamp = readDispatchStamp(inputs.source, inputs.metadata);
+      const stamp = inputs.dispatchStamp;
       if (stamp === undefined) {
         return refuse(
           "no-sender",
           "this request was not dispatched, so there is no stamped sender to deliver back to"
         );
       }
-      return resolveExistingSession(stamp.from.sessionId);
+      const sender = await resolveExistingSession(stamp.from.sessionId);
+      if (!sender.ok) return sender;
+      // Present only on stamps written after this field shipped. A legacy
+      // record without it keeps the `{ id }` guards alone (BP-030).
+      if (
+        stamp.from.lineageId !== undefined &&
+        sender.recipientLineageId !== stamp.from.lineageId
+      ) {
+        return refuse(
+          "session-not-addressable",
+          `session "${stamp.from.sessionId}" is not the incarnation that dispatched this request`
+        );
+      }
+      return sender;
     }
     if ("id" in spec.session) {
       return resolveExistingSession(spec.session.id);
@@ -385,7 +397,11 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         dispatch: {
           type: spec.type,
           target: spec.target,
-          from: { block: spec.from, sessionId: identity.sessionId },
+          from: {
+            block: spec.from,
+            sessionId: identity.sessionId,
+            lineageId: identity.lineageId
+          },
           ...("key" in spec.session ? { key: spec.session.key } : {}),
           ...(session.recipientLineageId !== undefined
             ? { recipientLineageId: session.recipientLineageId }

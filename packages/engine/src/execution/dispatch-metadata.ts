@@ -27,7 +27,17 @@ import { INTERNAL_SOURCE, TASK_SOURCE } from "./transport-sources";
 export type DispatchStamp = {
   readonly type: "internal" | "task";
   readonly target: string;
-  readonly from: { readonly block: string; readonly sessionId: string };
+  readonly from: {
+    readonly block: string;
+    readonly sessionId: string;
+    /**
+     * The sender incarnation at stamp time. Optional so a record written
+     * before the field shipped still parses (BP-030). `{ from: true }`
+     * compares it against the live session when present, so a deleted and
+     * recreated sender is not treated as who dispatched this request.
+     */
+    readonly lineageId?: string;
+  };
   readonly key?: string;
   /**
    * The recipient incarnation the seam approved, present only for an
@@ -66,6 +76,9 @@ export function readDispatchStamp(
     typeof candidate.from.block !== "string" ||
     typeof candidate.from.sessionId !== "string"
   ) {
+    return undefined;
+  }
+  if (candidate.from.lineageId !== undefined && typeof candidate.from.lineageId !== "string") {
     return undefined;
   }
   if (candidate.recipientLineageId !== undefined && typeof candidate.recipientLineageId !== "string") {

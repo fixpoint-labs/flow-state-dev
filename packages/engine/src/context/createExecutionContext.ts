@@ -60,6 +60,7 @@ import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
+import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { ensureSessionRecord } from "./ensure-session-record";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
@@ -760,8 +761,7 @@ export async function createExecutionContext<
           dispatchOperation: options.requestHost.dispatchOperation,
           parentTask: options.requestHost.parentTask,
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
-          source: options.source,
-          metadata: options.metadata,
+          dispatchStamp: readDispatchStamp(options.source, options.metadata),
           liveness: {
             heartbeatIntervalMs: flow.request?.heartbeatIntervalMs,
             staleThresholdMs: options.requestHost.staleThresholdMs,

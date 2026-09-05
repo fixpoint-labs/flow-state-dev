@@ -313,7 +313,12 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
     })({ id: kind });
   }
 
-  function session(id: string, userId: string, flowKind: string): SessionRecord {
+  function session(
+    id: string,
+    userId: string,
+    flowKind: string,
+    lineageId = `lin_${id}`
+  ): SessionRecord {
     const ts = Date.now();
     return {
       id,
@@ -324,7 +329,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
       flowKind,
       userId,
       journal: [],
-      lineageId: `lin_${id}`
+      lineageId
     };
   }
 
@@ -333,10 +338,15 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
     source?: string;
     metadata?: unknown;
     userId?: string;
+    senderLineageId?: string;
   }) {
     const stores = createInMemoryStores();
     const kind = args.kind;
-    await stores.session.set("s_sender", session("s_sender", "u_alice", kind), "any");
+    await stores.session.set(
+      "s_sender",
+      session("s_sender", "u_alice", kind, args.senderLineageId ?? "lin_s_sender"),
+      "any"
+    );
     await stores.session.set("s_other", session("s_other", "u_bob", kind), "any");
     const started: string[] = [];
     const { seam } = createRequestHost({
@@ -349,8 +359,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
         sessionId: "s_child",
         lineageId: "lin_child"
       },
-      source: args.source,
-      metadata: args.metadata,
+      dispatchStamp: readDispatchStamp(args.source, args.metadata),
       dispatchOperation: async (spec) => {
         started.push(spec.sessionId);
         return { requestId: "req_reply" };
@@ -426,5 +435,23 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
       adopted: true
     });
     expect(started).toEqual(["s_sender"]);
+  });
+
+  it("refuses session-not-addressable when the stamped sender was replaced under the same id", async () => {
+    const { seam, started } = await hostFor({
+      kind: "reply-unit-replaced",
+      source: "internal",
+      senderLineageId: "lin_replacement",
+      metadata: {
+        dispatch: {
+          type: "internal",
+          target: "work",
+          from: { block: "start-work", sessionId: "s_sender", lineageId: "lin_original" }
+        }
+      }
+    });
+    const outcome = await seam(replySpec);
+    expect(outcome).toMatchObject({ ok: false, refused: "session-not-addressable" });
+    expect(started).toEqual([]);
   });
 });
