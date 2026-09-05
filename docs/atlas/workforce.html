@@ -196,7 +196,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 <aside class="rail">
   <div class="rail-mark">The Workforce Atlas</div>
   <div class="rail-sub">living design &middot; aug 2026</div>
-  <p class="sib">sibling · <a href="conductor.html">Conductor atlas</a><br>sibling · <a href="roadmap.html">Roadmap atlas</a></p>
+  <p class="sib">sibling &#183; <a href="conductor.html">Conductor atlas</a><br>sibling &#183; <a href="roadmap.html">Roadmap atlas</a></p>
   <nav>
     <a class="grp">Orientation</a>
     <a href="#what">01 &middot; What Workforce is</a>
@@ -248,11 +248,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="Two intended harnesses on one Layer 1 substrate. At the bottom, a solid Layer 1 band listing the existing primitives: four block kinds, flows and actions, sessions, resources and collections, capabilities, the task board, and skills. Above it sit two dashed product boxes. On the left, Conductor: product-specific to software development, a meta-harness that drives coding harnesses, this-cycle priority. On the right, Workforce: general, a conventions layer, not this cycle. Both boxes sit on the same substrate; neither invents new Layer 1 primitives.">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Two intended harnesses on one Layer 1 substrate. At the bottom, a solid Layer 1 band listing the existing primitives: four block kinds, flows and actions, sessions, resources and collections, capabilities, the task board, skills, dispatch, and the Agent type in core. Above it sit two dashed product boxes. On the left, Conductor: product-specific to software development, a meta-harness that drives coding harnesses, this-cycle priority. On the right, Workforce: general, a conventions layer, not this cycle. Both boxes sit on the same substrate; neither invents new Layer 1 primitives.">
         <rect class="n-code" x="16" y="248" width="908" height="88" rx="5"/>
         <text class="t-lbl f-code" x="34" y="270">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS</text>
         <text class="t-b" x="34" y="296">four block kinds &#183; flows &#183; sessions &#183; resources &#183; capabilities</text>
-        <text class="t-s" x="34" y="318">task board &#183; skills &#183; detached children &#183; the Agent type in core</text>
+        <text class="t-s" x="34" y="318">task board &#183; skills &#183; dispatch &#183; the Agent type in core</text>
 
         <path class="ln" d="M248,248 L248,214"/>
         <path class="ln" d="M692,248 L692,214"/>
@@ -326,7 +326,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. The bottom solid band is Layer 1, existing primitives with almost no product opinion: handler, generator, sequencer, router; defineFlow and actions; a session that carries a flowKind; resources and collections scoped session, user, or org; capabilities; the task board and skills runtime; the Agent structural type in core. The middle dashed band is Layer 2 conventions: named agents, personas, a registry, materialize-into-a-block — the thin package that exists today — plus proposed opinions, persistent identity, channels, teams, a default way to staff work. The top dashed band is product harnesses that consume both layers: Conductor this cycle, a Grok-Bot-like Workforce surface later. Arrows show product harnesses sitting on conventions sitting on substrate.">
+      <svg viewBox="0 0 940 420" role="img" aria-label="A stack. The bottom solid band is Layer 1, existing primitives with almost no product opinion: handler, generator, sequencer, router; defineFlow and actions; a session that carries a flowKind; resources and collections scoped session, user, or org; capabilities; the task board and skills runtime; dispatch; the Agent structural type in core. The middle dashed band is Layer 2 conventions: named agents, personas, a registry, materialize-into-a-block &#8212; the thin package that exists today &#8212; plus proposed opinions, persistent identity, channels, teams, a default way to staff work. The top dashed band is product harnesses that consume both layers: Conductor this cycle, a Grok-Bot-like Workforce surface later. Arrows show product harnesses sitting on conventions sitting on substrate.">
         <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
         <text class="t-lbl" x="34" y="38">PRODUCT HARNESSES &#8212; PROPOSED AS PRODUCTS, NOT NEW PRIMITIVES</text>
         <rect class="n-box" x="34" y="52" width="420" height="48" rx="4"/>
@@ -359,7 +359,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-lbl f-code" x="34" y="298">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS &#183; DO NOT INVENT HERE</text>
         <text class="t-s" x="34" y="322">handler &#183; generator &#183; sequencer &#183; router</text>
         <text class="t-s" x="34" y="340">defineFlow / actions &#183; session carries flowKind &#183; resources (session / user / org)</text>
-        <text class="t-s" x="34" y="358">capabilities &#183; task board &#183; skills runtime &#183; startDetached</text>
+        <text class="t-s" x="34" y="358">capabilities &#183; task board &#183; skills runtime &#183; dispatch</text>
         <text class="t-s" x="34" y="376">Agent type in core &#8212; a named participant, not yet a persistent identity</text>
       </svg>
     </div>
@@ -665,7 +665,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="A three-column split. Centre column, solid: shared Layer 1 that both harnesses consume — blocks, flows, sessions, scoped resources, capabilities, task board, skills, the Agent type, and Relay as a send door. Left column, dashed: Conductor-only opinions — session owned by the workflow, SDLC phases, harness manager, worktrees, issue and epic as the unit of work. Right column, dashed: Workforce-only opinions — persistent identity, agent-owned channels, teams, a Grok-Bot-like surface. A note under the centre: do not bake a Conductor opinion into Layer 1 just because it ships first.">
+      <svg viewBox="0 0 940 360" role="img" aria-label="A three-column split. Centre column, solid: shared Layer 1 that both harnesses consume &#8212; blocks, flows, sessions, scoped resources, capabilities, task board, skills, the Agent type, and Relay as a send door. Left column, dashed: Conductor-only opinions &#8212; session owned by the workflow, SDLC phases, harness manager, worktrees, issue and epic as the unit of work. Right column, dashed: Workforce-only opinions &#8212; persistent identity, agent-owned channels, teams, a Grok-Bot-like surface. A note under the centre: do not bake a Conductor opinion into Layer 1 just because it ships first.">
         <rect class="n-prop" x="16" y="16" width="292" height="300" rx="5"/>
         <text class="t-lbl" x="34" y="38">CONDUCTOR-ONLY</text>
         <text class="t-xs" x="34" y="56">PRODUCT OPINION &#183; THIS CYCLE</text>
@@ -716,7 +716,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td>A session is owned by a workflow, not by an agent</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because Workforce&#8217;s channel <em>is</em> an agent-owned session.</td></tr>
         <tr><td>A role is a block; memory is where its resources live</td><td>Layer 1, already true</td><td>Both harnesses need this. Do not replace it with a second memory system.</td></tr>
-        <tr><td>Relay &#8212; one Layer&nbsp;1 send door</td><td>exists or already filed</td><td>Address, send, no fan-out. Filed this cycle as Conductor fire-and-forget. Not shipped code: no <code>packages/relay</code>, no <code>relay?</code> on <code>FlowDefinition</code>. Workforce talks through this same door later. A Conductor-shaped bus would have to be unwound.</td></tr>
+        <tr><td>Relay &#8212; one Layer&nbsp;1 send door</td><td>exists, as <code>dispatcher()</code></td><td>Address, send, no fan-out. Filed as Conductor fire-and-forget and shipped under a different name: a block in <code>core</code>, not a <code>relay?</code> group &#8212; so there is still no <code>packages/relay</code> and nothing on <code>FlowDefinition</code>, and those are no longer the test of whether the door exists. Its <code>{ id }</code> form already delivers into a session that exists, which is the half Workforce needs. A Conductor-shaped bus would still have to be unwound.</td></tr>
         <tr><td>The coordinator stays small on purpose</td><td>Conductor</td><td>A Workforce surface may want a long relationship with one agent. That is a different product, not a rebuttal.</td></tr>
         <tr><td>Which layer Conductor&#8217;s roles sit on</td><td>Open in Conductor atlas, thread&nbsp;11</td><td>Do not settle it by adopting <code>@flow-state-dev/workforce</code> wholesale, or by forking a second materializer &#8220;for now.&#8221;</td></tr>
       </tbody>
