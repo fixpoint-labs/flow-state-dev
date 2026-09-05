@@ -649,7 +649,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-box" x="16" y="236" width="908" height="100" rx="5"/>
         <text class="t-lbl" x="34" y="258">NOT A LAYER 1 MESSAGE-BOARD PACKAGE</text>
-        <text class="t-s" x="34" y="280">D-8: message board is Layer 2 only. Address stays (type, name).</text>
+        <text class="t-s" x="34" y="280">Message board is Layer 2 convention only. Address stays (type, name).</text>
         <text class="t-xs" x="34" y="300">THE SUBSCRIPTION IS WHO YOU DISPATCH TO. THE SESSION POLICY IS WHERE IT RUNS.</text>
         <text class="t-xs" x="34" y="318">A SECOND BUS WOULD HAVE TO BE UNWOUND. THE SPINE IS ALREADY THE DOOR.</text>
       </svg>
@@ -808,11 +808,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="collab">
   <div class="sec-head"><span class="sec-num">10</span><h2>Collaboration</h2></div>
-  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> when it lands. Cross-flow is the same door, when it lands. The old send-door names are retired. Do not grow a second bus beside <code>dispatcher()</code>.</p>
+  <p class="lede">Workers talk on the <strong>dispatch spine</strong>. Reverse address is <code>{ from: true }</code> when it lands. Cross-flow is the same door, when it lands. The epic name Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> handler. Do not grow a second bus beside it.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 360" role="img" aria-label="Three columns on one dispatch spine. Left, solid: same-flow dispatch as it exists, internal or task, session key or id, from as provenance. Centre, dashed: reverse address from true, reply to the sender, not in the tree. Right, dashed: cross-flow fire and forget, filed this cycle, engine still refuses. Bottom band: one door, retired names, no second bus.">
+      <svg viewBox="0 0 940 360" role="img" aria-label="Three columns on one dispatch spine. Left, solid: same-flow dispatch as it exists, internal or task, session key or id, from as provenance. Centre, dashed: reverse address from true, reply to the sender, not in the tree. Right, dashed: cross-flow fire and forget, engine still refuses at create-request-host. Bottom band: Relay FIX-1197 is the historical name of dispatcher, no second bus.">
         <rect class="n-code" x="16" y="16" width="292" height="220" rx="5"/>
         <text class="t-lbl f-code" x="34" y="38">SAME-FLOW &#183; EXISTS</text>
         <text class="t-s" x="34" y="68">dispatcher()</text>
@@ -836,20 +836,20 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="632" y="16" width="292" height="220" rx="5"/>
         <text class="t-lbl" x="650" y="38">CROSS-FLOW &#183; THIS CYCLE</text>
         <text class="t-s f-accent" x="650" y="68">when it lands</text>
-        <text class="t-xs" x="650" y="90">D-8: FIRE-AND-FORGET</text>
+        <text class="t-xs" x="650" y="90">FIRE-AND-FORGET</text>
         <text class="t-xs" x="650" y="108">SAME dispatcher() DOOR</text>
-        <text class="t-xs" x="650" y="134">NOT LANDED ON MAIN</text>
-        <text class="t-xs" x="650" y="152">engine REFUSES TODAY</text>
-        <text class="t-xs" x="650" y="170">session-not-addressable</text>
+        <text class="t-xs" x="650" y="134">create-request-host.ts</text>
+        <text class="t-xs" x="650" y="152">session-not-addressable</text>
+        <text class="t-xs" x="650" y="170">NOT SUPPORTED ON MAIN</text>
         <text class="t-b f-accent" x="650" y="208">one door, later half</text>
 
         <rect class="n-box" x="16" y="252" width="908" height="88" rx="5"/>
-        <text class="t-lbl" x="34" y="274">RETIRED NAMES</text>
-        <text class="t-s" x="34" y="298">Collaboration is dispatch. Reverse address and cross-flow use this door when they land.</text>
-        <text class="t-xs" x="34" y="322">THE OLD SEND-DOOR NAMES ARE RETIRED. A SECOND BUS BESIDE dispatcher() IS THE FAILURE.</text>
+        <text class="t-lbl" x="34" y="274">ONE DOOR</text>
+        <text class="t-s" x="34" y="298">Relay (FIX-1197) is the historical name of today&#8217;s dispatcher() handler.</text>
+        <text class="t-xs" x="34" y="322">DO NOT REINTRODUCE A SECOND SEND DOOR BESIDE dispatcher().</text>
       </svg>
     </div>
-    <figcaption><b>One door, three times.</b> Same-flow dispatch shipped. Reverse <code>{ from: true }</code> is a target the spine does not yet have &#8212; today <code>from</code> is the sending block&#8217;s name. Cross-flow is filed this cycle (D-8) and still refused at <code>create-request-host.ts</code>. The convention waits on those landings. It does not invent a messenger while it waits.</figcaption>
+    <figcaption><b>One door, three times.</b> Same-flow dispatch shipped. Reverse <code>{ from: true }</code> is a target the spine does not yet have &#8212; today <code>from</code> is the sending block&#8217;s name. Cross-flow is still refused at <code>packages/engine/src/context/create-request-host.ts</code> (<code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>). The convention waits on those landings. It does not invent a messenger while it waits.</figcaption>
   </figure>
 
   <div class="tw">
@@ -859,8 +859,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td><code>dispatcher()</code> is the send door</td><td><span class="tag t-real">exists</span></td><td><code>packages/core/src/blocks/dispatcher.ts</code>. Handler. Address is <code>(type, target)</code>. Session is <code>{ key }</code> or <code>{ id }</code>.</td></tr>
         <tr><td><code>from</code> on the envelope</td><td><span class="tag t-real">exists</span></td><td>Provenance string: the dispatching block&#8217;s name. Not a session target. <code>DispatchSpec.from</code>.</td></tr>
         <tr><td>Reverse <code>{ from: true }</code></td><td><span class="tag t-prop">proposed</span></td><td>Zero hits on <code>origin/main</code>. When it lands, Workforce replies on this spine. Do not add a side channel.</td></tr>
-        <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td>D-8. Runtime still: <em>cross-flow delivery is not supported</em>. Convention uses it when the refuse goes away.</td></tr>
-        <tr><td>A second send door</td><td><span class="tag t-gone">cut</span></td><td>No <code>packages/relay</code>. No message-board package. D-8: message board is Layer&nbsp;2 convention only.</td></tr>
+        <tr><td>Cross-flow fire-and-forget</td><td><span class="tag t-prop">this cycle</span></td><td><code>packages/engine/src/context/create-request-host.ts</code> refuses with <code>session-not-addressable</code>: <em>cross-flow delivery is not supported</em>. Convention uses it when the refuse goes away.</td></tr>
+        <tr><td>A second send door</td><td><span class="tag t-gone">cut</span></td><td>No <code>packages/relay</code>. No message-board package. Message board is Layer&nbsp;2 convention only. Relay (<strong>FIX-1197</strong>) is today&#8217;s <code>dispatcher()</code> &#8212; not a second bus.</td></tr>
       </tbody>
     </table>
   </div>
@@ -904,7 +904,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td>A session is owned by a workflow</td><td>Conductor</td><td>Right for an SDLC meta-harness. Fatal as a Layer&nbsp;1 law, because a Workforce channel <em>is</em> a session of a worker flow.</td></tr>
         <tr><td>A worker is a flow; memory is isolated resources</td><td>Workforce convention</td><td>Do not replace it with a second memory system, or with a field on <code>Agent</code>.</td></tr>
-        <tr><td>Talk is <code>dispatcher()</code></td><td>Layer 1, already true</td><td>A Workforce-shaped messenger beside it is the parasite D-8 already refused.</td></tr>
+        <tr><td>Talk is <code>dispatcher()</code></td><td>Layer 1, already true</td><td>A Workforce-shaped messenger beside <code>dispatcher()</code> is a second send door. Relay (<strong>FIX-1197</strong>) is that same door, not a new one.</td></tr>
         <tr><td>Conductor waits on Workforce</td><td>False this cycle</td><td>The coding product stalls on a factory that is not being built. Horizon only.</td></tr>
       </tbody>
     </table>
@@ -931,7 +931,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td><code>flowIsolation</code></td><td><span class="tag t-real">exists</span></td><td>User/org resources key per flow when true. Default false. Rejected at session scope.</td></tr>
         <tr><td><code>taskBoard</code> + <code>taskSchema</code></td><td><span class="tag t-real">exists</span></td><td>Unified plan/task primitive. Status set includes <code>parked</code>. Content for the prose half is <code>readContent()</code>.</td></tr>
         <tr><td>Worker factory / file convention</td><td><span class="tag t-prop">proposed</span></td><td>This page. No <code>createWorkerFlow</code>. No <code>workers/</code> tree. <code>workforce.config</code> is not a file in the repo.</td></tr>
-        <tr><td>Reverse <code>{ from: true }</code> / cross-flow</td><td><span class="tag t-prop">proposed</span></td><td>Cross-flow filed this cycle, not landed. Reverse address not in the tree.</td></tr>
+        <tr><td>Reverse <code>{ from: true }</code> / cross-flow</td><td><span class="tag t-prop">proposed</span></td><td>Cross-flow refused at <code>packages/engine/src/context/create-request-host.ts</code>. Reverse address not in the tree.</td></tr>
         <tr><td>Published agents doc</td><td><span class="tag t-prose">docs</span></td><td><code>apps/docs/docs/orchestration/agents.md</code> describes today&#8217;s named participant. It is not this convention.</td></tr>
       </tbody>
     </table>
@@ -954,7 +954,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="tension">
     <h5>No Layer 1 Channel, Team, Project, or MessageBoard packages</h5>
-    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. D-8 already parked message board as Layer&nbsp;2. A package that mints rooms is a second architecture.</p>
+    <p>Those words are convention over sessions, rosters, and <code>dispatcher()</code>. Message board is Layer&nbsp;2 convention only. A package that mints rooms is a second architecture.</p>
   </div>
 
   <div class="tension">
