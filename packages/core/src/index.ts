@@ -139,6 +139,8 @@ export {
   dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
+  framed,
+  readFramed,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./types/dispatch";

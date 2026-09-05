@@ -60,7 +60,7 @@ import {
 import type { BlockDefinition, TaskBinding, TaskDispatchInput } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
-import type { TaskWorkerInput } from "../../tasks";
+import type { TaskWorker, TaskWorkerInput } from "../../tasks";
 import type { TaskSeatAddress } from "../hand-off";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
@@ -85,7 +85,7 @@ export interface HandOffOptions {
  * the same value an inline worker would have received, which is what makes the
  * handed-off and inline paths agree on what the worker sees.
  */
-export function createHandOff(options: HandOffOptions): BlockDefinition<any, any> {
+export function createHandOff(options: HandOffOptions): TaskWorker {
   const { name, boardId, seat, address, binding } = options;
 
   const block = handler({
@@ -205,5 +205,8 @@ export function createHandOff(options: HandOffOptions): BlockDefinition<any, any
   // held by no board, which is what it would be.
   markDispatcher(block, { ...address });
   bindTaskDispatcher(block, binding);
-  return block;
+  // The block is declared over `z.unknown()` because the seam validates the
+  // envelope, not this block; what the drain hands it IS the packed worker
+  // input, which is the one place the cast is true.
+  return block as TaskWorker;
 }

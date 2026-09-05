@@ -91,6 +91,7 @@
  * events. Once attribution is verifiable the rules here get SIMPLER, and the
  * contention pass is retired rather than extended.
  */
+import { readFramed as readFramedField } from "@flow-state-dev/core";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
 import type { CollectionView, Task } from "./task-collection-state";
 
@@ -124,29 +125,14 @@ export type ChildSessionEntry = {
 };
 
 /**
- * Read one length-framed field (`` `${length}:${value}` ``) starting at `at`.
- *
- * Returns the value and where the next field begins, or `null` when the input
- * does not have that shape. Strict about the shape `framed` in
- * `core/src/types/dispatch.ts` writes: the digits must be exactly the decimal
- * spelling of the value's length (no leading zeros), the value must be fully
- * present, and it must be non-empty — every field the writer frames is
- * `z.string().min(1)` on the envelope, so an empty one was not written by it.
+ * Read one length-framed field with the codec `taskSessionKeyFor` writes with
+ * (`readFramed` from core), refusing an empty value: every field the writer
+ * frames into a task key is `z.string().min(1)` on the envelope, so an empty
+ * one was not written by it.
  */
-function readFramed(
-  input: string,
-  at: number
-): { value: string; next: number } | null {
-  const separator = input.indexOf(":", at);
-  if (separator === -1) return null;
-  const digits = input.slice(at, separator);
-  if (!/^\d+$/.test(digits)) return null;
-  const length = Number.parseInt(digits, 10);
-  if (String(length) !== digits || length === 0) return null;
-  const start = separator + 1;
-  const end = start + length;
-  if (end > input.length) return null;
-  return { value: input.slice(start, end), next: end };
+function readFramed(input: string, at: number): { value: string; next: number } | null {
+  const field = readFramedField(input, at);
+  return field === null || field.value.length === 0 ? null : field;
 }
 
 /**

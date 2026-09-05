@@ -128,9 +128,38 @@ export const taskDispatchInputSchema = z.object({
 
 export type TaskDispatchInput = z.infer<typeof taskDispatchInputSchema>;
 
-/** Length-prefix a field so field boundaries cannot migrate in a composed key. */
-function framed(value: string): string {
+/**
+ * Length-prefix a field so field boundaries cannot migrate in a composed key:
+ * `("u_ab", "c")` and `("u_a", "bc")` would otherwise concatenate identically.
+ * The writer's half of the codec; {@link readFramed} is the reader's.
+ */
+export function framed(value: string): string {
   return `${value.length}:${value}`;
+}
+
+/**
+ * Read one {@link framed} field starting at `at`: the value and where the next
+ * field begins, or `null` when the input does not have that shape.
+ *
+ * Strict about the shape `framed` writes — the digits must be exactly the
+ * decimal spelling of the value's length (no leading zeros) and the value must
+ * be fully present. An empty value is accepted: `framed("")` is `0:`, and a
+ * reader that needs non-empty fields checks that itself.
+ */
+export function readFramed(
+  input: string,
+  at: number
+): { value: string; next: number } | null {
+  const separator = input.indexOf(":", at);
+  if (separator === -1) return null;
+  const digits = input.slice(at, separator);
+  if (!/^\d+$/.test(digits)) return null;
+  const length = Number.parseInt(digits, 10);
+  if (String(length) !== digits) return null;
+  const start = separator + 1;
+  const end = start + length;
+  if (end > input.length) return null;
+  return { value: input.slice(start, end), next: end };
 }
 
 /**

@@ -504,56 +504,39 @@ function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
 }
 
 /**
- * Walk the flow's block graph once, returning the two views the caller needs.
- *
- * - `reachable` — every block, through composition AND through a generator's
- *   static `tools` array. What the dispatch-target resolution reads.
- * - `toolRoots` — the blocks arrived at *across a tool edge*. What the collector
- *   adds to the action roots.
- *
- * **The two views are different on purpose.** A composed child's declarations
- * (resources, `requiresOrg`) bubble into its parent, so the collector reads
- * them off the action ROOTS and trusts composition to have carried them.
- *
- * A tool edge is not that. A generator is a leaf that bubbles none of its tools'
- * declarations **by design**, so a tool's are missing for a structural reason
- * rather than a propagation failure — and each tool block is the root of its own
- * composed subtree, so its own accumulated union is authoritative exactly as an
- * action root's is. That is why tool roots are collected and their descendants
- * are not.
+ * Walk the flow's block graph once: every block reachable from the roots,
+ * through composition AND through a generator's static `tools` array. This is
+ * what the dispatch-target resolution reads.
  *
  * **The tool edge is here because a board can be handed to a model as a tool**
  * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a board
  * reached only that way was invisible to the walk: its dispatcher seats went
- * unresolved and its ledger's declarations never reached the flow, so the first
- * time the model called the tool the board failed on a configuration the author
- * had every reason to think was supported (FIX-1074).
+ * unresolved, so the first time the model called the tool the board failed on
+ * a configuration the author had every reason to think was supported
+ * (FIX-1074).
+ *
+ * Only the dispatch walk needs the tool edge. Resources and `requiresOrg` are
+ * collected off the action roots, and a handed-off board's ledger reaches the
+ * flow through the task entry its seat addresses — an action root of its own —
+ * so a board reached only as a tool still lands its declarations.
  *
  * A block is visited once: blocks are shared freely (one handler across several
  * actions) and a router route may point back up the tree, so revisits and cycles
- * are ordinary rather than exceptional. `viaTool` is recorded before that check,
- * so a block reached both ways still counts as a tool root.
+ * are ordinary rather than exceptional.
  */
-function walkFlowGraph(roots: readonly BlockDefinition[]): {
-  reachable: BlockDefinition[];
-  toolRoots: BlockDefinition[];
-} {
+function walkFlowGraph(roots: readonly BlockDefinition[]): BlockDefinition[] {
   const seen = new Set<BlockDefinition>();
-  const toolRoots = new Set<BlockDefinition>();
-  const queue: { block: BlockDefinition; viaTool: boolean }[] = roots.map(
-    (block) => ({ block, viaTool: false })
-  );
+  const queue: BlockDefinition[] = [...roots];
   while (queue.length > 0) {
-    const { block, viaTool } = queue.pop()!;
-    if (viaTool) toolRoots.add(block);
+    const block = queue.pop()!;
     if (seen.has(block)) continue;
     seen.add(block);
     // Rescue handlers installed via `config.rescue` are already folded into
     // `childBlocks` by `buildBlock`.
-    for (const child of block.childBlocks ?? []) queue.push({ block: child, viaTool: false });
-    for (const tool of staticTools(block)) queue.push({ block: tool, viaTool: true });
+    queue.push(...(block.childBlocks ?? []));
+    queue.push(...staticTools(block));
   }
-  return { reachable: [...seen], toolRoots: [...toolRoots] };
+  return [...seen];
 }
 
 /** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */
@@ -1089,7 +1072,7 @@ function createFlowInstance(
     kind,
     walkFlowGraph(
       actionBlocks(actions, internal, declaredTasks, webhooks, chat, schedules, requestMerged)
-    ).reachable,
+    ),
     internal,
     declaredTasks
   );
@@ -1104,27 +1087,15 @@ function createFlowInstance(
     requestMerged
   );
 
-  // Bindings are collected FIRST, because a detached worker is no longer
-  // reachable through the blocks above and its declarations would otherwise be
-  // lost (FIX-982 P3a).
-  //
-  // The drain substitutes a spawn block for each detached worker in its routing
-  // table, so the worker itself is not a child of any action root. The block
-  // that DOES contain it is the board's runner, which reaches the flow only as a
-  // binding. Collect resources and `requiresOrg` over the action blocks plus
-  // those runners, or a worker whose resource nothing inline happens to also
-  // declare would be missing from `flow.resources` — and the failure surfaces as
-  // an unresolved resource inside the child session, far from the declaration.
-  // `requiresOrg` is worse: it would simply not be enforced.
-  //
-  // Collected from the action roots PLUS every block reached across a static
-  // `tools` edge, because a board handed to a model as a tool is a supported
-  // shape and a generator bubbles none of its tools' rails (FIX-1074).
-  // Deliberately not from every reachable block — see {@link walkFlowGraph} for
-  // why that would silently repair the propagation bug the assertion catches.
-  const declaringBlocks = declaredBlocks;
+  // Resources and `requiresOrg` are collected off the action roots alone. A
+  // handed-off board's worker is not a child of any root — the drain routes
+  // the seat to a hand-off block — but the ledger it settles against is
+  // declared by the gate on the task entry the seat addresses, and task
+  // entries are action roots. So a board reached only as a generator's tool
+  // (FIX-1074) still lands its declarations here without the walk taking the
+  // tool edge for them.
 
-  const blockResources = collectBlockResources(declaringBlocks);
+  const blockResources = collectBlockResources(declaredBlocks);
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
@@ -1175,7 +1146,7 @@ function createFlowInstance(
     id: options?.id ?? kind,
     kind,
     requireUser,
-    requiresOrg: collectRequiresOrg(declaringBlocks),
+    requiresOrg: collectRequiresOrg(declaredBlocks),
     authentication,
     actions,
     ...(internal !== undefined ? { internal: { actions: internal } } : {}),

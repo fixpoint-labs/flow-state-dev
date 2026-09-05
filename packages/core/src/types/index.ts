@@ -60,6 +60,8 @@ export {
   dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
+  framed,
+  readFramed,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./dispatch";

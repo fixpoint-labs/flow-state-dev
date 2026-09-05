@@ -853,7 +853,7 @@ export function taskBoard<
           seat: seat.name,
           address: seat.dispatch,
           binding: { boardId, gate },
-        }) as unknown as TaskWorker
+        })
       );
     }
   }

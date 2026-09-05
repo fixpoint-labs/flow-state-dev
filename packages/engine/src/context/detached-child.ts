@@ -16,6 +16,7 @@
  * liveness calls refuse — unsettleable, uninterruptible, invisible.
  */
 import { createHash } from "node:crypto";
+import { framed } from "@flow-state-dev/core/types";
 
 /** The server-derived facts a child key is built from. Never caller-supplied. */
 export type DerivationIdentity = {
@@ -41,17 +42,11 @@ export type DerivationIdentity = {
 /** Prefix so a derived child id is recognisable in a store dump. */
 const CHILD_ID_PREFIX = "dsx_";
 
-/**
- * Length-prefix a field so field boundaries cannot be confused.
- *
- * Without this, `("u_ab", "c")` and `("u_a", "bc")` hash identically, and since
- * the parent session id is one of the fields that is a cross-lineage collision
- * reachable by choosing ids — exactly what the derivation exists to prevent.
- */
-function framed(value: string | undefined): string {
-  const v = value ?? "";
-  return `${v.length}:${v}`;
-}
+// Fields are length-framed with core's codec so field boundaries cannot be
+// confused: without it `("u_ab", "c")` and `("u_a", "bc")` hash identically,
+// and since the parent session id is one of the fields that is a cross-lineage
+// collision reachable by choosing ids — exactly what the derivation exists to
+// prevent. An absent tenant frames as the empty field.
 
 /**
  * The namespace a dispatched child's key is framed under, so no other
@@ -74,7 +69,7 @@ const DISPATCH_NAMESPACE = "dispatch";
  */
 export function deriveDispatchChildSessionId(identity: DerivationIdentity, key: string): string {
   const material = [
-    framed(identity.tenantId),
+    framed(identity.tenantId ?? ""),
     framed(identity.userId),
     framed(identity.parentSessionId),
     framed(identity.lineageId),
@@ -94,10 +89,10 @@ export type ExpectedChildIdentity = {
   orgId: string | undefined;
   parentSessionId: string;
   /**
-   * The parent's lineage, when the caller requires the child to share it — a
-   * `{ key }` dispatch does, since `sharedToLineage` resources in the child
-   * resolve against that root. Absent → not compared, which is the detached
-   * start's contract as shipped.
+   * The parent's lineage. A `{ key }` dispatch always requires the child to
+   * share it, since `sharedToLineage` resources in the child resolve against
+   * that root. Optional only so a caller that compares nothing else can omit
+   * it; absent → not compared.
    */
   lineageId?: string;
 };
