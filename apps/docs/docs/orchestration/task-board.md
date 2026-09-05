@@ -398,7 +398,7 @@ A board with any seat that hands off fixes each task's assignee at admission: `s
 
 ### What the drain reports
 
-`board.handedOff` lists the dispatcher seats in declaration order, each with its `name`, `label` (`assignee:<name>`), `block`, and `dispatch` address. It is empty on a board with no dispatcher seat.
+`board.handedOff` lists the dispatcher seats in declaration order, each with its `name`, `label` (`assignee:<name>`), and `dispatch` address. It is empty on a board with no dispatcher seat.
 
 The drain's final `task-board-meta` item reports `terminationReason: "handed-off"` when every outstanding task is running in a child session, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
 
