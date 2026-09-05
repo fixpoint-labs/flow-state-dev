@@ -272,17 +272,17 @@ describe.each([
     expect(collection.get("t")?.status).toBe("pending");
   });
 
-  it("still lets resumeFromReview through after a review longer than the lease", async () => {
+  it("still lets unpark through after a review longer than the lease", async () => {
     // This is what pins the arm to `in_progress`. `awaitReview` deliberately
     // does not clear `leaseUntil`, so an unscoped arm would decline
-    // `resumeFromReview` on any task a human took more than a lease to look at.
+    // `unpark` on any task a human took more than a lease to look at.
     // A review park is an explicit park; the lease governs `in_progress` only.
     const { collection, setNow, claim } = await claimed();
     await collection.awaitReview("t", "please look", { ifAllowed: true, claim });
     setNow(1000 + 10_000_000);
 
     expect(
-      await collection.resumeFromReview("t", "looks good", { ifAllowed: true, claim })
+      await collection.unpark("t", "looks good", { ifAllowed: true, claim })
     ).toEqual({ outcome: "recorded" });
     expect(collection.get("t")?.status).toBe("pending");
   });

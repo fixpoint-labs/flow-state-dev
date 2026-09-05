@@ -92,7 +92,7 @@ describe("state machine validators", () => {
     expect(isTransitionAllowed("cancelled", "pending")).toBe(false);
   });
 
-  it("permits parked → pending (resumeFromReview) and → completed (approve)", () => {
+  it("permits parked → pending (unpark) and → completed (approve)", () => {
     expect(isTransitionAllowed("parked", "pending")).toBe(true);
     expect(isTransitionAllowed("parked", "completed")).toBe(true);
     expect(isTransitionAllowed("parked", "cancelled")).toBe(true);

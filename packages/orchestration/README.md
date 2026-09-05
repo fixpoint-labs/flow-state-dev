@@ -39,7 +39,7 @@ pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ cancelled
          │                └─→ parked ─┬─→ completed
          │                            ├─→ errored
-         │                            ├─→ pending    (resumeFromReview)
+         │                            ├─→ pending    (unpark)
          │                            └─→ cancelled
          ├─→ blocked ─┬─→ pending               (unblock)
          │            └─→ cancelled
@@ -59,7 +59,7 @@ task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
 `granted` counts the failure retries this task was **authorized**, so it excludes
-the re-entries that do not spend the budget (`unblock`, `resumeFromReview`,
+the re-entries that do not spend the budget (`unblock`, `unpark`,
 `reclaim`) and includes a retry that was granted but never picked up.
 `deniedByBudget` turns `true` once a retry was refused because the collection's
 budget was spent; the board's `terminationReason` reads that flag, so branch on it
@@ -110,13 +110,15 @@ from the next resolution onward. A ref you are already holding keeps reporting s
 a task until it resolves again.
 
 Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
-`resumeFromReview`, `cancel` — takes an optional trailing `TaskTransitionOptions`
+`unpark`, `cancel` — takes an optional trailing `TaskTransitionOptions`
 argument that makes the write advisory. `ifAllowed` skips the write when the task is
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
 one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
-and no other. `in_progress → pending` and `parked → pending` sit in the
-status table too, but they belong to `reclaim()` and `resumeFromReview`. `claim` takes a
+and no other, and `unpark` on a `parked` task and no other. Like `cancel`, `unpark`
+declines without options: `disallowed` for a live task, `terminal` once settled, and a
+second answer to an already-queued task is refused. `in_progress → pending` sits in the status table too,
+but it belongs to `reclaim()`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
 for, still on that attempt, holding a lease that has not run out. A guard cannot be
@@ -307,7 +309,9 @@ omitted — reached only on a miss, declared workers untouched),
 keeps the drain open, or is excused from the in-flight counts so the drain returns
 and leaves it parked for a later one to claim once it is resumed; `"exit"` needs a
 `defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`,
-and is refused at construction otherwise), `initialTasks`,
+and is refused at construction otherwise; `board.unparkAndDrain` takes `{ taskId, feedback }`,
+re-queues the parked task, and drains in the same request, returning the write outcome
+and draining only when it was `recorded`), `initialTasks`,
 `onError`, `maxIterations` (per-worker claim-loop cap, default 10000), the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
 refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.

@@ -202,7 +202,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
     await collection.claim("worker-1");
     await collection.awaitReview(task.id, "please look");
 
-    await collection.resumeFromReview(task.id, "looks good");
+    await collection.unpark(task.id, "looks good");
 
     expect(collection.get(task.id)?.status).toBe("pending");
     expect(collection.get(task.id)?.claimedBy).toBeUndefined();
@@ -235,7 +235,7 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
    *
    * The status table maps status to status, not verb to edge, so it also calls
    * `in_progress → pending` and `parked → pending` legal — those are
-   * `reclaim`'s and `resumeFromReview`'s edges, and both of those verbs clear
+   * `reclaim`'s and `unpark`'s edges, and both of those verbs clear
    * the lease and the coordinate. `unblock` clears neither, and correctly so:
    * `blocked` is reachable only from `pending`, and every path into `pending`
    * already clears both, so a genuinely blocked row holds neither field.

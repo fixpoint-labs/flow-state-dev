@@ -265,7 +265,7 @@ export interface TaskTransitionOptions {
    * ticket at all. Neither passes this, and neither changes.
    *
    * Applies only to a write that reports a result — `complete`, and `fail` on
-   * both its terminal and its retrying route. `resumeFromReview` and `cancel`
+   * both its terminal and its retrying route. `unpark` and `cancel`
    * keep working on a parked task with this set, which matters because a
    * retrying failure and a resume both target `pending` and only the change kind
    * tells them apart.
@@ -389,7 +389,7 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  * the shape the two built-in backings happen to return.
  *
  * If you write one, every worker-callable transition — `complete`, `fail`,
- * `block`, `unblock`, `awaitReview`, `resumeFromReview`, `cancel` — should
+ * `block`, `unblock`, `awaitReview`, `unpark`, `cancel` — should
  * accept and honour the optional `TaskTransitionOptions` argument. The type
  * system cannot hold you to this: an implementation taking only `(id, output)`
  * structurally satisfies the interface, and JavaScript discards the extra
@@ -523,7 +523,28 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
     feedback?: string,
     options?: TaskTransitionOptions
   ): Promise<TaskWriteOutcome>;
-  resumeFromReview(
+  /**
+   * Hand a parked task its answer and put it back in the queue (FIX-1244).
+   *
+   * Fenced to the one edge it owns: `parked → pending`. A task that is not
+   * waiting on a person — one a worker is running, one already answered and
+   * queued, a blocked one, a settled one — is **refused as a value**: the
+   * returned {@link TaskWriteOutcome} is `declined`, naming the status the
+   * write found (`disallowed` for a live row, `terminal` for a settled one).
+   * Nothing is written on a refusal. One park takes one answer: the first
+   * accepted `feedback` queues the work, and a second delivery declines with
+   * `status: "pending"` rather than overwriting it.
+   *
+   * Advisory by construction, like `cancel`: `options.ifAllowed` is forced on
+   * regardless of what you pass, so a terminal row declines instead of
+   * throwing. `options.claim` and `options.write` are honoured as on every
+   * other transition. The check runs inside the atomic write, so a row that
+   * leaves `parked` between your read and the write is refused, not re-queued.
+   *
+   * Re-queues only. Nothing runs the work until something drains the board;
+   * `TaskBoardHandle.unparkAndDrain` is the one-call form that does both.
+   */
+  unpark(
     id: string,
     feedback?: string,
     options?: TaskTransitionOptions
@@ -591,7 +612,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
    * `task-change(kind: 'resumed', prevStatus: 'in_progress')` per reset
-   * — the same kind used by `resumeFromReview` since the lifecycle UI
+   * — the same kind used by `unpark` since the lifecycle UI
    * cares only that the task is back to pending.
    *
    * Not the recovery path. Since FIX-1005 an abandoned row is recovered inside
@@ -606,7 +627,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * re-dispatching it past the bound, and the failure will present as a spent
    * `maxAttempts` instead of an abandonment cap.
    *
-   * That is the same stance `unblock` and `resumeFromReview` already take, and
+   * That is the same stance `unblock` and `unpark` already take, and
    * for the same reason: a bound exists to make a judgment nobody is present to
    * make, and a caller invoking this verb by hand *is* present. Counting it
    * would settle a task an operator explicitly asked to requeue.

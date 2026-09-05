@@ -538,7 +538,7 @@ describe("the answer — one action, and the run comes back holding it", () => {
     const resumed = seen.prompts[2]!;
     // The answer arrives as an answer …
     expect(resumed).toContain("Correct the path only.");
-    // … and NOT as this attempt's failure reason. `resumeFromReview` is called
+    // … and NOT as this attempt's failure reason. `unpark` is called
     // with no feedback, which also clears the previous failure's.
     expect(resumed).not.toContain("The last attempt stopped for this reason");
     expect(resumed).not.toContain("error_max_turns");
@@ -551,11 +551,11 @@ describe("the answer — one action, and the run comes back holding it", () => {
 
 describe("the guard — reported declines, and the row half of the pair", () => {
   it("refuses an answer to a row that was never parked, and says so", async () => {
-    // Behaviour 13. The substrate will not refuse for us — `resumeFromReview`
-    // passes no `requireFrom` and every remaining guard is behind `ifAllowed` —
-    // so a never-parked row would report `recorded` and the answer would land
-    // on a run nobody is waiting on. A silent decline is the defect class this
-    // lab exists to remove, relocated.
+    // Behaviour 13. The substrate refuses a non-parked task too (`unpark` is
+    // fenced to `parked` since FIX-1244); this pins conductor's own row-level
+    // half, the one that tells attempt 1's withdrawn row from attempt 2's open
+    // one. A silent decline is the defect class this lab exists to remove,
+    // relocated.
     const seen = seenTurns();
     live = createConductorHarness({
       resolveClaudeAgent: turnAgent([{ question: "which path?", subtype: "success" }], seen),

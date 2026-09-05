@@ -39,10 +39,10 @@ const board = taskBoard({
 | `concurrency` | `number` | `4` | How many workers run in parallel. |
 | `maxEnqueuedTasks` | `number \| null` | `100` | Cap on tasks added while others are still `pending`. `null` is unbounded. Only when the board builds its own collection. |
 | `maxTotalTasks` | `number \| null` | `500` | Cap including completed and failed tasks. Those still count after they finish. Same supplied-collection rule as `maxEnqueuedTasks`. |
-| `maxTotalRetries` | `number \| null` | `50` | Cumulative failure retries across every task. `0` means run once, never retry. `unblock` / `resume` / `reclaim` do not spend this. |
+| `maxTotalRetries` | `number \| null` | `50` | Cumulative failure retries across every task. `0` means run once, never retry. `unblock` / `unpark` / `reclaim` do not spend this. |
 | `dispatcher` | `"fifo"` \| `"topological"` \| `"priority"` \| instance | `"topological"` | How a ready task is picked. |
 | `onIdle` | `"complete-or-blocked"` \| `"complete"` \| `"wait"` | `"complete-or-blocked"` | When the pool stops. See [Task board](./task-board#termination-onidle-modes). |
-| `onReview` | `"hold"` \| `"exit"` | `"hold"` | Whether a task parked with `awaitReview` keeps the drain open. `"exit"` lets the drain return and leaves the task parked for a later one. Needs a `defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`. See [Task board](./task-board#waiting-on-a-person-onreview). |
+| `onReview` | `"hold"` \| `"exit"` | `"hold"` | Whether a task parked with `awaitReview` keeps the drain open. `"exit"` lets the drain return and leaves the task parked; `board.unparkAndDrain` hands the answer back and drains in the same request. Needs a `defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`. See [Task board](./task-board#waiting-on-a-person-onreview). |
 | `initialTasks` | `TaskInit[]` | omitted | Tasks seeded at board start. |
 | `onError` | `"skip"` \| `"fail"` | `"skip"` | `"skip"` records the failure and lets siblings continue. `"fail"` fails the board. |
 | `maxIterations` | `number` | `10000` | Per-worker loop cap. A circuit breaker if enqueue cycles never drain. |

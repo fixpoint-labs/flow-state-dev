@@ -74,7 +74,7 @@
  * and the other immediately re-scans for the next eligible task. No
  * pattern-level coordination beyond that.
  */
-import { sequencer, defineCapability } from "@flow-state-dev/core";
+import { handler, sequencer, defineCapability } from "@flow-state-dev/core";
 import { z } from "zod";
 import { whenBoardClaimable } from "./predicates";
 import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
@@ -118,9 +118,12 @@ import {
   taskBoardWorkerStateSchema,
   taskBoardWorkerBodyStateSchema,
   claimResultSchema,
+  taskWriteOutcomeSchema,
+  unparkAndDrainInputSchema,
   type ClaimResult,
+  type UnparkAndDrainInput,
 } from "./schemas";
-import type { Task } from "../tasks";
+import type { Task, TaskWriteOutcome } from "../tasks";
 import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
 import { createClaimTask } from "./blocks/claim-task";
@@ -139,7 +142,6 @@ import {
   createInstallBoardFlowState,
   createTeardownBoardFlowState,
   stampCurrentClaim,
-  type BoardRunFlowState,
 } from "./flow-policy-wiring";
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
 import {
@@ -164,6 +166,7 @@ export {
   claimResultSchema,
   taskWorkerInputSchema,
   checkBoardOutputSchema,
+  unparkAndDrainInputSchema,
 } from "./schemas";
 export type {
   TaskBoardState,
@@ -171,6 +174,7 @@ export type {
   TaskBoardWorkerBodyState,
   ClaimResult,
   CheckBoardOutput,
+  UnparkAndDrainInput,
 } from "./schemas";
 export type { TaskBoardDispatcherInput } from "./shared";
 export { createSeedCollection } from "./blocks/seed-collection";
@@ -428,7 +432,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * completion item reports `terminationReason: "retry-budget-exhausted"`.
    *
    * `0` is legal and means "run every task once, never retry". Only failure
-   * retries count — `unblock`, `resumeFromReview`, and `reclaim` also re-pend a
+   * retries count — `unblock`, `unpark`, and `reclaim` also re-pend a
    * task and do not consume the budget. See `tasks/collection/task-caps.ts` for
    * the full semantics, including why the budget is spent at authorization.
    */
@@ -467,8 +471,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * - `"exit"`: a parked task is not this drain's to wait on. The drain
    *   finishes and returns, the completion item reports
    *   `terminationReason: "parked-for-review"`, and the task stays parked and
-   *   durable. A later `resumeFromReview` re-queues it — it does not start
-   *   anything, so whatever drains the board next is what picks it up.
+   *   durable. `unparkAndDrain` is the return trip: it re-queues the task
+   *   and runs this drain in the answering request (FIX-1244). A bare
+   *   `unpark` only re-queues, and whatever drains the board next picks it up.
    *
    * Separate from `onIdle` deliberately, and **refused at construction** on
    * three configurations it cannot serve: a board whose tasks don't outlive
@@ -634,6 +639,31 @@ export interface TaskBoardHandle<
    * `TaskBoardConfig.maxEnqueuedTasks`.
    */
   caps: TaskCapOptions;
+  /**
+   * Hand a parked task its answer and run the board in this request (FIX-1244).
+   *
+   * A sequencer step like any other: it reads `{ taskId, feedback }` from the
+   * value it is handed (`UnparkAndDrainInput`), calls the fenced `unpark`, and
+   * — only when that write was **accepted** — runs `board.drain` as a tap, so
+   * the step's own value is the write's `TaskWriteOutcome` either way. A
+   * refusal (`declined`, naming the status the write found) drains nothing:
+   * an already-queued task, a running one, a settled one all come back as a
+   * value with no drain behind it.
+   *
+   * A task id the ledger does not hold **throws**, as `unpark` does. So does
+   * an unsupported board, and it throws **when the step runs**, not when the
+   * board is built: the collection must be resource-backed (a parked row has
+   * to outlive the request that parked it), and `initialTasks` must all carry
+   * a stable id (the drain re-seeds on every pass, and an id-less entry would
+   * be added again and the answered work run twice). Both are checked here
+   * rather than at construction because a board that never calls this step
+   * has nothing to be refused for.
+   *
+   * The answering request has to resolve the same ledger as the request that
+   * parked the task — the same resolved storage key, per the resource-scope
+   * resolver — or the id is looked up on some other board.
+   */
+  unparkAndDrain: SequencerDefinition<UnparkAndDrainInput, TaskWriteOutcome>;
 }
 
 // ---------------------------------------------------------------------------
@@ -797,21 +827,21 @@ export function taskBoard<
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 
-  // FIX-610 shared run-state bag — populated by `installFlowState`
-  // at the top of the outer sequencer and consulted by every worker
-  // dispatch. Cleared by `teardownFlowState` on both completion and
-  // error paths so a board re-entered within the same request starts
-  // each run fresh.
-  const runState: BoardRunFlowState = { collectionId };
+  // FIX-610 run state — installed on the request by `installFlowState` at
+  // the top of the outer sequencer and consulted by every worker dispatch
+  // in that request. Cleared by `teardownFlowState` on both completion and
+  // error paths so a board re-entered within the same request starts each
+  // run fresh. It is per request, not per board definition, so two drains
+  // of this board overlapping in one process cannot see each other's
+  // (FIX-1244).
   const installFlowState = createInstallBoardFlowState({
     name,
     collectionId,
     flowPolicy: flowPolicyConfig,
     toolCache,
     collection: collectionFactory,
-    runState,
   });
-  const teardownFlowState = createTeardownBoardFlowState({ name, runState });
+  const teardownFlowState = createTeardownBoardFlowState({ name });
 
   // The hand-off. A dispatcher seat routes to a block that puts the claimed
   // row through the dispatch seam and returns, instead of to the dispatcher
@@ -876,7 +906,7 @@ export function taskBoard<
       ? { defaultWorker: dispatchDefaultWorker }
       : {}),
     collection: collectionFactory,
-    resolveFlowPolicy: createFlowPolicyResolver(runState),
+    resolveFlowPolicy: createFlowPolicyResolver(name),
   });
 
   const recordSuccess = createRecordSuccess({
@@ -1184,6 +1214,51 @@ export function taskBoard<
     freezeLedgerAssignee(collectionConfig);
   }
 
+  // The return trip for a parked task (FIX-1244): the fenced re-queue, then the
+  // board's own drain, in the caller's request. Built for every board and
+  // refused only when it runs — see `TaskBoardHandle.unparkAndDrain` for why
+  // the two checks are invocation-time and not construction-time.
+  //
+  // A `.tapIf`, not a `.stepIf`: the tap runs the drain for effect and carries
+  // the write's outcome forward on both branches, so the step returns the
+  // `TaskWriteOutcome` whether the drain ran or not. A `.stepIf` would replace
+  // it with the drain's result on exactly the branch that matters, and
+  // `drain` is typed loosely enough that the swap would not be caught here.
+  const unparkStep = handler({
+    name: `${name}-unpark`,
+    inputSchema: unparkAndDrainInputSchema,
+    outputSchema: taskWriteOutcomeSchema,
+    ...(drainUses !== undefined ? { uses: drainUses } : {}),
+    execute: async (input, ctx): Promise<TaskWriteOutcome> => {
+      if (backing !== "resource") {
+        throw new Error(
+          `[task-board] "${name}" unparkAndDrain needs a resource-backed collection — ` +
+            `a parked task has to outlive the request that parked it for an answer to ` +
+            `find it, and a ${backing}-backed collection does not. Pass a ` +
+            `defineTaskCollection() to \`collection\`.`
+        );
+      }
+      if (hasIdlessInitialTasks) {
+        throw new Error(
+          `[task-board] "${name}" unparkAndDrain refuses a board whose \`initialTasks\` ` +
+            `carry no stable id — the drain it runs re-seeds ahead of the worker pool, ` +
+            `and an id-less entry is added again each pass, so the answered work would ` +
+            `run twice. Give each initialTask an explicit \`id\`.`
+        );
+      }
+      const tasks = await collectionFactory(ctx);
+      return tasks.unpark(input.taskId, input.feedback);
+    },
+  });
+
+  const unparkAndDrain: SequencerDefinition<UnparkAndDrainInput, TaskWriteOutcome> = sequencer({
+    name: `${name}-unpark-and-drain`,
+    inputSchema: unparkAndDrainInputSchema,
+    ...(drainUses !== undefined ? { uses: drainUses } : {}),
+  })
+    .step(unparkStep)
+    .tapIf((outcome: TaskWriteOutcome) => outcome.outcome === "recorded", drain);
+
   // Capability, collectionId, and (for durable boards) the drain's resource
   // `uses` all come from `resolveCollectionBinding` — one place that maps the
   // once-chosen backing onto every downstream wiring, so no call site restates
@@ -1198,6 +1273,7 @@ export function taskBoard<
     handedOff,
     hasIdlessInitialTasks,
     caps,
+    unparkAndDrain,
   };
 }
 

@@ -392,7 +392,10 @@ The practical consequence for a board that declares both: a handed-off row that
 parks stops being excused by *routing* — it is no longer `in_progress` — and
 starts being excused by the *park* exclusion instead, if and only if the board
 asked for that. On the default `onReview: "hold"` it is excused by neither and
-holds the drain open. Note that this is not the same as saying a board with a
+holds the drain open. What hands an excused row back into a drain is
+`board.unparkAndDrain` (FIX-1244): the fenced `unpark` write, then the board's
+own drain in the answering request, so the row is claimed there rather than by
+whatever happens to drain next. Note that this is not the same as saying a board with a
 dispatcher seat needs park-exit for its launching request to end: the hand-off
 already released that request before the park, and the parent's collection
 mirror cannot observe a write the child made in a separate concurrent request.
