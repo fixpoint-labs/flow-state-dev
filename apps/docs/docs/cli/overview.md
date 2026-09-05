@@ -60,7 +60,7 @@ Use `-m` to swap models without code changes. Pass a model ID (e.g. `openai/gpt-
 
 Every generator that runs in the command's own process uses the override, including generators in [background work that runs there](#waiting-for-in-process-work).
 
-The override does not cross a queue. When background work is [handed to a queue](#with-a-queue-the-command-doesnt-wait), another process runs it under its own model configuration, so the generators inside it use whatever model that process resolves. A flow that detaches through a queue therefore runs on two models at once: the one you passed, and the worker's. If you are comparing models, or forcing a cheap one, the result only covers the part that ran here.
+The override does not cross a queue. When background work is [handed to a queue](#with-a-queue-the-command-doesnt-wait), another process runs it under its own model configuration, so the generators inside it use whatever model that process resolves. A flow that dispatches through a queue therefore runs on two models at once: the one you passed, and the worker's. If you are comparing models, or forcing a cheap one, the result only covers the part that ran here.
 
 You get a line on stderr at each dispatch that loses the override:
 
@@ -78,7 +78,7 @@ Session is the only scope you can seed.
 
 ## Background work
 
-A flow can hand a unit of work to a *workstream*, a background child session that keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
+A flow can dispatch a unit of work into a child session, which keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
 
 | Your setup | What the command does |
 |---|---|
@@ -87,21 +87,17 @@ A flow can hand a unit of work to a *workstream*, a background child session tha
 | No config (directory discovery or `--no-config`) | Can't start background work; the call fails by name |
 | A `worker-only` process | Runs the work in this process rather than putting it on the queue. Not durable: if the process stops, nothing re-runs it |
 
-For what a workstream is and how tasks group into one, see [Work that outlives the turn](/guides/background-work).
+For where dispatched work comes from and how it compares to the other kinds, see [Work that outlives the turn](/guides/background-work).
 
 ### Waiting for in-process work
 
-Without a queue, the workstream runs inside the same process as the command. The action that launched it returns straight away, which is what detaching means, so `flow_complete` lands on stdout while the background work is still going. The command holds the process open until that work finishes, and says so on stderr:
-
-```
-[flowstate] waiting for 1 detached request(s) to finish before shutdown {"pending":1}
-```
+Without a queue, the child runs inside the same process as the command. The action that launched it returns as soon as the runtime accepts the dispatch, so `flow_complete` lands on stdout while the background work is still going. The command holds the process open until that work finishes, and logs a warning on stderr naming how many requests it is still waiting on.
 
 A run whose NDJSON already looks complete but whose shell prompt hasn't come back is usually sitting here.
 
 `--quiet` suppresses the line, not the wait. So does `--log-level error`, since the notice is logged at `warn`. Either way the command stays up until the work is done.
 
-Background work can start more background work, and the wait covers descendants too. The wait is bounded: it runs against `detachedDrainTimeoutMs`, a `createFlowState` option that defaults to 30 seconds, and a flow that spawns without end hits a round cap as well. When the budget runs out the command cancels what's still running, names the requests and sessions it gave up on, and exits. That report goes to stderr even under `--quiet`, since work may have been left unfinished.
+Background work can start more background work, and the wait covers descendants too. The wait is bounded: it runs against `dispatchDrainTimeoutMs`, a `createFlowState` option that defaults to 30 seconds, and a flow that spawns without end hits a round cap as well. When the budget runs out the command cancels what's still running, names the requests and sessions it gave up on, and exits. That report goes to stderr even under `--quiet`, since work may have been left unfinished.
 
 `fsdev chat` waits at the equivalent point in its own life, which is when you leave the session rather than at the end of each turn.
 
@@ -111,11 +107,11 @@ When the config hands `createFlowState` a worker adapter that dispatches, meanin
 
 By the time the command returns, the request has been recorded and the queue has accepted the job. A failed store write or a rejected enqueue fails the dispatch rather than reporting a start, so a queue you can't reach surfaces as an error instead of as silence.
 
-None of that says the job survives, or that it ever runs. Whatever consumes the queue decides that, and a queue with nothing draining it is an ordinary state: the job sits in it, and the command finishes the same way it would if a worker were pulling from it. Read the workstream's own requests to find out what became of it. See [Background work](/docs/server/background-work).
+None of that says the job survives, or that it ever runs. Whatever consumes the queue decides that, and a queue with nothing draining it is an ordinary state: the job sits in it, and the command finishes the same way it would if a worker were pulling from it. Read the child session's own requests to find out what became of it. See [Dispatched work](/docs/server/background-work).
 
 ### Without a config, background work can't start
 
-Directory discovery and `--no-config` give the CLI flows and stores, and no runtime host for a workstream to start through. A block that reaches for one throws:
+Directory discovery and `--no-config` give the CLI flows and stores, and no runtime host for a dispatch to go through. A block that reaches for one throws:
 
 ```
 NoRequestHostError: This capability needs a runtime host, and none is wired on this context.

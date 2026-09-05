@@ -1,0 +1,210 @@
+/**
+ * The ChildSessions panel (FIX-1071).
+ *
+ * What is pinned here is that a row renders from the *session* record alone. A
+ * ChildSession can arrive with no topic, no coordinate, no status and no task
+ * behind it, and each of those is an ordinary state rather than a reason to drop
+ * the row — a panel that only rendered fully-labelled, board-backed rows would
+ * look correct on the happy path and hide exactly the work a developer went
+ * looking for.
+ */
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import React from "react";
+import type { ChildSessionSummary } from "@flow-state-dev/client";
+import { ChildSessionsView } from "../src/react/components/workspace/child-sessions-view";
+
+function childSession(
+  overrides: Partial<ChildSessionSummary> & { id: string }
+): ChildSessionSummary {
+  return {
+    parentSessionId: "sess_parent",
+    createdAt: 1_700_000_000_000,
+    updatedAt: 1_700_000_001_000,
+    ...overrides,
+  };
+}
+
+function renderView(props: Partial<React.ComponentProps<typeof ChildSessionsView>> = {}) {
+  const onOpen = vi.fn();
+  const onRefresh = vi.fn();
+  render(
+    <ChildSessionsView
+      sessionId="sess_parent"
+      childSessions={[]}
+      isLoading={false}
+      error={null}
+      truncation="complete"
+      onRefresh={onRefresh}
+      items={[]}
+      onOpen={onOpen}
+      {...props}
+    />
+  );
+  return { onOpen, onRefresh };
+}
+
+describe("ChildSessionsView", () => {
+  it("says a session has no background work rather than showing a bare table", () => {
+    renderView();
+    expect(screen.getByText(/No background work in this session/i)).toBeInTheDocument();
+  });
+
+  it("renders a row for a ChildSession with no task, no labels and no status", () => {
+    // The case the whole panel exists for: a ChildSession reachable from no board.
+    // Every derived column is absent, and the row still has to be clickable.
+    const { onOpen } = renderView({
+      childSessions: [childSession({ id: "dsx_bare" })],
+    });
+
+    expect(screen.getByText("unlabelled")).toBeInTheDocument();
+    // Absence of a status is not a status — it says nothing has run yet.
+    expect(screen.getByText("not started")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("unlabelled"));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "dsx_bare" }));
+  });
+
+  it("decodes the seat and board out of a per-worker key, and the entry out of the coordinate", () => {
+    // The raw labels are `worker|10:issue-work|9:implement` and
+    // `task:implement`. Rendering those verbatim beside a hashed id tells a
+    // developer nothing.
+    renderView({
+      childSessions: [
+        childSession({
+          id: "dsx_1",
+          topic: "worker|10:issue-work|9:implement",
+          coordinate: "task:implement",
+          status: "active",
+        }),
+      ],
+    });
+
+    expect(screen.getByText("issue-work")).toBeInTheDocument();
+    expect(screen.getByText("seat")).toBeInTheDocument();
+    // Once as the seat, once as the entry — both are `implement` here, which is
+    // the usual shape and exactly why the row says which is which.
+    expect(screen.getAllByText("implement")).toHaveLength(2);
+    expect(screen.getByText("active")).toBeInTheDocument();
+  });
+
+  it("shows a flow-computed key and an unrecognised coordinate raw instead of dropping them", () => {
+    // A `{ key }` policy's string is the flow's own name for the work, and some
+    // other writer's coordinate is still the most specific thing known about
+    // that entry. Neither decodes, and neither is nothing.
+    renderView({
+      childSessions: [childSession({ id: "dsx_1", topic: "FIX-1", coordinate: "opaque" })],
+    });
+    expect(screen.getByText("FIX-1")).toBeInTheDocument();
+    expect(screen.getByText("opaque")).toBeInTheDocument();
+  });
+
+  it("names the board tasks a ChildSession is running", () => {
+    renderView({
+      childSessions: [
+        childSession({ id: "dsx_1", topic: "task|10:issue-work|6:task-a", coordinate: "task:implement" }),
+      ],
+      items: [
+        {
+          id: "item-1",
+          type: "component",
+          component: "task-change",
+          data: {
+            collectionId: "issues",
+            taskId: "task-a",
+            kind: "claimed",
+            task: { id: "task-a", goal: "ship it", status: "in_progress" },
+          },
+        } as never,
+      ],
+    });
+
+    // Twice: once as the row the key names, once as the task it resolved to.
+    // The Tasks column is the one that proves the item stream was folded in.
+    expect(screen.getAllByText("task-a")).toHaveLength(2);
+  });
+
+  it("surfaces a failed re-read without blanking the rows it already has", () => {
+    // Keeping the rows matters: an empty list is the panel's way of saying "no
+    // background work", so blanking on error would state something false.
+    renderView({
+      childSessions: [childSession({ id: "dsx_1", topic: "FIX-1" })],
+      error: "network down",
+    });
+
+    expect(screen.getByText("network down")).toBeInTheDocument();
+    expect(screen.getByText("FIX-1")).toBeInTheDocument();
+  });
+
+  it("reads a null status as not-started rather than an empty badge", () => {
+    // A store that nulls absent keys hands back `null` where an older record
+    // has `undefined`. A strict `undefined` check renders the badge with no
+    // text in it, which looks like a status nobody can name (BP-030).
+    renderView({
+      childSessions: [
+        childSession({ id: "dsx_1", topic: "FIX-1", status: null as never }),
+      ],
+    });
+
+    expect(screen.getByText("not started")).toBeInTheDocument();
+  });
+
+  it("says the list is unknown after a failed read, not that it is empty", () => {
+    // The third face of the same defect the paging and truncation fixes address:
+    // the panel stating less than it knows. After a failed FIRST read the hook
+    // holds no rows, so an empty-state gated only on `length === 0` renders
+    // "No background work in this session" — and a count of zero — directly
+    // under the error. The list is UNKNOWN there, and on a debugging surface a
+    // confident zero is worse than an obvious gap.
+    renderView({ childSessions: [], error: "network down", isLoading: false });
+
+    expect(screen.getByText("network down")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/No background work in this session/i)
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/^0 child sessions/i)).not.toBeInTheDocument();
+  });
+
+  it("opens a ChildSession from the keyboard, not only by pointer", async () => {
+    // The row's onClick is a pointer convenience. A clickable `<tr>` takes no
+    // focus, no Enter and announces nothing, so the tab's primary action has to
+    // be a real control or it does not exist for a keyboard user.
+    //
+    // Activation is driven with real key events rather than a synthetic click:
+    // a focusable element that does not respond to Enter or Space is exactly
+    // the failure a `tabIndex` bolted onto the row would produce, and a click
+    // assertion cannot tell the two apart.
+    const user = userEvent.setup();
+    const { onOpen } = renderView({
+      childSessions: [childSession({ id: "dsx_1", topic: "FIX-1" })],
+    });
+
+    // Reachable by tabbing at all — the panel's Refresh button comes first in
+    // document order, the row's control second.
+    await user.tab();
+    await user.tab();
+    const open = screen.getByRole("button", { name: /Open child session dsx_1/i });
+    expect(open).toHaveFocus();
+
+    await user.keyboard("{Enter}");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "dsx_1" }));
+
+    await user.keyboard(" ");
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it("says so when the listing stopped at its bound", () => {
+    // The count beside a truncated list is the failure that matters: it reads
+    // as complete, so the newest background work looks like it does not exist.
+    renderView({
+      childSessions: [childSession({ id: "dsx_1", topic: "FIX-1" })],
+      truncation: "more" as const,
+    });
+
+    expect(
+      screen.getByText(/more background work than the panel reads in one go/i)
+    ).toBeInTheDocument();
+  });
+});

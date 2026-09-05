@@ -92,11 +92,14 @@
     "pg": "^8.13.0"
   },
   "peerDependencies": {
-    "@flow-state-dev/scheduled": "workspace:*",
+    "@flow-state-dev/scheduled": "workspace:>=0.0.0",
     "next": ">=15.0.0"
   },
   "peerDependenciesMeta": {
     "next": {
+      "optional": true
+    },
+    "@flow-state-dev/scheduled": {
       "optional": true
     }
   },

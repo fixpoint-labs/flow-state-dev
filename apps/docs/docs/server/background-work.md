@@ -1,50 +1,163 @@
 ---
 sidebar_position: 6
-sidebar_label: Detached work
+sidebar_label: Dispatched work
 ---
 
-# Detached work
+# Dispatched work
 
 Some work outlives the turn that asked for it: a long research pass, a document
 being drafted, an implementation running for an hour. That work runs in its own
 *session*, the record the framework keeps for one conversation, holding its
-state, its resources, and the history of every request that ran in it. A
-background job's session hangs off the conversation that started it, as a child
-of it.
+state, its resources, and the history of every request that ran in it. The
+session hangs off the conversation that started it, as a child of it.
 
-This page is the HTTP surface for reading those jobs: ask a conversation for its
-jobs, then ask any one job for its history.
+This page covers how a flow starts that work, and the HTTP surface for reading
+it afterwards. Ask a conversation for its children, then ask any one child for
+its history.
 
-Starting one is server-side only — there is no endpoint for it. A job begins
-inside a running request, usually as a task board with a worker declared
-detached. See [Work that outlives the
-turn](/guides/background-work#workstreams-a-job-with-its-own-session).
+Starting one is server-side only. There is no endpoint for it. A job begins
+inside a running request, either from a `dispatcher()` block or from a task
+board handing a claimed row to a child session. See [Work that outlives the
+turn](/guides/background-work#dispatch-work-in-a-child-session) for how the two
+relate to the other kinds of background work.
 
-## Listing a conversation's jobs
+## Starting a job from a flow
+
+A flow declares the work a job can run under `internal.actions`, beside
+`actions`. An internal entry has the same shape as an action, but no client can
+call it. The only way in is a `dispatcher()` block inside the same flow.
+
+```ts
+import { defineFlow, dispatcher, generator, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const summarizeDocument = generator({
+  name: "summarize-document",
+  model: "openai/gpt-5.4-mini",
+  inputSchema: z.object({ documentId: z.string() }),
+  prompt: "Summarize the document.",
+});
+
+const acknowledge = handler({
+  name: "acknowledge",
+  inputSchema: z.object({ reason: z.string() }),
+  execute: async (input) => ({ noted: input.reason }),
+});
+
+// One job per document. The same documentId from the same conversation
+// lands on the same job.
+const summarizeInBackground = dispatcher({
+  name: "summarize-in-background",
+  type: "internal",
+  target: "summarize",
+  inputSchema: z.object({ documentId: z.string() }),
+  session: { key: (input) => input.documentId },
+});
+
+// Deliver into a session that already exists.
+const nudgeCoordinator = dispatcher({
+  name: "nudge-coordinator",
+  type: "internal",
+  target: "acknowledge",
+  inputSchema: z.object({ coordinatorSessionId: z.string(), reason: z.string() }),
+  session: { id: (input) => input.coordinatorSessionId },
+  payload: (input) => ({ reason: input.reason }),
+});
+
+export default defineFlow({
+  kind: "documents",
+  actions: {
+    upload: { block: summarizeInBackground },
+    nudge: { block: nudgeCoordinator },
+  },
+  internal: {
+    actions: {
+      summarize: { block: summarizeDocument },
+      acknowledge: { block: acknowledge },
+    },
+  },
+})();
+```
+
+A dispatcher is a handler. Run it, in a sequencer step, as a generator's tool,
+or as an action's root block, and it sends one request to `target` and returns
+as soon as the runtime has accepted it. It does not wait for the work.
+
+```ts
+// what the dispatcher returns
+{ sessionId: "dsx_9f2c1a", requestId: "req_c41e", adopted: false }
+```
+
+`sessionId` is the session the work runs in, `requestId` the run it became, and
+`adopted` whether that session already existed. The entry validates the payload
+against its own `inputSchema` on arrival; `payload` shapes it, and defaults to
+the dispatcher's input as-is.
+
+`session` decides which session that is.
+
+| `session` | Runs in | When it does not exist |
+|---|---|---|
+| `{ key: (input) => string }` | a child of the running session, derived from the key | created; the next call with the same key from the same conversation adopts it |
+| `{ id: (input) => string }` | the session with that id | refused. Nothing is created |
+
+A `key` child is a job in every sense on this page: it hangs off the session
+that started it, runs the same flow as the same user, keeps its own state and
+history, and shows up in the parent's listing below. The key is scoped to the
+conversation, so the same key from a different conversation is a different
+child. An `id` target has to be a session of this flow kind that belongs to
+this user.
+
+`defineFlow` checks every dispatcher it can reach and throws at definition time
+when `target` names an entry the flow does not declare. An action named
+`summarize` does not stand in for `internal.actions.summarize`; each map is
+looked up on its own.
+
+A refusal at run time throws `DispatchRefusedError`, with `code:
+"dispatch-refused"` and a `refused` field to branch on:
+
+| `refused` | Meaning |
+|---|---|
+| `no-entry` | The flow declares no entry at that address |
+| `session-not-found` | An `id` names a session that does not exist, or one that belongs to another user |
+| `session-not-addressable` | An `id` names a session on another flow |
+| `key-occupied` | The `key` derived a session id already held by something that is not this conversation's child |
+| `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
+| `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
+| `external-dispatcher` | An `id` delivery on a deployment that hands work to an external queue. A `key` child is unaffected |
+
+Every refusal is decided before anything starts, so a `.rescue()` on the
+dispatcher can branch on `refused` knowing no child is running. A `key` or
+`id` function that returns an empty string throws a plain `Error` naming the
+block.
+
+A task board seat can start a job the same way: a `dispatcher({ type: "task"
+})` under `workers` sends each claimed row to one of the flow's `task.actions`
+entries, and the child session lands in the same listing. See [Task board →
+Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
+
+## Listing a session's children
 
 ```
-GET /api/flows/sessions/sess_abc/workstreams
+GET /api/flows/sessions/sess_abc/children
 ```
-
-`workstream` is the API's word for a background job. It names the path segment
-and the response key, and means the same thing throughout this page.
 
 ```json
 {
-  "workstreams": [
+  "children": [
     {
-      "id": "ws_9f2c1a",
+      "id": "dsx_9f2c1a",
       "parentSessionId": "sess_abc",
-      "topic": "market-research",
-      "coordinate": "14:research-board|22:assignee|10:researcher",
+      "topic": "task|10:issue-work|3:t42",
+      "coordinate": "task:implement",
       "status": "active",
       "createdAt": 1770000000000,
       "updatedAt": 1770000042000
     },
     {
-      "id": "ws_1c7b40",
+      "id": "dsx_1c7b40",
       "parentSessionId": "sess_abc",
-      "topic": "draft-summary",
+      "topic": "acme-corp",
+      "coordinate": "internal:summarize",
       "status": "completed",
       "createdAt": 1769999000000,
       "updatedAt": 1769999900000
@@ -53,21 +166,19 @@ and the response key, and means the same thing throughout this page.
 }
 ```
 
-`topic` names the body of work and `coordinate` names where it runs. Work
-started from a task board, which is the usual way, gets a `coordinate` holding
-the board and the worker together in one encoded string. Compare it whole. The
-worker's name is visible inside it, but matching on that substring collides
-across boards.
+Those seven fields are the whole row. The route sends this named set rather than
+a session record, so there is no `flowKind`, `userId`, `title` or `metadata` on
+it.
 
-Together the two identify a job, so two rows sharing a `topic` are separate jobs
-whenever their `coordinate`s differ. A row with a `topic` and no `coordinate` was
-addressed by topic alone, without a board. For which tasks land in the same job
-rather than starting a new one, see [Which tasks share a
-workstream](/guides/background-work#which-tasks-share-a-workstream).
+`topic` and `coordinate` are display labels. `coordinate` is the entry the child
+was dispatched to, `<type>:<target>`: `internal:summarize` for an internal entry,
+`task:implement` for a task-board seat that hands off. `topic` is the key the
+child session was derived from — what a `dispatcher()`'s `session: { key }`
+function returned, or the composed key a task seat's `session` policy produced.
 
-Both labels are optional, as is `status`, so read them with `== null` guards
-rather than assuming every row carries them. A row with neither label is a child
-session that isn't a background job.
+Nothing routes, authorizes or identifies from either label, and both are
+optional, as is `status`. Guard all three with `== null`. A row with no labels is
+a child session, same as any other; it just carries nothing to display.
 
 ### What `status` tells you
 
@@ -164,102 +275,102 @@ abandonment allowance, see [the
 lease](../orchestration/task-substrate.md#the-lease) and [when a job keeps being
 abandoned](../orchestration/task-substrate.md#when-a-job-keeps-being-abandoned).
 
-## Reading one job's history
+## Reading one child's history
 
 Each row's `id` addresses a session, so every session endpoint works on it:
 
 ```
-GET /api/flows/sessions/ws_9f2c1a/requests
+GET /api/flows/sessions/dsx_9f2c1a/requests
 ```
 
-That returns the job's runs, with the item log for each when you ask for it
+That returns the child's runs, with the item log for each when you ask for it
 (`?include_items=true`).
 
-Each run's record carries a `metadata.workstream` bag:
+A run a `dispatcher()` started reads `source: "internal"`, or `source: "task"`
+when a task-board seat handed the work off, and carries a `metadata.dispatch`
+bag:
 
 ```json
 {
-  "source": "workstream",
+  "source": "task",
+  "actionName": "implement",
   "metadata": {
-    "workstream": {
-      "topic": "market-research",
-      "key": "14:research-board|22:assignee|10:researcher",
-      "taskId": "task_7f3"
+    "dispatch": {
+      "type": "task",
+      "target": "implement",
+      "from": { "block": "hand-off-implement", "sessionId": "sess_abc" },
+      "key": "task|10:issue-work|3:t42",
+      "taskId": "t42"
     }
   }
 }
 ```
 
-Read that bag at all only when `source` is `"workstream"`. An application can
-put whatever it likes in `metadata` on its own requests, including a key named
-`workstream`. `source` is different: the transport that accepted the request
-stamps it, and a request body cannot.
+`type` and `target` are the entry the run executes, `from` names the block that
+sent it and the session it was running in, `key` is the session key the child
+was derived from, and `taskId` the board row on a task hand-off. `key` is absent
+when the dispatcher delivered into an existing session by `id`, and `taskId` is
+absent on an internal dispatch.
 
-What you can rely on differs by field.
+The runtime assembles that bag from values it derived itself; a request body
+cannot write it. It is still labels rather than authority — use `taskId` to
+stitch a run to a board row in a view, not to key an authorization or a
+settlement on. Read the bag only when `source` is `"internal"` or `"task"`: an
+application can put whatever it likes in `metadata` on its own requests,
+including a key named `dispatch`, and `source` is the field a request body
+cannot set.
 
-`topic` and `key` are the address the run's session was derived from. Choosing
-them and choosing which session you get is the same choice, so they cannot
-disagree with the run they sit on. They are the same pair the listing returns as
-the job's `topic` and `coordinate`, so `key` is opaque here for the same reason
-it is there: compare it whole. `key` is absent when the job was addressed
-without one.
+A run with either source cannot be re-entered from outside. `retry`,
+`continue`, and `resume` on its request id answer `404`, the same as for a
+request that does not exist.
 
-`taskId` names the task-board row the run was started for, so you can match a
-run back to a board row without keeping the board open beside it. It holds what
-the code that started the job passed, and nothing checks it against a board. A
-job started by a task board takes it off the claim the board holds on that row,
-so on board work it points where it says. But `ctx.requestHost.startDetached`
-is reachable from any block, so application code can start a job and name any
-row it likes. Use `taskId` to stitch a run to a row in a view. Don't key an
-authorization or a settlement on it. It appears only when the caller supplied
-one, so read it with a `== null` guard.
-
-Nothing routes, authorizes or settles on the bag. A wrong `taskId` mislabels a
-run for whoever is reading it and grants nothing.
-
-Jobs can nest. If a job files jobs of its own, calling `/workstreams` on its id
-returns them.
+Children can nest. If a child dispatches work of its own, calling `/children` on
+its id returns it.
 
 ## Paging
 
 Pass `limit` (1–100, default 25) and `offset` (0–10000). Values outside those
 ranges get a `400` naming the accepted range rather than a silently clamped
-page.
+page. A host can lower the ceiling with
+[`maxChildSessionListLimit`](../configuration/runtime.md).
 
-Rows come back newest-created first. A job that starts a run while you are
-paging will not shuffle the pages under you. A job *created* while you are
+Rows come back newest-created first. A child that starts a run while you are
+paging will not shuffle the pages under you. A child *created* while you are
 paging can be missed, or can shift a later page by one — if you need exactness
 there, fetch a single page large enough to hold the whole set.
 
 ## What this endpoint won't do
 
 **It won't apply access rules of its own.** The same rules that govern reading
-the conversation named in the path govern reading its jobs. That is how every
-session-addressed route works: session detail, state, resource content, the
-debug endpoints. A conversation in another tenant answers `404`. One with no
-jobs answers `200` with an empty list. Whether one belonging to another user
+the conversation named in the path govern reading its children. That is how
+every session-addressed route works: session detail, state, resource content,
+the debug endpoints. A conversation in another tenant answers `404`. One with no
+children answers `200` with an empty list. Whether one belonging to another user
 answers `403` depends on your `resolvePrincipal`. With none configured the
 management endpoints stay open, so a caller holding a conversation id can read
-that conversation's jobs. See [Without a
-resolver](./authentication.md#without-a-resolver).
+its children. See [Without a resolver](./authentication.md#without-a-resolver).
 
 **It won't list background work across conversations.** There is no
-"everything I have running" endpoint. You reach jobs through the conversation
-that started them.
+"everything I have running" endpoint. You reach a child through the conversation
+that started it.
 
 **It won't tell you whether a worker process is alive.** See the note on
 `status` above.
 
-**It won't return the job's state, resources, or journal.** Rows carry identity,
-labels, timestamps and status. Fetch the session itself if you need more.
+**It won't start anything.** Whether work runs in a child session is declared in
+the flow. A caller can list children, never create one.
+
+**It won't return the child's state, resources, or journal.** Rows carry
+identity, labels, timestamps and status. Fetch the session itself if you need
+more.
 
 ## Related
 
-- [Work that outlives the turn](/guides/background-work) — how jobs relate to the other
+- [Work that outlives the turn](/guides/background-work) — how this relates to the other
   things this framework calls background work
-- [Client overview](../client/overview.md#background-work) — the same two calls from an app
+- [Client overview](../client/overview.md#child-sessions) — the same two calls from an app
 - [Claude Code SDK agent](../tools/claude-code-sdk.md#turning-it-off-for-background-work) — running
-  a coding agent as a job, and what its workstream records
+  a coding agent in a child session, and what it records there
 - [Engine setup](./setup.md) — the full HTTP route table
 - [Authentication](./authentication.md) — how addressed routes scope by owner
 - [Persistence](../persistence/overview.md) — where sessions and requests are stored

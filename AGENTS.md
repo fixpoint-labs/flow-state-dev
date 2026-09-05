@@ -29,14 +29,18 @@ Use this protocol when work is wave-based:
 
 This repo uses Changesets for release coordination. Do not edit a root `changelog.md` — none exists.
 
-**On every PR with user-facing impact:**
+**A changeset is not required by default.** Most PRs don't get one.
+
+**Write one when** somebody who has installed a published package needs to know: public API, a capability, block, CLI command, hook, env var, or config key they call has changed, or behavior they can observe from outside the package has shifted.
 
 1. Run `pnpm changeset`. Pick the affected publishable package(s).
-2. Pre-1.0: select `patch` for non-breaking, `minor` for new capabilities or breaking changes. Never `major`.
-3. Write a single user-facing sentence describing the change. Multi-paragraph or migration notes are fine when warranted.
+2. Pre-1.0: `patch` for a change no consumer's existing code can trip over (bug fixes, additive API), `minor` for anything that can break them. Never `major`. [`release-notes-workflow.md`](docs/contributing/release-notes-workflow.md#pre-10-discipline-current-state) is the authoritative wording for this choice — defer to it, don't re-derive it from this line.
+3. Write a single user-facing sentence and name the Linear issue in it (e.g. `FIX-123`). CI enforces the issue reference.
 4. Commit the generated `.changeset/<name>.md` file with the PR.
 
-**Skip changesets** for internal-only changes (refactors, test-only edits, internal helpers, infra). State that explicitly in the PR description so a reviewer can verify, or run `pnpm changeset --empty` and commit the resulting empty fragment.
+**Skip it otherwise** — internal refactors, tests, infra, docs-site edits, agent skills, and anything scoped to a private package (`labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals`). Say "no changeset needed" in the PR description if a reviewer might wonder. `pnpm changeset --empty` still works but is not required, and CI does not gate on `changeset-bot`.
+
+**Never hand-write a fragment naming a private package.** They are skipped by `privatePackages: { version: false }`, and a fragment mixing a skipped package with a publishable one fails the entire release run.
 
 **Reference:** [`docs/contributing/release-notes-workflow.md`](docs/contributing/release-notes-workflow.md) covers when to write what, the multi-package case, common mistakes, and what happens at release time. [BP-022](docs/contributing/best-practices.md#bp-022-release-notes-via-changesets) is the rule.
 

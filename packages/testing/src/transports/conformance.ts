@@ -63,6 +63,9 @@ export function createMockTransportHost(
   const host: InboundTransportHost = {
     registry: minimalRegistry(),
     stores: minimalStores(),
+    // The mock runs everything in-process, so an `{ id }` dispatch is admitted
+    // as it would be on a colocated host.
+    usesExternalDispatcher: false,
     async validateDispatch() {},
     dispatch(envelope) {
       dispatchCalls.push({ envelope });

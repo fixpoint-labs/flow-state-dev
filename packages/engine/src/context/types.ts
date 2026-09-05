@@ -11,7 +11,8 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
-import type { DetachedStartOperation, ParentTaskBinding } from "./create-request-host";
+import type { ParentTaskBinding } from "./create-request-host";
+import type { DispatchOperation } from "./dispatch-operation";
 import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {
@@ -136,12 +137,13 @@ export type CreateExecutionContextOptions<
  */
 export type RequestHostConstructionInputs = {
   /**
-   * Starts a detached request through the host-level arbiter and enqueue-time
-   * materialization. Absent → `startDetached` refuses `no-start-operation`,
-   * which is the `worker-only` case: that mode constructs no dispatcher, so a
-   * deployment whose capabilities dispatch must supply this there explicitly.
+   * Starts the request a dispatch becomes, through the same host-level arbiter
+   * and enqueue-time materialization. Absent → the dispatch seam refuses
+   * `no-dispatch-operation` — the `worker-only` case: that mode constructs no
+   * dispatcher, so a deployment whose capabilities dispatch must supply this
+   * there explicitly.
    */
-  startOperation?: DetachedStartOperation;
+  dispatchOperation?: DispatchOperation;
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
   /** The stale-request sweeper's threshold. */

@@ -290,6 +290,6 @@ When `REDIS_URL` is set, the kitchen-sink builds a `bullmqWorker` adapter (Bull 
 
 ## See also
 
-- [Work that outlives the turn](/guides/background-work) — how queue-backed runs compare to side chains and workstreams
+- [Work that outlives the turn](/guides/background-work) — how queue-backed runs compare to side chains and dispatched child sessions
 - [Scheduled actions reference](/docs/server/scheduled) — framework scheduling contract
 - [Deploying with Docker](/guides/deploying-with-docker) — containerized deployment

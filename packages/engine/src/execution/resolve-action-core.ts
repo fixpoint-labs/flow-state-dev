@@ -1,70 +1,50 @@
 /**
  * Resolve the action core to execute for a dispatched request.
  *
- * An action comes in forms that share `ActionCore` (the handler block plus
+ * Every arrival is a dispatch of one type, delivered to one entry addressed by
+ * `(type, name)`, and all of them share `ActionCore` (the handler block plus
  * execution policy), so the runtime runs them identically — it only needs to
- * find the right one:
+ * find the right one. The envelope's trusted `source` decides the type; the
+ * type's own map is the only one read (`resolve-entry.ts`):
  *
- * - a caller-addressed `ActionConfig` in `flow.actions` (HTTP / MCP), named by
- *   the caller and authorized per principal;
- * - an event-addressed binding carried inline on its transport map, selected by
- *   an event coordinate and trusted at the transport boundary:
- *   - webhook: `flow.webhooks[provider].on[event]`, keyed by `(provider, eventType)`;
- *   - chat: `flow.chat.on[eventKey]`, keyed by the matched subscription key;
- *   - scheduled (static): `flow.schedules.static[scheduleId]`, keyed by the id.
+ * - `public` — a caller-addressed `ActionConfig` in `flow.actions` (HTTP / MCP),
+ *   named by the caller and authorized per principal;
+ * - `internal` / `task` — `flow.internal.actions[name]` / `flow.task.actions[name]`,
+ *   dispatched by the seam from inside a running request;
+ * - `webhook` / `chat` / `schedule` — the binding carried inline on its transport
+ *   map, selected by the adapter's coordinate in the namespaced metadata slot
+ *   (`metadata.webhook` / `metadata.chat` / `metadata.schedule`) and trusted at
+ *   the transport boundary.
  *
- * An event dispatch carries its coordinate in a namespaced metadata slot
- * (`metadata.webhook` / `metadata.chat` / `metadata.schedule`), stamped by the
- * adapter and persisted on the request record so recovery can re-resolve it.
- * When present, resolution reads the matching transport map; otherwise it falls
- * back to the named action. This is the single seam that lets an event handler
- * be a first-class action without ever appearing in `flow.actions`.
+ * **No fallback, for any type.** An earlier shape let an event whose coordinate
+ * did not match fall through to `flow.actions[name]`, and made the detached
+ * source the one terminal exception. A dispatch's name is provenance for every
+ * type but `public`, so a fall-through hands a framework-stamped dispatch a
+ * caller-addressed handler whose key happens to collide. Every branch is now
+ * terminal: an absent entry returns `undefined`, which the caller turns into a
+ * named refusal.
  *
- * Security: each event branch is gated on its internal-only `source`
- * (`"webhook"` / `"chat"` / `"scheduled"`). Those sources are set only by the
- * adapters, never from a request body — whereas `metadata` on a caller-addressed
- * dispatch (the HTTP action endpoint spreads `body.metadata`) is
- * attacker-controlled. Without the source gate, a caller could POST
+ * Security: each branch is gated on the source, and sources are set only by the
+ * adapters and the seam, never from a request body — whereas `metadata` on a
+ * caller-addressed dispatch (the HTTP action endpoint spreads `body.metadata`)
+ * is attacker-controlled. Without the source gate, a caller could POST
  * `{ metadata: { chat: { eventKey } } }` to the public action endpoint and
  * pivot resolution into an event handler, running it with forged input and no
- * transport authentication. The gate closes that pivot for every
- * caller-addressed surface at once, independent of which route forwards caller
- * metadata.
+ * transport authentication.
  *
- * The one event path with no static coordinate is the dynamic schedule, whose
- * core is produced at dispatch time by a resolver and cannot be reached from
+ * The one path with no static coordinate is the dynamic schedule, whose core
+ * is produced at dispatch time by a resolver and cannot be reached from
  * `flow.schedules.static`. That case is handled upstream by a carried core on
- * the dispatch envelope (`resolvedActionCore`), not here — see
- * `runAction`'s `resolveAction`.
+ * the dispatch envelope (`resolvedActionCore`), not here — see `runAction`'s
+ * `resolveAction`.
  */
 import type { ActionCore, FlowInstance } from "@flow-state-dev/core/types";
-import {
-  CHAT_SOURCE,
-  SCHEDULED_SOURCE,
-  WEBHOOK_SOURCE,
-  WORKSTREAM_SOURCE
-} from "./transport-sources";
-
-type WebhookDispatchMetadata = {
-  webhook?: { provider?: string; eventType?: string | null };
-};
-
-type ChatDispatchMetadata = {
-  chat?: { eventKey?: string };
-};
-
-type ScheduleDispatchMetadata = {
-  schedule?: { scheduleId?: string };
-};
+import { resolveEntry } from "./resolve-entry";
 
 /**
- * Find the `ActionCore` for a dispatch. An event binding is resolved only for a
- * genuine dispatch from its own transport (`source === "webhook" | "chat" |
- * "scheduled"`); every other source resolves the named `flow.actions` entry, so
- * a caller cannot reach an event handler by injecting `metadata.<transport>`.
- * Returns `undefined` when neither an event binding nor a named action matches —
- * callers decide whether that is a hard error (initial dispatch) or a tolerable
- * absence (optional prefetch / token-budget reads).
+ * Find the `ActionCore` for a dispatch, or `undefined` when its type's map
+ * declares none — callers decide whether that is a hard error (initial
+ * dispatch) or a tolerable absence (optional prefetch / token-budget reads).
  */
 export function resolveActionCore(
   flow: FlowInstance,
@@ -72,46 +52,6 @@ export function resolveActionCore(
   source: string | undefined,
   metadata: unknown
 ): ActionCore | undefined {
-  if (source === WEBHOOK_SOURCE) {
-    const webhook = (metadata as WebhookDispatchMetadata | undefined)?.webhook;
-    if (
-      webhook !== undefined &&
-      typeof webhook.provider === "string" &&
-      typeof webhook.eventType === "string"
-    ) {
-      const binding = flow.webhooks?.[webhook.provider]?.on?.[webhook.eventType];
-      if (binding !== undefined) return binding;
-    }
-  }
 
-  if (source === CHAT_SOURCE) {
-    const eventKey = (metadata as ChatDispatchMetadata | undefined)?.chat?.eventKey;
-    if (typeof eventKey === "string") {
-      const binding = flow.chat?.on?.[eventKey];
-      if (binding !== undefined) return binding;
-    }
-  }
-
-  if (source === SCHEDULED_SOURCE) {
-    const scheduleId = (metadata as ScheduleDispatchMetadata | undefined)?.schedule?.scheduleId;
-    if (typeof scheduleId === "string") {
-      const binding = flow.schedules?.static?.[scheduleId];
-      if (binding !== undefined) return binding;
-    }
-  }
-
-  // Detached dispatch (FIX-999). TERMINAL for this source — note the `return`
-  // rather than the `if (binding !== undefined) return` shape the event branches
-  // above use. Those may fall through because an event whose coordinate does not
-  // match should still be able to resolve a named action; a detached dispatch
-  // must not. It carries `actionName` as provenance only, and that name can
-  // collide with a public `flow.actions` key, so falling through here would hand
-  // a framework-stamped dispatch a caller-addressed handler — the seam's own
-  // source admitting everything. An absent core returns `undefined`, which the
-  // caller turns into a named refusal.
-  if (source === WORKSTREAM_SOURCE) {
-    return flow.workstream;
-  }
-
-  return flow.actions[actionName];
+  return resolveEntry<ActionCore>(flow, actionName, source, metadata);
 }

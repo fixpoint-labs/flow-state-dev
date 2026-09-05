@@ -40,6 +40,7 @@ import {
 } from "../concurrency/arbiter";
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
+import { INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
   combineSignals,
   createInProcessDispatcher,
@@ -127,7 +128,7 @@ export type CreateInboundTransportHostOptions = {
  *   wrong and someone should look.
  * - `aborted` — the run was cancelled before it left the concurrency queue,
  *   which is shutdown working as designed. Recording that as `failed` reports a
- *   successful cancellation as an execution failure to clients, to workstream
+ *   successful cancellation as an execution failure to clients, to child-session
  *   summaries, and to recovery, which reads terminal statuses to decide what
  *   needs attention.
  *
@@ -201,7 +202,7 @@ export function createInboundTransportHost(
    * and `waitUntil` both raise synchronously when called outside a request
    * scope. An escaping throw would therefore make a synchronous failure mean two
    * different things, and each caller reads it as only one — the pre-start one:
-   * `createDetachedStartOperation` reads it as "nothing was dispatched" and
+   * the dispatch operation reads it as "nothing was dispatched" and
    * settles the row it handed over, and the resume route reads it as
    * "setup failed" and reverts the suspension to `pending`, inviting a second
    * resume against a request whose run is still going. Two writers, one row
@@ -219,8 +220,8 @@ export function createInboundTransportHost(
    *
    * A `RuntimeLogger` is adapter- or app-supplied, so `warn`/`error` are
    * arbitrary code that can throw. Both callers here are on a path where that
-   * throw would be read as something else entirely: one runs before a detached
-   * dispatch has materialized, where `createDetachedStartOperation` reads a
+   * throw would be read as something else entirely: one runs before a
+   * dispatch has materialized, where the dispatch operation reads a
    * synchronous throw as "nothing was started" and settles the row — so a failed
    * log line would report work as never started when the only thing that failed
    * was the logging. The other is the containment inside
@@ -440,7 +441,24 @@ export function createInboundTransportHost(
         return handle.finished;
       };
 
-      if (decision.policy === "queue" && decision.key !== undefined) {
+      // A DISPATCHED request (the seam's `internal` / `task` sources) takes this
+      // branch whatever its policy, and the reason is the meaning of `accepted`
+      // rather than the concurrency queue. The seam hands back a handle the
+      // moment acceptance resolves, and a later read of that request authorizes
+      // off the provenance persisted in its record's `metadata.dispatch` — the
+      // incarnation guard reads its recipient lineage from there. On the
+      // ordinary non-queued path acceptance is `onRegistered`, fired well before
+      // the request record is written, so the sender would be handed an id whose
+      // durable stamp does not exist yet, and a failure in that window leaves an
+      // accepted but unverifiable delivery. The queued branch already resolves
+      // acceptance off its own enqueue-time writes, so the id and its stamp
+      // become durable together. Under `allow` the gate below is a passthrough,
+      // so the run still starts immediately — only what `accepted` waits for
+      // changes.
+      const isDispatched =
+        envelope.source === INTERNAL_SOURCE || envelope.source === TASK_SOURCE;
+
+      if (isDispatched || (decision.policy === "queue" && decision.key !== undefined)) {
         // Registered HERE rather than left to `runAction`, because between this
         // dispatch and the run's own registration the request is real,
         // discoverable, and cancellable by anyone reading the store — and yet
@@ -482,6 +500,15 @@ export function createInboundTransportHost(
             "any"
           )
         ]).catch(async (error: unknown) => {
+          // Under `reject` the arbiter claimed the key synchronously in
+          // `gate()` and only the wrapper it returned releases it — and that
+          // wrapper is invoked only once materialization succeeds. Run it here
+          // with a start that fails, so the failed dispatch does not hold the
+          // key until the process restarts. `queue` and `allow` hold nothing
+          // before `gateStart` runs, so there is nothing to give back.
+          if (decision.policy === "reject") {
+            await gateStart(() => Promise.reject(error)).catch(() => undefined);
+          }
           await terminateUnenqueuedRequest(stores, requestId);
           throw error;
         });
@@ -836,6 +863,7 @@ export function createInboundTransportHost(
       voice: runtimeConfig.voiceProvider
     },
     logger: runtimeConfig.logger,
+    usesExternalDispatcher: isExternalDispatcher,
     dispatch,
     continueRequest,
     validateDispatch,

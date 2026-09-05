@@ -1,7 +1,7 @@
 /**
  * The manager — a task row becomes a watched, settled coding run.
  *
- * One detached worker on a conductor board:
+ * One handed-off worker on a conductor board:
  *
  *   open the run row → build the prompt & take the checkout → run the harness
  *   → read the verdict → settle or fail
@@ -30,7 +30,13 @@
  * or to `errored` once the retry budget is spent). Conductor adds no settlement
  * path of its own.
  */
-import { handler, sequencer } from "@flow-state-dev/core";
+import {
+  defineCapability,
+  handler,
+  sequencer,
+  type DefinedCapability,
+  type PresetDef,
+} from "@flow-state-dev/core";
 import { withTimeout } from "@flow-state-dev/core/helpers";
 import type {
   BlockContext,
@@ -275,10 +281,10 @@ export const conductorTaskInputSchema = z.object({
 /**
  * The manager's per-run values.
  *
- * Sequencer state, not session state: a detached board refuses a worker that
- * declares session state, because every detached worker in a flow becomes a
- * route on one shared workstream flow where two routes choosing one key with
- * different shapes corrupt each other silently.
+ * Sequencer state, not session state: `defineFlow` refuses a handed-off worker
+ * that declares session state, because the entry runs in a child session it
+ * may share with other rows, where two blocks choosing one key with different
+ * shapes corrupt each other silently.
  */
 const managerStateSchema = z.object({
   issue: z.string().nullable().default(null),
@@ -438,9 +444,17 @@ function taskPayload(input: { input?: unknown; taskId: string }): {
   return parsed.data;
 }
 
+/**
+ * The manager's per-run values, as the blocks that declare
+ * {@link managerStateSchema} are handed them.
+ */
+type ManagerState = z.infer<typeof managerStateSchema>;
+
 /** The attempt identity every run-record write is fenced against. */
-function identityFrom(ctx: BlockContext, boardCollectionId: string): AttemptIdentity {
-  const state = ctx.sequencer?.state as z.infer<typeof managerStateSchema> | undefined;
+function identityFrom(
+  state: ManagerState | undefined,
+  boardCollectionId: string,
+): AttemptIdentity {
   if (state?.topic == null || state.taskId == null || state.attempt == null) {
     throw new Error(
       "[conductor] the manager's sequencer state is empty — this block ran outside the " +
@@ -456,8 +470,7 @@ function identityFrom(ctx: BlockContext, boardCollectionId: string): AttemptIden
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
-function managerState(ctx: BlockContext): z.infer<typeof managerStateSchema> {
-  const state = ctx.sequencer?.state as z.infer<typeof managerStateSchema> | undefined;
+function managerState(state: ManagerState | undefined): ManagerState {
   if (state?.workspacePath == null) {
     throw new Error("[conductor] the manager's sequencer state has no checkout on it.");
   }
@@ -468,7 +481,7 @@ function managerState(ctx: BlockContext): z.infer<typeof managerStateSchema> {
  * Everything one worker can legitimately spend, end to end.
  *
  * **The shutdown budget has to cover the whole worker, not the agent step.**
- * `detachedDrainTimeoutMs` was set to `runTimeoutMs`, which is only one of four
+ * `dispatchDrainTimeoutMs` was set to `runTimeoutMs`, which is only one of four
  * things a claimed row does before it settles — and the engine carves its
  * cancellation reserve OUT of that budget rather than adding to it, so the
  * effective wait was already *less* than the agent's own deadline. A valid run
@@ -679,8 +692,60 @@ export function resolveOwnership(options: {
   return { ownership, maxLockHeldMs };
 }
 
-/** Build the manager: one detached worker for one phase. */
-export function harnessManager(options: ManagerOptions) {
+/**
+ * Every collection the manager and its phase read, as ONE capability.
+ *
+ * A factory rather than a singleton, because the set is per-conductor: the
+ * board ledger is registered under its own collection id, and that id
+ * partitions by tenant and epic. The capability's name carries the same id for
+ * the same reason — two conductors in one process are two capabilities, and a
+ * shared name is a merge collision.
+ *
+ * **The widened return type is load-bearing, not decoration.** Left to
+ * inference, the capability's resources are a literal object type, which
+ * narrows `ctx.resources` AND `ctx.targets` on every block that lists it — and
+ * a narrowed `BlockContext` is not assignable to a plain one, so all fourteen
+ * helper calls in this file would need `ctx as BlockContext` back. That is the
+ * invariance trap {@link RequestIdentityContext} describes, reached from the
+ * `uses` side. The accessor set is genuinely open here (a phase brings its
+ * own), so declaring it open is the honest type as well as the usable one.
+ */
+function createConductorCapability(options: {
+  /** The board's ledger collection id — also the accessor the fence reads it under. */
+  boardCollectionId: string;
+  /** The board's ledger declaration — the same object the board itself registers. */
+  boardCollection: DefinedTaskCollection;
+  /** {@link PhaseSpec.readable}, already checked against the reserved accessors. */
+  readable: Record<string, DeclaredResourceEntry>;
+}): DefinedCapability<
+  string,
+  Record<string, never>,
+  never,
+  Record<string, PresetDef>,
+  undefined,
+  Record<string, DeclaredResourceEntry>
+> {
+  const { boardCollectionId, boardCollection, readable } = options;
+  return defineCapability({
+    name: `conductor:${boardCollectionId}`,
+    resources: {
+      ...readable,
+      [RUNS]: runRecordCollection,
+      // Where a question is posted, withdrawn, and read back as an answer. The
+      // `answer` and `status` actions declare the same definition object, so the
+      // question a child session writes is the one the coordinator session
+      // reads — one registration, not two storage slots that look alike.
+      [INBOX]: inboxCollection,
+      // Declared so the fence can read the LIVE claim off the board row. The
+      // board declares the same definition object, so this is one registration
+      // rather than a second storage slot that looks like the first.
+      [boardCollectionId]: boardCollection,
+    },
+  });
+}
+
+/** Build the manager: one handed-off worker for one phase. */
+export function harnessManager(options: ManagerOptions): TaskWorker {
   const {
     boardCollectionId,
     boardCollection,
@@ -699,7 +764,6 @@ export function harnessManager(options: ManagerOptions) {
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
   });
 
-  /** Every collection the manager or its phase touches, by accessor key. */
   // **Two accessors are the manager's and a phase may not claim them.**
   // Refused rather than silently overridden, and rather than merged last.
   //
@@ -732,19 +796,11 @@ export function harnessManager(options: ManagerOptions) {
     );
   }
 
-  const resources: Record<string, DeclaredResourceEntry> = {
-    ...phase.readable,
-    [RUNS]: runRecordCollection,
-    // Where a question is posted, withdrawn, and read back as an answer. The
-    // `answer` and `status` actions declare the same definition object, so the
-    // question a detached workstream writes is the one the coordinator session
-    // reads — one registration, not two storage slots that look alike.
-    [INBOX]: inboxCollection,
-    // Declared so the fence can read the LIVE claim off the board row. The
-    // board declares the same definition object, so this is one registration
-    // rather than a second storage slot that looks like the first.
-    [boardCollectionId]: boardCollection as unknown as DeclaredResourceEntry,
-  };
+  const conductor = createConductorCapability({
+    boardCollectionId,
+    boardCollection,
+    readable: phase.readable,
+  });
 
   /**
    * The board's rows as the SUBSTRATE sees them, not as a resource collection.
@@ -791,7 +847,8 @@ export function harnessManager(options: ManagerOptions) {
     name: "conductor-open-run",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.void(),
-    resources,
+    sequencerStateSchema: managerStateSchema,
+    uses: [conductor],
     execute: async (input, ctx) => {
       const { issue, phase: phaseName } = taskPayload(input);
 
@@ -850,7 +907,7 @@ export function harnessManager(options: ManagerOptions) {
       // reading and claiming rows that are not its own — the ledger half of the
       // isolation the checkout and branch already have. Refused here for the
       // same reason the phase is: this is where the wrong work would execute.
-      const resolvedTenant = requestTenant(ctx as BlockContext);
+      const resolvedTenant = requestTenant(ctx);
       if (resolvedTenant !== tenant) {
         throw new ConductorAttemptFailed(
           `[conductor] this conductor serves ${describeTenant(tenant)}; the request resolved ` +
@@ -866,7 +923,7 @@ export function harnessManager(options: ManagerOptions) {
       // and missing another, which would leave the report partitioned and the
       // overwrite on disk.
       const location: RunLocation = {
-        principal: runPrincipal(ctx as BlockContext),
+        principal: runPrincipal(ctx),
         epic: boardCollectionId,
         issue,
         phase: phaseName,
@@ -899,8 +956,7 @@ export function harnessManager(options: ManagerOptions) {
       // would have to know about. That is why `PhaseRunContext` gained a field
       // instead of `implement.ts` moving its read earlier: the same collision
       // is unavailable to the next phase that wants carry-forward.
-      const previousSessionId =
-        (await readRunRow(ctx as BlockContext, topic))?.sessionId ?? null;
+      const previousSessionId = (await readRunRow(ctx, topic))?.sessionId ?? null;
       await ctx.sequencer!.patchState({ previousSessionId });
 
       // **Refusal stops the attempt.** The row can be reclaimed between the
@@ -910,7 +966,7 @@ export function harnessManager(options: ManagerOptions) {
       // lease-renewal interval.
       await fenced(
         openRunRow(
-          ctx as BlockContext,
+          ctx,
           {
             taskId: input.taskId,
             attempt: input.attempts,
@@ -939,7 +995,7 @@ export function harnessManager(options: ManagerOptions) {
       //
       // After the fenced open, not before: a superseded attempt stops there and
       // must not reach in and withdraw its replacement's question.
-      await withdrawEarlierQuestions(ctx as BlockContext, issue, phaseName, input.attempts);
+      await withdrawEarlierQuestions(ctx, issue, phaseName, input.attempts);
     },
   });
 
@@ -954,9 +1010,10 @@ export function harnessManager(options: ManagerOptions) {
     name: "conductor-prepare",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ prompt: z.string() }),
-    resources,
+    sequencerStateSchema: managerStateSchema,
+    uses: [conductor],
     execute: async (input, ctx) => {
-      const state = managerState(ctx as BlockContext);
+      const state = managerState(ctx.sequencer?.state);
 
       // **Two channels, two meanings, and they never carry each other.** The
       // board's `feedback` says why the LAST ATTEMPT FAILED; these say what an
@@ -968,9 +1025,7 @@ export function harnessManager(options: ManagerOptions) {
       // Read here rather than inside the builder so the ORDER is the manager's:
       // a fold whose order depends on where a phase happens to sort is a prompt
       // that changes between replays.
-      const answers = (
-        await listQuestions(ctx as BlockContext, state.issue!, state.phase!)
-      )
+      const answers = (await listQuestions(ctx, state.issue!, state.phase!))
         .filter((row) => row.state.status === "answered" && row.state.answer !== null)
         .map((row) => ({ question: row.state.question, answer: row.state.answer! }));
 
@@ -985,7 +1040,7 @@ export function harnessManager(options: ManagerOptions) {
         ...(state.previousSessionId != null
           ? { previousSessionId: state.previousSessionId }
           : {}),
-        ctx: ctx as BlockContext,
+        ctx,
         answers,
         // The prompt is the only place this path is named, which is what makes
         // the ask FORCED rather than spontaneous — the harness offers no seam
@@ -1023,7 +1078,7 @@ export function harnessManager(options: ManagerOptions) {
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
       leases.set(
-        leaseKey(ctx as BlockContext),
+        leaseKey(ctx),
         await acquireCheckout(
           state.workspacePath!,
           `${input.taskId}#${input.attempts}`,
@@ -1033,11 +1088,11 @@ export function harnessManager(options: ManagerOptions) {
           // could still acquire and provision a tree whose result it can no
           // longer record — and the wait is now long enough for that to cost a
           // replacement most of an hour.
-          (ctx as BlockContext).signal,
+          ctx.signal,
         ),
       );
       await provisionCheckout(workspace, {
-        principal: runPrincipal(ctx as BlockContext),
+        principal: runPrincipal(ctx),
         epic: boardCollectionId,
         issue: state.issue!,
         phase: state.phase!,
@@ -1052,7 +1107,7 @@ export function harnessManager(options: ManagerOptions) {
    *
    * 1. **The verdict did NOT fail AND this attempt's marker holds a question →
    *    park.** `awaitReview`, announce, then return normally. The recorders
-   *    refuse a parked row, so the workstream request ends with the row still
+   *    refuse a parked row, so the child session's request ends with the row still
    *    `awaiting_review` and the run costs nothing while a person thinks.
    * 2. **The verdict succeeded AND the done-condition holds → return.**
    * 3. **Anything else → throw**, withdrawing this attempt's question first: the
@@ -1128,16 +1183,17 @@ export function harnessManager(options: ManagerOptions) {
       costUsd: z.number().nullable(),
     }),
     outputSchema: managerOutputSchema,
-    resources,
+    sequencerStateSchema: managerStateSchema,
+    uses: [conductor],
     execute: async (handle, ctx) => {
-      const state = managerState(ctx as BlockContext);
-      const identity = identityFrom(ctx as BlockContext, boardCollectionId);
+      const state = managerState(ctx.sequencer?.state);
+      const identity = identityFrom(ctx.sequencer?.state, boardCollectionId);
       const succeeded = handle.status === "completed";
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.
       await fenced(
-        writeRunRow(ctx as BlockContext, identity, {
+        writeRunRow(ctx, identity, {
         sessionId: handle.sessionId,
         finalMessage: handle.finalMessage,
         usage: handle.usage,
@@ -1166,7 +1222,7 @@ export function harnessManager(options: ManagerOptions) {
         // Create-only, and the single ask path. The step commits no output, so
         // it re-executes on recovery: the patch branch has nothing to apply, so
         // a second execution is a read and a replay cannot erase an answer.
-        await askQuestion(ctx as BlockContext, questionTopicKey, {
+        await askQuestion(ctx, questionTopicKey, {
           question,
           askedBy: identity.taskId,
           askedAt: Date.now(),
@@ -1176,12 +1232,12 @@ export function harnessManager(options: ManagerOptions) {
       /** Arm 3 clears this attempt's question: the attempt failed, so it is moot. */
       const withdrawOwnQuestion = async (): Promise<void> => {
         if (questionTopicKey === undefined) return;
-        await withdrawQuestion(ctx as BlockContext, questionTopicKey);
+        await withdrawQuestion(ctx, questionTopicKey);
       };
 
       // ── Arm 1: the verdict did NOT fail AND this attempt asked ─────────────
       if (succeeded && question !== undefined && questionTopicKey !== undefined) {
-        const board = await boardTasks(ctx as BlockContext);
+        const board = await boardTasks(ctx);
         // The substrate's own transition, never a status this lab writes by
         // hand: the recorders' parked-row refusal, the drain's excusal and the
         // lease's governance all key off it.
@@ -1193,7 +1249,7 @@ export function harnessManager(options: ManagerOptions) {
         // park on the question it just tried to answer.
         await announce({ question: questionTopicKey });
 
-        // Returning normally is the point: the workstream request ends and the
+        // Returning normally is the point: the child session's request ends and the
         // row stays parked, because both recorders decline a row the worker
         // parked for review.
         return {
@@ -1221,7 +1277,7 @@ export function harnessManager(options: ManagerOptions) {
               attempt: identity.attempt,
               workspacePath: state.workspacePath!,
               branch: state.branch!,
-              ctx: ctx as BlockContext,
+              ctx,
             }),
           NETWORK_CALL_TIMEOUT_MS,
           `the ${state.phase} phase's completion check`,
@@ -1231,7 +1287,7 @@ export function harnessManager(options: ManagerOptions) {
           // one, so reaching here with a succeeded verdict means the marker was
           // empty.
           await fenced(
-            writeRunRow(ctx as BlockContext, identity, { outcome: "succeeded", reason: null }),
+            writeRunRow(ctx, identity, { outcome: "succeeded", reason: null }),
             "the row was completed",
           );
           return {
@@ -1267,7 +1323,8 @@ export function harnessManager(options: ManagerOptions) {
     name: "conductor-record-failure",
     inputSchema: z.unknown(),
     outputSchema: z.never(),
-    resources,
+    sequencerStateSchema: managerStateSchema,
+    uses: [conductor],
     execute: async (error: unknown, ctx): Promise<never> => {
       // **Release the tree on the way out, whatever failed.**
       //
@@ -1288,10 +1345,10 @@ export function harnessManager(options: ManagerOptions) {
       // Idempotent: `releaseLease` deletes the entry, so the agent path's
       // `onSettled` having already released makes this a no-op, and `release()`
       // is identity-guarded so it can never remove a replacement's lock.
-      releaseLease(ctx as BlockContext);
+      releaseLease(ctx);
 
       const reason = error instanceof Error ? error.message : String(error);
-      const state = ctx.sequencer?.state as z.infer<typeof managerStateSchema> | undefined;
+      const state = ctx.sequencer?.state;
       // A failure BEFORE the row was opened has no identity to fence against —
       // and cannot have left stale metadata either, since nothing was written.
       if (state?.topic != null && state.taskId != null && state.attempt != null) {
@@ -1300,7 +1357,7 @@ export function harnessManager(options: ManagerOptions) {
         // means only that a superseded attempt recorded nothing — which is the
         // correct outcome. Every other call site stops on refusal.
         await writeRunRow(
-          ctx as BlockContext,
+          ctx,
           {
             taskId: state.taskId,
             attempt: state.attempt,
@@ -1314,7 +1371,7 @@ export function harnessManager(options: ManagerOptions) {
     },
   });
 
-  return sequencer({
+  const worker = sequencer({
     name,
     inputSchema: taskWorkerInputSchema,
     outputSchema: managerOutputSchema,
@@ -1325,14 +1382,18 @@ export function harnessManager(options: ManagerOptions) {
     .step(
       claudeCodeAgent({
         ...agent,
-        // The board-construction shim: a detached board refuses a worker whose
-        // block authors a session-state schema.
+        // The hand-off shim: `defineFlow` refuses a handed-off worker whose block
+        // authors a session-state schema.
         detached: true,
         recordWork: true,
         // The framework's one addition, and the reason this lab needs it: the
         // run edits ITS checkout, and the record of what it touched is keyed
         // there too.
-        cwd: (_input, ctx) => managerState(ctx).workspacePath!,
+        // The one context this manager's `sequencerStateSchema` cannot reach:
+        // `claudeCodeAgent` is not one of our blocks, so its callback is handed
+        // the framework's default sequencer state rather than the manager's.
+        cwd: (_input, ctx) =>
+          managerState(ctx.sequencer?.state as ManagerState | undefined).workspacePath!,
       }),
       {
         // The cancellable-under-a-deadline obligation, met by a primitive core
@@ -1346,7 +1407,10 @@ export function harnessManager(options: ManagerOptions) {
       },
     )
     .step(decide)
-    .rescue([{ block: recordFailure }]) as unknown as TaskWorker;
+    .rescue([{ block: recordFailure }]);
+
+  worker.validate();
+  return worker;
 }
 
 /**

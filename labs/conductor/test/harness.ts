@@ -2,9 +2,9 @@
  * A conductor running end to end, in process, with the model stubbed.
  *
  * The seams the suite drives are the real ones — a real `createFlowState`
- * (which is what installs the detached start operation; a bare `runAction` has
+ * (which is what installs the dispatch operation; a bare `runAction` has
  * no request host and the first dispatch throws by name), the real task board
- * and its detached runner, the real `user`-scoped ledger, and the real
+ * and its hand-off, the real `user`-scoped ledger, and the real
  * fenced settlement. Only two things are substituted: the SDK `query`, so a
  * verdict can be staged, and the done-condition, so the conjunction's two arms
  * can be staged independently.
@@ -347,7 +347,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
     }) as unknown as ModelResolver,
     // The default is a serverless SIGTERM window, far shorter than a coding
     // run. An in-process host must raise it or a shutdown truncates one.
-    detachedDrainTimeoutMs: 60_000,
+    dispatchDrainTimeoutMs: 60_000,
   } as never);
 
   const sessionId = `sess_conductor_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -383,7 +383,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
         sessionId: asSession ?? sessionId,
         ...(asTenant !== undefined ? { tenantId: asTenant } : {}),
         stores: runtime.stores as never,
-        // Spread, as `fsdev run` does: the detached start operation reaches a
+        // Spread, as `fsdev run` does: the dispatch operation reaches a
         // request only because a spread copies the `requestHost` REFERENCE.
         runtimeConfig: { ...runtime.runtimeConfig } as never,
       });

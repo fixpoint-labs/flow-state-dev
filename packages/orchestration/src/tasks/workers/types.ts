@@ -16,26 +16,36 @@
  * pattern) calls `collection.complete(taskId, output)` afterward.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { z } from "zod";
 
 /**
  * Input contract handed to every worker. The pattern's
- * `dispatchAndExecute` step packs the claimed task's salient fields
- * into this shape so workers don't depend on the substrate's `Task`
- * type directly.
+ * `dispatchAndExecute` / board `packWorkerInput` packs the claimed
+ * task's salient fields into this shape so workers don't depend on
+ * the substrate's `Task` type directly.
+ *
+ * This Zod object is also the declared `inputSchema` workers reuse
+ * (re-exported as `taskWorkerInputSchema` from
+ * `@flow-state-dev/orchestration/task-board`) — a declared schema is a
+ * FILTER, so a field the substrate packs but this object omits reaches
+ * no worker that declares it. `TaskWorkerInput` below is inferred from
+ * this object, so the two cannot drift apart the way they did for
+ * FIX-1288 (`priorWork` packed by the board, stripped before any
+ * schema-declaring worker could read it).
  */
-export type TaskWorkerInput<TIn = unknown> = {
-  taskId: string;
-  goal: string;
+export const taskWorkerInputSchema = z.object({
+  taskId: z.string(),
+  goal: z.string(),
   /** Concise label for the task, distinct from `goal`. Mirrors `Task.title`. */
-  title?: string;
+  title: z.string().optional(),
   /**
    * Readable per-task support text — the request/conversation slice the
    * worker needs to act on this task. Mirrors `Task.context`. Distinct
    * from the generic typed `input` payload below: `context` is prose data
    * the worker renders into its prompt, not a typed directive.
    */
-  context?: string;
-  input?: TIn;
+  context: z.string().optional(),
+  input: z.unknown().optional(),
   /**
    * Dep outputs keyed by dep task id, materialized from the collection
    * at claim time. Always populated when the task declares
@@ -50,10 +60,10 @@ export type TaskWorkerInput<TIn = unknown> = {
    * results through their own glue — this happens in the worker
    * dispatch path itself.
    */
-  deps?: Record<string, unknown>;
-  attempts: number;
-  feedback?: string;
-  metadata?: Record<string, unknown>;
+  deps: z.record(z.unknown()).optional(),
+  attempts: z.number().int().nonnegative(),
+  feedback: z.string().optional(),
+  metadata: z.record(z.unknown()).optional(),
   /**
    * Selected observations from prior tasks in this board run.
    * Populated when the Task Board's `flowPolicy` returns a non-empty
@@ -62,13 +72,30 @@ export type TaskWorkerInput<TIn = unknown> = {
    * policy supplied one. Absent when no policy is configured or when
    * the policy selected nothing.
    *
-   * Typed loosely as `unknown` here so workers that don't reach for
-   * prior work don't pick up a transitive type dep. The concrete
-   * shape is `TaskPriorWork`, also exported from this package
-   * (`@flow-state-dev/orchestration`).
+   * `z.unknown().optional()`, not a narrower `TaskPriorWork` mirror: a
+   * worker that never reaches for prior work shouldn't pick up the
+   * transitive type, and a structural Zod mirror would re-validate a
+   * value the board itself authored. Optional matters twice over: this
+   * schema is the gate a worker's declared input passes through, and
+   * `packWorkerInput` spreads the key CONDITIONALLY so an unselected
+   * slot is an absent key rather than a present `undefined` — the
+   * distinction the detached path's JSON-safety gate rejects by name.
+   * Zod leaves an absent optional key absent on the way out, so a board
+   * with no selection stays wire-identical.
    */
-  priorWork?: unknown;
-};
+  priorWork: z.unknown().optional(),
+});
+
+/**
+ * Input contract handed to every worker, inferred from
+ * {@link taskWorkerInputSchema}. `input` is re-genericized here (the
+ * schema types it `unknown`) so a worker can name its typed payload
+ * without a second field list to keep in sync.
+ */
+export type TaskWorkerInput<TIn = unknown> = Omit<
+  z.infer<typeof taskWorkerInputSchema>,
+  "input"
+> & { input?: TIn };
 
 /**
  * Worker block alias. Any `BlockDefinition` whose input matches

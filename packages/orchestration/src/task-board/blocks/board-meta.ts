@@ -28,10 +28,10 @@
  *
  * ## Why hand-off needs a reason of its own
  *
- * The structural test is `counts.completed === counts.total`, and a detached
+ * The structural test is `counts.completed === counts.total`, and a handed-off
  * board that did exactly what it was built to do fails it: the row it handed
- * over is still `in_progress`, owned by a Workstream. So every successful
- * detached drain announced itself as `"blocked-by-failures"` — permanently,
+ * over is still `in_progress`, owned by a child session. So every successful
+ * hand-off drain announced itself as `"blocked-by-failures"` — permanently,
  * since no later drain re-emits this item once the child settles. The feature
  * whose entire point is that background work is *visible* was reporting its own
  * success as a terminal failure.
@@ -98,11 +98,11 @@ export interface BoardMetaOptions {
 
 export interface BoardMetaCompletedOptions extends BoardMetaOptions {
   /**
-   * Rows whose work is routed to a Workstream (FIX-982) — the same predicate
+   * Rows whose work is routed to a child session (FIX-982) — the same predicate
    * the board hands its exit question, and for the same reason it has to be the
    * same one. See {@link isHandedOff}.
    *
-   * Absent for every board that declares nothing detached, which is what keeps
+   * Absent for every board with no dispatcher seat, which is what keeps
    * the reason this block reports bit-for-bit what it was for those boards.
    */
   runsElsewhere?: RunsElsewhere;
@@ -148,7 +148,7 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * "would this row be claimable if the parked rows completed?" — sees `B`'s
  * dependency unsatisfied and would report a stall on a board that only needs an
  * answer. So the seed set is everything that will resolve on its own (already
- * completed, parked and therefore answerable, or handed to a Workstream) and
+ * completed, parked and therefore answerable, or handed to a child session) and
  * the loop closes over the rows those release.
  *
  * **The condition is causal, not positional, and that distinction is the whole
@@ -340,7 +340,7 @@ function excusedParkedByPool(input: unknown): boolean {
  *   refused a retry (FIX-948). Read from a persisted denial marker, never
  *   inferred from `counts.retries === maxTotalRetries`, which does not
  *   establish that a refusal happened.
- * - `"handed-off"` — every remaining row is running in a Workstream (FIX-1074).
+ * - `"handed-off"` — every remaining row is running in a child session (FIX-1074).
  *   A success, not a stall; `counts.in_progress` is how many.
  * - `"parked-for-review"` — the board stopped because the work it has left is
  *   waiting on a person (FIX-1234). Only a board with `onReview: "exit"`

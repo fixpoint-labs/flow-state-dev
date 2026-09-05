@@ -21,9 +21,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  committedLeaseSpan,
   createResourceBackedTaskCollection,
   createSequencerBackedTaskCollection,
   ticketForClaim,
+  type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -147,6 +149,117 @@ describe.each([
     const recovered = await collection.claim("w2");
     expect(recovered?.id).toBe("t");
     expect(recovered?.attempts).toBe(2);
+  });
+
+  it("lets a claimant that has not started yet take a lapsed row BACK, on the same attempt", async () => {
+    // FIX-1305. The arm above is right about a worker reporting a result and
+    // too strong for one that has not begun — a task handed to a child session
+    // has nobody renewing its lease until the child's gate runs, so an ordinary
+    // queue delay presents exactly this row: lapsed, and untouched by anyone.
+    //
+    // The takeover keeps the attempt. That is the half worth pinning: a
+    // re-claim would recover the row too, and would spend an attempt and a
+    // second dispatch to do it.
+    const { collection, setNow, claim } = await claimed();
+    setNow(1000 + 10_000);
+
+    const outcome = await collection.renewLease("t", 1000 + 20_000, {
+      claim,
+      adoptLapsedLease: true,
+    });
+
+    expect(outcome).toEqual({ outcome: "recorded" });
+    expect(collection.get("t")?.leaseUntil).toBe(1000 + 20_000);
+    expect(collection.get("t")?.attempts).toBe(1);
+    expect(collection.get("t")?.status).toBe("in_progress");
+    // And the row is genuinely held again, not merely stamped: the settlement
+    // the taker owes is now accepted, which is the whole point of taking it.
+    expect(await collection.complete("t", "done", { ifAllowed: true, claim })).toEqual({
+      outcome: "recorded",
+    });
+  });
+
+  it("still takes back a row a coordinator patched while it was running", async () => {
+    // The lease a claim committed to has to survive every other write to the
+    // row, and `leaseUntil - updatedAt` does not: `setPriority`, the label
+    // verbs and `patchMetadata` are all supported on an `in_progress` task and
+    // all move `updatedAt` while leaving the deadline alone. A patch after the
+    // deadline drives that subtraction negative, so a takeover reading it would
+    // refuse a claim nothing had touched — the failure this whole change exists
+    // to remove, reintroduced through the patch surface. Hence the duration is
+    // stored at claim time and read back through `committedLeaseSpan`.
+    const { collection, setNow, claim } = await claimed();
+    setNow(1000 + 12_000);
+    // A coordinator re-prioritizing a running task, past its deadline.
+    expect(await collection.setPriority("t", 3)).toEqual({ outcome: "recorded" });
+    const patched = collection.get("t") as Task;
+    expect(patched.updatedAt).toBeGreaterThan(patched.leaseUntil!);
+
+    // The claim's own duration, not what the two stamps now subtract to.
+    expect(committedLeaseSpan(patched)).toBe(10_000);
+
+    expect(
+      await collection.renewLease("t", collection.now() + 10_000, {
+        claim,
+        adoptLapsedLease: true,
+      })
+    ).toEqual({ outcome: "recorded" });
+    expect(collection.get("t")?.leaseUntil).toBe(1000 + 22_000);
+  });
+
+  it("reads a row claimed before the duration was stored from its two stamps", async () => {
+    // BP-030. A task persisted before the field existed carries no
+    // `leaseDurationMs`, and the subtraction is exactly what it committed as
+    // long as nothing has written to the row since — so the fallback is the
+    // old answer, not a refusal.
+    const { collection } = await claimed();
+    const legacy = { ...(collection.get("t") as Task), leaseDurationMs: undefined };
+
+    expect(committedLeaseSpan(legacy)).toBe(10_000);
+    expect(committedLeaseSpan({ ...legacy, leaseUntil: undefined })).toBeUndefined();
+  });
+
+  it("refuses the takeover when a reclaim actually won the row", async () => {
+    // The other side of the same write, and the one that makes the option safe
+    // to hand out: the race is decided by the substrate, not by the caller's
+    // read. Here the row lapsed and a second worker took it, so the first
+    // claimant's takeover has to lose — with nothing installed on the row the
+    // successor now holds.
+    const { collection, setNow, claim } = await claimed();
+    setNow(1000 + 10_000);
+    const successor = await collection.claim("w2", { leaseDurationMs: 10_000 });
+    expect(successor?.attempts).toBe(2);
+    const successorLease = collection.get("t")!.leaseUntil;
+
+    const outcome = await collection.renewLease("t", 1000 + 60_000, {
+      claim,
+      adoptLapsedLease: true,
+    });
+
+    expect(outcome).toEqual({
+      outcome: "declined",
+      reason: "lost-claim",
+      status: "in_progress",
+    });
+    expect(collection.get("t")?.leaseUntil).toBe(successorLease);
+  });
+
+  it("still refuses a SETTLEMENT that carries the takeover flag", async () => {
+    // The flag is scoped to the renewal — the one write that targets
+    // `in_progress` — so a worker that ran past its lease cannot reach for it
+    // to force its result in. Without the scope this option would quietly undo
+    // the arm at the top of this file.
+    const { collection, setNow, claim } = await claimed();
+    setNow(1000 + 10_000);
+
+    expect(
+      await collection.complete("t", "done", {
+        ifAllowed: true,
+        claim,
+        adoptLapsedLease: true,
+      })
+    ).toEqual({ outcome: "declined", reason: "lost-claim", status: "in_progress" });
+    expect(collection.get("t")?.status).toBe("in_progress");
   });
 
   it("leaves a write presenting NO ticket completely alone", async () => {

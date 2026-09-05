@@ -129,9 +129,9 @@ export async function packWorkerInput(
   // one that was checked.
   //
   // `input` and `feedback` were the two that were NOT conditional, and between
-  // them they made detached dispatch impossible rather than merely awkward: a
+  // them they made the hand-off impossible rather than merely awkward: a
   // freshly created task has never failed, so `feedback` is always `undefined`
-  // on a first attempt, and every detached spawn was refused before it could
+  // on a first attempt, and every hand-off was refused before it could
   // start. Keep new fields on this shape.
   return {
     taskId: task.id,

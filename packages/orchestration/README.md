@@ -146,7 +146,7 @@ emitted), `unchanged` (the task already held the state asked for, nothing writte
 or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task` /
 `disallowed` / `parked` / `lost-claim`, resolved in that precedence order) and the
 `status` the task was in when the write was refused. `immutable-assignee` means the
-board runs detached work, where the assignee is fixed at admission; `not-my-task`
+board hands rows off to a child session, where the assignee is fixed at admission; `not-my-task`
 means the ticket names a different task, a different collection, or an id since
 reused; `parked` means the caller passed `refuseWhenParked` and the task is in
 `awaiting_review` — nobody took it, so unlike `lost-claim` the answer is not to
@@ -157,9 +157,9 @@ advisory whether or not options are passed: cancelling a settled task declines
 with reason `terminal`.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a
-terminal task, and on a durable collection any detached board draws from it
-declines every reassignment whatever the task's status (see "Declaring detached
-work" below).
+terminal task, and on a durable collection any hand-off board draws from it declines
+every reassignment whatever the task's status (see "Handing tasks off through a
+dispatcher seat" below).
 `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
 a terminal task, so a post-drain failure audit can label what went wrong; those four
 answer only `recorded` or `unchanged` (`patchMetadata` merges rather than compares,
@@ -225,6 +225,26 @@ Settle the task inside `withLeaseRenewal`'s `run`: it stops renewing the moment
 `run` returns, so a `complete()` or `fail()` issued after it is a fenced write
 on a lease nobody is keeping alive.
 
+**A claimant that has not started yet can take a lapsed row back.**
+`renewLease(id, deadline, { claim, adoptLapsedLease: true })` renews a row whose
+lease has already run out, as long as the ticket still names it and the attempt
+is still the row's. That is the queued-worker case — a task handed to a child
+that waited longer than the lease with nobody renewing it — and the takeover is
+decided by the write: it declines `lost-claim` the moment a reclaim has moved the
+row on, and stays on the same attempt when it lands. It is opt-in because the
+substrate cannot tell that caller apart from a stalled worker whose renewal fired
+late, and only the first should take the row back. The flag applies to renewals
+only; a settlement on a lapsed lease is still declined.
+
+Renew it for `committedLeaseSpan(task)` — the duration that claim committed to,
+which the claim writes onto the row (`leaseDurationMs`) rather than leaving to be
+inferred from `leaseUntil - updatedAt`. Those two stamps stop agreeing as soon as
+anything else writes to the row: `setPriority`, the label verbs and
+`patchMetadata` all move `updatedAt` and leave the deadline alone. The renewal
+driver reads the same function, so a task's cadence and its takeover cannot
+disagree about one lease. A row claimed before that field existed falls back to
+the subtraction.
+
 A worker composed as several steps reaches its driver through
 `currentLeaseRenewal()`. Wrap the block that claims the task in
 `withLeaseRenewalScope(async () => { … })` — **as its first statement, before
@@ -273,7 +293,7 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, boardId, detachedWorkers, hasIdlessInitialTasks, caps }`.
+`{ drain, collectionId, capability, backing, boardId, handedOff, hasIdlessInitialTasks, caps }`.
 Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
 `initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
 why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
@@ -305,106 +325,129 @@ reports `terminationReason: "retry-budget-exhausted"` alongside `counts.retries`
 the limit in force. See the
 [Task board guide](https://flow-state.dev/docs/orchestration/task-board).
 
-#### Declaring detached work
+#### Handing tasks off through a dispatcher seat
 
-A registry value may be a `{ worker, dispatch }` entry instead of a bare block.
-`dispatch: { mode: "detached" }` marks that worker's tasks as work that runs
-outside the request which claimed them; a bare block still means inline, so no
-existing board changes.
+A seat under `workers` is a block. Put a `dispatcher({ type: "task", target, session })`
+in that position and the seat hands its tasks off: the drain claims a row, sends a
+`task` dispatch to the flow's `task.actions[target]` entry, and moves on, while the
+entry's block runs in a **child session** of the session that drained — on a request
+of its own — and settles the row itself. Any other block in that position runs
+inline in the drain. The worker is declared once, on the flow, exactly like an
+action. A seat holding anything other than a block (an object such as
+`{ worker, dispatch }` or `{ block, session }`) is refused by name at construction.
 
 ```ts
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { z } from "zod";
+
+const issueLedger = defineTaskCollection({
+  id: "issues",
+  scope: "session",
+  sharedToLineage: true,               // the child session addresses the same rows
+  stateSchema: z.object({ issueKey: z.string() }),
+});
+
 const board = taskBoard({
   name: "issue-work",
-  boardId: "issue-work",             // required once anything is detached
-  collection: workBoardCollection,   // must be a defineTaskCollection()
+  boardId: "issue-work",               // required once any seat hands off
+  collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
-    summarize: summarizeBlock,       // bare value = inline
-    implement: { worker: implementBlock, dispatch: { mode: "detached" } },
+    triage: triageBlock,               // runs inline
+    implement: dispatcher({            // hands off to flow.task.actions.implement
+      name: "hand-off-implement",
+      type: "task",
+      target: "implement",
+      session: "per-task",
+    }),
   },
 });
+
+export default defineFlow({
+  kind: "issues",
+  actions: { drain: { block: board.drain } },
+  task: { actions: { implement: { block: implementBlock } } },   // what runs in the child
+})();
 ```
 
-A board whose `workers` is a single uniform block declares the same thing with a
-board-level `dispatch` field, and `defaultWorker` accepts an entry too.
+`session` decides which child session a seat's rows run in:
 
-`boardId` is explicit and required as soon as any worker is detached: it is
-hashed into the child session's id, so renaming it re-keys work already in
-flight. Detachment also requires a durable collection — a `defineTaskCollection()`
-resource backing. The request, sequencer, and caller-supplied factory backings
-are refused at construction, by name, because a detached worker outlives the
-request and those backings do not. A detached worker declaring `sessionStateSchema`
-is refused for the same reason: detached workers share one execution flow, where
-two of them choosing the same state key would overwrite each other silently.
+| `session` | Child session | Use it when |
+|---|---|---|
+| `"per-task"` | one per row, keyed on the task id | rows are independent |
+| `"per-worker"` | one per seat, shared by every row the seat runs | the worker should remember what it already did |
+| `{ key: (task: TaskWorkerInput) => string }` | keyed on what the function returns, verbatim | one issue across several phases, or a key shared across seats |
 
-Once a board declares anything detached, a task's assignee is fixed at admission:
-`setAssignee` declines with reason `immutable-assignee`. The assignee is what the
-worker's routing coordinate derives from, and that coordinate addresses the child
-session the work runs in. Changing it afterwards redirects nothing — work already
-dispatched keeps running under the old coordinate, and the new one addresses a
-session nothing will wake — so the write is refused rather than silently
-stranding the task. File a new task instead of reassigning.
-
-The rule belongs to the collection, not to the board that declared it. Point a
-second board at the same `defineTaskCollection` value and it declines too, even
-if that board declares nothing detached: the two share task rows, so reassigning
-through either one moves a coordinate the detached board routes by. If a board
-needs freely reassignable tasks, give it its own collection.
-
-Each detached worker also gets a routing coordinate the framework derives:
-`assignee:<name>`, `uniform`, or `floor`. These bubble up from the board's drain
-into a flow-level binding map, so a worker stays addressable from strings alone
-after a restart, without appearing in `flow.actions` where a caller could reach
-it. Nothing is declared to make that happen. Two boards that share a `boardId`
-and land on the same coordinate are refused when the flow is defined, even when
-both hand that coordinate the same worker block: the coordinate is what a
-dispatch names, and two boards answering to it keep separate task ledgers while
-addressing one child session. Reusing a worker block across boards is fine on its
-own — give the boards distinct `boardId`s. One board reached from several places
-is a duplicate rather than a conflict and deduplicates silently.
-
-A detached worker runs in a **Workstream** — a child session dedicated to that
-body of work. The turn that claimed the task returns while the worker keeps
-going; the Workstream re-reads the claimed row, verifies the claim is still
-current, runs the worker, and settles the task itself.
-
-A Workstream is one `boardId`, one worker, one `topic` (read from the task's
-`metadata.topic`). All three have to match for a task to continue an earlier
-task's history. Two tasks sharing a topic but routing to different workers, or
-sitting on boards with different `boardId`s, get separate Workstreams. A task
-with no topic, or a blank one, falls back to its own id, so continuity is
-something you opt into rather than something that happens by accident.
-
-**The board must be addressable from the child session**, because the Workstream
-settles its own task. Session scope resolves against the *current* session, so a
-session-scoped board hydrates empty inside a Workstream unless it declares
-`sharedToWorkstream: true`:
+The presets include the board id in the key, so two boards' `per-task` children stay
+apart even when their task ids coincide. A custom `key` is used as returned, so two
+seats (or two boards) that return the same key share one child. A child that runs
+several rows runs them under its entry's concurrency policy. An entry a `per-worker`
+or `key` seat hands off to defaults to `queue`, so the rows run one at a time; a
+`per-task` seat's entry keeps the ordinary default (the flow's `request.concurrency`,
+else `allow`). An explicit `concurrency` on the entry wins:
 
 ```ts
-const todos = defineTaskCollection({
-  id: "todos",
-  scope: "session",
-  sharedToWorkstream: true,
-  stateSchema: z.object({ topic: z.string() }),
-});
+task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
 
-That gives the ledger one identity across the session lineage — the dispatching
-session and every Workstream under it settle against the same rows. `user` and
-`org` scope need nothing extra; they already span every session the principal
-touches. Sharing does not serialize: two Workstreams writing one board is
-ordinary same-resource contention, fenced by the store's `expectedVersion` check
-and nothing more.
+Only a named seat hands off: `defaultWorker` and a uniform `workers` block have no
+seat name and so no assignee to route by.
 
-**The claim has to survive the wait before the child starts.** A claim carries a
-lease (two minutes by default), and nothing extends it until the worker is
-actually running. A Workstream that starts after its lease has run out does
-nothing at all — the task is already back in the queue, and the next drain picks
-it up. A deep queue backlog in front of the child is where this shows up, and the
-board's lease is not configurable today.
+`defineFlow` refuses a hand-off whose entry the flow forgot to declare, a task
+entry no board hands off to, a task dispatcher no board holds, and two boards
+handing off to one entry. `board.handedOff` lists the seats that hand off, in
+declaration order.
 
-**Serverless without a queue adapter** is the last bound. Detached work runs
-inside the invocation that started it and is bounded by that function's maximum
-duration. With a queue adapter it moves to a worker process and is not.
+The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`,
+`createdAt`, `incarnationId`) and the worker input the drain packed at claim time —
+`taskDispatchInputSchema` / `TaskDispatchInput`. That input has to be
+JSON-serializable; a payload that is not fails the row in the drain. When the dispatch
+arrives, the entry re-reads the row and runs the worker only if the claim is still
+current: same attempt, same row (not deleted and recreated under the same id), still
+`in_progress`, still routed to this seat. Otherwise it throws
+`StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing; the row stays
+`in_progress` until its lease runs out and the next drain reclaims it. On the drain
+side the hand-off block returns `{ handedOff: true, taskId, sessionId, requestId,
+adopted }`, and a refused dispatch fails the row through the board's ordinary
+error path, throwing the same `DispatchRefusedError` (with its `refused` code)
+that a `dispatcher()` block throws. The child settles its own row, and the board's `onError` reaches it:
+`"skip"` settles the row and lets the child's request complete, `"fail"` also fails
+that request.
+
+`taskBoard()` refuses a board that hands off unless all of these hold, naming the
+board and the fix:
+
+- **`boardId`** is declared. Every `task` dispatch names it, so renaming it orphans
+  children already in flight.
+- **The collection is durable** — a `defineTaskCollection()` resource backing. The
+  request, sequencer, and factory backings are refused: a handed-off row outlives the
+  request that claimed it.
+- **A session-scoped collection declares `sharedToLineage: true`**, or the child
+  would resolve an empty ledger and never find its row. `user` and `org` scope need
+  nothing extra; they already span every session the principal touches.
+
+`defineFlow` adds one more: **no handed-off entry block declares
+`sessionStateSchema`**, at its root or in a composed child. Keep the block's
+state on the task.
+
+A board that hands anything off fixes each task's assignee at admission: the seat
+name is what a row is routed by, so `setAssignee` declines with reason
+`immutable-assignee`. The rule belongs to the collection rather than the board, so a
+second board over the same `defineTaskCollection` value declines too. File a new row
+rather than reassigning one.
+
+A claim carries a lease (two minutes by default), and nothing renews it between the
+hand-off and the child's first step. A child that starts after the lease has lapsed
+takes the row back before it runs: it renews the lease against the claim it was
+dispatched with, on the same attempt, and proceeds when that write lands. It refuses
+only when the renewal is declined, which is the case another drain reclaimed the row
+first. So a deep queue in front of the child costs nothing, and a genuine reclaim is
+still the successor's to run. The board's lease is not configurable.
+
+On serverless without a queue adapter, the child runs inside the invocation that
+started it and is bounded by that function's maximum duration. With a queue adapter
+it moves to a worker process and is not.
 
 ### goalSeekLoop
 

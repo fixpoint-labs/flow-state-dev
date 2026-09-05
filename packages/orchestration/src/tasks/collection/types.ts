@@ -20,7 +20,7 @@ import type { TaskWriteToken } from "../write-provenance";
  * hold always reports the same one, and two callers cannot render two different
  * messages for the same refusal.
  *
- * - `immutable-assignee` — the board runs detached work, where a task's
+ * - `immutable-assignee` — the board hands off work, where a task's
  *   assignee is fixed at admission. Reassignment is refused whatever the task's
  *   status is.
  * - `terminal` — the task had already reached `completed` / `errored` /
@@ -64,10 +64,10 @@ import type { TaskWriteToken } from "../write-provenance";
  * reads most simply rather than split to chase the rarer reason.
  *
  * **Why `immutable-assignee` sits above `terminal`.** It reads no mutable task
- * state at all — the board either runs detached work or it does not — so it is
+ * state at all — the board either hands off or it does not — so it is
  * safe at any position by the argument above. It goes first because it is the
  * only arm true of *every* status: reporting `terminal` for a finished task on a
- * detached board would imply a pending one could be reassigned, which is exactly
+ * handed-off board would imply a pending one could be reassigned, which is exactly
  * the wrong thing to tell a caller that is about to retry.
  */
 export type TaskWriteDeclineReason =
@@ -275,6 +275,39 @@ export interface TaskTransitionOptions {
    * arriving between the read and the write is exactly the case it has to catch.
    */
   refuseWhenParked?: boolean;
+  /**
+   * Let a **renewal** take back a row whose lease lapsed while the claim it
+   * names stayed intact (FIX-1305).
+   *
+   * The lease fence declines a ticketed write on a lapsed row because a lapsed
+   * lease means the row is the queue's again. That is right for a *result* — a
+   * worker that ran past its lease may have been superseded, and the successor
+   * owns the outcome — and it is too strong for a claimant that has not started
+   * yet. A task handed to a child session is the case: nothing renews the row
+   * between the parent's release and the child's first breath, so a child that
+   * waits in the host's queue longer than the lease arrives to a lapsed row
+   * that **no one has taken** — same `attempts`, same `createdAt`, same
+   * incarnation, still `in_progress`.
+   *
+   * With this set, that renewal is decided by the race instead of by the
+   * clock: every other guard still runs inside the same atomic write, so it is
+   * recorded only while the identity the ticket names is still the row's, and
+   * declines `lost-claim` the moment a reclaim has moved `attempts` or the
+   * status. Winning the write **is** the takeover — the caller holds the row
+   * for another lease span, on the same attempt.
+   *
+   * **Opt-in, because the substrate cannot tell the two lapsed claimants
+   * apart.** A stalled worker whose renewal timer finally fired presents the
+   * same evidence as the queued child above, and only the second should take
+   * the row back: the first has been running against a row the queue may have
+   * re-dispatched. So the caller asserts "I have not started yet", which is
+   * something only it knows.
+   *
+   * Honoured **only on a renewal** — the one write that targets `in_progress`.
+   * Passing it to a settlement changes nothing: `complete` and `fail` on a
+   * lapsed row still decline `lost-claim`.
+   */
+  adoptLapsedLease?: boolean;
   /**
    * Record this write on the task, so the caller can find out afterwards
    * whether it committed — **even if this call throws** (FIX-989).
@@ -533,6 +566,10 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * extending.** Without that arm a late renewal would install a fresh
    * deadline on a row somebody else now holds.
    *
+   * {@link TaskTransitionOptions.adoptLapsedLease} is the one opt-out of that
+   * last arm, for a claimant that has not started yet — see it for why the
+   * choice cannot be made down here.
+   *
    * Throws — never declines — on a non-finite `leaseUntil` or a missing
    * ticket. Both are programming errors rather than lost races, matching this
    * repo's posture for a numeric argument outside its domain.
@@ -589,7 +626,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // one helper.
   //
   // Exactly ONE of them refuses anything: `setAssignee`, which declines on a
-  // terminal task and — on a board that runs detached work — on every task.
+  // terminal task and — on a board that hands off — on every task.
   // The other four deliberately keep writing to terminal tasks — labelling,
   // re-prioritizing, or annotating a finished task is a real and used thing (a
   // post-drain failure audit, a cascade's `skipped` marker) — so they can only
@@ -602,9 +639,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Returns `unchanged` when the assignee already matches, `recorded` when it is
    * written.
    *
-   * **Declines every reassignment on a board that runs detached work**
-   * (`immutable-assignee`, FIX-982). The assignee is what a detached task's
-   * routing coordinate is derived from, and the child session that coordinate
+   * **Declines every reassignment on a board that hands off**
+   * (`immutable-assignee`, FIX-982). The assignee is what a handed-off task's
+   * routing key is derived from, and the child session that key
    * addresses is keyed the moment the work is dispatched. Changing it afterwards
    * does not redirect anything: the work already in flight keeps running under
    * the old coordinate, and the new one addresses a session nothing will ever

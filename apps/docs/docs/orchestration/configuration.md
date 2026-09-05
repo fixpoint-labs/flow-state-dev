@@ -31,7 +31,7 @@ const board = taskBoard({
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `name` | `string` | required | Outer sequencer name and prefix for internal blocks. Unique inside a flow if you mount more than one board. |
-| `boardId` | `string` | omitted | Stable id. Required when any worker uses detached dispatch. Renaming orphans live work keyed on the old value. |
+| `boardId` | `string` | omitted | Stable id. Required when any seat holds a `dispatcher({ type: "task" })`. Renaming orphans live work keyed on the old value. |
 | `dispatch` | dispatch object | omitted (inline) | Dispatch mode for a **uniform** worker (a single block). Do not set this on a registry board; declare it per worker instead. |
 | `collection` | request spec, sequencer spec, `defineTaskCollection`, or factory | request-backed, `collectionId` = `name` | Where the task list lives. Omit it for the request default. |
 | `workers` | one block, or a name → worker map | required | A single worker runs every claimed task. A registry routes by `task.assignee`. |

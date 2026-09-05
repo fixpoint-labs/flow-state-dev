@@ -17,7 +17,7 @@ import type { TranslatedEvent } from "../../src/sdk/types";
  * `list` and `count` are present and THROW on purpose. They are not on the
  * `UpsertableCollection` surface, but a type-level absence proves nothing at run
  * time — and on a lazily-prefetched collection either of them triggers a load of
- * every historical row in the workstream, which is the cost the lazy
+ * every historical row in the child session, which is the cost the lazy
  * declaration exists to avoid. If the recorder ever reaches for one, these turn
  * a silent performance regression into a red test.
  */
@@ -337,11 +337,11 @@ describe("createWorkRecorder — file operations", () => {
     });
   });
 
-  it("keeps two runs in one workstream apart", async () => {
-    // A workstream session is REUSED across runs, so without the run id in the
+  it("keeps two runs in one child session apart", async () => {
+    // A child session is REUSED across runs, so without the run id in the
     // key the second run's entry would merge into the first run's row by path
-    // and the readback would answer for the workstream, not the run.
-    // One shared store, as a reused workstream would have.
+    // and the readback would answer for the child session, not the run.
+    // One shared store, as a reused child session would have.
     const shared = fakeCollection();
     const a = createWorkRecorder({ runId: RUN, files: shared, plan: fakeCollection() });
     const b = createWorkRecorder({ runId: OTHER_RUN, files: shared, plan: fakeCollection() });

@@ -39,11 +39,11 @@ export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions 
     // the block does.
     //
     // Missing this half would LOOK like it worked. A capability contributes its
-    // `sessionStateSchema` through a channel the task board's walk cannot see:
+    // `sessionStateSchema` through a channel the hand-off refusal's walk cannot see:
     // the walk reads `config.sessionStateSchema` off composed blocks, and a
     // capability never writes onto its consumer's config. So a capability still
     // declaring the schema puts the key back through the one door the refusal
-    // cannot check, and the board accepts a detached worker carrying exactly
+    // cannot check, and the flow accepts a handed-off worker carrying exactly
     // the collision that refusal exists to prevent.
     ...(detached ? {} : { sessionStateSchema: claudeAgentSessionStateSchema }),
     // Declared HERE, not inherited from the agent block below — and forwarding

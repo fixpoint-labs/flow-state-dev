@@ -17,7 +17,7 @@ import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { ChatConfig } from "./chat";
 import type { WebhookConfig } from "./webhooks";
-import type { WorkstreamBindings } from "./workstream";
+import type { InternalEntry, TaskEntry } from "./dispatch";
 import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
@@ -231,15 +231,25 @@ export type ActionCore<
    * (transient — crashes lose request state).
    */
   durable?: boolean;
+  /**
+   * What happens when a dispatch arrives on this entry while another request
+   * on the same key (default: session) is already in flight. Overrides the
+   * flow-level default on `request.concurrency`. Resolution is per-entry-wins:
+   * `entry.concurrency ?? flow.request?.concurrency ?? "allow"`, and every
+   * dispatch type gets the same ladder — a task or internal entry declares its
+   * policy exactly as a caller action does. Default when unset everywhere:
+   * `"allow"`.
+   */
+  concurrency?: ConcurrencyConfig;
 };
 
 /**
  * A caller-addressed action: the shared `ActionCore` plus the exposure
  * metadata for the client-facing HTTP and MCP surfaces, where a caller names
  * the action and a principal is authorized per request. Lives in
- * `FlowDefinition.actions`. Event-addressed handlers (webhooks) are a
- * different form — they carry the core inline on their transport binding and
- * never enter this map.
+ * `FlowDefinition.actions` — the flow's `public` entries. Every other entry
+ * type (`internal.actions`, `task.actions`, and the chat / webhook / schedule
+ * bindings) carries the same core on its own map and never enters this one.
  */
 export type ActionConfig<
   TBlock extends BlockDefinition = BlockDefinition,
@@ -254,14 +264,16 @@ export type ActionConfig<
   description?: string;
   /** Per-action MCP overrides. */
   mcp?: ActionMcpConfig;
-  /**
-   * What happens when a request arrives on this action while another request
-   * on the same key (default: session) is already in flight. Overrides the
-   * flow-level default on `request.concurrency`. Resolution is per-action-wins:
-   * `action.concurrency ?? flow.request?.concurrency ?? "allow"`. Default when
-   * unset everywhere: `"allow"` (today's parallel behavior).
-   */
-  concurrency?: ConcurrencyConfig;
+};
+
+/**
+ * The entries of one dispatch type, nested under the type so a per-type
+ * setting has a home beside them when one arrives. `flow.internal.actions` and
+ * `flow.task.actions` are the two an author declares here; the caller-facing
+ * `public` entries stay on `flow.actions`.
+ */
+export type TypedEntries<TEntry> = {
+  actions: Record<string, TEntry>;
 };
 
 /**
@@ -421,7 +433,34 @@ export type FlowDefinition<
    */
   authentication?: AuthenticationConfig;
 
+  /**
+   * The flow's `public` entries — what a caller may name over HTTP, MCP or
+   * voice, each authorized per request. The public API of the flow.
+   */
   actions: TActions;
+
+  /**
+   * The flow's `internal` entries — `internal: { actions: { wake: { block } } }`
+   * — reachable only by an `internal` dispatch from a `dispatcher()` block
+   * running in one of this flow's own requests. Nothing a caller can name
+   * resolves here: the map is the boundary, and a dispatch addressed to a type
+   * never falls through to another type's map.
+   *
+   * Use it for work a request starts for itself or a sibling session — a
+   * background job in a child session, a wake sent to a coordinator, a
+   * follow-up delivered into a session that already exists.
+   */
+  internal?: TypedEntries<InternalEntry>;
+
+  /**
+   * The flow's `task` entries — `task: { actions: { implement: { block } } }`
+   * — where a task board hands a claimed row off to run in a session of its
+   * own. Declared like actions and reached only by a `task` dispatch from a
+   * `dispatcher({ type: "task", target: "implement" })` seat on a board the
+   * flow reaches. `defineFlow` puts each entry behind that board's claim gate
+   * and refuses an entry no board addresses.
+   */
+  task?: TypedEntries<TaskEntry>;
 
   session?: TSession;
   request?: TRequest;
@@ -538,41 +577,14 @@ export type FlowInstance<
   requiresOrg: boolean;
   authentication?: AuthenticationConfig;
   actions: TActions;
+  /** See {@link FlowDefinition.internal}. Absent when the flow declares none. */
+  internal?: TypedEntries<InternalEntry>;
   /**
-   * The single pre-assembled entry a detached dispatch resolves — a request
-   * started from inside a running block rather than by a caller (FIX-999).
-   *
-   * `undefined` on every flow until something populates it, and that *off* state
-   * is a real, testable state rather than a gap: resolution for the detached
-   * source is **terminal**, so an absent core is a named refusal and never falls
-   * through to {@link actions}. That is the security invariant — a detached
-   * dispatch must have no route to a caller-addressed action.
-   *
-   * Not an app-author surface. It is assembled by the framework from a board's
-   * drain bindings; nothing is declared to get one.
+   * See {@link FlowDefinition.task}. Absent when the flow declares none. Every
+   * entry here is the declared entry rebuilt behind its board's claim gate, so
+   * a `task` dispatch can only ever reach the worker through that gate.
    */
-  workstream?: ActionCore;
-  /**
-   * Every detached worker binding declared anywhere in this flow's block tree
-   * (FIX-982), keyed by board and coordinate.
-   *
-   * This is the **durable** half of detached routing, and it is why the routing
-   * decision survives a restart: a binding is `(boardId, coordinateKey) → block`,
-   * all strings on the addressing side, so a wake that arrives with nothing but a
-   * task row can still find the block that runs it. {@link workstream} is the
-   * assembled entry a dispatch executes; this is what that entry is assembled
-   * *from*, and what a board's reconciler re-reads to rebuild a routing tuple.
-   *
-   * Produced by construction, never authored — bindings accumulate on the
-   * declaring board's drain sequencer and bubble to the action root exactly as
-   * resource declarations do. `undefined` on every flow that declares no
-   * detached work.
-   *
-   * Deliberately **not** a dispatch-time lookup table: resolution for the
-   * detached source is terminal on {@link workstream} alone, so nothing indexes
-   * this map by a coordinate carried on an envelope (BP-031).
-   */
-  workstreamBindings?: WorkstreamBindings;
+  task?: TypedEntries<TaskEntry>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
@@ -610,24 +622,12 @@ export type FlowType<
   requireUser: boolean;
   /** Mirror of `FlowInstance.requiresOrg`. */
   requiresOrg: boolean;
-  /**
-   * Mirror of `FlowInstance.workstreamBindings` — every detached worker binding
-   * declared anywhere in this flow's block tree.
-   *
-   * Present because this blueprint is inspected directly, not only called: code
-   * reading it saw actions, resources, schedules and `requiresOrg` here and
-   * reasonably concluded a flow with none of it declared no detached work. The
-   * value is copied from the base instance, so the two never disagree.
-   */
-  workstreamBindings?: WorkstreamBindings;
-  /**
-   * Mirror of `FlowInstance.workstream` — the single assembled entry a detached
-   * dispatch resolves, present exactly when {@link workstreamBindings} is
-   * non-empty.
-   */
-  workstream?: ActionCore;
   authentication?: AuthenticationConfig;
   actions: TActions;
+  /** Mirror of `FlowInstance.internal`. */
+  internal?: TypedEntries<InternalEntry>;
+  /** Mirror of `FlowInstance.task`. */
+  task?: TypedEntries<TaskEntry>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
