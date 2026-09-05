@@ -3,8 +3,8 @@
 "@flow-state-dev/claude-code": patch
 ---
 
-A shared contract for coding-agent harnesses, so a harness package no longer has
-to be built against another vendor's internals.
+A shared contract for coding-agent harnesses (LAB-152), so a harness package no
+longer has to be built against another vendor's internals.
 
 `@flow-state-dev/core` now exports the shape a harness block is handed and the
 handle it returns — `harnessRunInputSchema` and `harnessRunHandleSchema` (plus
