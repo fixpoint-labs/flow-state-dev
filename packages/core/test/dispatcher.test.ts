@@ -142,6 +142,23 @@ describe("dispatcher — the body", () => {
     expect(calls[0]?.payload).toEqual({ reason: "answered" });
   });
 
+  it("hands the seam { from: true } — no session id is computed from input", async () => {
+    const { calls, ctx } = seamRecording({ ...accepted, adopted: true });
+    const block = dispatcher({
+      name: "reply-to-sender",
+      type: "internal",
+      target: "receive-reply",
+      inputSchema: z.object({ note: z.string(), replyTo: z.string() }),
+      session: { from: true },
+      payload: (input) => ({ note: input.note })
+    });
+
+    await runForTest(block, { note: "done", replyTo: "s_forged" }, ctx);
+
+    expect(calls[0]?.session).toEqual({ from: true });
+    expect(calls[0]?.payload).toEqual({ note: "done" });
+  });
+
   it("throws DispatchRefusedError, by name, when the seam refuses", async () => {
     const { ctx } = seamRecording({
       ok: false,
