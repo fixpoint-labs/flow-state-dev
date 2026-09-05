@@ -210,7 +210,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <a class="grp">The ground</a>
     <a href="#exists">09 &middot; What exists today</a>
     <a href="#triangulate">10 &middot; Triangulate Conductor</a>
-    <a href="#off">11 &middot; Off this page</a>
+    <a href="#gaps">11 &middot; Layer 1 gaps</a>
+    <a href="#off">12 &middot; Off this page</a>
   </nav>
 </aside>
 
@@ -223,7 +224,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     <span><i class="sw-solid"></i> exists &#8212; the shape shown is the real one</span>
     <span><i class="sw-dash"></i> proposed &#8212; design, not built</span>
   </div>
-  <p class="sib">Sibling atlas: <a href="conductor.html">Conductor</a> &#8212; the coding-product track. Separate. Later reuse is earned. This page does not ship a package.</p>
+  <p class="sib">Sibling atlas: <a href="conductor.html">Conductor</a> &#8212; this-cycle thin on Layer&nbsp;1. Conductor-as-L3-on-Workforce is a horizon, not this cycle. This page does not ship a package.</p>
 </header>
 
 <section id="what">
@@ -261,12 +262,12 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <path class="ln" d="M692,248 L692,214"/>
 
         <rect class="n-prop" x="16" y="26" width="446" height="188" rx="5"/>
-        <text class="t-lbl" x="34" y="48">SEPARATE TRACK</text>
+        <text class="t-lbl" x="34" y="48">THIS CYCLE &#183; THIN ON L1</text>
         <text class="t-b f-accent" x="34" y="76">Conductor</text>
         <text class="t-s" x="34" y="100">product-specific to software development</text>
         <text class="t-xs" x="34" y="128">A META-HARNESS THAT DRIVES CODING HARNESSES</text>
-        <text class="t-xs" x="34" y="148">SESSION OWNED BY THE WORKFLOW</text>
-        <text class="t-xs" x="34" y="168">ROLES ARE BLOCKS &#183; WORK LIVES IN RESOURCES</text>
+        <text class="t-xs" x="34" y="148">DOES NOT WAIT ON A WORKFORCE PRODUCT</text>
+        <text class="t-xs" x="34" y="168">L3-ON-WORKFORCE IS A HORIZON ONLY</text>
         <text class="t-b f-accent" x="34" y="196">its own atlas. do not merge the tracks.</text>
 
         <rect class="n-prop" x="478" y="26" width="446" height="188" rx="5"/>
@@ -279,7 +280,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-b f-accent" x="496" y="196">atlas only. not a package to ship.</text>
       </svg>
     </div>
-    <figcaption><b>One substrate, two harnesses.</b> Both are Layer&nbsp;2 in the Eve / Grok&nbsp;Bot / Claude&nbsp;Work sense: opinions so Layer&nbsp;1 is not advanced-user-only. Neither invents a primitive. This page does not merge them into one harness.</figcaption>
+    <figcaption><b>One substrate, two harnesses.</b> Both are opinions so Layer&nbsp;1 is not advanced-user-only. This-cycle Conductor is thin on Layer&nbsp;1. Stacking it later as L3 on Workforce is a horizon, not a merge, and not a wait.</figcaption>
   </figure>
 
   <figure>
@@ -573,8 +574,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-prop" x="16" y="16" width="360" height="288" rx="5"/>
         <text class="t-lbl" x="34" y="38">BOARD &#183; A COLLECTION &#183; PROPOSED OPINION</text>
         <text class="t-s" x="34" y="68">resource collection</text>
-        <text class="t-xs" x="34" y="90">CONTENT = THE BRIEF / THREAD</text>
-        <text class="t-xs" x="34" y="108">writeContent ALREADY EXISTS</text>
+        <text class="t-xs" x="34" y="90">CONTENT = THE BRIEF</text>
+        <text class="t-xs" x="34" y="108">INSTANCES = POSTS / REPLIES</text>
         <text class="t-xs" x="34" y="136">STATE HOLDS SUBSCRIBERS</text>
         <text class="t-xs" x="34" y="154">flowKind · sessionId · action</text>
         <text class="t-xs" x="34" y="182">reactTo ON THE COLLECTION</text>
@@ -611,8 +612,56 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="640" y="258">PROPOSED CONVENTION</text>
       </svg>
     </div>
-    <figcaption><b>Subscribe is a row. Post is a dispatch.</b> A board is a collection with a brief in content and subscribers in state. <code>reactTo</code> already runs a block when the collection changes. That block is a <code>dispatcher()</code> to each subscriber&#8217;s session. Fan-out is a loop over declared sends, not a topic bus. Cross-flow notify waits on cross-flow landing &#8212; today the host refuses another flow&#8217;s session by name.</figcaption>
+    <figcaption><b>Subscribe is a row. Post is a dispatch.</b> A board is a collection: brief in content, posts and replies as instances, subscribers in state. <code>reactTo</code> already runs a block when the collection changes. That block is a <code>dispatcher()</code> to each subscriber&#8217;s session. Fan-out is a loop over declared sends, not a topic bus. Cross-flow notify is an L1 gap &#8212; today the host refuses another flow&#8217;s session by name.</figcaption>
   </figure>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 300" role="img" aria-label="Boards and replies are collections, not an edge thread. Left solid: FSD collection as a working set of post instances with maxInstances and eviction. Centre dashed: Slack-scale history goes to an external collection, which already exists as defineExternalResourceCollection. Right rejected: edges as a thread model on Layer 1.">
+        <rect class="n-code" x="16" y="16" width="292" height="268" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="38">WORKING SET &#183; EXISTS</text>
+        <text class="t-b" x="34" y="68">a collection of posts</text>
+        <text class="t-xs" x="34" y="94">EACH REPLY IS AN INSTANCE</text>
+        <text class="t-xs" x="34" y="112">NOT AN EDGE OFF A PARENT</text>
+        <text class="t-xs" x="34" y="138">maxInstances + eviction</text>
+        <text class="t-xs" x="34" y="156">KEEPS THE LIVE SET</text>
+        <text class="t-xs" x="34" y="174">DISCARDS STALE ROWS</text>
+        <text class="t-xs" x="34" y="200">FSD COLLECTIONS ARE A</text>
+        <text class="t-xs" x="34" y="218">WORKING SET. THAT IS THE JOB.</text>
+        <text class="t-b f-code" x="34" y="256">the board is the set</text>
+
+        <rect class="n-code" x="324" y="16" width="292" height="268" rx="5"/>
+        <text class="t-lbl f-code" x="342" y="38">SLACK-SCALE &#183; EXISTS PATH</text>
+        <text class="t-b" x="342" y="68">external collection</text>
+        <text class="t-xs" x="342" y="94">defineExternalResourceCollection</text>
+        <text class="t-xs" x="342" y="112">packages/core &#183; FIX-858</text>
+        <text class="t-xs" x="342" y="138">READ-ONLY. APP-OWNED STORE.</text>
+        <text class="t-xs" x="342" y="156">SQL, AN HTTP API, SLACK ITSELF</text>
+        <text class="t-xs" x="342" y="182">HISTORY LIVES OUT THERE</text>
+        <text class="t-xs" x="342" y="200">THE WORKING SET STAYS SMALL</text>
+        <text class="t-xs" x="342" y="226">DO NOT GROW L1 TO HOLD A LOG</text>
+        <text class="t-b f-code" x="342" y="256">the log is not the set</text>
+
+        <rect class="n-box" x="632" y="16" width="292" height="268" rx="5"/>
+        <text class="t-lbl f-gone" x="650" y="38">NOT THIS &#183; REJECTED</text>
+        <text class="t-b f-gone" x="650" y="68">edges as a thread</text>
+        <text class="t-xs" x="650" y="94">resource.edges ALREADY EXISTS</text>
+        <text class="t-xs" x="650" y="112">A TYPED GRAPH IN STATE</text>
+        <text class="t-xs" x="650" y="138">IT IS NOT A MESSAGE THREAD</text>
+        <text class="t-xs" x="650" y="156">DO NOT MODEL REPLIES AS EDGES</text>
+        <text class="t-xs" x="650" y="182">DO NOT INVENT A THREAD TYPE</text>
+        <text class="t-xs" x="650" y="200">ON LAYER 1 FOR THIS OPINION</text>
+        <text class="t-xs" x="650" y="226">A GRAPH IS NOT A CHAT LOG</text>
+        <text class="t-b f-gone" x="650" y="256">rejected</text>
+      </svg>
+    </div>
+    <figcaption><b>A collection is a working set. A thread is not.</b> Posts and replies are instances. Slack-scale history belongs in an external collection &#8212; that primitive is already in the tree. <code>edges</code> is a graph in resource state. Do not press it into a thread model, and do not add one.</figcaption>
+  </figure>
+
+  <div class="tension">
+    <h5>Do not invent a thread on Layer 1</h5>
+    <p>The board opinion needs a working set and, for long history, a read-through store. Both exist. What it does not need is parent-pointer edges, a thread type, or a MessageBoard package. If a later build cannot page an external collection the way Slack needs, that is an L1 gap to file &#8212; not a primitive to sketch here, and not a POC in this PR.</p>
+  </div>
 
   <div class="tw">
     <table>
@@ -620,9 +669,10 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td>Child session from a key</td><td><span class="tag t-real">exists</span></td><td><code>dispatcher({ session: { key } })</code> mints or adopts a child. That is the dynamic-session mechanism. Use it for a project or a board subscription.</td></tr>
         <tr><td>Deliver into an existing session</td><td><span class="tag t-real">exists</span></td><td><code>dispatcher({ session: { id } })</code>. Same flow, same principal. Refused otherwise.</td></tr>
-        <tr><td>Collection + <code>reactTo</code> + <code>writeContent</code></td><td><span class="tag t-real">exists</span></td><td>Enough to store a brief and fire a block on a post. The board opinion is how those are assembled, not a new store.</td></tr>
+        <tr><td>Collection + <code>reactTo</code> + <code>writeContent</code></td><td><span class="tag t-real">exists</span></td><td>Enough to store a brief, keep a working set of posts, and fire a block on a post. The board opinion is how those are assembled, not a new store.</td></tr>
+        <tr><td>External collection</td><td><span class="tag t-real">exists</span></td><td><code>defineExternalResourceCollection</code> &#8212; read-only, app-owned store. Slack-scale history goes here, not into an unbounded FSD working set.</td></tr>
         <tr><td>One session per subscribed board</td><td><span class="tag t-prop">proposed</span></td><td>The worker&#8217;s flow grows a session (and the contract action) for each board it joins. Isolation stays per worker.</td></tr>
-        <tr><td>MessageBoard as a Layer&nbsp;1 package</td><td><span class="tag t-gone">off the page</span></td><td>A board is a convention. If a build starts wanting a new store or a new block kind, that is a Layer&nbsp;1 gap to file, not a package to add here.</td></tr>
+        <tr><td>Edges as a thread / MessageBoard package</td><td><span class="tag t-gone">rejected</span></td><td>Replies are collection instances. Do not invent a thread type. Do not open a Layer&nbsp;1 package.</td></tr>
       </tbody>
     </table>
   </div>
@@ -805,7 +855,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-xs" x="34" y="326">NOT A SECOND RELAY. NOT STEER-AS-ARCHITECTURE. THE SAME DISPATCHER, AIMED AT FROM.</text>
       </svg>
     </div>
-    <figcaption><b>One door, three directions.</b> Forward is <code>session: { id }</code> or <code>{ key }</code> &#8212; shipped. Reverse is <code>{ from: true }</code> &#8212; proposed opinion on the stamp that already exists. Cross-flow is the same send to another <code>flowKind</code> &#8212; decided, not in the tree; <code>create-request-host.ts</code> still refuses it by name.</figcaption>
+    <figcaption><b>One door, three directions.</b> Forward is <code>session: { id }</code> or <code>{ key }</code> &#8212; shipped. Reverse is <code>{ from: true }</code> &#8212; an L1 gap on the stamp that already exists. Cross-flow is the same send to another <code>flowKind</code> &#8212; an L1 gap; <code>create-request-host.ts</code> still refuses it by name. Neither gap is a new primitive, and neither is a POC in this PR.</figcaption>
   </figure>
 
   <div class="tw">
@@ -814,8 +864,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <tbody>
         <tr><td><code>dispatcher()</code></td><td><span class="tag t-real">exists</span></td><td>The send door. Handler, not a fifth block kind. Address is <code>(type, target)</code>. Session is <code>{ key }</code> or <code>{ id }</code>.</td></tr>
         <tr><td>Dispatch stamp <code>from</code></td><td><span class="tag t-real">exists</span></td><td><code>{ block, sessionId }</code> on the recipient. Enough to aim a reverse send.</td></tr>
-        <tr><td><code>{ from: true }</code></td><td><span class="tag t-prop">proposed</span></td><td>A session target that means &#8220;the session on the stamp.&#8221; Do not invent a Relay verb for reply.</td></tr>
-        <tr><td>Cross-flow dispatch</td><td><span class="tag t-prop">not landed</span></td><td>Same door, other <code>flowKind</code>. Needed the moment two workers (two flows) talk. Until it lands, same-flow boards still work.</td></tr>
+        <tr><td><code>{ from: true }</code></td><td><span class="tag t-prop">L1 gap</span></td><td>Proposed session target: &#8220;the session on the stamp.&#8221; The stamp exists. The target does not. File it on <code>dispatcher()</code>. Do not invent a Relay verb. Not a POC here.</td></tr>
+        <tr><td>Cross-flow dispatch</td><td><span class="tag t-prop">L1 gap</span></td><td>Same door, other <code>flowKind</code>. Decided, not in the tree. Needed the moment two workers talk. Until it lands, same-flow boards still work. Not a new primitive. Not a POC here.</td></tr>
         <tr><td>Relay</td><td><span class="tag t-gone">superseded</span></td><td>A second send door that was never a package. Do not teach it. Do not wait for <code>packages/relay</code>.</td></tr>
         <tr><td>Workstream</td><td><span class="tag t-gone">superseded</span></td><td>A leftover child-session architecture beside dispatch. Leftover names remain in the client (<code>listWorkstreams</code>) and in <code>sharedToWorkstream</code>. Workforce collaboration does not ride them.</td></tr>
       </tbody>
@@ -899,9 +949,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <tr><td>Team-topicked collections</td><td><span class="tag t-real">exists</span></td><td><code>[team]/resources</code> or <code>teams/&lt;team&gt;/*</code>. Naming, not security.</td></tr>
         <tr><td>Worker contract / factory / one flow per worker</td><td><span class="tag t-prop">proposed</span></td><td>This page. No factory in the tree. No <code>workforce/</code> layout.</td></tr>
         <tr><td>Channels as sessions, team roster, plan capability</td><td><span class="tag t-prop">proposed</span></td><td>Opinions on the rows above. Not packages.</td></tr>
-        <tr><td><code>{ from: true }</code> / cross-flow</td><td><span class="tag t-prop">proposed</span></td><td>Reverse is an opinion on the stamp. Cross-flow is decided and not landed.</td></tr>
+        <tr><td><code>{ from: true }</code> / cross-flow</td><td><span class="tag t-prop">L1 gap</span></td><td>Needed by the worker-contract opinion. File on <code>dispatcher()</code>. Not a new primitive. Not a POC in this PR.</td></tr>
+        <tr><td>External collection</td><td><span class="tag t-real">exists</span></td><td><code>defineExternalResourceCollection</code>. Slack-scale history. Not a thread model.</td></tr>
         <tr><td>Grok-Bot-like surface</td><td><span class="tag t-prop">proposed</span></td><td>Slack / web / CLI into the same worker flow. No UI, no adapter.</td></tr>
-        <tr><td>Relay / Workstream as the plan</td><td><span class="tag t-gone">superseded</span></td><td>Do not teach. Leftover Workstream names in the client are not the architecture.</td></tr>
+        <tr><td>Conductor as L3 on Workforce</td><td><span class="tag t-prop">horizon</span></td><td>Proposed later stacking. This-cycle Conductor is thin on Layer&nbsp;1 and does not wait.</td></tr>
+        <tr><td>Edges as a thread / Relay / Workstream</td><td><span class="tag t-gone">rejected / superseded</span></td><td>Do not teach. A graph is not a chat log. Leftover Workstream names are not the architecture.</td></tr>
       </tbody>
     </table>
   </div>
@@ -914,7 +966,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="triangulate">
   <div class="sec-head"><span class="sec-num">10</span><h2>Triangulate Conductor</h2></div>
-  <p class="lede">Same Layer&nbsp;1. Different opinions. Separate tracks. This page exists so Conductor does not harden a coding-only substrate, and so Workforce does not grow a second send door beside the one Conductor already needs.</p>
+  <p class="lede">Same Layer&nbsp;1. Different opinions. Separate tracks. This-cycle Conductor is thin on Layer&nbsp;1 and does not wait on a Workforce product. Conductor-as-a-coding-extension-on-Workforce is a proposed horizon, not a merge, and not this cycle.</p>
 
   <figure>
     <div class="fig-body">
@@ -962,10 +1014,100 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
     <figcaption><b>Triangulation, not a merger.</b> Conductor may own &#8220;a session belongs to the workflow.&#8221; Layer&nbsp;1 may not, because a Workforce channel is a session on a worker&#8217;s flow. Reuse between the tracks is earned later. Do not fold them into one harness on this page.</figcaption>
   </figure>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 340" role="img" aria-label="Altitude of the two tracks. Bottom solid: Layer 1 exists. Middle solid: this-cycle thin Conductor on Layer 1, does not wait on Workforce. Middle dashed: proposed Workforce Layer 2 conventions. Top dashed: Conductor as L3 coding extension on Workforce, proposed horizon only.">
+        <rect class="n-prop" x="16" y="16" width="908" height="72" rx="5"/>
+        <text class="t-lbl" x="34" y="38">HORIZON &#183; PROPOSED &#183; NOT THIS CYCLE</text>
+        <text class="t-b f-accent" x="34" y="64">Conductor as a coding extension on Workforce &#8212; Layer 3 on Layer 2. Earned later. Not a merge now.</text>
+
+        <path class="ln" d="M470,88 L470,104"/>
+
+        <rect class="n-prop" x="16" y="104" width="446" height="88" rx="5"/>
+        <text class="t-lbl" x="34" y="126">WORKFORCE L2 &#183; PROPOSED</text>
+        <text class="t-s" x="34" y="152">factory · one flow per worker · roster</text>
+        <text class="t-xs" x="34" y="172">OPINIONS. NOT A PRODUCT THIS CYCLE.</text>
+
+        <rect class="n-code" x="478" y="104" width="446" height="88" rx="5"/>
+        <text class="t-lbl f-code" x="496" y="126">CONDUCTOR THIS CYCLE &#183; EXISTS PATH</text>
+        <text class="t-s" x="496" y="152">thin Conductor on Layer 1</text>
+        <text class="t-xs" x="496" y="172">DOES NOT WAIT ON A WORKFORCE PRODUCT</text>
+
+        <path class="ln" d="M470,192 L470,208"/>
+
+        <rect class="n-code" x="16" y="208" width="908" height="112" rx="5"/>
+        <text class="t-lbl f-code" x="34" y="230">LAYER 1 &#183; EXISTS</text>
+        <text class="t-s" x="34" y="256">blocks · flows · sessions · collections · dispatcher() · task board</text>
+        <text class="t-xs" x="34" y="278">BOTH TRACKS SIT HERE TODAY. THE HORIZON STACKS; IT DOES NOT REPLACE THIS.</text>
+        <text class="t-b f-code" x="34" y="300">separate tracks. triangulation. do not merge the harnesses.</text>
+      </svg>
+    </div>
+    <figcaption><b>The stack is a horizon, not a dependency.</b> This-cycle Conductor stays a thin coding harness on Layer&nbsp;1. Workforce Layer&nbsp;2 is proposed opinion. Putting Conductor on Workforce later is allowed as a horizon only if both tracks earned it. Nothing in this cycle waits on that.</figcaption>
+  </figure>
+</section>
+
+<section id="gaps">
+  <div class="sec-head"><span class="sec-num">11</span><h2>Layer 1 gaps</h2></div>
+  <p class="lede">When a Layer&nbsp;2 opinion needs something Layer&nbsp;1 does not have, say so. File the gap. Do not invent a primitive on this page, and do not prove it with a POC in this PR.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Three honest Layer 1 gaps versus rejected inventions. Left: cross-flow dispatch, decided not landed. Centre: from true reverse target, stamp exists, option does not. Right: rejected inventions — thread edges, Channel Team Project MessageBoard packages, Relay.">
+        <rect class="n-prop" x="16" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl" x="34" y="38">L1 GAP &#183; CROSS-FLOW</text>
+        <text class="t-s f-accent" x="34" y="70">other flowKind</text>
+        <text class="t-xs" x="34" y="96">DECIDED. NOT IN THE TREE.</text>
+        <text class="t-xs" x="34" y="114">HOST REFUSES IT BY NAME</text>
+        <text class="t-xs" x="34" y="140">TWO WORKERS = TWO FLOWS</text>
+        <text class="t-xs" x="34" y="158">THEY CANNOT TALK YET</text>
+        <text class="t-xs" x="34" y="184">FILE ON dispatcher()</text>
+        <text class="t-b f-accent" x="34" y="230">not a new send door</text>
+
+        <rect class="n-prop" x="324" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl" x="342" y="38">L1 GAP &#183; REVERSE TARGET</text>
+        <text class="t-s f-accent" x="342" y="70">{ from: true }</text>
+        <text class="t-xs" x="342" y="96">STAMP from.sessionId EXISTS</text>
+        <text class="t-xs" x="342" y="114">SESSION UNION IS key | id</text>
+        <text class="t-xs" x="342" y="140">THE OPTION IS THE GAP</text>
+        <text class="t-xs" x="342" y="158">NOT A RELAY VERB</text>
+        <text class="t-xs" x="342" y="184">FILE ON dispatcher()</text>
+        <text class="t-b f-accent" x="342" y="230">not a second bus</text>
+
+        <rect class="n-box" x="632" y="16" width="292" height="248" rx="5"/>
+        <text class="t-lbl f-gone" x="650" y="38">NOT A GAP &#183; DO NOT OPEN</text>
+        <text class="t-s f-gone" x="650" y="70">rejected inventions</text>
+        <text class="t-xs" x="650" y="96">THREAD / EDGE MODEL</text>
+        <text class="t-xs" x="650" y="114">CHANNEL PACKAGE</text>
+        <text class="t-xs" x="650" y="132">TEAM PACKAGE</text>
+        <text class="t-xs" x="650" y="150">PROJECT PACKAGE</text>
+        <text class="t-xs" x="650" y="168">MESSAGEBOARD PACKAGE</text>
+        <text class="t-xs" x="650" y="186">RELAY AS A SECOND SYSTEM</text>
+        <text class="t-xs" x="650" y="204">SEED-SESSION ON defineFlow</text>
+        <text class="t-b f-gone" x="650" y="230">not missing. refused.</text>
+      </svg>
+    </div>
+    <figcaption><b>A gap is a missing field on a door you already have.</b> Cross-flow and reverse are gaps on <code>dispatcher()</code>. A Channel package is not a gap &#8212; it is a package this page refuses. External collections already cover Slack-scale history, so that is not a gap either.</figcaption>
+  </figure>
+
+  <div class="tension">
+    <h5>Cross-flow is an L1 gap</h5>
+    <p>One flow per worker means two workers are two <code>flowKind</code>s. Same-flow dispatch exists. The host still refuses another flow. That refusal is the gap. The fix is on the existing door. It is not a Relay, not a new block kind, and not a throwaway POC on this atlas PR.</p>
+  </div>
+
+  <div class="tension">
+    <h5>Reverse is an L1 gap on the stamp you already have</h5>
+    <p><code>metadata.dispatch.from.sessionId</code> is shipped. <code>session: { from: true }</code> is not. Growing the session target is the cheap close. Inventing a reply bus is the expensive one.</p>
+  </div>
+
+  <div class="tension">
+    <h5>A missing convenience is not a missing primitive</h5>
+    <p>If Layer&nbsp;2 wants a factory, a roster file, or a plan capability, those are opinions on pieces that exist. If it wants a thread type, a Channel package, or seed-session on <code>defineFlow</code>, those are inventions. Only the first column above is a gap.</p>
+  </div>
 </section>
 
 <section id="off">
-  <div class="sec-head"><span class="sec-num">11</span><h2>Off this page</h2></div>
+  <div class="sec-head"><span class="sec-num">12</span><h2>Off this page</h2></div>
   <p class="lede">Held on purpose. A thought is not a section.</p>
 
   <div class="tension">
@@ -990,7 +1132,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="tension">
     <h5>Do not merge the harnesses</h5>
-    <p>Conductor and Workforce share a substrate. They do not share a spine. Later reuse is earned by both tracks staying on <code>dispatcher()</code>, sessions, and the board &#8212; not by writing one harness that pretends to be both.</p>
+    <p>Conductor and Workforce share a substrate. They do not share a spine. Conductor-as-L3-on-Workforce is a horizon, not a this-cycle dependency. Later reuse is earned by both tracks staying on <code>dispatcher()</code>, sessions, and the board &#8212; not by writing one harness that pretends to be both.</p>
   </div>
 
   <div class="note" style="margin-top:26px">
