@@ -72,8 +72,23 @@ const agent = claudeCodeAgent({
 // seq.step(agent) with input { prompt: "Tidy the imports in src/." }
 ```
 
-The block returns a handle describing the run: its terminal status, the final
-assistant message, the tools it used, and usage when the SDK reports it.
+The block returns a handle describing the run. Most of it is the framework's
+neutral harness handle — the shape any coding agent driven as a block hands
+back, so code that reads it works the same whichever agent produced it:
+
+| Field | What it holds |
+|---|---|
+| `source` | Which agent and entry point produced the run. This one is `claude-code/sdk`. |
+| `status` | `running`, `completed`, or `errored`. |
+| `sessionId`, `url`, `dispatchedAt` | The run's own id, a link to it when there is one, and when it started. |
+| `outcome` | How it ended: `finished`, `stopped-at-limit` (it hit a turn or budget cap), or `failed`. `null` while unknown. |
+| `finalMessage` | The last assistant message, or `null`. |
+| `usage` | Input and output tokens, or `null` when the SDK reports none. |
+| `cost` | `{ usd, basis }`, where `basis` says whether the number was `reported` by the agent or `estimated`. `null` when neither is known. |
+
+Claude's own extras sit beside those: `resultSubtype` (the SDK's terminal result
+code) and `toolsObserved` (the distinct tool names the run exercised). Nothing is
+invented — a field the SDK did not report reads `null`.
 
 ## What it emits
 
@@ -579,7 +594,7 @@ that work will plug into.
 | Situation | Behavior |
 |-----------|----------|
 | `@anthropic-ai/claude-agent-sdk` not installed | Throws `ClaudeAgentSdkNotInstalledError` with an install hint. |
-| The agent finishes with an error result (hit max turns, budget, or a runtime error) | Treated as an outcome: the handle's `status` is `"errored"` with the SDK's `resultSubtype`, and an `error` item is emitted. No throw. |
+| The agent finishes with an error result (hit max turns, budget, or a runtime error) | Treated as an outcome: the handle's `status` is `"errored"`, its `outcome` is `stopped-at-limit` or `failed` (with the SDK's own `resultSubtype` alongside), and an `error` item is emitted. No throw. |
 | The SDK throws mid-stream | Wrapped in `ClaudeAgentRunError` and rethrown after an `error` item. |
 | A tool or sub-agent is still open when the stream ends | Its item is marked `incomplete`. |
 | Empty prompt | Validation error before the agent starts. |
