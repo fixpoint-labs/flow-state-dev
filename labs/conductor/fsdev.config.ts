@@ -36,7 +36,8 @@ import path from "node:path";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "./src/flow";
-import { assertBaseRefExists, positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
+import { assertBaseRefExists } from "@flow-state-dev/harness-manager";
+import { positiveIntFromEnv, requireSourceRepo } from "./src/config-env";
 
 function neverResolvesAModel(): never {
   throw new Error(

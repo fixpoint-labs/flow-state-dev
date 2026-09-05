@@ -36,13 +36,16 @@ import {
   sequencer,
   type DefinedCapability,
   type PresetDef,
+  type UsesSlot,
 } from "@flow-state-dev/core";
 import { withTimeout } from "@flow-state-dev/core/helpers";
 import type {
   BlockContext,
   DeclaredResourceEntry,
+  HarnessBlock,
+  HarnessResolver,
+  HarnessSessionHook,
 } from "@flow-state-dev/core/types";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
@@ -54,7 +57,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
-import { MAX_TIMER_MS } from "./config-env";
+import { MAX_TIMER_MS } from "./guards";
 import {
   RUNS,
   openRunRow,
@@ -83,9 +86,9 @@ import {
   branchFor,
   checkoutPathFor,
   provisionCheckout,
+  releaseCheckout,
   type RunLocation,
   type RunPrincipal,
-  type CheckoutLease,
   type OwnershipBounds,
   type WorkspaceConfig,
 } from "./workspace";
@@ -173,11 +176,6 @@ export interface PhaseSpec {
    */
   isDone(run: PhaseRunContext): boolean | Promise<boolean>;
   /**
-   * Collections this phase's prompt builder may read, keyed by the accessor it
-   * reads them under. The manager declares them so `ctx.resources` resolves.
-   */
-  readable: Record<string, DeclaredResourceEntry>;
-  /**
    * What this phase needs from the workspace, checked before anything is
    * claimed. Throws to refuse; absent means the phase needs nothing.
    *
@@ -234,8 +232,49 @@ export interface ManagerOptions {
    * not the deadline alone.
    */
   ownership?: Partial<OwnershipBounds>;
-  /** Forwarded to the coding agent, so tests can script the SDK. */
-  agent?: Omit<Parameters<typeof claudeCodeAgent>[0], "detached" | "recordWork" | "cwd">;
+  /**
+   * **The slot.** How this manager is pointed at a coding harness.
+   *
+   * Called ONCE, at construction, with the three feeds the harness contract
+   * declares — and the harness package closes over all three. That is the whole
+   * coupling: this package imports no harness, names no vendor, and a second
+   * harness needs no edit here.
+   *
+   * ```ts
+   * harness: ({ cwd, resume, onSession }) =>
+   *   claudeCodeAgent({ cwd, resume, onSession, detached: true, recordWork: true }),
+   * ```
+   *
+   * **What the host writes inside the factory is the host's**, deliberately.
+   * `detached: true` is not decoration there: the harness becomes a child block
+   * of the flow's gated task entry, and the claim gate refuses an entry that
+   * authors session state anywhere beneath it. A non-detached harness therefore
+   * fails at `defineFlow`, naming the entry — at startup, where a host can act
+   * on it, rather than mid-run.
+   *
+   * **A factory rather than a block**, because the feeds are per-manager: they
+   * read and write THIS manager's own run state, and a block built before the
+   * manager exists cannot have been given them. Called once rather than per run
+   * for the same reason a flow is built once — the feeds resolve per run, the
+   * block does not.
+   */
+  harness: HarnessSlot;
+  /**
+   * Capabilities installed on the blocks whose contexts a phase sees — the same
+   * `uses` slot any other block takes.
+   *
+   * **This replaces a bespoke `PhaseSpec.readable` record**, which was a second
+   * way to say what the framework already says. A phase that reads its own
+   * collections ships them as a capability and the host puts it here; the
+   * manager spreads it onto the blocks a phase's hooks run inside (the prompt
+   * builder's and the done-condition's), so `ctx.resources` resolves for them
+   * exactly as it does anywhere else.
+   *
+   * The reserved-accessor guard is unchanged in effect and re-aimed at this:
+   * a capability claiming `runs`, `inbox` or the board's own accessor is
+   * refused at construction with the same message.
+   */
+  uses?: UsesSlot;
   /**
    * Tell the coordinator session a question exists, so it learns without
    * polling. Defaults to a no-op.
@@ -248,6 +287,46 @@ export interface ManagerOptions {
   announce?: (event: QuestionAnnouncement) => void | Promise<void>;
   name?: string;
 }
+
+/**
+ * The three feeds a manager hands its harness, in one call.
+ *
+ * All three are **LAB-152's, declared in `@flow-state-dev/core`** and imported
+ * here rather than restated: what this package picks is the slot that bundles
+ * them, not the callbacks' names or their signatures.
+ *
+ * Why three and not two. A harness that throws on the manager's deadline
+ * returns no handle at all, and a status item is transient by contract — so
+ * neither can carry the session id to the next attempt in exactly the case
+ * resume exists for. Unless the harness hands the id to manager-owned durable
+ * state the MOMENT the run names it, the resume resolver reads nothing after a
+ * deadline kill. `onSession` is that write side.
+ */
+export interface HarnessFeeds {
+  /** Where this run works. Reads the checkout off the manager's own state. */
+  cwd: HarnessResolver<string>;
+  /**
+   * Which session this attempt continues, or `null` to start fresh.
+   *
+   * `null` on attempt 1, and on every attempt following one whose harness never
+   * confirmed a session — a resume the vendor refused, above all — so a dead id
+   * is asked for once rather than forever.
+   */
+  resume: HarnessResolver<string | null>;
+  /**
+   * Called by the harness the moment its vendor names the session, writing the
+   * id onto the run row. **The sole writer of that field.**
+   */
+  onSession: HarnessSessionHook;
+}
+
+/**
+ * The `harness` option: a factory the manager calls once with {@link HarnessFeeds}.
+ *
+ * Returns a block conforming to the harness contract — `HarnessBlock` is core's
+ * alias, and this slot is what makes that alias earn its place.
+ */
+export type HarnessSlot = (feeds: HarnessFeeds) => HarnessBlock;
 
 /**
  * What the announcement carries: **the row's key and nothing else.**
@@ -293,6 +372,21 @@ const managerStateSchema = z.object({
    * reaches no phase and no prompt.
    */
   previousSessionId: z.string().nullable().default(null),
+  /**
+   * The checkout lease this attempt holds, as a VALUE — see
+   * `CheckoutLease.token`.
+   *
+   * It lives here rather than in a module-level table because the release has
+   * to be reachable from two exits that share nothing but this state: the
+   * harness step's settle hook (synchronous, handed only a context) and the
+   * chain's rescue. A live handle had nowhere to live but a process-wide map
+   * keyed by request; a value has the run's own state.
+   *
+   * `.nullable().default(null)` on both, so a run row persisted before this
+   * change still parses (BP-030).
+   */
+  lockPath: z.string().nullable().default(null),
+  leaseToken: z.string().nullable().default(null),
 });
 
 /** The manager's own result. Two outcomes; there is deliberately no third. */
@@ -731,8 +825,6 @@ function createConductorCapability(options: {
   boardCollectionId: string;
   /** The board's ledger declaration — the same object the board itself registers. */
   boardCollection: DefinedTaskCollection;
-  /** {@link PhaseSpec.readable}, already checked against the reserved accessors. */
-  readable: Record<string, DeclaredResourceEntry>;
 }): DefinedCapability<
   string,
   Record<string, never>,
@@ -741,11 +833,10 @@ function createConductorCapability(options: {
   undefined,
   Record<string, DeclaredResourceEntry>
 > {
-  const { boardCollectionId, boardCollection, readable } = options;
+  const { boardCollectionId, boardCollection } = options;
   return defineCapability({
-    name: `conductor:${boardCollectionId}`,
+    name: `harness-manager:${boardCollectionId}`,
     resources: {
-      ...readable,
       [RUNS]: runRecordCollection,
       // Where a question is posted, withdrawn, and read back as an answer. The
       // `answer` and `status` actions declare the same definition object, so the
@@ -769,7 +860,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     phase,
     workspace,
     runTimeoutMs,
-    agent = {},
+    harness,
+    uses: hostUses,
     announce = () => {},
     name = "harness-manager",
   } = options;
@@ -798,24 +890,38 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // `status` never read, so a run would park on a question no operator could
   // ever see and no answer could ever reach.
   const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX]);
-  const claimed = Object.keys(phase.readable).filter((key) =>
-    RESERVED_ACCESSORS.has(key),
-  );
+  // **The guard's target is the merged capability set now, not a record.**
+  // `readable` was a second way to declare resources; the rule it protected is
+  // unchanged, so it is re-aimed rather than dropped. A capability contributes
+  // its resources through `resources`, so that is what is read — and a dynamic
+  // `uses` entry is skipped, because it resolves per call and cannot be
+  // inspected at construction. That is the same limit the framework's own
+  // resource collection has, not a new hole.
+  const claimed = [
+    ...new Set(
+      (hostUses ?? []).flatMap((entry) =>
+        typeof entry === "function"
+          ? []
+          : Object.keys(
+              (entry as { resources?: Record<string, unknown> }).resources ?? {},
+            ),
+      ),
+    ),
+  ].filter((key) => RESERVED_ACCESSORS.has(key));
   if (claimed.length > 0) {
     throw new Error(
-      `[conductor] the "${phase.phase}" phase declares readable collection(s) ` +
+      `[harness-manager] a capability on \`uses\` declares collection(s) ` +
         `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns — ` +
         `"${RUNS}" is the run record, "${INBOX}" is the question inbox, and ` +
-        `"${boardCollectionId}" is the board ledger ` +
-        `the attempt fence reads. Both are already available to the phase; declaring ` +
-        `them again would replace the manager's own.`,
+        `"${boardCollectionId}" is the board ledger the attempt fence reads. All ` +
+        `are already available to the phase; declaring them again would replace ` +
+        `the manager's own.`,
     );
   }
 
   const conductor = createConductorCapability({
     boardCollectionId,
     boardCollection,
-    readable: phase.readable,
   });
 
   /**
@@ -1030,9 +1136,18 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ prompt: z.string() }),
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
-    execute: async (input, ctx) => {
-      const state = managerState(ctx.sequencer?.state);
+    // The host's capabilities ride alongside the manager's own, so a phase's
+    // prompt builder reads its collections off `ctx.resources` like any block.
+    uses: [conductor, ...(hostUses ?? [])],
+    // **`ctx` is annotated rather than inferred, and the annotation is
+    // load-bearing.** The host's `uses` widens the context `handler()` infers —
+    // its capabilities' resources and namespaces appear in it — and a narrowed
+    // `BlockContext` is not assignable to a plain one, so every helper called
+    // below would need a cast. Narrowing here keeps the option's cost at the
+    // option; `createConductorCapability` carries the long form of the same
+    // argument.
+    execute: async (input, ctx: BlockContext) => {
+      const state = managerState(harnessCtxState(ctx));
 
       // **Two channels, two meanings, and they never carry each other.** The
       // board's `feedback` says why the LAST ATTEMPT FAILED; these say what an
@@ -1093,20 +1208,26 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Safe in this order because `acquireCheckout` needs only the path, not a
       // provisioned tree: it creates the parent directory and locks beside the
       // checkout.
-      leases.set(
-        leaseKey(ctx),
-        await acquireCheckout(
-          state.workspacePath!,
-          `${input.taskId}#${input.attempts}`,
-          ownership,
-          Date.now,
-          // Cancellation stops the WAIT. A cancelled attempt that kept polling
-          // could still acquire and provision a tree whose result it can no
-          // longer record — and the wait is now long enough for that to cost a
-          // replacement most of an hour.
-          ctx.signal,
-        ),
+      const lease = await acquireCheckout(
+        state.workspacePath!,
+        `${input.taskId}#${input.attempts}`,
+        ownership,
+        Date.now,
+        // Cancellation stops the WAIT. A cancelled attempt that kept polling
+        // could still acquire and provision a tree whose result it can no
+        // longer record — and the wait is now long enough for that to cost a
+        // replacement most of an hour.
+        ctx.signal,
       );
+      // **Persisted immediately, before anything that can throw.** The window
+      // between taking the lock and recording how to release it is a window in
+      // which a crash orphans the lock until the stale bound expires — the same
+      // exposure the module-level map had when the process died, now bounded to
+      // one `patchState` instead of the whole provisioning call.
+      await ctx.sequencer!.patchState({
+        lockPath: lease.lockPath,
+        leaseToken: lease.token,
+      });
       await provisionCheckout(workspace, {
         principal: runPrincipal(ctx),
         epic: boardCollectionId,
@@ -1200,6 +1321,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     inputSchema: z.object({
       status: z.string(),
       sessionId: z.string().nullable(),
+      // Which harness produced this handle. Recorded beside the session; the
+      // CHECK that a resumed session belongs to the harness now dispatched
+      // belongs to the issue that introduces per-task harness choice.
+      source: z.string(),
       outcome: z.string().nullable(),
       finalMessage: z.string().nullable(),
       usage: z
@@ -1211,10 +1336,18 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     }),
     outputSchema: managerOutputSchema,
     sequencerStateSchema: managerStateSchema,
-    uses: [conductor],
-    execute: async (handle, ctx) => {
-      const state = managerState(ctx.sequencer?.state);
-      const identity = identityFrom(ctx.sequencer?.state, boardCollectionId);
+    // The done-condition runs in here, and it sees a phase's collections too.
+    uses: [conductor, ...(hostUses ?? [])],
+    // **`ctx` is annotated rather than inferred, and the annotation is
+    // load-bearing.** The host's `uses` widens the context `handler()` infers —
+    // its capabilities' resources and namespaces appear in it — and a narrowed
+    // `BlockContext` is not assignable to a plain one, so every helper called
+    // below would need a cast. Narrowing here keeps the option's cost at the
+    // option; `createConductorCapability` carries the long form of the same
+    // argument.
+    execute: async (handle, ctx: BlockContext) => {
+      const state = managerState(harnessCtxState(ctx));
+      const identity = identityFrom(harnessCtxState(ctx), boardCollectionId);
       const succeeded = handle.status === "completed";
 
       // Everything the run reported goes on the row before anything is decided,
@@ -1230,6 +1363,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Leaving it to the opening clear is what makes the retry self-heal.
       await fenced(
         writeRunRow(ctx, identity, {
+        source: handle.source,
         finalMessage: handle.finalMessage,
         usage: handle.usage,
         costUsd: handle.cost?.usd ?? null,
@@ -1388,10 +1522,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // is the same fix aimed at the instance, and the next step added between
       // acquire and dispatch would not be covered.
       //
-      // Idempotent: `releaseLease` deletes the entry, so the agent path's
-      // `onSettled` having already released makes this a no-op, and `release()`
-      // is identity-guarded so it can never remove a replacement's lock.
-      releaseLease(ctx);
+      // Idempotent: the release is token-guarded, so the harness path's
+      // `onSettled` having already released makes this a no-op, and it can
+      // never remove a replacement's lock.
+      releaseLeaseFromState(ctx);
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;
@@ -1417,6 +1551,41 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
   });
 
+  /**
+   * **The slot, called once.**
+   *
+   * Every feed reads or writes MANAGER state — never the block's input
+   * (BP-031). A model holding the harness as a tool can choose neither where
+   * the run writes nor what conversation it continues, and that is structural
+   * rather than a convention this manager keeps: a resolver is handed the
+   * context alone, so the caller's prompt is not reachable from here at all.
+   *
+   * All three reach the manager's state through `harnessCtxState`, which is
+   * where the cast lives and says why.
+   */
+  const harnessBlock = harness({
+    // The run edits ITS checkout, and the record of what it touched is keyed
+    // there too.
+    cwd: (ctx) => managerState(harnessCtxState(ctx)).workspacePath!,
+    // Which session this attempt continues. `null` on attempt 1, and on every
+    // attempt after one whose harness named no session — a resume the vendor
+    // refused, above all — so a dead id is not re-sent forever.
+    resume: (ctx) => harnessCtxState(ctx)?.previousSessionId ?? null,
+    // **Fenced like every other write.** A refusal here means a replacement
+    // holds the row, and recording this attempt's session onto it would hand
+    // the replacement's next attempt a conversation that belongs to a run
+    // nobody is waiting on. Stopping is also the right answer for the run
+    // itself: it is mid-stream in paid model work on a row it no longer owns.
+    onSession: async (sessionId, ctx) => {
+      await fenced(
+        writeRunRow(ctx, identityFrom(harnessCtxState(ctx), boardCollectionId), {
+          sessionId,
+        }),
+        "the harness named its session",
+      );
+    },
+  });
+
   const worker = sequencer({
     name,
     inputSchema: taskWorkerInputSchema,
@@ -1426,52 +1595,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .tap(openRun)
     .step(prepare)
     .step(
-      claudeCodeAgent({
-        ...agent,
-        // The hand-off shim: `defineFlow` refuses a handed-off worker whose block
-        // authors a session-state schema.
-        detached: true,
-        recordWork: true,
-        // **Three feeds, one channel, and every one of them reads or writes
-        // MANAGER state — never the block's input** (BP-031). A model holding
-        // this block as a tool can choose neither where the run writes nor what
-        // conversation it continues, and that is now structural rather than a
-        // convention this manager keeps: a resolver is handed the context alone,
-        // so the caller's prompt is not reachable from here at all.
-        //
-        // All three reach the manager's state through `harnessCtxState`, which
-        // is where the cast lives and says why.
-        //
-        // The run edits ITS checkout, and the record of what it touched is
-        // keyed there too.
-        cwd: (ctx) => managerState(harnessCtxState(ctx)).workspacePath!,
-        // Which session this attempt continues. `null` on attempt 1, and on
-        // every attempt after one whose harness never named a session — a
-        // resume the vendor refused, above all — so a dead id is not re-sent
-        // forever.
-        resume: (ctx) => harnessCtxState(ctx)?.previousSessionId ?? null,
-        // **The sole writer of the row's `sessionId`**, called the moment the
-        // vendor names the session. Not at the verdict: a run the deadline
-        // kills returns no handle at all, and that is exactly the run the next
-        // attempt most needs to continue.
-        //
-        // **Fenced like every other write.** A refusal here means a replacement
-        // holds the row, and recording this attempt's session onto it would
-        // hand the replacement's next attempt a conversation that belongs to a
-        // run nobody is waiting on. Stopping is also the right answer for the
-        // run itself: it is mid-stream in paid model work on a row it no longer
-        // owns.
-        onSession: async (sessionId, ctx) => {
-          await fenced(
-            writeRunRow(
-              ctx,
-              identityFrom(harnessCtxState(ctx), boardCollectionId),
-              { sessionId },
-            ),
-            "the harness named its session",
-          );
-        },
-      }),
+      harnessBlock,
       {
         // The cancellable-under-a-deadline obligation, met by a primitive core
         // already has: this composes into the block's own signal, which the SDK
@@ -1480,7 +1604,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Fires on every exit from the dispatch — returned, threw, or
         // suspended. The tree is only written by the agent, so releasing the
         // moment it stops is tighter than holding through the verdict.
-        onSettled: (ctx) => releaseLease(ctx),
+        onSettled: (ctx) => releaseLeaseFromState(ctx),
       },
     )
     .step(decide)
@@ -1491,30 +1615,33 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 }
 
 /**
- * Live checkout leases, keyed by the request holding them.
+ * **The one convergence point: release the checkout from state alone.**
  *
- * Module-level because `onSettled` must be synchronous and gets only a context:
- * there is nowhere else to put a value that `prepare` created and the harness
- * step's exit has to release. Keyed by request so two managers in one process
- * — the whole point of a board — never release each other's.
- */
-const leases = new Map<string, CheckoutLease>();
-
-function leaseKey(ctx: BlockContext): string {
-  return ctx.request.identity.id;
-}
-
-/**
- * Release this request's lease and forget it.
+ * Called from both exits — the harness step's `onSettled` and the chain's
+ * rescue — and neither of them passes anything but a context. That is what
+ * forces the lease to be a value: `onSettled` is synchronous and gets only a
+ * context, so a live handle had nowhere to live except a process-wide map, and
+ * the map existed only because a completion hook could not reach the run that
+ * took the lock.
  *
- * Deleting matters as much as releasing: the entry is what keeps the lease
- * reachable, and a map that only ever grows would hold one object per run for
- * the process's life.
+ * It reads `(lockPath, token)` off the run's own state and nothing else. **A
+ * second release path that read anything else is the defect this shape
+ * removes, coming back** — so if a third exit ever needs to release, it calls
+ * this.
+ *
+ * Idempotent: `releaseCheckout` removes a lock only when the token still
+ * matches, so a second call after the first succeeded finds nothing of ours and
+ * does nothing.
+ *
+ * No module-level state remains, so two managers in one process cannot touch
+ * each other's lock by construction rather than by keying a table correctly.
  */
-function releaseLease(ctx: BlockContext): void {
-  const key = leaseKey(ctx);
-  leases.get(key)?.release();
-  leases.delete(key);
+function releaseLeaseFromState(ctx: {
+  sequencer?: { state?: unknown } | undefined;
+}): void {
+  const state = harnessCtxState(ctx);
+  if (state?.lockPath == null || state.leaseToken == null) return;
+  releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
 }
 
 export { RUNS };

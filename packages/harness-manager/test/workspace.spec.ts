@@ -24,8 +24,9 @@ import {
   type WorkspaceConfig,
   encodeSegment,
   isStrictlyInside,
+  releaseCheckout,
 } from "../src/workspace";
-import { seedRepo } from "./harness";
+import { seedRepo } from "./fixtures";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE } from "../src/ask";
 
 const dirs: string[] = [];
@@ -262,7 +263,7 @@ describe("a cancelled attempt stops waiting for the tree", () => {
     // The holder still owns the tree: a cancelled waiter must not have taken or
     // cleared anything on its way out.
     expect(existsSync(`${checkout}.lock`)).toBe(true);
-    held.release();
+    releaseCheckout(held);
   });
 
   it("does not wait at all when it is already cancelled", async () => {
@@ -319,7 +320,7 @@ describe("a cancelled attempt stops waiting for the tree", () => {
     // uncapped sleep would have taken.
     expect(elapsed).toBeLessThan(1_000);
 
-    held.release();
+    releaseCheckout(held);
   });
 
   it("observes the signal without waiting out the poll interval", async () => {
@@ -357,7 +358,7 @@ describe("a cancelled attempt stops waiting for the tree", () => {
     expect(Date.now() - startedAt).toBeLessThan(5_000);
 
     expect(existsSync(`${checkout}.lock`)).toBe(true);
-    held.release();
+    releaseCheckout(held);
   });
 });
 
@@ -756,8 +757,8 @@ describe("obligation B — one live attempt per tree", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(secondProceeded).toBe(false);
 
-    held.release();
-    (await second).release();
+    releaseCheckout(held);
+    releaseCheckout(await second);
     expect(secondProceeded).toBe(true);
   });
 
@@ -808,7 +809,7 @@ describe("obligation B — one live attempt per tree", () => {
       pollMs: 10,
       staleAfterMs: 0,
     });
-    lease.release();
+    releaseCheckout(lease);
   });
 
   it("a late release from a displaced holder does not free the live attempt's tree", async () => {
@@ -822,7 +823,7 @@ describe("obligation B — one live attempt per tree", () => {
       staleAfterMs: 0,
     });
     // …and attempt 1 finally notices it is done.
-    stale.release();
+    releaseCheckout(stale);
 
     // Attempt 2 must still hold the tree. Releasing somebody else's lock is how
     // two coding agents end up in one checkout after the exclusion "worked".
@@ -834,11 +835,11 @@ describe("obligation B — one live attempt per tree", () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(third).toBe(false);
 
-    live.release();
+    releaseCheckout(live);
     // Awaited rather than abandoned: a poll loop left running past the test
     // outlives the temp directory and surfaces as an unhandled ENOENT that has
     // nothing to do with what is under test.
-    (await waiting).release();
+    releaseCheckout(await waiting);
     expect(third).toBe(true);
   });
 });
@@ -863,7 +864,7 @@ describe("obligation B — releasing is as guarded as stealing", () => {
     });
 
     // …and only now does attempt 1 notice it is done.
-    overrun.release();
+    releaseCheckout(overrun);
 
     // The replacement must still hold the tree. Asserted by a third attempt
     // NOT getting it — the observable form of "two agents in one checkout".
@@ -875,8 +876,8 @@ describe("obligation B — releasing is as guarded as stealing", () => {
     await new Promise((resolve) => setTimeout(resolve, 80));
     expect(third).toBe(false);
 
-    replacement.release();
-    (await waiting).release();
+    releaseCheckout(replacement);
+    releaseCheckout(await waiting);
     expect(third).toBe(true);
   });
 
@@ -887,13 +888,13 @@ describe("obligation B — releasing is as guarded as stealing", () => {
     const path = checkoutPathFor(config, at("FIX-1219", "implement"));
 
     const first = await acquireCheckout(path, "attempt#1", bounds);
-    first.release();
+    releaseCheckout(first);
 
     // Free immediately, without waiting out the bound.
     const started = Date.now();
     const second = await acquireCheckout(path, "attempt#2", bounds);
     expect(Date.now() - started).toBeLessThan(500);
-    second.release();
+    releaseCheckout(second);
   });
 });
 
@@ -1676,6 +1677,6 @@ describe("the poll sleep observes a signal that already aborted", () => {
     expect(outcome).toBeInstanceOf(Error);
     // Well under one poll interval. Without the check this waits 30s.
     expect(Date.now() - started).toBeLessThan(5_000);
-    held.release();
+    releaseCheckout(held);
   }, 20_000);
 });

@@ -43,12 +43,12 @@
  * future caller that skips the schema still cannot escape the root.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
-import { identityFromCommonDir } from "./config-env";
-import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./patterns";
+import { identityFromCommonDir } from "./guards";
+import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./identity";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {
@@ -1280,7 +1280,73 @@ export function isStrictlyInside(candidate: string, root: string): boolean {
 
 /** A held checkout. Release it on every exit from the attempt that took it. */
 export interface CheckoutLease {
-  release(): void;
+  /** The lock file this acquisition created. */
+  lockPath: string;
+  /**
+   * A token written INTO that lock file, unique to this acquisition.
+   *
+   * **It does the inode's job, and survives being written down.** The release
+   * has to establish that the lock it is about to remove is still the one this
+   * acquisition created — a run that overruns the whole hold budget becomes
+   * stale-eligible while its process is alive, so a replacement can steal the
+   * path and a careless release would then remove the REPLACEMENT'S lock. The
+   * inode answered that, and could not be serialised: it is a fact about a live
+   * filesystem handle, so it forced a module-level table to keep the closure
+   * that held it alive. A token is a value, so the lease can live in the run's
+   * own state and release itself from there.
+   *
+   * An owner string alone is not enough, which is why this is not just the
+   * owner: a same-owner re-delivery creating a new lock with identical bytes
+   * must not be released by the old process.
+   *
+   * **What it does NOT buy**, stated plainly because the shape invites the
+   * assumption: compare-then-unlink is no more atomic for a token than it was
+   * for an inode. The stale-lock window this file already documents is
+   * unchanged. The token replaces the inode for serialisation and for
+   * same-owner re-delivery — not for stronger cross-process exclusion.
+   */
+  token: string;
+}
+
+/**
+ * Release a checkout lease — **the one place a lock this process took is
+ * removed**, called from every exit.
+ *
+ * A function of the lease VALUE rather than a method on a live object, which is
+ * what lets the lease live in the run's own state: the manager patches
+ * `{ lockPath, token }` onto its state when it acquires, and both exits (the
+ * harness step's settle hook and the chain's rescue) call this with what they
+ * read back. No module-level table of live closures remains, so two managers in
+ * one process cannot touch each other's lock by construction rather than by
+ * keying.
+ *
+ * **Never unlinks a lock without establishing it is still ours.** Same rule as
+ * the steal in `acquireCheckout`, and it has to be here too — this is the other
+ * place that unlinks. The case it closes is reachable, and the construction
+ * check is what makes it reachable rather than preventing it: a run that
+ * overruns the whole hold budget becomes stale-eligible while its process is
+ * still alive. Another attempt steals the lock and takes the tree; then this
+ * release fires and, checking nothing, removes THE REPLACEMENT'S lock. A third
+ * attempt acquires the path while the replacement is mid-edit — two agents in
+ * one tree, which is the whole thing the lock prevents.
+ *
+ * Synchronous, because the settle hook that calls it is: every operation here
+ * is a sync filesystem call. Idempotent, so the rescue calling it after the
+ * settle hook already did is a read.
+ */
+export function releaseCheckout(lease: CheckoutLease | undefined): void {
+  if (lease === undefined) return;
+  try {
+    const held = JSON.parse(readFileSync(lease.lockPath, "utf8")) as {
+      token?: string;
+    };
+    if (held.token === lease.token) {
+      rmSync(lease.lockPath, { force: true });
+    }
+  } catch {
+    // Already gone, or unreadable. Either way there is nothing of ours left to
+    // release, and a cleanup failure must never fail a run.
+  }
 }
 
 /** How ownership is bounded. Sized against the renewal lag that causes overlap. */
@@ -1424,39 +1490,13 @@ export async function acquireCheckout(
 
   for (;;) {
     try {
-      writeFileSync(lock, JSON.stringify({ owner, at: now() }), { flag: "wx" });
-      // The identity of the file we just created, captured rather than re-derived.
-      // See `release`.
-      const mine = statSync(lock).ino;
-      return {
-        release() {
-          // **Never unlink a lock without establishing it is still the one we
-          // hold.** Same rule as the steal above, and it has to be here too —
-          // this is the other place that unlinks.
-          //
-          // The case it closes is reachable, and the construction check is what
-          // makes it reachable rather than preventing it: a run that overruns
-          // the whole hold budget becomes stale-eligible while its process is still
-          // alive. Another attempt steals the lock and takes the tree; then this
-          // release fires and, checking nothing, removes THE REPLACEMENT'S lock.
-          // A third attempt acquires the path while the replacement is mid-edit —
-          // two agents in one tree, which is the whole thing the lock prevents.
-          //
-          // So both the inode and the owner must still be ours. The inode is the
-          // load-bearing half: an owner string alone cannot tell our lock from a
-          // later file that happens to carry the same bytes.
-          try {
-            const current = statSync(lock);
-            const held = JSON.parse(readFileSync(lock, "utf8")) as { owner?: string };
-            if (current.ino === mine && held.owner === owner) {
-              rmSync(lock, { force: true });
-            }
-          } catch {
-            // Already gone, or unreadable. Either way there is nothing of ours
-            // left to release, and a cleanup failure must never fail a run.
-          }
-        },
-      };
+      // **Unique per ACQUISITION, not per owner.** The owner is
+      // `<taskId>#<attempt>`, which a re-delivery of the same attempt repeats;
+      // the token is what tells this acquisition's lock from an identical-looking
+      // one a replacement created. See `CheckoutLease.token`.
+      const token = randomUUID();
+      writeFileSync(lock, JSON.stringify({ owner, token, at: now() }), { flag: "wx" });
+      return { lockPath: lock, token };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }

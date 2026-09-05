@@ -20,9 +20,9 @@
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { decideAnswer, type AnswerBoard, type AnswerOutput } from "../src/answer";
-import { askQuestion, answerQuestion, questionFingerprint, questionTopic, readQuestion } from "../src/inbox";
-import { conductorTaskId } from "../src/workspace";
-import { contextWithInbox, fakeInbox } from "./inbox-fake";
+import { askQuestion, answerQuestion, questionFingerprint, questionTopic, readQuestion } from "@flow-state-dev/harness-manager";
+import { conductorTaskId } from "@flow-state-dev/harness-manager";
+import { contextWithInbox, fakeInbox } from "../../../packages/harness-manager/test/inbox-fake";
 
 const ISSUE = "FIX-1166";
 const PHASE = "implement";

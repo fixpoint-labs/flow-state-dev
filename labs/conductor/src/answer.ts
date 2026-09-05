@@ -111,8 +111,8 @@ import {
   parseQuestionTopic,
   readQuestion,
   withdrawQuestion,
-} from "./inbox";
-import { conductorTaskId } from "./workspace";
+} from "@flow-state-dev/harness-manager";
+import { conductorTaskId } from "@flow-state-dev/harness-manager";
 
 /** The task-board statuses from which nothing can be resumed. */
 const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);

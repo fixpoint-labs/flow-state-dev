@@ -22,7 +22,7 @@ import {
   type RunPrincipal,
   conductorTaskId,
   encodeSegment,
-} from "../src/workspace";
+} from "@flow-state-dev/harness-manager";
 
 /** Temp trees this file made; removed after each test so none outlive the run. */
 const dirs: string[] = [];

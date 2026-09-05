@@ -8,10 +8,12 @@
  *
  * ## The board's own ledger is a deliverable, not a default
  *
- * A board that hands off refuses three things at construction, and a flow
- * that leaves any of them implicit throws before `seed` can run: an explicit
- * stable `boardId`, a durable `defineTaskCollection()` backing, and a ledger
- * the child session can reach.
+ * A board that hands off refuses FOUR things at construction, and a flow that
+ * leaves any of them implicit throws before `seed` can run: an explicit stable
+ * `boardId`, a durable `defineTaskCollection()` backing, a ledger the child
+ * session can reach, and a NAMED seat — because a hand-off is addressed by the
+ * seat name the row is routed by, so an unnamed one has no address to dispatch
+ * to.
  *
  * **`user`-scoped, no `sharedToLineage`.** The task row is where a human's
  * later answer lands, through a NEW request, so a parked row has to outlive the
@@ -54,6 +56,7 @@
  * authority on completion; the run record never is.**
  */
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -71,7 +74,7 @@ import {
   runRecordStateSchema,
   runTopic,
   runTopicPrefix,
-} from "./run-record";
+} from "@flow-state-dev/harness-manager";
 import {
   conductorDrainBudgetMs,
   conductorTaskInputSchema,
@@ -83,14 +86,14 @@ import {
   type PhaseSpec,
   type PhaseRunContext,
   type PromptRunContext,
-} from "./manager";
+} from "@flow-state-dev/harness-manager";
 import { implementPhase } from "./implement";
 import {
   INBOX,
   inboxCollection,
   listQuestions,
   withdrawQuestion,
-} from "./inbox";
+} from "@flow-state-dev/harness-manager";
 import {
   answerInputSchema,
   answerOutputSchema,
@@ -103,7 +106,7 @@ import {
   assertCheckoutRootUsable,
   assertDistinctRepository,
   assertPositiveInt,
-} from "./config-env";
+} from "@flow-state-dev/harness-manager";
 import {
   canonicalSegment,
   sameSegment,
@@ -112,7 +115,7 @@ import {
   joinIdentity,
   tenantSegment,
   type WorkspaceConfig,
-} from "./workspace";
+} from "@flow-state-dev/harness-manager";
 
 /** The one assignee this board routes to. */
 export const ASSIGNEE = "harness" as const;
@@ -145,8 +148,18 @@ export interface ConductorFlowOptions {
   runTimeoutMs?: number;
   /** Defaults to the implement phase. Swapped by tests and by later phases. */
   phase?: PhaseSpec;
-  /** Forwarded to the coding agent (model, tools, permission mode, a test stub). */
-  agent?: Parameters<typeof harnessManager>[0]["agent"];
+  /**
+   * Forwarded to the coding agent (model, tools, permission mode, a test stub).
+   *
+   * This lab picks Claude Code, so this is `claudeCodeAgent`'s option surface
+   * minus the four the manager's slot supplies — see where the factory is
+   * written below. A host that wanted Codex would write a different factory and
+   * change nothing in `@flow-state-dev/harness-manager`.
+   */
+  agent?: Omit<
+    Parameters<typeof claudeCodeAgent>[0],
+    "detached" | "recordWork" | "cwd" | "resume" | "onSession"
+  >;
   ownership?: Parameters<typeof harnessManager>[0]["ownership"];
   /**
    * Told, after the park, that a question exists. Defaults to a no-op.
@@ -586,7 +599,29 @@ export function conductorFlow(options: ConductorFlowOptions) {
     phase: runPhase,
     workspace,
     runTimeoutMs,
-    ...(agent !== undefined ? { agent } : {}),
+    // **The slot, and the only place this repository names a coding harness.**
+    //
+    // The manager hands down three feeds and knows nothing else about what it
+    // is driving; everything Claude-specific is written here, where it belongs.
+    // Pointing this board at Codex is this one expression.
+    //
+    // `detached: true` is not decoration: the harness becomes a child block of
+    // the flow's gated task entry, and the claim gate refuses an entry that
+    // authors session state anywhere beneath it. A non-detached harness fails
+    // at `defineFlow`, naming the entry.
+    //
+    // `recordWork: true` keys the index of what the run touched to the run's
+    // own checkout — the other half of `cwd`, and doing only the first is the
+    // trap the option's own doc names.
+    harness: ({ cwd, resume, onSession }) =>
+      claudeCodeAgent({
+        ...(agent ?? {}),
+        cwd,
+        resume,
+        onSession,
+        detached: true,
+        recordWork: true,
+      }),
     ...(ownership !== undefined ? { ownership } : {}),
     ...(announce !== undefined ? { announce } : {}),
   });

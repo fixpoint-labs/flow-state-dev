@@ -21,7 +21,12 @@ import {
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireCheckout, conductorTaskId, encodeSegment } from "../src/workspace";
+import {
+  acquireCheckout,
+  conductorTaskId,
+  encodeSegment,
+  releaseCheckout,
+} from "@flow-state-dev/harness-manager";
 import {
   createConductorHarness,
   USER_ID,
@@ -631,7 +636,7 @@ describe("the manager — contention, and what it must not cost", () => {
       pollMs: 20,
       staleAfterMs: 60_000,
     });
-    setTimeout(() => held.release(), 250);
+    setTimeout(() => releaseCheckout(held), 250);
 
     const row = await seedAndDrain(live);
 
@@ -697,7 +702,6 @@ describe("the manager — the phase surface", () => {
       workspace: { root: h.workspaceRoot, sourceRepo: h.sourceRepo, baseRef: "main" },
       phase: {
         phase: "review",
-        readable: {},
         buildPrompt: () => "review it",
         isDone: () => true,
       },
@@ -1152,7 +1156,7 @@ describe("the drain budget covers the whole worker", () => {
     // pass just as happily for a budget that forgot a term.
     const runTimeoutMs = 1_800_000;
     const budget = await budgetFor();
-    const { resolveOwnership } = await import("../src/manager");
+    const { resolveOwnership } = await import("@flow-state-dev/harness-manager");
     const { ownership } = resolveOwnership({ runTimeoutMs });
 
     expect(budget).toBeGreaterThan(runTimeoutMs);
@@ -1469,7 +1473,7 @@ describe("the ledger is partitioned by tenant", () => {
     // The run topic leads with the collection identity, so partitioning that
     // partitions the run record as well — one change, both stores.
     const { conductorFlow } = await import("../src/flow");
-    const { runTopic } = await import("../src/run-record");
+    const { runTopic } = await import("@flow-state-dev/harness-manager");
     const acme = conductorFlow({ ...base, tenant: "acme" });
     const globex = conductorFlow({ ...base, tenant: "globex" });
 
@@ -1485,7 +1489,7 @@ describe("the ledger is partitioned by tenant", () => {
     // one run topic. A test over two obviously-different tenants cannot fail on
     // that, which is why this one redistributes the delimiter instead.
     const { conductorFlow } = await import("../src/flow");
-    const { runTopic } = await import("../src/run-record");
+    const { runTopic } = await import("@flow-state-dev/harness-manager");
     const left = conductorFlow({ ...base, tenant: "a-b", epic: "c" });
     const right = conductorFlow({ ...base, tenant: "a", epic: "b-c" });
 
@@ -1533,7 +1537,7 @@ describe("the ledger is partitioned by tenant", () => {
     const implement = conductorFlow({ ...base, phase: implementPhase() });
     const review = conductorFlow({
       ...base,
-      phase: { phase: "review", readable: {}, buildPrompt: () => "r", isDone: () => true },
+      phase: { phase: "review", buildPrompt: () => "r", isDone: () => true },
     });
 
     expect(review.collectionId).toBe(implement.collectionId);
@@ -1543,7 +1547,7 @@ describe("the ledger is partitioned by tenant", () => {
     const separated = conductorFlow({
       ...base,
       epic: "shared-epic-review",
-      phase: { phase: "review", readable: {}, buildPrompt: () => "r", isDone: () => true },
+      phase: { phase: "review", buildPrompt: () => "r", isDone: () => true },
     });
     expect(separated.collectionId).not.toBe(implement.collectionId);
     expect(separated.boardId).not.toBe(implement.boardId);
@@ -1806,7 +1810,7 @@ describe("the ledger is partitioned by tenant", () => {
 
 describe("the completion check is bounded", () => {
   it("gives up on a hook that never answers, and leaves no timer behind", async () => {
-    const { withDeadline } = await import("../src/manager");
+    const { withDeadline } = await import("@flow-state-dev/harness-manager");
 
     // The gap this closes: `conductorDrainBudgetMs` sums four terms and spends
     // `NETWORK_CALL_TIMEOUT_MS` on the completion check — a number taken from the
@@ -2083,7 +2087,6 @@ describe("the phase's own precondition is refused at the same door", () => {
       workspace: mutable,
       phase: {
         phase: "implement",
-        readable: {},
         buildPrompt: () => "p",
         isDone: () => true,
         validate: (w) => {

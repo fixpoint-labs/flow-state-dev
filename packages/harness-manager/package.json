@@ -1,0 +1,74 @@
+{
+  "name": "@flow-state-dev/harness-manager",
+  "version": "0.0.0",
+  "description": "A task-board worker that turns a row into a supervised coding run — its own checkout, a verdict read before the row settles, a question channel, and the coding harness as a slot you fill.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "coding-agent",
+    "harness",
+    "task-board"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/harness-manager"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
+  }
+}

@@ -16,6 +16,33 @@ Two things make that supervision real:
 
 Research software. Unpublished, private to this workspace.
 
+## Where the code lives now
+
+**The loop is a published package.** `@flow-state-dev/harness-manager` holds everything the worker
+needs to execute a claimed row: the manager sequencer and its blocks, the run record, the question
+inbox and the ask marker, the checkout derivation and its lease, and the guards a host runs at its
+own door. This lab is its **first consumer**.
+
+What stays here is what is this repository's rather than every host's:
+
+| Here | Why |
+|---|---|
+| `flow.ts` — the flow and its four actions | Seeding a Linear issue, waking the board, reading status, answering a question |
+| `implement.ts` — the implement phase | Its done-condition is a `gh` probe for a pull request, which is this repository's definition of finished |
+| `answer.ts` | The operator's verb, wired to this flow's board |
+| `config-env.ts` — `CONDUCTOR_REPO` and friends | *Reading* the environment. The rules those values are checked against are the package's |
+| `patterns.ts` | The remote-URL grammar the GitHub probe parses. The identity grammar moved with the checkout |
+
+**Two lines pick the harness**, and they are the only place this repository names a coding agent —
+in `flow.ts`, where the manager is built:
+
+```ts
+harness: ({ cwd, resume, onSession }) =>
+  claudeCodeAgent({ ...agent, cwd, resume, onSession, detached: true, recordWork: true }),
+```
+
+Pointing this board at a different coding agent is that expression and nothing else.
+
 ## What it does today
 
 One phase (`implement`), one issue at a time, three outcomes.

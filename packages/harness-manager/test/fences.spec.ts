@@ -81,27 +81,21 @@ describe("every fence's refusal is read", () => {
  * what makes the next door fail here instead.
  */
 const SPAWNING_FILES = [
-  join(__dirname, "..", "src", "config-env.ts"),
+  join(__dirname, "..", "src", "guards.ts"),
   join(__dirname, "..", "src", "exec.ts"),
-  join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "goals",
-    "conductor",
-    "implement-phase-opens-a-pr",
-    "run.mts",
-  ),
 ];
 
 describe("every child process is bounded", () => {
   it("finds the spawning call sites at all", () => {
-    // Or the assertion below examines nothing and passes vacuously.
+    // Or the assertion below examines nothing and passes vacuously. Three is
+    // the count in THIS package — the two startup queries in `guards.ts` and
+    // the one helper every run-time spawn goes through. The goal scripts this
+    // floor used to also cover live outside the package now; the rule travels
+    // with them, and the lab sweeps its own.
     const total = SPAWNING_FILES.map((f) => readFileSync(f, "utf8"))
       .join("\n")
       .match(/execFileSync\s*\(|execFileAsync\s*\(/g);
-    expect(total?.length ?? 0).toBeGreaterThanOrEqual(5);
+    expect(total?.length ?? 0).toBeGreaterThanOrEqual(3);
   });
 
   it("gives every spawn a wall clock", () => {

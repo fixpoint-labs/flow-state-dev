@@ -21,9 +21,14 @@ import type {
 } from "@flow-state-dev/claude-code/sdk";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../src/flow";
 import { implementPhase } from "../src/implement";
-import { ASK_MARKER_IGNORE_RULE } from "../src/ask";
-import { CHECKOUT_CLEANUP_TIMEOUT_MS } from "../src/exec";
-import type { PhaseSpec, PromptRunContext } from "../src/manager";
+import { ASK_MARKER_IGNORE_RULE } from "@flow-state-dev/harness-manager";
+// Re-exported: this lab's own specs import it from here, and the fixture it
+// stands for — a source repository with tracked content, a `.gitignore` and
+// an `origin` — is the package's, shared rather than copied.
+import { seedRepo } from "../../../packages/harness-manager/test/fixtures";
+export { seedRepo };
+import { CHECKOUT_CLEANUP_TIMEOUT_MS } from "@flow-state-dev/harness-manager";
+import type { PhaseSpec, PromptRunContext } from "@flow-state-dev/harness-manager";
 
 export const USER_ID = "conductor-test-user";
 
@@ -244,39 +249,6 @@ export interface HarnessOptions {
   announce?: NonNullable<Parameters<typeof conductorFlow>[0]["announce"]>;
 }
 
-/** A real git repository with one commit, so `worktree add` has something to cut. */
-export function seedRepo(dir: string): void {
-  const git = (...args: string[]) =>
-    execFileSync("git", args, { cwd: dir, stdio: "pipe", encoding: "utf8" });
-  git("init", "--initial-branch=main", ".");
-  git("config", "user.email", "conductor@example.test");
-  git("config", "user.name", "Conductor Test");
-  // **A stand-in repository has tracked content, because a real one does.**
-  // These fixtures committed nothing, so every worktree cut from them had zero
-  // tracked files — which makes a half-populated checkout indistinguishable from
-  // a complete one (`git ls-files --deleted` is empty either way), and that
-  // distinction is what the provisioning marker is now corroborated against.
-  // Another fixture that had drifted from the thing it stands for.
-  writeFileSync(join(dir, "tracked.txt"), "content the checkout should carry\n");
-  // **A stand-in source repository ignores the ask marker, because a real one
-  // has to.** The marker lands in the product checkout, so the rule that keeps
-  // it out of a commit belongs to THAT repository — and provisioning now
-  // refuses a checkout whose repository does not carry it, before the agent
-  // runs. Third fixture in this file that had drifted from the thing it stands
-  // for, and the same tell each time: the specs passed because nothing asked.
-  writeFileSync(join(dir, ".gitignore"), `${ASK_MARKER_IGNORE_RULE}\n`);
-  git("add", "tracked.txt", ".gitignore");
-  git("commit", "-m", "root");
-  // **A stand-in source repository has an `origin`, because a real one does.**
-  // The implement phase's completion probe reads it, and `conductorFlow` now
-  // refuses a source repo without one — a guard that exists because the failure
-  // otherwise lands after a paid agent run, once per retry. These fixtures had
-  // no remote at all, so every flow built here was one the probe could not have
-  // run against; the specs passed only because the probe is stubbed. Nothing
-  // resolves this URL: the phase's `gh` call is replaced in every test that
-  // reaches it.
-  git("remote", "add", "origin", "https://github.com/fixpoint-labs/conductor-fixture.git");
-}
 
 export function createConductorHarness(options: HarnessOptions): ConductorHarness {
   const dir = mkdtempSync(join(tmpdir(), "conductor-"));
