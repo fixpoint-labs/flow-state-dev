@@ -157,7 +157,7 @@ describe("FIX-1245 legacy rows on the durable read path", () => {
         await collection.awaitReview("t");
         await setLegacyStatus("t");
 
-        await expect(collection.resumeFromReview("t")).resolves.toBeDefined();
+        await expect(collection.unpark("t")).resolves.toBeDefined();
         expect(collection.get("t")?.status).toBe("pending");
       });
 

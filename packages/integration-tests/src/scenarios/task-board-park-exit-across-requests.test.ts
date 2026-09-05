@@ -129,7 +129,7 @@ function buildFlow() {
     uses: [board.capability],
     execute: async (_input, ctx) => {
       const tasks: TaskCollectionRef = await ctx.cap[BOARD].tasks();
-      await tasks.resumeFromReview("ask", "approved, carry on");
+      await tasks.unpark("ask", "approved, carry on");
       return null;
     },
   });

@@ -186,7 +186,7 @@ A resume moves the task back to `pending`. `tasks` is the board's task list, whi
 
 ```ts
 const tasks = await ctx.cap.reviews.tasks();
-await tasks.resumeFromReview("draft-42", "approved, ship it");
+await tasks.unpark("draft-42", "approved, ship it");
 ```
 
 The second argument is feedback for whoever picks the task up. It reaches the worker as `input.feedback` on the next attempt. A task that has never been reviewed has no `feedback`, so a worker can branch on it.
@@ -230,7 +230,7 @@ Every requirement below is checked when you build the board. Get one wrong and `
 
 ### What it does not change
 
-The task lifecycle is the same under either setting. A parked task sits in `parked`, `awaitReview` and `resumeFromReview` move it in and out, and `onReview` decides only whether the drain counts it while it sits there.
+The task lifecycle is the same under either setting. A parked task sits in `parked`, `awaitReview` and `unpark` move it in and out, and `onReview` decides only whether the drain counts it while it sits there.
 
 The setting is board-wide. A board cannot park one task as "release the request" and another as "hold it".
 
@@ -424,7 +424,7 @@ A worker's result is not always the last word on its task. A coordinator can can
 
 The board drops those results. A cancel stays cancelled, output the worker recorded for itself stays, and a second worker's claim is left alone. The drop is silent and affects exactly one task: the rest of the board keeps draining, and under `onError: "fail"` the error that surfaces is the worker's own rather than a conflict on the write-back.
 
-A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `resumeFromReview`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
+A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `unpark`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
 
 `maxTotalRetries` bounds what the board **spends**: it counts failure retries across every task, and at the bound the next failing task settles instead of re-dispatching. `maxIterations` bounds how long a worker loops, per worker, including idle polls that claim nothing — at `concurrency: 4` a board can spend four times `maxIterations` before every worker has tripped. Neither `reclaim()` nor `unblock` spends the retry budget, so on a board looping through those, `maxIterations` is what ends it.
 
@@ -439,7 +439,7 @@ A task can also keep returning to `pending` without ever settling. `maxAttempts`
 
 Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound. What a coordinator should do about each is in [Delegation](../skills/delegation#how-much-work-the-board-will-take-on).
 
-The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, an `unblock`, a `resumeFromReview`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
+The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, an `unblock`, a `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
 
 ### Bounding the retries
 
@@ -461,7 +461,7 @@ worker timed out — not retried: collection "research" has spent its retry budg
 
 The task is settled, not parked: the drain counts it as resolved and the board finishes normally. Set `null` for no bound at all, or `0` to run every task once and never retry. A first attempt is never refused, at any value.
 
-Only failure retries count. `reclaim()`, `unblock`, and `resumeFromReview` also return a task to `pending`, and none of them spends the budget.
+Only failure retries count. `reclaim()`, `unblock`, and `unpark` also return a task to `pending`, and none of them spends the budget.
 
 The budget is spent when a retry is granted, not when it runs. If a re-dispatched task is never picked up again because its worker died or its lease expired, the retry still counts.
 

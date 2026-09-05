@@ -175,7 +175,7 @@ export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
  * Named because {@link transitionDeclineReason} refuses exactly these on a row
  * that is parked for review, and the set is not guessable from the target
  * status: a failure with retries left targets `pending`, which is also where a
- * `resumeFromReview` lands. The kind separates them; the status cannot.
+ * `unpark` lands. The kind separates them; the status cannot.
  */
 export const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
   "completed",
@@ -449,10 +449,11 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  *   have one in scope at the call site; taking it as a parameter rather than
  *   capturing `Date.now` is what keeps this testable with an injected clock.
  * @param requireFrom The one status this verb may run from, when the verb owns a
- *   single edge rather than every legal path to its target. `unblock` is the
- *   only such verb: `blocked → pending`. The status table cannot express this —
- *   it maps status to status, not verb to edge, and `in_progress → pending` and
- *   `parked → pending` are legal for `reclaim` and `resumeFromReview`.
+ *   single edge rather than every legal path to its target. Two verbs do:
+ *   `unblock` (`blocked → pending`) and `unpark` (`parked → pending`, FIX-1244).
+ *   The status table cannot express this — it maps status to status, not verb
+ *   to edge, and `in_progress → pending` is legal for `reclaim`, so without the
+ *   fence `unpark` would re-queue a row a worker is holding.
  *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
@@ -498,7 +499,7 @@ export function transitionDeclineReason(
   // it always had.
   //
   // Scoped to settlement kinds so the flag cannot refuse the verbs that legally
-  // move a parked row: `resumeFromReview` targets `pending`, which a retrying
+  // move a parked row: `unpark` targets `pending`, which a retrying
   // failure also targets, and only the kind separates them.
   if (
     options.refuseWhenParked === true &&

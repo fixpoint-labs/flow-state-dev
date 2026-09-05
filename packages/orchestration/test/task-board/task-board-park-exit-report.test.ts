@@ -535,7 +535,7 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     // reason names a state, so it is checked against that state.
     const collection = freshCollection();
     await park(collection, "ask");
-    await collection.resumeFromReview("ask", "answered while the pool was still running");
+    await collection.unpark("ask", "answered while the pool was still running");
     expect(collection.count({ status: "parked" })).toBe(0);
 
     // Falls through to what a board in this shape reported before FIX-1234: one
@@ -582,7 +582,7 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     await park(collection, "ask");
     expect(await reasonFor(collection, parkedExit)).toBe("parked-for-review");
 
-    await collection.resumeFromReview("ask", "approved");
+    await collection.unpark("ask", "approved");
     expect(collection.get("ask")?.status).toBe("pending");
 
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");

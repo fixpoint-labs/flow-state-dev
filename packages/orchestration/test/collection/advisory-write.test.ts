@@ -685,7 +685,7 @@ describe.each([
       expect(collection.get("c")?.status).toBe("blocked");
       expect(collection.get("c")?.error).toBe("parked by a coordinator");
 
-      expect(await collection.resumeFromReview("d", "not yours", stranger)).toMatchObject({
+      expect(await collection.unpark("d", "not yours", stranger)).toMatchObject({
         outcome: "declined",
         reason: "not-my-task",
       });
@@ -701,7 +701,7 @@ describe.each([
         outcome: "recorded",
       });
       expect(collection.get("t")?.status).toBe("parked");
-      expect(await collection.resumeFromReview("t", "looks fine", own)).toEqual({
+      expect(await collection.unpark("t", "looks fine", own)).toEqual({
         outcome: "recorded",
       });
       expect(collection.get("t")?.status).toBe("pending");

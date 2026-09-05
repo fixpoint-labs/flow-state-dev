@@ -900,7 +900,7 @@ describe("taskBoard - parked", () => {
   it("dispatcher skips parked; resume wakes the loop in onIdle: 'complete'", async () => {
     // "park" is seeded directly in `parked` — the FIFO
     // dispatcher must skip it. While "trigger" runs, it schedules a
-    // `resumeFromReview` that flips "park" back to `pending`. The
+    // `unpark` that flips "park" back to `pending`. The
     // `complete`-mode loop counts the parked task as
     // in-flight so it doesn't exit before the resume lands.
     let scheduled = false;
@@ -918,7 +918,7 @@ describe("taskBoard - parked", () => {
             sequencer: ctx.getTarget("hitl")!,
           });
           setTimeout(() => {
-            collection.resumeFromReview("park").catch(() => undefined);
+            collection.unpark("park").catch(() => undefined);
           }, 60);
         }
         return { handled: input.goal };
@@ -937,7 +937,7 @@ describe("taskBoard - parked", () => {
       ],
       onIdle: "complete",
       // FIX-621: prove event-driven wake. With a 50s idle-poll baseline,
-      // the test can only finish in time if `resumeFromReview` fans out
+      // the test can only finish in time if `unpark` fans out
       // a `task-change` item that wakes `.waitForCondition` directly
       // rather than waiting for the next tick.
       idlePollMs: 50_000,

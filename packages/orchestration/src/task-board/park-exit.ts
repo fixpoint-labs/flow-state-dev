@@ -10,7 +10,7 @@
  *
  * This mode excuses parked rows from the board's waitable count, so the drain
  * finishes and returns while the row stays parked and durable. A later
- * `resumeFromReview` re-queues it for whatever drains the board next.
+ * `unpark` re-queues it for whatever drains the board next.
  *
  * **Off by default, and a handed-off board has to ask for it too.** Turning it on
  * moves *when* an existing caller's request resolves, so it is never inferred

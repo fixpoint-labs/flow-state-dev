@@ -9,7 +9,7 @@
  *
  * ## The drain belongs to this action, not to the operator's next step
  *
- * `resumeFromReview` only leaves the row `pending`, and with `onReview: "exit"`
+ * `unpark` only leaves the row `pending`, and with `onReview: "exit"`
  * the drain that observed the question has already ended — so an `answer` that
  * stops after two calls leaves the row waiting for whatever happens to drain
  * next, and *"an answer starts the run again"* is a promise the design does not
@@ -20,7 +20,7 @@
  *
  * ## The guard is conductor's own, and it is a PAIR
  *
- * The substrate will not refuse for us: `resumeFromReview` passes no
+ * The substrate will not refuse for us: `unpark` passes no
  * `requireFrom` and every remaining guard is behind `ifAllowed`, which this
  * design does not adopt — so a row that was never parked reports `recorded` and
  * the answer lands on a run nobody is waiting on. So the guard is here.
@@ -78,7 +78,7 @@
  * ## Named limits, not tasks — do not close any of these here
  *
  * - **The refusal is right on the common path, not on the race.** This reads
- *   the board row and then calls `resumeFromReview`, and the row can move
+ *   the board row and then calls `unpark`, and the row can move
  *   between them. Closing that means the verb itself refuses a non-parked row
  *   atomically, which is FIX-1244's. Do not invent a lock, a compare-and-set,
  *   or a conductor-side status.
@@ -179,7 +179,7 @@ interface TaskView {
  */
 export interface AnswerBoard {
   get(id: string): TaskView | undefined;
-  resumeFromReview(id: string, feedback?: string): Promise<unknown>;
+  unpark(id: string, feedback?: string): Promise<unknown>;
   now(): number;
 }
 
@@ -305,7 +305,7 @@ async function proceed(
   // failed, and the two channels never carry each other. Passing none also
   // clears the previous failure's reason, so the resumed attempt is not told
   // its own answer is why it stopped.
-  await board.resumeFromReview(taskId);
+  await board.unpark(taskId);
 
   return {
     result: "answered",
@@ -354,15 +354,15 @@ async function recover(
 
   if (task === undefined) return declined("unknown-task");
 
-  // Crashed between the patch and `resumeFromReview`: the operator watched the
+  // Crashed between the patch and `unpark`: the operator watched the
   // answer land and the task is still parked. Written as a status PAIR this
   // case was missed, which parks the task forever holding an accepted answer.
   if (taskStatus === PARKED) {
-    await board.resumeFromReview(taskId);
+    await board.unpark(taskId);
     return recovered(true);
   }
 
-  // Crashed between `resumeFromReview` and the drain: re-queued, and
+  // Crashed between `unpark` and the drain: re-queued, and
   // `onReview: "exit"` already ended the drain that saw the question.
   if (taskStatus === "pending") return recovered(true);
 

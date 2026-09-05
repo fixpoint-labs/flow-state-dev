@@ -661,9 +661,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         () => ({ error: undefined }),
         options,
         // `blocked` is the ONLY status this may run from. The other two paths
-        // to `pending` have their own verbs (`reclaim`, `resumeFromReview`),
-        // and those clear the lease and the claim coordinate; this one has
-        // nothing to clear because `blocked` is reachable only from `pending`.
+        // to `pending` have their own verbs (`reclaim`, and `unpark` with its
+        // own fence), and those clear the lease and the claim coordinate; this
+        // one has nothing to clear because `blocked` is reachable only from
+        // `pending`.
         "blocked"
       );
     },
@@ -678,7 +679,14 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       );
     },
 
-    async resumeFromReview(id, feedback, options) {
+    async unpark(id, feedback, options) {
+      // Fenced to the one edge it owns (FIX-1244): `parked` is the ONLY status
+      // this may run from, and the check runs inside the atomic write, so a
+      // row a worker is holding, or one somebody already answered, comes back
+      // `declined` naming the status it found — never re-queued. `ifAllowed` is
+      // forced AFTER the spread, the way `cancel` forces it: the fence is the
+      // verb's contract, not an option a caller can switch off, and a terminal
+      // row declines `terminal` instead of throwing.
       return transitionTo(
         id,
         "pending",
@@ -688,7 +696,8 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           leaseUntil: undefined,
           claimedBy: undefined,
         }),
-        options
+        { ...options, ifAllowed: true },
+        "parked"
       );
     },
 

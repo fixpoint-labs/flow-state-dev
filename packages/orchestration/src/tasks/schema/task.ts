@@ -50,7 +50,7 @@ export const taskSchema = z.object({
    * `granted` counts AUTHORIZED failure retries — incremented when `fail()`
    * re-pends the task, not when the retry is later observed at claim time. It is
    * therefore not derivable from `attempts`, which also moves for re-claims
-   * after an `unblock`, a `resumeFromReview`, or a `reclaim` — none of which are
+   * after an `unblock`, a `unpark`, or a `reclaim` — none of which are
    * failure retries and none of which touch this field.
    *
    * `deniedByBudget` is what the board's `terminationReason` reads. It exists so

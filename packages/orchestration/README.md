@@ -39,7 +39,7 @@ pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ cancelled
          │                └─→ parked ─┬─→ completed
          │                            ├─→ errored
-         │                            ├─→ pending    (resumeFromReview)
+         │                            ├─→ pending    (unpark)
          │                            └─→ cancelled
          ├─→ blocked ─┬─→ pending               (unblock)
          │            └─→ cancelled
@@ -59,7 +59,7 @@ task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
 `granted` counts the failure retries this task was **authorized**, so it excludes
-the re-entries that do not spend the budget (`unblock`, `resumeFromReview`,
+the re-entries that do not spend the budget (`unblock`, `unpark`,
 `reclaim`) and includes a retry that was granted but never picked up.
 `deniedByBudget` turns `true` once a retry was refused because the collection's
 budget was spent; the board's `terminationReason` reads that flag, so branch on it
@@ -110,13 +110,13 @@ from the next resolution onward. A ref you are already holding keeps reporting s
 a task until it resolves again.
 
 Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
-`resumeFromReview`, `cancel` — takes an optional trailing `TaskTransitionOptions`
+`unpark`, `cancel` — takes an optional trailing `TaskTransitionOptions`
 argument that makes the write advisory. `ifAllowed` skips the write when the task is
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
 one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
 and no other. `in_progress → pending` and `parked → pending` sit in the
-status table too, but they belong to `reclaim()` and `resumeFromReview`. `claim` takes a
+status table too, but they belong to `reclaim()` and `unpark`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
 for, still on that attempt, holding a lease that has not run out. A guard cannot be
