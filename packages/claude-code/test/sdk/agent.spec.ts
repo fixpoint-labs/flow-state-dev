@@ -997,6 +997,62 @@ describe("claudeCodeAgent — resume and onSession", () => {
     expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
   });
 
+  it("announces the session on a run whose signal has ALREADY fired", async () => {
+    // **A merge guard for FIX-1301, and the one case that discriminates.**
+    //
+    // That change turns this loop into a promise raced against `ctx.signal`,
+    // with every iteration opening `if (ctx.signal.aborted) return;`. Whoever
+    // resolves the conflict has to graft this hook into that loop, and there are
+    // two placements. Above the guard — capture the id, announce it, then bail —
+    // keeps the behaviour this test names. Below it, the loop returns before the
+    // id is ever read, and the hook stops firing on the abort path.
+    //
+    // That is the path the hook exists for. A killed run returns no handle, so
+    // the hook is the ONLY way its session reaches the host — and a host that
+    // never learns it starts the next attempt over in a tree it has never seen,
+    // which is the whole defect this PR removes.
+    //
+    // The signal is fired BEFORE the run starts rather than mid-stream, and
+    // that is what makes the test discriminate. Abort part-way through and the
+    // id was already announced on an earlier iteration, so both placements pass
+    // and the test proves nothing — measured, on the first version of this
+    // guard. Already-aborted is the case where the naming message and the
+    // abort check land in the same iteration, which is where the two
+    // placements actually differ.
+    //
+    // It is a real case, not a contrived one: a deadline that expires while the
+    // vendor is starting up still leaves a session the vendor created, and that
+    // session is worth continuing.
+    const onSession = vi.fn();
+    const controller = new AbortController();
+    controller.abort();
+
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([
+        { type: "system", subtype: "init", session_id: "sess_named" },
+        { ...RESULT_OK, session_id: "sess_named" },
+      ]),
+      detached: true,
+      onSession,
+    });
+
+    // The block is driven directly with a context whose `signal` is genuinely
+    // aborted. `testBlock`'s own signal option does not reach `ctx.signal` —
+    // measured, and worth stating: a version of this test that used it read
+    // `aborted === false` inside the loop and passed against the very
+    // resolution it exists to catch.
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    Object.defineProperty(runtime.ctx, "signal", {
+      value: controller.signal,
+      configurable: true,
+    });
+
+    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    // However the run ends, the host was told which session it was in.
+    expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
+  });
+
   it("calls the hook on a run whose result is errored", async () => {
     // An errored terminal result is a RETURN, not a throw — this lab's whole
     // premise. The session exists and the failure was not a resume failure, so
