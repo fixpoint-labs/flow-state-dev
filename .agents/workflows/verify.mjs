@@ -2410,6 +2410,43 @@ check('a row at review budget with an unusable cursor is withheld, not converged
   assert.ok(!result.converged.includes('FIX-2'), 'budget alone must not win — the cursor is unusable, so nothing was ever compared to it')
   assert.match(logs.join('\n'), /FIX-2: spec-review activity reported with no timestamp.*fold withheld, not converged/, 'withheld, not a budget convergence')
 })
+check('an APPROVED spec parked by the cross-spec hold is not reported as converged', async () => {
+  // The third way `pendingAction` returns null for AWAITING_SPEC_APPROVAL + newSpecReviewEvents.
+  // `allocate()` re-asked `cursorUsable` and `atReviewBudget` but never `crossSpecHold`, so an
+  // already-APPROVED row parked by the hold, carrying a usable cursor and sitting at budget, fell
+  // through to the budget branch: the wake reported a convergence that never happened and told the
+  // human it was "awaiting the human gate" for a spec they had already approved. The hold is the
+  // reason nothing dispatched, and a row that does not dispatch has to say why.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specReviewRounds: 2, specLevelFound: false }),
+        row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 8,
+          specApproved: true,
+          headSha: 'abc',
+          newSpecReviewEvents: true,
+          latestActivityAt: '2026-09-05T10:00:00Z',
+        },
+        'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9, specApproved: true, headSha: 'abc' },
+      },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'the cross-spec hold parks both rows')
+  assert.ok(!result.converged.includes('FIX-2'), 'an approved spec held for the cross-spec pass never reached the budget question')
+  assert.doesNotMatch(logs.join('\n'), /FIX-2: spec converged/, 'and it must not be announced as a convergence awaiting a gate the human already gave')
+  assert.match(
+    logs.join('\n'),
+    /FIX-2: spec approved with spec-PR feedback to carry.*cross-spec coherence pass/,
+    'the hold is named as the reason it did not dispatch, in the file style — a held row says why',
+  )
+})
 
 check('the conditional third round IS dispatched, and says so', async () => {
   const { calls, logs } = await run('epic-wake.js', {
